@@ -12,13 +12,19 @@ RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BU
 
 WRAPPER_CLASS radio_driver(radio, board);
 
+#ifdef DISABLE_I2C_RTC_SCAN
+VolatileRTCClock rtc_clock;
+#else
 VolatileRTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
+#endif
 
 EnvironmentSensorManager sensors;
 
 bool radio_init() {
+#ifndef DISABLE_I2C_RTC_SCAN
   rtc_clock.begin(Wire);
+#endif
 
   return radio.std_init(&SPI);
 }
