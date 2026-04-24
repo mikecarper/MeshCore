@@ -149,6 +149,7 @@ protected:
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   bool allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const override;
   uint32_t getDirectRetryEchoDelay(const mesh::Packet* packet) const override;
+  uint8_t getDirectRetryMaxAttempts(const mesh::Packet* packet) const override;
   void onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis) override;
 
   int getInterferenceThreshold() const override {

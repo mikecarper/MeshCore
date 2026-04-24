@@ -54,6 +54,9 @@ struct NodePrefs { // persisted to file
   uint32_t discovery_mod_timestamp;
   float adc_multiplier;
   char owner_info[120];
+  uint8_t direct_retry_attempts;
+  uint16_t direct_retry_base_ms;
+  uint8_t direct_retry_timing_magic[2];
 };
 
 class CommonCLICallbacks {

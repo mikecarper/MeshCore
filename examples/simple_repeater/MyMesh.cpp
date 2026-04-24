@@ -587,16 +587,21 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
   return recent != NULL && recent->snr_x4 >= min_snr_x4;
 }
 uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
+  uint32_t base_wait_millis = constrain((uint32_t)_prefs.direct_retry_base_ms, (uint32_t)10, (uint32_t)5000);
   // Approximate LoRa line rate in kilobits/sec from the live radio params the repeater is using now.
   float kbps = (((float) active_sf) * active_bw * ((float) active_cr)) / ((float) (1UL << active_sf));
   if (kbps <= 0.0f) {
-    return HALO_DIRECT_RETRY_DELAY_MIN;
+    return base_wait_millis;
   }
 
   // Wait roughly long enough for our transmission, the next hop's receive/forward window, and its echo back.
   uint32_t bits = ((uint32_t) packet->getRawLength()) * 8;
   uint32_t scaled_wait_millis = (uint32_t) ((((float) bits) * 4.0f) / kbps);
-  return max((uint32_t) HALO_DIRECT_RETRY_DELAY_MIN, scaled_wait_millis);
+  return base_wait_millis + scaled_wait_millis;
+}
+uint8_t MyMesh::getDirectRetryMaxAttempts(const mesh::Packet* packet) const {
+  (void)packet;
+  return constrain(_prefs.direct_retry_attempts, (uint8_t)1, (uint8_t)15);
 }
 
 bool MyMesh::filterRecvFloodPacket(mesh::Packet* pkt) {
@@ -885,6 +890,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.direct_tx_delay_factor = 0.3f; // was 0.2
   _prefs.direct_retry_recent_enabled = 0;
   _prefs.direct_retry_snr_margin_db = 5;
+  _prefs.direct_retry_attempts = 3;
+  _prefs.direct_retry_base_ms = 200;
   StrHelper::strncpy(_prefs.node_name, ADVERT_NAME, sizeof(_prefs.node_name));
   _prefs.node_lat = ADVERT_LAT;
   _prefs.node_lon = ADVERT_LON;
@@ -1290,29 +1297,36 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     } else {
       strcpy(reply, "Err - ??");
     }
-  } else if (memcmp(command, "recent.repeater", 15) == 0) {
-    const char* sub = command + 15;
-    while (*sub == ' ') sub++;
-    auto* tables = (SimpleMeshTables*)getTables();
-    if (*sub == 0) {
-      const auto* info = tables->getLatestRecentRepeater();
-      if (info == NULL) {
-        strcpy(reply, "> none");
-      } else {
-        char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
-        mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
-        sprintf(reply, "> %s,%s", hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
-      }
+  } else if (strncmp(command, "get recent.repeater", 19) == 0
+          || strncmp(command, "set recent.repeater", 19) == 0
+          || strncmp(command, "recent.repeater", 15) == 0) {
+    bool is_get = false;
+    bool is_set = false;
+    const char* sub = command;
+
+    if (strncmp(command, "get recent.repeater", 19) == 0) {
+      is_get = true;
+      sub = command + 19;
+    } else if (strncmp(command, "set recent.repeater", 19) == 0) {
+      is_set = true;
+      sub = command + 19;
     } else {
+      sub = command + 15;  // legacy command format
+    }
+    while (*sub == ' ') sub++;
+
+    auto* tables = (SimpleMeshTables*)getTables();
+
+    if (is_set || (!is_get && *sub != 0 && strcmp(sub, "all") != 0 && strncmp(sub, "first ", 6) != 0 && strncmp(sub, "last ", 5) != 0)) {
       char* params = (char*) sub;
       char* arg_snr = strchr(params, ' ');
       if (arg_snr == NULL) {
-        strcpy(reply, "Err - usage: recent.repeater <prefix_hex> <snr_db>");
+        strcpy(reply, "Err - usage: set recent.repeater <prefix_hex> <snr_db>");
       } else {
         *arg_snr++ = 0;
         while (*arg_snr == ' ') arg_snr++;
         if (*arg_snr == 0) {
-          strcpy(reply, "Err - usage: recent.repeater <prefix_hex> <snr_db>");
+          strcpy(reply, "Err - usage: set recent.repeater <prefix_hex> <snr_db>");
         } else {
           int hex_len = strlen(params);
           int prefix_len = hex_len / 2;
@@ -1331,6 +1345,94 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
           }
         }
       }
+    } else if (*sub == 0) {
+      const auto* info = tables->getLatestRecentRepeater();
+      if (info == NULL) {
+        strcpy(reply, "> none");
+      } else {
+        char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
+        mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
+        sprintf(reply, "> %s,%s", hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
+      }
+    } else if (strcmp(sub, "all") == 0 || strncmp(sub, "first ", 6) == 0 || strncmp(sub, "last ", 5) == 0) {
+      int total = tables->getRecentRepeaterCount();
+      if (total <= 0) {
+        strcpy(reply, "> none");
+      } else {
+        bool newest_first = false;
+        int limit = total;
+        const char* mode = "all";
+        if (strncmp(sub, "first ", 6) == 0 || strncmp(sub, "last ", 5) == 0) {
+          const char* nstr = sub + (sub[0] == 'f' ? 6 : 5);
+          while (*nstr == ' ') nstr++;
+          if (*nstr == 0) {
+            strcpy(reply, "Err - usage: get recent.repeater first|last <count>");
+            return;
+          }
+          char* end_ptr = NULL;
+          long parsed = strtol(nstr, &end_ptr, 10);
+          while (end_ptr != NULL && *end_ptr == ' ') end_ptr++;
+          if (end_ptr == NULL || *end_ptr != 0 || parsed <= 0) {
+            strcpy(reply, "Err - count must be > 0");
+            return;
+          }
+          limit = (int)parsed;
+          if (sub[0] == 'l') {
+            newest_first = true;
+            mode = "last";
+          } else {
+            mode = "first";
+          }
+        }
+        if (limit > total) {
+          limit = total;
+        }
+
+        if (sender_timestamp == 0) {
+          Serial.printf("Recent repeater table (%s %d/%d):\n", mode, limit, total);
+          for (int i = 0; i < limit; i++) {
+            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(i) : tables->getRecentRepeaterOldestByIdx(i);
+            if (info == NULL) {
+              continue;
+            }
+            char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
+            mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
+            Serial.printf("%02d: %s,%s\n", i + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
+          }
+          sprintf(reply, "> showing %d/%d (%s)", limit, total, mode);
+        } else {
+          // Remote CLI replies are packet-bound, so include as many rows as fit.
+          int written = snprintf(reply, 160, "> showing %d/%d (%s)", limit, total, mode);
+          bool truncated = false;
+          if (written < 0) {
+            reply[0] = 0;
+            written = 0;
+          }
+          for (int i = 0; i < limit; i++) {
+            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(i) : tables->getRecentRepeaterOldestByIdx(i);
+            if (info == NULL) {
+              continue;
+            }
+            if (written >= 154) {
+              truncated = true;
+              break;
+            }
+            char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
+            mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
+            int n = snprintf(reply + written, 160 - written, "\n%02d:%s,%s", i + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
+            if (n < 0 || n >= (160 - written)) {
+              truncated = true;
+              break;
+            }
+            written += n;
+          }
+          if (truncated && written < 156) {
+            snprintf(reply + written, 160 - written, "\n...");
+          }
+        }
+      }
+    } else {
+      strcpy(reply, "Err - usage: get recent.repeater [all|first <count>|last <count>]");
     }
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands

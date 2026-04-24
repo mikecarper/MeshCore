@@ -100,14 +100,21 @@
 
 ### Get or set recent repeater fallback prefix/SNR
 **Usage:**
-- `recent.repeater`
-- `recent.repeater <prefix_hex> <snr_db>`
+- `get recent.repeater`
+- `get recent.repeater all`
+- `get recent.repeater first <count>`
+- `get recent.repeater last <count>`
+- `set recent.repeater <prefix_hex> <snr_db>`
 
 **Parameters:**
 - `prefix_hex`: 1-3 bytes of next-hop prefix (hex)
 - `snr_db`: SNR in dB (supports decimals; stored at x4 precision)
+- `count`: number of entries to print
 
-**Note:** `set` is rejected when the prefix already exists in neighbors.
+**Notes:**
+- `set` is rejected when the prefix already exists in neighbors.
+- `all` prints oldest to newest; `first` prints the oldest N; `last` prints the newest N.
+- Remote CLI replies include rows too, but may truncate when the packet payload limit is reached.
 
 ---
 
@@ -443,6 +450,32 @@
 **Default:** `5`
 
 **Note:** The retry gate uses the active SF floor of `SF5=-2.5`, `SF6=-5`, `SF7=-7.5`, `SF8=-10`, `SF9=-12.5`, `SF10=-15`, `SF11=-17.5`, `SF12=-20`, then adds this margin.
+
+---
+
+#### View or change the number of direct retry attempts
+**Usage:**
+- `get direct.retry.count`
+- `set direct.retry.count <value>`
+
+**Parameters:**
+- `value`: Retry attempts after initial TX (`1`-`15`)
+
+**Default:** `3`
+
+---
+
+#### View or change the base direct retry wait (milliseconds)
+**Usage:**
+- `get direct.retry.base`
+- `set direct.retry.base <value>`
+
+**Parameters:**
+- `value`: Base wait in milliseconds (`10`-`5000`)
+
+**Default:** `200`
+
+**Note:** The actual first retry wait is `base + computed_echo_wait_from_live_phy`.
 
 ---
 

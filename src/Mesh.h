@@ -108,6 +108,16 @@ protected:
   virtual uint32_t getDirectRetryEchoDelay(const Packet* packet) const;
 
   /**
+   * \returns  maximum number of retry transmissions after the initial direct TX.
+   */
+  virtual uint8_t getDirectRetryMaxAttempts(const Packet* packet) const;
+
+  /**
+   * \returns  delay before a specific retry attempt, where attempt_idx=0 is the first retry.
+   */
+  virtual uint32_t getDirectRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx) const;
+
+  /**
    * \returns  number of extra (Direct) ACK transmissions wanted.
    */
   virtual uint8_t getExtraAckTransmitCount() const;

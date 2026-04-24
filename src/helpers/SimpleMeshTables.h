@@ -279,6 +279,51 @@ public:
     }
     return NULL;
   }
+  int getRecentRepeaterCount() const {
+    int count = 0;
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      if (_recent_repeaters[i].prefix_len > 0) {
+        count++;
+      }
+    }
+    return count;
+  }
+  const RecentRepeaterInfo* getRecentRepeaterNewestByIdx(int idx_wanted) const {
+    if (idx_wanted < 0) {
+      return NULL;
+    }
+    int idx_seen = 0;
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      int idx = (_next_recent_repeater_idx - 1 - i + MAX_RECENT_REPEATERS) % MAX_RECENT_REPEATERS;
+      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
+      if (info->prefix_len == 0) {
+        continue;
+      }
+      if (idx_seen == idx_wanted) {
+        return info;
+      }
+      idx_seen++;
+    }
+    return NULL;
+  }
+  const RecentRepeaterInfo* getRecentRepeaterOldestByIdx(int idx_wanted) const {
+    if (idx_wanted < 0) {
+      return NULL;
+    }
+    int idx_seen = 0;
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      int idx = (_next_recent_repeater_idx + i) % MAX_RECENT_REPEATERS;
+      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
+      if (info->prefix_len == 0) {
+        continue;
+      }
+      if (idx_seen == idx_wanted) {
+        return info;
+      }
+      idx_seen++;
+    }
+    return NULL;
+  }
 
   const RecentRepeaterInfo* findRecentRepeaterByHash(const uint8_t* hash, uint8_t hash_len) const {
     if (hash == NULL || hash_len == 0) {
