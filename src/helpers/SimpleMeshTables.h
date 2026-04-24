@@ -68,6 +68,21 @@ private:
     return n > 0 && memcmp(a, b, n) == 0;
   }
 
+  int8_t avgSnrX4RoundUp(int8_t curr_snr_x4, int8_t new_snr_x4) const {
+    int16_t sum = (int16_t)curr_snr_x4 + (int16_t)new_snr_x4;
+    int16_t avg = sum / 2;  // truncates toward zero
+    // "Round up" means ceil(), which only differs from truncation for positive odd sums.
+    if (sum > 0 && (sum & 1)) {
+      avg++;
+    }
+    if (avg > 127) {
+      avg = 127;
+    } else if (avg < -128) {
+      avg = -128;
+    }
+    return (int8_t)avg;
+  }
+
   bool extractRecentRepeater(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const {
     // Learn repeater prefixes only from packet shapes that expose a trustworthy repeater ID.
     // For flood traffic, the last path entry is the repeater we directly heard.
@@ -258,7 +273,7 @@ public:
         memcpy(existing.prefix, prefix, prefix_len);
         existing.prefix_len = prefix_len;
       }
-      existing.snr_x4 = snr_x4;
+      existing.snr_x4 = avgSnrX4RoundUp(existing.snr_x4, snr_x4);
       return true;
     }
 
