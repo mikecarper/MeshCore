@@ -102,19 +102,23 @@
 **Usage:**
 - `get recent.repeater`
 - `get recent.repeater all`
+- `get recent.repeater all <count> <offset>`
 - `get recent.repeater first <count>`
+- `get recent.repeater first <count> <offset>`
 - `get recent.repeater last <count>`
+- `get recent.repeater last <count> <offset>`
 - `set recent.repeater <prefix_hex> <snr_db>`
 
 **Parameters:**
 - `prefix_hex`: 1-3 bytes of next-hop prefix (hex)
 - `snr_db`: SNR in dB (supports decimals; stored at x4 precision)
 - `count`: number of entries to print
+- `offset`: zero-based row offset into the selected order
 
 **Notes:**
 - `set` is rejected when the prefix already exists in neighbors.
 - `all` prints oldest to newest; `first` prints the oldest N; `last` prints the newest N.
-- Remote CLI replies include rows too, but may truncate when the packet payload limit is reached.
+- Over LoRa remote CLI, replies are packet-size limited; use `offset` to page through all rows.
 
 ---
 

@@ -1317,7 +1317,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
 
     auto* tables = (SimpleMeshTables*)getTables();
 
-    if (is_set || (!is_get && *sub != 0 && strcmp(sub, "all") != 0 && strncmp(sub, "first ", 6) != 0 && strncmp(sub, "last ", 5) != 0)) {
+    bool is_all = (strcmp(sub, "all") == 0 || strncmp(sub, "all ", 4) == 0);
+    bool is_first = (strncmp(sub, "first ", 6) == 0);
+    bool is_last = (strncmp(sub, "last ", 5) == 0);
+
+    if (is_set || (!is_get && *sub != 0 && !is_all && !is_first && !is_last)) {
       char* params = (char*) sub;
       char* arg_snr = strchr(params, ' ');
       if (arg_snr == NULL) {
@@ -1354,62 +1358,111 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
         mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
         sprintf(reply, "> %s,%s", hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
       }
-    } else if (strcmp(sub, "all") == 0 || strncmp(sub, "first ", 6) == 0 || strncmp(sub, "last ", 5) == 0) {
+    } else if (is_all || is_first || is_last) {
       int total = tables->getRecentRepeaterCount();
       if (total <= 0) {
         strcpy(reply, "> none");
       } else {
         bool newest_first = false;
         int limit = total;
+        int offset = 0;
         const char* mode = "all";
-        if (strncmp(sub, "first ", 6) == 0 || strncmp(sub, "last ", 5) == 0) {
-          const char* nstr = sub + (sub[0] == 'f' ? 6 : 5);
+
+        if (is_first || is_last) {
+          const char* nstr = sub + (is_first ? 6 : 5);
           while (*nstr == ' ') nstr++;
           if (*nstr == 0) {
-            strcpy(reply, "Err - usage: get recent.repeater first|last <count>");
+            strcpy(reply, "Err - usage: get recent.repeater first|last <count> [offset]");
             return;
           }
+
           char* end_ptr = NULL;
-          long parsed = strtol(nstr, &end_ptr, 10);
+          long parsed_count = strtol(nstr, &end_ptr, 10);
           while (end_ptr != NULL && *end_ptr == ' ') end_ptr++;
-          if (end_ptr == NULL || *end_ptr != 0 || parsed <= 0) {
+          if (end_ptr == NULL || parsed_count <= 0) {
             strcpy(reply, "Err - count must be > 0");
             return;
           }
-          limit = (int)parsed;
-          if (sub[0] == 'l') {
+
+          if (*end_ptr != 0) {
+            char* end_ptr2 = NULL;
+            long parsed_offset = strtol(end_ptr, &end_ptr2, 10);
+            while (end_ptr2 != NULL && *end_ptr2 == ' ') end_ptr2++;
+            if (end_ptr2 == NULL || *end_ptr2 != 0 || parsed_offset < 0) {
+              strcpy(reply, "Err - offset must be >= 0");
+              return;
+            }
+            offset = (int)parsed_offset;
+          }
+
+          limit = (int)parsed_count;
+          if (is_last) {
             newest_first = true;
             mode = "last";
           } else {
             mode = "first";
           }
+        } else if (strncmp(sub, "all ", 4) == 0) {
+          const char* arg = sub + 4;
+          while (*arg == ' ') arg++;
+          if (*arg == 0) {
+            strcpy(reply, "Err - usage: get recent.repeater all <count> <offset>");
+            return;
+          }
+
+          char* end_ptr = NULL;
+          long parsed_a = strtol(arg, &end_ptr, 10);
+          while (end_ptr != NULL && *end_ptr == ' ') end_ptr++;
+          if (end_ptr == NULL || parsed_a <= 0) {
+            strcpy(reply, "Err - count must be > 0");
+            return;
+          }
+
+          char* end_ptr2 = NULL;
+          long parsed_b = strtol(end_ptr, &end_ptr2, 10);
+          while (end_ptr2 != NULL && *end_ptr2 == ' ') end_ptr2++;
+          if (end_ptr2 == NULL || *end_ptr2 != 0 || parsed_b < 0) {
+            strcpy(reply, "Err - usage: get recent.repeater all <count> <offset>");
+            return;
+          }
+          limit = (int)parsed_a;
+          offset = (int)parsed_b;
         }
-        if (limit > total) {
-          limit = total;
+
+        if (offset >= total) {
+          sprintf(reply, "> none (%s off=%d/%d)", mode, offset, total);
+          return;
+        }
+
+        int available = total - offset;
+        if (limit > available) {
+          limit = available;
         }
 
         if (sender_timestamp == 0) {
-          Serial.printf("Recent repeater table (%s %d/%d):\n", mode, limit, total);
+          Serial.printf("Recent repeater table (%s %d/%d, off=%d):\n", mode, limit, total, offset);
           for (int i = 0; i < limit; i++) {
-            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(i) : tables->getRecentRepeaterOldestByIdx(i);
+            int idx = offset + i;
+            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(idx) : tables->getRecentRepeaterOldestByIdx(idx);
             if (info == NULL) {
               continue;
             }
             char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
             mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
-            Serial.printf("%02d: %s,%s\n", i + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
+            Serial.printf("%02d: %s,%s\n", idx + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
           }
-          sprintf(reply, "> showing %d/%d (%s)", limit, total, mode);
+          sprintf(reply, "> %s off=%d n=%d/%d", mode, offset, limit, total);
         } else {
           // Remote CLI replies are packet-bound, so include as many rows as fit.
-          int written = snprintf(reply, 160, "> showing %d/%d (%s)", limit, total, mode);
+          int written = snprintf(reply, 160, "> %s off=%d n=%d/%d", mode, offset, limit, total);
           bool truncated = false;
           if (written < 0) {
             reply[0] = 0;
             written = 0;
           }
           for (int i = 0; i < limit; i++) {
-            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(i) : tables->getRecentRepeaterOldestByIdx(i);
+            int idx = offset + i;
+            const auto* info = newest_first ? tables->getRecentRepeaterNewestByIdx(idx) : tables->getRecentRepeaterOldestByIdx(idx);
             if (info == NULL) {
               continue;
             }
@@ -1419,7 +1472,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
             }
             char hex[(MAX_ROUTE_HASH_BYTES * 2) + 1];
             mesh::Utils::toHex(hex, info->prefix, info->prefix_len);
-            int n = snprintf(reply + written, 160 - written, "\n%02d:%s,%s", i + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
+            int n = snprintf(reply + written, 160 - written, "\n%02d:%s,%s", idx + 1, hex, StrHelper::ftoa(((float)info->snr_x4) / 4.0f));
             if (n < 0 || n >= (160 - written)) {
               truncated = true;
               break;
@@ -1427,12 +1480,12 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
             written += n;
           }
           if (truncated && written < 156) {
-            snprintf(reply + written, 160 - written, "\n...");
+            snprintf(reply + written, 160 - written, "\n... use offset");
           }
         }
       }
     } else {
-      strcpy(reply, "Err - usage: get recent.repeater [all|first <count>|last <count>]");
+      strcpy(reply, "Err - usage: get recent.repeater [all|all <count> <offset>|first <count> [offset]|last <count> [offset]]");
     }
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands

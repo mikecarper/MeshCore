@@ -70,6 +70,19 @@ private:
 
   bool extractRecentRepeater(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const {
     // Learn repeater prefixes only from packet shapes that expose a trustworthy repeater ID.
+    // For flood traffic, the last path entry is the repeater we directly heard.
+    if (packet->isRouteFlood() && packet->getPathHashCount() > 0) {
+      prefix_len = packet->getPathHashSize();
+      if (prefix_len > MAX_ROUTE_HASH_BYTES) {
+        prefix_len = MAX_ROUTE_HASH_BYTES;
+      }
+
+      const uint8_t* last_hop = &packet->path[(packet->getPathHashCount() - 1) * packet->getPathHashSize()];
+      memcpy(prefix, last_hop, prefix_len);
+      return true;
+    }
+
+    // If there is no flood path to inspect, fall back to payload-derived identities.
     if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->payload_len >= PUB_KEY_SIZE) {
       memcpy(prefix, packet->payload, MAX_ROUTE_HASH_BYTES);
       prefix_len = MAX_ROUTE_HASH_BYTES;
@@ -83,17 +96,6 @@ private:
         && (packet->payload[0] & 0xF0) == 0x90) {
       memcpy(prefix, &packet->payload[6], MAX_ROUTE_HASH_BYTES);
       prefix_len = MAX_ROUTE_HASH_BYTES;
-      return true;
-    }
-
-    if (packet->isRouteFlood() && packet->getPathHashCount() > 0) {
-      prefix_len = packet->getPathHashSize();
-      if (prefix_len > MAX_ROUTE_HASH_BYTES) {
-        prefix_len = MAX_ROUTE_HASH_BYTES;
-      }
-
-      const uint8_t* last_hop = &packet->path[(packet->getPathHashCount() - 1) * packet->getPathHashSize()];
-      memcpy(prefix, last_hop, prefix_len);
       return true;
     }
 
