@@ -119,6 +119,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #endif
 
   const NeighbourInfo* findNeighbourByHash(const uint8_t* hash, uint8_t hash_len) const;
+  bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
   static bool allowRecentRepeaterPrefixStore(const uint8_t* prefix, uint8_t prefix_len, void* ctx);
   int8_t getDirectRetryMinSNRX4() const;
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);

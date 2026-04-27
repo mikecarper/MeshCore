@@ -101,24 +101,20 @@
 ### Get or set recent repeater fallback prefix/SNR
 **Usage:**
 - `get recent.repeater`
-- `get recent.repeater all`
-- `get recent.repeater all <count> <offset>`
-- `get recent.repeater first <count>`
-- `get recent.repeater first <count> <offset>`
-- `get recent.repeater last <count>`
-- `get recent.repeater last <count> <offset>`
-- `set recent.repeater <prefix_hex> <snr_db>`
+- `get recent.repeater <page>`
+- `get recent.repeater page <page>`
+- `set recent.repeater <prefix_hex_6> <snr_db>`
 
 **Parameters:**
-- `prefix_hex`: 1-3 bytes of next-hop prefix (hex)
+- `prefix_hex_6`: Exactly 3 bytes of next-hop prefix in hex (6 chars)
 - `snr_db`: SNR in dB (supports decimals; stored at x4 precision)
-- `count`: number of entries to print
-- `offset`: zero-based row offset into the selected order
+- `page`: 1-based page number
 
 **Notes:**
 - `set` is rejected when the prefix already exists in neighbors.
-- `all` prints oldest to newest; `first` prints the oldest N; `last` prints the newest N.
-- Over LoRa remote CLI, replies are packet-size limited; use `offset` to page through all rows.
+- Rows are shown newest-first.
+- Serial CLI prints all rows (no paging).
+- Over LoRa remote CLI, page size is fixed at `4` rows; choose page with `get recent.repeater <page>`.
 
 ---
 
@@ -437,7 +433,7 @@
 **Parameters:**
 - `state`: `on`|`off`
 
-**Default:** `off`
+**Default:** `on`
 
 **Note:** When enabled, a repeater can use recently-heard non-duplicate repeater prefixes as a fallback for direct retry eligibility when no suitable neighbor entry is available.
 
@@ -449,9 +445,9 @@
 - `set direct.retry.margin <value>`
 
 **Parameters:**
-- `value`: Margin in dB above the SF-specific receive floor (minimum `0`, default `5`)
+- `value`: Margin in dB above the SF-specific receive floor (minimum `0`, maximum `40`, quarter-dB precision, default `2.5`)
 
-**Default:** `5`
+**Default:** `2.5`
 
 **Note:** The retry gate uses the active SF floor of `SF5=-2.5`, `SF6=-5`, `SF7=-7.5`, `SF8=-10`, `SF9=-12.5`, `SF10=-15`, `SF11=-17.5`, `SF12=-20`, then adds this margin.
 
@@ -465,7 +461,7 @@
 **Parameters:**
 - `value`: Retry attempts after initial TX (`1`-`15`)
 
-**Default:** `3`
+**Default:** `15`
 
 ---
 

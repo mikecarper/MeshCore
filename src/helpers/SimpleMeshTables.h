@@ -8,7 +8,14 @@
 
 #define MAX_PACKET_HASHES  128
 #define MAX_PACKET_ACKS     64
-#define MAX_RECENT_REPEATERS  64
+#ifndef MAX_RECENT_REPEATERS
+  // Two defaults. Can be overridden with -D MAX_RECENT_REPEATERS=<n>.
+  #if defined(ESP32)
+    #define MAX_RECENT_REPEATERS  512
+  #else
+    #define MAX_RECENT_REPEATERS  64
+  #endif
+#endif
 #define MAX_ROUTE_HASH_BYTES   3
 
 class SimpleMeshTables : public mesh::MeshTables {
@@ -17,9 +24,12 @@ public:
 
   struct RecentRepeaterInfo {
     // Just enough identity to match a next-hop path prefix plus the SNR that heard it.
+    uint16_t retry_count;
+    uint16_t fail_count;
     uint8_t prefix[MAX_ROUTE_HASH_BYTES];
     uint8_t prefix_len;
     int8_t snr_x4;
+    uint8_t snr_locked;
   };
 
 private:
@@ -68,19 +78,20 @@ private:
     return n > 0 && memcmp(a, b, n) == 0;
   }
 
-  int8_t avgSnrX4RoundUp(int8_t curr_snr_x4, int8_t new_snr_x4) const {
-    int16_t sum = (int16_t)curr_snr_x4 + (int16_t)new_snr_x4;
-    int16_t avg = sum / 2;  // truncates toward zero
-    // "Round up" means ceil(), which only differs from truncation for positive odd sums.
-    if (sum > 0 && (sum & 1)) {
-      avg++;
+  int8_t weightedSnrX4RoundUp(int8_t curr_snr_x4, int8_t new_snr_x4) const {
+    // Keep existing SNR heavier than a single new sample: 75% existing + 25% new.
+    int16_t weighted_sum = ((int16_t)curr_snr_x4 * 3) + (int16_t)new_snr_x4;
+    int16_t blended = weighted_sum / 4;  // truncates toward zero
+    // "Round up" means ceil(), which only differs from truncation for positive remainders.
+    if (weighted_sum > 0 && (weighted_sum % 4) != 0) {
+      blended++;
     }
-    if (avg > 127) {
-      avg = 127;
-    } else if (avg < -128) {
-      avg = -128;
+    if (blended > 127) {
+      blended = 127;
+    } else if (blended < -128) {
+      blended = -128;
     }
-    return (int8_t)avg;
+    return (int8_t)blended;
   }
 
   bool extractRecentRepeater(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const {
@@ -249,7 +260,8 @@ public:
     _recent_repeater_allow_fn = fn;
     _recent_repeater_allow_ctx = ctx;
   }
-  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
+  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4, bool snr_locked = false,
+                         bool bypass_allow_filter = false) {
     if (prefix == NULL || prefix_len == 0) {
       return false;
     }
@@ -258,7 +270,8 @@ public:
       prefix_len = MAX_ROUTE_HASH_BYTES;
     }
 
-    if (_recent_repeater_allow_fn != NULL && !_recent_repeater_allow_fn(prefix, prefix_len, _recent_repeater_allow_ctx)) {
+    if (!bypass_allow_filter && _recent_repeater_allow_fn != NULL
+        && !_recent_repeater_allow_fn(prefix, prefix_len, _recent_repeater_allow_ctx)) {
       return false;
     }
 
@@ -273,18 +286,159 @@ public:
         memcpy(existing.prefix, prefix, prefix_len);
         existing.prefix_len = prefix_len;
       }
-      existing.snr_x4 = avgSnrX4RoundUp(existing.snr_x4, snr_x4);
+      if (snr_locked) {
+        existing.snr_x4 = snr_x4;
+        existing.snr_locked = 1;
+      } else if (!existing.snr_locked) {
+        existing.snr_x4 = weightedSnrX4RoundUp(existing.snr_x4, snr_x4);
+      }
       return true;
     }
 
-    // Ring buffer is enough here; retry fallback only needs a recent prefix->SNR observation.
-    RecentRepeaterInfo& slot = _recent_repeaters[_next_recent_repeater_idx];
+    int slot_idx = -1;
+    // Prefer empty slots first while preserving newest-order iteration.
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      int idx = (_next_recent_repeater_idx + i) % MAX_RECENT_REPEATERS;
+      if (_recent_repeaters[idx].prefix_len == 0) {
+        slot_idx = idx;
+        break;
+      }
+    }
+    if (slot_idx < 0) {
+      // Table is full: evict the weakest observed SNR entry.
+      slot_idx = 0;
+      int8_t min_snr_x4 = _recent_repeaters[0].snr_x4;
+      for (int i = 1; i < MAX_RECENT_REPEATERS; i++) {
+        if (_recent_repeaters[i].snr_x4 < min_snr_x4) {
+          min_snr_x4 = _recent_repeaters[i].snr_x4;
+          slot_idx = i;
+        }
+      }
+    }
+
+    RecentRepeaterInfo& slot = _recent_repeaters[slot_idx];
     memset(slot.prefix, 0, sizeof(slot.prefix));
     memcpy(slot.prefix, prefix, prefix_len);
     slot.prefix_len = prefix_len;
     slot.snr_x4 = snr_x4;
-    _next_recent_repeater_idx = (_next_recent_repeater_idx + 1) % MAX_RECENT_REPEATERS;
+    slot.retry_count = 0;
+    slot.fail_count = 0;
+    slot.snr_locked = snr_locked ? 1 : 0;
+    _next_recent_repeater_idx = (slot_idx + 1) % MAX_RECENT_REPEATERS;
     return true;
+  }
+  bool incrementRecentRepeaterRetryCount(const uint8_t* prefix, uint8_t prefix_len,
+                                         bool create_if_missing = false, int8_t seed_snr_x4 = 0,
+                                         bool bypass_allow_filter = false) {
+    if (prefix == NULL || prefix_len == 0) {
+      return false;
+    }
+    if (prefix_len > MAX_ROUTE_HASH_BYTES) {
+      prefix_len = MAX_ROUTE_HASH_BYTES;
+    }
+
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+        continue;
+      }
+      if (prefix_len > existing.prefix_len) {
+        memset(existing.prefix, 0, sizeof(existing.prefix));
+        memcpy(existing.prefix, prefix, prefix_len);
+        existing.prefix_len = prefix_len;
+      }
+      if (existing.retry_count < 0xFFFF) {
+        existing.retry_count++;
+      }
+      return true;
+    }
+
+    if (!create_if_missing || !setRecentRepeater(prefix, prefix_len, seed_snr_x4, false, bypass_allow_filter)) {
+      return false;
+    }
+
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+        continue;
+      }
+      if (existing.retry_count < 0xFFFF) {
+        existing.retry_count++;
+      }
+      return true;
+    }
+    return false;
+  }
+  bool incrementRecentRepeaterFailCount(const uint8_t* prefix, uint8_t prefix_len,
+                                        bool create_if_missing = false, int8_t seed_snr_x4 = 0,
+                                        bool bypass_allow_filter = false) {
+    if (prefix == NULL || prefix_len == 0) {
+      return false;
+    }
+    if (prefix_len > MAX_ROUTE_HASH_BYTES) {
+      prefix_len = MAX_ROUTE_HASH_BYTES;
+    }
+
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+        continue;
+      }
+      if (prefix_len > existing.prefix_len) {
+        memset(existing.prefix, 0, sizeof(existing.prefix));
+        memcpy(existing.prefix, prefix, prefix_len);
+        existing.prefix_len = prefix_len;
+      }
+      if (existing.fail_count < 0xFFFF) {
+        existing.fail_count++;
+      }
+      return true;
+    }
+
+    if (!create_if_missing || !setRecentRepeater(prefix, prefix_len, seed_snr_x4, false, bypass_allow_filter)) {
+      return false;
+    }
+
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+        continue;
+      }
+      if (existing.fail_count < 0xFFFF) {
+        existing.fail_count++;
+      }
+      return true;
+    }
+    return false;
+  }
+  bool decrementRecentRepeaterSnrX4(const uint8_t* prefix, uint8_t prefix_len, uint8_t amount_x4 = 1) {
+    if (prefix == NULL || prefix_len == 0 || amount_x4 == 0) {
+      return false;
+    }
+    if (prefix_len > MAX_ROUTE_HASH_BYTES) {
+      prefix_len = MAX_ROUTE_HASH_BYTES;
+    }
+
+    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+        continue;
+      }
+      if (prefix_len > existing.prefix_len) {
+        memset(existing.prefix, 0, sizeof(existing.prefix));
+        memcpy(existing.prefix, prefix, prefix_len);
+        existing.prefix_len = prefix_len;
+      }
+      if (!existing.snr_locked) {
+        int16_t lowered = (int16_t)existing.snr_x4 - (int16_t)amount_x4;
+        if (lowered < -128) {
+          lowered = -128;
+        }
+        existing.snr_x4 = (int8_t)lowered;
+      }
+      return true;
+    }
+    return false;
   }
   const RecentRepeaterInfo* getLatestRecentRepeater() const {
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
@@ -359,6 +513,10 @@ public:
       }
     }
     return NULL;
+  }
+  void clearRecentRepeaters() {
+    memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
+    _next_recent_repeater_idx = 0;
   }
 
   void resetStats() { _direct_dups = _flood_dups = 0; }

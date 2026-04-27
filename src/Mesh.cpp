@@ -3,7 +3,7 @@
 
 namespace mesh {
 
-static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_DEFAULT = 3;
+static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_DEFAULT = 15;
 static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_HARD_MAX = 15;
 
 void Mesh::begin() {
@@ -498,6 +498,12 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
     }
 
     if (_direct_retries[i].queued) {
+      if (_direct_retries[i].expect_path_growth
+          && _direct_retries[i].packet != NULL
+          && _direct_retries[i].progress_marker < packet->path_len) {
+        // For retry-good quality, use the received echo packet SNR (return-link quality).
+        _direct_retries[i].packet->_snr = packet->_snr;
+      }
       for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
         if (_mgr->getOutboundByIdx(j) == _direct_retries[i].packet) {
           Packet* pending = _mgr->removeOutboundByIdx(j);
@@ -511,6 +517,12 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
       onDirectRetryEvent("good", _direct_retries[i].packet, 0);
       clearDirectRetrySlot(i);
     } else {
+      if (_direct_retries[i].expect_path_growth
+          && _direct_retries[i].trigger_packet != NULL
+          && _direct_retries[i].progress_marker < packet->path_len) {
+        // For retry-good quality, use the received echo packet SNR (return-link quality).
+        _direct_retries[i].trigger_packet->_snr = packet->_snr;
+      }
       onDirectRetryEvent("canceled_echo", _direct_retries[i].trigger_packet, 0);
       onDirectRetryEvent("good", _direct_retries[i].trigger_packet, 0);
       clearDirectRetrySlot(i);
@@ -539,6 +551,7 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
           max_attempts = DIRECT_RETRY_MAX_ATTEMPTS_HARD_MAX;
         }
         if (_direct_retries[i].retry_attempts_sent >= max_attempts) {
+          onDirectRetryEvent("failed_all_tries", packet, 0);
           onDirectRetryEvent("failure", packet, 0);
           clearDirectRetrySlot(i);
           continue;

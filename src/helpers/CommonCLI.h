@@ -28,7 +28,7 @@ struct NodePrefs { // persisted to file
   char guest_password[16];
   float direct_tx_delay_factor;
   uint8_t direct_retry_recent_enabled;
-  uint8_t direct_retry_snr_margin_db;
+  uint8_t direct_retry_snr_margin_db; // stored in quarter-dB units (x4)
   uint8_t direct_retry_prefs_magic[2];
   uint8_t sf;
   uint8_t cr;
