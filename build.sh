@@ -203,22 +203,33 @@ prompt_menu_choice() {
 prompt_on_off_choice() {
   local prompt_label=$1
   local default_choice=$2
+  local normalized_default
   local choice
 
+  normalized_default=${default_choice,,}
+  case "$normalized_default" in
+    1) normalized_default="on" ;;
+    0) normalized_default="off" ;;
+  esac
+
   while true; do
-    read -r -p "${prompt_label} [on/off] (default: ${default_choice}): " choice
+    read -r -p "${prompt_label} [on/off/1/0] (default: ${normalized_default}): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
-      choice=$default_choice
+      choice=$normalized_default
     fi
 
     case "$choice" in
-      on|off)
-        MENU_CHOICE="$choice"
+      on|1)
+        MENU_CHOICE="on"
+        return 0
+        ;;
+      off|0)
+        MENU_CHOICE="off"
         return 0
         ;;
       *)
-        echo "Invalid selection. Choose 'on' or 'off'."
+        echo "Invalid selection. Choose 'on'/'off' or 1/0."
         ;;
     esac
   done
