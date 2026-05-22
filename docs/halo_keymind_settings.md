@@ -75,7 +75,6 @@ set flood.retry.ignore none
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
 | `recent.repeater` | Shows or seeds the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>` | `set recent.repeater A1B2C3 -8.5` |
-| `radio.fem.rxgain` | Controls the external LoRa FEM receive-path LNA where the board supports it. | `get radio.fem.rxgain`, `set radio.fem.rxgain on/off` | `set radio.fem.rxgain on` |
 
 ## Recent Repeater Table
 
