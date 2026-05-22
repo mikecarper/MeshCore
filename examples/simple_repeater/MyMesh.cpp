@@ -74,8 +74,8 @@
 #endif
 
 #define LOW_BATTERY_MIN_VALID_MV       1000
-#define LOW_BATTERY_WARN_PERCENT       20
-#define LOW_BATTERY_CRITICAL_PERCENT   10
+#define LOW_BATTERY_WARN_PERCENT_DEFAULT       20
+#define LOW_BATTERY_CRITICAL_PERCENT_DEFAULT   10
 #define LOW_BATTERY_CHECK_INTERVAL     (60UL * 1000UL)
 #define LOW_BATTERY_WARN_INTERVAL      (24UL * 60UL * 60UL * 1000UL)
 #define LOW_BATTERY_CRITICAL_INTERVAL  (12UL * 60UL * 60UL * 1000UL)
@@ -582,6 +582,30 @@ static uint8_t batteryPercentFromMilliVolts(uint16_t batt_mv) {
   if (pct < 0) return 0;
   if (pct > 100) return 100;
   return (uint8_t)pct;
+}
+
+static bool parseBatteryAlertPercent(const char* value, uint8_t min_value, uint8_t max_value, uint8_t& result) {
+  if (value == NULL || *value == 0) {
+    return false;
+  }
+
+  uint16_t parsed = 0;
+  while (*value) {
+    if (*value < '0' || *value > '9') {
+      return false;
+    }
+    parsed = (uint16_t)(parsed * 10 + (*value - '0'));
+    if (parsed > max_value) {
+      return false;
+    }
+    value++;
+  }
+  if (parsed < min_value) {
+    return false;
+  }
+
+  result = (uint8_t)parsed;
+  return true;
 }
 
 mesh::Packet* MyMesh::createPacketCopy(const mesh::Packet* packet, const char* caller) {
@@ -2024,6 +2048,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_retry_bridge_enabled = 0;
   _prefs.flood_retry_advert_enabled = 0;
   _prefs.battery_alert_enabled = 0;
+  _prefs.battery_alert_low_percent = LOW_BATTERY_WARN_PERCENT_DEFAULT;
+  _prefs.battery_alert_critical_percent = LOW_BATTERY_CRITICAL_PERCENT_DEFAULT;
   _prefs.direct_retry_cr4_snr_x4 = DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr5_snr_x4 = DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
@@ -2198,12 +2224,12 @@ void MyMesh::checkBatteryAlert() {
 
   uint16_t batt_mv = board.getBattMilliVolts();
   uint8_t batt_pct = batteryPercentFromMilliVolts(batt_mv);
-  if (batt_mv <= LOW_BATTERY_MIN_VALID_MV || batt_pct >= LOW_BATTERY_WARN_PERCENT) {
+  if (batt_mv <= LOW_BATTERY_MIN_VALID_MV || batt_pct >= _prefs.battery_alert_low_percent) {
     battery_alert_sent = false;
     return;
   }
 
-  unsigned long interval = batt_pct < LOW_BATTERY_CRITICAL_PERCENT
+  unsigned long interval = batt_pct < _prefs.battery_alert_critical_percent
       ? LOW_BATTERY_CRITICAL_INTERVAL
       : LOW_BATTERY_WARN_INTERVAL;
   if (battery_alert_sent && !millisHasNowPassed(last_battery_alert_sent + interval)) {
@@ -2630,6 +2656,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     }
   } else if (strcmp(command, "get battery.alert") == 0) {
     sprintf(reply, "> %s", _prefs.battery_alert_enabled ? "on" : "off");
+  } else if (strcmp(command, "get battery.alert.low") == 0) {
+    sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_low_percent);
+  } else if (strcmp(command, "get battery.alert.critical") == 0) {
+    sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_critical_percent);
   } else if (strncmp(command, "set battery.alert ", 18) == 0) {
     const char* value = command + 18;
     if (strcmp(value, "on") == 0) {
@@ -2644,6 +2674,30 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Err - usage: set battery.alert <on|off>");
+    }
+  } else if (strncmp(command, "set battery.alert.low ", 22) == 0) {
+    uint8_t percent;
+    if (!parseBatteryAlertPercent(command + 22, 1, 100, percent)) {
+      strcpy(reply, "Err - usage: set battery.alert.low <1-100>");
+    } else if (percent <= _prefs.battery_alert_critical_percent) {
+      strcpy(reply, "Err - low must be greater than critical");
+    } else {
+      _prefs.battery_alert_low_percent = percent;
+      next_battery_alert_check = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+  } else if (strncmp(command, "set battery.alert.critical ", 27) == 0) {
+    uint8_t percent;
+    if (!parseBatteryAlertPercent(command + 27, 0, 99, percent)) {
+      strcpy(reply, "Err - usage: set battery.alert.critical <0-99>");
+    } else if (percent >= _prefs.battery_alert_low_percent) {
+      strcpy(reply, "Err - critical must be less than low");
+    } else {
+      _prefs.battery_alert_critical_percent = percent;
+      next_battery_alert_check = 0;
+      savePrefs();
+      strcpy(reply, "OK");
     }
   } else if (strncmp(command, "get recent.repeater", 19) == 0
           || strncmp(command, "set recent.repeater", 19) == 0

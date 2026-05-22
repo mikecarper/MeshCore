@@ -559,6 +559,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->battery_alert_enabled = 0;
     size_t battery_alert_read = file.read((uint8_t *)&_prefs->battery_alert_enabled,
                                           sizeof(_prefs->battery_alert_enabled));                // 664
+    _prefs->battery_alert_low_percent = 20;
+    _prefs->battery_alert_critical_percent = 10;
+    size_t battery_alert_low_read = file.read((uint8_t *)&_prefs->battery_alert_low_percent,
+                                              sizeof(_prefs->battery_alert_low_percent));        // 665
+    size_t battery_alert_critical_read = file.read((uint8_t *)&_prefs->battery_alert_critical_percent,
+                                                   sizeof(_prefs->battery_alert_critical_percent)); // 666
     // PowerSaving-only prefs stored radio_fem_rxgain at 291, before direct retry timing existed.
     if (radio_fem_rxgain_read != sizeof(_prefs->radio_fem_rxgain)
         && legacy_retry_attempts_read == sizeof(legacy_retry_attempts_or_radio_fem_rxgain)
@@ -566,7 +572,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
             || _prefs->direct_retry_timing_magic[1] != DIRECT_RETRY_TIMING_MAGIC_1)) {
       _prefs->radio_fem_rxgain = constrain(legacy_retry_attempts_or_radio_fem_rxgain, 0, 1);
     }
-    // next: 664
+    // next: 667
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -662,6 +668,14 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     } else {
       _prefs->battery_alert_enabled = constrain(_prefs->battery_alert_enabled, 0, 1);
     }
+    if (battery_alert_low_read != sizeof(_prefs->battery_alert_low_percent)
+        || battery_alert_critical_read != sizeof(_prefs->battery_alert_critical_percent)
+        || _prefs->battery_alert_low_percent < 1
+        || _prefs->battery_alert_low_percent > 100
+        || _prefs->battery_alert_critical_percent >= _prefs->battery_alert_low_percent) {
+      _prefs->battery_alert_low_percent = 20;
+      _prefs->battery_alert_critical_percent = 10;
+    }
 
     file.close();
   }
@@ -748,7 +762,9 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->direct_retry_cr7_snr_x4, sizeof(_prefs->direct_retry_cr7_snr_x4)); // 662
     file.write((uint8_t *)&_prefs->direct_retry_cr8_snr_x4, sizeof(_prefs->direct_retry_cr8_snr_x4)); // 663
     file.write((uint8_t *)&_prefs->battery_alert_enabled, sizeof(_prefs->battery_alert_enabled)); // 664
-    // next: 665
+    file.write((uint8_t *)&_prefs->battery_alert_low_percent, sizeof(_prefs->battery_alert_low_percent)); // 665
+    file.write((uint8_t *)&_prefs->battery_alert_critical_percent, sizeof(_prefs->battery_alert_critical_percent)); // 666
+    // next: 667
 
     file.close();
   }

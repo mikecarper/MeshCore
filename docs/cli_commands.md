@@ -131,15 +131,23 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:**
 - `get battery.alert`
 - `set battery.alert <state>`
+- `get battery.alert.low`
+- `set battery.alert.low <percent>`
+- `get battery.alert.critical`
+- `set battery.alert.critical <percent>`
 
 **Parameters:**
 - `state`: `on` (enable) or `off` (disable)
+- `percent`: Battery percentage threshold
 
 **Default:** `off`
 
+**Default thresholds:** `20` for `battery.alert.low`, `10` for `battery.alert.critical`
+
 **Notes:**
-- When enabled, sends a `#repeaters` flood text warning if voltage is above `1 V` and the battery estimate is below `20%`.
-- Warnings repeat every `24` hours, or every `12` hours below `10%`.
+- When enabled, sends a `#repeaters` flood text warning if voltage is above `1 V` and the battery estimate is below `battery.alert.low`.
+- Warnings repeat every `24` hours, or every `12` hours below `battery.alert.critical`.
+- `battery.alert.critical` must be lower than `battery.alert.low`.
 
 ---
 
