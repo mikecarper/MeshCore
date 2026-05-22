@@ -1,10 +1,9 @@
 # Halo and Keymind Branch Settings
 
-This file covers only CLI settings added by the Halo or Keymind branches. Use
-`docs/cli_commands.md` for the general MeshCore CLI.
+This file covers only CLI settings and helper commands added by the Halo or
+Keymind branches. Use `docs/cli_commands.md` for the general MeshCore CLI.
 
 ## Quick Start
-
 
 ```text
 set retry.preset rooftop
@@ -25,7 +24,7 @@ get flood.retry.prefixes
 get flood.retry.ignore
 ```
 
-Use prefixes from the analyzer or neighbors list or `get recent.repeater` after the repeater has been online for a few hours.  
+Use prefixes from the analyzer or neighbors list or `get recent.repeater` after the repeater has been online for a few hours.
 
 ## Common Examples
 
@@ -36,23 +35,23 @@ set flood.retry.advert off
 get flood.retry.advert
 ```
 
-Ignore a repeater as a successful flood retry echo:  
-Use this if you have a car repeater and a house repeater; have the house ignore the car.  
+Ignore a repeater as a successful flood retry echo:
+Use this if you have a car repeater and a house repeater; have the house ignore the car.
 
 ```text
 set flood.retry.ignore 71CE82,C7618C
 get flood.retry.ignore
 ```
 
-Only accept specific downstream relays as flood retry success:  
-You're in a hole and need to hit a mountain top repeater to get out; keep trying till one you see one of these send out your packet.  
+Only accept specific downstream relays as flood retry success:
+You're in a hole and need to hit a mountain top repeater to get out; keep trying till one you see one of these send out your packet.
 
 ```text
 set flood.retry.prefixes A58296,860CCA,425E5C
 get flood.retry.prefixes
 ```
 
-Bridge two groups of repeaters:  
+Bridge two groups of repeaters:
 
 ```text
 set flood.retry.bridge on
@@ -74,7 +73,44 @@ set flood.retry.ignore none
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `recent.repeater` | Shows or seeds the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>` | `set recent.repeater A1B2C3 -8.5` |
+| `battery.alert` | Sends opt-in low-battery warnings to `#repeaters`. | `get battery.alert`, `set battery.alert on/off` | `set battery.alert on` |
+| `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
+| `battery.alert.critical` | Critical threshold percentage. Critical warnings repeat more often. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
+| `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
+| `outpath` | Overrides the primary direct route used for replies to the current remote client. | `get outpath`, `set outpath <hops>`, `set outpath clear`, `set outpath flood` | `set outpath A1B2C3,D4E5F6` |
+| `altpath` | Optional second direct route used for duplicate response attempts to the current remote client. | `get altpath`, `set altpath <hops>`, `set altpath clear` | `set altpath A1B2C3,D4E5F6` |
+
+## Other Keymind Commands
+
+| Command | What it does | How to use | Example |
+| --- | --- | --- | --- |
+| `send text.flood` | Sends a `#repeaters` flood text message formatted as `<node_name>: <message>`. | `send text.flood <message>` | `send text.flood checking ridge link` |
+
+## Battery Alerts
+
+Battery alerts are off by default. When enabled, the repeater checks once per
+minute and sends a flood text warning to `#repeaters` when voltage is above
+`1 V` and the estimated battery percent is below `battery.alert.low`.
+
+Warnings repeat every `24` hours, or every `12` hours when the estimate is
+below `battery.alert.critical`.
+
+Defaults:
+
+| Setting | Default |
+| --- | ---: |
+| `battery.alert` | `off` |
+| `battery.alert.low` | `20` |
+| `battery.alert.critical` | `10` |
+
+Example:
+
+```text
+set battery.alert.low 20
+set battery.alert.critical 10
+set battery.alert on
+get battery.alert
+```
 
 ## Recent Repeater Table
 
@@ -87,6 +123,7 @@ Show learned rows:
 ```text
 get recent.repeater
 get recent.repeater 2
+get recent.repeater page 3
 ```
 
 Seed or correct a prefix:
@@ -95,8 +132,41 @@ Seed or correct a prefix:
 set recent.repeater A1B2C3 8.5
 ```
 
+Clear learned and manually seeded rows:
+
+```text
+clear recent.repeater
+```
+
 Rows are sorted by prefix width, then SNR. A full direct retry failure lowers
 the matching row by `0.25 dB`.
+
+Serial CLI pages contain up to `128` rows. Remote LoRa CLI pages contain up to
+`7` rows.
+
+## Direct Path Overrides
+
+`outpath` and `altpath` apply to the current remote client ACL entry. They need
+remote client context, so they are not useful from the local serial CLI.
+
+Set paths with comma-separated hop hashes. Each hop must be `2`, `4`, or `6`
+hex characters, and all hops in one path must use the same width.
+
+```text
+get outpath
+set outpath A1B2C3,D4E5F6
+set outpath clear
+set outpath flood
+
+get altpath
+set altpath A1B2C3,D4E5F6
+set altpath clear
+```
+
+`set outpath clear` forgets the override and lets normal path discovery fill it
+again. `set outpath flood` forces replies to use flood packets until the client
+logs in again. `altpath` sends a duplicate reply over a second direct route;
+clearing it returns replies to a single route.
 
 ## Direct Retry Settings
 
