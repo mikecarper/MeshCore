@@ -136,6 +136,11 @@ protected:
   virtual bool allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const;
 
   /**
+   * \brief  Allow subclasses to rewrite a non-TRACE DIRECT packet path when this node can safely skip ahead.
+   */
+  virtual bool maybeShortCircuitDirect(Packet* packet) { return false; }
+
+  /**
    * \returns  milliseconds to wait for the next-hop echo before queueing one retry of the DIRECT packet.
    */
   virtual uint32_t getDirectRetryEchoDelay(const Packet* packet) const;

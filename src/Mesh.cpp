@@ -254,7 +254,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
     }
 
-    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) && allowPacketForward(pkt)) {
+    if ((self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) && allowPacketForward(pkt)) {
       if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
         return forwardMultipartDirect(pkt);
       } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {

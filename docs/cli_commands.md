@@ -134,6 +134,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - If a full failure has no row yet, it first seeds the row at the active retry cutoff + `2.5 dB`, then applies the `0.25 dB` penalty.
 - Serial CLI page size is fixed at `128` rows; choose page with `get recent.repeater <page>`.
 - Over LoRa remote CLI, page size is fixed at `7` rows; choose page with `get recent.repeater <page>`.
+- Repeaters can use adjacent entries in this table to short-circuit non-TRACE direct packets when this node appears later in the direct path.
 
 ---
 
@@ -801,6 +802,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Default:** `2` for `rooftop`, `1` for `infra` and `mobile`
 
+**Note:** Prefixes in `flood.retry.ignore` do not count toward this path length.
+
 ---
 
 #### View or change whether advert packets are flood-retried
@@ -897,6 +900,30 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `get acl`
 
 **Serial Only:** Yes
+
+---
+
+#### View or set direct path overrides for the current remote client
+**Usage:**
+- `get outpath`
+- `set outpath <hop1_hex,hop2_hex,...>`
+- `set outpath clear`
+- `set outpath flood`
+- `get altpath`
+- `set altpath <hop1_hex,hop2_hex,...>`
+- `set altpath clear`
+
+**Parameters:**
+- `hopN_hex`: Hop hash, `2`, `4`, or `6` hex characters. All hops must use the same width.
+
+**Notes:**
+- These commands require remote client context; they target the caller's ACL entry.
+- The path hash size is inferred from the hop hash width.
+- `outpath` overrides the primary direct route used for replies to the caller.
+- `clear` forgets the current direct path and allows normal path discovery to repopulate it.
+- `flood` forces replies to use flood packets until the client logs in again.
+- `altpath` is an optional second direct route used for duplicate response attempts.
+- `set altpath clear` removes the duplicate route so only one reply is sent.
 
 ---
 
