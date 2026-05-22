@@ -115,6 +115,17 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
+### Send flood text to `#repeaters` channel
+
+**Usage:**
+- `send text.flood <message>`
+
+**Notes:**
+- Sends a `PAYLOAD_TYPE_GRP_TXT` flood message using the built-in `#repeaters` channel key.
+- Message format is `<node_name>: <message>`.
+
+---
+
 ### Get or set recent repeater fallback prefix/SNR
 **Usage:**
 - `get recent.repeater`

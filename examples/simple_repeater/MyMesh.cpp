@@ -63,6 +63,9 @@
 #define CLI_REPLY_DELAY_MILLIS      600
 
 #define LAZY_CONTACTS_WRITE_DELAY    5000
+#ifndef REPEATERS_CHANNEL_KEY_HEX
+  #define REPEATERS_CHANNEL_KEY_HEX "89db441e2814dccf0dbd2e8cc5f501a3"
+#endif
 
 static void formatRecentRepeaterPrefix(const SimpleMeshTables::RecentRepeaterInfo* info, char* out, size_t out_len) {
   if (out == NULL || out_len == 0) {
@@ -539,6 +542,22 @@ static bool pathsEqual(const uint8_t* a, uint8_t a_len, const uint8_t* b, uint8_
 
 static bool hasUsablePath(const uint8_t* path, uint8_t path_len) {
   return path != NULL && mesh::Packet::isValidPathLen(path_len) && (path_len & 63) > 0;
+}
+
+static bool buildRepeatersChannel(mesh::GroupChannel& channel) {
+  const char* hex = REPEATERS_CHANNEL_KEY_HEX;
+  size_t hex_len = strlen(hex);
+  if (!(hex_len == 32 || hex_len == 64)) return false;
+  for (size_t i = 0; i < hex_len; i++) {
+    if (!mesh::Utils::isHexChar(hex[i])) return false;
+  }
+
+  memset(channel.secret, 0, sizeof(channel.secret));
+  size_t key_len = hex_len / 2;
+  if (!mesh::Utils::fromHex(channel.secret, key_len, hex)) return false;
+
+  mesh::Utils::sha256(channel.hash, sizeof(channel.hash), channel.secret, key_len);
+  return true;
 }
 
 mesh::Packet* MyMesh::createPacketCopy(const mesh::Packet* packet, const char* caller) {
@@ -2494,6 +2513,50 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         formatPathReply(is_alt ? sender->alt_path : sender->out_path,
                         is_alt ? sender->alt_path_len : sender->out_path_len,
                         reply, 160);
+      }
+    }
+  } else if (strncmp(command, "send text.flood ", 16) == 0) {
+    char* text = trimSpaces(command + 16);
+    if (*text == 0) {
+      strcpy(reply, "Err - usage: send text.flood <message>");
+    } else {
+      mesh::GroupChannel channel;
+      if (!buildRepeatersChannel(channel)) {
+        strcpy(reply, "Err - invalid #repeaters key");
+      } else {
+        uint8_t temp[MAX_PACKET_PAYLOAD];
+        uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+        memcpy(temp, &timestamp, 4);
+        temp[4] = (TXT_TYPE_PLAIN << 2);
+
+        const size_t max_data_len = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE;
+        const size_t prefix_cap = max_data_len > 5 ? max_data_len - 5 + 1 : 0;
+        int prefix_written = prefix_cap > 0
+            ? snprintf((char*)&temp[5], prefix_cap, "%s: ", _prefs.node_name)
+            : -1;
+        if (prefix_written < 0) {
+          strcpy(reply, "Err - unable to create message");
+        } else {
+          size_t prefix_len = (size_t)prefix_written;
+          if (prefix_len >= prefix_cap) {
+            prefix_len = prefix_cap - 1;
+          }
+
+          size_t text_len = strlen(text);
+          size_t max_text_len = max_data_len - 5 - prefix_len;
+          if (text_len > max_text_len) {
+            text_len = max_text_len;
+          }
+          memcpy(&temp[5 + prefix_len], text, text_len);
+
+          auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + prefix_len + text_len);
+          if (pkt) {
+            sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+            strcpy(reply, "OK");
+          } else {
+            strcpy(reply, "Err - unable to create packet");
+          }
+        }
       }
     }
   } else if (strncmp(command, "get recent.repeater", 19) == 0
