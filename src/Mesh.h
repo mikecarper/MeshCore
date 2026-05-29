@@ -75,7 +75,7 @@ class Mesh : public Dispatcher {
   DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
   FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
 
-  void removeSelfFromPath(Packet* packet);
+  void removePathPrefix(Packet* packet, uint8_t prefix_count);
   void routeDirectRecvAcks(Packet* packet, uint32_t delay_millis);
   void clearDirectRetrySlot(int idx);
   bool isDirectRetryQueued(const Packet* packet) const;
@@ -85,6 +85,7 @@ class Mesh : public Dispatcher {
   void clearPendingDirectRetryOnSendFail(const Packet* packet);
   bool getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_hash, uint8_t& next_hop_hash_len,
                             uint8_t& progress_marker, bool& expect_path_growth) const;
+  bool canDecodeDirectPayloadForSelf(const Packet* packet);
   void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority);
   void clearFloodRetrySlot(int idx);
   bool isFloodRetryQueued(const Packet* packet) const;

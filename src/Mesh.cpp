@@ -254,26 +254,35 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
     }
 
-    if ((self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) && allowPacketForward(pkt)) {
-      if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
-        return forwardMultipartDirect(pkt);
-      } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
-        if (!_tables->hasSeen(pkt)) {  // don't retransmit!
-          removeSelfFromPath(pkt);
-          routeDirectRecvAcks(pkt, 0);
+    if (canDecodeDirectPayloadForSelf(pkt)) {
+      // Some path sources include the final node hash, and some packets are
+      // heard before all planned hops are consumed. Only stop forwarding once
+      // this node proves it can decrypt the payload.
+      removePathPrefix(pkt, pkt->getPathHashCount());
+    } else if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) {
+      if (allowPacketForward(pkt)) {
+        if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
+          return forwardMultipartDirect(pkt);
+        } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
+          if (!_tables->hasSeen(pkt)) {  // don't retransmit!
+            removePathPrefix(pkt, 1);
+            routeDirectRecvAcks(pkt, 0);
+          }
+          return ACTION_RELEASE;
         }
-        return ACTION_RELEASE;
-      }
 
-      if (!_tables->hasSeen(pkt)) {
-        removeSelfFromPath(pkt);
+        if (!_tables->hasSeen(pkt)) {
+          removePathPrefix(pkt, 1);
 
-        uint32_t d = getDirectRetransmitDelay(pkt);
-        maybeScheduleDirectRetry(pkt, 0);
-        return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
+          uint32_t d = getDirectRetransmitDelay(pkt);
+          maybeScheduleDirectRetry(pkt, 0);
+          return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority
+        }
       }
     }
-    return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
+    if (pkt->getPathHashCount() > 0) {
+      return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
+    }
   }
 
   if (pkt->isRouteFlood() && filterRecvFloodPacket(pkt)) return ACTION_RELEASE;
@@ -487,13 +496,16 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
   return action;
 }
 
-void Mesh::removeSelfFromPath(Packet* pkt) {
-  // remove our hash from 'path'
-  pkt->setPathHashCount(pkt->getPathHashCount() - 1);  // decrement the count
+void Mesh::removePathPrefix(Packet* pkt, uint8_t prefix_count) {
+  uint8_t hash_count = pkt->getPathHashCount();
+  if (prefix_count == 0 || hash_count == 0) return;
+  if (prefix_count > hash_count) prefix_count = hash_count;
 
+  pkt->setPathHashCount(hash_count - prefix_count);
   uint8_t sz = pkt->getPathHashSize();
-  for (int k = 0; k < pkt->getPathHashCount()*sz; k += sz) {  // shuffle path by 1 'entry'
-    memcpy(&pkt->path[k], &pkt->path[k + sz], sz);
+  uint8_t prefix_bytes = prefix_count * sz;
+  for (int k = 0; k < pkt->getPathHashCount()*sz; k += sz) {
+    memmove(&pkt->path[k], &pkt->path[k + prefix_bytes], sz);
   }
 }
 
@@ -526,7 +538,7 @@ DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt) {
     memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
 
     if (!_tables->hasSeen(&tmp)) {   // don't retransmit!
-      removeSelfFromPath(&tmp);
+      removePathPrefix(&tmp, 1);
       routeDirectRecvAcks(&tmp, ((uint32_t)remaining + 1) * 300);  // expect multipart ACKs 300ms apart (x2)
     }
   }
@@ -832,6 +844,62 @@ bool Mesh::getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_h
       progress_marker = packet->path_len;
       expect_path_growth = true;
       return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
+bool Mesh::canDecodeDirectPayloadForSelf(const Packet* packet) {
+  if (packet == NULL || !packet->isRouteDirect() || packet->getPathHashCount() == 0 || packet->payload_len < 1) {
+    return false;
+  }
+
+  switch (packet->getPayloadType()) {
+    case PAYLOAD_TYPE_PATH:
+    case PAYLOAD_TYPE_REQ:
+    case PAYLOAD_TYPE_RESPONSE:
+    case PAYLOAD_TYPE_TXT_MSG: {
+      if (packet->payload_len < 2) {
+        return false;
+      }
+
+      int i = 0;
+      uint8_t dest_hash = packet->payload[i++];
+      uint8_t src_hash = packet->payload[i++];
+      if (i + CIPHER_MAC_SIZE >= packet->payload_len || !self_id.isHashMatch(&dest_hash)) {
+        return false;
+      }
+
+      int num = searchPeersByHash(&src_hash);
+      for (int j = 0; j < num; j++) {
+        uint8_t secret[PUB_KEY_SIZE];
+        getPeerSharedSecret(secret, j);
+
+        uint8_t data[MAX_PACKET_PAYLOAD];
+        if (Utils::MACThenDecrypt(secret, data, &packet->payload[i], packet->payload_len - i) > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    case PAYLOAD_TYPE_ANON_REQ: {
+      int i = 0;
+      uint8_t dest_hash = packet->payload[i++];
+      if (i + PUB_KEY_SIZE + CIPHER_MAC_SIZE >= packet->payload_len || !self_id.isHashMatch(&dest_hash)) {
+        return false;
+      }
+
+      Identity sender(&packet->payload[i]);
+      i += PUB_KEY_SIZE;
+
+      uint8_t secret[PUB_KEY_SIZE];
+      self_id.calcSharedSecret(secret, sender);
+
+      uint8_t data[MAX_PACKET_PAYLOAD];
+      return Utils::MACThenDecrypt(secret, data, &packet->payload[i], packet->payload_len - i) > 0;
     }
 
     default:
