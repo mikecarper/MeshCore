@@ -77,7 +77,7 @@ set flood.retry.ignore none
 | `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
 | `battery.alert.critical` | Critical threshold percentage. Critical warnings repeat more often. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
 | `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
-| `outpath` | Overrides the primary direct route used for replies to the current remote client. | `get outpath`, `set outpath <hops>`, `set outpath clear`, `set outpath flood` | `set outpath A1B2C3,D4E5F6` |
+| `outpath` | Overrides the primary direct route used for replies to the current remote client. | `get outpath`, `set outpath <hops>`, `set outpath direct`, `set outpath clear`, `set outpath flood` | `set outpath A1B2C3,D4E5F6` |
 | `altpath` | Optional second direct route used for duplicate response attempts to the current remote client. | `get altpath`, `set altpath <hops>`, `set altpath clear` | `set altpath A1B2C3,D4E5F6` |
 
 ## Other Keymind Commands
@@ -155,6 +155,7 @@ hex characters, and all hops in one path must use the same width.
 ```text
 get outpath
 set outpath A1B2C3,D4E5F6
+set outpath direct
 set outpath clear
 set outpath flood
 
@@ -163,10 +164,11 @@ set altpath A1B2C3,D4E5F6
 set altpath clear
 ```
 
-`set outpath clear` forgets the override and lets normal path discovery fill it
-again. `set outpath flood` forces replies to use flood packets until the client
-logs in again. `altpath` sends a duplicate reply over a second direct route;
-clearing it returns replies to a single route.
+`set outpath direct` sets a zero-hop direct route for a client reachable without
+repeaters. `set outpath clear` forgets the override and lets normal path
+discovery fill it again. `set outpath flood` forces replies to use flood packets
+until the client logs in again. `altpath` sends a duplicate reply over a second
+direct route; clearing it returns replies to a single route.
 
 ## Direct Retry Settings
 

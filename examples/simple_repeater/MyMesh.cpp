@@ -579,7 +579,7 @@ static bool pathsEqual(const uint8_t* a, uint8_t a_len, const uint8_t* b, uint8_
 }
 
 static bool hasUsablePath(const uint8_t* path, uint8_t path_len) {
-  return path != NULL && mesh::Packet::isValidPathLen(path_len) && (path_len & 63) > 0;
+  return path != NULL && mesh::Packet::isValidPathLen(path_len);
 }
 
 static bool buildRepeatersChannel(mesh::GroupChannel& channel) {
@@ -2529,6 +2529,10 @@ static bool parsePathCommand(char* raw, uint8_t* out_path, uint8_t& out_path_len
     out_path_len = OUT_PATH_FORCE_FLOOD;
     return true;
   }
+  if (strcmp(spec, "direct") == 0) {
+    out_path_len = 0;
+    return true;
+  }
 
   uint8_t hash_size = 0;
   uint8_t hop_count = 0;
@@ -2584,6 +2588,10 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
   }
   if (!mesh::Packet::isValidPathLen(path_len)) {
     snprintf(out, out_len, "> invalid");
+    return;
+  }
+  if ((path_len & 63) == 0) {
+    snprintf(out, out_len, "> direct");
     return;
   }
 

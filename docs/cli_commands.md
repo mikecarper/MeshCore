@@ -943,6 +943,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:**
 - `get outpath`
 - `set outpath <hop1_hex,hop2_hex,...>`
+- `set outpath direct`
 - `set outpath clear`
 - `set outpath flood`
 - `get altpath`
@@ -956,6 +957,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - These commands require remote client context; they target the caller's ACL entry.
 - The path hash size is inferred from the hop hash width.
 - `outpath` overrides the primary direct route used for replies to the caller.
+- `direct` sets a zero-hop direct route for a caller reachable without repeaters.
 - `clear` forgets the current direct path and allows normal path discovery to repopulate it.
 - `flood` forces replies to use flood packets until the client logs in again.
 - `altpath` is an optional second direct route used for duplicate response attempts.
