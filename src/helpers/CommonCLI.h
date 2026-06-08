@@ -53,6 +53,7 @@ struct NodePrefs { // persisted to file
   char bridge_secret[16]; // for XOR encryption of bridge packets (ESP-NOW only)
   // Power setting
   uint8_t powersaving_enabled; // boolean
+  uint8_t reboot_interval; // hours, 0-255 (default 0=disable)
   // Gps settings
   uint8_t gps_enabled;
   uint32_t gps_interval; // in seconds
@@ -61,6 +62,7 @@ struct NodePrefs { // persisted to file
   float adc_multiplier;
   char owner_info[120];
   uint8_t rx_boosted_gain; // power settings
+  uint8_t radio_fem_rxgain; // LoRa FEM RX gain setting
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
 };
