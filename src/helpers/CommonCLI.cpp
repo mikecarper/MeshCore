@@ -88,10 +88,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->discovery_mod_timestamp, sizeof(_prefs->discovery_mod_timestamp)); // 162
     file.read((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.read((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
-    file.read((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    file.read((uint8_t *)&_prefs->flood_max_unscoped, sizeof(_prefs->flood_max_unscoped));   // 291
-    file.read((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert));       // 292
-    // next: 293
+    file.read((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));               // 290
+    file.read((uint8_t *)&_prefs->flood_max_unscoped, sizeof(_prefs->flood_max_unscoped));         // 291
+    file.read((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert));             // 292
+    file.read((uint8_t *)&_prefs->radio_fem_rxgain, sizeof(_prefs->radio_fem_rxgain));             // 293
+    file.read((uint8_t *)&_prefs->cad_enabled, sizeof(_prefs->cad_enabled));                       // 294
+    // next: 295
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -121,6 +123,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 
     // sanitise settings
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
+    _prefs->radio_fem_rxgain = constrain(_prefs->radio_fem_rxgain, 0, 1); // boolean
+    _prefs->cad_enabled = constrain(_prefs->cad_enabled, 0, 1); // boolean
 
     file.close();
   }
@@ -181,10 +185,12 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->discovery_mod_timestamp, sizeof(_prefs->discovery_mod_timestamp)); // 162
     file.write((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.write((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
-    file.write((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    file.write((uint8_t *)&_prefs->flood_max_unscoped, sizeof(_prefs->flood_max_unscoped));   // 291
-    file.write((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert));       // 292
-    // next: 293
+    file.write((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));               // 290
+    file.write((uint8_t *)&_prefs->flood_max_unscoped, sizeof(_prefs->flood_max_unscoped));         // 291
+    file.write((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert));             // 292
+    file.write((uint8_t *)&_prefs->radio_fem_rxgain, sizeof(_prefs->radio_fem_rxgain));             // 293
+    file.write((uint8_t *)&_prefs->cad_enabled, sizeof(_prefs->cad_enabled));                       // 294
+    // next: 295
 
     file.close();
   }
@@ -500,6 +506,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->interference_threshold = atoi(&config[11]);
     savePrefs();
     strcpy(reply, "OK");
+  } else if (memcmp(config, "cad ", 4) == 0) {
+    _prefs->cad_enabled = memcmp(&config[4], "on", 2) == 0;
+    savePrefs();
+    strcpy(reply, "OK");
   } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
     _prefs->agc_reset_interval = atoi(&config[19]) / 4;
     savePrefs();
@@ -568,6 +578,28 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     savePrefs();
     _callbacks->setRxBoostedGain(_prefs->rx_boosted_gain);
 #endif
+  } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0) {
+    if (!_board->canControlLoRaFemLna()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (memcmp(&config[17], "on", 2) == 0) {
+      if (_board->setLoRaFemLnaEnabled(true)) {
+        _prefs->radio_fem_rxgain = 1;
+        savePrefs();
+        strcpy(reply, "OK - LoRa FEM RX gain on");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else if (memcmp(&config[17], "off", 3) == 0) {
+      if (_board->setLoRaFemLnaEnabled(false)) {
+        _prefs->radio_fem_rxgain = 0;
+        savePrefs();
+        strcpy(reply, "OK - LoRa FEM RX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else {
+      strcpy(reply, "Error: state must be on or off");
+    }
   } else if (memcmp(config, "radio ", 6) == 0) {
     strcpy(tmp, &config[6]);
     const char *parts[4];
@@ -757,7 +789,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       }
     } else {
       _prefs->adc_multiplier = 0.0f;
-      strcpy(reply, "Error: unsupported by this board");
+      strcpy(reply, "Error: unsupported");
     };
   } else {
     strcpy(reply, "unknown config: ");
@@ -776,6 +808,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->airtime_factor));
   } else if (memcmp(config, "int.thresh", 10) == 0) {
     sprintf(reply, "> %d", (uint32_t) _prefs->interference_threshold);
+  } else if (memcmp(config, "cad", 3) == 0) {
+    sprintf(reply, "> %s", _prefs->cad_enabled ? "on" : "off");
   } else if (memcmp(config, "agc.reset.interval", 18) == 0) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->agc_reset_interval) * 4);
   } else if (memcmp(config, "multi.acks", 10) == 0) {
@@ -805,6 +839,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "radio.rxgain", 12) == 0) {
     sprintf(reply, "> %s", _prefs->rx_boosted_gain ? "on" : "off");
 #endif
+  } else if (memcmp(config, "radio.fem.rxgain", 16) == 0) {
+    if (!_board->canControlLoRaFemLna()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s", _board->isLoRaFemLnaEnabled() ? "on" : "off");
+    }
   } else if (memcmp(config, "radio", 5) == 0) {
     char freq[16], bw[16];
     strcpy(freq, StrHelper::ftoa(_prefs->freq));
@@ -890,12 +930,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
           strcpy(reply, "> unknown");
       }
   #else
-      strcpy(reply, "ERROR: unsupported");
+      strcpy(reply, "Error: unsupported");
   #endif
   } else if (memcmp(config, "adc.multiplier", 14) == 0) {
     float adc_mult = _board->getAdcMultiplier();
     if (adc_mult == 0.0f) {
-      strcpy(reply, "Error: unsupported by this board");
+      strcpy(reply, "Error: unsupported");
     } else {
       sprintf(reply, "> %.3f", adc_mult);
     }
