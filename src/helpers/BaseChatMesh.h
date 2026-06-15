@@ -38,6 +38,8 @@ public:
   #define MAX_CONTACTS  32
 #endif
 
+#define MAX_ANON_CONTACTS  8
+
 #ifndef MAX_CONNECTIONS
   #define MAX_CONNECTIONS  16
 #endif
@@ -59,9 +61,9 @@ class BaseChatMesh : public mesh::Mesh {
 
   friend class ContactsIterator;
 
-  ContactInfo contacts[MAX_CONTACTS];
+  ContactInfo contacts[MAX_CONTACTS+MAX_ANON_CONTACTS];
   int num_contacts;
-  int sort_array[MAX_CONTACTS];
+  int sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
   int matching_peer_indexes[MAX_SEARCH_RESULTS];
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
@@ -73,7 +75,7 @@ class BaseChatMesh : public mesh::Mesh {
   ConnectionInfo connections[MAX_CONNECTIONS];
 
   mesh::Packet* composeMsgPacket(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char *text, uint32_t& expected_ack);
-  void sendAckTo(const ContactInfo& dest, uint32_t ack_hash);
+  void sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, uint8_t ack_len=4);
 
 protected:
   BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
@@ -97,7 +99,7 @@ protected:
     num_contacts = MAX_ANON_CONTACTS;  // seed the first contacts for anon requests
   }
   void populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp);
-  ContactInfo* allocateContactSlot(); // helper to find slot for new contact
+  ContactInfo* allocateContactSlot(bool transient_only=false); // helper to find slot for new contact
 
   // 'UI' concepts, for sub-classes to implement
   virtual bool isAutoAddEnabled() const { return true; }

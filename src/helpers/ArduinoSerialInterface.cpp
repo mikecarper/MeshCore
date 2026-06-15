@@ -17,10 +17,6 @@ bool ArduinoSerialInterface::isConnected() const {
   return true;   // no way of knowing, so assume yes
 }
 
-bool ArduinoSerialInterface::isReadBusy() const {
-  return false;
-}
-
 bool ArduinoSerialInterface::isWriteBusy() const {
   return false;
 }
