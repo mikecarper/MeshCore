@@ -740,6 +740,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the LoRa FEM receive-path gain state on supported boards
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -999,6 +1010,17 @@
     <span class="md-ellipsis">
       
         View or change the local interference threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-hardware-channel-activity-detection-cad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable hardware Channel Activity Detection (CAD)
       
     </span>
   </a>
@@ -2310,6 +2332,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the LoRa FEM receive-path gain state on supported boards
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2569,6 +2602,17 @@
     <span class="md-ellipsis">
       
         View or change the local interference threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-hardware-channel-activity-detection-cad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable hardware Channel Activity Detection (CAD)
       
     </span>
   </a>
@@ -3329,6 +3373,16 @@
 <p><strong>Default:</strong> <code>on</code></p>
 <p><strong>Temporary Note:</strong> If you upgraded from an older version to 1.14.1 without erasing flash, this setting is <code>off</code> because of <a href="https://github.com/meshcore-dev/MeshCore/issues/2118">#2118</a></p>
 <hr />
+<h4 id="view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards">View or change the LoRa FEM receive-path gain state on supported boards</h4>
+<p><strong>Usage:</strong>
+- <code>get radio.fem.rxgain</code>
+- <code>set radio.fem.rxgain &lt;state&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>state</code>: <code>on</code>|<code>off</code></p>
+<p><strong>Notes:</strong>
+- This controls the external LoRa FEM receive-path LNA where the board supports it.
+- This is separate from <code>radio.rxgain</code>, which controls the radio chip receive gain mode.</p>
+<hr />
 <h3 id="system">System</h3>
 <h4 id="view-or-change-this-nodes-name">View or change this node's name</h4>
 <p><strong>Usage:</strong>
@@ -3530,6 +3584,15 @@
 <p><strong>Parameters:</strong>
 - <code>value</code>: Interference threshold value</p>
 <p><strong>Default:</strong> <code>0.0</code></p>
+<hr />
+<h4 id="enable-or-disable-hardware-channel-activity-detection-cad">Enable or disable hardware Channel Activity Detection (CAD)</h4>
+<p><strong>Usage:</strong>
+- <code>get cad</code>
+- <code>set cad &lt;on|off&gt;</code></p>
+<p><strong>Description:</strong> When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of <code>int.thresh</code> — either, both, or none may be active.</p>
+<p><strong>Parameters:</strong>
+- <code>on|off</code>: Enable or disable hardware CAD</p>
+<p><strong>Default:</strong> <code>off</code></p>
 <hr />
 <h4 id="view-or-change-the-agc-reset-interval">View or change the AGC Reset Interval</h4>
 <p><strong>Usage:</strong>
