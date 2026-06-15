@@ -28,11 +28,24 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:** 
 - `reboot`
 
+**Note:** No reply is sent.
+
+---
+
+### Power-off the node
+**Usage:**
+- `poweroff`, or
+- `shutdown`
+
+**Note:** No reply is sent.
+
 ---
 
 ### Reset the clock and reboot
 **Usage:**
 - `clkreboot`
+
+**Note:** No reply is sent.
 
 ---
 
@@ -112,65 +125,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Usage:** 
 - `discover.neighbors`
-
----
-
-### Send flood text to `#repeaters` channel
-
-**Usage:**
-- `send text.flood <message>`
-
-**Notes:**
-- Sends a `PAYLOAD_TYPE_GRP_TXT` flood message using the built-in `#repeaters` channel key.
-- Message format is `<node_name>: <message>`.
-
----
-
-### View or change automatic low-battery alerts to `#repeaters`
-
-**Usage:**
-- `get battery.alert`
-- `set battery.alert <state>`
-- `get battery.alert.low`
-- `set battery.alert.low <percent>`
-- `get battery.alert.critical`
-- `set battery.alert.critical <percent>`
-
-**Parameters:**
-- `state`: `on` (enable) or `off` (disable)
-- `percent`: Battery percentage threshold
-
-**Default:** `off`
-
-**Default thresholds:** `20` for `battery.alert.low`, `10` for `battery.alert.critical`
-
-**Notes:**
-- When enabled, sends a `#repeaters` flood text warning if voltage is above `1 V` and the battery estimate is below `battery.alert.low`.
-- Warnings repeat every `24` hours, or every `12` hours below `battery.alert.critical`.
-- `battery.alert.critical` must be lower than `battery.alert.low`.
-
----
-
-### Get or set recent repeater fallback prefix/SNR
-**Usage:**
-- `get recent.repeater`
-- `get recent.repeater <page>`
-- `get recent.repeater page <page>`
-- `set recent.repeater <prefix_hex_6> <snr_db>`
-
-**Parameters:**
-- `prefix_hex_6`: Exactly 3 bytes of next-hop prefix in hex (6 chars)
-- `snr_db`: SNR in dB (supports decimals; stored at x4 precision)
-- `page`: 1-based page number
-
-**Notes:**
-- `set` stores or updates the prefix in the recent repeater table.
-- Rows are sorted by prefix width (3-byte, 2-byte, 1-byte), then SNR descending.
-- A full direct retry failure lowers the stored SNR by `0.25 dB`.
-- If a full failure has no row yet, it first seeds the row at the active retry cutoff + `2.5 dB`, then applies the `0.25 dB` penalty.
-- Serial CLI page size is fixed at `128` rows; choose page with `get recent.repeater <page>`.
-- Over LoRa remote CLI, page size is fixed at `7` rows; choose page with `get recent.repeater <page>`.
-- Repeaters can use adjacent entries in this table to short-circuit non-TRACE direct packets when this node appears later in the direct path.
 
 ---
 
@@ -278,20 +232,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
-#### View or change the boosted receive gain mode
-**Usage:**
-- `get radio.rxgain`
-- `set radio.rxgain <state>`
-
-**Parameters:**
-- `state`: `on`|`off`
-
-**Default:** `off`
-
-**Note:** Only available on SX1262 and SX1268 based boards.
-
----
-
 #### Change the radio parameters for a set duration
 **Usage:** 
 - `tempradio <freq>,<bw>,<sf>,<cr>,<timeout_mins>`
@@ -322,7 +262,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
-#### View or change this node's rx boosted gain mode (SX12xx only, v1.14.1+)
+#### View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)
 **Usage:**
 - `get radio.rxgain`
 - `set radio.rxgain <state>`
@@ -333,20 +273,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Default:** `on`
 
 **Temporary Note:** If you upgraded from an older version to 1.14.1 without erasing flash, this setting is `off` because of [#2118](https://github.com/meshcore-dev/MeshCore/issues/2118)
-
----
-
-#### View or change the LoRa FEM receive-path gain state on supported boards
-**Usage:**
-- `get radio.fem.rxgain`
-- `set radio.fem.rxgain <state>`
-
-**Parameters:**
-- `state`: `on`|`off`
-
-**Notes:**
-- This controls the external LoRa FEM receive-path LNA where the board supports it.
-- This is separate from `radio.rxgain`, which controls the radio chip receive gain mode.
 
 ---
 
@@ -455,7 +381,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Note:** `|` characters are translated to newlines
 
-**Note:** Requires firmware 1.12.+
+**Note:** Requires firmware 1.12+
 
 ---
 
@@ -534,7 +460,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Note:** the 'path.hash.mode' sets the low-level ID/hash encoding size used when the repeater adverts. This setting has no impact on what packet ID/hash size this repeater forwards, all sizes should be forwarded on firmware >= 1.14. This feature was added in firmware 1.14
 
-**Temporary Note:** adverts with ID/hash sizes of 2 or 3 bytes may have limited flood propogation in your network while this feature is new as v1.13.0 firmware and older will drop packets with multibyte path ID/hashes as only 1-byte hashes are suppored. Consider your install base of firmware >=1.14 has reached a criticality for effective network flooding before implementing higher ID/hash sizes. 
+**Temporary Note:** adverts with ID/hash sizes of 2 or 3 bytes may have limited flood propagation in your network while this feature is new as v1.13.0 firmware and older will drop packets with multibyte path ID/hashes as only 1-byte hashes are supported. Consider your install base of firmware >=1.14 has reached a criticality for effective network flooding before implementing higher ID/hash sizes. 
 
 ---
 
@@ -552,7 +478,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
   
 **Default:** `off`
 
-**Note:** When it is enabled, repeaters will now reject flood packets which look like they are in a loop. This has been happening recently in some meshes when there is just a single 'bad' repeater firmware out there (prob some forked or custom firmware). If the payload is messed with, then forwarded, the same packet ends up causing a packet storm, repeated up to the max 64 hops. This feature was added in firmware 1.14
+**Note:** When it is enabled, repeaters will now reject flood packets which look like they are in a loop. This has been happening recently in some meshes when there is just a single 'bad' repeater firmware out there (probably some forked or custom firmware). If the payload is messed with, then forwarded, the same packet ends up causing a packet storm, repeated up to the max 64 hops. This feature was added in firmware 1.14
 
 **Example:** If preference is `loop.detect minimal`, and a 1-byte path size packet is received, the repeater will see if its own ID/hash is already in the path. If it's already encoded 4 times, it will reject the packet.  If the packet uses 2-byte path size, and repeater's own ID/hash is already encoded 2 times, it rejects. If the packet uses 3-byte path size, and the repeater's own ID/hash is already encoded 1 time, it rejects. 
 
@@ -568,6 +494,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Default:** `0.5`
 
+**Note:** When multiple nearby repeaters all hear the same flood packet, each waits a random amount of time before retransmitting to avoid simultaneous collisions. This factor scales the size of that random window. Higher values reduce collision risk at the cost of added latency. `0` disables the window entirely.
+
 ---
 
 #### View or change the retransmit delay factor for direct traffic
@@ -578,116 +506,9 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Parameters:**
 - `value`: Direct transmit delay factor (0-2)
 
-**Default:** `0.3`
+**Default:** `0.2`
 
-**Note:** Direct retry waits include the same airtime-based randomized delay calculation as direct retransmits, so this factor also controls retry echo windows.
-
----
-
-#### View or change whether direct retries use the recent repeater blacklist
-**Usage:**
-- `get direct.retry.heard`
-- `set direct.retry.heard <state>`
-
-**Parameters:**
-- `state`: `on`|`off`
-
-**Default:** `on`
-
-**Note:** When enabled, the recent repeater table is the only direct retry eligibility gate. Prefixes missing from the table are assumed reachable; prefixes in the table below the active SNR gate are blocked. Neighbor data is not used.
-
----
-
-#### View or change adaptive coding rate for direct retry packets
-**Usage:**
-- `get direct.retry.cr`
-- `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`
-- `set direct.retry.cr off`
-
-**Parameters:**
-- `cr4_min`: SNR in dB where retry packets use `CR4`
-- `cr5_min`: SNR in dB where retry packets use `CR5`
-- `cr7_min`: SNR in dB where retry packets use `CR7`
-- `cr8_max`: SNR in dB where retry packets use `CR8`
-
-**Default:** `10.0,7.5,2.5,2.5`
-
-**Note:** DM retry packets use the next-hop SNR from a recent repeater table entry to pick a local transmit coding rate; if no recent entry is available, retry packets use `CR5`. With the default, SNR `10.0 dB` and up uses `CR4`, SNR `7.5 dB` and up uses `CR5`, SNR `2.5 dB` and down uses `CR8`, and the middle band uses `CR7`. `CR6` is never selected. Use `set direct.retry.cr off` to disable adaptive coding-rate overrides. If adaptive selection chooses `CR4`, retries after the third attempt use `CR5`.
-
----
-
-#### View or change the SNR margin used for direct retry eligibility
-**Usage:**
-- `get direct.retry.margin`
-- `set direct.retry.margin <value>`
-
-**Parameters:**
-- `value`: Rooftop preset margin in dB above the SF-specific receive floor (minimum `0`, maximum `40`, quarter-dB precision, default `5.0`)
-
-**Default:** `5.0`
-
-**Note:** `get direct.retry.margin` returns the active preset's effective margin. The retry gate uses the active SF floor of `SF5=-2.5`, `SF6=-5`, `SF7=-7.5`, `SF8=-10`, `SF9=-12.5`, `SF10=-15`, `SF11=-17.5`, `SF12=-20`, then adds this margin.
-
----
-
-#### View or change the retry preset
-**Usage:**
-- `get retry.preset`
-- `set retry.preset <value>`
-
-**Parameters:**
-- `value`: `infra`|`rooftop`|`mobile` or `0`|`1`|`2`
-
-**Default:** `rooftop` (`1`)
-
-**Presets:**
-- `infra` (`0`): `275 ms` direct base wait, `4` direct retries, `150 ms` added per direct retry, SNR gate is SF floor + `15 dB`; flood retry defaults to `1` retry and path gate `1`
-- `rooftop` (`1`): `175 ms` direct base wait, `15` direct retries, `100 ms` added per direct retry, SNR gate is SF floor + `5 dB`; flood retry defaults to `3` retries and path gate `2`
-- `mobile` (`2`): `175 ms` direct base wait, `15` direct retries, `50 ms` added per direct retry, SNR gate is the SF floor; flood retry defaults to `3` retries and path gate `1`
-
-**Note:** Selecting a preset copies those values into the direct retry settings and resets flood retry defaults. You can refine `direct.retry.margin`, `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, `flood.retry.count`, or `flood.retry.path` afterward. Retry delay is `direct.txdelay` jitter + base wait + packet-length airtime wait + per-attempt step.
-
----
-
-#### View or change the number of direct retry attempts
-**Usage:**
-- `get direct.retry.count`
-- `set direct.retry.count <value>`
-
-**Parameters:**
-- `value`: Maximum retry attempts after initial TX (`1`-`15`)
-
-**Default:** `15`
-
-**Note:** The effective value is capped by total direct path length: paths of `3` hops or less use at most `8` retries, `4` hops use at most `12`, and `5+` hops use at most `15`. A queued resend is canceled early when the next-hop echo is heard.
-
----
-
-#### View or change the base direct retry wait (milliseconds)
-**Usage:**
-- `get direct.retry.base`
-- `set direct.retry.base <value>`
-
-**Parameters:**
-- `value`: Base wait in milliseconds (`10`-`5000`)
-
-**Default:** `175`
-
-**Note:** The configured base is added to packet-length airtime and `direct.txdelay` jitter. Preset defaults are already reduced to account for the added `direct.txdelay` component.
-
----
-
-#### View or change the direct retry per-attempt add time (milliseconds)
-**Usage:**
-- `get direct.retry.step`
-- `set direct.retry.step <value>`
-
-**Parameters:**
-- `value`: Milliseconds added per retry attempt (`0`-`5000`)
-
-**Default:** `100`
-
-**Note:** This controls the linear add after the first retry wait. For example, `base=300` and `step=150` adds `0`, `150`, `300`, ... ms across retry attempts.
+**Note:** Same collision-avoidance random window as `txdelay`, but applied to direct (non-flood, routed) traffic. The default is lower because direct packets are addressed to a specific next hop, so far fewer nodes compete to retransmit them.
 
 ---
 
@@ -700,6 +521,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `value`: Receive delay base (0-20)
 
 **Default:** `0.0`
+
+**Note:** When enabled, repeaters that received a flood packet with a weak signal are held in a delay queue before processing, while those that received it with a strong signal process it immediately. This gives strong-signal paths forwarding priority. By the time weak-signal nodes process their copy, the packet may have already propagated and will be suppressed as a duplicate, reducing redundant retransmissions.
 
 ---
 
@@ -814,102 +637,29 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
-#### View or change the number of flood retry attempts
+#### Limit the number of hops for an unscoped flood message
 **Usage:**
-- `get flood.retry.count`
-- `set flood.retry.count <value>`
+- `get flood.max.unscoped`
+- `set flood.max.unscoped <value>`
 
 **Parameters:**
-- `value`: Maximum retry attempts after initial flood TX (`0`-`15`)
+- `value`: Maximum flood hop count (0-64) for a packet without a scope (no region set)
 
-**Default:** `3` for `rooftop` and `mobile`, `1` for `infra`
+**Default:** `64` - (`0xFF` indicates it hasn't been set, will track flood.max until it is.)
 
-**Note:** `0` disables flood retry.
+**Note:** An alternative to `region denyf *`, setting `flood.max.unscoped` to a lower value such as `3` would allow for local unscoped messages to propagate, while preventing noisy neighbors from flooding a local region.
 
 ---
 
-#### View or change the flood retry path gate
+#### Limit the number of hops for an advert flood message
 **Usage:**
-- `get flood.retry.path`
-- `set flood.retry.path <value>`
+- `get flood.max.advert`
+- `set flood.max.advert <value>`
 
 **Parameters:**
-- `value`: Maximum flood path length eligible for retry (`0`-`63`), or `off` to disable the gate
+- `value`: Maximum flood hop count (0-64) for an advert packet
 
-**Default:** `2` for `rooftop`, `1` for `infra` and `mobile`
-
-**Note:** Prefixes in `flood.retry.ignore` do not count toward this path length.
-
----
-
-#### View or change whether advert packets are flood-retried
-**Usage:**
-- `get flood.retry.advert`
-- `set flood.retry.advert <state>`
-
-**Parameters:**
-- `state`: `on` or `off`
-
-**Default:** `off`
-
-**Note:** When this is `off`, node advert packets (`PAYLOAD_TYPE_ADVERT`, type `4`) are not queued for flood retry.
-
----
-
-#### View or change flood retry target prefixes
-**Usage:**
-- `get flood.retry.prefixes`
-- `set flood.retry.prefixes <prefixes>`
-
-**Parameters:**
-- `prefixes`: Comma-separated 3-byte hex prefixes, such as `A1B2C3,D4E5F6`; use `none` or `off` to clear
-
-**Default:** `none`
-
-**Note:** Prefixes are stored as 3 bytes. Flood retry skips packets whose path already contains a matching target prefix. When prefixes are configured, only a downstream echo from one of those target prefixes cancels a queued retry; when no prefixes are configured, any downstream echo cancels it. Matching works with 3-byte, 2-byte, or 1-byte flood paths by comparing the matching leading bytes.
-
----
-
-#### View or change flood retry bridge mode
-**Usage:**
-- `get flood.retry.bridge`
-- `set flood.retry.bridge <state>`
-
-**Parameters:**
-- `state`: `on` or `off`
-
-**Default:** `off`
-
-**Note:** Bridge mode uses bucket definitions instead of the single `flood.retry.prefixes` target list. It also has an implicit unconfigured catch-all bucket. If a flood comes from one fresh configured bucket, retry continues until every other fresh configured bucket plus the catch-all bucket has been heard or `flood.retry.count` is exhausted. If a flood comes from an unconfigured or pathless source, retry targets every fresh configured bucket. This means one configured bucket bridges between that bucket and everything else. Prefixes in `flood.retry.ignore` never count as heard bridge targets.
-
----
-
-#### View or change flood retry bridge buckets
-**Usage:**
-- `get flood.retry.bucket.<bucket>`
-- `set flood.retry.bucket <bucket> <prefixes>`
-
-**Parameters:**
-- `bucket`: Bucket number (`1`-`6`)
-- `prefixes`: Up to 17 comma-separated 3-byte hex prefixes, such as `AABBCC,223344`; use `none` or `off` to clear
-
-**Default:** all buckets empty
-
-**Note:** Prefixes are stored as 3 bytes but match 3-byte, 2-byte, and 1-byte flood paths by comparing leading bytes. Bucket prefixes are included in bridge retry logic only if they were heard in the recent repeater table within the last hour.
-
----
-
-#### View or change flood retry ignored prefixes
-**Usage:**
-- `get flood.retry.ignore`
-- `set flood.retry.ignore <prefixes>`
-
-**Parameters:**
-- `prefixes`: Up to 8 comma-separated 3-byte hex prefixes, such as `AABBCC,223344`; use `none` or `off` to clear
-
-**Default:** empty
-
-**Note:** In non-bridge retry, an echo whose last hop matches an ignored prefix does not cancel a queued retry as successful. In bridge mode, ignored prefixes do not count as a heard bridge bucket or as the implicit catch-all bucket when bridge retry decides whether every target has repeated the flood.
+**Default:** `8`
 
 ---
 
@@ -936,32 +686,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `get acl`
 
 **Serial Only:** Yes
-
----
-
-#### View or set direct path overrides for the current remote client
-**Usage:**
-- `get outpath`
-- `set outpath <hop1_hex,hop2_hex,...>`
-- `set outpath direct`
-- `set outpath clear`
-- `set outpath flood`
-- `get altpath`
-- `set altpath <hop1_hex,hop2_hex,...>`
-- `set altpath clear`
-
-**Parameters:**
-- `hopN_hex`: Hop hash, `2`, `4`, or `6` hex characters. All hops must use the same width.
-
-**Notes:**
-- These commands require remote client context; they target the caller's ACL entry.
-- The path hash size is inferred from the hop hash width.
-- `outpath` overrides the primary direct route used for replies to the caller.
-- `direct` sets a zero-hop direct route for a caller reachable without repeaters.
-- `clear` forgets the current direct path and allows normal path discovery to repopulate it.
-- `flood` forces replies to use flood packets until the client logs in again.
-- `altpath` is an optional second direct route used for duplicate response attempts.
-- `set altpath clear` removes the duplicate route so only one reply is sent.
 
 ---
 
@@ -1062,6 +786,47 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
+#### Define region hierarchy (single line)
+**Usage:**
+- `region def <token> [<token> ...]`
+
+**Parameters (tokens):** Space-separated. A logical **cursor** starts at the wildcard `*`.
+
+- **`name`** — Create `name` as a child of the current cursor (equivalent to `region put name` with the cursor as parent). Cursor moves to `name`.
+- **`name|jump`** *(or `name,jump`)* — Create `name` as a child of the current cursor, then move the cursor to `jump` (must already exist on the node, or have been created earlier in this command). `jump` is **not** the parent of `name`; use this form to pop back up and start another branch.
+
+**Behavior:** Each created region defaults to flood-allowed (same as `region put`). The reply is the resulting region tree (same format as bare `region`); review it before running `region save` to persist. On error, the reply is `Err - ...` and any regions placed before the failure remain on the node, just like a partial chain of `region put`.
+
+**Existing regions:** `region def` does not clear the existing tree — if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, `region remove` the unwanted regions first.
+
+**Limits:** Repeater serial accepts one line up to **160 characters**. For larger trees, split across multiple `region def` commands; the cursor resets to `*` between commands, so lead the next command with `child|ancestor` to reposition. Each token splits at most once on `|` — `region def a|b|c|d` is not a flat-list shorthand; see the flat-list example below.
+
+**Example — linear chain** (each token becomes a child of the previous):
+```
+region def a b c d e
+region save
+```
+
+**Example — branched tree** (equivalent to `region put a`, `region put b a`, `region put c b`, `region put d c`, `region put e b`, `region put f e`):
+```
+region def a b c d|b e f
+region save
+```
+
+**Example — error and partial state:**
+```
+region def a b c|nope d
+```
+The reply is `Err - unknown jump: nope`. `a`, `b`, and `c` were placed before the failure; `d` was not. Run `region` to inspect, then re-run with a corrected jump or repair with `region remove` / `region put`.
+
+**Example — flat list** (each region a child of `*`). Use `|*` after each token to pop the cursor back to the root before the next token:
+```
+region def a|* b|* c|* d|* e|* f
+region save
+```
+
+---
+
 #### Remove a region
 **Usage:** 
 - `region remove <name>`
@@ -1082,7 +847,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Parameters:**
 - `filter`: `allowed`|`denied`
 
-**Note:** Requires firmware 1.12.+
+**Note:** Requires firmware 1.12+
 
 ---
 
@@ -1239,7 +1004,7 @@ region save
 
 ---
 
-#### View or change thevalue of a sensor
+#### View or change the value of a sensor
 **Usage:** 
 - `sensor get <key>`
 - `sensor set <key> <value>`

@@ -2,11 +2,6 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
-#ifdef ESP32_PLATFORM
-#include "esp_pm.h"
-#include "esp_bt.h"
-#endif
-
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -47,8 +42,8 @@ static uint32_t _atoi(const char* sp) {
       #define TCP_PORT 5000
     #endif
   #elif defined(BLE_PIN_CODE)
-      #include <helpers/esp32/SerialBLEInterface.h>
-      SerialBLEInterface serial_interface;
+    #include <helpers/esp32/SerialBLEInterface.h>
+    SerialBLEInterface serial_interface;
   #elif defined(SERIAL_RX)
     #include <helpers/ArduinoSerialInterface.h>
     ArduinoSerialInterface serial_interface;
@@ -110,6 +105,12 @@ void halt() {
   while (1) ;
 }
 
+/* WIFI RECONNECT TRACKERS */
+#if defined(ESP32) && defined(WIFI_SSID)
+  bool wifi_needs_reconnect = false;
+  unsigned long last_wifi_reconnect_attempt = 0;
+#endif
+
 void setup() {
   Serial.begin(115200);
 
@@ -130,7 +131,7 @@ void setup() {
 
   if (!radio_init()) { halt(); }
 
-  fast_rng.begin(radio_get_rng_seed());
+  fast_rng.begin(radio_driver.getRngSeed());
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   InternalFS.begin();
@@ -200,6 +201,18 @@ void setup() {
 
 #ifdef WIFI_SSID
   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
+  WiFi.setAutoReconnect(true);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+      if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
+          wifi_needs_reconnect = true;
+      } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+          WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
+          wifi_needs_reconnect = false;
+      }
+  });
+
   WiFi.begin(WIFI_SSID, WIFI_PWD);
   serial_interface.begin(TCP_PORT);
 #elif defined(BLE_PIN_CODE)
@@ -226,32 +239,7 @@ void setup() {
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
 #endif
 
-#ifdef ESP32_PLATFORM
-  // Enable BLE sleep
-  esp_err_t errBLESleep = esp_bt_sleep_enable();
-  if (errBLESleep == ESP_OK) {
-    Serial.println("Bluetooth sleep enabled successfully");
-  } else {
-    Serial.printf("Bluetooth sleep enable failed: %s\n", esp_err_to_name(errBLESleep));
-  }
-
-#if CONFIG_IDF_TARGET_ESP32C3
-  esp_pm_config_esp32c3_t pm_config;
-#elif CONFIG_IDF_TARGET_ESP32S3
-  esp_pm_config_esp32s3_t pm_config;
-#elif CONFIG_IDF_TARGET_ESP32
-  esp_pm_config_esp32_t pm_config;
-#endif
-
-  // Configure Power Management
-  pm_config = { .max_freq_mhz = 80, .min_freq_mhz = 40, .light_sleep_enable = true };
-  esp_err_t errPM = esp_pm_configure(&pm_config);
-  if (errPM == ESP_OK) {
-    Serial.println("Power Management configured successfully");
-  } else {
-    Serial.printf("Power Management failed to configure: %d\r\n", errPM);
-  }
-#endif
+  board.onBootComplete();
 }
 
 void loop() {
@@ -265,10 +253,16 @@ void loop() {
   if (!the_mesh.hasPendingWork()) {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
-#elif defined(ESP32_PLATFORM)
-    if (!serial_interface.isReadBusy() && !serial_interface.isWriteBusy()) { // BLE is not busy
-      vTaskDelay(pdMS_TO_TICKS(10));  // attempt to sleep
-    }
 #endif
   }
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  // Safely attempt to reconnect every 10 seconds if flagged
+  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+    WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    last_wifi_reconnect_attempt = millis();
+  }
+#endif
 }

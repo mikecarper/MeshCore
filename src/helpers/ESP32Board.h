@@ -24,7 +24,7 @@ protected:
 public:
   void begin() {
     // for future use, sub-classes SHOULD call this from their begin()
-    startup_reason = BD_STARTUP_NORMAL;
+    startup_reason = BD_STARTUP_NORMAL;    
 
   #ifdef ESP32_CPU_FREQ
     setCpuFrequencyMhz(ESP32_CPU_FREQ);
@@ -47,7 +47,7 @@ public:
    #endif
   #else
     Wire.begin();
-  #endif
+  #endif    
   }
 
   // Temperature from ESP32 MCU
@@ -62,7 +62,7 @@ public:
     return raw / 4;
   }
 
-  uint32_t getIRQGpio() {
+  uint32_t getIRQGpio() override {
     return P_LORA_DIO_1; // default for SX1262
   }
 
@@ -73,15 +73,8 @@ public:
       return;
     }
 
-  #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    if (Serial) {
-      delay(1);
-      return;
-    }
-  #endif
-
     // Set GPIO wakeup
-    gpio_num_t wakeupPin = (gpio_num_t)getIRQGpio();
+    gpio_num_t wakeupPin = (gpio_num_t)getIRQGpio();    
 
     // Configure timer wakeup
     if (secs > 0) {
@@ -162,67 +155,20 @@ public:
   void setInhibitSleep(bool inhibit) {
     inhibit_sleep = inhibit;
   }
-
-  uint32_t getResetReason() const override {
-    return esp_reset_reason();
-  }
-
-  // https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32/api-reference/system/system.html
-  const char *getResetReasonString(uint32_t reason) {
-    switch (reason) {
-    case ESP_RST_UNKNOWN:
-      return "Unknown or first boot";
-    case ESP_RST_POWERON:
-      return "Power-on reset";
-    case ESP_RST_EXT:
-      return "External reset";
-    case ESP_RST_SW:
-      return "Software reset";
-    case ESP_RST_PANIC:
-      return "Panic / exception reset";
-    case ESP_RST_INT_WDT:
-      return "Interrupt watchdog reset";
-    case ESP_RST_TASK_WDT:
-      return "Task watchdog reset";
-    case ESP_RST_WDT:
-      return "Other watchdog reset";
-    case ESP_RST_DEEPSLEEP:
-      return "Wake from deep sleep";
-    case ESP_RST_BROWNOUT:
-      return "Brownout (low voltage)";
-    case ESP_RST_SDIO:
-      return "SDIO reset";
-    default:
-      static char buf[40];
-      snprintf(buf, sizeof(buf), "Unknown reset reason (%d)", reason);
-      return buf;
-    }
-  }
 };
-
-static RTC_NOINIT_ATTR uint32_t _rtc_backup_time;
-static RTC_NOINIT_ATTR uint32_t _rtc_backup_magic;
-#define RTC_BACKUP_MAGIC  0xAA55CC33
-#define RTC_TIME_MIN      1772323200  // 1 Mar 2026
 
 class ESP32RTCClock : public mesh::RTCClock {
 public:
   ESP32RTCClock() { }
   void begin() {
     esp_reset_reason_t reason = esp_reset_reason();
-    if (reason == ESP_RST_DEEPSLEEP) {
-      return;  // ESP-IDF preserves system time across deep sleep
-    }
-    // All other resets (power-on, crash, WDT, brownout) lose system time.
-    // Restore from RTC backup if valid, otherwise use hardcoded seed.
-    struct timeval tv;
-    if (_rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_time > RTC_TIME_MIN) {
-      tv.tv_sec = _rtc_backup_time;
-    } else {
-      tv.tv_sec = 1772323200;  // 1 Mar 2026
-    }
+    if (reason == ESP_RST_POWERON) {
+      // start with some date/time in the recent past
+      struct timeval tv;
+      tv.tv_sec = 1715770351;  // 15 May 2024, 8:50pm
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
+  }
   }
   uint32_t getCurrentTime() override {
     time_t _now;
@@ -234,16 +180,6 @@ public:
     tv.tv_sec = time;
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
-    _rtc_backup_time = time;
-    _rtc_backup_magic = RTC_BACKUP_MAGIC;
-  }
-  void tick() override {
-    time_t now;
-    time(&now);
-    if (now > RTC_TIME_MIN && (uint32_t)now != _rtc_backup_time) {
-      _rtc_backup_time = (uint32_t)now;
-      _rtc_backup_magic = RTC_BACKUP_MAGIC;
-    }
   }
 };
 

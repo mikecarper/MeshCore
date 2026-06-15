@@ -7,6 +7,15 @@
 class CustomLLCC68Wrapper : public RadioLibWrapper {
 public:
   CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+
+  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    ((CustomLLCC68 *)_radio)->setFrequency(freq);
+    ((CustomLLCC68 *)_radio)->setSpreadingFactor(sf);
+    ((CustomLLCC68 *)_radio)->setBandwidth(bw);
+    ((CustomLLCC68 *)_radio)->setCodingRate(cr);
+    updatePreamble(sf);
+  }
+
   bool isReceivingPacket() override { 
     return ((CustomLLCC68 *)_radio)->isReceiving();
   }
@@ -20,15 +29,7 @@ public:
     int sf = ((CustomLLCC68 *)_radio)->spreadingFactor;
     return packetScoreInt(snr, sf, packet_len);
   }
-  bool setCodingRate(uint8_t cr) override {
-    idle();
-    int err = ((CustomLLCC68 *)_radio)->setCodingRate(cr);
-    if (err != RADIOLIB_ERR_NONE) {
-      MESH_DEBUG_PRINTLN("CustomLLCC68Wrapper: error: setCodingRate(%d)=%d", (uint32_t)cr, err);
-      return false;
-    }
-    return true;
-  }
+  uint8_t getSpreadingFactor() const override { return ((CustomLLCC68 *)_radio)->spreadingFactor; }
 
   void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
 

@@ -10,6 +10,15 @@
 class CustomSX1276Wrapper : public RadioLibWrapper {
 public:
   CustomSX1276Wrapper(CustomSX1276& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+
+  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    ((CustomSX1276 *)_radio)->setFrequency(freq);
+    ((CustomSX1276 *)_radio)->setSpreadingFactor(sf);
+    ((CustomSX1276 *)_radio)->setBandwidth(bw);
+    ((CustomSX1276 *)_radio)->setCodingRate(cr);
+    updatePreamble(sf);
+  }
+
   bool isReceivingPacket() override { 
     return ((CustomSX1276 *)_radio)->isReceiving();
   }
@@ -23,13 +32,5 @@ public:
     int sf = ((CustomSX1276 *)_radio)->spreadingFactor;
     return packetScoreInt(snr, sf, packet_len);
   }
-  bool setCodingRate(uint8_t cr) override {
-    idle();
-    int err = ((CustomSX1276 *)_radio)->setCodingRate(cr);
-    if (err != RADIOLIB_ERR_NONE) {
-      MESH_DEBUG_PRINTLN("CustomSX1276Wrapper: error: setCodingRate(%d)=%d", (uint32_t)cr, err);
-      return false;
-    }
-    return true;
-  }
+  uint8_t getSpreadingFactor() const override { return ((CustomSX1276 *)_radio)->spreadingFactor; }
 };
