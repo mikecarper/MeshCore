@@ -185,7 +185,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
     }
 
-    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) {
+    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())) {
       if (allowPacketForward(pkt)) {
         if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
           return forwardMultipartDirect(pkt);
@@ -448,9 +448,8 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
     packet->setPathHashCount(n + 1);
 
     uint32_t d = getRetransmitDelay(packet);
-    uint8_t priority = packet->getPathHashCount();
     // as this propagates outwards, give it lower and lower priority
-    return ACTION_RETRANSMIT_DELAYED(priority, d);   // give priority to closer sources, than ones further away
+    return ACTION_RETRANSMIT_DELAYED(packet->getPathHashCount(), d);   // give priority to closer sources, than ones further away
   }
   return ACTION_RELEASE;
 }

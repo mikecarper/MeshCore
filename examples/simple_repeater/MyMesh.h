@@ -110,7 +110,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   unsigned long set_radio_at, revert_radio_at;
   float pending_freq;
   float pending_bw;
-  float active_bw;     // live BW, including temporary radio overrides
   uint8_t pending_sf;
   uint8_t active_sf;  // live SF, including temporary radio overrides
   uint8_t pending_cr;
@@ -125,7 +124,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
   int8_t getDirectRetryMinSNRX4() const;
   uint8_t getDirectRetryCodingRateForSNR(int8_t snr_x4) const;
-  uint8_t getDirectRetryPreset() const;
   uint8_t getDirectRetryConfiguredMaxAttempts() const;
   uint32_t getDirectRetryAttemptStepMillis() const;
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
@@ -157,7 +155,6 @@ protected:
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   uint8_t getDefaultTxCodingRate() const override { return active_cr; }
   bool allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const override;
-  bool maybeShortCircuitDirect(mesh::Packet* packet) override;
   void configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original, uint8_t retry_attempt) override;
   uint32_t getDirectRetryEchoDelay(const mesh::Packet* packet) const override;
   uint8_t getDirectRetryMaxAttempts(const mesh::Packet* packet) const override;

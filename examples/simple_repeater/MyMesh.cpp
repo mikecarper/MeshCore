@@ -579,10 +579,6 @@ uint8_t MyMesh::getDirectRetryCodingRateForSNR(int8_t snr_x4) const {
   return 7;
 }
 
-uint8_t MyMesh::getDirectRetryPreset() const {
-  return _prefs.retry_preset;
-}
-
 uint8_t MyMesh::getDirectRetryConfiguredMaxAttempts() const {
   return constrain(_prefs.direct_retry_attempts, 1, 15);
 }
@@ -629,11 +625,6 @@ void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet*
   }
 
   retry->tx_cr = getDirectRetryCodingRateForSNR(snr_x4);
-}
-
-bool MyMesh::maybeShortCircuitDirect(mesh::Packet* packet) {
-  (void)packet;
-  return false;
 }
 
 uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
@@ -1071,7 +1062,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
-  active_bw = 0.0f;
   active_sf = 0;
   active_cr = 0;
   _logging = false;
@@ -1184,7 +1174,6 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  active_bw = _prefs.bw;
   active_sf = _prefs.sf;
   active_cr = _prefs.cr;
   radio_driver.setTxPower(_prefs.tx_power_dbm);
@@ -1514,7 +1503,6 @@ void MyMesh::loop() {
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
     set_radio_at = 0;                                     // clear timer
     radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
-    active_bw = pending_bw;
     active_sf = pending_sf;
     active_cr = pending_cr;
     MESH_DEBUG_PRINTLN("Temp radio params");
@@ -1523,7 +1511,6 @@ void MyMesh::loop() {
   if (revert_radio_at && millisHasNowPassed(revert_radio_at)) { // revert radio params to orig
     revert_radio_at = 0;                                        // clear timer
     radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-    active_bw = _prefs.bw;
     active_sf = _prefs.sf;
     active_cr = _prefs.cr;
     MESH_DEBUG_PRINTLN("Radio params restored");
