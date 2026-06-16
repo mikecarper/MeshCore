@@ -190,7 +190,6 @@ protected:
 
   /**
    * \brief  A path TO peer (sender_idx) has been received. (also with optional 'extra' data encoded)
-   *         NOTE: these can be received multiple times (per sender), via differen routes
    * \param  sender_idx  index of peer, [0..n) where n is what searchPeersByHash() returned
    * \param  secret   the pre-calculated shared-secret (handy for sending response packet)
    * \returns   true, if path was accepted and that reciprocal path should be sent
@@ -213,7 +212,6 @@ protected:
 
   /**
    * \brief  A path TO 'sender' has been received. (also with optional 'extra' data encoded)
-   *         NOTE: these can be received multiple times (per sender), via differen routes
   */
   virtual void onPathRecv(Packet* packet, Identity& sender, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) { }
 
@@ -295,12 +293,10 @@ public:
   void sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
 
   /**
-   * \brief  send a locally-generated Packet to just neigbor nodes (zero hops)
   */
   void sendZeroHop(Packet* packet, uint32_t delay_millis=0);
 
   /**
-   * \brief  send a locally-generated Packet to just neigbor nodes (zero hops), with specific transort codes
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendZeroHop(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0);
