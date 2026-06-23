@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ./build-iotthinks.sh
-export FIRMWARE_VERSION="PowerSaving15.0.3"
+export FIRMWARE_VERSION="PowerSaving16"
 
 ############# Repeaters #############
 # Commonly-used boards
@@ -24,7 +24,7 @@ heltec_tracker_v2_repeater \
 Heltec_Wireless_Paper_repeater \
 Heltec_ct62_repeater
 
-## NRF52 - 18 boards
+## NRF52 - 17 boards
 ./build.sh build-firmware \
 RAK_4631_repeater \
 Heltec_t114_repeater \
@@ -62,7 +62,7 @@ Xiao_S3_room_server \
 heltec_tracker_v2_room_server \
 Heltec_Wireless_Paper_room_server
 
-# NRF52 - 7 boards
+# NRF52 - 6 boards
 ./build.sh build-firmware \
 RAK_4631_room_server \
 Heltec_t114_room_server \
@@ -89,7 +89,7 @@ Heltec_t096_companion_radio_ble \
 Heltec_t096_companion_radio_ble_femoff
 
 ############# Companions BLE PS #############
-# ESP32 - 17 boards
+# ESP32 - 18 boards
 ./build.sh build-firmware \
 Heltec_v3_companion_radio_ble_ps \
 heltec_v4_companion_radio_ble_ps \
@@ -107,10 +107,30 @@ LilyGo_TLora_V2_1_1_6_companion_radio_ble_ps \
 Heltec_ct62_companion_radio_ble_ps \
 T_Beam_S3_Supreme_SX1262_companion_radio_ble_ps \
 Tbeam_SX1262_companion_radio_ble_ps \
-Tbeam_SX1276_companion_radio_ble_ps
+heltec_v4_expansionkit_tft_companion_radio_ble_ps \
+LilyGo_T3S3_sx1262_companion_radio_ble_ps
+
+# Not working
+# Tbeam_SX1276_companion_radio_ble_ps
 
 ############# Companions USB #############
-# ESP32 - 2 boards
 ./build.sh build-firmware \
-Heltec_v3_companion_radio_usb \
 Heltec_t096_companion_radio_usb
+
+############# Sample builds #############
+# 14 boards
+./build.sh build-firmware \
+Heltec_v3_repeater \
+heltec_v4_repeater \
+Xiao_C3_repeater \
+Xiao_C6_repeater_ \
+RAK_4631_repeater \
+Heltec_t096_repeater \
+Heltec_v3_companion_radio_ble_ps \
+heltec_v4_companion_radio_ble_ps \
+heltec_v4_3_companion_radio_ble_ps_femoff \
+Xiao_C3_companion_radio_ble_ps \
+Xiao_C6_companion_radio_ble_ \
+RAK_4631_companion_radio_ble \
+Heltec_t096_companion_radio_ble \
+Heltec_t096_companion_radio_ble_femoff

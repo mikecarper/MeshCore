@@ -17,8 +17,6 @@
 #define  PIN_ADC_CTRL_ACTIVE    LOW
 #define  PIN_ADC_CTRL_INACTIVE  HIGH
 
-#include <driver/rtc_io.h>
-
 class HeltecV3Board : public ESP32Board {
 private:
   bool adc_active_state;

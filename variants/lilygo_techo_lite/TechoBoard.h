@@ -38,6 +38,6 @@ public:
     #ifdef PIN_PWR_EN
     digitalWrite(PIN_PWR_EN, LOW);
     #endif
-    sd_power_system_off();
+    NRF52Board::powerOff();
   }
 };

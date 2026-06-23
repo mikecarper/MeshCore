@@ -53,7 +53,7 @@ public:
     digitalWrite(RT9080_EN, LOW);
 
     // power off system
-    sd_power_system_off();
+    NRF52Board::powerOff();
 
   }
 };
