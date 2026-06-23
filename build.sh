@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 ALL_PIO_ENVS=()
+SUPPORTED_PIO_ENVS=()
+declare -A PIO_ENV_PLATFORM_BY_NAME=()
 PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
@@ -13,10 +15,8 @@ RADIO_FREQ_OVERRIDE=""
 RADIO_BW_OVERRIDE=""
 RADIO_SF_OVERRIDE=""
 RADIO_CR_OVERRIDE=""
-FIRMWARE_PROFILE_OVERRIDE=""
-WIFI_SSID_OVERRIDE=""
-WIFI_PWD_OVERRIDE=""
-WIFI_DEBUG_LOGGING_OVERRIDE=""
+BATCH_BUILD_MODE=0
+RESOLVED_BUILD_TARGETS=()
 
 ENV_VARIANT_SUFFIX_PATTERN='companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
@@ -32,10 +32,6 @@ DEFAULT_VARIANT_LABEL="default"
 TAG_PREFIX_ROOM_SERVER="room-server"
 TAG_PREFIX_COMPANION="companion"
 TAG_PREFIX_REPEATER="repeater"
-BULK_BUILD_SUFFIX_REPEATER="_repeater"
-BULK_BUILD_SUFFIX_COMPANION_USB="_companion_radio_usb"
-BULK_BUILD_SUFFIX_COMPANION_BLE="_companion_radio_ble"
-BULK_BUILD_SUFFIX_ROOM_SERVER="_room_server"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
 OUTPUT_DIR="out"
 FALLBACK_VERSION_PREFIX="dev"
@@ -64,7 +60,7 @@ Examples:
 Build firmware for the "RAK_4631_repeater" device target
 $ bash build.sh build-firmware RAK_4631_repeater
 
-Run without arguments to choose an interactive build action/target, debug options, radio settings, and (when applicable) Wi-Fi settings
+Run without arguments to choose an interactive build action/target, debug options, radio settings, and firmware version
 $ bash build.sh
 
 Build all firmwares for device targets containing the string "RAK_4631"
@@ -82,6 +78,7 @@ $ bash build.sh build-room-server-firmwares
 Environment Variables:
   FIRMWARE_VERSION=vX.Y.Z: Firmware version to embed in the build output.
                            If not set, build.sh derives a default from the latest matching git tag and appends "-dev".
+                           In interactive builds, this value is offered as the editable default.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
                    If not set, debug flags from variant platformio.ini files are used.
 
@@ -109,14 +106,45 @@ init_project_context() {
   if [ -z "$PIO_CONFIG_JSON" ]; then
     PIO_CONFIG_JSON=$(pio project config --json-output)
   fi
+
+  if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
+    while IFS=$'\t' read -r env_name env_platform; do
+      if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
+        continue
+      fi
+      SUPPORTED_PIO_ENVS+=("$env_name")
+      PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
+    done < <(
+      python3 -c '
+import json
+import re
+import sys
+
+pattern = re.compile(sys.argv[1])
+data = json.load(sys.stdin)
+for section, options in data:
+    if not section.startswith("env:"):
+        continue
+    env_name = section[4:]
+    for key, value in options:
+        if key != "build_flags":
+            continue
+        values = value if isinstance(value, list) else str(value).split()
+        for flag in values:
+            match = pattern.search(str(flag))
+            if match:
+                print(f"{env_name}\t{match.group(0)}")
+                break
+        else:
+            continue
+        break
+' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
+    )
+  fi
 }
 
 get_pio_envs() {
-  if [ ${#ALL_PIO_ENVS[@]} -gt 0 ]; then
-    printf '%s\n' "${ALL_PIO_ENVS[@]}"
-  else
-    pio project config | grep 'env:' | sed 's/env://'
-  fi
+  get_supported_pio_envs
 }
 
 canonicalize_variant_suffix() {
@@ -203,33 +231,22 @@ prompt_menu_choice() {
 prompt_on_off_choice() {
   local prompt_label=$1
   local default_choice=$2
-  local normalized_default
   local choice
 
-  normalized_default=${default_choice,,}
-  case "$normalized_default" in
-    1) normalized_default="on" ;;
-    0) normalized_default="off" ;;
-  esac
-
   while true; do
-    read -r -p "${prompt_label} [on(1)/off(0)] (default: ${normalized_default}): " choice
+    read -r -p "${prompt_label} [on/off] (default: ${default_choice}): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
-      choice=$normalized_default
+      choice=$default_choice
     fi
 
     case "$choice" in
-      on|1)
-        MENU_CHOICE="on"
-        return 0
-        ;;
-      off|0)
-        MENU_CHOICE="off"
+      on|off)
+        MENU_CHOICE="$choice"
         return 0
         ;;
       *)
-        echo "Invalid selection. Choose on(1) or off(0)."
+        echo "Invalid selection. Choose 'on' or 'off'."
         ;;
     esac
   done
@@ -298,10 +315,6 @@ clear_radio_overrides() {
   RADIO_CR_OVERRIDE=""
 }
 
-clear_firmware_profile_overrides() {
-  FIRMWARE_PROFILE_OVERRIDE=""
-}
-
 set_radio_overrides() {
   RADIO_SETTING_TITLE=$1
   RADIO_FREQ_OVERRIDE=$2
@@ -314,46 +327,22 @@ fetch_suggested_radio_settings() {
   python3 - "$RADIO_SETTINGS_API_URL" <<'PY'
 import json
 import sys
-import urllib.error
 import urllib.request
 
 url = sys.argv[1]
-header_sets = [
-    {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json,text/plain,*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://meshcore.nz/",
-        "Origin": "https://meshcore.nz",
+request = urllib.request.Request(
+    url,
+    headers={
+        "Accept": "application/json",
+        "User-Agent": "MeshCore-build.sh/1.0 (+https://github.com/meshcore-dev/MeshCore)",
     },
-    {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-        "Accept": "application/json,text/plain,*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://meshcore.nz/",
-        "Origin": "https://meshcore.nz",
-    },
-]
+)
 
-payload = None
-errors = []
-
-for index, headers in enumerate(header_sets, start=1):
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=8) as response:
-            payload = json.load(response)
-        break
-    except urllib.error.HTTPError as exc:
-        errors.append(f"attempt {index}: HTTP {exc.code}")
-        continue
-    except Exception as exc:
-        errors.append(f"attempt {index}: {type(exc).__name__}")
-        continue
-
-if payload is None:
-    summary = "; ".join(errors) if errors else "unknown error"
-    print(f"Failed to fetch radio presets from {url} ({summary})", file=sys.stderr)
+try:
+    with urllib.request.urlopen(request, timeout=8) as response:
+        payload = json.load(response)
+except Exception as exc:
+    print(f"radio preset fetch failed: {exc}", file=sys.stderr)
     raise SystemExit(1)
 
 entries = (
@@ -435,28 +424,6 @@ prompt_for_custom_radio_setting() {
   set_radio_overrides "Custom" "$freq" "$bw" "$sf" "$cr"
 }
 
-prompt_for_cascadia_profile_enable() {
-  clear_firmware_profile_overrides
-  echo
-  echo "Cascadia profile changes:"
-  echo "  - rxdelay: 1"
-  echo "  - agc.reset.interval: 8"
-  echo "  - advert.interval: 0"
-  echo "  - flood.advert.interval: 83"
-  echo "  - multi.acks: 1"
-  echo "  - path.hash.mode: 2"
-  echo "  - loop.detect: minimal"
-  prompt_on_off_choice "Enable Cascadia profile overrides" "on"
-  if [ "$MENU_CHOICE" == "on" ]; then
-    FIRMWARE_PROFILE_OVERRIDE="cascadia"
-    echo "Using firmware profile override: ${FIRMWARE_PROFILE_OVERRIDE}"
-    return 0
-  fi
-
-  echo "Using target default firmware profile settings."
-  return 0
-}
-
 prompt_for_radio_build_settings() {
   local -a preset_rows=()
   local -a options=("Keep target defaults (no radio override)")
@@ -470,11 +437,18 @@ prompt_for_radio_build_settings() {
   local preset_index
   local choice_index
   local custom_index
+  local preset_output
 
   clear_radio_overrides
 
-  if mapfile -t preset_rows < <(fetch_suggested_radio_settings); then
+  if preset_output=$(fetch_suggested_radio_settings); then
+    if [ -n "$preset_output" ]; then
+      mapfile -t preset_rows <<< "$preset_output"
+    fi
     for row in "${preset_rows[@]}"; do
+      if [ -z "$row" ]; then
+        continue
+      fi
       IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
       options+=("${title}: ${description}")
     done
@@ -515,81 +489,6 @@ prompt_for_radio_build_settings() {
       return 0
     fi
   done
-}
-
-clear_wifi_overrides() {
-  WIFI_SSID_OVERRIDE=""
-  WIFI_PWD_OVERRIDE=""
-  WIFI_DEBUG_LOGGING_OVERRIDE=""
-}
-
-is_wifi_build_target() {
-  local env_name=$1
-  local is_wifi=1
-
-  shopt -s nocasematch
-  if [[ "$env_name" == *companion_radio_wifi* ]]; then
-    is_wifi=0
-  fi
-  shopt -u nocasematch
-
-  return "$is_wifi"
-}
-
-selected_command_uses_wifi_target() {
-  case "${SELECTED_COMMAND_ARGS[0]:-}" in
-    build-firmware)
-      is_wifi_build_target "${SELECTED_COMMAND_ARGS[1]:-}"
-      return $?
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-prompt_for_wifi_build_settings() {
-  local -a options=(
-    "Keep target defaults (no Wi-Fi override)"
-    "Custom Wi-Fi SSID/password"
-  )
-  local choice_index
-
-  clear_wifi_overrides
-
-  echo "Set Wi-Fi build options:"
-  while true; do
-    print_numbered_menu "${options[@]}"
-    prompt_menu_choice "Wi-Fi setting" "${#options[@]}"
-    if [ "$MENU_CHOICE" == "QUIT" ]; then
-      echo "Cancelled."
-      exit 1
-    fi
-
-    choice_index=$MENU_CHOICE
-    case "$choice_index" in
-      1)
-        echo "Using target default Wi-Fi settings."
-        return 0
-        ;;
-      2)
-        read -r -p "Wi-Fi SSID: " WIFI_SSID_OVERRIDE
-        read -r -p "Wi-Fi password (blank allowed): " WIFI_PWD_OVERRIDE
-        prompt_on_off_choice "Wi-Fi debug logging (WIFI_DEBUG_LOGGING)" "off"
-        WIFI_DEBUG_LOGGING_OVERRIDE="$MENU_CHOICE"
-        echo "Using Wi-Fi overrides: ssid='${WIFI_SSID_OVERRIDE}', wifi_debug=${WIFI_DEBUG_LOGGING_OVERRIDE}"
-        return 0
-        ;;
-    esac
-  done
-}
-
-escape_cpp_string_literal() {
-  local value=$1
-
-  value=${value//\\/\\\\}
-  value=${value//\"/\\\"}
-  printf '%s' "$value"
 }
 
 get_env_metadata() {
@@ -712,6 +611,10 @@ get_variants_for_board() {
   local env
 
   for env in "${ALL_PIO_ENVS[@]}"; do
+    if ! is_supported_build_env "$env"; then
+      continue
+    fi
+
     if [ "$(get_board_family_for_env "$env")" == "$board_family" ]; then
       echo "$env"
     fi
@@ -790,6 +693,10 @@ prompt_for_board_target() {
   fi
 
   for env in "${ALL_PIO_ENVS[@]}"; do
+    if ! is_supported_build_env "$env"; then
+      continue
+    fi
+
     board=$(get_board_family_for_env "$env")
     if [ -z "${seen_boards[$board]}" ]; then
       seen_boards["$board"]=1
@@ -853,22 +760,84 @@ derive_default_firmware_version() {
   esac
 }
 
-prompt_for_firmware_version() {
-  local env_name=$1
-  local suggested_version
-  local entered_version
+derive_default_firmware_version_for_targets() {
+  local target
+  local tag_prefix
+  local candidate_version
+  local fallback_version
+  local -a candidate_versions=()
+  local -a sorted_versions=()
+  local -A seen_tag_prefixes=()
 
-  suggested_version=$(derive_default_firmware_version "$env_name")
+  fallback_version="${FALLBACK_VERSION_PREFIX}-$(date "${FALLBACK_VERSION_DATE_FORMAT}")"
 
-  if ! [ -t 0 ]; then
-    FIRMWARE_VERSION="$suggested_version"
-    echo "FIRMWARE_VERSION not set, using derived default: ${FIRMWARE_VERSION}"
+  for target in "$@"; do
+    tag_prefix=$(get_release_tag_prefix_for_env "$target")
+    if [ -n "$tag_prefix" ]; then
+      if [ -n "${seen_tag_prefixes[$tag_prefix]+x}" ]; then
+        continue
+      fi
+      seen_tag_prefixes["$tag_prefix"]=1
+    fi
+
+    candidate_version=$(derive_default_firmware_version "$target")
+    candidate_versions+=("$candidate_version")
+  done
+
+  if [ ${#candidate_versions[@]} -eq 0 ]; then
+    echo "$fallback_version"
     return 0
   fi
 
-  echo "Suggested firmware version for ${env_name}: ${suggested_version}"
+  mapfile -t sorted_versions < <(printf '%s\n' "${candidate_versions[@]}" | sort -u -V)
+  echo "${sorted_versions[$((${#sorted_versions[@]} - 1))]}"
+}
+
+prompt_for_firmware_version() {
+  local prompt_label=$1
+  local result_var=$2
+  local suggested_version=${3:-}
+  local entered_version
+
+  if [ -z "$suggested_version" ]; then
+    suggested_version=$(derive_default_firmware_version "$prompt_label")
+  fi
+
+  if ! [ -t 0 ]; then
+    printf -v "$result_var" '%s' "$suggested_version"
+    return 0
+  fi
+
+  echo "Suggested firmware version for ${prompt_label}: ${suggested_version}"
   read -r -e -i "${suggested_version}" -p "Firmware version: " entered_version
-  FIRMWARE_VERSION="${entered_version:-$suggested_version}"
+  printf -v "$result_var" '%s' "${entered_version:-$suggested_version}"
+}
+
+prompt_for_resolved_firmware_version() {
+  local prompt_label
+  local selected_version=${FIRMWARE_VERSION:-}
+
+  if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  if ! [ -t 0 ]; then
+    return 0
+  fi
+
+  if [ -z "$selected_version" ]; then
+    selected_version=$(derive_default_firmware_version_for_targets "${RESOLVED_BUILD_TARGETS[@]}")
+  fi
+
+  if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 1 ]; then
+    prompt_label="${RESOLVED_BUILD_TARGETS[0]}"
+  else
+    prompt_label="${#RESOLVED_BUILD_TARGETS[@]} build targets"
+  fi
+
+  prompt_for_firmware_version "$prompt_label" selected_version "$selected_version"
+  FIRMWARE_VERSION=$selected_version
+  export FIRMWARE_VERSION
 }
 
 get_pio_envs_containing_string() {
@@ -876,27 +845,51 @@ get_pio_envs_containing_string() {
 
   shopt -s nocasematch
   for env in "${ALL_PIO_ENVS[@]}"; do
-    if [[ "$env" == *${1}* ]]; then
+    if [[ "$env" == *${1}* ]] && is_supported_build_env "$env"; then
       echo "$env"
     fi
   done
   shopt -u nocasematch
 }
 
-get_pio_envs_ending_with_string() {
-  local env
+get_supported_pio_envs() {
+  if [ ${#SUPPORTED_PIO_ENVS[@]} -gt 0 ]; then
+    printf '%s\n' "${SUPPORTED_PIO_ENVS[@]}"
+  fi
+}
 
-  shopt -s nocasematch
+get_pio_envs_for_variant_role() {
+  local role=$1
+  local env
+  local variant_name
+
   for env in "${ALL_PIO_ENVS[@]}"; do
-    if [[ "$env" == *${1} ]]; then
-      echo "$env"
+    if ! is_supported_build_env "$env"; then
+      continue
     fi
+
+    variant_name=$(get_variant_name_for_env "$env")
+    case "$role:$variant_name" in
+      companion:companion_radio_*)
+        echo "$env"
+        ;;
+      repeater:repeater*)
+        echo "$env"
+        ;;
+      room_server:room_server)
+        echo "$env"
+        ;;
+    esac
   done
-  shopt -u nocasematch
 }
 
 get_platform_for_env() {
   local env_name=$1
+
+  if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$env_name]+x}" ]; then
+    echo "${PIO_ENV_PLATFORM_BY_NAME[$env_name]}"
+    return 0
+  fi
 
   # PlatformIO exposes project config as JSON; scan the selected env's
   # build_flags to recover the platform token used for artifact collection.
@@ -922,6 +915,25 @@ is_supported_platform() {
   [[ "$env_platform" =~ ^(${SUPPORTED_PLATFORM_PATTERN})$ ]]
 }
 
+is_known_pio_env() {
+  local env_name=$1
+  local env
+
+  for env in "${ALL_PIO_ENVS[@]}"; do
+    if [ "$env" == "$env_name" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+is_supported_build_env() {
+  local env_name=$1
+
+  [ -n "${PIO_ENV_PLATFORM_BY_NAME[$env_name]+x}" ]
+}
+
 disable_debug_flags() {
   if [ "$DISABLE_DEBUG" == "1" ]; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -UCFG_DEBUG -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
@@ -931,7 +943,7 @@ disable_debug_flags() {
 apply_debug_overrides() {
   case "${MESHDEBUG_OVERRIDE,,}" in
     on)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -DMESH_DEBUG=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_DEBUG=1"
       ;;
     off)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG"
@@ -940,7 +952,7 @@ apply_debug_overrides() {
 
   case "${PACKET_LOGGING_OVERRIDE,,}" in
     on)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_PACKET_LOGGING -DMESH_PACKET_LOGGING=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_PACKET_LOGGING=1"
       ;;
     off)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_PACKET_LOGGING"
@@ -954,86 +966,50 @@ apply_radio_overrides() {
   fi
 }
 
-apply_firmware_profile_overrides() {
-  case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
-    cascadia)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADIA_PROFILE=1 -DDEFAULT_RX_DELAY_BASE=1.0f -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_AGC_RESET_INTERVAL=2 -DDEFAULT_ADVERT_INTERVAL=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_PATH_HASH_MODE=2"
-      ;;
-  esac
-}
-
-apply_wifi_overrides() {
-  local env_name=$1
-  local ssid_escaped
-  local pwd_escaped
-
-  if ! is_wifi_build_target "$env_name"; then
-    return 0
-  fi
-
-  if [ -n "$WIFI_SSID_OVERRIDE" ]; then
-    ssid_escaped=$(escape_cpp_string_literal "$WIFI_SSID_OVERRIDE")
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_SSID='\"${ssid_escaped}\"'"
-  fi
-
-  if [ -n "$WIFI_SSID_OVERRIDE" ] || [ -n "$WIFI_PWD_OVERRIDE" ]; then
-    pwd_escaped=$(escape_cpp_string_literal "$WIFI_PWD_OVERRIDE")
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_PWD='\"${pwd_escaped}\"'"
-  fi
-
-  case "${WIFI_DEBUG_LOGGING_OVERRIDE,,}" in
-    on)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_DEBUG_LOGGING=1"
-      ;;
-    off)
-      if [ -n "$WIFI_SSID_OVERRIDE" ] || [ -n "$WIFI_PWD_OVERRIDE" ]; then
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_DEBUG_LOGGING=0"
-      fi
-      ;;
-  esac
-}
-
 copy_build_output() {
   local source_path=$1
   local output_path=$2
 
-  if [ -f "$source_path" ]; then
-    cp -- "$source_path" "$output_path"
+  if ! [ -f "$source_path" ]; then
+    echo "Expected build output missing: $source_path"
+    return 1
   fi
+
+  cp -- "$source_path" "$output_path"
 }
 
 collect_esp32_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  pio run -t mergebin -e "$env_name"
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin"
-  copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "out/${firmware_filename}-merged.bin"
+  pio run -t mergebin -e "$env_name" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "out/${firmware_filename}-merged.bin" || return $?
 }
 
 collect_nrf52_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  python3 bin/uf2conv/uf2conv.py ".pio/build/${env_name}/firmware.hex" -c -o ".pio/build/${env_name}/firmware.uf2" -f 0xADA52840
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2"
-  copy_build_output ".pio/build/${env_name}/firmware.zip" "out/${firmware_filename}.zip"
+  python3 bin/uf2conv/uf2conv.py ".pio/build/${env_name}/firmware.hex" -c -o ".pio/build/${env_name}/firmware.uf2" -f 0xADA52840 || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.zip" "out/${firmware_filename}.zip" || return $?
 }
 
 collect_stm32_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin"
-  copy_build_output ".pio/build/${env_name}/firmware.hex" "out/${firmware_filename}.hex"
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.hex" "out/${firmware_filename}.hex" || return $?
 }
 
 collect_rp2040_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin"
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2"
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2" || return $?
 }
 
 collect_build_artifacts() {
@@ -1056,7 +1032,22 @@ collect_build_artifacts() {
     RP2040_PLATFORM)
       collect_rp2040_artifacts "$env_name" "$firmware_filename"
       ;;
+    *)
+      echo "Unsupported or unknown platform for env: $env_name"
+      return 1
+      ;;
   esac
+}
+
+restore_platformio_build_flags() {
+  local had_platformio_build_flags=$1
+  local original_platformio_build_flags=${2:-}
+
+  if [ "$had_platformio_build_flags" -eq 1 ]; then
+    export PLATFORMIO_BUILD_FLAGS="$original_platformio_build_flags"
+  else
+    unset PLATFORMIO_BUILD_FLAGS
+  fi
 }
 
 build_firmware() {
@@ -1064,74 +1055,167 @@ build_firmware() {
   local env_platform
   local commit_hash
   local firmware_build_date
+  local firmware_version
   local firmware_version_string
   local firmware_filename
+  local original_platformio_build_flags
+  local had_platformio_build_flags=0
+  local build_status
 
   env_platform=$(get_platform_for_env "$env_name")
   if ! is_supported_platform "$env_platform"; then
     echo "Unsupported or unknown platform for env: $env_name"
-    exit 1
+    return 1
   fi
 
   commit_hash=$(git rev-parse --short HEAD)
   firmware_build_date=$(date '+%d-%b-%Y')
+  firmware_version=${FIRMWARE_VERSION:-}
 
-  if [ -z "$FIRMWARE_VERSION" ]; then
-    prompt_for_firmware_version "$env_name"
-    echo "Using firmware version: ${FIRMWARE_VERSION}"
+  if [ -z "$firmware_version" ]; then
+    if [ "$BATCH_BUILD_MODE" -eq 1 ]; then
+      firmware_version=$(derive_default_firmware_version "$env_name")
+    else
+      prompt_for_firmware_version "$env_name" firmware_version
+    fi
+    echo "FIRMWARE_VERSION not set, using derived default for ${env_name}: ${firmware_version}"
   fi
 
-  firmware_version_string="${FIRMWARE_VERSION}-${commit_hash}"
+  firmware_version_string="${firmware_version}-${commit_hash}"
   firmware_filename="${env_name}-${firmware_version_string}"
 
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${firmware_version_string}\"'"
+  if [ "${PLATFORMIO_BUILD_FLAGS+x}" ]; then
+    had_platformio_build_flags=1
+    original_platformio_build_flags=$PLATFORMIO_BUILD_FLAGS
+  else
+    original_platformio_build_flags=""
+  fi
+
+  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${firmware_version_string}\"'"
   disable_debug_flags
   apply_debug_overrides
   apply_radio_overrides
-  apply_firmware_profile_overrides
-  apply_wifi_overrides "$env_name"
 
   pio run -e "$env_name"
-  collect_build_artifacts "$env_name" "$env_platform" "$firmware_filename"
+  build_status=$?
+  if [ "$build_status" -eq 0 ]; then
+    collect_build_artifacts "$env_name" "$env_platform" "$firmware_filename"
+    build_status=$?
+  fi
+
+  restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
+  return "$build_status"
 }
 
-build_all_firmwares_matching() {
+resolve_matching_firmwares() {
   local envs
-  local env
 
   mapfile -t envs < <(get_pio_envs_containing_string "$1")
-  for env in "${envs[@]}"; do
-    build_firmware "$env"
-  done
+  if [ ${#envs[@]} -gt 0 ]; then
+    printf '%s\n' "${envs[@]}"
+  fi
 }
 
-build_all_firmwares_by_suffix() {
-  local envs
-  local env
-
-  mapfile -t envs < <(get_pio_envs_ending_with_string "$1")
-  for env in "${envs[@]}"; do
-    build_firmware "$env"
-  done
+resolve_all_firmwares() {
+  get_supported_pio_envs
 }
 
-build_repeater_firmwares() {
-  build_all_firmwares_by_suffix "$BULK_BUILD_SUFFIX_REPEATER"
+resolve_companion_firmwares() {
+  get_pio_envs_for_variant_role companion
 }
 
-build_companion_firmwares() {
-  build_all_firmwares_by_suffix "$BULK_BUILD_SUFFIX_COMPANION_USB"
-  build_all_firmwares_by_suffix "$BULK_BUILD_SUFFIX_COMPANION_BLE"
+resolve_repeater_firmwares() {
+  get_pio_envs_for_variant_role repeater
 }
 
-build_room_server_firmwares() {
-  build_all_firmwares_by_suffix "$BULK_BUILD_SUFFIX_ROOM_SERVER"
+resolve_room_server_firmwares() {
+  get_pio_envs_for_variant_role room_server
 }
 
-build_firmwares() {
-  build_companion_firmwares
-  build_repeater_firmwares
-  build_room_server_firmwares
+# Keep bulk build command names mapped to their target resolvers in one place.
+get_bulk_build_resolver_name() {
+  case "$1" in
+    build-firmwares)
+      echo "resolve_all_firmwares"
+      ;;
+    build-companion-firmwares)
+      echo "resolve_companion_firmwares"
+      ;;
+    build-repeater-firmwares)
+      echo "resolve_repeater_firmwares"
+      ;;
+    build-room-server-firmwares)
+      echo "resolve_room_server_firmwares"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_bulk_build_command() {
+  get_bulk_build_resolver_name "$1" >/dev/null
+}
+
+is_build_command() {
+  case "$1" in
+    build-firmware|build-matching-firmwares)
+      return 0
+      ;;
+    *)
+      is_bulk_build_command "$1"
+      ;;
+  esac
+}
+
+resolve_bulk_command_targets() {
+  local resolver_name
+
+  resolver_name=$(get_bulk_build_resolver_name "$1") || return $?
+  mapfile -t RESOLVED_BUILD_TARGETS < <("$resolver_name")
+}
+
+validate_build_target() {
+  local env_name=$1
+  local env_platform
+
+  if ! is_known_pio_env "$env_name"; then
+    echo "Unknown build target: $env_name"
+    return 1
+  fi
+
+  env_platform=$(get_platform_for_env "$env_name")
+  if ! is_supported_platform "$env_platform"; then
+    echo "Unsupported build target: $env_name"
+    return 1
+  fi
+}
+
+resolve_command_targets() {
+  local target
+
+  RESOLVED_BUILD_TARGETS=()
+  case "$1" in
+    build-firmware)
+      for target in "${@:2}"; do
+        validate_build_target "$target" || return $?
+        RESOLVED_BUILD_TARGETS+=("$target")
+      done
+      ;;
+    build-matching-firmwares)
+      mapfile -t RESOLVED_BUILD_TARGETS < <(resolve_matching_firmwares "$2")
+      ;;
+    *)
+      # Bulk command target resolution is centralized so the build-family
+      # command list is not repeated in every command handling case.
+      resolve_bulk_command_targets "$1" || return $?
+      ;;
+  esac
+
+  if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
+    echo "No supported build targets matched: ${*:2}"
+    return 1
+  fi
 }
 
 prepare_output_dir() {
@@ -1146,50 +1230,66 @@ prepare_output_dir() {
   mkdir -p -- "$output_dir"
 }
 
-run_build_firmware_command() {
-  local targets=("${@:2}")
+run_resolved_build_targets() {
+  local targets=("$@")
   local env
+  local previous_batch_build_mode=$BATCH_BUILD_MODE
+  local build_status=0
 
   if [ ${#targets[@]} -eq 0 ]; then
-    echo "usage: $0 build-firmware <target>"
-    exit 1
+    echo "No build targets resolved."
+    return 1
   fi
 
+  if [ ${#targets[@]} -gt 1 ]; then
+    BATCH_BUILD_MODE=1
+  fi
   for env in "${targets[@]}"; do
     build_firmware "$env"
+    build_status=$?
+    if [ "$build_status" -ne 0 ]; then
+      break
+    fi
   done
+  BATCH_BUILD_MODE=$previous_batch_build_mode
+
+  return "$build_status"
 }
 
-run_command() {
+validate_command() {
   case "$1" in
     build-firmware)
-      run_build_firmware_command "$@"
+      if [ "$#" -lt 2 ]; then
+        echo "usage: $0 build-firmware <target>"
+        exit 1
+      fi
       ;;
     build-matching-firmwares)
-      if [ -n "$2" ]; then
-        build_all_firmwares_matching "$2"
-      else
+      if [ -z "${2:-}" ]; then
         echo "usage: $0 build-matching-firmwares <build-match-spec>"
         exit 1
       fi
       ;;
-    build-firmwares)
-      build_firmwares
-      ;;
-    build-companion-firmwares)
-      build_companion_firmwares
-      ;;
-    build-repeater-firmwares)
-      build_repeater_firmwares
-      ;;
-    build-room-server-firmwares)
-      build_room_server_firmwares
-      ;;
     *)
-      global_usage
-      exit 1
+      # Bulk commands have no required positional arguments; the helper keeps
+      # that command set in sync with target resolution.
+      if ! is_bulk_build_command "$1"; then
+        global_usage
+        exit 1
+      fi
       ;;
   esac
+}
+
+run_command() {
+  # All build commands share execution after validation resolves their target list.
+  if is_build_command "$1"; then
+    run_resolved_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
+    return $?
+  fi
+
+  global_usage
+  exit 1
 }
 
 main() {
@@ -1205,21 +1305,31 @@ main() {
       ;;
   esac
 
+  if [ $# -gt 0 ]; then
+    validate_command "$@"
+  fi
+
   init_project_context
 
   if [ $# -eq 0 ]; then
+    if ! [ -t 0 ]; then
+      echo "No command provided and no interactive terminal is available."
+      global_usage
+      exit 1
+    fi
+
     prompt_for_build_mode
     prompt_for_debug_build_settings
     prompt_for_radio_build_settings
-    prompt_for_cascadia_profile_enable
-    if selected_command_uses_wifi_target; then
-      prompt_for_wifi_build_settings
-    else
-      clear_wifi_overrides
-    fi
     set -- "${SELECTED_COMMAND_ARGS[@]}"
+    validate_command "$@"
   fi
 
+  if ! resolve_command_targets "$@"; then
+    exit 1
+  fi
+
+  prompt_for_resolved_firmware_version
   prepare_output_dir
   run_command "$@"
 }
