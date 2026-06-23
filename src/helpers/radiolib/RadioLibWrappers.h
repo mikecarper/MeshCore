@@ -40,6 +40,8 @@ public:
   }
 
   virtual void setParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
+  uint16_t getDefaultPreambleLength() const override { return preambleLengthForSF(_preamble_sf); }
+  bool setPreambleLength(uint16_t len) override { return _radio->setPreambleLength(len) == RADIOLIB_ERR_NONE; }
   uint32_t getRngSeed();
   void setTxPower(int8_t dbm);
 

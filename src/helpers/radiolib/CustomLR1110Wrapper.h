@@ -16,6 +16,10 @@ public:
     updatePreamble(sf);
   }
 
+  bool setCodingRate(uint8_t cr) override {
+    return ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
+  }
+
   void doResetAGC() override { lr11x0ResetAGC((LR11x0 *)_radio, ((CustomLR1110 *)_radio)->getFreqMHz()); }
   bool isReceivingPacket() override {
     return ((CustomLR1110 *)_radio)->isReceiving();

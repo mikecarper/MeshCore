@@ -28,24 +28,11 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:** 
 - `reboot`
 
-**Note:** No reply is sent.
-
----
-
-### Power-off the node
-**Usage:**
-- `poweroff`, or
-- `shutdown`
-
-**Note:** No reply is sent.
-
 ---
 
 ### Reset the clock and reboot
 **Usage:**
 - `clkreboot`
-
-**Note:** No reply is sent.
 
 ---
 
@@ -229,20 +216,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Default:** Varies by board
 
 **Notes:** This setting only controls the power level of the LoRa chip. Some nodes have an additional power amplifier stage which increases the total output. Refer to the node's manual for the correct setting to use. **Setting a value too high may violate the laws in your country.**
-
----
-
-#### View or change the boosted receive gain mode
-**Usage:**
-- `get radio.rxgain`
-- `set radio.rxgain <state>`
-
-**Parameters:**
-- `state`: `on`|`off`
-
-**Default:** `off`
-
-**Note:** Only available on SX1262 and SX1268 based boards.
 
 ---
 
@@ -455,18 +428,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Default:** `off`
 
 **Note:** When enabled, device enters sleep mode between radio transmissions
-
----
-
-#### View or set reboot interval (Repeater and room server)
-**Usage:**
-- `get reboot.interval`
-- `set reboot.interval <hours>`
-
-**Parameters:** 
-- `hours`: 0-255. 0 is disabled
-
-**Default:** `0` (disabled)
 
 ---
 
@@ -699,7 +660,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Parameters:**
 - `value`: Maximum flood hop count (0-64) for a packet without a scope (no region set)
 
-**Default:** `64` - (`0xFF` indicates it hasn't been set, will track flood.max until it is.)
+**Default:** `0xFF` - indicates it hasn't been set, will track flood.max until it is.
 
 **Note:** An alternative to `region denyf *`, setting `flood.max.unscoped` to a lower value such as `3` would allow for local unscoped messages to propagate, while preventing noisy neighbors from flooding a local region.
 
@@ -827,27 +788,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Parameters:**
 - `name`: Region name,  or <null> to reset/clear
-
----
-
-#### View or set the direct path override for the current remote client
-**Usage:**
-- `get outpath`
-- `set outpath <hop1_hex,hop2_hex,...>`
-- `set outpath direct`
-- `set outpath clear`
-- `set outpath flood`
-
-**Parameters:**
-- `hopN_hex`: Hop hash, `2`, `4`, or `6` hex characters. All hops must use the same width.
-
-**Notes:**
-- These commands require remote client context (they target the caller's ACL entry).
-- The path hash size is inferred from the hop hash width.
-- `outpath` overrides the primary direct route used for replies to the caller.
-- `direct` sets a zero-hop direct route for a caller reachable without repeaters.
-- `clear` forgets the current direct path and allows normal path discovery to repopulate it.
-- `flood` forces replies to use flood packets until the client logs in again.
 
 ---
 
@@ -1020,6 +960,247 @@ region save
 - Adds nested `#NorthAmerica` hierarchy
 - Enables flooding for all child regions automatically
 - Useful for global networks with specific regional rules
+
+---
+### Direct Retry
+
+Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages, ACK packets, multipart packets carrying ACK payloads, and TRACE packets.
+
+#### View or change direct retry state
+**Usage:**
+- `get direct.retry`
+- `set direct.retry <state>`
+
+**Parameters:**
+- `state`: `on`|`off`
+
+**Default:** `on`
+
+**Notes:**
+- New installs and older preference files without direct retry settings default to `on` with the `rooftop` preset.
+
+**Examples:**
+```
+get direct.retry
+set direct.retry on
+set direct.retry off
+```
+
+---
+
+#### View or apply a direct retry preset
+**Usage:**
+- `get retry.preset`
+- `set retry.preset <preset>`
+
+**Parameters:**
+- `preset`: `infra`|`rooftop`|`mobile`
+
+**Notes:**
+- `infra`: fewer, slower retries for stable fixed infrastructure.
+- `rooftop`: default long retry window for weak rooftop links.
+- `mobile`: long retry count with shorter spacing for moving or changing links.
+- Changing `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, or `direct.retry.margin` makes the preset report as `custom`.
+
+**Examples:**
+```
+get retry.preset
+set retry.preset infra
+set retry.preset rooftop
+set retry.preset mobile
+```
+
+---
+
+#### View or change direct retry count
+**Usage:**
+- `get direct.retry.count`
+- `set direct.retry.count <count>`
+
+**Parameters:**
+- `count`: Maximum retry attempts after the original send, from `1` to `15`.
+
+**Default:** `15` with the `rooftop` preset
+
+**Examples:**
+```
+get direct.retry.count
+set direct.retry.count 1
+set direct.retry.count 4
+set direct.retry.count 15
+```
+
+---
+
+#### View or change direct retry base delay
+**Usage:**
+- `get direct.retry.base`
+- `set direct.retry.base <ms>`
+
+**Parameters:**
+- `ms`: First retry wait in milliseconds, from `10` to `5000`.
+
+**Default:** `175` with the `rooftop` preset
+
+**Explanation:**
+- The first retry waits `base` milliseconds after the failed echo window.
+- Larger values reduce channel pressure and give slow repeaters more time.
+- Smaller values recover faster but create tighter retry bursts.
+
+**Examples:**
+```
+get direct.retry.base
+set direct.retry.base 175
+set direct.retry.base 275
+set direct.retry.base 500
+```
+
+---
+
+#### View or change direct retry step delay
+**Usage:**
+- `get direct.retry.step`
+- `set direct.retry.step <ms>`
+
+**Parameters:**
+- `ms`: Extra milliseconds added for each subsequent retry, from `0` to `5000`.
+
+**Default:** `100` with the `rooftop` preset
+
+**Explanation:**
+- Retry delay is `base + attempt_index * step`.
+- With `base=175` and `step=100`, retries wait about `175`, `275`, `375`, `475` ms, and so on.
+- `step=0` keeps every retry at the same delay.
+- Larger steps spread retries over time and are safer on busy channels.
+
+**Examples:**
+```
+get direct.retry.step
+set direct.retry.step 0
+set direct.retry.step 50
+set direct.retry.step 100
+set direct.retry.step 250
+```
+
+---
+
+#### View or change direct retry SNR margin
+**Usage:**
+- `get direct.retry.margin`
+- `set direct.retry.margin <snr_db>`
+
+**Parameters:**
+- `snr_db`: Extra SNR margin above the SF receive floor, from `0` to `40`.
+
+**Default:** `5.00` with the `rooftop` preset
+
+**Notes:**
+- Unknown repeaters are still retried.
+- Known repeaters below the receive floor plus this margin are skipped.
+- Failed attempts lower the recent repeater SNR estimate by `0.25 dB`.
+
+**Examples:**
+```
+get direct.retry.margin
+set direct.retry.margin 0
+set direct.retry.margin 2.5
+set direct.retry.margin 5
+set direct.retry.margin 10
+```
+
+---
+
+#### View or change adaptive direct retry coding rate
+**Usage:**
+- `get direct.retry.cr`
+- `set direct.retry.cr off`
+- `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`
+
+**Parameters:**
+- `cr4_min`: Minimum SNR in dB to retry at CR4.
+- `cr5_min`: Minimum SNR in dB to retry at CR5.
+- `cr7_min`: Minimum SNR in dB to retry at CR7.
+- `cr8_max`: Maximum SNR in dB that forces CR8.
+
+**Default:** `10.00,7.50,2.50,2.50`
+
+**Explanation:**
+- Higher SNR uses faster coding rates.
+- Lower SNR uses more robust coding rates.
+- CR6 is intentionally skipped.
+- `off` disables per-packet retry CR overrides and uses the current radio CR.
+- Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
+- Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
+- A failed unknown repeater is seeded at `+2.75 dB`.
+- Each later failure lowers the SNR estimate by `0.25 dB`.
+
+**Examples:**
+```
+get direct.retry.cr
+set direct.retry.cr off
+set direct.retry.cr 10.0,7.5,2.5,2.5
+set direct.retry.cr 12.0,8.0,4.0,1.0
+set direct.retry.cr 8.0,5.0,1.5,0
+set direct.retry.cr 6.0,3.0,0,-2.0
+set direct.retry.cr 20.0,12.0,6.0,2.0
+set direct.retry.cr 4.0,2.0,0,-4.0
+```
+
+**Example profiles:**
+- Conservative weak-link profile:
+```
+set direct.retry.cr 12.0,8.0,4.0,1.0
+```
+- Balanced rooftop profile:
+```
+set direct.retry.cr 10.0,7.5,2.5,2.5
+```
+- Faster strong-link profile:
+```
+set direct.retry.cr 6.0,3.0,0,-2.0
+```
+- Very cautious noisy-link profile:
+```
+set direct.retry.cr 20.0,12.0,6.0,2.0
+```
+
+---
+
+#### View, seed, or clear the recent repeater table
+**Usage:**
+- `get recent.repeater`
+- `get recent.repeater <page>`
+- `set recent.repeater <prefix> [snr_db]`
+- `clear recent.repeater`
+
+**Parameters:**
+- `prefix`: Repeater path-hash prefix as hex.
+- `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
+- `page`: 1-based result page.
+
+**Output order:**
+- `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
+- Within each prefix length, entries are sorted from highest SNR to lowest SNR.
+
+**SNR details:**
+- Recent repeater SNR is stored internally in quarter-dB units.
+- Heard repeater samples update an existing table entry with a weighted blend: `75%` existing SNR and `25%` new heard SNR, rounded up.
+- Direct retry success also feeds the heard echo SNR back into the same weighted table.
+- Direct retry failure is not weighted: each final echo-timeout failure lowers that repeater's SNR by `0.25 dB`.
+- Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
+- If an unknown repeater fails, it is seeded into the table at `+2.75 dB`.
+- `set recent.repeater <prefix> [snr_db]` seeds a missing prefix or adds another weighted sample for an existing prefix.
+- Successful `set recent.repeater` replies include the stored prefix and SNR, for example `OK - set A1B2C3 at 3.0 SNR`.
+
+**Examples:**
+```
+get recent.repeater
+get recent.repeater 2
+set recent.repeater A1B2C3 8.5
+set recent.repeater 71CE82 -3.25
+set recent.repeater A1B2C3
+clear recent.repeater
+```
 
 ---
 ### GPS (When GPS support is compiled in)

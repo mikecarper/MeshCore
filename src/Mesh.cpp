@@ -37,6 +37,8 @@ void Mesh::begin() {
     _direct_retries[i].retry_at = 0;
     _direct_retries[i].retry_delay = 0;
     _direct_retries[i].retry_attempts_sent = 0;
+    memset(_direct_retries[i].next_hop_hash, 0, sizeof(_direct_retries[i].next_hop_hash));
+    _direct_retries[i].next_hop_hash_len = 0;
     _direct_retries[i].priority = 0;
     _direct_retries[i].progress_marker = 0;
     _direct_retries[i].expect_path_growth = false;
@@ -78,6 +80,7 @@ void Mesh::loop() {
         : (uint32_t)(_ms->getMillis() - _direct_retries[i].retry_started_at);
       onDirectRetryEvent("failed_all_tries", _direct_retries[i].packet, elapsed_millis, _direct_retries[i].retry_attempts_sent);
       onDirectRetryEvent("failure", _direct_retries[i].packet, elapsed_millis, _direct_retries[i].retry_attempts_sent);
+      onDirectRetryFailed(_direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
       clearDirectRetrySlot(i);
       continue;
     }
@@ -577,9 +580,6 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
 }
 
 void Mesh::clearDirectRetrySlot(int idx) {
-  if (_direct_retries[idx].waiting_final_echo && _direct_retries[idx].packet != NULL) {
-    releasePacket(_direct_retries[idx].packet);
-  }
   _direct_retries[idx].packet = NULL;
   _direct_retries[idx].trigger_packet = NULL;
   _direct_retries[idx].retry_started_at = 0;
@@ -587,6 +587,8 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].retry_at = 0;
   _direct_retries[idx].retry_delay = 0;
   _direct_retries[idx].retry_attempts_sent = 0;
+  memset(_direct_retries[idx].next_hop_hash, 0, sizeof(_direct_retries[idx].next_hop_hash));
+  _direct_retries[idx].next_hop_hash_len = 0;
   _direct_retries[idx].priority = 0;
   _direct_retries[idx].progress_marker = 0;
   _direct_retries[idx].expect_path_growth = false;
@@ -627,6 +629,7 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
     }
 
     int8_t echo_snr_x4 = packet->_snr;
+    onDirectRetrySucceeded(_direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len, echo_snr_x4);
     if (_direct_retries[i].queued || _direct_retries[i].waiting_final_echo) {
       if (_direct_retries[i].packet != NULL) {
         // Success quality comes from the received downstream echo, not the original upstream RX.
@@ -689,16 +692,9 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
           max_attempts = DIRECT_RETRY_MAX_ATTEMPTS_HARD_MAX;
         }
         if (_direct_retries[i].retry_attempts_sent >= max_attempts) {
-          Packet* final_wait = obtainNewPacket();
-          if (final_wait == NULL) {
-            onDirectRetryEvent("dropped_no_packet", packet, elapsed_millis, _direct_retries[i].retry_attempts_sent);
-            onDirectRetryEvent("failure", packet, elapsed_millis, _direct_retries[i].retry_attempts_sent);
-            clearDirectRetrySlot(i);
-            continue;
-          }
-
-          *final_wait = *packet;
-          _direct_retries[i].packet = final_wait;
+          // Dispatcher releases the retry packet after this hook. Keep only retry metadata
+          // for the final echo window so pool exhaustion cannot force a premature failure.
+          _direct_retries[i].packet = NULL;
           _direct_retries[i].retry_at = futureMillis(_direct_retries[i].retry_delay);
           _direct_retries[i].waiting_final_echo = true;
           _direct_retries[i].queued = false;
@@ -941,6 +937,9 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority) {
   _direct_retries[slot_idx].retry_at = 0;
   _direct_retries[slot_idx].retry_delay = retry_delay;
   _direct_retries[slot_idx].retry_attempts_sent = 0;
+  memset(_direct_retries[slot_idx].next_hop_hash, 0, sizeof(_direct_retries[slot_idx].next_hop_hash));
+  memcpy(_direct_retries[slot_idx].next_hop_hash, next_hop_hash, next_hop_hash_len);
+  _direct_retries[slot_idx].next_hop_hash_len = next_hop_hash_len;
   _direct_retries[slot_idx].priority = priority;
   _direct_retries[slot_idx].progress_marker = progress_marker;
   _direct_retries[slot_idx].expect_path_growth = expect_path_growth;
@@ -1341,7 +1340,9 @@ Packet* Mesh::createGroupDatagram(uint8_t type, const GroupChannel& channel, con
   return packet;
 }
 
-Packet* Mesh::createAck(const uint8_t* ack, uint8_t len) {
+Packet* Mesh::createAck(const uint8_t* ack_hash, uint8_t ack_len) {
+  if (ack_len > sizeof(Packet::payload)) return NULL;
+
   Packet* packet = obtainNewPacket();
   if (packet == NULL) {
     MESH_DEBUG_PRINTLN("%s Mesh::createAck(): error, packet pool empty", getLogDateTime());
@@ -1349,13 +1350,19 @@ Packet* Mesh::createAck(const uint8_t* ack, uint8_t len) {
   }
   packet->header = (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);  // ROUTE_TYPE_* set later
 
-  memcpy(packet->payload, ack, len);
-  packet->payload_len = len;
+  memcpy(packet->payload, ack_hash, ack_len);
+  packet->payload_len = ack_len;
 
   return packet;
 }
 
-Packet* Mesh::createMultiAck(const uint8_t* ack, uint8_t len, uint8_t remaining) {
+Packet* Mesh::createAck(uint32_t ack_crc) {
+  return createAck((const uint8_t*)&ack_crc, 4);
+}
+
+Packet* Mesh::createMultiAck(const uint8_t* ack_hash, uint8_t ack_len, uint8_t remaining) {
+  if (ack_len + 1 > sizeof(Packet::payload)) return NULL;
+
   Packet* packet = obtainNewPacket();
   if (packet == NULL) {
     MESH_DEBUG_PRINTLN("%s Mesh::createMultiAck(): error, packet pool empty", getLogDateTime());
@@ -1364,10 +1371,14 @@ Packet* Mesh::createMultiAck(const uint8_t* ack, uint8_t len, uint8_t remaining)
   packet->header = (PAYLOAD_TYPE_MULTIPART << PH_TYPE_SHIFT);  // ROUTE_TYPE_* set later
 
   packet->payload[0] = (remaining << 4) | PAYLOAD_TYPE_ACK;
-  memcpy(&packet->payload[1], ack, len);
-  packet->payload_len = 1 + len;
+  memcpy(&packet->payload[1], ack_hash, ack_len);
+  packet->payload_len = 1 + ack_len;
 
   return packet;
+}
+
+Packet* Mesh::createMultiAck(uint32_t ack_crc, uint8_t remaining) {
+  return createMultiAck((const uint8_t*)&ack_crc, 4, remaining);
 }
 
 Packet* Mesh::createRawData(const uint8_t* data, size_t len) {

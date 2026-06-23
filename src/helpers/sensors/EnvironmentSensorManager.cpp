@@ -8,6 +8,12 @@
 #define TELEM_WIRE &Wire  // Use default I2C bus for Environment Sensors
 #endif
 
+bool EnvironmentSensorManager::i2c_probe(TwoWire& wire, uint8_t addr) {
+  wire.beginTransmission(addr);
+  uint8_t error = wire.endTransmission();
+  return error == 0;
+}
+
 // ============================================================
 // Sensor library includes and static driver instances
 // ============================================================

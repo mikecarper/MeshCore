@@ -20,6 +20,10 @@ public:
     updatePreamble(sf);
   }
 
+  bool setCodingRate(uint8_t cr) override {
+    return ((CustomSX1268 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
+  }
+
   bool isReceivingPacket() override { 
     return ((CustomSX1268 *)_radio)->isReceiving();
   }

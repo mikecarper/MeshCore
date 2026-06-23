@@ -51,6 +51,8 @@ public:
    * \returns true if the radio accepted the coding rate.
   */
   virtual bool setCodingRate(uint8_t cr) { return false; }
+  virtual uint16_t getDefaultPreambleLength() const { return 0; }
+  virtual bool setPreambleLength(uint16_t len) { return false; }
 
   /**
    * \returns true if the previous 'startSendRaw()' completed successfully.
@@ -124,6 +126,7 @@ typedef uint32_t  DispatcherAction;
 class Dispatcher {
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
+  uint16_t outbound_restore_preamble_len;
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
   unsigned long cad_busy_start;
@@ -137,7 +140,7 @@ class Dispatcher {
   unsigned long duty_cycle_window_ms;
 
   void processRecvPacket(Packet* pkt);
-  void restoreOutboundCodingRate();
+  void restoreOutboundTxOverrides();
   void updateTxBudget();
 
 protected:
@@ -150,6 +153,7 @@ protected:
     : _radio(&radio), _ms(&ms), _mgr(&mgr)
   {
     outbound = NULL;
+    outbound_restore_preamble_len = 0;
     outbound_restore_cr = 0;
     total_air_time = rx_air_time = 0;
     next_tx_time = ms.getMillis();
@@ -210,9 +214,8 @@ public:
   bool millisHasNowPassed(unsigned long timestamp) const;
   unsigned long futureMillis(int millis_from_now) const;
 
-  bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
-
 private:
+  bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
   void checkRecv();
   void checkSend();
 };

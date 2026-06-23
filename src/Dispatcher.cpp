@@ -52,10 +52,14 @@ void Dispatcher::updateTxBudget() {
   }
 }
 
-void Dispatcher::restoreOutboundCodingRate() {
+void Dispatcher::restoreOutboundTxOverrides() {
   if (outbound_restore_cr != 0) {
     _radio->setCodingRate(outbound_restore_cr);
     outbound_restore_cr = 0;
+  }
+  if (outbound_restore_preamble_len != 0) {
+    _radio->setPreambleLength(outbound_restore_preamble_len);
+    outbound_restore_preamble_len = 0;
   }
 }
 
@@ -113,7 +117,7 @@ void Dispatcher::loop() {
       }
 
       _radio->onSendFinished();
-      restoreOutboundCodingRate();
+      restoreOutboundTxOverrides();
       logTx(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
       onSendComplete(outbound);
       if (outbound->isRouteFlood()) {
@@ -127,7 +131,7 @@ void Dispatcher::loop() {
       MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
 
       _radio->onSendFinished();
-      restoreOutboundCodingRate();
+      restoreOutboundTxOverrides();
       logTxFail(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
       onSendFail(outbound);
 
@@ -342,14 +346,29 @@ void Dispatcher::checkSend() {
 
       uint32_t max_airtime = _radio->getEstAirtimeFor(len)*3/2;
       outbound_restore_cr = 0;
+      outbound_restore_preamble_len = 0;
       uint8_t default_cr = getDefaultTxCodingRate();
+      bool using_low_retry_cr = false;
       if (outbound->tx_cr >= 4 && outbound->tx_cr <= 8 && default_cr >= 4 && default_cr <= 8
           && outbound->tx_cr != default_cr) {
         if (_radio->setCodingRate(outbound->tx_cr)) {
           outbound_restore_cr = default_cr;
+          using_low_retry_cr = outbound->tx_cr == 4 || outbound->tx_cr == 5;
           max_airtime = _radio->getEstAirtimeFor(len)*3/2;
         } else {
           MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): WARN: failed to set packet CR%d", getLogDateTime(), (uint32_t)outbound->tx_cr);
+        }
+      } else if (outbound->tx_cr == 4 || outbound->tx_cr == 5) {
+        using_low_retry_cr = outbound->tx_cr == default_cr;
+      }
+      bool has_direct_path = outbound->getPathHashCount() > 0
+          || (outbound->getPayloadType() == PAYLOAD_TYPE_TRACE && outbound->payload_len > 9);
+      if (outbound->isRouteDirect() && has_direct_path
+          && using_low_retry_cr) {
+        uint16_t default_preamble_len = _radio->getDefaultPreambleLength();
+        if (default_preamble_len > 16 && _radio->setPreambleLength(16)) {
+          outbound_restore_preamble_len = default_preamble_len;
+          max_airtime = _radio->getEstAirtimeFor(len)*3/2;
         }
       }
       outbound_start = _ms->getMillis();
@@ -357,7 +376,7 @@ void Dispatcher::checkSend() {
       if (!success) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): ERROR: send start failed!", getLogDateTime());
 
-        restoreOutboundCodingRate();
+        restoreOutboundTxOverrides();
         logTxFail(outbound, outbound->getRawLength());
         onSendFail(outbound);
   

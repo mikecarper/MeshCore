@@ -11,6 +11,8 @@
 #define BRIDGE_MAX_BAUD 115200
 #endif
 
+#define RECENT_REPEATER_PREFIX_MAX_BYTES  3
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -27,6 +29,151 @@ static bool isValidName(const char *n) {
     n++;
   }
   return true;
+}
+
+static bool looksNumeric(const char* s) {
+  if (s == NULL) return false;
+  while (*s == ' ') s++;
+  if (*s == '-' || *s == '+') s++;
+  bool saw_digit = false;
+  bool saw_dot = false;
+  while (*s) {
+    if (*s >= '0' && *s <= '9') {
+      saw_digit = true;
+    } else if (*s == '.' && !saw_dot) {
+      saw_dot = true;
+    } else if (*s == ' ') {
+      while (*s == ' ') s++;
+      return saw_digit && *s == 0;
+    } else {
+      break;
+    }
+    s++;
+  }
+  return saw_digit && *s == 0;
+}
+
+static bool looksUnsignedInteger(const char* s) {
+  if (s == NULL) return false;
+  while (*s == ' ') s++;
+  bool saw_digit = false;
+  while (*s) {
+    if (*s >= '0' && *s <= '9') {
+      saw_digit = true;
+    } else if (*s == ' ') {
+      while (*s == ' ') s++;
+      return saw_digit && *s == 0;
+    } else {
+      return false;
+    }
+    s++;
+  }
+  return saw_digit;
+}
+
+static int16_t parseSnrDbX4(const char* s) {
+  float db = atof(s);
+  return (int16_t)(db * 4.0f + (db >= 0.0f ? 0.5f : -0.5f));
+}
+
+static void formatSnrDbX4(char* dest, size_t dest_len, int16_t snr_x4) {
+  int16_t v = snr_x4;
+  const char* sign = "";
+  if (v < 0) {
+    sign = "-";
+    v = -v;
+  }
+  snprintf(dest, dest_len, "%s%d.%02d", sign, v / 4, (v % 4) * 25);
+}
+
+static const char* retryPresetName(uint8_t preset) {
+  switch (preset) {
+    case RETRY_PRESET_INFRA: return "infra";
+    case RETRY_PRESET_ROOFTOP: return "rooftop";
+    case RETRY_PRESET_MOBILE: return "mobile";
+    default: return "custom";
+  }
+}
+
+static void markDirectRetryPrefsValid(NodePrefs* prefs) {
+  prefs->direct_retry_prefs_magic[0] = DIRECT_RETRY_PREFS_MAGIC_0;
+  prefs->direct_retry_prefs_magic[1] = DIRECT_RETRY_PREFS_MAGIC_1;
+}
+
+static void applyDirectRetryPreset(NodePrefs* prefs, uint8_t preset) {
+  prefs->retry_preset = preset;
+  if (preset == RETRY_PRESET_INFRA) {
+    prefs->direct_retry_attempts = DIRECT_RETRY_INFRA_COUNT;
+    prefs->direct_retry_base_ms = DIRECT_RETRY_INFRA_BASE_MS;
+    prefs->direct_retry_step_ms = DIRECT_RETRY_INFRA_STEP_MS;
+    prefs->direct_retry_snr_margin_x4 = DIRECT_RETRY_INFRA_MARGIN_X4;
+  } else if (preset == RETRY_PRESET_MOBILE) {
+    prefs->direct_retry_attempts = DIRECT_RETRY_MOBILE_COUNT;
+    prefs->direct_retry_base_ms = DIRECT_RETRY_MOBILE_BASE_MS;
+    prefs->direct_retry_step_ms = DIRECT_RETRY_MOBILE_STEP_MS;
+    prefs->direct_retry_snr_margin_x4 = DIRECT_RETRY_MOBILE_MARGIN_X4;
+  } else {
+    prefs->retry_preset = RETRY_PRESET_ROOFTOP;
+    prefs->direct_retry_attempts = DIRECT_RETRY_ROOFTOP_COUNT;
+    prefs->direct_retry_base_ms = DIRECT_RETRY_ROOFTOP_BASE_MS;
+    prefs->direct_retry_step_ms = DIRECT_RETRY_ROOFTOP_STEP_MS;
+    prefs->direct_retry_snr_margin_x4 = DIRECT_RETRY_ROOFTOP_MARGIN_X4;
+  }
+  markDirectRetryPrefsValid(prefs);
+}
+
+static void setDefaultDirectRetryPrefs(NodePrefs* prefs) {
+  applyDirectRetryPreset(prefs, RETRY_PRESET_ROOFTOP);
+  prefs->direct_retry_cr_enabled = 1;
+  prefs->direct_retry_cr4_snr_x4 = DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT;
+  prefs->direct_retry_cr5_snr_x4 = DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT;
+  prefs->direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
+  prefs->direct_retry_cr8_snr_x4 = DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT;
+  prefs->direct_retry_enabled = 1;
+  markDirectRetryPrefsValid(prefs);
+}
+
+static bool directRetryPrefsValid(const NodePrefs* prefs) {
+  return prefs->direct_retry_prefs_magic[0] == DIRECT_RETRY_PREFS_MAGIC_0
+      && prefs->direct_retry_prefs_magic[1] == DIRECT_RETRY_PREFS_MAGIC_1;
+}
+
+static bool parseRetryPreset(const char* s, uint8_t& preset) {
+  if (strcmp(s, "infra") == 0 || strcmp(s, "0") == 0) {
+    preset = RETRY_PRESET_INFRA;
+    return true;
+  }
+  if (strcmp(s, "rooftop") == 0 || strcmp(s, "1") == 0) {
+    preset = RETRY_PRESET_ROOFTOP;
+    return true;
+  }
+  if (strcmp(s, "mobile") == 0 || strcmp(s, "2") == 0) {
+    preset = RETRY_PRESET_MOBILE;
+    return true;
+  }
+  return false;
+}
+
+static bool parseHashPrefix(const char* text, uint8_t* prefix, uint8_t& prefix_len) {
+  size_t hex_len = strlen(text);
+  if (hex_len == 0 || (hex_len & 1) || hex_len > RECENT_REPEATER_PREFIX_MAX_BYTES * 2) {
+    return false;
+  }
+  for (size_t i = 0; i < hex_len; i++) {
+    if (!mesh::Utils::isHexChar(text[i])) {
+      return false;
+    }
+  }
+  prefix_len = hex_len / 2;
+  return mesh::Utils::fromHex(prefix, prefix_len, text);
+}
+
+static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
+  formatSnrDbX4(dest, dest_len, snr_x4);
+  size_t len = strlen(dest);
+  if (len > 3 && dest[len - 1] == '0') {
+    dest[len - 1] = 0;
+  }
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
@@ -97,6 +244,19 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->radio_fem_rxgain, sizeof(_prefs->radio_fem_rxgain));             // 293
     file.read((uint8_t *)&_prefs->cad_enabled, sizeof(_prefs->cad_enabled));                       // 294
     // next: 295
+    file.read((uint8_t *)&_prefs->retry_preset, sizeof(_prefs->retry_preset));                     // 295
+    file.read((uint8_t *)&_prefs->direct_retry_attempts, sizeof(_prefs->direct_retry_attempts));   // 296
+    file.read((uint8_t *)&_prefs->direct_retry_base_ms, sizeof(_prefs->direct_retry_base_ms));     // 297
+    file.read((uint8_t *)&_prefs->direct_retry_step_ms, sizeof(_prefs->direct_retry_step_ms));     // 299
+    file.read((uint8_t *)&_prefs->direct_retry_snr_margin_x4, sizeof(_prefs->direct_retry_snr_margin_x4)); // 301
+    file.read((uint8_t *)&_prefs->direct_retry_cr4_snr_x4, sizeof(_prefs->direct_retry_cr4_snr_x4)); // 303
+    file.read((uint8_t *)&_prefs->direct_retry_cr5_snr_x4, sizeof(_prefs->direct_retry_cr5_snr_x4)); // 304
+    file.read((uint8_t *)&_prefs->direct_retry_cr7_snr_x4, sizeof(_prefs->direct_retry_cr7_snr_x4)); // 305
+    file.read((uint8_t *)&_prefs->direct_retry_cr8_snr_x4, sizeof(_prefs->direct_retry_cr8_snr_x4)); // 306
+    file.read((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
+    file.read((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
+    file.read((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
+    // next: 311
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -129,6 +289,18 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
     _prefs->radio_fem_rxgain = constrain(_prefs->radio_fem_rxgain, 0, 1); // boolean
     _prefs->cad_enabled = constrain(_prefs->cad_enabled, 0, 1); // boolean
+    if (!directRetryPrefsValid(_prefs)) {
+      setDefaultDirectRetryPrefs(_prefs);
+    }
+    if (_prefs->retry_preset > RETRY_PRESET_MOBILE && _prefs->retry_preset != RETRY_PRESET_CUSTOM) {
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+    }
+    _prefs->direct_retry_attempts = constrain(_prefs->direct_retry_attempts, 1, 15);
+    _prefs->direct_retry_base_ms = constrain(_prefs->direct_retry_base_ms, 10, 5000);
+    _prefs->direct_retry_step_ms = constrain(_prefs->direct_retry_step_ms, 0, 5000);
+    _prefs->direct_retry_snr_margin_x4 = constrain(_prefs->direct_retry_snr_margin_x4, 0, 160);
+    _prefs->direct_retry_enabled = constrain(_prefs->direct_retry_enabled, 0, 1);
+    _prefs->direct_retry_cr_enabled = constrain(_prefs->direct_retry_cr_enabled, 0, 1);
 
     file.close();
   }
@@ -196,6 +368,20 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->radio_fem_rxgain, sizeof(_prefs->radio_fem_rxgain));             // 293
     file.write((uint8_t *)&_prefs->cad_enabled, sizeof(_prefs->cad_enabled));                       // 294
     // next: 295
+    markDirectRetryPrefsValid(_prefs);
+    file.write((uint8_t *)&_prefs->retry_preset, sizeof(_prefs->retry_preset));                     // 295
+    file.write((uint8_t *)&_prefs->direct_retry_attempts, sizeof(_prefs->direct_retry_attempts));   // 296
+    file.write((uint8_t *)&_prefs->direct_retry_base_ms, sizeof(_prefs->direct_retry_base_ms));     // 297
+    file.write((uint8_t *)&_prefs->direct_retry_step_ms, sizeof(_prefs->direct_retry_step_ms));     // 299
+    file.write((uint8_t *)&_prefs->direct_retry_snr_margin_x4, sizeof(_prefs->direct_retry_snr_margin_x4)); // 301
+    file.write((uint8_t *)&_prefs->direct_retry_cr4_snr_x4, sizeof(_prefs->direct_retry_cr4_snr_x4)); // 303
+    file.write((uint8_t *)&_prefs->direct_retry_cr5_snr_x4, sizeof(_prefs->direct_retry_cr5_snr_x4)); // 304
+    file.write((uint8_t *)&_prefs->direct_retry_cr7_snr_x4, sizeof(_prefs->direct_retry_cr7_snr_x4)); // 305
+    file.write((uint8_t *)&_prefs->direct_retry_cr8_snr_x4, sizeof(_prefs->direct_retry_cr8_snr_x4)); // 306
+    file.write((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
+    file.write((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
+    file.write((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
+    // next: 311
 
     file.close();
   }
@@ -306,6 +492,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else if (memcmp(command, "clear stats", 11) == 0) {
       _callbacks->clearStats();
       strcpy(reply, "(OK - stats reset)");
+    } else if (memcmp(command, "clear recent.repeater", 21) == 0 && (command[21] == 0 || command[21] == ' ')) {
+      _callbacks->clearRecentRepeaters();
+      strcpy(reply, "OK");
     } else if (memcmp(command, "get ", 4) == 0) {
       handleGetCmd(sender_timestamp, command, reply);
     } else if (memcmp(command, "set ", 4) == 0) {
@@ -481,7 +670,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       // GPS
 #if defined(PIN_GPS_RX) && defined(PIN_GPS_TX)
       sprintf(reply + strlen(reply), "GPS Serial: RX=%s, TX=%s", STR(PIN_GPS_RX), STR(PIN_GPS_TX));
-#ifdef ENV_INCLUDE_GPS> 0
+#if defined(ENV_INCLUDE_GPS) && ENV_INCLUDE_GPS > 0
       sprintf(reply + strlen(reply), ". Configured");
 #else
       sprintf(reply + strlen(reply), ". Not configured");
@@ -715,6 +904,128 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, "Error, must be 0-2");
     }
+  } else if (memcmp(config, "retry.preset ", 13) == 0) {
+    uint8_t preset;
+    if (parseRetryPreset(&config[13], preset)) {
+      applyDirectRetryPreset(_prefs, preset);
+      savePrefs();
+      sprintf(reply, "OK - %s", retryPresetName(_prefs->retry_preset));
+    } else {
+      strcpy(reply, "Error, must be infra, rooftop, or mobile");
+    }
+  } else if (memcmp(config, "direct.retry ", 13) == 0) {
+    if (strcmp(&config[13], "on") == 0) {
+      _prefs->direct_retry_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(&config[13], "off") == 0) {
+      _prefs->direct_retry_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
+  } else if (memcmp(config, "direct.retry.margin ", 20) == 0) {
+    if (!looksNumeric(&config[20])) {
+      strcpy(reply, "Error, must be 0-40 dB");
+    } else {
+      int16_t margin_x4 = parseSnrDbX4(&config[20]);
+      if (margin_x4 >= 0 && margin_x4 <= 160) {
+        _prefs->direct_retry_snr_margin_x4 = (uint16_t)margin_x4;
+        _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+        savePrefs();
+        strcpy(reply, "OK");
+      } else {
+        strcpy(reply, "Error, must be 0-40 dB");
+      }
+    }
+  } else if (memcmp(config, "direct.retry.count ", 19) == 0) {
+    int attempts = looksUnsignedInteger(&config[19]) ? _atoi(&config[19]) : -1;
+    if (attempts >= 1 && attempts <= 15) {
+      _prefs->direct_retry_attempts = (uint8_t)attempts;
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 1-15");
+    }
+  } else if (memcmp(config, "direct.retry.base ", 18) == 0) {
+    int base_ms = looksUnsignedInteger(&config[18]) ? _atoi(&config[18]) : -1;
+    if (base_ms >= 10 && base_ms <= 5000) {
+      _prefs->direct_retry_base_ms = (uint16_t)base_ms;
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 10-5000 ms");
+    }
+  } else if (memcmp(config, "direct.retry.step ", 18) == 0) {
+    int step_ms = looksUnsignedInteger(&config[18]) ? _atoi(&config[18]) : -1;
+    if (step_ms >= 0 && step_ms <= 5000) {
+      _prefs->direct_retry_step_ms = (uint16_t)step_ms;
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-5000 ms");
+    }
+  } else if (memcmp(config, "direct.retry.cr ", 16) == 0) {
+    if (strcmp(&config[16], "off") == 0) {
+      _prefs->direct_retry_cr_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(tmp, &config[16]);
+      const char *parts[4];
+      int num = mesh::Utils::parseTextParts(tmp, parts, 4, ',');
+      if (num == 4 && looksNumeric(parts[0]) && looksNumeric(parts[1]) && looksNumeric(parts[2]) && looksNumeric(parts[3])) {
+        int16_t cr4 = parseSnrDbX4(parts[0]);
+        int16_t cr5 = parseSnrDbX4(parts[1]);
+        int16_t cr7 = parseSnrDbX4(parts[2]);
+        int16_t cr8 = parseSnrDbX4(parts[3]);
+        if (cr4 >= -128 && cr4 <= 127 && cr5 >= -128 && cr5 <= 127 && cr7 >= -128 && cr7 <= 127 && cr8 >= -128 && cr8 <= 127) {
+          _prefs->direct_retry_cr4_snr_x4 = (int8_t)cr4;
+          _prefs->direct_retry_cr5_snr_x4 = (int8_t)cr5;
+          _prefs->direct_retry_cr7_snr_x4 = (int8_t)cr7;
+          _prefs->direct_retry_cr8_snr_x4 = (int8_t)cr8;
+          _prefs->direct_retry_cr_enabled = 1;
+          savePrefs();
+          strcpy(reply, "OK");
+        } else {
+          strcpy(reply, "Error, SNR must fit -32.00..31.75 dB");
+        }
+      } else {
+        strcpy(reply, "Error, use CR4,CR5,CR7,CR8 SNRs or off");
+      }
+    }
+  } else if (memcmp(config, "recent.repeater ", 16) == 0) {
+    strcpy(tmp, &config[16]);
+    const char *parts[2];
+    int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
+    uint8_t prefix[MAX_HASH_SIZE];
+    uint8_t prefix_len = 0;
+    int16_t snr_x4 = 12;  // default to +3.0 dB when omitted or invalid
+    if (num < 1 || !parseHashPrefix(parts[0], prefix, prefix_len)) {
+      strcpy(reply, "Error, use: set recent.repeater <hex> [snr_db]");
+    } else if (num > 1 && !looksNumeric(parts[1])) {
+      strcpy(reply, "Error, SNR must be numeric");
+    } else {
+      if (num > 1) {
+        snr_x4 = parseSnrDbX4(parts[1]);
+      }
+      if (snr_x4 < -128 || snr_x4 > 127) {
+        strcpy(reply, "Error, SNR must fit -32.00..31.75 dB");
+      } else if (_callbacks->setRecentRepeater(prefix, prefix_len, (int8_t)snr_x4)) {
+        char prefix_hex[RECENT_REPEATER_PREFIX_MAX_BYTES * 2 + 1];
+        char snr[12];
+        mesh::Utils::toHex(prefix_hex, prefix, prefix_len);
+        prefix_hex[prefix_len * 2] = 0;
+        formatSnrDbX4Short(snr, sizeof(snr), snr_x4);
+        sprintf(reply, "OK - set %s at %s SNR", prefix_hex, snr);
+      } else {
+        strcpy(reply, "Error, table rejected prefix");
+      }
+    }
   } else if (memcmp(config, "owner.info ", 11) == 0) {
     config += 11;
     char *dp = _prefs->owner_info;
@@ -910,6 +1221,38 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", (uint32_t)_prefs->flood_max);
   } else if (memcmp(config, "direct.txdelay", 14) == 0) {
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->direct_tx_delay_factor));
+  } else if (memcmp(config, "retry.preset", 12) == 0) {
+    sprintf(reply, "> %s", retryPresetName(_prefs->retry_preset));
+  } else if (memcmp(config, "direct.retry", 12) == 0 && (config[12] == 0 || config[12] == ' ')) {
+    sprintf(reply, "> %s", _prefs->direct_retry_enabled ? "on" : "off");
+  } else if (memcmp(config, "direct.retry.margin", 19) == 0) {
+    char margin[12];
+    formatSnrDbX4(margin, sizeof(margin), _prefs->direct_retry_snr_margin_x4);
+    sprintf(reply, "> %s", margin);
+  } else if (memcmp(config, "direct.retry.count", 18) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->direct_retry_attempts);
+  } else if (memcmp(config, "direct.retry.base", 17) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->direct_retry_base_ms);
+  } else if (memcmp(config, "direct.retry.step", 17) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->direct_retry_step_ms);
+  } else if (memcmp(config, "direct.retry.cr", 15) == 0) {
+    if (!_prefs->direct_retry_cr_enabled) {
+      strcpy(reply, "> off");
+    } else {
+      char cr4[12], cr5[12], cr7[12], cr8[12];
+      formatSnrDbX4(cr4, sizeof(cr4), _prefs->direct_retry_cr4_snr_x4);
+      formatSnrDbX4(cr5, sizeof(cr5), _prefs->direct_retry_cr5_snr_x4);
+      formatSnrDbX4(cr7, sizeof(cr7), _prefs->direct_retry_cr7_snr_x4);
+      formatSnrDbX4(cr8, sizeof(cr8), _prefs->direct_retry_cr8_snr_x4);
+      sprintf(reply, "> %s,%s,%s,%s", cr4, cr5, cr7, cr8);
+    }
+  } else if (memcmp(config, "recent.repeater", 15) == 0) {
+    int page = 1;
+    const char* cursor = &config[15];
+    while (*cursor == ' ') cursor++;
+    if (*cursor) page = _atoi(cursor);
+    if (page < 1) page = 1;
+    _callbacks->formatRecentRepeatersReply(reply, page);
   } else if (memcmp(config, "owner.info", 10) == 0) {
     auto start = reply;
     *reply++ = '>';

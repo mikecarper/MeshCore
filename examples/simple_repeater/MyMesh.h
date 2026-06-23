@@ -85,9 +85,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
-  unsigned long next_battery_alert_check;
-  unsigned long last_battery_alert_sent;
-  bool battery_alert_sent;
   bool _logging;
   NodePrefs _prefs;
   ClientACL  acl;
@@ -102,15 +99,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RegionEntry* recv_pkt_region;
   TransportKey default_scope;
   RateLimiter discover_limiter, anon_limiter;
-  struct FloodRetryBridgeState {
-    uint8_t key[MAX_HASH_SIZE];
-    uint8_t source_bucket;
-    uint8_t target_mask;
-    uint8_t heard_mask;
-    uint8_t progress_marker;
-    bool active;
-  };
-  mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
   bool region_load_active;
@@ -122,7 +110,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   unsigned long set_radio_at, revert_radio_at;
   float pending_freq;
   float pending_bw;
-  float active_bw;     // live BW, including temporary radio overrides
   uint8_t pending_sf;
   uint8_t active_sf;  // live SF, including temporary radio overrides
   uint8_t pending_cr;
@@ -137,28 +124,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
   int8_t getDirectRetryMinSNRX4() const;
   uint8_t getDirectRetryCodingRateForSNR(int8_t snr_x4) const;
-  uint8_t getDirectRetryPreset() const;
   uint8_t getDirectRetryConfiguredMaxAttempts() const;
   uint32_t getDirectRetryAttemptStepMillis() const;
-  bool hasFloodRetryPrefixes() const;
-  bool floodRetryPrefixMatches(const mesh::Packet* packet) const;
-  bool floodRetryLastHopMatches(const mesh::Packet* packet) const;
-  bool floodRetryPrefixIgnored(const uint8_t* prefix, uint8_t prefix_len) const;
-  uint8_t floodRetryEffectivePathLength(const mesh::Packet* packet, uint8_t max_hops = 0xFF) const;
-  bool floodRetryPrefixFresh(const uint8_t* prefix, uint8_t prefix_len) const;
-  int floodRetryBucketForPrefix(const uint8_t* prefix, uint8_t prefix_len, bool require_fresh,
-                                bool include_other) const;
-  int floodRetryBucketForPathHop(const uint8_t* prefix, uint8_t prefix_len, uint8_t hop,
-                                 uint8_t progress_marker) const;
-  int floodRetrySourceBucket(const mesh::Packet* packet) const;
-  uint8_t floodRetryBridgeTargetMask(uint8_t source_bucket) const;
-  uint8_t floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t source_bucket,
-                                    uint8_t progress_marker) const;
-  FloodRetryBridgeState* floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const;
-  void clearFloodRetryBridgeState(const mesh::Packet* packet);
-  void refreshFloodRetryHeardRecent(const mesh::Packet* packet);
-  void formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const;
-  bool formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
   uint8_t handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
@@ -166,8 +133,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
-  bool sendRepeatersFloodText(const char* text);
-  void checkBatteryAlert();
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
@@ -190,18 +155,13 @@ protected:
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   uint8_t getDefaultTxCodingRate() const override { return active_cr; }
   bool allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const override;
-  bool maybeShortCircuitDirect(mesh::Packet* packet) override;
   void configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original, uint8_t retry_attempt) override;
   uint32_t getDirectRetryEchoDelay(const mesh::Packet* packet) const override;
   uint8_t getDirectRetryMaxAttempts(const mesh::Packet* packet) const override;
   uint32_t getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx) override;
   void onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
-  bool allowFloodRetry(const mesh::Packet* packet) const override;
-  void onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
-  bool hasFloodRetryTargetPrefix(const mesh::Packet* packet) const override;
-  uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
-  uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
-  bool isFloodRetryEchoTarget(const mesh::Packet* packet, uint8_t progress_marker) const override;
+  void onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) override;
+  void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) override;
 
   int getInterferenceThreshold() const override {
     return _prefs.interference_threshold;
@@ -233,20 +193,6 @@ protected:
   void onControlDataRecv(mesh::Packet* packet) override;
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
-  mesh::Packet* createPacketCopy(const mesh::Packet* packet, const char* caller);
-  mesh::Packet* createAltPathCopy(const mesh::Packet* packet,
-                                  const uint8_t* primary_path, uint8_t primary_path_len,
-                                  const uint8_t* alt_path, uint8_t alt_path_len);
-  void sendFloodReplyWithAltPath(mesh::Packet* packet,
-                                 const uint8_t* direct_path, uint8_t direct_path_len,
-                                 const uint8_t* alt_path, uint8_t alt_path_len,
-                                 unsigned long delay_millis, uint8_t path_hash_size);
-  void sendDirectWithAltPath(mesh::Packet* packet,
-                             const uint8_t* path, uint8_t path_len,
-                             const uint8_t* alt_path, uint8_t alt_path_len,
-                             uint32_t delay_millis);
-  void sendFloodScopedWithSelfPath(const TransportKey& scope, mesh::Packet* pkt,
-                                   uint32_t delay_millis, uint8_t path_hash_size);
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
@@ -287,6 +233,9 @@ public:
   void formatStatsReply(char *reply) override;
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
+  void formatRecentRepeatersReply(char *reply, int page) override;
+  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) override;
+  void clearRecentRepeaters() override;
   void startRegionsLoad() override;
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;

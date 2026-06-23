@@ -46,6 +46,8 @@ class Mesh : public Dispatcher {
     uint32_t retry_delay;
     uint8_t retry_attempts_sent;
     uint8_t retry_key[MAX_HASH_SIZE];
+    uint8_t next_hop_hash[MAX_HASH_SIZE];
+    uint8_t next_hop_hash_len;
     uint8_t priority;
     uint8_t progress_marker;
     bool expect_path_growth;
@@ -132,7 +134,7 @@ protected:
 
   /**
    * \brief  Decide whether a DIRECT packet should get one delayed retry if the next hop echo is not overheard.
-   *         Sub-classes can use neighbour tables or other link-quality data to opt in selectively.
+   *         Sub-classes can use recent repeater or other link-quality data to opt in selectively.
    */
   virtual bool allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const;
 
@@ -200,6 +202,16 @@ protected:
    * \brief  Optional hook for logging direct-retry lifecycle events.
    */
   virtual void onDirectRetryEvent(const char* event, const Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) { }
+
+  /**
+   * \brief  Optional hook for link-quality feedback when all direct-retry attempts fail.
+   */
+  virtual void onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) { }
+
+  /**
+   * \brief  Optional hook for link-quality feedback when a direct-retry echo is heard.
+   */
+  virtual void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) { }
 
   /**
    * \brief  Optional hook to set local-only transmit options on a retry packet before it is queued.
@@ -321,10 +333,10 @@ public:
   Packet* createDatagram(uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);
   Packet* createAnonDatagram(uint8_t type, const LocalIdentity& sender, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t data_len);
   Packet* createGroupDatagram(uint8_t type, const GroupChannel& channel, const uint8_t* data, size_t data_len);
-  Packet* createAck(const uint8_t* ack, uint8_t len);
-  Packet* createAck(uint32_t ack_crc) { return createAck((uint8_t *) &ack_crc, 4); }
-  Packet* createMultiAck(const uint8_t* ack, uint8_t len, uint8_t remaining);
-  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining) { return createMultiAck((uint8_t *)&ack_crc, 4, remaining); }
+  Packet* createAck(const uint8_t* ack_hash, uint8_t ack_len);
+  Packet* createAck(uint32_t ack_crc);
+  Packet* createMultiAck(const uint8_t* ack_hash, uint8_t ack_len, uint8_t remaining);
+  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining);
   Packet* createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createRawData(const uint8_t* data, size_t len);

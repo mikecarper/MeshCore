@@ -19,6 +19,34 @@
 #define LOOP_DETECT_MODERATE  2
 #define LOOP_DETECT_STRICT    3
 
+#define RETRY_PRESET_INFRA    0
+#define RETRY_PRESET_ROOFTOP  1
+#define RETRY_PRESET_MOBILE   2
+#define RETRY_PRESET_CUSTOM   0xFF
+
+#define DIRECT_RETRY_INFRA_BASE_MS      275
+#define DIRECT_RETRY_INFRA_COUNT          4
+#define DIRECT_RETRY_INFRA_STEP_MS      150
+#define DIRECT_RETRY_INFRA_MARGIN_X4     60
+
+#define DIRECT_RETRY_ROOFTOP_BASE_MS    175
+#define DIRECT_RETRY_ROOFTOP_COUNT       15
+#define DIRECT_RETRY_ROOFTOP_STEP_MS    100
+#define DIRECT_RETRY_ROOFTOP_MARGIN_X4   20
+
+#define DIRECT_RETRY_MOBILE_BASE_MS     175
+#define DIRECT_RETRY_MOBILE_COUNT        15
+#define DIRECT_RETRY_MOBILE_STEP_MS      50
+#define DIRECT_RETRY_MOBILE_MARGIN_X4     0
+
+#define DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT  40
+#define DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT  30
+#define DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT  10
+#define DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT  10
+
+#define DIRECT_RETRY_PREFS_MAGIC_0  0xD1
+#define DIRECT_RETRY_PREFS_MAGIC_1  0x52
+
 struct NodePrefs { // persisted to file
   float airtime_factor;
   char node_name[32];
@@ -66,6 +94,18 @@ struct NodePrefs { // persisted to file
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
   uint8_t cad_enabled;      // hardware Channel Activity Detection before TX (boolean)
+  uint8_t retry_preset;
+  uint8_t direct_retry_attempts;
+  uint16_t direct_retry_base_ms;
+  uint16_t direct_retry_step_ms;
+  uint16_t direct_retry_snr_margin_x4;
+  int8_t direct_retry_cr4_snr_x4;
+  int8_t direct_retry_cr5_snr_x4;
+  int8_t direct_retry_cr7_snr_x4;
+  int8_t direct_retry_cr8_snr_x4;
+  uint8_t direct_retry_enabled;
+  uint8_t direct_retry_cr_enabled;
+  uint8_t direct_retry_prefs_magic[2];
 };
 
 class CommonCLICallbacks {
@@ -89,6 +129,18 @@ public:
   virtual void formatStatsReply(char *reply) = 0;
   virtual void formatRadioStatsReply(char *reply) = 0;
   virtual void formatPacketStatsReply(char *reply) = 0;
+  virtual void formatRecentRepeatersReply(char *reply, int page) {
+    (void)page;
+    if (reply != NULL) reply[0] = 0;
+  }
+  virtual bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
+    (void)prefix;
+    (void)prefix_len;
+    (void)snr_x4;
+    return false;
+  }
+  virtual void clearRecentRepeaters() {
+  }
   virtual mesh::LocalIdentity& getSelfId() = 0;
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
