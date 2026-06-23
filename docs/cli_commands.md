@@ -28,11 +28,34 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:** 
 - `reboot`
 
+**Note:** No reply is sent.
+
+---
+
+### Power-off the node
+**Usage:**
+- `poweroff`, or
+- `shutdown`
+
+**Note:** No reply is sent.
+
+---
+
+### Enter the UF2 bootloader (nRF52 only)
+**Usage:**
+- `uf2reset`
+
+**Serial Only:** Yes
+
+**Note:** Reboots directly into the UF2 bootloader on supported nRF52 boards.
+
 ---
 
 ### Reset the clock and reboot
 **Usage:**
 - `clkreboot`
+
+**Note:** No reply is sent.
 
 ---
 
