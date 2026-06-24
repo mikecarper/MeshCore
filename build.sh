@@ -966,6 +966,47 @@ apply_radio_overrides() {
   fi
 }
 
+print_build_flags() {
+  local env_name=$1
+
+  echo "Build flags for ${env_name}:"
+  python3 -c '
+import json
+import os
+import shlex
+import sys
+
+env_name = sys.argv[1]
+data = json.load(sys.stdin)
+config_flags = []
+
+for section, options in data:
+    if section != f"env:{env_name}":
+        continue
+    for key, value in options:
+        if key != "build_flags":
+            continue
+        if isinstance(value, list):
+            config_flags.extend(str(flag) for flag in value)
+        elif value:
+            config_flags.extend(shlex.split(str(value)))
+    break
+
+env_flags = shlex.split(os.environ.get("PLATFORMIO_BUILD_FLAGS", ""))
+
+def print_flags(title, flags):
+    print(f"  {title}:")
+    if not flags:
+        print("    (none)")
+        return
+    for flag in flags:
+        print(f"    {flag}")
+
+print_flags("platformio.ini build_flags", config_flags)
+print_flags("PLATFORMIO_BUILD_FLAGS", env_flags)
+' "$env_name" <<<"$PIO_CONFIG_JSON"
+}
+
 copy_build_output() {
   local source_path=$1
   local output_path=$2
@@ -1096,6 +1137,7 @@ build_firmware() {
   apply_debug_overrides
   apply_radio_overrides
 
+  print_build_flags "$env_name"
   pio run -e "$env_name"
   build_status=$?
   if [ "$build_status" -eq 0 ]; then
