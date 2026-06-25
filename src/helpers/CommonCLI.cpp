@@ -95,6 +95,150 @@ static bool looksUnsignedInteger(const char* s) {
   return saw_digit;
 }
 
+static bool parseUint8Strict(const char* value, uint8_t min_value, uint8_t max_value, uint8_t& result) {
+  if (value == NULL || *value == 0) {
+    return false;
+  }
+
+  uint16_t parsed = 0;
+  const char* sp = value;
+  while (*sp) {
+    if (*sp < '0' || *sp > '9') {
+      return false;
+    }
+    parsed = (uint16_t)((parsed * 10) + (*sp - '0'));
+    if (parsed > max_value) {
+      return false;
+    }
+    sp++;
+  }
+  if (parsed < min_value) {
+    return false;
+  }
+  result = (uint8_t)parsed;
+  return true;
+}
+
+static bool bwMatches(float bw, float allowed) {
+  float diff = bw - allowed;
+  if (diff < 0.0f) diff = -diff;
+  return diff <= 0.001f;
+}
+
+static bool isValidLoRaBandwidth(float bw) {
+#if defined(USE_LR1110)
+  return bwMatches(bw, 62.5f)
+      || bwMatches(bw, 125.0f)
+      || bwMatches(bw, 250.0f)
+      || bwMatches(bw, 500.0f);
+#elif defined(USE_LLCC68) || defined(USE_SX1272)
+  return bwMatches(bw, 125.0f)
+      || bwMatches(bw, 250.0f)
+      || bwMatches(bw, 500.0f);
+#else
+  return bwMatches(bw, 7.8f)
+      || bwMatches(bw, 10.4f)
+      || bwMatches(bw, 15.6f)
+      || bwMatches(bw, 20.8f)
+      || bwMatches(bw, 31.25f)
+      || bwMatches(bw, 41.7f)
+      || bwMatches(bw, 62.5f)
+      || bwMatches(bw, 125.0f)
+      || bwMatches(bw, 250.0f)
+      || bwMatches(bw, 500.0f);
+#endif
+}
+
+static float defaultLoRaBandwidth() {
+#ifdef LORA_BW
+  if (isValidLoRaBandwidth((float)LORA_BW)) {
+    return (float)LORA_BW;
+  }
+#endif
+  return 125.0f;
+}
+
+static const char* skipSpacesConst(const char* s) {
+  while (s != NULL && *s == ' ') s++;
+  return s;
+}
+
+static bool parseUint32Strict(const char* s, uint32_t& out) {
+  if (!looksUnsignedInteger(s)) {
+    return false;
+  }
+
+  uint64_t n = 0;
+  s = skipSpacesConst(s);
+  while (*s >= '0' && *s <= '9') {
+    n = (n * 10) + (uint32_t)(*s - '0');
+    if (n > 0xFFFFFFFFULL) {
+      return false;
+    }
+    s++;
+  }
+  out = (uint32_t)n;
+  return true;
+}
+
+static int countSeparatedParts(const char* s, char separator) {
+  if (s == NULL || *s == 0) {
+    return 0;
+  }
+
+  int count = 1;
+  while (*s) {
+    if (*s++ == separator) {
+      count++;
+    }
+  }
+  return count;
+}
+
+static bool parseScheduledRadioArgs(const char* args, bool temporary, float& freq, float& bw,
+                                    uint8_t& sf, uint8_t& cr, uint32_t& start_time,
+                                    uint32_t& end_time) {
+  const int expected_parts = temporary ? 6 : 5;
+  args = skipSpacesConst(args);
+  if (countSeparatedParts(args, ',') != expected_parts) {
+    return false;
+  }
+  char local[96];
+  if (strlen(args) >= sizeof(local)) {
+    return false;
+  }
+  StrHelper::strncpy(local, args, sizeof(local));
+  const char* parts[6];
+  int num = mesh::Utils::parseTextParts(local, parts, expected_parts, ',');
+  if (num != expected_parts) {
+    return false;
+  }
+
+  uint32_t sf_u32 = 0;
+  uint32_t cr_u32 = 0;
+  if (!looksNumeric(parts[0]) || !looksNumeric(parts[1])
+      || !parseUint32Strict(parts[2], sf_u32)
+      || !parseUint32Strict(parts[3], cr_u32)
+      || !parseUint32Strict(parts[4], start_time)) {
+    return false;
+  }
+  if (sf_u32 > 255 || cr_u32 > 255) {
+    return false;
+  }
+
+  freq = atof(parts[0]);
+  bw = atof(parts[1]);
+  sf = (uint8_t)sf_u32;
+  cr = (uint8_t)cr_u32;
+  if (temporary && !parseUint32Strict(parts[5], end_time)) {
+    return false;
+  }
+  if (!temporary) {
+    end_time = 0;
+  }
+  return true;
+}
+
 static int16_t parseSnrDbX4(const char* s) {
   float db = atof(s);
   return (int16_t)(db * 4.0f + (db >= 0.0f ? 0.5f : -0.5f));
@@ -124,6 +268,93 @@ static void markDirectRetryPrefsValid(NodePrefs* prefs) {
   prefs->direct_retry_prefs_magic[1] = DIRECT_RETRY_PREFS_MAGIC_1;
 }
 
+static void applyFloodRetryPreset(NodePrefs* prefs, uint8_t preset) {
+  if (preset == RETRY_PRESET_INFRA) {
+    prefs->flood_retry_attempts = FLOOD_RETRY_INFRA_COUNT;
+    prefs->flood_retry_max_path = FLOOD_RETRY_INFRA_MAX_PATH;
+  } else if (preset == RETRY_PRESET_MOBILE) {
+    prefs->flood_retry_attempts = FLOOD_RETRY_MOBILE_COUNT;
+    prefs->flood_retry_max_path = FLOOD_RETRY_MOBILE_MAX_PATH;
+  } else {
+    prefs->flood_retry_attempts = FLOOD_RETRY_ROOFTOP_COUNT;
+    prefs->flood_retry_max_path = FLOOD_RETRY_ROOFTOP_MAX_PATH;
+  }
+}
+
+static bool parseFloodRetryPathGate(const char* value, uint8_t& path_gate) {
+  if (value == NULL) {
+    return false;
+  }
+  if (strcmp(value, "off") == 0 || strcmp(value, "disabled") == 0 || strcmp(value, "disable") == 0) {
+    path_gate = FLOOD_RETRY_PATH_GATE_DISABLED;
+    return true;
+  }
+  return parseUint8Strict(value, 0, 63, path_gate);
+}
+
+static void formatFloodRetryPathGate(char* dest, uint8_t path_gate) {
+  if (path_gate == FLOOD_RETRY_PATH_GATE_DISABLED) {
+    strcpy(dest, "off");
+  } else {
+    sprintf(dest, "%u", (unsigned int)path_gate);
+  }
+}
+
+static void formatFloodRetryPrefixList(char* dest, const uint8_t prefixes[][FLOOD_RETRY_PREFIX_LEN],
+                                       uint8_t max_prefixes) {
+  char* out = dest;
+  bool first = true;
+  for (int i = 0; i < max_prefixes; i++) {
+    const uint8_t* prefix = prefixes[i];
+    if (prefix[0] == 0 && prefix[1] == 0 && prefix[2] == 0) {
+      continue;
+    }
+    if (!first) {
+      *out++ = ',';
+    }
+    mesh::Utils::toHex(out, prefix, FLOOD_RETRY_PREFIX_LEN);
+    out += FLOOD_RETRY_PREFIX_LEN * 2;
+    first = false;
+  }
+  *out = 0;
+}
+
+static bool parseFloodRetryPrefixList(uint8_t dest[][FLOOD_RETRY_PREFIX_LEN], uint8_t max_prefixes, const char* value) {
+  if (max_prefixes > FLOOD_RETRY_LIST_PREFIXES) {
+    return false;
+  }
+  uint8_t parsed[FLOOD_RETRY_LIST_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
+  memset(parsed, 0, sizeof(parsed));
+  if (value == NULL || value[0] == 0 || strcmp(value, "none") == 0 || strcmp(value, "off") == 0) {
+    memcpy(dest, parsed, max_prefixes * FLOOD_RETRY_PREFIX_LEN);
+    return true;
+  }
+
+  char local[FLOOD_RETRY_LIST_TEXT_MAX];
+  StrHelper::strncpy(local, value, sizeof(local));
+  const char* parts[FLOOD_RETRY_LIST_PREFIXES + 1];
+  int num = mesh::Utils::parseTextParts(local, parts, FLOOD_RETRY_LIST_PREFIXES + 1);
+  if (num > max_prefixes) {
+    return false;
+  }
+  for (int i = 0; i < num; i++) {
+    if (strlen(parts[i]) != FLOOD_RETRY_PREFIX_LEN * 2) {
+      return false;
+    }
+    for (int j = 0; j < FLOOD_RETRY_PREFIX_LEN * 2; j++) {
+      if (!mesh::Utils::isHexChar(parts[i][j])) {
+        return false;
+      }
+    }
+    if (!mesh::Utils::fromHex(parsed[i], FLOOD_RETRY_PREFIX_LEN, parts[i])
+        || (parsed[i][0] == 0 && parsed[i][1] == 0 && parsed[i][2] == 0)) {
+      return false;
+    }
+  }
+  memcpy(dest, parsed, max_prefixes * FLOOD_RETRY_PREFIX_LEN);
+  return true;
+}
+
 static void applyDirectRetryPreset(NodePrefs* prefs, uint8_t preset) {
   prefs->retry_preset = preset;
   if (preset == RETRY_PRESET_INFRA) {
@@ -143,6 +374,7 @@ static void applyDirectRetryPreset(NodePrefs* prefs, uint8_t preset) {
     prefs->direct_retry_step_ms = DIRECT_RETRY_ROOFTOP_STEP_MS;
     prefs->direct_retry_snr_margin_x4 = DIRECT_RETRY_ROOFTOP_MARGIN_X4;
   }
+  applyFloodRetryPreset(prefs, prefs->retry_preset);
   markDirectRetryPrefsValid(prefs);
 }
 
@@ -154,6 +386,7 @@ static void setDefaultDirectRetryPrefs(NodePrefs* prefs) {
   prefs->direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
   prefs->direct_retry_cr8_snr_x4 = DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT;
   prefs->direct_retry_enabled = 1;
+  prefs->direct_retry_recent_enabled = DIRECT_RETRY_RECENT_DEFAULT;
   markDirectRetryPrefsValid(prefs);
 }
 
@@ -280,7 +513,48 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
     file.read((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
     file.read((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
-    // next: 311
+    memset(_prefs->flood_retry_prefixes, 0, sizeof(_prefs->flood_retry_prefixes));
+    _prefs->flood_retry_bridge_enabled = 0;
+    memset(_prefs->flood_retry_bridge_buckets, 0, sizeof(_prefs->flood_retry_bridge_buckets));
+    memset(_prefs->flood_retry_ignore_prefixes, 0, sizeof(_prefs->flood_retry_ignore_prefixes));
+    _prefs->flood_retry_advert_enabled = FLOOD_RETRY_ADVERT_DEFAULT;
+    _prefs->battery_alert_enabled = 0;
+    _prefs->battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
+    _prefs->battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
+    _prefs->direct_retry_recent_enabled = DIRECT_RETRY_RECENT_DEFAULT;
+    bool has_flood_retry_prefs = file.available() >= 2;
+    if (has_flood_retry_prefs) {
+      file.read((uint8_t *)&_prefs->flood_retry_attempts, sizeof(_prefs->flood_retry_attempts));     // 311
+      file.read((uint8_t *)&_prefs->flood_retry_max_path, sizeof(_prefs->flood_retry_max_path));     // 312
+      if (file.available() >= (int)sizeof(_prefs->flood_retry_prefixes)) {
+        file.read((uint8_t *)&_prefs->flood_retry_prefixes[0][0], sizeof(_prefs->flood_retry_prefixes));
+      }
+      if (file.available() >= (int)sizeof(_prefs->flood_retry_bridge_enabled)) {
+        file.read((uint8_t *)&_prefs->flood_retry_bridge_enabled, sizeof(_prefs->flood_retry_bridge_enabled));
+      }
+      if (file.available() >= (int)sizeof(_prefs->flood_retry_bridge_buckets)) {
+        file.read((uint8_t *)&_prefs->flood_retry_bridge_buckets[0][0][0], sizeof(_prefs->flood_retry_bridge_buckets));
+      }
+      if (file.available() >= (int)sizeof(_prefs->flood_retry_ignore_prefixes)) {
+        file.read((uint8_t *)&_prefs->flood_retry_ignore_prefixes[0][0], sizeof(_prefs->flood_retry_ignore_prefixes));
+      }
+      if (file.available() >= (int)sizeof(_prefs->flood_retry_advert_enabled)) {
+        file.read((uint8_t *)&_prefs->flood_retry_advert_enabled, sizeof(_prefs->flood_retry_advert_enabled));
+      }
+      if (file.available() >= (int)sizeof(_prefs->battery_alert_enabled)) {
+        file.read((uint8_t *)&_prefs->battery_alert_enabled, sizeof(_prefs->battery_alert_enabled));
+      }
+      if (file.available() >= (int)sizeof(_prefs->battery_alert_low_percent)) {
+        file.read((uint8_t *)&_prefs->battery_alert_low_percent, sizeof(_prefs->battery_alert_low_percent));
+      }
+      if (file.available() >= (int)sizeof(_prefs->battery_alert_critical_percent)) {
+        file.read((uint8_t *)&_prefs->battery_alert_critical_percent, sizeof(_prefs->battery_alert_critical_percent));
+      }
+      if (file.available() >= (int)sizeof(_prefs->direct_retry_recent_enabled)) {
+        file.read((uint8_t *)&_prefs->direct_retry_recent_enabled, sizeof(_prefs->direct_retry_recent_enabled));
+      }
+    }
+    // next: 672
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -288,7 +562,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->direct_tx_delay_factor = constrain(_prefs->direct_tx_delay_factor, 0, 2.0f);
     _prefs->airtime_factor = constrain(_prefs->airtime_factor, 0, 9.0f);
     _prefs->freq = constrain(_prefs->freq, 150.0f, 2500.0f);
-    _prefs->bw = constrain(_prefs->bw, 7.8f, 500.0f);
+    _prefs->bw = isValidLoRaBandwidth(_prefs->bw) ? _prefs->bw : defaultLoRaBandwidth();
     _prefs->sf = constrain(_prefs->sf, 5, 12);
     _prefs->cr = constrain(_prefs->cr, 5, 8);
     _prefs->tx_power_dbm = constrain(_prefs->tx_power_dbm, -9, 30);
@@ -315,6 +589,13 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->cad_enabled = constrain(_prefs->cad_enabled, 0, 1); // boolean
     if (!directRetryPrefsValid(_prefs)) {
       setDefaultDirectRetryPrefs(_prefs);
+      memset(_prefs->flood_retry_prefixes, 0, sizeof(_prefs->flood_retry_prefixes));
+      _prefs->flood_retry_bridge_enabled = 0;
+      memset(_prefs->flood_retry_bridge_buckets, 0, sizeof(_prefs->flood_retry_bridge_buckets));
+      memset(_prefs->flood_retry_ignore_prefixes, 0, sizeof(_prefs->flood_retry_ignore_prefixes));
+      _prefs->flood_retry_advert_enabled = FLOOD_RETRY_ADVERT_DEFAULT;
+    } else if (!has_flood_retry_prefs) {
+      applyFloodRetryPreset(_prefs, _prefs->retry_preset);
     }
     if (_prefs->retry_preset > RETRY_PRESET_MOBILE && _prefs->retry_preset != RETRY_PRESET_CUSTOM) {
       _prefs->retry_preset = RETRY_PRESET_CUSTOM;
@@ -325,6 +606,20 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->direct_retry_snr_margin_x4 = constrain(_prefs->direct_retry_snr_margin_x4, 0, 160);
     _prefs->direct_retry_enabled = constrain(_prefs->direct_retry_enabled, 0, 1);
     _prefs->direct_retry_cr_enabled = constrain(_prefs->direct_retry_cr_enabled, 0, 1);
+    _prefs->flood_retry_attempts = constrain(_prefs->flood_retry_attempts, 0, 15);
+    if (_prefs->flood_retry_max_path != FLOOD_RETRY_PATH_GATE_DISABLED) {
+      _prefs->flood_retry_max_path = constrain(_prefs->flood_retry_max_path, 0, 63);
+    }
+    _prefs->flood_retry_bridge_enabled = constrain(_prefs->flood_retry_bridge_enabled, 0, 1);
+    _prefs->flood_retry_advert_enabled = constrain(_prefs->flood_retry_advert_enabled, 0, 1);
+    _prefs->battery_alert_enabled = constrain(_prefs->battery_alert_enabled, 0, 1);
+    _prefs->direct_retry_recent_enabled = constrain(_prefs->direct_retry_recent_enabled, 0, 1);
+    if (_prefs->battery_alert_low_percent < 1
+        || _prefs->battery_alert_low_percent > 100
+        || _prefs->battery_alert_critical_percent >= _prefs->battery_alert_low_percent) {
+      _prefs->battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
+      _prefs->battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
+    }
 
     file.close();
   }
@@ -405,7 +700,18 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
     file.write((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
     file.write((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
-    // next: 311
+    file.write((uint8_t *)&_prefs->flood_retry_attempts, sizeof(_prefs->flood_retry_attempts));       // 311
+    file.write((uint8_t *)&_prefs->flood_retry_max_path, sizeof(_prefs->flood_retry_max_path));       // 312
+    file.write((uint8_t *)&_prefs->flood_retry_prefixes[0][0], sizeof(_prefs->flood_retry_prefixes)); // 313
+    file.write((uint8_t *)&_prefs->flood_retry_bridge_enabled, sizeof(_prefs->flood_retry_bridge_enabled));
+    file.write((uint8_t *)&_prefs->flood_retry_bridge_buckets[0][0][0], sizeof(_prefs->flood_retry_bridge_buckets));
+    file.write((uint8_t *)&_prefs->flood_retry_ignore_prefixes[0][0], sizeof(_prefs->flood_retry_ignore_prefixes));
+    file.write((uint8_t *)&_prefs->flood_retry_advert_enabled, sizeof(_prefs->flood_retry_advert_enabled));
+    file.write((uint8_t *)&_prefs->battery_alert_enabled, sizeof(_prefs->battery_alert_enabled));
+    file.write((uint8_t *)&_prefs->battery_alert_low_percent, sizeof(_prefs->battery_alert_low_percent));
+    file.write((uint8_t *)&_prefs->battery_alert_critical_percent, sizeof(_prefs->battery_alert_critical_percent));
+    file.write((uint8_t *)&_prefs->direct_retry_recent_enabled, sizeof(_prefs->direct_retry_recent_enabled));
+    // next: 672
 
     file.close();
   }
@@ -466,8 +772,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         strcpy(reply, "ERR: clock cannot go backwards");
       }
-    } else if (memcmp(command, "start ota", 9) == 0) {
+    } else if (memcmp(command, "start ota", 9) == 0 && (command[9] == 0 || command[9] == ' ')) {
       if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
+        strcpy(reply, "Error");
+      }
+    } else if (memcmp(command, "stop ota", 8) == 0 && (command[8] == 0 || command[8] == ' ')) {
+      if (!_board->stopOTAUpdate(reply)) {
         strcpy(reply, "Error");
       }
     } else if (memcmp(command, "clock", 5) == 0) {
@@ -507,7 +817,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
       uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
       int temp_timeout_mins  = num > 4 ? atoi(parts[4]) : 0;
-      if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && bw >= 7.0f && bw <= 500.0f && temp_timeout_mins > 0) {
+      if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw) && temp_timeout_mins > 0) {
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins);
         sprintf(reply, "OK - temp params for %d mins", temp_timeout_mins);
       } else {
@@ -529,6 +839,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       handleGetCmd(sender_timestamp, command, reply);
     } else if (memcmp(command, "set ", 4) == 0) {
       handleSetCmd(sender_timestamp, command, reply);
+    } else if (memcmp(command, "del ", 4) == 0) {
+      handleDelCmd(command, reply);
     } else if (sender_timestamp == 0 && strcmp(command, "erase") == 0) {
       bool s = _callbacks->formatFileSystem();
       sprintf(reply, "File system erase: %s", s ? "OK" : "Err");
@@ -663,13 +975,21 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
     } else if (memcmp(command, "powersaving on", 14) == 0) {
 #if defined(NRF52_PLATFORM)
-      _prefs->powersaving_enabled = 1;
-      savePrefs();
-      strcpy(reply, "on - Immediate effect");
+      if (sender_timestamp == 0 || _board->isUsbDataConnected()) {
+        strcpy(reply, "Error: USB serial connected");
+      } else {
+        _prefs->powersaving_enabled = 1;
+        savePrefs();
+        strcpy(reply, "on - Immediate effect");
+      }
 #elif defined(ESP32) && !defined(WITH_BRIDGE)
-      _prefs->powersaving_enabled = 1;
-      savePrefs();
-      strcpy(reply, "on - After 2 minutes");
+      if (sender_timestamp == 0 || _board->isUsbDataConnected()) {
+        strcpy(reply, "Error: USB serial connected");
+      } else {
+        _prefs->powersaving_enabled = 1;
+        savePrefs();
+        strcpy(reply, "on - After 2 minutes");
+      }
 #elif defined(WITH_BRIDGE)
       strcpy(reply, "Bridge not supported");
 #else
@@ -862,7 +1182,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     float bw    = num > 1 ? strtof(parts[1], nullptr) : 0.0f;
     uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
     uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
-    if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && bw >= 7.0f && bw <= 500.0f) {
+    if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw)) {
       _prefs->sf = sf;
       _prefs->cr = cr;
       _prefs->freq = freq;
@@ -871,6 +1191,28 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK - reboot to apply");
     } else {
       strcpy(reply, "Error, invalid radio params");
+    }
+  } else if (memcmp(config, "radioat ", 8) == 0) {
+    float freq, bw;
+    uint8_t sf, cr;
+    uint32_t start_time, end_time;
+    if (!parseScheduledRadioArgs(&config[8], false, freq, bw, sf, cr, start_time, end_time)) {
+      strcpy(reply, "Error, use: set radioat f,bw,sf,cr,start");
+    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)) {
+      strcpy(reply, "Error, invalid radio params");
+    } else {
+      _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply);
+    }
+  } else if (memcmp(config, "tempradioat ", 12) == 0) {
+    float freq, bw;
+    uint8_t sf, cr;
+    uint32_t start_time, end_time;
+    if (!parseScheduledRadioArgs(&config[12], true, freq, bw, sf, cr, start_time, end_time)) {
+      strcpy(reply, "Error, use: set tempradioat f,bw,sf,cr,start,end");
+    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)) {
+      strcpy(reply, "Error, invalid radio params");
+    } else {
+      _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply);
     }
   } else if (memcmp(config, "lat ", 4) == 0) {
     _prefs->node_lat = atof(&config[4]);
@@ -955,6 +1297,18 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, "Error, must be on or off");
     }
+  } else if (memcmp(config, "direct.retry.heard ", 19) == 0) {
+    if (strcmp(&config[19], "on") == 0) {
+      _prefs->direct_retry_recent_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(&config[19], "off") == 0) {
+      _prefs->direct_retry_recent_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
   } else if (memcmp(config, "direct.retry.margin ", 20) == 0) {
     if (!looksNumeric(&config[20])) {
       strcpy(reply, "Error, must be 0-40 dB");
@@ -998,6 +1352,81 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error, must be 0-5000 ms");
+    }
+  } else if (memcmp(config, "flood.retry.count ", 18) == 0) {
+    int attempts = looksUnsignedInteger(&config[18]) ? _atoi(&config[18]) : -1;
+    if (attempts >= 0 && attempts <= 15) {
+      _prefs->flood_retry_attempts = (uint8_t)attempts;
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-15");
+    }
+  } else if (memcmp(config, "flood.retry.path ", 17) == 0) {
+    uint8_t path_gate;
+    if (parseFloodRetryPathGate(&config[17], path_gate)) {
+      _prefs->flood_retry_max_path = path_gate;
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-63 or off");
+    }
+  } else if (memcmp(config, "flood.retry.prefixes ", 21) == 0) {
+    if (parseFloodRetryPrefixList(_prefs->flood_retry_prefixes, FLOOD_RETRY_PREFIX_SLOTS, &config[21])) {
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      sprintf(reply, "Error, use up to %u comma-separated 3-byte hex prefixes",
+              (unsigned int)FLOOD_RETRY_PREFIX_SLOTS);
+    }
+  } else if (memcmp(config, "flood.retry.ignore ", 19) == 0) {
+    if (parseFloodRetryPrefixList(_prefs->flood_retry_ignore_prefixes,
+                                  FLOOD_RETRY_IGNORE_PREFIXES, &config[19])) {
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      sprintf(reply, "Error, use up to %u comma-separated 3-byte hex prefixes",
+              (unsigned int)FLOOD_RETRY_IGNORE_PREFIXES);
+    }
+  } else if (memcmp(config, "flood.retry.advert ", 19) == 0) {
+    if (strcmp(&config[19], "on") == 0) {
+      _prefs->flood_retry_advert_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(&config[19], "off") == 0) {
+      _prefs->flood_retry_advert_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
+  } else if (memcmp(config, "flood.retry.bridge ", 19) == 0) {
+    if (strcmp(&config[19], "on") == 0) {
+      _prefs->flood_retry_bridge_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(&config[19], "off") == 0) {
+      _prefs->flood_retry_bridge_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
+  } else if (memcmp(config, "flood.retry.bucket ", 19) == 0) {
+    const char* params = &config[19];
+    uint8_t bucket = atoi(params);
+    const char* list = strchr(params, ' ');
+    if (bucket < 1 || bucket > FLOOD_RETRY_BRIDGE_BUCKETS || list == NULL || *(list + 1) == 0) {
+      sprintf(reply, "Error, usage: set flood.retry.bucket <1-%d> <prefixes|none>", FLOOD_RETRY_BRIDGE_BUCKETS);
+    } else if (parseFloodRetryPrefixList(_prefs->flood_retry_bridge_buckets[bucket - 1],
+                                         FLOOD_RETRY_BUCKET_PREFIXES, list + 1)) {
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      sprintf(reply, "Error, use up to %u comma-separated 3-byte hex prefixes",
+              (unsigned int)FLOOD_RETRY_BUCKET_PREFIXES);
     }
   } else if (memcmp(config, "direct.retry.cr ", 16) == 0) {
     if (strcmp(&config[16], "off") == 0) {
@@ -1234,6 +1663,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       sprintf(reply, "> %s", _board->isLoRaFemLnaEnabled() ? "on" : "off");
     }
+  } else if (memcmp(config, "tempradioat", 11) == 0 && (config[11] == 0 || config[11] == ' ')) {
+    _callbacks->formatScheduledRadioParams(true, skipSpacesConst(&config[11]), reply);
+  } else if (memcmp(config, "radioat", 7) == 0 && (config[7] == 0 || config[7] == ' ')) {
+    _callbacks->formatScheduledRadioParams(false, skipSpacesConst(&config[7]), reply);
   } else if (memcmp(config, "radio", 5) == 0) {
     char freq[16], bw[16];
     strcpy(freq, StrHelper::ftoa(_prefs->freq));
@@ -1255,6 +1688,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", retryPresetName(_prefs->retry_preset));
   } else if (memcmp(config, "direct.retry", 12) == 0 && (config[12] == 0 || config[12] == ' ')) {
     sprintf(reply, "> %s", _prefs->direct_retry_enabled ? "on" : "off");
+  } else if (memcmp(config, "direct.retry.heard", 18) == 0) {
+    sprintf(reply, "> %s", _prefs->direct_retry_recent_enabled ? "on" : "off");
   } else if (memcmp(config, "direct.retry.margin", 19) == 0) {
     char margin[12];
     formatSnrDbX4(margin, sizeof(margin), _prefs->direct_retry_snr_margin_x4);
@@ -1265,6 +1700,30 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", (uint32_t)_prefs->direct_retry_base_ms);
   } else if (memcmp(config, "direct.retry.step", 17) == 0) {
     sprintf(reply, "> %d", (uint32_t)_prefs->direct_retry_step_ms);
+  } else if (memcmp(config, "flood.retry.count", 17) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->flood_retry_attempts);
+  } else if (memcmp(config, "flood.retry.path", 16) == 0) {
+    char path_gate[8];
+    formatFloodRetryPathGate(path_gate, _prefs->flood_retry_max_path);
+    sprintf(reply, "> %s", path_gate);
+  } else if (memcmp(config, "flood.retry.prefixes", 20) == 0) {
+    formatFloodRetryPrefixList(tmp, _prefs->flood_retry_prefixes, FLOOD_RETRY_PREFIX_SLOTS);
+    sprintf(reply, "> %s", tmp[0] ? tmp : "none");
+  } else if (memcmp(config, "flood.retry.ignore", 18) == 0) {
+    formatFloodRetryPrefixList(tmp, _prefs->flood_retry_ignore_prefixes, FLOOD_RETRY_IGNORE_PREFIXES);
+    sprintf(reply, "> %s", tmp[0] ? tmp : "none");
+  } else if (memcmp(config, "flood.retry.advert", 18) == 0) {
+    sprintf(reply, "> %s", _prefs->flood_retry_advert_enabled ? "on" : "off");
+  } else if (memcmp(config, "flood.retry.bridge", 18) == 0) {
+    sprintf(reply, "> %s", _prefs->flood_retry_bridge_enabled ? "on" : "off");
+  } else if (memcmp(config, "flood.retry.bucket.", 19) == 0) {
+    uint8_t bucket = atoi(&config[19]);
+    if (bucket >= 1 && bucket <= FLOOD_RETRY_BRIDGE_BUCKETS) {
+      formatFloodRetryPrefixList(tmp, _prefs->flood_retry_bridge_buckets[bucket - 1], FLOOD_RETRY_BUCKET_PREFIXES);
+      sprintf(reply, "> %s", tmp[0] ? tmp : "none");
+    } else {
+      sprintf(reply, "Error, bucket 1-%d", FLOOD_RETRY_BRIDGE_BUCKETS);
+    }
   } else if (memcmp(config, "direct.retry.cr", 15) == 0) {
     if (!_prefs->direct_retry_cr_enabled) {
       strcpy(reply, "> off");
@@ -1395,6 +1854,18 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
   } else {
     sprintf(reply, "??: %s", config);
+  }
+}
+
+void CommonCLI::handleDelCmd(char* command, char* reply) {
+  const char* config = &command[4];
+  if (memcmp(config, "tempradioat", 11) == 0 && (config[11] == 0 || config[11] == ' ')) {
+    _callbacks->deleteScheduledRadioParams(true, skipSpacesConst(&config[11]), reply);
+  } else if (memcmp(config, "radioat", 7) == 0 && (config[7] == 0 || config[7] == ' ')) {
+    _callbacks->deleteScheduledRadioParams(false, skipSpacesConst(&config[7]), reply);
+  } else {
+    strcpy(reply, "unknown del: ");
+    StrHelper::strncpy(&reply[13], config, 160 - 14);
   }
 }
 

@@ -48,6 +48,7 @@ class Mesh : public Dispatcher {
     uint8_t retry_key[MAX_HASH_SIZE];
     uint8_t next_hop_hash[MAX_HASH_SIZE];
     uint8_t next_hop_hash_len;
+    uint8_t payload_type;
     uint8_t priority;
     uint8_t progress_marker;
     bool expect_path_growth;
@@ -201,7 +202,9 @@ protected:
   /**
    * \brief  Optional hook for logging direct-retry lifecycle events.
    */
-  virtual void onDirectRetryEvent(const char* event, const Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) { }
+  virtual void onDirectRetryEvent(const char* event, const Packet* packet, uint32_t delay_millis, uint8_t retry_attempt,
+                                  const uint8_t* target_hash = NULL, uint8_t target_hash_len = 0,
+                                  int16_t payload_type = -1) { }
 
   /**
    * \brief  Optional hook for link-quality feedback when all direct-retry attempts fail.

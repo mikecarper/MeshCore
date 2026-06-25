@@ -15,6 +15,7 @@ RADIO_FREQ_OVERRIDE=""
 RADIO_BW_OVERRIDE=""
 RADIO_SF_OVERRIDE=""
 RADIO_CR_OVERRIDE=""
+FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-}"
 BATCH_BUILD_MODE=0
 RESOLVED_BUILD_TARGETS=()
 
@@ -60,7 +61,7 @@ Examples:
 Build firmware for the "RAK_4631_repeater" device target
 $ bash build.sh build-firmware RAK_4631_repeater
 
-Run without arguments to choose an interactive build action/target, debug options, radio settings, and firmware version
+Run without arguments to choose an interactive build action/target, debug options, radio settings, firmware profile, and firmware version
 $ bash build.sh
 
 Build all firmwares for device targets containing the string "RAK_4631"
@@ -315,12 +316,20 @@ clear_radio_overrides() {
   RADIO_CR_OVERRIDE=""
 }
 
+clear_firmware_profile_overrides() {
+  FIRMWARE_PROFILE_OVERRIDE=""
+}
+
 set_radio_overrides() {
   RADIO_SETTING_TITLE=$1
   RADIO_FREQ_OVERRIDE=$2
   RADIO_BW_OVERRIDE=$3
   RADIO_SF_OVERRIDE=$4
   RADIO_CR_OVERRIDE=$5
+}
+
+set_firmware_profile_override() {
+  FIRMWARE_PROFILE_OVERRIDE=$1
 }
 
 fetch_suggested_radio_settings() {
@@ -367,7 +376,7 @@ is_valid_custom_radio_bandwidth() {
   python3 - "$1" <<'PY'
 import sys
 
-allowed = [7.81, 10.42, 15.63, 20.83, 31.25, 41.67, 62.5, 125.0, 250.0, 500.0]
+allowed = [7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125.0, 250.0, 500.0]
 try:
     value = float(sys.argv[1])
 except Exception:
@@ -403,13 +412,13 @@ prompt_for_custom_radio_setting() {
     echo "Please enter 5, 6, 7, 8, 9, 10, 11, or 12."
   done
 
-  echo "Bandwidth options (kHz): 7.81 10.42 15.63 20.83 31.25 41.67 62.5 125 250 500"
+  echo "Bandwidth options (kHz): 7.8 10.4 15.6 20.8 31.25 41.7 62.5 125 250 500"
   while true; do
     read -r -p "BW (kHz): " bw
     if [[ "$bw" =~ ^[0-9]+([.][0-9]+)?$ ]] && is_valid_custom_radio_bandwidth "$bw"; then
       break
     fi
-    echo "Please enter one of: 7.81 10.42 15.63 20.83 31.25 41.67 62.5 125 250 500."
+    echo "Please enter one of: 7.8 10.4 15.6 20.8 31.25 41.7 62.5 125 250 500."
   done
 
   echo "Coding rate options: CR5, CR6, CR7, CR8"
@@ -426,6 +435,7 @@ prompt_for_custom_radio_setting() {
 
 prompt_for_radio_build_settings() {
   local -a preset_rows=()
+  local -a fetched_preset_rows=()
   local -a options=("Keep target defaults (no radio override)")
   local row
   local title
@@ -443,19 +453,25 @@ prompt_for_radio_build_settings() {
 
   if preset_output=$(fetch_suggested_radio_settings); then
     if [ -n "$preset_output" ]; then
-      mapfile -t preset_rows <<< "$preset_output"
+      mapfile -t fetched_preset_rows <<< "$preset_output"
     fi
-    for row in "${preset_rows[@]}"; do
+    for row in "${fetched_preset_rows[@]}"; do
       if [ -z "$row" ]; then
         continue
       fi
-      IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
-      options+=("${title}: ${description}")
+      preset_rows+=("$row")
     done
   else
     echo "Could not fetch radio presets from ${RADIO_SETTINGS_API_URL}."
-    preset_rows=()
   fi
+
+  for row in "${preset_rows[@]}"; do
+    if [ -z "$row" ]; then
+      continue
+    fi
+    IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
+    options+=("${title}: ${description}")
+  done
 
   options+=("Custom")
   custom_index=${#options[@]}
@@ -488,6 +504,37 @@ prompt_for_radio_build_settings() {
       echo "Using radio setting: ${RADIO_SETTING_TITLE} (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})"
       return 0
     fi
+  done
+}
+
+prompt_for_firmware_profile_settings() {
+  local -a options=(
+    "Keep target defaults"
+    "Cascade: path.hash.mode=2 / loop.detect=minimal / rxdelay=2 / agc.reset.interval=8 / advert.interval=0 / flood.advert.interval=83 / multi.acks=1"
+  )
+
+  clear_firmware_profile_overrides
+
+  echo "Set firmware profile options:"
+  while true; do
+    print_numbered_menu "${options[@]}"
+    prompt_menu_choice "Firmware profile" "${#options[@]}"
+    if [ "$MENU_CHOICE" == "QUIT" ]; then
+      echo "Cancelled."
+      exit 1
+    fi
+
+    case "$MENU_CHOICE" in
+      1)
+        echo "Using target default firmware profile settings."
+        return 0
+        ;;
+      2)
+        set_firmware_profile_override "cascade"
+        echo "Using firmware profile: Cascade"
+        return 0
+        ;;
+    esac
   done
 }
 
@@ -966,6 +1013,14 @@ apply_radio_overrides() {
   fi
 }
 
+apply_firmware_profile_overrides() {
+  case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
+    cascade)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=8 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1"
+      ;;
+  esac
+}
+
 print_build_flags() {
   local env_name=$1
 
@@ -1136,6 +1191,7 @@ build_firmware() {
   disable_debug_flags
   apply_debug_overrides
   apply_radio_overrides
+  apply_firmware_profile_overrides
 
   print_build_flags "$env_name"
   pio run -e "$env_name"
@@ -1363,6 +1419,7 @@ main() {
     prompt_for_build_mode
     prompt_for_debug_build_settings
     prompt_for_radio_build_settings
+    prompt_for_firmware_profile_settings
     set -- "${SELECTED_COMMAND_ARGS[@]}"
     validate_command "$@"
   fi

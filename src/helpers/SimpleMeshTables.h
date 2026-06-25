@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Mesh.h>
+#if ARDUINO
+  #include <Arduino.h>
+#endif
 
 #ifdef ESP32
   #include <FS.h>
@@ -26,6 +29,7 @@ public:
     uint8_t prefix[MAX_ROUTE_HASH_BYTES];
     uint8_t prefix_len;
     int8_t snr_x4;
+    uint32_t last_heard_millis;
   };
 
 private:
@@ -194,7 +198,10 @@ public:
   uint32_t getNumDirectDups() const { return _direct_dups; }
   uint32_t getNumFloodDups() const { return _flood_dups; }
 
-  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
+  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4,
+                         bool snr_locked = false, bool bypass_allow_filter = false) {
+    (void)snr_locked;
+    (void)bypass_allow_filter;
     if (prefix == NULL || prefix_len == 0) {
       return false;
     }
@@ -211,6 +218,11 @@ public:
         continue;
       }
       existing.snr_x4 = weightedSnrX4RoundUp(existing.snr_x4, snr_x4);
+#if ARDUINO
+      existing.last_heard_millis = millis();
+#else
+      existing.last_heard_millis = 0;
+#endif
       return true;
     }
 
@@ -222,15 +234,19 @@ public:
       }
     }
     if (slot_idx < 0) {
-      // Table is full: evict the weakest observed SNR entry.
+      // Table is full: evict the oldest heard entry.
       slot_idx = 0;
-      int8_t min_snr_x4 = _recent_repeaters[0].snr_x4;
+#if ARDUINO
+      uint32_t now = millis();
+      uint32_t oldest_age = (uint32_t)(now - _recent_repeaters[0].last_heard_millis);
       for (int i = 1; i < MAX_RECENT_REPEATERS; i++) {
-        if (_recent_repeaters[i].snr_x4 < min_snr_x4) {
-          min_snr_x4 = _recent_repeaters[i].snr_x4;
+        uint32_t age = (uint32_t)(now - _recent_repeaters[i].last_heard_millis);
+        if (age > oldest_age) {
+          oldest_age = age;
           slot_idx = i;
         }
       }
+#endif
     }
 
     RecentRepeaterInfo& slot = _recent_repeaters[slot_idx];
@@ -238,6 +254,11 @@ public:
     memcpy(slot.prefix, prefix, prefix_len);
     slot.prefix_len = prefix_len;
     slot.snr_x4 = snr_x4;
+#if ARDUINO
+    slot.last_heard_millis = millis();
+#else
+    slot.last_heard_millis = 0;
+#endif
     return true;
   }
   bool decrementRecentRepeaterSnrX4(const uint8_t* prefix, uint8_t prefix_len, uint8_t amount_x4 = 1) {

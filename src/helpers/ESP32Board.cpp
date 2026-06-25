@@ -13,6 +13,12 @@
 
 bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   inhibit_sleep = true;   // prevent sleep during OTA
+
+  if (ota_server != nullptr) {
+    sprintf(reply, "Started: http://%s/update", WiFi.softAPIP().toString().c_str());
+    return true;
+  }
+
   WiFi.softAP("MeshCore-OTA", NULL);
 
   sprintf(reply, "Started: http://%s/update", WiFi.softAPIP().toString().c_str());
@@ -23,24 +29,46 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   static char home_buf[90];
   sprintf(home_buf, "<H2>Hi! I am a MeshCore Repeater. ID: %s</H2>", id);
 
-  AsyncWebServer* server = new AsyncWebServer(80);
+  ota_server = new AsyncWebServer(80);
 
-  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  ota_server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", home_buf);
   });
-  server->on("/log", HTTP_GET, [](AsyncWebServerRequest *request) {
+  ota_server->on("/log", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(SPIFFS, "/packet_log", "text/plain");
   });
 
   AsyncElegantOTA.setID(id_buf);
-  AsyncElegantOTA.begin(server);    // Start ElegantOTA
-  server->begin();
+  AsyncElegantOTA.begin(ota_server);    // Start ElegantOTA
+  ota_server->begin();
+
+  return true;
+}
+
+bool ESP32Board::stopOTAUpdate(char reply[]) {
+  if (ota_server == nullptr) {
+    strcpy(reply, "OK - OTA not running");
+    return true;
+  }
+
+  ota_server->end();
+  delete ota_server;
+  ota_server = nullptr;
+  WiFi.softAPdisconnect(true);
+  inhibit_sleep = false;
+
+  strcpy(reply, "OK - OTA stopped");
+  MESH_DEBUG_PRINTLN("stopOTAUpdate: %s", reply);
 
   return true;
 }
 
 #else
 bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+  return false; // not supported
+}
+
+bool ESP32Board::stopOTAUpdate(char reply[]) {
   return false; // not supported
 }
 #endif

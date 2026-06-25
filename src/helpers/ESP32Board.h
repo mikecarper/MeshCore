@@ -16,10 +16,13 @@
 #include "esp_system.h"
 #include <driver/rtc_io.h>
 
+class AsyncWebServer;
+
 class ESP32Board : public mesh::MainBoard {
 protected:
   uint8_t startup_reason;
   bool inhibit_sleep = false;
+  AsyncWebServer* ota_server = nullptr;
   static inline portMUX_TYPE sleepMux = portMUX_INITIALIZER_UNLOCKED;
 
 public:
@@ -155,6 +158,15 @@ public:
   }
 
   bool startOTAUpdate(const char* id, char reply[]) override;
+  bool stopOTAUpdate(char reply[]) override;
+
+  bool isUsbDataConnected() override {
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    return (bool)Serial;
+#else
+    return false;
+#endif
+  }
 
   void setInhibitSleep(bool inhibit) {
     inhibit_sleep = inhibit;

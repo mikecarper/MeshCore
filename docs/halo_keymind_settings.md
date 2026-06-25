@@ -78,7 +78,6 @@ set flood.retry.ignore none
 | `battery.alert.critical` | Critical threshold percentage. Critical warnings repeat more often. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
 | `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
 | `outpath` | Overrides the primary direct route used for replies to the current remote client. | `get outpath`, `set outpath <hops>`, `set outpath direct`, `set outpath clear`, `set outpath flood` | `set outpath A1B2C3,D4E5F6` |
-| `altpath` | Optional second direct route used for duplicate response attempts to the current remote client. | `get altpath`, `set altpath <hops>`, `set altpath clear` | `set altpath A1B2C3,D4E5F6` |
 
 ## Other Keymind Commands
 
@@ -146,8 +145,8 @@ Serial CLI pages contain up to `128` rows. Remote LoRa CLI pages contain up to
 
 ## Direct Path Overrides
 
-`outpath` and `altpath` apply to the current remote client ACL entry. They need
-remote client context, so they are not useful from the local serial CLI.
+`outpath` applies to the current remote client ACL entry. It needs remote
+client context, so it is not useful from the local serial CLI.
 
 Set paths with comma-separated hop hashes. Each hop must be `2`, `4`, or `6`
 hex characters, and all hops in one path must use the same width.
@@ -158,17 +157,12 @@ set outpath A1B2C3,D4E5F6
 set outpath direct
 set outpath clear
 set outpath flood
-
-get altpath
-set altpath A1B2C3,D4E5F6
-set altpath clear
 ```
 
 `set outpath direct` sets a zero-hop direct route for a client reachable without
 repeaters. `set outpath clear` forgets the override and lets normal path
 discovery fill it again. `set outpath flood` forces replies to use flood packets
-until the client logs in again. `altpath` sends a duplicate reply over a second
-direct route; clearing it returns replies to a single route.
+until the client logs in again.
 
 ## Direct Retry Settings
 
@@ -180,8 +174,8 @@ Direct retry applies to direct-routed packets. A queued resend is canceled when 
 | `direct.retry.heard` | Uses the recent repeater table as the direct retry eligibility gate. | `get direct.retry.heard`, `set direct.retry.heard on/off` | `set direct.retry.heard on` |
 | `direct.retry.margin` | SNR margin in dB above the SF-specific receive floor. | `get direct.retry.margin`, `set direct.retry.margin <0-40>` | `set direct.retry.margin 5` |
 | `direct.retry.count` | Maximum direct retry attempts after initial TX. | `get direct.retry.count`, `set direct.retry.count <1-15>` | `set direct.retry.count 15` |
-| `direct.retry.base` | Base wait in milliseconds before retry. | `get direct.retry.base`, `set direct.retry.base <10-5000>` | `set direct.retry.base 175` |
-| `direct.retry.step` | Milliseconds added per retry attempt. | `get direct.retry.step`, `set direct.retry.step <0-5000>` | `set direct.retry.step 100` |
+| `direct.retry.base` | Base wait in milliseconds before retry; non-TRACE paths under 6 remaining hops scale by `hops / 6`, TRACE paths under 16 by `hops / 16`. | `get direct.retry.base`, `set direct.retry.base <10-5000>` | `set direct.retry.base 175` |
+| `direct.retry.step` | Milliseconds added per retry attempt before the same short-path scaling. | `get direct.retry.step`, `set direct.retry.step <0-5000>` | `set direct.retry.step 100` |
 | `direct.retry.cr` | Adaptive coding-rate thresholds for direct retry packets. Uses `CR4`, `CR5`, `CR7`, or `CR8`; `CR6` is never selected. | `get direct.retry.cr`, `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`, `set direct.retry.cr off` | `set direct.retry.cr 10.0,7.5,2.5,0` |
 
 The default adaptive coding-rate profile is `10.0,7.5,2.5,2.5`.
@@ -217,14 +211,16 @@ set direct.retry.margin 0
 
 ## Flood And Advert Settings
 
-Flood retry applies to flood-routed packets. A queued retry is canceled when a qualifying downstream echo is heard.
+Flood retry applies to flood-routed packets. A queued retry is canceled when the
+same packet is heard from a qualifying, non-ignored repeater. Bridge mode uses
+the bucket rules below instead.
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `flood.retry.count` | Maximum flood retry attempts after initial TX. `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
+| `flood.retry.count` | Base flood retry attempts after initial TX. Hop 1 doubles it, hop 2 uses 1.5x rounded up, and actual attempts cap at `15`; `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
 | `flood.retry.path` | Maximum path hash count eligible for flood retry, or `off` to disable the gate. | `get flood.retry.path`, `set flood.retry.path <0-63/off>` | `set flood.retry.path 1` |
 | `flood.retry.advert` | Allows or blocks retry for node advert packets (`type=4`). Default is `off`. | `get flood.retry.advert`, `set flood.retry.advert on/off` | `set flood.retry.advert off` |
-| `flood.retry.prefixes` | Target prefixes. If set, only matching downstream echoes cancel a retry. | `get flood.retry.prefixes`, `set flood.retry.prefixes <prefixes/none/off>` | `set flood.retry.prefixes BEEBB0,425E5C` |
+| `flood.retry.prefixes` | Target prefixes. If set, only same-packet echoes from matching last-hop prefixes cancel a retry. | `get flood.retry.prefixes`, `set flood.retry.prefixes <prefixes/none/off>` | `set flood.retry.prefixes BEEBB0,425E5C` |
 | `flood.retry.ignore` | Ignored prefixes. In non-bridge retry, ignored last-hop echoes do not cancel retry. | `get flood.retry.ignore`, `set flood.retry.ignore <prefixes/none/off>` | `set flood.retry.ignore 71CE82,C7618C` |
 | `flood.retry.bridge` | Enables bucket-based bridge retry logic. | `get flood.retry.bridge`, `set flood.retry.bridge on/off` | `set flood.retry.bridge on` |
 | `flood.retry.bucket.<n>` | Shows one bridge bucket. Buckets are numbered `1`-`6`. | `get flood.retry.bucket.<n>` | `get flood.retry.bucket.1` |
@@ -236,7 +232,7 @@ The shared retry preset sets these flood defaults:
 | --- | ---: | ---: |
 | `infra` | `1` | `1` |
 | `rooftop` | `3` | `2` |
-| `mobile` | `3` | `1` |
+| `mobile` | `15` | `1` |
 
 Example for path-gated retry:
 

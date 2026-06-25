@@ -1032,10 +1032,48 @@ void MyMesh::loop() {
   last_millis = now;
 }
 
+bool MyMesh::isMillisTimerDue(unsigned long timestamp) const {
+  return timestamp && millisHasNowPassed(timestamp);
+}
+
+uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const {
+  if (!timestamp || sleep_secs == 0) {
+    return sleep_secs;
+  }
+  unsigned long now = millis();
+  if ((long)(now - timestamp) >= 0) {
+    return 0;
+  }
+  unsigned long remaining_ms = timestamp - now;
+  uint32_t remaining_secs = (remaining_ms + 999UL) / 1000UL;
+  return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
+}
+
+uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
+  if (max_secs == 0 || hasPendingWork()) {
+    return 0;
+  }
+
+  uint32_t sleep_secs = max_secs;
+  if (acl.getNumClients() > 0) {
+    sleep_secs = limitSleepToMillisTimer(next_push, sleep_secs);
+  }
+  sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(set_radio_at, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(revert_radio_at, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
+  return sleep_secs;
+}
+
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
   if (bridge.isRunning()) return true; // bridge needs WiFi radio, can't sleep
 #endif
-  return _mgr->getOutboundTotal() > 0;
+  if (_mgr->getOutboundTotal() > 0) return true;
+  if (acl.getNumClients() > 0 && isMillisTimerDue(next_push)) return true;
+  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
+  if (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)) return true;
+  return isMillisTimerDue(dirty_contacts_expiry);
 }

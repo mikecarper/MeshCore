@@ -53,8 +53,10 @@ public:
   virtual void powerOff() override;
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[]) override;
+  virtual bool stopOTAUpdate(char reply[]) override;
   virtual void sleep(uint32_t secs) override;
   bool isExternalPowered() override;
+  bool isUsbDataConnected() override;
 
 #ifdef NRF52_POWER_MANAGEMENT
   uint16_t getBootVoltage() override { return boot_voltage_mv; }

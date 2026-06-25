@@ -225,7 +225,12 @@ public:
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+  uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 
   // To check if there is pending work
   bool hasPendingWork() const;
+
+private:
+  bool isMillisTimerDue(unsigned long timestamp) const;
+  uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const;
 };

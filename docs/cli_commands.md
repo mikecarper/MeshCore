@@ -92,9 +92,10 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
-### Start an Over-The-Air (OTA) firmware update
+### Start or stop an Over-The-Air (OTA) firmware update
 **Usage:**
 - `start ota`
+- `stop ota`
 
 ---
 
@@ -214,7 +215,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Parameters:**
 - `freq`: Frequency in MHz
-- `bw`: Bandwidth in kHz
+- `bw`: Bandwidth in kHz. Most targets allow `7.8`, `10.4`, `15.6`, `20.8`, `31.25`, `41.7`, `62.5`, `125`, `250`, `500`. LR1110 targets allow `62.5`, `125`, `250`, `500`.
 - `sf`: Spreading factor (5-12)
 - `cr`: Coding rate (5-8)
 
@@ -247,13 +248,39 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `tempradio <freq>,<bw>,<sf>,<cr>,<timeout_mins>`
 
 **Parameters:**
-- `freq`: Frequency in MHz (300-2500)
-- `bw`: Bandwidth in kHz (7.8-500)
+- `freq`: Frequency in MHz (150-2500)
+- `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
 - `cr`: Coding rate (5-8)
 - `timeout_mins`: Duration in minutes (must be > 0)
 
 **Note:** This is not saved to preferences and will clear on reboot
+
+---
+
+#### Schedule radio parameter changes
+**Usage:**
+- `set radioat <freq>,<bw>,<sf>,<cr>,<start_time>`
+- `get radioat [n|all]`
+- `del radioat [n|all]`
+- `set tempradioat <freq>,<bw>,<sf>,<cr>,<start_time>,<end_time>`
+- `get tempradioat [n|all]`
+- `del tempradioat [n|all]`
+
+**Parameters:**
+- `freq`: Frequency in MHz (150-2500)
+- `bw`: Bandwidth in kHz (same allowed values as `set radio`)
+- `sf`: Spreading factor (5-12)
+- `cr`: Coding rate (5-8)
+- `start_time`: Unix epoch time when the setting starts
+- `end_time`: Unix epoch time when a temporary setting reverts
+- `n`: Scheduled entry number from `get radioat` or `get tempradioat`
+
+**Notes:**
+- `get radioat` and `get tempradioat` list all entries when `n` is omitted.
+- `del radioat` and `del tempradioat` delete all entries when `n` is omitted.
+- Each queue supports 3 entries. Scheduled entries are not saved across reboot.
+- `radioat` saves the new radio preferences when it fires. `tempradioat` applies temporarily, then reverts to the saved radio preferences.
 
 ---
 
@@ -423,6 +450,46 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
+#### Send a repeater flood text
+**Usage:**
+- `send text.flood <message>`
+
+**Parameters:**
+- `message`: Text to send to the shared `#repeaters` flood channel, prefixed with this node's name.
+
+**Example:**
+```
+send text.flood checking ridge link
+```
+
+---
+
+#### View or change battery alert state
+**Usage:**
+- `get battery.alert`
+- `set battery.alert <on|off>`
+
+**Default:** `off`
+
+**Note:** When enabled, the repeater checks battery level once per minute and sends low-battery warnings to the `#repeaters` flood channel.
+
+---
+
+#### View or change battery alert thresholds
+**Usage:**
+- `get battery.alert.low`
+- `set battery.alert.low <1-100>`
+- `get battery.alert.critical`
+- `set battery.alert.critical <0-99>`
+
+**Defaults:**
+- `battery.alert.low`: `20`
+- `battery.alert.critical`: `10`
+
+**Note:** The low threshold must be greater than the critical threshold.
+
+---
+
 #### View this node's public key
 **Usage:** `get public.key`
 
@@ -450,7 +517,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Default:** `off`
 
-**Note:** When enabled, device enters sleep mode between radio transmissions
+**Note:** When enabled, device enters sleep mode between radio transmissions. Enabling is refused from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.
 
 ---
 
@@ -1011,7 +1078,30 @@ set direct.retry off
 
 ---
 
-#### View or apply a direct retry preset
+#### View or change direct retry heard-table gate
+**Usage:**
+- `get direct.retry.heard`
+- `set direct.retry.heard <state>`
+
+**Parameters:**
+- `state`: `on`|`off`
+
+**Default:** `on`
+
+**Note:** When enabled, the recent repeater table is the direct retry eligibility
+gate. Prefixes missing from the table are assumed reachable; prefixes in the
+table below the active SNR gate are blocked.
+
+**Examples:**
+```
+get direct.retry.heard
+set direct.retry.heard on
+set direct.retry.heard off
+```
+
+---
+
+#### View or apply a retry preset
 **Usage:**
 - `get retry.preset`
 - `set retry.preset <preset>`
@@ -1020,10 +1110,11 @@ set direct.retry off
 - `preset`: `infra`|`rooftop`|`mobile`
 
 **Notes:**
+- Applies shared direct retry and flood retry defaults.
 - `infra`: fewer, slower retries for stable fixed infrastructure.
 - `rooftop`: default long retry window for weak rooftop links.
-- `mobile`: long retry count with shorter spacing for moving or changing links.
-- Changing `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, or `direct.retry.margin` makes the preset report as `custom`.
+- `mobile`: long retry count with shorter spacing for moving or changing links; flood retry count is `15`.
+- Changing `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, `direct.retry.margin`, `flood.retry.count`, or `flood.retry.path` makes the preset report as `custom`.
 
 **Examples:**
 ```
@@ -1031,6 +1122,155 @@ get retry.preset
 set retry.preset infra
 set retry.preset rooftop
 set retry.preset mobile
+```
+
+---
+
+### Flood Retry
+
+Flood retry resends flood-routed packets when the same packet is not heard from
+another qualifying repeater.
+
+#### View or change flood retry count
+**Usage:**
+- `get flood.retry.count`
+- `set flood.retry.count <count>`
+
+**Parameters:**
+- `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
+
+**Note:** Actual attempts are capped at `15`. Hop 1 flood retries use `count * 2`; hop 2 flood retries use `count * 1.5`, rounded up.
+
+**Defaults:**
+- `infra`: `1`
+- `rooftop`: `3`
+- `mobile`: `15`
+
+**Examples:**
+```
+get flood.retry.count
+set flood.retry.count 0
+set flood.retry.count 15
+```
+
+---
+
+#### View or change flood retry path gate
+**Usage:**
+- `get flood.retry.path`
+- `set flood.retry.path <count|off>`
+
+**Parameters:**
+- `count`: Maximum flood path hash count eligible for retry, from `0` to `63`.
+- `off`: Disable the path-length gate.
+
+**Defaults:**
+- `infra`: `1`
+- `rooftop`: `2`
+- `mobile`: `1`
+
+**Examples:**
+```
+get flood.retry.path
+set flood.retry.path 1
+set flood.retry.path off
+```
+
+---
+
+#### View or change flood retry advert handling
+**Usage:**
+- `get flood.retry.advert`
+- `set flood.retry.advert <on|off>`
+
+**Parameters:**
+- `on`: Retry node advert floods.
+- `off`: Do not retry node advert floods.
+
+**Default:** `off`
+
+**Examples:**
+```
+get flood.retry.advert
+set flood.retry.advert off
+```
+
+---
+
+#### View or change flood retry target prefixes
+**Usage:**
+- `get flood.retry.prefixes`
+- `set flood.retry.prefixes <prefixes|none|off>`
+
+**Parameters:**
+- `prefixes`: Comma-separated 3-byte path hash prefixes, up to 8 entries.
+- `none` or `off`: Clear the list.
+
+**Note:** When set, non-bridge flood retry only accepts same-packet echoes whose
+last hop matches one of these prefixes. When unset, any non-ignored last hop can
+cancel the retry.
+
+**Examples:**
+```
+get flood.retry.prefixes
+set flood.retry.prefixes A58296,860CCA,425E5C
+set flood.retry.prefixes none
+```
+
+---
+
+#### View or change flood retry ignored prefixes
+**Usage:**
+- `get flood.retry.ignore`
+- `set flood.retry.ignore <prefixes|none|off>`
+
+**Parameters:**
+- `prefixes`: Comma-separated 3-byte path hash prefixes, up to 8 entries.
+- `none` or `off`: Clear the list.
+
+**Note:** Non-bridge flood retry does not cancel on same-packet echoes whose
+last hop matches this list. Bridge mode also excludes these prefixes from bucket
+and `other` hits.
+
+**Examples:**
+```
+get flood.retry.ignore
+set flood.retry.ignore 71CE82,C7618C
+set flood.retry.ignore none
+```
+
+---
+
+#### View or change flood retry bridge mode
+**Usage:**
+- `get flood.retry.bridge`
+- `set flood.retry.bridge <on|off>`
+
+**Note:** Bridge mode retries until each configured fresh bucket, plus the non-source `other` bucket, has been heard or the retry count is exhausted.
+
+**Examples:**
+```
+get flood.retry.bridge
+set flood.retry.bridge on
+```
+
+---
+
+#### View or change flood retry bridge buckets
+**Usage:**
+- `get flood.retry.bucket.<n>`
+- `set flood.retry.bucket <n> <prefixes|none|off>`
+
+**Parameters:**
+- `n`: Bucket number from `1` to `6`.
+- `prefixes`: Comma-separated 3-byte path hash prefixes, up to 17 entries per bucket.
+- `none` or `off`: Clear the bucket.
+
+**Examples:**
+```
+get flood.retry.bucket.1
+set flood.retry.bucket 1 71CE82,C7618C
+set flood.retry.bucket 2 none
 ```
 
 ---
@@ -1067,6 +1307,9 @@ set direct.retry.count 15
 
 **Explanation:**
 - The first retry waits `base` milliseconds after the failed echo window.
+- For non-TRACE direct paths shorter than 6 remaining hops, the effective wait is scaled by `hops / 6`.
+- Non-TRACE direct paths with 6 or more remaining hops use the configured value unchanged.
+- TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the configured value unchanged.
 - Larger values reduce channel pressure and give slow repeaters more time.
 - Smaller values recover faster but create tighter retry bursts.
 
@@ -1092,7 +1335,10 @@ set direct.retry.base 500
 
 **Explanation:**
 - Retry delay is `base + attempt_index * step`.
-- With `base=175` and `step=100`, retries wait about `175`, `275`, `375`, `475` ms, and so on.
+- For non-TRACE direct paths shorter than 6 remaining hops, that computed delay is scaled by `hops / 6`.
+- Non-TRACE direct paths with 6 or more remaining hops use the computed delay unchanged.
+- TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the computed delay unchanged.
+- With `base=175` and `step=100`, non-TRACE paths with 6 or more remaining hops wait about `175`, `275`, `375`, `475` ms, and so on.
 - `step=0` keeps every retry at the same delay.
 - Larger steps spread retries over time and are safer on busy channels.
 
