@@ -6,6 +6,9 @@
 #include "ble_gap.h"
 #include "ble_hci.h"
 #include <nrf_soc.h>
+#ifdef USE_TINYUSB
+#include <Adafruit_TinyUSB.h>
+#endif
 
 static BLEDfu bledfu;
 static uint16_t ota_conn_handle = BLE_CONN_HANDLE_INVALID;
@@ -268,8 +271,12 @@ bool NRF52Board::isExternalPowered() {
 }
 
 bool NRF52Board::isUsbDataConnected() {
-#ifdef USE_TINYUSB
-  return Serial.dtr();
+#if defined(USE_TINYUSB)
+  #if defined(CFG_TUD_CDC) && CFG_TUD_CDC
+  return tud_mounted() && tud_cdc_connected();
+  #else
+  return tud_mounted();
+  #endif
 #else
   return false;
 #endif
