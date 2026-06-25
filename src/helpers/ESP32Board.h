@@ -70,7 +70,11 @@ public:
   void enterDeepSleep(uint32_t secs);
 
   uint32_t getIRQGpio() override {
+  #ifdef P_LORA_DIO_1
     return P_LORA_DIO_1; // default for SX1262
+  #else
+    return -1;
+  #endif
   }
 
   void sleep(uint32_t secs) override {
@@ -80,13 +84,21 @@ public:
       return;
     }
 
-    // Set GPIO wakeup
-    gpio_num_t wakeupPin = (gpio_num_t)getIRQGpio();    
-
     // Configure timer wakeup
     if (secs > 0) {
       esp_sleep_enable_timer_wakeup(secs * 1000000ULL); // Wake up periodically to do scheduled jobs
     }
+
+    uint32_t irqGpio = getIRQGpio();
+    if (irqGpio == static_cast<uint32_t>(-1)) {
+      if (secs > 0) {
+        esp_light_sleep_start();
+      }
+      return;
+    }
+
+    // Set GPIO wakeup
+    gpio_num_t wakeupPin = (gpio_num_t)irqGpio;
 
     // Disable CPU interrupt servicing
     portENTER_CRITICAL(&sleepMux);
