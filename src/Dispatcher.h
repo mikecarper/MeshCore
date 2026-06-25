@@ -189,6 +189,7 @@ protected:
   virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
   const Packet* getOutboundInFlight() const { return outbound; }
   bool queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t delay_millis);
+  bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
 
 public:
   void begin();
@@ -215,7 +216,6 @@ public:
   unsigned long futureMillis(int millis_from_now) const;
 
 private:
-  bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
   void checkRecv();
   void checkSend();
 };
