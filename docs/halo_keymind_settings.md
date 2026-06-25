@@ -122,6 +122,7 @@ Show learned rows:
 ```text
 get recent.repeater
 get recent.repeater 2
+get recent.repeaters 2
 get recent.repeater page 3
 ```
 

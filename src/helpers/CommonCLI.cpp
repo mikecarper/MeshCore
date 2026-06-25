@@ -47,6 +47,31 @@ static uint32_t _atoi(const char* sp) {
   return n;
 }
 
+static bool parseRecentRepeaterGet(const char* config, int& page) {
+  if (strncmp(config, "recent.repeater", 15) != 0) {
+    return false;
+  }
+
+  const char* cursor = &config[15];
+  if (*cursor == 's') {
+    cursor++;
+  }
+  if (*cursor != 0 && *cursor != ' ') {
+    return false;
+  }
+
+  while (*cursor == ' ') cursor++;
+  if (strncmp(cursor, "page", 4) == 0 && (cursor[4] == 0 || cursor[4] == ' ')) {
+    cursor += 4;
+    while (*cursor == ' ') cursor++;
+  }
+
+  page = 1;
+  if (*cursor) page = _atoi(cursor);
+  if (page < 1) page = 1;
+  return true;
+}
+
 static bool isValidName(const char *n) {
   while (*n) {
     if (*n == '[' || *n == ']' || *n == '\\' || *n == ':' || *n == ',' || *n == '?' || *n == '*') return false;
@@ -1617,6 +1642,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+  int recent_page = 1;
   if (memcmp(config, "dutycycle", 9) == 0) {
     float dc = 100.0f / (_prefs->airtime_factor + 1.0f);
     int dc_int = (int)dc;
@@ -1735,13 +1761,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       formatSnrDbX4(cr8, sizeof(cr8), _prefs->direct_retry_cr8_snr_x4);
       sprintf(reply, "> %s,%s,%s,%s", cr4, cr5, cr7, cr8);
     }
-  } else if (memcmp(config, "recent.repeater", 15) == 0) {
-    int page = 1;
-    const char* cursor = &config[15];
-    while (*cursor == ' ') cursor++;
-    if (*cursor) page = _atoi(cursor);
-    if (page < 1) page = 1;
-    _callbacks->formatRecentRepeatersReply(reply, page);
+  } else if (parseRecentRepeaterGet(config, recent_page)) {
+    _callbacks->formatRecentRepeatersReply(reply, recent_page);
   } else if (memcmp(config, "owner.info", 10) == 0) {
     auto start = reply;
     *reply++ = '>';

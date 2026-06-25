@@ -3076,8 +3076,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       }
     }
   } else if (sender_timestamp == 0 && sender == NULL
-      && memcmp(command, "get recent.repeater", 19) == 0
-      && (command[19] == 0 || command[19] == ' ')) {
+      && (strcmp(command, "get recent.repeater") == 0 || strcmp(command, "get recent.repeaters") == 0)) {
     printRecentRepeatersSerial();
     reply_start[0] = 0;
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {

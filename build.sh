@@ -1089,7 +1089,9 @@ collect_nrf52_artifacts() {
 
   python3 bin/uf2conv/uf2conv.py ".pio/build/${env_name}/firmware.hex" -c -o ".pio/build/${env_name}/firmware.uf2" -f 0xADA52840 || return $?
   copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.zip" "out/${firmware_filename}.zip" || return $?
+  if [ -f ".pio/build/${env_name}/firmware.zip" ]; then
+    copy_build_output ".pio/build/${env_name}/firmware.zip" "out/${firmware_filename}.zip" || return $?
+  fi
 }
 
 collect_stm32_artifacts() {
