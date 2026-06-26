@@ -455,7 +455,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 - `send text.flood <message>`
 
 **Parameters:**
-- `message`: Text to send to the shared `#repeaters` flood channel, prefixed with this node's name.
+- `message`: Text to send to the shared `#repeaters` flood channel, prefixed with this node's name. Any `:` in the node name is sent as `;` so the prefix delimiter stays unambiguous.
 
 **Example:**
 ```

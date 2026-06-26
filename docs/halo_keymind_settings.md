@@ -83,7 +83,7 @@ set flood.retry.ignore none
 
 | Command | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `send text.flood` | Sends a `#repeaters` flood text message formatted as `<node_name>: <message>`. | `send text.flood <message>` | `send text.flood checking ridge link` |
+| `send text.flood` | Sends a `#repeaters` flood text message formatted as `<node_name>: <message>`, with `:` in the node name sent as `;`. | `send text.flood <message>` | `send text.flood checking ridge link` |
 
 ## Battery Alerts
 

@@ -1617,6 +1617,39 @@ static void formatLocalSnrX4(char* dest, size_t dest_len, int16_t snr_x4) {
   }
 }
 
+static bool parseRecentRepeatersPageCommand(const char* command, int& page) {
+  if (strncmp(command, "get ", 4) != 0) {
+    return false;
+  }
+
+  const char* cursor = command + 4;
+  if (strncmp(cursor, "recent.repeater", 15) != 0) {
+    return false;
+  }
+  cursor += 15;
+
+  if (*cursor == 's') {
+    cursor++;
+  }
+  if (*cursor == 0) {
+    return false;
+  }
+  if (*cursor != ' ') {
+    return false;
+  }
+
+  while (*cursor == ' ') cursor++;
+  if (strncmp(cursor, "page", 4) == 0 && (cursor[4] == 0 || cursor[4] == ' ')) {
+    cursor += 4;
+    while (*cursor == ' ') cursor++;
+  }
+
+  page = 1;
+  if (*cursor) page = atoi(cursor);
+  if (page < 1) page = 1;
+  return true;
+}
+
 void MyMesh::formatRecentRepeatersReply(char *reply, int page) {
   const SimpleMeshTables* tables = static_cast<const SimpleMeshTables*>(getTables());
   if (tables == NULL) {
@@ -2178,8 +2211,13 @@ bool MyMesh::sendRepeatersFloodText(const char* text) {
 
   const size_t max_data_len = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE;
   const size_t prefix_cap = max_data_len > 5 ? max_data_len - 5 + 1 : 0;
+  char node_name[sizeof(_prefs.node_name)];
+  StrHelper::strncpy(node_name, _prefs.node_name, sizeof(node_name));
+  for (char* p = node_name; *p; p++) {
+    if (*p == ':') *p = ';';
+  }
   int prefix_written = prefix_cap > 0
-      ? snprintf((char*)&temp[5], prefix_cap, "%s: ", _prefs.node_name)
+      ? snprintf((char*)&temp[5], prefix_cap, "%s: ", node_name)
       : -1;
   if (prefix_written < 0) {
     return false;
@@ -3010,6 +3048,7 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
 
 void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command, char *reply) {
   char* reply_start = reply;
+  int recent_page = 1;
   if (region_load_active) {
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
       region_map = temp_map;  // copy over the temp instance as new current map
@@ -3075,6 +3114,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         strcpy(reply, "Err - bad pubkey");
       }
     }
+  } else if (sender_timestamp == 0 && sender == NULL && parseRecentRepeatersPageCommand(command, recent_page)) {
+    formatRecentRepeatersReply(reply, recent_page);
   } else if (sender_timestamp == 0 && sender == NULL
       && (strcmp(command, "get recent.repeater") == 0 || strcmp(command, "get recent.repeaters") == 0)) {
     printRecentRepeatersSerial();
