@@ -10,9 +10,15 @@
 #endif
 
 #define MAX_PACKET_HASHES  (128+32)
+#ifndef MESH_ENABLE_RECENT_REPEATERS
+  #define MESH_ENABLE_RECENT_REPEATERS  0
+#endif
 #ifndef MAX_RECENT_REPEATERS
-  // Platform defaults. Can be overridden with -D MAX_RECENT_REPEATERS=<n>.
-  #if defined(ESP32) || defined(ESP32_PLATFORM)
+  // Recent repeater history is only needed by repeater firmware. Other roles
+  // use unconditional retry decisions and skip this RAM-heavy cache.
+  #if !MESH_ENABLE_RECENT_REPEATERS
+    #define MAX_RECENT_REPEATERS  0
+  #elif defined(ESP32) || defined(ESP32_PLATFORM)
     #define MAX_RECENT_REPEATERS  2048
   #elif defined(NRF52_PLATFORM)
     #define MAX_RECENT_REPEATERS  512
@@ -20,6 +26,7 @@
     #define MAX_RECENT_REPEATERS  64
   #endif
 #endif
+#define RECENT_REPEATER_STORAGE_SLOTS  (MAX_RECENT_REPEATERS > 0 ? MAX_RECENT_REPEATERS : 1)
 #define MAX_ROUTE_HASH_BYTES   3
 
 class SimpleMeshTables : public mesh::MeshTables {
@@ -36,7 +43,7 @@ private:
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
   int _next_idx;
   uint32_t _direct_dups, _flood_dups;
-  RecentRepeaterInfo _recent_repeaters[MAX_RECENT_REPEATERS];
+  RecentRepeaterInfo _recent_repeaters[RECENT_REPEATER_STORAGE_SLOTS];
 
   bool hasSeenHash(const uint8_t* hash) const {
     const uint8_t* sp = _hashes;
@@ -124,6 +131,10 @@ private:
   }
 
   void recordRecentRepeater(const mesh::Packet* packet) {
+    if (MAX_RECENT_REPEATERS == 0) {
+      return;
+    }
+
     uint8_t prefix[MAX_ROUTE_HASH_BYTES] = {0};
     uint8_t prefix_len = 0;
     if (!extractRecentRepeater(packet, prefix, prefix_len) || prefix_len == 0) {
@@ -202,6 +213,9 @@ public:
                          bool snr_locked = false, bool bypass_allow_filter = false) {
     (void)snr_locked;
     (void)bypass_allow_filter;
+    if (MAX_RECENT_REPEATERS == 0) {
+      return false;
+    }
     if (prefix == NULL || prefix_len == 0) {
       return false;
     }
@@ -262,6 +276,9 @@ public:
     return true;
   }
   bool decrementRecentRepeaterSnrX4(const uint8_t* prefix, uint8_t prefix_len, uint8_t amount_x4 = 1) {
+    if (MAX_RECENT_REPEATERS == 0) {
+      return false;
+    }
     if (prefix == NULL || prefix_len == 0 || amount_x4 == 0) {
       return false;
     }
@@ -284,6 +301,9 @@ public:
     return false;
   }
   int getRecentRepeaterCount() const {
+    if (MAX_RECENT_REPEATERS == 0) {
+      return 0;
+    }
     int count = 0;
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
       if (_recent_repeaters[i].prefix_len > 0) {
@@ -293,6 +313,9 @@ public:
     return count;
   }
   const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
+    if (MAX_RECENT_REPEATERS == 0) {
+      return NULL;
+    }
     if (idx_wanted < 0) {
       return NULL;
     }
@@ -325,6 +348,9 @@ public:
   }
 
   const RecentRepeaterInfo* findRecentRepeaterByHash(const uint8_t* hash, uint8_t hash_len) const {
+    if (MAX_RECENT_REPEATERS == 0) {
+      return NULL;
+    }
     if (hash == NULL || hash_len == 0) {
       return NULL;
     }

@@ -109,6 +109,7 @@ protected:
   int calcRxDelay(float score, uint32_t air_time) const override;
   uint32_t getRetransmitDelay(const mesh::Packet *packet) override;
   uint32_t getDirectRetransmitDelay(const mesh::Packet *packet) override;
+  uint8_t getDefaultTxCodingRate() const override { return _prefs.cr; }
   uint8_t getExtraAckTransmitCount() const override;
   bool filterRecvFloodPacket(mesh::Packet* packet) override;
   bool allowPacketForward(const mesh::Packet* packet) override;

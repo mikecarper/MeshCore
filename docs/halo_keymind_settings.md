@@ -177,15 +177,17 @@ Direct retry applies to direct-routed packets. A queued resend is canceled when 
 | `direct.retry.count` | Maximum direct retry attempts after initial TX. | `get direct.retry.count`, `set direct.retry.count <1-15>` | `set direct.retry.count 15` |
 | `direct.retry.base` | Base wait in milliseconds before retry; non-TRACE paths under 6 remaining hops scale by `hops / 6`, TRACE paths under 16 by `hops / 16`. | `get direct.retry.base`, `set direct.retry.base <10-5000>` | `set direct.retry.base 175` |
 | `direct.retry.step` | Milliseconds added per retry attempt before the same short-path scaling. | `get direct.retry.step`, `set direct.retry.step <0-5000>` | `set direct.retry.step 100` |
-| `direct.retry.cr` | Adaptive coding-rate thresholds for direct retry packets. Uses `CR4`, `CR5`, `CR7`, or `CR8`; `CR6` is never selected. | `get direct.retry.cr`, `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`, `set direct.retry.cr off` | `set direct.retry.cr 10.0,7.5,2.5,0` |
+| `direct.retry.cr` | Adaptive coding-rate thresholds for repeater direct retry packets. Repeaters use `CR4`, `CR5`, `CR7`, or `CR8`, then escalate by attempt: CR4, CR5, CR7, CR7, then CR8 from a CR4 start; CR5, CR7, CR7, then CR8 from a CR5 start. Non-repeaters start at the current radio CR and follow the same escalation pattern, clamped at CR8. | `get direct.retry.cr`, `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`, `set direct.retry.cr off` | `set direct.retry.cr 10.0,7.5,2.5,0` |
 
 The default adaptive coding-rate profile is `10.0,7.5,2.5,2.5`.
 SNR `10.0 dB` and up uses `CR4`, `7.5 dB` and up uses `CR5`,
 `2.5 dB` and down uses `CR8`, and the middle band uses `CR7`. If no
 recent repeater table entry is available, retry packets use `CR5`. Use
-`set direct.retry.cr off` to disable adaptive coding-rate overrides. If
-adaptive selection chooses `CR4`, retries after the third attempt use
-`CR5`.
+`set direct.retry.cr off` to disable adaptive coding-rate overrides. Repeater
+attempts escalate from the adaptive starting CR: `CR4`, `CR5`, `CR7`, `CR7`,
+then `CR8` from a `CR4` start; `CR5`, `CR7`, `CR7`, then `CR8` from a `CR5`
+start. Non-repeaters use the current radio CR as the first retry CR and follow
+the same pattern up to `CR8`.
 
 Preset details:
 

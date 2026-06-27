@@ -5,8 +5,13 @@ namespace mesh {
 
 static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_DEFAULT = 15;
 static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_HARD_MAX = 15;
-static const uint8_t FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT = 3;
+static const uint32_t DIRECT_RETRY_BASE_MS_DEFAULT = 175;
+static const uint32_t DIRECT_RETRY_STEP_MS_DEFAULT = 50;
+static const uint8_t DIRECT_RETRY_SHORT_PATH_SCALE_HOPS = 6;
+static const uint8_t DIRECT_RETRY_TRACE_SCALE_HOPS = 16;
+static const uint8_t FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT = 15;
 static const uint8_t FLOOD_RETRY_MAX_ATTEMPTS_HARD_MAX = 15;
+static const uint8_t FLOOD_RETRY_MAX_PATH_DEFAULT = 1;
 
 static uint8_t decodeTraceHashSize(uint8_t flags, uint8_t route_bytes) {
   uint8_t code = flags & 0x03;
@@ -61,6 +66,74 @@ static uint8_t getTraceDirectPriority(const Packet* packet) {
     return 3;
   }
   return 5;
+}
+
+static uint8_t getDirectRetryRemainingHops(const Packet* packet) {
+  if (packet == NULL) {
+    return 0;
+  }
+  if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    return getTraceRemainingHops(packet);
+  }
+  return packet->getPathHashCount();
+}
+
+static uint32_t scaleDirectRetryDelayForPath(const Packet* packet, uint32_t delay_ms) {
+  uint8_t hops = getDirectRetryRemainingHops(packet);
+  if (hops == 0) {
+    return delay_ms;
+  }
+
+  uint8_t scale_hops = packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_TRACE
+    ? DIRECT_RETRY_TRACE_SCALE_HOPS
+    : DIRECT_RETRY_SHORT_PATH_SCALE_HOPS;
+  if (hops >= scale_hops) {
+    return delay_ms;
+  }
+
+  uint32_t scaled = ((delay_ms * hops) + (scale_hops - 1U)) / scale_hops;
+  return scaled > 0 ? scaled : 1;
+}
+
+uint8_t Mesh::getDirectRetryCodingRateForAttempt(uint8_t start_cr, uint8_t retry_attempt) {
+  if (start_cr < 4 || start_cr > 8) {
+    return start_cr;
+  }
+
+  if (retry_attempt < 1) {
+    retry_attempt = 1;
+  }
+
+  if (start_cr >= 8) {
+    return 8;
+  }
+  if (start_cr >= 7) {
+    return retry_attempt <= 2 ? 7 : 8;
+  }
+  if (start_cr <= 4) {
+    if (retry_attempt == 1) return 4;
+    if (retry_attempt == 2) return 5;
+    if (retry_attempt <= 4) return 7;
+    return 8;
+  }
+
+  if (retry_attempt == 1) return start_cr;
+  if (retry_attempt <= 3) return 7;
+  return 8;
+}
+
+void Mesh::configureDirectRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt) {
+  (void)original;
+  if (retry == NULL) {
+    return;
+  }
+
+  uint8_t default_cr = getDefaultTxCodingRate();
+  if (default_cr < 4 || default_cr > 8) {
+    return;
+  }
+
+  retry->tx_cr = getDirectRetryCodingRateForAttempt(default_cr, retry_attempt);
 }
 
 void Mesh::begin() {
@@ -181,30 +254,38 @@ uint32_t Mesh::getDirectRetransmitDelay(const Packet* packet) {
   return 0;  // by default, no delay
 }
 bool Mesh::allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const {
-  return false;
+  (void)packet;
+  (void)next_hop_hash;
+  (void)next_hop_hash_len;
+  return true;
 }
 uint32_t Mesh::getDirectRetryEchoDelay(const Packet* packet) const {
-  // Keep the base fallback aligned with the repeater's minimum retry wait.
-  return 200;
+  (void)packet;
+  return DIRECT_RETRY_BASE_MS_DEFAULT;
 }
 uint8_t Mesh::getDirectRetryMaxAttempts(const Packet* packet) const {
+  (void)packet;
   return DIRECT_RETRY_MAX_ATTEMPTS_DEFAULT;
 }
 uint32_t Mesh::getDirectRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx) {
   uint32_t base = getDirectRetryEchoDelay(packet);
-  // Keep the historical linear spacing while allowing the base wait to vary by platform/profile.
-  return base + ((uint32_t)attempt_idx * 100UL);
+  uint32_t delay_ms = base + ((uint32_t)attempt_idx * DIRECT_RETRY_STEP_MS_DEFAULT);
+  return scaleDirectRetryDelayForPath(packet, delay_ms);
 }
 bool Mesh::allowFloodRetry(const Packet* packet) const {
+  (void)packet;
   return true;
 }
 bool Mesh::hasFloodRetryTargetPrefix(const Packet* packet) const {
+  (void)packet;
   return false;
 }
 uint8_t Mesh::getFloodRetryMaxPathLength(const Packet* packet) const {
-  return 2;
+  (void)packet;
+  return FLOOD_RETRY_MAX_PATH_DEFAULT;
 }
 uint8_t Mesh::getFloodRetryMaxAttempts(const Packet* packet) const {
+  (void)packet;
   return FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT;
 }
 uint32_t Mesh::getFloodRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx) {
@@ -892,9 +973,6 @@ bool Mesh::getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_h
       if (offset + hash_size > route_bytes) {
         return false;
       }
-      if (offset + (2 * hash_size) > route_bytes) {
-        return false;  // no downstream repeater means there will be no forward echo to overhear.
-      }
 
       next_hop_hash = &packet->payload[9 + offset];
       next_hop_hash_len = hash_size;
@@ -1514,6 +1592,7 @@ void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_si
   } else {
     pri = 1;
   }
+  maybeScheduleFloodRetry(packet, pri);
   sendPacket(packet, pri, delay_millis);
 }
 
@@ -1543,6 +1622,7 @@ void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_m
   } else {
     pri = 1;
   }
+  maybeScheduleFloodRetry(packet, pri);
   sendPacket(packet, pri, delay_millis);
 }
 

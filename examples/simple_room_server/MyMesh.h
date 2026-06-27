@@ -153,6 +153,9 @@ protected:
   uint8_t getExtraAckTransmitCount() const override {
     return _prefs.multi_acks;
   }
+  uint8_t getDefaultTxCodingRate() const override {
+    return set_radio_at == 0 && revert_radio_at != 0 ? pending_cr : _prefs.cr;
+  }
 
   bool filterRecvFloodPacket(mesh::Packet* pkt) override;
 

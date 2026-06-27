@@ -913,7 +913,6 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
 }
 
 void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original, uint8_t retry_attempt) {
-  (void)retry_attempt;
   int8_t snr_x4 = 12;  // unknown repeaters start at +3.00 dB
   const SimpleMeshTables* tables = static_cast<const SimpleMeshTables*>(getTables());
   if (tables != NULL) {
@@ -927,7 +926,7 @@ void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet*
     }
   }
 
-  retry->tx_cr = getDirectRetryCodingRateForSNR(snr_x4);
+  retry->tx_cr = getDirectRetryCodingRateForAttempt(getDirectRetryCodingRateForSNR(snr_x4), retry_attempt);
 }
 
 uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
@@ -964,6 +963,26 @@ static void formatDirectRetryTarget(char* dest, size_t dest_len, const uint8_t* 
   dest[hex_len] = 0;
 }
 
+static uint8_t getRetryLogCodingRate(const mesh::Packet* packet, uint8_t default_cr) {
+  if (packet != NULL && packet->tx_cr >= 4 && packet->tx_cr <= 8) {
+    return packet->tx_cr;
+  }
+  return default_cr;
+}
+
+static uint16_t getRetryLogPreambleLength(const mesh::Packet* packet, uint16_t default_preamble_len) {
+  if (packet == NULL || default_preamble_len <= 16 || !(packet->tx_cr == 4 || packet->tx_cr == 5)) {
+    return default_preamble_len;
+  }
+
+  bool has_direct_path = packet->getPathHashCount() > 0
+      || (packet->getPayloadType() == PAYLOAD_TYPE_TRACE && packet->payload_len > 9);
+  if (packet->isRouteDirect() && has_direct_path) {
+    return 16;
+  }
+  return default_preamble_len;
+}
+
 void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt,
                                 const uint8_t* target_hash, uint8_t target_hash_len, int16_t payload_type) {
   char type_label[8];
@@ -977,27 +996,33 @@ void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, u
     strcpy(type_label, "?");
   }
   formatDirectRetryTarget(target_label, sizeof(target_label), target_hash, target_hash_len);
+  uint8_t log_cr = getRetryLogCodingRate(packet, getDefaultTxCodingRate());
+  uint16_t log_preamble_len = getRetryLogPreambleLength(packet, radio_driver.getDefaultPreambleLength());
 
 #if MESH_DEBUG
-  MESH_DEBUG_PRINTLN("direct retry %s attempt=%u delay=%lu type=%s route=%s target=%s",
+  MESH_DEBUG_PRINTLN("direct retry %s attempt=%u delay=%lu type=%s route=%s target=%s cr=%u preamble_len=%u",
                      event ? event : "?",
                      (uint32_t)retry_attempt,
                      (unsigned long)delay_millis,
                      type_label,
                      route_label,
-                     target_label);
+                     target_label,
+                     (uint32_t)log_cr,
+                     (uint32_t)log_preamble_len);
 #endif
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
-      f.printf(": direct retry %s attempt=%u delay=%lu type=%s route=%s target=%s\n",
+      f.printf(": direct retry %s attempt=%u delay=%lu type=%s route=%s target=%s cr=%u preamble_len=%u\n",
                event ? event : "?",
                (uint32_t)retry_attempt,
                (unsigned long)delay_millis,
                type_label,
                route_label,
-               target_label);
+               target_label,
+               (uint32_t)log_cr,
+               (uint32_t)log_preamble_len);
       f.close();
     }
   }
@@ -1497,9 +1522,10 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
     refreshFloodRetryHeardRecent(packet);
     snprintf(heard_suffix, sizeof(heard_suffix), ", heard=%s", heard_log);
   }
+  uint8_t log_cr = getRetryLogCodingRate(packet, getDefaultTxCodingRate());
+  uint16_t log_preamble_len = getRetryLogPreambleLength(packet, radio_driver.getDefaultPreambleLength());
 
-  MESH_DEBUG_PRINTLN("%s flood retry %s (retry=%u, type=%d, route=%s, payload_len=%d, hop=%u, path=%s%s, %s=%lu)",
-                     getLogDateTime(),
+  MESH_DEBUG_PRINTLN("flood retry %s (retry=%u, type=%d, route=%s, payload_len=%d, hop=%u, path=%s%s, %s=%lu, cr=%u, preamble_len=%u)",
                      event,
                      (unsigned int)retry_attempt,
                      (uint32_t)packet->getPayloadType(),
@@ -1509,13 +1535,15 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
                      path_log,
                      heard_suffix,
                      time_label,
-                     (unsigned long)delay_millis);
+                     (unsigned long)delay_millis,
+                     (uint32_t)log_cr,
+                     (uint32_t)log_preamble_len);
 
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
-      f.printf(": FLOOD RETRY %s (retry=%u, type=%d, route=%s, payload_len=%d, hop=%u, path=%s%s, %s=%lu)\n",
+      f.printf(": FLOOD RETRY %s (retry=%u, type=%d, route=%s, payload_len=%d, hop=%u, path=%s%s, %s=%lu, cr=%u, preamble_len=%u)\n",
                event,
                (unsigned int)retry_attempt,
                (uint32_t)packet->getPayloadType(),
@@ -1525,7 +1553,9 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
                path_log,
                heard_suffix,
                time_label,
-               (unsigned long)delay_millis);
+               (unsigned long)delay_millis,
+               (uint32_t)log_cr,
+               (uint32_t)log_preamble_len);
       f.close();
     }
   }

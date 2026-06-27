@@ -9,6 +9,7 @@ SELECTED_TARGET=""
 SELECTED_COMMAND_ARGS=()
 MESHDEBUG_OVERRIDE=""
 PACKET_LOGGING_OVERRIDE=""
+FIRMWARE_VERSION_SUFFIX=""
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 RADIO_SETTING_TITLE=""
 RADIO_FREQ_OVERRIDE=""
@@ -52,6 +53,7 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
+  build-firmwares-logging-matrix: Build all firmwares twice, first with MESH_DEBUG/MESH_PACKET_LOGGING off and then with both on.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -66,6 +68,9 @@ $ bash build.sh
 
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
+
+Build all firmwares twice, with logging-off artifacts using the base version and logging-on artifacts using a "-logging" version suffix:
+$ bash build.sh build-firmwares-logging-matrix
 
 Build all companion firmwares
 $ bash build.sh build-companion-firmwares
@@ -257,6 +262,7 @@ prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
     "Build all firmwares"
+    "Build all firmwares twice (logging off, then MESH_DEBUG + MESH_PACKET_LOGGING on)"
     "Build all repeater firmwares"
     "Build all companion firmwares"
     "Build all chat room server firmwares"
@@ -282,14 +288,18 @@ prompt_for_build_mode() {
         return 0
         ;;
       3)
-        SELECTED_COMMAND_ARGS=(build-repeater-firmwares)
+        SELECTED_COMMAND_ARGS=(build-firmwares-logging-matrix)
         return 0
         ;;
       4)
-        SELECTED_COMMAND_ARGS=(build-companion-firmwares)
+        SELECTED_COMMAND_ARGS=(build-repeater-firmwares)
         return 0
         ;;
       5)
+        SELECTED_COMMAND_ARGS=(build-companion-firmwares)
+        return 0
+        ;;
+      6)
         SELECTED_COMMAND_ARGS=(build-room-server-firmwares)
         return 0
         ;;
@@ -306,6 +316,10 @@ prompt_for_debug_build_settings() {
   PACKET_LOGGING_OVERRIDE="$MENU_CHOICE"
 
   echo "Using debug options: meshdebug=${MESHDEBUG_OVERRIDE}, packet_logging=${PACKET_LOGGING_OVERRIDE}"
+}
+
+is_logging_matrix_command() {
+  [ "$1" == "build-firmwares-logging-matrix" ]
 }
 
 clear_radio_overrides() {
@@ -983,7 +997,7 @@ is_supported_build_env() {
 
 disable_debug_flags() {
   if [ "$DISABLE_DEBUG" == "1" ]; then
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -UCFG_DEBUG -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -DCFG_DEBUG=0 -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
   fi
 }
 
@@ -1017,6 +1031,25 @@ apply_firmware_profile_overrides() {
   case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
     cascade)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=8 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1"
+      ;;
+  esac
+}
+
+append_firmware_version_suffix() {
+  local firmware_version=$1
+  local suffix=${2#-}
+
+  if [ -z "$suffix" ]; then
+    echo "$firmware_version"
+    return 0
+  fi
+
+  case "$firmware_version" in
+    *-"$suffix")
+      echo "$firmware_version"
+      ;;
+    *)
+      echo "${firmware_version}-${suffix}"
       ;;
   esac
 }
@@ -1180,6 +1213,7 @@ build_firmware() {
   fi
 
   firmware_version_string="${firmware_version}-${commit_hash}"
+  firmware_version_string=$(append_firmware_version_suffix "$firmware_version_string" "$FIRMWARE_VERSION_SUFFIX")
   firmware_filename="${env_name}-${firmware_version_string}"
 
   if [ "${PLATFORMIO_BUILD_FLAGS+x}" ]; then
@@ -1236,6 +1270,9 @@ resolve_room_server_firmwares() {
 get_bulk_build_resolver_name() {
   case "$1" in
     build-firmwares)
+      echo "resolve_all_firmwares"
+      ;;
+    build-firmwares-logging-matrix)
       echo "resolve_all_firmwares"
       ;;
     build-companion-firmwares)
@@ -1356,6 +1393,42 @@ run_resolved_build_targets() {
   return "$build_status"
 }
 
+run_logging_matrix_build_targets() {
+  local targets=("$@")
+  local original_meshdebug_override=$MESHDEBUG_OVERRIDE
+  local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
+  local original_firmware_version_suffix=$FIRMWARE_VERSION_SUFFIX
+  local build_status=0
+
+  if [ ${#targets[@]} -eq 0 ]; then
+    echo "No build targets resolved."
+    return 1
+  fi
+
+  echo "Building ${#targets[@]} target(s) with MESH_DEBUG=off and MESH_PACKET_LOGGING=off."
+  MESHDEBUG_OVERRIDE="off"
+  PACKET_LOGGING_OVERRIDE="off"
+  FIRMWARE_VERSION_SUFFIX=""
+  run_resolved_build_targets "${targets[@]}"
+  build_status=$?
+
+  if [ "$build_status" -eq 0 ]; then
+    echo "Building ${#targets[@]} target(s) with MESH_DEBUG=on and MESH_PACKET_LOGGING=on."
+    echo "Logging-on artifacts use firmware version suffix: -logging"
+    MESHDEBUG_OVERRIDE="on"
+    PACKET_LOGGING_OVERRIDE="on"
+    FIRMWARE_VERSION_SUFFIX="logging"
+    run_resolved_build_targets "${targets[@]}"
+    build_status=$?
+  fi
+
+  MESHDEBUG_OVERRIDE=$original_meshdebug_override
+  PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
+  FIRMWARE_VERSION_SUFFIX=$original_firmware_version_suffix
+
+  return "$build_status"
+}
+
 validate_command() {
   case "$1" in
     build-firmware)
@@ -1383,6 +1456,11 @@ validate_command() {
 
 run_command() {
   # All build commands share execution after validation resolves their target list.
+  if is_logging_matrix_command "$1"; then
+    run_logging_matrix_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
+    return $?
+  fi
+
   if is_build_command "$1"; then
     run_resolved_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
@@ -1419,7 +1497,11 @@ main() {
     fi
 
     prompt_for_build_mode
-    prompt_for_debug_build_settings
+    if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
+      echo "Skipping debug option prompts; this action builds logging off and logging on passes."
+    else
+      prompt_for_debug_build_settings
+    fi
     prompt_for_radio_build_settings
     prompt_for_firmware_profile_settings
     set -- "${SELECTED_COMMAND_ARGS[@]}"

@@ -1396,7 +1396,9 @@ set direct.retry.margin 10
 **Explanation:**
 - Higher SNR uses faster coding rates.
 - Lower SNR uses more robust coding rates.
-- CR6 is intentionally skipped.
+- Repeater retry attempts escalate from the adaptive starting CR. CR4 starts as CR4, CR5, CR7, CR7, then CR8. CR5 starts as CR5, CR7, CR7, then CR8. CR7 gets two attempts, then CR8.
+- Repeater adaptive CR selection intentionally skips CR6.
+- Non-repeater retry packets start at the current radio CR and follow the same escalation pattern, clamped at CR8. With the normal CR5 radio setting this is CR5, CR7, CR7, then CR8.
 - `off` disables per-packet retry CR overrides and uses the current radio CR.
 - Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
 - Unknown repeaters start at `+3.00 dB` for adaptive CR selection.

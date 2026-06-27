@@ -5,6 +5,10 @@
 #include <RTClib.h>
 #include <target.h>
 
+#ifndef MESH_ENABLE_RECENT_REPEATERS
+  #define MESH_ENABLE_RECENT_REPEATERS  1
+#endif
+
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
 #elif defined(RP2040_PLATFORM)

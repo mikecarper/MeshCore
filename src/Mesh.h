@@ -134,7 +134,7 @@ protected:
   virtual uint32_t getDirectRetransmitDelay(const Packet* packet);
 
   /**
-   * \brief  Decide whether a DIRECT packet should get one delayed retry if the next hop echo is not overheard.
+   * \brief  Decide whether a DIRECT packet should retry if the next hop echo is not overheard.
    *         Sub-classes can use recent repeater or other link-quality data to opt in selectively.
    */
   virtual bool allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const;
@@ -145,7 +145,7 @@ protected:
   virtual bool maybeShortCircuitDirect(Packet* packet) { return false; }
 
   /**
-   * \returns  milliseconds to wait for the next-hop echo before queueing one retry of the DIRECT packet.
+   * \returns  milliseconds to wait for the next-hop echo before queueing a retry of the DIRECT packet.
    */
   virtual uint32_t getDirectRetryEchoDelay(const Packet* packet) const;
 
@@ -217,9 +217,14 @@ protected:
   virtual void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) { }
 
   /**
+   * \returns  Coding rate to use for a retry attempt, starting from the current/adaptive CR.
+   */
+  static uint8_t getDirectRetryCodingRateForAttempt(uint8_t start_cr, uint8_t retry_attempt);
+
+  /**
    * \brief  Optional hook to set local-only transmit options on a retry packet before it is queued.
    */
-  virtual void configureDirectRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt) { }
+  virtual void configureDirectRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt);
 
   /**
    * \brief  Perform search of local DB of peers/contacts.
