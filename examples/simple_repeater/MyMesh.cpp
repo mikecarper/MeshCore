@@ -97,10 +97,6 @@
 #define LOW_BATTERY_WARN_INTERVAL      (24UL * 60UL * 60UL * 1000UL)
 #define LOW_BATTERY_CRITICAL_INTERVAL  (12UL * 60UL * 60UL * 1000UL)
 
-#ifndef DIRECT_RETRY_TRACE_SCALE_HOPS
-  #define DIRECT_RETRY_TRACE_SCALE_HOPS 32U
-#endif
-
 static const char* skipLocalSpaces(const char* text) {
   while (text != NULL && *text == ' ') text++;
   return text;
@@ -828,65 +824,6 @@ uint32_t MyMesh::getDirectRetryAttemptStepMillis() const {
   return _prefs.direct_retry_step_ms;
 }
 
-static uint8_t decodeRetryTraceHashSize(uint8_t flags, uint8_t route_bytes) {
-  uint8_t code = flags & 0x03;
-  uint8_t size_pow2 = (uint8_t)(1U << code);
-  uint8_t size_linear = (uint8_t)(code + 1U);
-
-  bool pow2_ok = size_pow2 > 0 && (route_bytes % size_pow2) == 0;
-  bool linear_ok = size_linear > 0 && (route_bytes % size_linear) == 0;
-
-  if (pow2_ok && !linear_ok) return size_pow2;
-  if (linear_ok && !pow2_ok) return size_linear;
-  if (pow2_ok) return size_pow2;
-  return size_linear;
-}
-
-static uint8_t getDirectRetryRemainingHops(const mesh::Packet* packet) {
-  if (packet == NULL) {
-    return 0;
-  }
-  if (packet->getPayloadType() != PAYLOAD_TYPE_TRACE) {
-    return packet->getPathHashCount();
-  }
-  if (packet->payload_len < 9) {
-    return 0;
-  }
-
-  uint8_t route_bytes = packet->payload_len - 9;
-  uint8_t hash_size = decodeRetryTraceHashSize(packet->payload[8], route_bytes);
-  if (hash_size == 0) {
-    return 0;
-  }
-
-  uint8_t route_hops = route_bytes / hash_size;
-  if (packet->path_len >= route_hops) {
-    return 0;
-  }
-  return route_hops - packet->path_len;
-}
-
-static uint32_t scaleDirectRetryDelayForPath(const mesh::Packet* packet, uint32_t delay_ms) {
-  uint8_t hops = getDirectRetryRemainingHops(packet);
-  if (hops == 0) {
-    return delay_ms;
-  }
-
-  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
-    if (hops >= DIRECT_RETRY_TRACE_SCALE_HOPS) {
-      return delay_ms;
-    }
-    uint32_t scaled = ((delay_ms * hops) + (DIRECT_RETRY_TRACE_SCALE_HOPS - 1U)) / DIRECT_RETRY_TRACE_SCALE_HOPS;
-    return scaled > 0 ? scaled : 1;
-  }
-
-  if (hops >= 6) {
-    return delay_ms;
-  }
-  uint32_t scaled = ((delay_ms * hops) + 5U) / 6U;
-  return scaled > 0 ? scaled : 1;
-}
-
 bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const {
   (void)packet;
   if (!_prefs.direct_retry_enabled) {
@@ -930,18 +867,69 @@ void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet*
 }
 
 uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
-  (void)packet;
-  return 200;
+  uint32_t base_wait_millis = constrain((uint32_t)_prefs.direct_retry_base_ms, (uint32_t)10, (uint32_t)5000);
+  if (packet == NULL) {
+    return base_wait_millis;
+  }
+
+  // Approximate LoRa line rate in kilobits/sec from the live radio params the repeater is using now.
+  float kbps = (((float)active_sf) * active_bw * ((float)active_cr)) / ((float)(1UL << active_sf));
+  if (kbps <= 0.0f) {
+    return base_wait_millis;
+  }
+
+  // Wait roughly long enough for our TX, the next hop's receive/forward window, and its echo back.
+  uint32_t bits = ((uint32_t)packet->getRawLength()) * 8;
+  uint32_t scaled_wait_millis = (uint32_t)((((float)bits) * 4.0f) / kbps);
+  return base_wait_millis + scaled_wait_millis;
+}
+
+static uint8_t decodeDirectRetryTraceHashSize(uint8_t flags, uint8_t route_bytes) {
+  uint8_t code = flags & 0x03;
+  uint8_t size_pow2 = (uint8_t)(1U << code);
+  uint8_t size_linear = (uint8_t)(code + 1U);
+
+  bool pow2_ok = size_pow2 > 0 && (route_bytes % size_pow2) == 0;
+  bool linear_ok = size_linear > 0 && (route_bytes % size_linear) == 0;
+
+  if (pow2_ok && !linear_ok) return size_pow2;
+  if (linear_ok && !pow2_ok) return size_linear;
+  if (pow2_ok) return size_pow2;
+  return size_linear;
 }
 
 uint8_t MyMesh::getDirectRetryMaxAttempts(const mesh::Packet* packet) const {
-  (void)packet;
-  return getDirectRetryConfiguredMaxAttempts();
+  uint8_t configured_attempts = getDirectRetryConfiguredMaxAttempts();
+  uint8_t total_hops = 0;
+
+  if (packet != NULL) {
+    if (packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE && packet->payload_len >= 9) {
+      uint8_t route_bytes = packet->payload_len - 9;
+      uint8_t hash_size = decodeDirectRetryTraceHashSize(packet->payload[8], route_bytes);
+      if (hash_size > 0) {
+        total_hops = (uint8_t)(route_bytes / hash_size);
+      }
+    } else {
+      total_hops = packet->getPathHashCount();
+    }
+  }
+
+  uint8_t path_cap = 15;
+  if (total_hops <= 3) {
+    path_cap = 8;
+  } else if (total_hops == 4) {
+    path_cap = 12;
+  }
+
+  return configured_attempts < path_cap ? configured_attempts : path_cap;
 }
 
 uint32_t MyMesh::getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx) {
-  uint32_t delay_ms = _prefs.direct_retry_base_ms + ((uint32_t)attempt_idx * getDirectRetryAttemptStepMillis());
-  return scaleDirectRetryDelayForPath(packet, delay_ms);
+  uint32_t retry_delay = getDirectRetryEchoDelay(packet) + ((uint32_t)attempt_idx * getDirectRetryAttemptStepMillis());
+  if (packet == NULL) {
+    return retry_delay;
+  }
+  return getDirectRetransmitDelay(packet) + retry_delay;
 }
 
 static void formatDirectRetryTarget(char* dest, size_t dest_len, const uint8_t* target_hash, uint8_t target_hash_len) {
@@ -2072,6 +2060,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   last_battery_alert_sent = 0;
   battery_alert_sent = false;
   dirty_contacts_expiry = 0;
+  active_bw = 0.0f;
   active_sf = 0;
   active_cr = 0;
   memset(scheduled_radio_settings, 0, sizeof(scheduled_radio_settings));
@@ -2309,6 +2298,7 @@ void MyMesh::checkBatteryAlert() {
 
 void MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   radio_driver.setParams(freq, bw, sf, cr);
+  active_bw = bw;
   active_sf = sf;
   active_cr = cr;
 }

@@ -141,6 +141,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
 #endif
   CayenneLPP telemetry;
+  float active_bw;  // live BW, including temporary radio overrides
   uint8_t active_sf;  // live SF, including temporary radio overrides
   uint8_t active_cr;   // live CR, including temporary radio overrides
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
