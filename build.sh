@@ -9,7 +9,7 @@ SELECTED_TARGET=""
 SELECTED_COMMAND_ARGS=()
 MESHDEBUG_OVERRIDE=""
 PACKET_LOGGING_OVERRIDE=""
-FIRMWARE_VERSION_SUFFIX=""
+FIRMWARE_FILENAME_INFIX=""
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 RADIO_SETTING_TITLE=""
 RADIO_FREQ_OVERRIDE=""
@@ -69,7 +69,7 @@ $ bash build.sh
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
 
-Build all firmwares twice, with logging-off artifacts using the base version and logging-on artifacts using a "-logging" version suffix:
+Build all firmwares twice, with logging-off artifacts named "name-version" and logging-on artifacts named "name-logging-version":
 $ bash build.sh build-firmwares-logging-matrix
 
 Build all companion firmwares
@@ -1035,25 +1035,6 @@ apply_firmware_profile_overrides() {
   esac
 }
 
-append_firmware_version_suffix() {
-  local firmware_version=$1
-  local suffix=${2#-}
-
-  if [ -z "$suffix" ]; then
-    echo "$firmware_version"
-    return 0
-  fi
-
-  case "$firmware_version" in
-    *-"$suffix")
-      echo "$firmware_version"
-      ;;
-    *)
-      echo "${firmware_version}-${suffix}"
-      ;;
-  esac
-}
-
 print_build_flags() {
   local env_name=$1
 
@@ -1170,6 +1151,22 @@ collect_build_artifacts() {
   esac
 }
 
+get_firmware_filename() {
+  local env_name=$1
+  local firmware_version_string=$2
+  local filename_infix=$FIRMWARE_FILENAME_INFIX
+
+  if [ -z "$filename_infix" ] && [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ]; then
+    filename_infix="logging"
+  fi
+
+  if [ -n "$filename_infix" ]; then
+    echo "${env_name}-${filename_infix}-${firmware_version_string}"
+  else
+    echo "${env_name}-${firmware_version_string}"
+  fi
+}
+
 restore_platformio_build_flags() {
   local had_platformio_build_flags=$1
   local original_platformio_build_flags=${2:-}
@@ -1213,8 +1210,7 @@ build_firmware() {
   fi
 
   firmware_version_string="${firmware_version}-${commit_hash}"
-  firmware_version_string=$(append_firmware_version_suffix "$firmware_version_string" "$FIRMWARE_VERSION_SUFFIX")
-  firmware_filename="${env_name}-${firmware_version_string}"
+  firmware_filename=$(get_firmware_filename "$env_name" "$firmware_version_string")
 
   if [ "${PLATFORMIO_BUILD_FLAGS+x}" ]; then
     had_platformio_build_flags=1
@@ -1397,7 +1393,7 @@ run_logging_matrix_build_targets() {
   local targets=("$@")
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
-  local original_firmware_version_suffix=$FIRMWARE_VERSION_SUFFIX
+  local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local build_status=0
 
   if [ ${#targets[@]} -eq 0 ]; then
@@ -1408,23 +1404,23 @@ run_logging_matrix_build_targets() {
   echo "Building ${#targets[@]} target(s) with MESH_DEBUG=off and MESH_PACKET_LOGGING=off."
   MESHDEBUG_OVERRIDE="off"
   PACKET_LOGGING_OVERRIDE="off"
-  FIRMWARE_VERSION_SUFFIX=""
+  FIRMWARE_FILENAME_INFIX=""
   run_resolved_build_targets "${targets[@]}"
   build_status=$?
 
   if [ "$build_status" -eq 0 ]; then
     echo "Building ${#targets[@]} target(s) with MESH_DEBUG=on and MESH_PACKET_LOGGING=on."
-    echo "Logging-on artifacts use firmware version suffix: -logging"
+    echo "Logging-on artifacts use filename form: name-logging-version"
     MESHDEBUG_OVERRIDE="on"
     PACKET_LOGGING_OVERRIDE="on"
-    FIRMWARE_VERSION_SUFFIX="logging"
+    FIRMWARE_FILENAME_INFIX="logging"
     run_resolved_build_targets "${targets[@]}"
     build_status=$?
   fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
   PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
-  FIRMWARE_VERSION_SUFFIX=$original_firmware_version_suffix
+  FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
 
   return "$build_status"
 }
