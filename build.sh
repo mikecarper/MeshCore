@@ -19,6 +19,7 @@ RADIO_CR_OVERRIDE=""
 FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-}"
 BATCH_BUILD_MODE=0
 RESOLVED_BUILD_TARGETS=()
+RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 
 ENV_VARIANT_SUFFIX_PATTERN='companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
@@ -87,6 +88,8 @@ Environment Variables:
                            In interactive builds, this value is offered as the editable default.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
                    If not set, debug flags from variant platformio.ini files are used.
+  RESUME_BUILD_OUTPUT=1: For build-firmwares-logging-matrix, preserves out/ and skips
+                         targets whose expected output artifacts already exist.
 
 Examples:
 Build without debug logging:
@@ -1039,6 +1042,57 @@ prompt_for_kiss_modem_build_policy() {
   done
 }
 
+normalize_resume_build_output() {
+  case "${RESUME_BUILD_OUTPUT,,}" in
+    1|true|yes|y|on|resume)
+      RESUME_BUILD_OUTPUT=1
+      ;;
+    *)
+      RESUME_BUILD_OUTPUT=0
+      ;;
+  esac
+}
+
+prompt_for_logging_matrix_output_policy() {
+  local choice
+
+  normalize_resume_build_output
+
+  if ! [ -d "$OUTPUT_DIR" ]; then
+    RESUME_BUILD_OUTPUT=0
+    return 0
+  fi
+
+  if ! [ -t 0 ]; then
+    if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
+      echo "Resuming previous logging matrix output in ${OUTPUT_DIR}."
+    fi
+    return 0
+  fi
+
+  while true; do
+    read -r -p "Output directory '${OUTPUT_DIR}' exists. Resume previous option 3 progress or clean it? [resume/clean] (default: clean): " choice
+    choice=${choice,,}
+    if [ -z "$choice" ]; then
+      choice="clean"
+    fi
+
+    case "$choice" in
+      resume)
+        RESUME_BUILD_OUTPUT=1
+        return 0
+        ;;
+      clean)
+        RESUME_BUILD_OUTPUT=0
+        return 0
+        ;;
+      *)
+        echo "Invalid selection. Choose 'resume' or 'clean'."
+        ;;
+    esac
+  done
+}
+
 get_platform_for_env() {
   local env_name=$1
 
@@ -1188,8 +1242,8 @@ collect_esp32_artifacts() {
   local firmware_filename=$2
 
   pio run -t mergebin -e "$env_name" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "out/${firmware_filename}-merged.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
 }
 
 collect_nrf52_artifacts() {
@@ -1197,9 +1251,9 @@ collect_nrf52_artifacts() {
   local firmware_filename=$2
 
   python3 bin/uf2conv/uf2conv.py ".pio/build/${env_name}/firmware.hex" -c -o ".pio/build/${env_name}/firmware.uf2" -f 0xADA52840 || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
   if [ -f ".pio/build/${env_name}/firmware.zip" ]; then
-    copy_build_output ".pio/build/${env_name}/firmware.zip" "out/${firmware_filename}.zip" || return $?
+    copy_build_output ".pio/build/${env_name}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
   fi
 }
 
@@ -1207,16 +1261,46 @@ collect_stm32_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.hex" "out/${firmware_filename}.hex" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.hex" "${OUTPUT_DIR}/${firmware_filename}.hex" || return $?
 }
 
 collect_rp2040_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "out/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "out/${firmware_filename}.uf2" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
+}
+
+output_artifact_exists() {
+  [ -s "${OUTPUT_DIR}/$1" ]
+}
+
+build_artifacts_exist() {
+  local env_platform=$1
+  local firmware_filename=$2
+
+  case "$env_platform" in
+    ESP32_PLATFORM)
+      output_artifact_exists "${firmware_filename}.bin" \
+        && output_artifact_exists "${firmware_filename}-merged.bin"
+      ;;
+    NRF52_PLATFORM)
+      output_artifact_exists "${firmware_filename}.uf2"
+      ;;
+    STM32_PLATFORM)
+      output_artifact_exists "${firmware_filename}.bin" \
+        && output_artifact_exists "${firmware_filename}.hex"
+      ;;
+    RP2040_PLATFORM)
+      output_artifact_exists "${firmware_filename}.bin" \
+        && output_artifact_exists "${firmware_filename}.uf2"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 collect_build_artifacts() {
@@ -1306,6 +1390,11 @@ build_firmware() {
 
   firmware_version_string="${firmware_version}-${commit_hash}"
   firmware_filename=$(get_firmware_filename "$env_name" "$firmware_version_string")
+
+  if [ "$RESUME_BUILD_OUTPUT" == "1" ] && build_artifacts_exist "$env_platform" "$firmware_filename"; then
+    echo "Skipping ${env_name}; existing artifacts found for ${firmware_filename}."
+    return 0
+  fi
 
   if [ "${PLATFORMIO_BUILD_FLAGS+x}" ]; then
     had_platformio_build_flags=1
@@ -1460,6 +1549,12 @@ prepare_output_dir() {
   if [ -z "$output_dir" ] || [ "$output_dir" == "/" ] || [ "$output_dir" == "." ]; then
     echo "Refusing to clean unsafe output directory: $output_dir"
     exit 1
+  fi
+
+  if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
+    mkdir -p -- "$output_dir"
+    echo "Resuming build output in ${output_dir}; existing artifacts will be skipped."
+    return 0
   fi
 
   rm -rf -- "$output_dir"
@@ -1625,6 +1720,11 @@ main() {
   fi
 
   prompt_for_resolved_firmware_version
+  if is_logging_matrix_command "$1"; then
+    prompt_for_logging_matrix_output_policy
+  else
+    RESUME_BUILD_OUTPUT=0
+  fi
   prepare_output_dir
   run_command "$@"
 }
