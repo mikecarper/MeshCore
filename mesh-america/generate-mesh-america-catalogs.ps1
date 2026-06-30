@@ -63,12 +63,111 @@ $RolePatterns = @(
     @{ Suffix = 'sensor'; Role = 'sensor'; Title = 'Sensor'; SubTitle = $null }
 )
 
+$DeviceNameOverrides = @{
+    'GAT562_30S_Mesh_Kit' = 'GAT-IoT GAT562 30s'
+    'GAT562_Mesh_Tracker_Pro' = 'GAT-IoT GAT562 Tracker'
+    'Heltec_E213' = 'Heltec Vision Master E213'
+    'Heltec_E290' = 'Heltec Vision Master E290'
+    'Heltec_mesh_solar' = 'Heltec MeshSolar / MeshTower'
+    'Heltec_t096' = 'Heltec Mesh Node T096'
+    'Heltec_t1' = 'Heltec Mesh Node T1'
+    'Heltec_t114' = 'Heltec T114'
+    'Heltec_t114_without_display' = 'Heltec T114'
+    'Heltec_T190' = 'Heltec T114'
+    'heltec_tracker_v2' = 'Heltec Wireless Tracker v2'
+    'heltec_v4' = 'Heltec v4'
+    'heltec_v4_3' = 'Heltec v4'
+    'heltec_v4_expansionkit' = 'Heltec v4 + Expansion Kit (Touch)'
+    'heltec_v4_expansionkit_tft' = 'Heltec v4 + Expansion Kit (Touch)'
+    'heltec_v4_tft' = 'Heltec v4'
+    'Heltec_Wireless_Paper' = 'Heltec Heltec Wireless Paper'
+    'ikoka_nano_nrf_22dbm' = 'Ikoka Nano'
+    'ikoka_nano_nrf_30dbm' = 'Ikoka Nano'
+    'ikoka_nano_nrf_33dbm' = 'Ikoka Nano'
+    'ikoka_stick_nrf_22dbm' = 'Ikoka Stick'
+    'ikoka_stick_nrf_30dbm' = 'Ikoka Stick'
+    'ikoka_stick_nrf_33dbm' = 'Ikoka Stick'
+    'KeepteenLT1' = 'Keepteen LT1'
+    'LilyGo_T3S3_sx1262' = 'LilyGo T3 S3 (SX126x)'
+    'LilyGo_T3S3_sx1276' = 'LilyGo T3 S3 (SX127x)'
+    'LilyGo_TBeam_1W' = 'LilyGo T-Beam (SX1262)'
+    'LilyGo_TDeck' = 'LilyGo T-Deck'
+    'LilyGo_T-Echo-Lite' = 'LilyGo T-Echo Lite'
+    'LilyGo_TLora_V2_1_1_6' = 'LilyGo LoRa32 V2.1_1.6'
+    'Mesh_pocket' = 'Heltec MeshPocket'
+    'Nano_G2_Ultra' = 'UnitEng Nano G2 Ultra'
+    'ProMicro' = 'ProMicro nrf52 (faketec)'
+    'R1Neo' = 'Muzi Works R1 Neo'
+    'RAK_3112' = 'RAK WisBlock 3112'
+    'RAK_3401' = 'RAK WisMesh 1W Booster (3401 + 13302)'
+    'RAK_4631' = 'RAK WisBlock / WisMesh (RAK 4631)'
+    'SenseCap_Solar' = 'Seeed Studio SenseCAP Solar'
+    'Station_G2' = 'UnitEng Station G2'
+    'Station_G3_ESP32' = 'UnitEng/BQ Voyage Station G3'
+    'T_Beam_S3_Supreme_SX1262' = 'LilyGo T-Beam Supreme (SX1262)'
+    't1000e' = 'Seeed Studio SenseCAP T1000-E'
+    'Tbeam_SX1262' = 'LilyGo T-Beam (SX1262)'
+    'Tbeam_SX1276' = 'LilyGo T-Beam 1.2 (SX1276)'
+    'ThinkNode_M1' = 'Elecrow ThinkNode M1'
+    'ThinkNode_M2' = 'Elecrow ThinkNode M2'
+    'ThinkNode_M3' = 'Elecrow ThinkNode M3'
+    'ThinkNode_M5' = 'Elecrow ThinkNode M5'
+    'ThinkNode_M6' = 'Elecrow ThinkNode M6'
+    'waveshare_rp2040_lora' = 'RPI Pico 2040 + WaveShare SX1262'
+    'WioTrackerL1' = 'Seeed Studio Wio Tracker L1 Pro'
+    'WioTrackerL1Eink' = 'Seeed Studio Wio Tracker L1 EINK'
+    'Xiao_C3' = 'Seeed Studio Xiao C3'
+    'Xiao_nrf52' = 'Seeed Studio Xiao nRF52 WIO'
+    'Xiao_S3' = 'Seeed Studio Xiao S3 WIO'
+    'Xiao_S3_WIO' = 'Seeed Studio Xiao S3 WIO'
+}
+
+$DeviceSubTitleOverrides = @{
+    'Heltec_t114_without_display' = 'Without display'
+    'Heltec_T190' = 'T190'
+    'heltec_v4_3' = 'v4.3'
+    'heltec_v4_tft' = 'TFT'
+    'heltec_v4_expansionkit' = 'Expansion Kit'
+    'heltec_v4_expansionkit_tft' = 'Expansion Kit TFT'
+    'ikoka_nano_nrf_22dbm' = '22 dBm'
+    'ikoka_nano_nrf_30dbm' = '30 dBm'
+    'ikoka_nano_nrf_33dbm' = '33 dBm'
+    'ikoka_stick_nrf_22dbm' = '22 dBm'
+    'ikoka_stick_nrf_30dbm' = '30 dBm'
+    'ikoka_stick_nrf_33dbm' = '33 dBm'
+}
+
 function ConvertTo-DeviceName {
     param([string]$Prefix)
+    if ($DeviceNameOverrides.ContainsKey($Prefix)) {
+        return $DeviceNameOverrides[$Prefix]
+    }
+
     $name = $Prefix.Trim('_')
     $name = $name -replace '_', ' '
     $name = $name -replace '\s+', ' '
     return $name.Trim()
+}
+
+function Join-SubTitle {
+    param(
+        [string]$DeviceKey,
+        [string]$RoleSubTitle
+    )
+
+    $parts = @()
+    if ($DeviceSubTitleOverrides.ContainsKey($DeviceKey)) {
+        $parts += $DeviceSubTitleOverrides[$DeviceKey]
+    }
+    if ($RoleSubTitle) {
+        $parts += $RoleSubTitle
+    }
+
+    if (-not $parts.Count) {
+        return $null
+    }
+
+    return ($parts -join ', ')
 }
 
 function Get-RoleInfo {
@@ -79,7 +178,7 @@ function Get-RoleInfo {
         if ($DeviceRole.EndsWith("_$suffix", [StringComparison]::OrdinalIgnoreCase) -or
             $DeviceRole.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) {
             $prefixLength = $DeviceRole.Length - $suffix.Length
-            if ($prefixLength -gt 0 -and $DeviceRole[$prefixLength - 1] -eq '_') {
+            if ($prefixLength -gt 0 -and ($DeviceRole[$prefixLength - 1] -eq '_' -or $DeviceRole[$prefixLength - 1] -eq '-')) {
                 $prefixLength--
             }
 
@@ -201,12 +300,12 @@ function New-Catalog {
             DeviceName = $roleInfo.DeviceName
             Role = $roleInfo.Role
             Title = $roleInfo.Title
-            SubTitle = $roleInfo.SubTitle
+            SubTitle = Join-SubTitle $roleInfo.DeviceKey $roleInfo.SubTitle
         }
     }
 
     $devices = New-Object System.Collections.ArrayList
-    foreach ($deviceGroup in @($parsedFiles | Group-Object DeviceKey | Sort-Object Name)) {
+    foreach ($deviceGroup in @($parsedFiles | Group-Object DeviceName | Sort-Object Name)) {
         $deviceFiles = @($deviceGroup.Group | ForEach-Object { $_.File })
         $deviceType = Get-DeviceType $deviceFiles
         $firmware = New-Object System.Collections.ArrayList
