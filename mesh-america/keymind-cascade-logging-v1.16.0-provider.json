@@ -4115,6 +4115,37 @@
                    {
                        "maker":  "keymindCascade",
                        "class":  "keymindCascade",
+                       "name":  "LilyGo T Impulse Plus",
+                       "type":  "nrf52",
+                       "firmware":  [
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        }
+                                    ]
+                   },
+                   {
+                       "maker":  "keymindCascade",
+                       "class":  "keymindCascade",
                        "name":  "LilyGo T3 S3 (SX126x)",
                        "type":  "esp32",
                        "firmware":  [
@@ -5060,7 +5091,7 @@
                    {
                        "maker":  "keymindCascade",
                        "class":  "keymindCascade",
-                       "name":  "LilyGo T-Lora Pager",
+                       "name":  "LilyGo Tlora C6",
                        "type":  "esp32",
                        "firmware":  [
                                         {
@@ -5104,37 +5135,6 @@
                                                                                                                                 "name":  "LilyGo_Tlora_C6_room_server_-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_Tlora_C6_room_server_-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "keymindCascade",
-                       "class":  "keymindCascade",
-                       "name":  "LilyGo T-Watch S3 Plus",
-                       "type":  "nrf52",
-                       "firmware":  [
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_T_Impulse_Plus_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
                                                                                                           }
