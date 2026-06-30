@@ -53,7 +53,7 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares twice, first with MESH_DEBUG/MESH_PACKET_LOGGING off and then with both on.
+  build-firmwares-logging-matrix: Build all firmwares twice, first with MESH_DEBUG/MESH_PACKET_LOGGING off and then with both on for non-Bluetooth targets.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -262,7 +262,7 @@ prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
     "Build all firmwares"
-    "Build all firmwares twice (logging off, then MESH_DEBUG + MESH_PACKET_LOGGING on)"
+    "Build all firmwares twice (logging off, then logging on for non-Bluetooth targets)"
     "Build all repeater firmwares"
     "Build all companion firmwares"
     "Build all chat room server firmwares"
@@ -944,6 +944,101 @@ get_pio_envs_for_variant_role() {
   done
 }
 
+is_kiss_modem_target() {
+  case "$(get_variant_name_for_env "$1")" in
+    kiss_modem|*_kiss_modem)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_bluetooth_target() {
+  case "$(get_variant_name_for_env "$1")" in
+    companion_radio_ble|*_companion_radio_ble)
+      return 0
+      ;;
+  esac
+
+  case "${1,,}" in
+    *companion_radio_ble*|*companion_ble*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+filter_out_kiss_modem_targets() {
+  local target
+  local -a filtered_targets=()
+
+  for target in "${RESOLVED_BUILD_TARGETS[@]}"; do
+    if ! is_kiss_modem_target "$target"; then
+      filtered_targets+=("$target")
+    fi
+  done
+
+  RESOLVED_BUILD_TARGETS=("${filtered_targets[@]}")
+}
+
+filter_out_bluetooth_targets() {
+  local target
+
+  for target in "$@"; do
+    if ! is_bluetooth_target "$target"; then
+      printf '%s\n' "$target"
+    fi
+  done
+}
+
+prompt_for_kiss_modem_build_policy() {
+  local kiss_count=0
+  local target
+  local choice
+
+  for target in "${RESOLVED_BUILD_TARGETS[@]}"; do
+    if is_kiss_modem_target "$target"; then
+      kiss_count=$((kiss_count + 1))
+    fi
+  done
+
+  if [ "$kiss_count" -eq 0 ]; then
+    return 0
+  fi
+
+  if ! [ -t 0 ]; then
+    echo "Including ${kiss_count} KISS modem target(s)."
+    return 0
+  fi
+
+  while true; do
+    read -r -p "KISS modem targets found: ${kiss_count}. Build or skip them? [build/skip] (default: build): " choice
+    choice=${choice,,}
+    if [ -z "$choice" ]; then
+      choice="build"
+    fi
+
+    case "$choice" in
+      build)
+        echo "Including ${kiss_count} KISS modem target(s)."
+        return 0
+        ;;
+      skip)
+        filter_out_kiss_modem_targets
+        echo "Skipped ${kiss_count} KISS modem target(s)."
+        return 0
+        ;;
+      *)
+        echo "Invalid selection. Choose 'build' or 'skip'."
+        ;;
+    esac
+  done
+}
+
 get_platform_for_env() {
   local env_name=$1
 
@@ -1349,6 +1444,14 @@ resolve_command_targets() {
     echo "No supported build targets matched: ${*:2}"
     return 1
   fi
+
+  if is_bulk_build_command "$1"; then
+    prompt_for_kiss_modem_build_policy
+    if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
+      echo "No build targets remain after skipping KISS modem targets."
+      return 1
+    fi
+  fi
 }
 
 prepare_output_dir() {
@@ -1391,9 +1494,11 @@ run_resolved_build_targets() {
 
 run_logging_matrix_build_targets() {
   local targets=("$@")
+  local logging_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local bluetooth_skip_count=0
   local build_status=0
 
   if [ ${#targets[@]} -eq 0 ]; then
@@ -1409,13 +1514,24 @@ run_logging_matrix_build_targets() {
   build_status=$?
 
   if [ "$build_status" -eq 0 ]; then
-    echo "Building ${#targets[@]} target(s) with MESH_DEBUG=on and MESH_PACKET_LOGGING=on."
-    echo "Logging-on artifacts use filename form: name-logging-version"
-    MESHDEBUG_OVERRIDE="on"
-    PACKET_LOGGING_OVERRIDE="on"
-    FIRMWARE_FILENAME_INFIX="logging"
-    run_resolved_build_targets "${targets[@]}"
-    build_status=$?
+    mapfile -t logging_targets < <(filter_out_bluetooth_targets "${targets[@]}")
+    bluetooth_skip_count=$((${#targets[@]} - ${#logging_targets[@]}))
+
+    if [ "$bluetooth_skip_count" -gt 0 ]; then
+      echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
+    fi
+
+    if [ ${#logging_targets[@]} -gt 0 ]; then
+      echo "Building ${#logging_targets[@]} target(s) with MESH_DEBUG=on and MESH_PACKET_LOGGING=on."
+      echo "Logging-on artifacts use filename form: name-logging-version"
+      MESHDEBUG_OVERRIDE="on"
+      PACKET_LOGGING_OVERRIDE="on"
+      FIRMWARE_FILENAME_INFIX="logging"
+      run_resolved_build_targets "${logging_targets[@]}"
+      build_status=$?
+    else
+      echo "No non-Bluetooth targets remain for logging-on pass."
+    fi
   fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
