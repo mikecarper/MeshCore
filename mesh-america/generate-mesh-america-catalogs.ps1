@@ -169,7 +169,7 @@ $DeviceNameOverrides = @{
     'LilyGo_T_Impulse_Plus' = 'LilyGo T-Impulse Plus nRF52840'
     'LilyGo_T3S3_sx1262' = 'LilyGo T3 S3 (SX126x)'
     'LilyGo_T3S3_sx1276' = 'LilyGo T3 S3 (SX127x)'
-    'LilyGo_TBeam_1W' = 'LilyGo T-Beam (SX1262)'
+    'LilyGo_TBeam_1W' = 'LilyGo T-Beam 1W'
     'LilyGo_TDeck' = 'LilyGo T-Deck'
     'LilyGo_T-Echo-Lite' = 'LilyGo T-Echo Lite'
     'LilyGo_T-Echo-Lite_non_shell' = 'LilyGo T-Echo Lite'
@@ -220,7 +220,7 @@ $DeviceNameOverrides = @{
     'Xiao_C6' = 'Seeed Studio Xiao C6'
     'Xiao_nrf52' = 'Seeed Studio Xiao nRF52 WIO'
     'Xiao_rp2040' = 'Seeed Studio Xiao RP2040'
-    'Xiao_S3' = 'Seeed Studio Xiao S3 WIO'
+    'Xiao_S3' = 'Seeed Studio Xiao S3'
     'Xiao_S3_WIO' = 'Seeed Studio Xiao S3 WIO'
 }
 

@@ -4395,52 +4395,6 @@
                        "type":  "esp32",
                        "firmware":  [
                                         {
-                                            "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "companionWifi",
-                                            "title":  "Companion WiFi",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
                                             "role":  "repeater",
                                             "title":  "Repeater",
                                             "version":  {
@@ -4449,21 +4403,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Tbeam_SX1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tbeam_SX1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -4484,21 +4426,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Tbeam_SX1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tbeam_SX1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -4519,21 +4449,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Tbeam_SX1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tbeam_SX1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -4615,6 +4533,128 @@
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "Tbeam_SX1276_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tbeam_SX1276_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        }
+                                    ]
+                   },
+                   {
+                       "maker":  "lilygo",
+                       "name":  "LilyGo T-Beam 1W",
+                       "type":  "esp32",
+                       "firmware":  [
+                                        {
+                                            "role":  "companionUsb",
+                                            "title":  "Companion USB",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "companionWifi",
+                                            "title":  "Companion WiFi",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_companion_radio_wifi-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeaterBridgeEspnow",
+                                            "title":  "Repeater Bridge ESP-NOW",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
                                                                                                                             }
                                                                                                                         ]
@@ -7813,7 +7853,7 @@
                    },
                    {
                        "maker":  "seeed",
-                       "name":  "Seeed Studio Xiao S3 WIO",
+                       "name":  "Seeed Studio Xiao S3",
                        "type":  "esp32",
                        "firmware":  [
                                         {
@@ -7830,16 +7870,126 @@
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
                                                                                                                             },
                                                                                                                             {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_WIO_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "Xiao_S3_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeaterBridgeEspnow",
+                                            "title":  "Repeater Bridge ESP-NOW",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "sensor",
+                                            "title":  "Sensor",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        }
+                                    ]
+                   },
+                   {
+                       "maker":  "seeed",
+                       "name":  "Seeed Studio Xiao S3 WIO",
+                       "type":  "esp32",
+                       "firmware":  [
+                                        {
+                                            "role":  "companionUsb",
+                                            "title":  "Companion USB",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_WIO_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -7907,21 +8057,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Xiao_S3_WIO_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -7942,21 +8080,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Xiao_S3_WIO_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -7977,21 +8103,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Xiao_S3_WIO_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
@@ -8012,21 +8126,9 @@
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
                                                                                                                                 "name":  "Xiao_S3_WIO_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_WIO_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
                                                                                                                                 "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_sensor-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
                                                                                                                             },
                                                                                                                             {
                                                                                                                                 "type":  "flash-update",
