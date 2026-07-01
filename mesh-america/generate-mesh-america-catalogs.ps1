@@ -362,6 +362,32 @@ function Join-FirmwareTitle {
     return "$Title - $variant"
 }
 
+function Get-VariantSortRank {
+    param([string]$DeviceKey)
+
+    if (-not $DeviceVariantInTitle.ContainsKey($DeviceKey) -or -not $DeviceSubTitleOverrides.ContainsKey($DeviceKey)) {
+        return 1000
+    }
+
+    $variant = $DeviceSubTitleOverrides[$DeviceKey]
+    if ($variant -match '^(\d+)dBm$') {
+        return [int]$Matches[1]
+    }
+
+    return 1000
+}
+
+function Get-FirmwareGroupVariantSortRank {
+    param([array]$Entries)
+
+    $ranks = @($Entries | ForEach-Object { Get-VariantSortRank $_.DeviceKey } | Sort-Object)
+    if ($ranks.Count) {
+        return $ranks[0]
+    }
+
+    return 1000
+}
+
 function Join-VersionNotes {
     param(
         [string]$Description,
@@ -528,7 +554,15 @@ function New-Catalog {
         $deviceType = Get-DeviceType $deviceFiles
         $firmware = New-Object System.Collections.ArrayList
 
-        foreach ($roleGroup in @($deviceGroup.Group | Group-Object Role,Title,SubTitle | Sort-Object Name)) {
+        $firmwareGroups = @(
+            $deviceGroup.Group |
+                Group-Object Role,Title,SubTitle |
+                Sort-Object `
+                    @{ Expression = { Get-FirmwareGroupVariantSortRank $_.Group } },
+                    @{ Expression = { $_.Name } }
+        )
+
+        foreach ($roleGroup in $firmwareGroups) {
             $first = $roleGroup.Group[0]
             $files = @(
                 $roleGroup.Group |

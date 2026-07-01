@@ -3481,6 +3481,52 @@
                                                         }
                                         },
                                         {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - 22dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server - 22dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
                                             "role":  "companionUsb",
                                             "title":  "Companion radio - 30dBm",
                                             "version":  {
@@ -3497,6 +3543,52 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "ikoka_nano_nrf_30dbm_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - 30dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server - 30dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
@@ -3528,52 +3620,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater - 22dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater - 30dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
                                             "title":  "Repeater - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -3589,52 +3635,6 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "ikoka_nano_nrf_33dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_33dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "roomServer",
-                                            "title":  "Room Server - 22dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "roomServer",
-                                            "title":  "Room Server - 30dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_nano_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
@@ -3695,6 +3695,52 @@
                                                         }
                                         },
                                         {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - 22dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server - 22dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
                                             "role":  "companionUsb",
                                             "title":  "Companion radio - 30dBm",
                                             "version":  {
@@ -3711,6 +3757,52 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "ikoka_stick_nrf_30dbm_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - 30dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server - 30dBm",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
@@ -3742,52 +3834,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater - 22dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater - 30dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
                                             "title":  "Repeater - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -3803,52 +3849,6 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "ikoka_stick_nrf_33dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_33dbm_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "roomServer",
-                                            "title":  "Room Server - 22dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_22dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "roomServer",
-                                            "title":  "Room Server - 30dBm",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_stick_nrf_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
