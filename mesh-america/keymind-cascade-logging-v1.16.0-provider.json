@@ -3366,8 +3366,57 @@
                        "type":  "nrf52",
                        "firmware":  [
                                         {
+                                            "role":  "companionUsb",
+                                            "title":  "Companion USB",
+                                            "subTitle":  "0.96 display",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "companionUsb",
+                                            "title":  "Companion USB",
+                                            "subTitle":  "0.96 display rotated",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
                                             "role":  "repeater",
                                             "title":  "Repeater",
+                                            "subTitle":  "No display",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3391,6 +3440,7 @@
                                         {
                                             "role":  "roomServer",
                                             "title":  "Room Server",
+                                            "subTitle":  "No display",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3405,66 +3455,6 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "ikoka_handheld_nrf_e22_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "Ikoka",
-                       "name":  "Ikoka Handheld nRF E22 30 dBm 0.96",
-                       "type":  "nrf52",
-                       "firmware":  [
-                                        {
-                                            "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "Ikoka",
-                       "name":  "Ikoka Handheld nRF E22 30 dBm 0.96 Rotated",
-                       "type":  "nrf52",
-                       "firmware":  [
-                                        {
-                                            "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_usb-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
