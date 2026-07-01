@@ -73,13 +73,16 @@
               },
     "role":  {
                  "companionWifi":  {
-                                       "name":  "Companion WiFi"
+                                       "name":  "Companion WiFi",
+                                       "description":  "Companion radio build that exposes the MeshCore companion interface over Wi-Fi instead of BLE or USB."
                                    },
                  "sensor":  {
-                                "name":  "Sensor"
+                                "name":  "Sensor",
+                                "description":  "Sensor and telemetry build for boards that read and publish sensor data on the mesh."
                             },
                  "terminalChat":  {
-                                      "name":  "Terminal Chat"
+                                      "name":  "Terminal Chat",
+                                      "description":  "Standalone serial terminal chat build for text messaging from a terminal console."
                                   }
              },
     "device":  [
@@ -183,9 +186,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -382,9 +386,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -474,9 +479,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -697,9 +703,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -789,9 +796,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -1374,9 +1382,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -1520,9 +1529,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -1859,9 +1869,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -2498,9 +2509,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -2590,9 +2602,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -2690,9 +2703,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -2805,9 +2819,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -2828,9 +2843,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3024,33 +3040,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "TFT, Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
-                                                                                                      "files":  [
-                                                                                                                    {
-                                                                                                                        "type":  "flash-wipe",
-                                                                                                                        "name":  "heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                        "url":  "https://github.com/mikecarper/MeshCore/releases/download/v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                        "title":  "Full install (bootloader + firmware)"
-                                                                                                                    },
-                                                                                                                    {
-                                                                                                                        "type":  "flash-update",
-                                                                                                                        "name":  "heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                        "url":  "https://github.com/mikecarper/MeshCore/releases/download/v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                        "title":  "Update (app only)"
-                                                                                                                    }
-                                                                                                                ]
-                                                                                                  }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "companionWifi",
-                                            "title":  "Companion WiFi",
-                                            "subTitle":  "TFT",
-                                            "version":  {
-                                                            "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3062,6 +3055,30 @@
                                                                                                                         "type":  "flash-update",
                                                                                                                         "name":  "heltec_v4_tft_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                         "url":  "https://github.com/mikecarper/MeshCore/releases/download/v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                        "title":  "Update (app only)"
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                  }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "companionWifi",
+                                            "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
+                                            "version":  {
+                                                            "v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
+                                                                                                      "files":  [
+                                                                                                                    {
+                                                                                                                        "type":  "flash-wipe",
+                                                                                                                        "name":  "heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                        "url":  "https://github.com/mikecarper/MeshCore/releases/download/v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                        "title":  "Full install (bootloader + firmware)"
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "type":  "flash-update",
+                                                                                                                        "name":  "heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                        "url":  "https://github.com/mikecarper/MeshCore/releases/download/v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_companion_radio_wifi-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                         "title":  "Update (app only)"
                                                                                                                     }
                                                                                                                 ]
@@ -3212,9 +3229,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3235,10 +3253,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
-                                            "subTitle":  "TFT",
+                                            "subTitle":  "TFT, Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3259,9 +3277,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3282,10 +3301,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
-                                            "subTitle":  "TFT",
+                                            "subTitle":  "TFT, Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -3950,9 +3969,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -4042,9 +4062,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -4065,9 +4086,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -4165,9 +4187,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -4280,9 +4303,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -5228,9 +5252,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -5343,9 +5368,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -5512,9 +5538,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -5657,9 +5684,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -6005,10 +6033,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
-                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38, Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -6155,9 +6183,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -7094,9 +7123,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -7239,9 +7269,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -7467,9 +7498,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -7589,9 +7621,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -7612,9 +7645,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -7688,9 +7722,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -7780,9 +7815,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -7926,9 +7962,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -7949,9 +7986,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8071,9 +8109,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -8147,9 +8186,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -8317,9 +8357,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8340,9 +8381,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8416,9 +8458,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -8531,9 +8574,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -8554,9 +8598,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -8676,9 +8721,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8699,9 +8745,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8821,9 +8868,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash",
@@ -8920,9 +8968,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -9042,9 +9091,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -9609,9 +9659,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -9709,9 +9760,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10006,9 +10058,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -10180,10 +10233,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
-                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4, Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10305,9 +10358,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10397,9 +10451,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10420,9 +10475,10 @@
                                         {
                                             "role":  "terminalChat",
                                             "title":  "Terminal Chat",
+                                            "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10602,9 +10658,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "download",
@@ -10777,9 +10834,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",
@@ -10970,9 +11028,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "Wi-Fi companion interface",
                                             "version":  {
                                                             "v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.",
+                                                                                                      "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.\n\nRole note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.",
                                                                                                       "files":  [
                                                                                                                     {
                                                                                                                         "type":  "flash-wipe",

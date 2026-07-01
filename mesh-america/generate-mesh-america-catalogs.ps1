@@ -22,9 +22,18 @@ $Catalogs = @(
 )
 
 $RoleDefinitions = [ordered]@{
-    companionWifi = [ordered]@{ name = 'Companion WiFi' }
-    sensor = [ordered]@{ name = 'Sensor' }
-    terminalChat = [ordered]@{ name = 'Terminal Chat' }
+    companionWifi = [ordered]@{
+        name = 'Companion WiFi'
+        description = 'Companion radio build that exposes the MeshCore companion interface over Wi-Fi instead of BLE or USB.'
+    }
+    sensor = [ordered]@{
+        name = 'Sensor'
+        description = 'Sensor and telemetry build for boards that read and publish sensor data on the mesh.'
+    }
+    terminalChat = [ordered]@{
+        name = 'Terminal Chat'
+        description = 'Standalone serial terminal chat build for text messaging from a terminal console.'
+    }
 }
 
 $RolePatterns = @(
@@ -43,7 +52,7 @@ $RolePatterns = @(
     @{ Suffix = 'companion_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'comp_radio_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'companion_radio_serial'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = 'Serial' },
-    @{ Suffix = 'companion_radio_wifi'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = $null },
+    @{ Suffix = 'companion_radio_wifi'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = 'Wi-Fi companion interface' },
     @{ Suffix = 'repeater_bridge_rs232_serial1'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 1' },
     @{ Suffix = 'repeater_bridge_rs232_serial2'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 2' },
     @{ Suffix = 'repeater_bridge_rs232'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = $null },
@@ -56,8 +65,8 @@ $RolePatterns = @(
     @{ Suffix = 'room_server_'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
     @{ Suffix = 'room_server'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
     @{ Suffix = 'room_svr'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
-    @{ Suffix = 'terminal_chat'; Role = 'terminalChat'; Title = 'Terminal Chat'; SubTitle = $null },
-    @{ Suffix = 'sensor'; Role = 'sensor'; Title = 'Sensor'; SubTitle = $null }
+    @{ Suffix = 'terminal_chat'; Role = 'terminalChat'; Title = 'Terminal Chat'; SubTitle = 'Serial terminal chat' },
+    @{ Suffix = 'sensor'; Role = 'sensor'; Title = 'Sensor'; SubTitle = 'Sensor telemetry node' }
 )
 
 $MakerDefinitions = [ordered]@{
@@ -244,6 +253,12 @@ $DeviceSelectionNotes = @{
     'Xiao_S3' = 'Board selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.'
 }
 
+$RoleSelectionNotes = @{
+    companionWifi = 'Role note: Companion WiFi exposes the MeshCore companion interface over Wi-Fi rather than BLE or USB. Use it for boards that should be controlled over a local Wi-Fi network. It is flashable, but the validator treats it as a custom role, so the standard Configure step may not appear.'
+    sensor = 'Role note: Sensor builds publish board-supported sensor or telemetry data on the mesh. They are flashable custom-role builds, not standard companion or repeater firmware.'
+    terminalChat = 'Role note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.'
+}
+
 function ConvertTo-DeviceName {
     param([string]$Prefix)
     if ($DeviceNameOverrides.ContainsKey($Prefix)) {
@@ -296,7 +311,8 @@ function Join-SubTitle {
 function Join-VersionNotes {
     param(
         [string]$Description,
-        [string[]]$DeviceKeys
+        [string[]]$DeviceKeys,
+        [string]$Role
     )
 
     $parts = @($Description)
@@ -304,6 +320,9 @@ function Join-VersionNotes {
         if ($DeviceSelectionNotes.ContainsKey($deviceKey)) {
             $parts += $DeviceSelectionNotes[$deviceKey]
         }
+    }
+    if ($RoleSelectionNotes.ContainsKey($Role)) {
+        $parts += $RoleSelectionNotes[$Role]
     }
 
     return ($parts -join "`n`n")
@@ -480,7 +499,7 @@ function New-Catalog {
             $firmwareEntry.subTitle = $first.SubTitle
             }
 
-            $versionNotes = Join-VersionNotes $Definition.Description @($roleGroup.Group | ForEach-Object { $_.DeviceKey })
+            $versionNotes = Join-VersionNotes -Description $Definition.Description -DeviceKeys @($roleGroup.Group | ForEach-Object { $_.DeviceKey }) -Role $first.Role
             $firmwareEntry.version = [ordered]@{
                 $Definition.Tag = [ordered]@{
                     notes = $versionNotes
