@@ -144,8 +144,8 @@ $DeviceNameOverrides = @{
     'GAT562_Mesh_EVB_Pro' = 'GAT-IoT GAT562 EVB Pro'
     'GAT562_Mesh_Tracker_Pro' = 'GAT-IoT GAT562 Tracker'
     'GAT562_Mesh_Watch13' = 'GAT-IoT GAT562 Watch13'
-    'Generic_E22_sx1262' = 'Generic E22 SX1262'
-    'Generic_E22_sx1268' = 'Generic E22 SX1268'
+    'Generic_E22_sx1262' = 'Generic E22'
+    'Generic_E22_sx1268' = 'Generic E22'
     'Generic_ESPNOW' = 'Generic ESP-NOW'
     'Heltec_ct62' = 'Heltec CT62'
     'Heltec_E213' = 'Heltec Vision Master E213'
@@ -184,8 +184,8 @@ $DeviceNameOverrides = @{
     'LilyGo_TLora_V2_1_1_6' = 'LilyGo LoRa32 V2.1_1.6'
     'LilyGo_Tlora_C6' = 'LilyGo T-LoRa C6'
     'M5Stack_Unit_C6L' = 'M5Stack Unit C6L'
-    'Meshadventurer_sx1262' = 'Meshadventurer SX1262'
-    'Meshadventurer_sx1268' = 'Meshadventurer SX1268'
+    'Meshadventurer_sx1262' = 'Meshadventurer'
+    'Meshadventurer_sx1268' = 'Meshadventurer'
     'Meshimi' = 'Meshimi'
     'Meshtiny' = 'Meshtiny'
     'Mesh_pocket' = 'Heltec MeshPocket'
@@ -208,8 +208,8 @@ $DeviceNameOverrides = @{
     't1000e' = 'Seeed Studio SenseCAP T1000-E'
     'Tbeam_SX1262' = 'LilyGo T-Beam (SX1262)'
     'Tbeam_SX1276' = 'LilyGo T-Beam 1.2 (SX1276)'
-    'Tenstar_C3_sx1262' = 'Tenstar C3 SX1262'
-    'Tenstar_C3_sx1268' = 'Tenstar C3 SX1268'
+    'Tenstar_C3_sx1262' = 'Tenstar C3'
+    'Tenstar_C3_sx1268' = 'Tenstar C3'
     'ThinkNode_M1' = 'Elecrow ThinkNode M1'
     'ThinkNode_M2' = 'Elecrow ThinkNode M2'
     'ThinkNode_M3' = 'Elecrow ThinkNode M3'
@@ -220,7 +220,7 @@ $DeviceNameOverrides = @{
     'WHY2025_badge' = 'WHY2025 Badge'
     'wio_wm1110' = 'Seeed Studio Wio WM1110'
     'wio-e5' = 'Seeed Studio Wio-E5'
-    'wio-e5-mini' = 'Seeed Studio Wio-E5 mini'
+    'wio-e5-mini' = 'Seeed Studio Wio-E5'
     'WioTrackerL1' = 'Seeed Studio Wio Tracker L1 Pro'
     'WioTrackerL1Eink' = 'Seeed Studio Wio Tracker L1 EINK'
     'Xiao_C3' = 'Seeed Studio Xiao C3'
@@ -232,6 +232,8 @@ $DeviceNameOverrides = @{
 }
 
 $DeviceSubTitleOverrides = @{
+    'Generic_E22_sx1262' = 'SX1262'
+    'Generic_E22_sx1268' = 'SX1268'
     'Heltec_t114_without_display' = 'Without display'
     'heltec_v4_3' = 'v4.3'
     'heltec_v4_tft' = 'TFT'
@@ -239,16 +241,42 @@ $DeviceSubTitleOverrides = @{
     'heltec_v4_expansionkit_tft' = 'Expansion Kit TFT'
     'LilyGo_TBeam_1W' = '1W PA pins: DIO1 1, NSS 15, BUSY 38'
     'LilyGo_T-Echo-Lite_non_shell' = 'Non shell'
-    'ikoka_nano_nrf_22dbm' = '22 dBm'
-    'ikoka_nano_nrf_30dbm' = '30 dBm'
-    'ikoka_nano_nrf_33dbm' = '33 dBm'
+    'ikoka_nano_nrf_22dbm' = '22dBm'
+    'ikoka_nano_nrf_30dbm' = '30dBm'
+    'ikoka_nano_nrf_33dbm' = '33dBm'
     'ikoka_handheld_nrf_e22_30dbm' = 'No display'
     'ikoka_handheld_nrf_e22_30dbm_096' = '0.96 display'
     'ikoka_handheld_nrf_e22_30dbm_096_rotated' = '0.96 display rotated'
-    'ikoka_stick_nrf_22dbm' = '22 dBm'
-    'ikoka_stick_nrf_30dbm' = '30 dBm'
-    'ikoka_stick_nrf_33dbm' = '33 dBm'
+    'ikoka_stick_nrf_22dbm' = '22dBm'
+    'ikoka_stick_nrf_30dbm' = '30dBm'
+    'ikoka_stick_nrf_33dbm' = '33dBm'
+    'Meshadventurer_sx1262' = 'SX1262'
+    'Meshadventurer_sx1268' = 'SX1268'
+    'Tenstar_C3_sx1262' = 'SX1262'
+    'Tenstar_C3_sx1268' = 'SX1268'
+    'wio-e5' = 'Wio-E5'
+    'wio-e5-mini' = 'Wio-E5 mini'
     'Xiao_S3' = 'SX1262 pins: DIO1 2, NSS 5, BUSY 4'
+}
+
+$DeviceVariantInTitle = @{
+    'Generic_E22_sx1262' = $true
+    'Generic_E22_sx1268' = $true
+    'ikoka_nano_nrf_22dbm' = $true
+    'ikoka_nano_nrf_30dbm' = $true
+    'ikoka_nano_nrf_33dbm' = $true
+    'ikoka_handheld_nrf_e22_30dbm' = $true
+    'ikoka_handheld_nrf_e22_30dbm_096' = $true
+    'ikoka_handheld_nrf_e22_30dbm_096_rotated' = $true
+    'ikoka_stick_nrf_22dbm' = $true
+    'ikoka_stick_nrf_30dbm' = $true
+    'ikoka_stick_nrf_33dbm' = $true
+    'Meshadventurer_sx1262' = $true
+    'Meshadventurer_sx1268' = $true
+    'Tenstar_C3_sx1262' = $true
+    'Tenstar_C3_sx1268' = $true
+    'wio-e5' = $true
+    'wio-e5-mini' = $true
 }
 
 $DeviceSelectionNotes = @{
@@ -297,7 +325,7 @@ function Join-SubTitle {
     )
 
     $parts = @()
-    if ($DeviceSubTitleOverrides.ContainsKey($DeviceKey)) {
+    if ($DeviceSubTitleOverrides.ContainsKey($DeviceKey) -and -not $DeviceVariantInTitle.ContainsKey($DeviceKey)) {
         $parts += $DeviceSubTitleOverrides[$DeviceKey]
     }
     if ($RoleSubTitle) {
@@ -309,6 +337,29 @@ function Join-SubTitle {
     }
 
     return ($parts -join ', ')
+}
+
+function Join-FirmwareTitle {
+    param(
+        [string]$DeviceKey,
+        [string]$Role,
+        [string]$Title
+    )
+
+    if (-not $DeviceVariantInTitle.ContainsKey($DeviceKey)) {
+        return $Title
+    }
+
+    $variant = $DeviceSubTitleOverrides[$DeviceKey]
+    if (-not $variant) {
+        return $Title
+    }
+
+    if ($Role -in @('companionBle', 'companionUsb')) {
+        return "Companion radio - $variant"
+    }
+
+    return "$Title - $variant"
 }
 
 function Join-VersionNotes {
@@ -461,7 +512,7 @@ function New-Catalog {
             MakerKey = Get-DeviceMakerKey $roleInfo.DeviceKey
             DeviceName = $roleInfo.DeviceName
             Role = $roleInfo.Role
-            Title = $roleInfo.Title
+            Title = Join-FirmwareTitle $roleInfo.DeviceKey $roleInfo.Role $roleInfo.Title
             SubTitle = Join-SubTitle $roleInfo.DeviceKey $roleInfo.SubTitle
         }
     }

@@ -963,12 +963,12 @@
                    },
                    {
                        "maker":  "generic",
-                       "name":  "Generic E22 SX1262",
+                       "name":  "Generic E22",
                        "type":  "esp32",
                        "firmware":  [
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - SX1262",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -991,37 +991,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "generic",
-                       "name":  "Generic E22 SX1268",
-                       "type":  "esp32",
-                       "firmware":  [
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -1044,7 +1014,30 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1262",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Generic_E22_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3367,8 +3360,7 @@
                        "firmware":  [
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "0.96 display",
+                                            "title":  "Companion radio - 0.96 display",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3391,8 +3383,7 @@
                                         },
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "0.96 display rotated",
+                                            "title":  "Companion radio - 0.96 display rotated",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3415,8 +3406,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "No display",
+                                            "title":  "Repeater - No display",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3439,8 +3429,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "No display",
+                                            "title":  "Room Server - No display",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3470,8 +3459,7 @@
                        "firmware":  [
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Companion radio - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3494,8 +3482,7 @@
                                         },
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Companion radio - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3518,8 +3505,7 @@
                                         },
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Companion radio - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3542,8 +3528,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Repeater - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3566,8 +3551,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Repeater - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3590,8 +3574,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Repeater - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3614,8 +3597,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Room Server - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3638,8 +3620,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Room Server - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3662,8 +3643,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Room Server - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3693,8 +3673,7 @@
                        "firmware":  [
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Companion radio - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3717,8 +3696,7 @@
                                         },
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Companion radio - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3741,8 +3719,7 @@
                                         },
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Companion radio - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3765,8 +3742,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Repeater - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3789,8 +3765,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Repeater - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3813,8 +3788,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Repeater - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3837,8 +3811,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "22 dBm",
+                                            "title":  "Room Server - 22dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3861,8 +3834,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "30 dBm",
+                                            "title":  "Room Server - 30dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -3885,8 +3857,7 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "subTitle":  "33 dBm",
+                                            "title":  "Room Server - 33dBm",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5299,12 +5270,12 @@
                    },
                    {
                        "maker":  "meshadventurer",
-                       "name":  "Meshadventurer SX1262",
+                       "name":  "Meshadventurer",
                        "type":  "esp32",
                        "firmware":  [
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
+                                            "title":  "Companion radio - SX1262",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5326,108 +5297,8 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "roomServer",
-                                            "title":  "Room Server",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "terminalChat",
-                                            "title":  "Terminal Chat",
-                                            "subTitle":  "Serial terminal chat",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "meshadventurer",
-                       "name":  "Meshadventurer SX1268",
-                       "type":  "esp32",
-                       "firmware":  [
-                                        {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
+                                            "title":  "Companion radio - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5450,7 +5321,30 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - SX1262",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5473,7 +5367,30 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1262",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5496,7 +5413,30 @@
                                         },
                                         {
                                             "role":  "roomServer",
-                                            "title":  "Room Server",
+                                            "title":  "Room Server - SX1262",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_room_server-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "roomServer",
+                                            "title":  "Room Server - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -5519,7 +5459,31 @@
                                         },
                                         {
                                             "role":  "terminalChat",
-                                            "title":  "Terminal Chat",
+                                            "title":  "Terminal Chat - SX1262",
+                                            "subTitle":  "Serial terminal chat",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nRole note: Terminal Chat is a standalone serial-terminal text chat build for boards used from a terminal console. It is flashable, but it does not map to the standard Configure step.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Meshadventurer_sx1262_terminal_chat-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "terminalChat",
+                                            "title":  "Terminal Chat - SX1268",
                                             "subTitle":  "Serial terminal chat",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -7441,7 +7405,7 @@
                        "firmware":  [
                                         {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
+                                            "title":  "Companion radio - Wio-E5",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -7463,61 +7427,8 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
-                                                                                                                                "title":  "HEX download"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater Bridge RS232",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
-                                                                                                                                "title":  "HEX download"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "seeed",
-                       "name":  "Seeed Studio Wio-E5 mini",
-                       "type":  "noflash",
-                       "firmware":  [
-                                        {
                                             "role":  "companionUsb",
-                                            "title":  "Companion USB",
+                                            "title":  "Companion radio - Wio-E5 mini",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -7540,7 +7451,30 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - Wio-E5",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
+                                                                                                                                "title":  "HEX download"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater - Wio-E5 mini",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -7562,8 +7496,31 @@
                                                         }
                                         },
                                         {
+                                            "role":  "repeater",
+                                            "title":  "Repeater Bridge RS232 - Wio-E5",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.hex",
+                                                                                                                                "title":  "HEX download"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/wio-e5-repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
                                             "role":  "sensor",
-                                            "title":  "Sensor",
+                                            "title":  "Sensor - Wio-E5 mini",
                                             "subTitle":  "Sensor telemetry node",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -8217,12 +8174,12 @@
                    },
                    {
                        "maker":  "tenstar",
-                       "name":  "Tenstar C3 SX1262",
+                       "name":  "Tenstar C3",
                        "type":  "esp32",
                        "firmware":  [
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - SX1262",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -8245,37 +8202,7 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        }
-                                    ]
-                   },
-                   {
-                       "maker":  "tenstar",
-                       "name":  "Tenstar C3 SX1268",
-                       "type":  "esp32",
-                       "firmware":  [
-                                        {
-                                            "role":  "repeater",
-                                            "title":  "Repeater",
+                                            "title":  "Repeater - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
@@ -8298,7 +8225,30 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater Bridge ESP-NOW",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1262",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Tenstar_C3_sx1262_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater Bridge ESP-NOW - SX1268",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
                                                                                                               "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
