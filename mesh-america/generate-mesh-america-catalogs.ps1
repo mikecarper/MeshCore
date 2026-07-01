@@ -22,7 +22,6 @@ $Catalogs = @(
 )
 
 $RoleDefinitions = [ordered]@{
-    companionSerial = [ordered]@{ name = 'Companion Serial' }
     companionWifi = [ordered]@{ name = 'Companion WiFi' }
     repeaterBridgeEspnow = [ordered]@{ name = 'Repeater Bridge ESP-NOW' }
     repeaterBridgeRs232 = [ordered]@{ name = 'Repeater Bridge RS232' }
@@ -45,7 +44,7 @@ $RolePatterns = @(
     @{ Suffix = 'companion_radio_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'companion_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'comp_radio_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
-    @{ Suffix = 'companion_radio_serial'; Role = 'companionSerial'; Title = 'Companion Serial'; SubTitle = $null },
+    @{ Suffix = 'companion_radio_serial'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = 'Serial' },
     @{ Suffix = 'companion_radio_wifi'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = $null },
     @{ Suffix = 'repeater_bridge_rs232_serial1'; Role = 'repeaterBridgeRs232'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 1' },
     @{ Suffix = 'repeater_bridge_rs232_serial2'; Role = 'repeaterBridgeRs232'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 2' },
@@ -63,9 +62,85 @@ $RolePatterns = @(
     @{ Suffix = 'sensor'; Role = 'sensor'; Title = 'Sensor'; SubTitle = $null }
 )
 
+$MakerDefinitions = [ordered]@{
+    elecrow = [ordered]@{ name = 'Elecrow' }
+    ebyte = [ordered]@{ name = 'Ebyte' }
+    'gat-iot' = [ordered]@{ name = 'GAT-IoT' }
+    generic = [ordered]@{ name = 'Generic' }
+    heltec = [ordered]@{ name = 'Heltec' }
+    Ikoka = [ordered]@{ name = 'Ikoka' }
+    keepteen = [ordered]@{ name = 'Keepteen' }
+    lilygo = [ordered]@{ name = 'LilyGo' }
+    m5stack = [ordered]@{ name = 'M5Stack' }
+    meshadventurer = [ordered]@{ name = 'Meshadventurer' }
+    meshimi = [ordered]@{ name = 'Meshimi' }
+    meshtiny = [ordered]@{ name = 'Meshtiny' }
+    minewsemi = [ordered]@{ name = 'Minewsemi' }
+    muziworks = [ordered]@{ name = 'Muzi Works' }
+    nibble = [ordered]@{ name = 'Nibble' }
+    promicro = [ordered]@{ name = 'ProMicro' }
+    rak = [ordered]@{ name = 'RAK Wireless' }
+    raspberry = [ordered]@{ name = 'Raspberry Pi' }
+    seeed = [ordered]@{ name = 'Seeed Studio' }
+    tenstar = [ordered]@{ name = 'Tenstar' }
+    tinyrelay = [ordered]@{ name = 'Tiny Relay' }
+    uniteng = [ordered]@{ name = 'UnitEng' }
+    why2025 = [ordered]@{ name = 'WHY2025' }
+}
+
+$DeviceMakerOverrides = @{
+    'KeepteenLT1' = 'keepteen'
+    'M5Stack_Unit_C6L' = 'm5stack'
+    'Mesh_pocket' = 'heltec'
+    'Meshimi' = 'meshimi'
+    'Meshtiny' = 'meshtiny'
+    'Minewsemi_me25ls01' = 'minewsemi'
+    'Nano_G2_Ultra' = 'uniteng'
+    'nibble_screen_connect' = 'nibble'
+    'PicoW' = 'raspberry'
+    'ProMicro' = 'promicro'
+    'R1Neo' = 'muziworks'
+    'SenseCapIndicator-ESPNow' = 'seeed'
+    'SenseCap_Solar' = 'seeed'
+    'T_Beam_S3_Supreme_SX1262' = 'lilygo'
+    't1000e' = 'seeed'
+    'Tiny_Relay' = 'tinyrelay'
+    'waveshare_rp2040_lora' = 'raspberry'
+    'WHY2025_badge' = 'why2025'
+    'wio-e5' = 'seeed'
+    'wio-e5-mini' = 'seeed'
+    'wio_wm1110' = 'seeed'
+    'WioTrackerL1' = 'seeed'
+    'WioTrackerL1Eink' = 'seeed'
+}
+
+$DeviceMakerPatterns = @(
+    @{ Prefix = 'Ebyte_'; Maker = 'ebyte' },
+    @{ Prefix = 'GAT562_'; Maker = 'gat-iot' },
+    @{ Prefix = 'Generic_'; Maker = 'generic' },
+    @{ Prefix = 'Heltec_'; Maker = 'heltec' },
+    @{ Prefix = 'heltec_'; Maker = 'heltec' },
+    @{ Prefix = 'ikoka_'; Maker = 'Ikoka' },
+    @{ Prefix = 'LilyGo_'; Maker = 'lilygo' },
+    @{ Prefix = 'Meshadventurer_'; Maker = 'meshadventurer' },
+    @{ Prefix = 'RAK_'; Maker = 'rak' },
+    @{ Prefix = 'Station_'; Maker = 'uniteng' },
+    @{ Prefix = 'Tbeam_'; Maker = 'lilygo' },
+    @{ Prefix = 'Tenstar_'; Maker = 'tenstar' },
+    @{ Prefix = 'ThinkNode_'; Maker = 'elecrow' },
+    @{ Prefix = 'Xiao_'; Maker = 'seeed' }
+)
+
 $DeviceNameOverrides = @{
+    'Ebyte_EoRa-S3' = 'Ebyte EoRa-S3'
     'GAT562_30S_Mesh_Kit' = 'GAT-IoT GAT562 30s'
+    'GAT562_Mesh_EVB_Pro' = 'GAT-IoT GAT562 EVB Pro'
     'GAT562_Mesh_Tracker_Pro' = 'GAT-IoT GAT562 Tracker'
+    'GAT562_Mesh_Watch13' = 'GAT-IoT GAT562 Watch13'
+    'Generic_E22_sx1262' = 'Generic E22 SX1262'
+    'Generic_E22_sx1268' = 'Generic E22 SX1268'
+    'Generic_ESPNOW' = 'Generic ESP-NOW'
+    'Heltec_ct62' = 'Heltec CT62'
     'Heltec_E213' = 'Heltec Vision Master E213'
     'Heltec_E290' = 'Heltec Vision Master E290'
     'Heltec_mesh_solar' = 'Heltec MeshSolar / MeshTower'
@@ -73,7 +148,7 @@ $DeviceNameOverrides = @{
     'Heltec_t1' = 'Heltec Mesh Node T1'
     'Heltec_t114' = 'Heltec T114'
     'Heltec_t114_without_display' = 'Heltec T114'
-    'Heltec_T190' = 'Heltec T114'
+    'Heltec_T190' = 'Heltec Vision Master T190'
     'heltec_tracker_v2' = 'Heltec Wireless Tracker v2'
     'heltec_v4' = 'Heltec v4'
     'heltec_v4_3' = 'Heltec v4'
@@ -84,24 +159,41 @@ $DeviceNameOverrides = @{
     'ikoka_nano_nrf_22dbm' = 'Ikoka Nano'
     'ikoka_nano_nrf_30dbm' = 'Ikoka Nano'
     'ikoka_nano_nrf_33dbm' = 'Ikoka Nano'
+    'ikoka_handheld_nrf_e22_30dbm' = 'Ikoka Handheld nRF E22 30 dBm'
+    'ikoka_handheld_nrf_e22_30dbm_096' = 'Ikoka Handheld nRF E22 30 dBm 0.96'
+    'ikoka_handheld_nrf_e22_30dbm_096_rotated' = 'Ikoka Handheld nRF E22 30 dBm 0.96 Rotated'
     'ikoka_stick_nrf_22dbm' = 'Ikoka Stick'
     'ikoka_stick_nrf_30dbm' = 'Ikoka Stick'
     'ikoka_stick_nrf_33dbm' = 'Ikoka Stick'
     'KeepteenLT1' = 'Keepteen LT1'
+    'LilyGo_T_Impulse_Plus' = 'LilyGo T-Impulse Plus nRF52840'
     'LilyGo_T3S3_sx1262' = 'LilyGo T3 S3 (SX126x)'
     'LilyGo_T3S3_sx1276' = 'LilyGo T3 S3 (SX127x)'
     'LilyGo_TBeam_1W' = 'LilyGo T-Beam (SX1262)'
     'LilyGo_TDeck' = 'LilyGo T-Deck'
     'LilyGo_T-Echo-Lite' = 'LilyGo T-Echo Lite'
     'LilyGo_T-Echo-Lite_non_shell' = 'LilyGo T-Echo Lite'
+    'LilyGo_TETH_Elite_sx1262' = 'LilyGo T-ETH Elite (SX1262)'
     'LilyGo_TLora_V2_1_1_6' = 'LilyGo LoRa32 V2.1_1.6'
+    'LilyGo_Tlora_C6' = 'LilyGo T-LoRa C6'
+    'M5Stack_Unit_C6L' = 'M5Stack Unit C6L'
+    'Meshadventurer_sx1262' = 'Meshadventurer SX1262'
+    'Meshadventurer_sx1268' = 'Meshadventurer SX1268'
+    'Meshimi' = 'Meshimi'
+    'Meshtiny' = 'Meshtiny'
     'Mesh_pocket' = 'Heltec MeshPocket'
+    'Minewsemi_me25ls01' = 'Minewsemi ME25LS01'
     'Nano_G2_Ultra' = 'UnitEng Nano G2 Ultra'
+    'nibble_screen_connect' = 'Nibble Screen Connect'
+    'PicoW' = 'Raspberry Pi Pico W'
     'ProMicro' = 'ProMicro nrf52 (faketec)'
     'R1Neo' = 'Muzi Works R1 Neo'
+    'RAK_11310' = 'RAK 11310'
     'RAK_3112' = 'RAK WisBlock 3112'
     'RAK_3401' = 'RAK WisMesh 1W Booster (3401 + 13302)'
+    'RAK_3x72' = 'RAK 3x72'
     'RAK_4631' = 'RAK WisBlock / WisMesh (RAK 4631)'
+    'SenseCapIndicator-ESPNow' = 'Seeed Studio SenseCAP Indicator ESP-NOW'
     'SenseCap_Solar' = 'Seeed Studio SenseCAP Solar'
     'Station_G2' = 'UnitEng Station G2'
     'Station_G3_ESP32' = 'UnitEng/BQ Voyage Station G3'
@@ -109,23 +201,31 @@ $DeviceNameOverrides = @{
     't1000e' = 'Seeed Studio SenseCAP T1000-E'
     'Tbeam_SX1262' = 'LilyGo T-Beam (SX1262)'
     'Tbeam_SX1276' = 'LilyGo T-Beam 1.2 (SX1276)'
+    'Tenstar_C3_sx1262' = 'Tenstar C3 SX1262'
+    'Tenstar_C3_sx1268' = 'Tenstar C3 SX1268'
     'ThinkNode_M1' = 'Elecrow ThinkNode M1'
     'ThinkNode_M2' = 'Elecrow ThinkNode M2'
     'ThinkNode_M3' = 'Elecrow ThinkNode M3'
     'ThinkNode_M5' = 'Elecrow ThinkNode M5'
     'ThinkNode_M6' = 'Elecrow ThinkNode M6'
+    'Tiny_Relay' = 'Tiny Relay'
     'waveshare_rp2040_lora' = 'RPI Pico 2040 + WaveShare SX1262'
+    'WHY2025_badge' = 'WHY2025 Badge'
+    'wio_wm1110' = 'Seeed Studio Wio WM1110'
+    'wio-e5' = 'Seeed Studio Wio-E5'
+    'wio-e5-mini' = 'Seeed Studio Wio-E5 mini'
     'WioTrackerL1' = 'Seeed Studio Wio Tracker L1 Pro'
     'WioTrackerL1Eink' = 'Seeed Studio Wio Tracker L1 EINK'
     'Xiao_C3' = 'Seeed Studio Xiao C3'
+    'Xiao_C6' = 'Seeed Studio Xiao C6'
     'Xiao_nrf52' = 'Seeed Studio Xiao nRF52 WIO'
+    'Xiao_rp2040' = 'Seeed Studio Xiao RP2040'
     'Xiao_S3' = 'Seeed Studio Xiao S3 WIO'
     'Xiao_S3_WIO' = 'Seeed Studio Xiao S3 WIO'
 }
 
 $DeviceSubTitleOverrides = @{
     'Heltec_t114_without_display' = 'Without display'
-    'Heltec_T190' = 'T190'
     'heltec_v4_3' = 'v4.3'
     'heltec_v4_tft' = 'TFT'
     'heltec_v4_expansionkit' = 'Expansion Kit'
@@ -149,6 +249,22 @@ function ConvertTo-DeviceName {
     $name = $name -replace '_', ' '
     $name = $name -replace '\s+', ' '
     return $name.Trim()
+}
+
+function Get-DeviceMakerKey {
+    param([string]$DeviceKey)
+
+    if ($DeviceMakerOverrides.ContainsKey($DeviceKey)) {
+        return $DeviceMakerOverrides[$DeviceKey]
+    }
+
+    foreach ($pattern in $DeviceMakerPatterns) {
+        if ($DeviceKey.StartsWith($pattern.Prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            return $pattern.Maker
+        }
+    }
+
+    return 'generic'
 }
 
 function Join-SubTitle {
@@ -299,6 +415,7 @@ function New-Catalog {
         [pscustomobject]@{
             File = $file
             DeviceKey = $roleInfo.DeviceKey
+            MakerKey = Get-DeviceMakerKey $roleInfo.DeviceKey
             DeviceName = $roleInfo.DeviceName
             Role = $roleInfo.Role
             Title = $roleInfo.Title
@@ -309,6 +426,11 @@ function New-Catalog {
     $devices = New-Object System.Collections.ArrayList
     foreach ($deviceGroup in @($parsedFiles | Group-Object DeviceName | Sort-Object Name)) {
         $deviceFiles = @($deviceGroup.Group | ForEach-Object { $_.File })
+        $deviceMakerKeys = @($deviceGroup.Group | ForEach-Object { $_.MakerKey } | Sort-Object -Unique)
+        if ($deviceMakerKeys.Count -ne 1) {
+            throw "Device '$($deviceGroup.Name)' maps to multiple makers: $($deviceMakerKeys -join ', ')"
+        }
+
         $deviceType = Get-DeviceType $deviceFiles
         $firmware = New-Object System.Collections.ArrayList
 
@@ -348,19 +470,24 @@ function New-Catalog {
         }
 
         [void]$devices.Add([ordered]@{
-            maker = 'keymindCascade'
-            class = 'keymindCascade'
+            maker = $deviceMakerKeys[0]
             name = $deviceGroup.Group[0].DeviceName
             type = $deviceType
             firmware = @($firmware)
         })
     }
 
+    $makerMap = [ordered]@{}
+    foreach ($makerKey in @($devices | ForEach-Object { $_['maker'] } | Sort-Object -Unique)) {
+        if (-not $MakerDefinitions.Contains($makerKey)) {
+            throw "No maker definition for '$makerKey'"
+        }
+        $makerMap[$makerKey] = $MakerDefinitions[$makerKey]
+    }
+
     return [ordered]@{
         description = $Definition.Description
-        maker = [ordered]@{
-            keymindCascade = [ordered]@{ name = 'Keymind Cascade' }
-        }
+        maker = $makerMap
         role = $RoleDefinitions
         device = @($devices)
     }
@@ -370,7 +497,7 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 foreach ($catalogDef in $Catalogs) {
     $catalog = New-Catalog $catalogDef
-    $json = $catalog | ConvertTo-Json -Depth 100
-    [System.IO.File]::WriteAllText($catalogDef.Output, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    $json = ($catalog | ConvertTo-Json -Depth 100) -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($catalogDef.Output, $json + "`n", [System.Text.UTF8Encoding]::new($false))
     Write-Output ("Wrote {0}" -f $catalogDef.Output)
 }
