@@ -23,14 +23,12 @@ $Catalogs = @(
 
 $RoleDefinitions = [ordered]@{
     companionWifi = [ordered]@{ name = 'Companion WiFi' }
-    repeaterBridgeEspnow = [ordered]@{ name = 'Repeater Bridge ESP-NOW' }
-    repeaterBridgeRs232 = [ordered]@{ name = 'Repeater Bridge RS232' }
     sensor = [ordered]@{ name = 'Sensor' }
     terminalChat = [ordered]@{ name = 'Terminal Chat' }
 }
 
 $RolePatterns = @(
-    @{ Suffix = 'logging_repeater_bridge_espnow'; Role = 'repeaterBridgeEspnow'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = 'Logging' },
+    @{ Suffix = 'logging_repeater_bridge_espnow'; Role = 'repeater'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = 'Logging' },
     @{ Suffix = 'logging_repeater'; Role = 'repeater'; Title = 'Repeater'; SubTitle = 'Logging' },
     @{ Suffix = 'companion_radio_ble_femoff'; Role = 'companionBle'; Title = 'Companion BLE'; SubTitle = 'FEM off' },
     @{ Suffix = 'companion_radio_ble_femon'; Role = 'companionBle'; Title = 'Companion BLE'; SubTitle = 'FEM on' },
@@ -46,11 +44,11 @@ $RolePatterns = @(
     @{ Suffix = 'comp_radio_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'companion_radio_serial'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = 'Serial' },
     @{ Suffix = 'companion_radio_wifi'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = $null },
-    @{ Suffix = 'repeater_bridge_rs232_serial1'; Role = 'repeaterBridgeRs232'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 1' },
-    @{ Suffix = 'repeater_bridge_rs232_serial2'; Role = 'repeaterBridgeRs232'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 2' },
-    @{ Suffix = 'repeater_bridge_rs232'; Role = 'repeaterBridgeRs232'; Title = 'Repeater Bridge RS232'; SubTitle = $null },
-    @{ Suffix = 'repeater_bridge_espnow_'; Role = 'repeaterBridgeEspnow'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = $null },
-    @{ Suffix = 'repeater_bridge_espnow'; Role = 'repeaterBridgeEspnow'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = $null },
+    @{ Suffix = 'repeater_bridge_rs232_serial1'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 1' },
+    @{ Suffix = 'repeater_bridge_rs232_serial2'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 2' },
+    @{ Suffix = 'repeater_bridge_rs232'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = $null },
+    @{ Suffix = 'repeater_bridge_espnow_'; Role = 'repeater'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = $null },
+    @{ Suffix = 'repeater_bridge_espnow'; Role = 'repeater'; Title = 'Repeater Bridge ESP-NOW'; SubTitle = $null },
     @{ Suffix = 'Repeater'; Role = 'repeater'; Title = 'Repeater'; SubTitle = $null },
     @{ Suffix = 'repeater_'; Role = 'repeater'; Title = 'Repeater'; SubTitle = $null },
     @{ Suffix = 'repeatr'; Role = 'repeater'; Title = 'Repeater'; SubTitle = $null },

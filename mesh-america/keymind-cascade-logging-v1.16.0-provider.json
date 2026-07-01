@@ -75,12 +75,6 @@
                  "companionWifi":  {
                                        "name":  "Companion WiFi"
                                    },
-                 "repeaterBridgeEspnow":  {
-                                              "name":  "Repeater Bridge ESP-NOW"
-                                          },
-                 "repeaterBridgeRs232":  {
-                                             "name":  "Repeater Bridge RS232"
-                                         },
                  "sensor":  {
                                 "name":  "Sensor"
                             },
@@ -363,7 +357,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -608,7 +602,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -988,7 +982,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1041,7 +1035,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1216,7 +1210,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1315,7 +1309,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1414,7 +1408,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1789,30 +1783,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "Without display",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash",
-                                                                                                                                "name":  "Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
-                                                                                                                                "title":  "Serial DFU package"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "download",
-                                                                                                                                "name":  "Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
-                                                                                                                                "title":  "UF2 download"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeaterBridgeRs232",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -1835,7 +1805,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "subTitle":  "Without display",
                                             "version":  {
@@ -1852,6 +1822,30 @@
                                                                                                                                 "type":  "download",
                                                                                                                                 "name":  "Heltec_t114_without_display_repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Heltec_t114_without_display_repeater_bridge_rs232-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "title":  "UF2 download"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "subTitle":  "Without display",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash",
+                                                                                                                                "name":  "Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.zip",
+                                                                                                                                "title":  "Serial DFU package"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "download",
+                                                                                                                                "name":  "Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Heltec_t114_without_display_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.uf2",
                                                                                                                                 "title":  "UF2 download"
                                                                                                                             }
                                                                                                                         ]
@@ -1982,7 +1976,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2127,7 +2121,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2150,7 +2144,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2367,30 +2361,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "TFT",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2413,7 +2383,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "subTitle":  "TFT",
                                             "version":  {
@@ -2430,6 +2400,30 @@
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "heltec_v4_tft_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "subTitle":  "TFT",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/heltec_v4_tft_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
                                                                                                                             }
                                                                                                                         ]
@@ -2662,7 +2656,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2761,7 +2755,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2860,7 +2854,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -2959,7 +2953,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -3081,7 +3075,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -3249,7 +3243,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -3272,7 +3266,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4052,7 +4046,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4075,7 +4069,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4197,7 +4191,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4319,7 +4313,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4418,7 +4412,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4494,7 +4488,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -4596,30 +4590,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
@@ -4636,6 +4606,30 @@
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/LilyGo_TBeam_1W_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
                                                                                                                             }
                                                                                                                         ]
@@ -4720,7 +4714,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -5336,7 +5330,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -5458,7 +5452,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -5884,7 +5878,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -6006,7 +6000,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "subTitle":  "Serial 1",
                                             "version":  {
@@ -6152,7 +6146,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -6350,7 +6344,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "subTitle":  "Serial 1",
                                             "version":  {
@@ -6374,7 +6368,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "subTitle":  "Serial 2",
                                             "version":  {
@@ -6543,7 +6537,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -6566,7 +6560,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -7031,7 +7025,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -7452,7 +7446,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeRs232",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge RS232",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -7887,30 +7881,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
@@ -7927,6 +7897,30 @@
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Xiao_S3_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
                                                                                                                             }
                                                                                                                         ]
@@ -8082,7 +8076,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -8204,7 +8198,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -8257,7 +8251,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -8509,30 +8503,6 @@
                                         },
                                         {
                                             "role":  "repeater",
-                                            "title":  "Repeater",
-                                            "subTitle":  "Logging",
-                                            "version":  {
-                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
-                                                                                                              "files":  [
-                                                                                                                            {
-                                                                                                                                "type":  "flash-wipe",
-                                                                                                                                "name":  "Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
-                                                                                                                                "title":  "Full install (bootloader + firmware)"
-                                                                                                                            },
-                                                                                                                            {
-                                                                                                                                "type":  "flash-update",
-                                                                                                                                "name":  "Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
-                                                                                                                                "title":  "Update (app only)"
-                                                                                                                            }
-                                                                                                                        ]
-                                                                                                          }
-                                                        }
-                                        },
-                                        {
-                                            "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
@@ -8555,7 +8525,7 @@
                                                         }
                                         },
                                         {
-                                            "role":  "repeaterBridgeEspnow",
+                                            "role":  "repeater",
                                             "title":  "Repeater Bridge ESP-NOW",
                                             "subTitle":  "Logging",
                                             "version":  {
@@ -8572,6 +8542,30 @@
                                                                                                                                 "type":  "flash-update",
                                                                                                                                 "name":  "Station_G2_logging_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Station_G2_logging_repeater_bridge_espnow-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "title":  "Update (app only)"
+                                                                                                                            }
+                                                                                                                        ]
+                                                                                                          }
+                                                        }
+                                        },
+                                        {
+                                            "role":  "repeater",
+                                            "title":  "Repeater",
+                                            "subTitle":  "Logging",
+                                            "version":  {
+                                                            "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "files":  [
+                                                                                                                            {
+                                                                                                                                "type":  "flash-wipe",
+                                                                                                                                "name":  "Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c-merged.bin",
+                                                                                                                                "title":  "Full install (bootloader + firmware)"
+                                                                                                                            },
+                                                                                                                            {
+                                                                                                                                "type":  "flash-update",
+                                                                                                                                "name":  "Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
+                                                                                                                                "url":  "https://github.com/mikecarper/MeshCore/releases/download/logging-v1.16.0-halo-keymind-dev-28ee5d2c/Station_G2_logging_repeater-logging-v1.16.0-halo-keymind-dev-28ee5d2c.bin",
                                                                                                                                 "title":  "Update (app only)"
                                                                                                                             }
                                                                                                                         ]
