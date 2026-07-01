@@ -230,6 +230,7 @@ $DeviceSubTitleOverrides = @{
     'heltec_v4_tft' = 'TFT'
     'heltec_v4_expansionkit' = 'Expansion Kit'
     'heltec_v4_expansionkit_tft' = 'Expansion Kit TFT'
+    'LilyGo_TBeam_1W' = '1W PA pins: DIO1 1, NSS 15, BUSY 38'
     'LilyGo_T-Echo-Lite_non_shell' = 'Non shell'
     'ikoka_nano_nrf_22dbm' = '22 dBm'
     'ikoka_nano_nrf_30dbm' = '30 dBm'
@@ -237,6 +238,12 @@ $DeviceSubTitleOverrides = @{
     'ikoka_stick_nrf_22dbm' = '22 dBm'
     'ikoka_stick_nrf_30dbm' = '30 dBm'
     'ikoka_stick_nrf_33dbm' = '33 dBm'
+    'Xiao_S3' = 'SX1262 pins: DIO1 2, NSS 5, BUSY 4'
+}
+
+$DeviceSelectionNotes = @{
+    'LilyGo_TBeam_1W' = 'Board selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.'
+    'Xiao_S3' = 'Board selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.'
 }
 
 function ConvertTo-DeviceName {
@@ -286,6 +293,22 @@ function Join-SubTitle {
     }
 
     return ($parts -join ', ')
+}
+
+function Join-VersionNotes {
+    param(
+        [string]$Description,
+        [string[]]$DeviceKeys
+    )
+
+    $parts = @($Description)
+    foreach ($deviceKey in @($DeviceKeys | Sort-Object -Unique)) {
+        if ($DeviceSelectionNotes.ContainsKey($deviceKey)) {
+            $parts += $DeviceSelectionNotes[$deviceKey]
+        }
+    }
+
+    return ($parts -join "`n`n")
 }
 
 function Get-RoleInfo {
@@ -456,12 +479,13 @@ function New-Catalog {
             }
 
             if ($first.SubTitle) {
-                $firmwareEntry.subTitle = $first.SubTitle
+            $firmwareEntry.subTitle = $first.SubTitle
             }
 
+            $versionNotes = Join-VersionNotes $Definition.Description @($roleGroup.Group | ForEach-Object { $_.DeviceKey })
             $firmwareEntry.version = [ordered]@{
                 $Definition.Tag = [ordered]@{
-                    notes = $Definition.Description
+                    notes = $versionNotes
                     files = $files
                 }
             }

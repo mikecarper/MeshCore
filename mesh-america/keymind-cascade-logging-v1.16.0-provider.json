@@ -4549,9 +4549,10 @@
                                         {
                                             "role":  "companionUsb",
                                             "title":  "Companion USB",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -4572,9 +4573,10 @@
                                         {
                                             "role":  "companionWifi",
                                             "title":  "Companion WiFi",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -4595,9 +4597,10 @@
                                         {
                                             "role":  "repeater",
                                             "title":  "Repeater",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -4618,9 +4621,10 @@
                                         {
                                             "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -4641,9 +4645,10 @@
                                         {
                                             "role":  "roomServer",
                                             "title":  "Room Server",
+                                            "subTitle":  "1W PA pins: DIO1 1, NSS 15, BUSY 38",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -7859,9 +7864,10 @@
                                         {
                                             "role":  "companionUsb",
                                             "title":  "Companion USB",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -7882,9 +7888,10 @@
                                         {
                                             "role":  "repeater",
                                             "title":  "Repeater",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -7905,9 +7912,10 @@
                                         {
                                             "role":  "repeaterBridgeEspnow",
                                             "title":  "Repeater Bridge ESP-NOW",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -7928,9 +7936,10 @@
                                         {
                                             "role":  "roomServer",
                                             "title":  "Room Server",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
@@ -7951,9 +7960,10 @@
                                         {
                                             "role":  "sensor",
                                             "title":  "Sensor",
+                                            "subTitle":  "SX1262 pins: DIO1 2, NSS 5, BUSY 4",
                                             "version":  {
                                                             "logging-v1.16.0-halo-keymind-dev-28ee5d2c":  {
-                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.",
+                                                                                                              "notes":  "Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
                                                                                                               "files":  [
                                                                                                                             {
                                                                                                                                 "type":  "flash-wipe",
