@@ -8,16 +8,30 @@ $Catalogs = @(
     @{
         Name = 'non-logging'
         SourceDir = Join-Path $Root '.releases\non-logging'
-        Tag = 'v1.16.0-halo-keymind-dev-28ee5d2c'
+        ReleaseTag = 'v1.16.01-halo-keymind-dev-ebd7da79'
+        FileTags = @(
+            'v1.16.02-halo-keymind-dev-6681ef79',
+            'v1.16.01-halo-keymind-dev-ebd7da79'
+        )
         Output = Join-Path $OutputDir 'keymind-cascade-v1.16.0-provider.json'
-        Description = 'Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.'
+        Description = 'Keymind Cascade MeshCore dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.'
+        VersionDescriptions = @{
+            'v1.16.02-halo-keymind-dev-6681ef79' = 'Keymind Cascade MeshCore v1.16.02 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.'
+            'v1.16.01-halo-keymind-dev-ebd7da79' = 'Keymind Cascade MeshCore v1.16.01 dev firmware with Halo/Keymind retry tuning and Cascade defaults. This is the standard build without extra logging.'
+        }
     },
     @{
         Name = 'logging'
         SourceDir = Join-Path $Root '.releases\logging'
-        Tag = 'logging-v1.16.0-halo-keymind-dev-28ee5d2c'
+        ReleaseTag = 'logging-v1.16.01-halo-keymind-dev-ebd7da79'
+        FileTags = @(
+            'logging-v1.16.01-halo-keymind-dev-ebd7da79'
+        )
         Output = Join-Path $OutputDir 'keymind-cascade-logging-v1.16.0-provider.json'
-        Description = 'Keymind Cascade MeshCore v1.16.0 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.'
+        Description = 'Keymind Cascade MeshCore v1.16.01 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.'
+        VersionDescriptions = @{
+            'logging-v1.16.01-halo-keymind-dev-ebd7da79' = 'Keymind Cascade MeshCore v1.16.01 dev firmware with Halo/Keymind retry tuning, Cascade defaults, and extra logging enabled for diagnostics.'
+        }
     }
 )
 
@@ -52,6 +66,7 @@ $RolePatterns = @(
     @{ Suffix = 'companion_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'comp_radio_usb'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = $null },
     @{ Suffix = 'companion_radio_serial'; Role = 'companionUsb'; Title = 'Companion USB'; SubTitle = 'Serial' },
+    @{ Suffix = 'companion_radio_wifi_'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = 'Wi-Fi companion interface' },
     @{ Suffix = 'companion_radio_wifi'; Role = 'companionWifi'; Title = 'Companion WiFi'; SubTitle = 'Wi-Fi companion interface' },
     @{ Suffix = 'repeater_bridge_rs232_serial1'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 1' },
     @{ Suffix = 'repeater_bridge_rs232_serial2'; Role = 'repeater'; Title = 'Repeater Bridge RS232'; SubTitle = 'Serial 2' },
@@ -65,6 +80,7 @@ $RolePatterns = @(
     @{ Suffix = 'room_server_'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
     @{ Suffix = 'room_server'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
     @{ Suffix = 'room_svr'; Role = 'roomServer'; Title = 'Room Server'; SubTitle = $null },
+    @{ Suffix = 'terminal_chat_'; Role = 'terminalChat'; Title = 'Terminal Chat'; SubTitle = 'Serial terminal chat' },
     @{ Suffix = 'terminal_chat'; Role = 'terminalChat'; Title = 'Terminal Chat'; SubTitle = 'Serial terminal chat' },
     @{ Suffix = 'sensor'; Role = 'sensor'; Title = 'Sensor'; SubTitle = 'Sensor telemetry node' }
 )
@@ -506,6 +522,39 @@ function Get-DownloadUrl {
     return "https://github.com/$Repo/releases/download/$Tag/$escapedName"
 }
 
+function Get-FileTagInfo {
+    param(
+        [string]$Stem,
+        [hashtable]$Definition,
+        [string]$FileName
+    )
+
+    foreach ($tag in $Definition.FileTags) {
+        $suffix = "-$tag"
+        if ($Stem.EndsWith($suffix, [StringComparison]::Ordinal)) {
+            return [pscustomobject]@{
+                Tag = $tag
+                DeviceRole = $Stem.Substring(0, $Stem.Length - $suffix.Length)
+            }
+        }
+    }
+
+    throw "File '$FileName' does not end with any expected tag: $($Definition.FileTags -join ', ')"
+}
+
+function Get-VersionDescription {
+    param(
+        [hashtable]$Definition,
+        [string]$Tag
+    )
+
+    if ($Definition.ContainsKey('VersionDescriptions') -and $Definition.VersionDescriptions.ContainsKey($Tag)) {
+        return $Definition.VersionDescriptions[$Tag]
+    }
+
+    return $Definition.Description
+}
+
 function New-Catalog {
     param([hashtable]$Definition)
 
@@ -524,16 +573,13 @@ function New-Catalog {
             $stem = $stem.Substring(0, $stem.Length - '-merged'.Length)
         }
 
-        $suffix = "-$($Definition.Tag)"
-        if (-not $stem.EndsWith($suffix, [StringComparison]::Ordinal)) {
-            throw "File '$($file.Name)' does not end with expected tag '$($Definition.Tag)'"
-        }
-
-        $deviceRole = $stem.Substring(0, $stem.Length - $suffix.Length)
+        $fileTagInfo = Get-FileTagInfo -Stem $stem -Definition $Definition -FileName $file.Name
+        $deviceRole = $fileTagInfo.DeviceRole
         $roleInfo = Get-RoleInfo $deviceRole
 
         [pscustomobject]@{
             File = $file
+            FileTag = $fileTagInfo.Tag
             DeviceKey = $roleInfo.DeviceKey
             MakerKey = Get-DeviceMakerKey $roleInfo.DeviceKey
             DeviceName = $roleInfo.DeviceName
@@ -564,20 +610,6 @@ function New-Catalog {
 
         foreach ($roleGroup in $firmwareGroups) {
             $first = $roleGroup.Group[0]
-            $files = @(
-                $roleGroup.Group |
-                    Sort-Object @{ Expression = { Get-FileSortRank (Get-FileType $_.File $deviceType) $_.File.Name } }, @{ Expression = { $_.File.Name } } |
-                    ForEach-Object {
-                        $type = Get-FileType $_.File $deviceType
-                        [ordered]@{
-                            type = $type
-                            name = $_.File.Name
-                            url = Get-DownloadUrl $Definition.Tag $_.File.Name
-                            title = Get-FileTitle $type $_.File.Name
-                        }
-                    }
-            )
-
             $firmwareEntry = [ordered]@{
                 role = $first.Role
                 title = $first.Title
@@ -587,13 +619,30 @@ function New-Catalog {
             $firmwareEntry.subTitle = $first.SubTitle
             }
 
-            $versionNotes = Join-VersionNotes -Description $Definition.Description -DeviceKeys @($roleGroup.Group | ForEach-Object { $_.DeviceKey }) -Role $first.Role
-            $firmwareEntry.version = [ordered]@{
-                $Definition.Tag = [ordered]@{
+            $versionMap = [ordered]@{}
+            foreach ($versionGroup in @($roleGroup.Group | Group-Object FileTag | Sort-Object Name -Descending)) {
+                $files = @(
+                    $versionGroup.Group |
+                        Sort-Object @{ Expression = { Get-FileSortRank (Get-FileType $_.File $deviceType) $_.File.Name } }, @{ Expression = { $_.File.Name } } |
+                        ForEach-Object {
+                            $type = Get-FileType $_.File $deviceType
+                            [ordered]@{
+                                type = $type
+                                name = $_.File.Name
+                                url = Get-DownloadUrl $Definition.ReleaseTag $_.File.Name
+                                title = Get-FileTitle $type $_.File.Name
+                            }
+                        }
+                )
+
+                $versionDescription = Get-VersionDescription -Definition $Definition -Tag $versionGroup.Name
+                $versionNotes = Join-VersionNotes -Description $versionDescription -DeviceKeys @($versionGroup.Group | ForEach-Object { $_.DeviceKey }) -Role $first.Role
+                $versionMap[$versionGroup.Name] = [ordered]@{
                     notes = $versionNotes
                     files = $files
                 }
             }
+            $firmwareEntry.version = $versionMap
 
             [void]$firmware.Add($firmwareEntry)
         }
