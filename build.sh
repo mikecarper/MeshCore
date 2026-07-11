@@ -4,6 +4,7 @@ ALL_PIO_ENVS=()
 SUPPORTED_PIO_ENVS=()
 declare -A PIO_ENV_PLATFORM_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
+declare -A PIO_ENV_OTA_BY_NAME=()
 PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
@@ -125,13 +126,14 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform env_mqtt; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
       SUPPORTED_PIO_ENVS+=("$env_name")
       PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
       PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
+      PIO_ENV_OTA_BY_NAME["$env_name"]=$env_ota
     done < <(
       python3 -c '
 import json
@@ -145,11 +147,15 @@ for section, options in data:
         continue
     env_name = section[4:]
     mqtt_enabled = False
+    ota_enabled = False
     platform = None
     for key, value in options:
+        values = value if isinstance(value, list) else str(value).split()
+        if key == "build_src_filter":
+            ota_enabled = any("helpers/ota/" in str(item) for item in values)
+            continue
         if key != "build_flags":
             continue
-        values = value if isinstance(value, list) else str(value).split()
         for flag in values:
             if "WITH_MQTT_BRIDGE" in str(flag):
                 mqtt_enabled = True
@@ -157,7 +163,7 @@ for section, options in data:
             if match and platform is None:
                 platform = match.group(0)
     if platform:
-        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}")
+        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}\t{1 if ota_enabled else 0}")
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
   fi
@@ -1300,6 +1306,10 @@ apply_debug_overrides() {
 
 is_lora_ota_build() {
   local env_name=$1
+
+  if [ "${PIO_ENV_OTA_BY_NAME[$env_name]:-0}" != "1" ]; then
+    return 1
+  fi
 
   if [[ "$env_name" == *mqtt* ]] \
       || is_mqtt_bridge_target "$env_name" \
