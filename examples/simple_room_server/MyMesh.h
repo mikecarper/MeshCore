@@ -37,7 +37,7 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.16.0"
+  #define FIRMWARE_VERSION   "v1.17.0"
 #endif
 
 #ifndef LORA_FREQ
@@ -139,6 +139,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
 
 protected:
+#if defined(ENABLE_OTA)
+  bool isTempRadioActive() const override { return set_radio_at == 0 && revert_radio_at != 0; }
+#endif
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }

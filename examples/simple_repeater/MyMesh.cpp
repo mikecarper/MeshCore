@@ -2328,8 +2328,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(default_scope.key, 0, sizeof(default_scope.key));
 }
 
+// OTA mesh-integration (receive/begin/loop) is centralized in mesh::Mesh — no per-example wiring.
+
 void MyMesh::begin(FILESYSTEM *fs) {
-  mesh::Mesh::begin();
+  mesh::Mesh::begin();   // also starts OTA (ota_ctx().begin) for all roles
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);

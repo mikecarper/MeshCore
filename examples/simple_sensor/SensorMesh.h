@@ -38,7 +38,7 @@
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.16.0"
+  #define FIRMWARE_VERSION   "v1.17.0"
 #endif
 
 #define FIRMWARE_ROLE "sensor"
@@ -82,6 +82,9 @@ public:
   float getTelemValue(uint8_t channel, uint8_t type);
 
 protected:
+#if defined(ENABLE_OTA)
+  bool isTempRadioActive() const override { return set_radio_at == 0 && revert_radio_at != 0; }
+#endif
   // current telemetry data queries
   float getVoltage(uint8_t channel) { return getTelemValue(channel, LPP_VOLTAGE); }
   float getCurrent(uint8_t channel) { return getTelemValue(channel, LPP_CURRENT); }

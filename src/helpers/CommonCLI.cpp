@@ -31,6 +31,10 @@ static void resetToUf2Bootloader() {
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
+#if defined(ENABLE_OTA)
+  #include "ota/OtaCli.h"
+  #include "ota/OtaContext.h"   // persist/sync OTA policy + signer allowlist with NodePrefs
+#endif
 
 #ifndef BRIDGE_MAX_BAUD
 #define BRIDGE_MAX_BAUD 115200
@@ -637,11 +641,13 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   bool is_fresh_install = false;
   bool is_upgrade = false;
-  
+  bool loaded = false;
+
   if (fs->exists("/com_prefs")) {
-    loadPrefsInt(fs, "/com_prefs");   // new filename
+    loadPrefsInt(fs, "/com_prefs"); loaded = true;   // new filename
   } else if (fs->exists("/node_prefs")) {
     loadPrefsInt(fs, "/node_prefs");
+    loaded = true;
     is_upgrade = true;  // Migrating from old filename
     savePrefs(fs);  // save to new filename
     fs->remove("/node_prefs");  // remove old
@@ -676,7 +682,25 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     savePrefs(fs);
     _com_prefs_needs_upgrade = false;
   }
+#if defined(ENABLE_OTA)
+  if (loaded) syncOtaConfigFromPrefs();   // persisted OTA policy/keys -> OtaContext (else keep safe defaults)
+#endif
 }
+
+#if defined(ENABLE_OTA)
+// Push the persisted OTA policy + signer allowlist into the running OtaContext (called after load).
+void CommonCLI::syncOtaConfigFromPrefs() {
+  mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
+  c.manager.set_autofetch(_prefs->ota_autofetch);
+  c.manager.set_checkpoint_blocks(_prefs->ota_checkpoint_blocks);
+  c.manager.set_advert_mins(_prefs->ota_advert_interval);
+  c.manager.set_max_hops(_prefs->ota_max_hops);
+  c.autoinstall = _prefs->ota_autoinstall;
+  c.allow.clear();
+  for (uint8_t i = 0; i < _prefs->ota_signer_count && i < MAX_OTA_SIGNERS; i++)
+    c.allow.add(_prefs->ota_signers[i]);
+}
+#endif
 
 void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 #if defined(RP2040_PLATFORM)
@@ -739,6 +763,17 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // (upstream defaults: FEM RX gain on, CAD off) — overwritten below if present.
     _prefs->radio_fem_rxgain = 1;
     _prefs->cad_enabled = 0;
+#if defined(ENABLE_OTA)
+    // OTA settings were appended after Keymind's retry/flood tail. Initialize them
+    // before reading so older and legacy preference files remain conservative.
+    _prefs->ota_autofetch = 0;
+    _prefs->ota_autoinstall = 0;
+    _prefs->ota_signer_count = 0;
+    memset(_prefs->ota_signers, 0, sizeof(_prefs->ota_signers));
+    _prefs->ota_checkpoint_blocks = 4;
+    _prefs->ota_advert_interval = 0;
+    _prefs->ota_max_hops = 3;
+#endif
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
     // (upstream/flex 5-byte tails, or the ~384-byte keymind retry tail) takes the
@@ -923,7 +958,31 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
         file.read((uint8_t *)&_prefs->flood_channel_data_max_hops, sizeof(_prefs->flood_channel_data_max_hops));
       }
     }
-    // next: 674
+#if defined(ENABLE_OTA)
+    // OTA config starts at 674. Guard every appended field so older files keep defaults.
+    if (file.available() >= (int)sizeof(_prefs->ota_autofetch)) {
+      file.read((uint8_t *)&_prefs->ota_autofetch, sizeof(_prefs->ota_autofetch));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_autoinstall)) {
+      file.read((uint8_t *)&_prefs->ota_autoinstall, sizeof(_prefs->ota_autoinstall));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_signer_count)) {
+      file.read((uint8_t *)&_prefs->ota_signer_count, sizeof(_prefs->ota_signer_count));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_signers)) {
+      file.read((uint8_t *)_prefs->ota_signers, sizeof(_prefs->ota_signers));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_checkpoint_blocks)) {
+      file.read((uint8_t *)&_prefs->ota_checkpoint_blocks, sizeof(_prefs->ota_checkpoint_blocks));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_advert_interval)) {
+      file.read((uint8_t *)&_prefs->ota_advert_interval, sizeof(_prefs->ota_advert_interval));
+    }
+    if (file.available() >= (int)sizeof(_prefs->ota_max_hops)) {
+      file.read((uint8_t *)&_prefs->ota_max_hops, sizeof(_prefs->ota_max_hops));
+    }
+    // next: 810
+#endif
     }
 
     // sanitise bad pref values
@@ -999,6 +1058,14 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       _prefs->battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
       _prefs->battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
     }
+#if defined(ENABLE_OTA)
+    _prefs->ota_autofetch = constrain(_prefs->ota_autofetch, 0, 2);
+    _prefs->ota_autoinstall = constrain(_prefs->ota_autoinstall, 0, 1);
+    if (_prefs->ota_checkpoint_blocks > 4096) _prefs->ota_checkpoint_blocks = 4;   // 0=never; cap absurd
+    if (_prefs->ota_advert_interval > 10080) _prefs->ota_advert_interval = 1440;   // 0=off; cap at 7 days
+    if (_prefs->ota_max_hops > 8) _prefs->ota_max_hops = 3;   // 0=direct only; cap absurd reach
+    if (_prefs->ota_signer_count > 4) _prefs->ota_signer_count = 0;     // corrupt count -> drop keys
+#endif
 
     file.close();
   }
@@ -1096,7 +1163,16 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->flood_channel_data_enabled, sizeof(_prefs->flood_channel_data_enabled));
     file.write((uint8_t *)&_prefs->flood_channel_block_max_hops, sizeof(_prefs->flood_channel_block_max_hops));
     file.write((uint8_t *)&_prefs->flood_channel_data_max_hops, sizeof(_prefs->flood_channel_data_max_hops));
-    // next: 674
+#if defined(ENABLE_OTA)
+    file.write((uint8_t *)&_prefs->ota_autofetch, sizeof(_prefs->ota_autofetch));                   // 674
+    file.write((uint8_t *)&_prefs->ota_autoinstall, sizeof(_prefs->ota_autoinstall));               // 675
+    file.write((uint8_t *)&_prefs->ota_signer_count, sizeof(_prefs->ota_signer_count));             // 676
+    file.write((uint8_t *)_prefs->ota_signers, sizeof(_prefs->ota_signers));                        // 677
+    file.write((uint8_t *)&_prefs->ota_checkpoint_blocks, sizeof(_prefs->ota_checkpoint_blocks));   // 805
+    file.write((uint8_t *)&_prefs->ota_advert_interval, sizeof(_prefs->ota_advert_interval));       // 807
+    file.write((uint8_t *)&_prefs->ota_max_hops, sizeof(_prefs->ota_max_hops));                     // 809
+    // next: 810
+#endif
 
     file.close();
   }
@@ -1536,6 +1612,23 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       sprintf(reply, "%s (Build: %s)", _callbacks->getFirmwareVer(), _callbacks->getBuildDate());
     } else if (memcmp(command, "board", 5) == 0) {
       sprintf(reply, "%s", _board->getManufacturerName());
+#if defined(ENABLE_OTA)
+    } else if (memcmp(command, "ota", 3) == 0 && (command[3] == 0 || command[3] == ' ')) {
+      mesh::ota::handle_ota_command(command, reply, *_board);
+      if (mesh::ota::ota_ctx().config_dirty) {        // a policy/key changed via the CLI -> persist it
+        mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
+        _prefs->ota_autofetch = c.manager.autofetch();
+        _prefs->ota_checkpoint_blocks = c.manager.checkpoint_blocks();
+        _prefs->ota_advert_interval = c.manager.advert_mins();
+        _prefs->ota_max_hops = c.manager.max_hops();
+        _prefs->ota_autoinstall = c.autoinstall;
+        _prefs->ota_signer_count = c.allow.count();
+        for (uint8_t i = 0; i < c.allow.count() && i < MAX_OTA_SIGNERS; i++)
+          memcpy(_prefs->ota_signers[i], c.allow.get(i), 32);
+        _callbacks->savePrefs();
+        c.config_dirty = false;
+      }
+#endif
     } else if (memcmp(command, "sensor get ", 11) == 0) {
       const char* key = command + 11;
       const char* val = _sensors->getSettingByKey(key);

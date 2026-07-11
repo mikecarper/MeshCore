@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 #include <Mesh.h>
+#if defined(ENABLE_OTA)
+  #include <helpers/ota/OtaContext.h>
+#endif
 #include <RTClib.h>
 #include <CayenneLPP.h>
 #include <target.h>
@@ -85,7 +88,7 @@ struct NeighbourInfo {
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.16.0"
+  #define FIRMWARE_VERSION   "v1.17.0"
 #endif
 
 #define FIRMWARE_ROLE "repeater"
@@ -249,6 +252,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   void formatScheduledRadioSetting(char* reply, int setting_idx, int display_idx) const;
 
 protected:
+#if defined(ENABLE_OTA)
+  bool isTempRadioActive() const override { return hasStartedScheduledTempRadio(); }
+#endif
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }
@@ -316,6 +322,7 @@ protected:
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
+  // OTA mesh-integration is centralized in mesh::Mesh (no per-example onOtaRecv / send adapter / tick).
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
   void sendClientReply(ClientInfo* client, mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);

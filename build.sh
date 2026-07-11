@@ -1170,6 +1170,21 @@ apply_debug_overrides() {
   esac
 }
 
+apply_lora_ota_override() {
+  local env_name=$1
+
+  if [[ "$env_name" == *mqtt* ]] \
+      || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ] \
+      || [ "${MESHDEBUG_OVERRIDE,,}" == "on" ] \
+      || [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
+      || [ "$FIRMWARE_FILENAME_INFIX" == "logging" ]; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"
+    return
+  fi
+
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DENABLE_OTA=1"
+}
+
 apply_radio_overrides() {
   if [ -n "$RADIO_FREQ_OVERRIDE" ] && [ -n "$RADIO_BW_OVERRIDE" ] && [ -n "$RADIO_SF_OVERRIDE" ] && [ -n "$RADIO_CR_OVERRIDE" ]; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLORA_FREQ=${RADIO_FREQ_OVERRIDE} -DLORA_BW=${RADIO_BW_OVERRIDE} -DLORA_SF=${RADIO_SF_OVERRIDE} -DLORA_CR=${RADIO_CR_OVERRIDE}"
@@ -1373,6 +1388,8 @@ build_firmware() {
   local firmware_version
   local firmware_version_string
   local firmware_filename
+  local mota_target_id
+  local mota_target_flag=""
   local original_platformio_build_flags
   local had_platformio_build_flags=0
   local build_status
@@ -1398,6 +1415,13 @@ build_firmware() {
 
   firmware_version_string="${firmware_version}-${commit_hash}"
   firmware_filename=$(get_firmware_filename "$env_name" "$firmware_version_string")
+
+  # OTA target id = sha2-256:4(env_name) as a little-endian uint32 (matches tools/mota target_id_for_env
+  # and the device's MainBoard::getOtaTargetId()). Harmless when OTA is disabled.
+  mota_target_id=$(python3 -c "import hashlib,sys;print('0x%08x'%int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'little'))" "$env_name" 2>/dev/null || echo "")
+  if [ -n "$mota_target_id" ]; then
+    mota_target_flag=" -DMOTA_TARGET_ID=${mota_target_id}"
+  fi
 
   # Fork CI hooks (consumed by .github/workflows/build-observer*-firmwares.yml).
   # Tag the *embedded* version for observer builds (v1.0.0-observer-abcdef) so
@@ -1429,9 +1453,10 @@ build_firmware() {
     original_platformio_build_flags=""
   fi
 
-  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'"
+  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   disable_debug_flags
   apply_debug_overrides
+  apply_lora_ota_override "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
 
