@@ -121,6 +121,13 @@
 #define DEFAULT_AUTOADD_CONFIG 0
 #endif
 
+#ifndef EMERGENCY_CLIENT_REPEAT_HOLD_MS
+#define EMERGENCY_CLIENT_REPEAT_HOLD_MS 120000UL
+#endif
+#ifndef EMERGENCY_CLIENT_REPEAT_JITTER_MS
+#define EMERGENCY_CLIENT_REPEAT_JITTER_MS 15000UL
+#endif
+
 #define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRXNcg=="
 
 // these are _pushed_ to client app at any time
@@ -138,6 +145,19 @@
 #define PUSH_CODE_TELEMETRY_RESPONSE    0x8B
 #define PUSH_CODE_BINARY_RESPONSE       0x8C
 #define PUSH_CODE_PATH_DISCOVERY_RESPONSE 0x8D
+
+static const uint8_t EMERGENCY_CHANNEL_SECRET[CIPHER_KEY_SIZE] = {
+  0xe1, 0xad, 0x57, 0x8d, 0x25, 0x10, 0x8e, 0x34,
+  0x48, 0x08, 0xf3, 0x0d, 0xfd, 0xaa, 0xf9, 0x26
+};
+
+#define EMERGENCY_CLIENT_REPEAT_TABLE_SIZE 63
+static uint16_t emergency_client_repeats[EMERGENCY_CLIENT_REPEAT_TABLE_SIZE];
+static uint8_t emergency_client_repeat_next;
+static unsigned long emergency_client_repeat_send_at;
+static uint16_t emergency_client_repeat_key;
+static mesh::Packet* emergency_client_repeat_packet;
+
 #define PUSH_CODE_CONTROL_DATA          0x8E   // v8+
 #define PUSH_CODE_CONTACT_DELETED       0x8F // used to notify client app of deleted contact when overwriting oldest
 #define PUSH_CODE_CONTACTS_FULL         0x90 // used to notify client app that contacts storage is full
@@ -280,9 +300,6 @@ bool MyMesh::getCADEnabled() const {
 int MyMesh::getInterferenceThreshold() const {
   return 0; // disabled for now, until currentRSSI() problem is resolved
 }
-bool MyMesh::getCADEnabled() const {
-  return true; // hardware CAD before TX (no CLI toggle on companion; enabled by default)
-}
 
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   if (_prefs.rx_delay_base <= 0.0f) return 0;
@@ -300,6 +317,26 @@ uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
 
 uint8_t MyMesh::getExtraAckTransmitCount() const {
   return _prefs.multi_acks;
+}
+
+bool MyMesh::hasLocationTelemetryRecipient() {
+  if (_prefs.telemetry_mode_loc == TELEM_MODE_DENY) return false;
+
+  ContactsIterator iter = startContactsIterator();
+  ContactInfo contact;
+  while (iter.hasNext(this, contact)) {
+    if (contact.type == ADV_TYPE_NONE) continue;
+    if (_prefs.telemetry_mode_loc == TELEM_MODE_ALLOW_ALL) return true;
+    if (_prefs.telemetry_mode_loc == TELEM_MODE_ALLOW_FLAGS &&
+        ((contact.flags >> 1) & TELEM_PERM_LOCATION)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void MyMesh::updateGpsTelemetryPolicy() {
+  sensors.setTelemetryLocationAccessAvailable(hasLocationTelemetryRecipient());
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
@@ -354,7 +391,7 @@ uint8_t MyMesh::getAutoAddMaxHops() const {
 }
 
 void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
-    _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
+  _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
   if (_serial->isConnected()) {
     out_frame[0] = PUSH_CODE_CONTACT_DELETED;
     memcpy(&out_frame[1], pub_key, PUB_KEY_SIZE);
@@ -406,6 +443,7 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
   }
 
   if (!is_new) dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY); // only schedule lazy write for contacts that are in contacts[]
+  updateGpsTelemetryPolicy();
 }
 
 static int sort_by_recent(const void *a, const void *b) {
@@ -495,7 +533,27 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
 #endif
 }
 
+static uint16_t emergencyClientRepeatKey(const mesh::Packet* packet) {
+  const uint8_t* p = packet->payload;
+  return ((uint16_t)p[1]) | ((uint16_t)p[2] << 8);
+}
+
+static bool __attribute__((noinline)) hasEmergencyClientRepeat(uint16_t key) {
+  for (uint8_t i = 0; i < EMERGENCY_CLIENT_REPEAT_TABLE_SIZE; i++) {
+    if (emergency_client_repeats[i] == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
+  if (emergency_client_repeat_packet != NULL && packet->getPathHashCount() > 0) {
+    if (emergencyClientRepeatKey(packet) == emergency_client_repeat_key) {
+      releasePacket(emergency_client_repeat_packet);
+      emergency_client_repeat_packet = NULL;
+    }
+  }
   // REVISIT: try to determine which Region (from transport_codes[1]) that Sender is indicating for replies/responses
   //    if unknown, fallback to finding Region from transport_codes[0], the 'scope' used by Sender
   return false;
@@ -606,6 +664,29 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   }
   if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
 #endif
+
+  if (pkt->isRouteFlood() && memcmp(channel.secret, EMERGENCY_CHANNEL_SECRET, sizeof(EMERGENCY_CHANNEL_SECRET)) == 0) {
+    bool zero_path = pkt->getPathHashCount() == 0;
+    uint16_t key = emergencyClientRepeatKey(pkt);
+    if (hasEmergencyClientRepeat(key)) {
+      pkt->markDoNotRetransmit();
+    } else {
+      emergency_client_repeats[emergency_client_repeat_next] = key;
+      emergency_client_repeat_next++;
+      if (emergency_client_repeat_next >= EMERGENCY_CLIENT_REPEAT_TABLE_SIZE) emergency_client_repeat_next = 0;
+
+      if (zero_path && emergency_client_repeat_packet == NULL) {
+        emergency_client_repeat_packet = obtainNewPacket();
+        if (emergency_client_repeat_packet != NULL) {
+          *emergency_client_repeat_packet = *pkt;
+          emergency_client_repeat_key = key;
+          emergency_client_repeat_send_at = futureMillis(
+              (int)(EMERGENCY_CLIENT_REPEAT_HOLD_MS + getRNG()->nextInt(0, EMERGENCY_CLIENT_REPEAT_JITTER_MS + 1)));
+          pkt->markDoNotRetransmit();
+        }
+      }
+    }
+  }
 }
 
 void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint16_t data_type,
@@ -989,6 +1070,7 @@ void MyMesh::begin(bool has_display) {
 
   resetContacts();
   _store->loadContacts(this);
+  updateGpsTelemetryPolicy();
   bootstrapRTCfromContacts();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
   _store->loadChannels(this);
@@ -1307,6 +1389,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       updateContactFromFrame(*recipient, last_mod, cmd_frame, len);
       recipient->lastmod = last_mod;
       dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
       ContactInfo contact;
@@ -1315,6 +1398,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       contact.sync_since = 0;
       if (addContact(contact)) {
         dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+        updateGpsTelemetryPolicy();
         writeOKFrame();
       } else {
         writeErrFrame(ERR_CODE_TABLE_FULL);
@@ -1326,6 +1410,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (recipient && removeContact(*recipient)) {
       _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE);
       dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // not found, or unable to remove
@@ -1382,6 +1467,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0] == CMD_IMPORT_CONTACT && len > 2 + 32 + 64) {
     if (importContact(&cmd_frame[1], len - 1)) {
+      updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -1475,6 +1561,7 @@ void MyMesh::handleCmdFrame(size_t len) {
         }
       }
     }
+    updateGpsTelemetryPolicy();
     savePrefs();
     writeOKFrame();
   } else if (cmd_frame[0] == CMD_SET_PATH_HASH_MODE && cmd_frame[1] == 0 && len >= 3) {
@@ -1523,6 +1610,7 @@ void MyMesh::handleCmdFrame(size_t len) {
           // re-load contacts, to invalidate ecdh shared_secrets
           resetContacts();
           _store->loadContacts(this);
+          updateGpsTelemetryPolicy();
         } else {
           writeErrFrame(ERR_CODE_FILE_IO_ERROR);
         }
@@ -2268,6 +2356,11 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
+  if (emergency_client_repeat_packet != NULL && millisHasNowPassed(emergency_client_repeat_send_at)) {
+    mesh::Packet* pkt = emergency_client_repeat_packet;
+    emergency_client_repeat_packet = NULL;
+    sendPacket(pkt, 1, 0);
+  }
 
   if (_cli_rescue) {
     checkCLIRescueCmd();
@@ -2303,5 +2396,6 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;
+  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0
+      || emergency_client_repeat_packet != NULL;
 }

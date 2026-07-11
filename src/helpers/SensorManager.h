@@ -11,6 +11,47 @@
 #define TELEM_CHANNEL_SELF   1   // LPP data channel for 'self' device
 
 class SensorManager {
+#if ENV_INCLUDE_GPS
+  bool gps_cache_valid = false;
+  bool gps_location_access_available = false;
+  bool gps_user_enabled = false;
+  bool gps_acquiring = false;
+  bool gps_acquire_has_fix = false;
+  float gps_cache_lat = 0;
+  float gps_cache_lon = 0;
+  float gps_cache_altitude = 0;
+  float gps_stable_origin_lat = 0;
+  float gps_stable_origin_lon = 0;
+  float gps_weighted_lat = 0;
+  float gps_weighted_lon = 0;
+  float gps_weighted_altitude = 0;
+  float gps_weight_sum = 0;
+  uint16_t gps_weight_count = 0;
+  unsigned long gps_cache_updated_at = 0;
+  unsigned long gps_next_cache_update_at = 0;
+  unsigned long gps_hold_until = 0;
+  unsigned long gps_acquire_started_at = 0;
+  unsigned long gps_stable_started_at = 0;
+
+  bool gpsTelemetryHoldActive(unsigned long now) const;
+  bool gpsTelemetryCacheFresh(unsigned long now) const;
+  void beginGpsTelemetryAcquisition(unsigned long now);
+  void finishGpsTelemetryAcquisition(unsigned long now, bool use_weighted_average);
+  void updateGpsTelemetryCache(float lat, float lon, float altitude, unsigned long now);
+  void maybeStopGpsForTelemetry(unsigned long now);
+
+protected:
+  virtual bool telemetryGpsDetected() const { return false; }
+  virtual bool telemetryGpsActive() const { return false; }
+  virtual void telemetryGpsStart() { }
+  virtual void telemetryGpsStop() { }
+  bool queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP& telemetry);
+  void processGpsTelemetryFix(float lat, float lon, float altitude, unsigned long now);
+  void loopGpsTelemetry(unsigned long now);
+  void setGpsTelemetryUserEnabled(bool enabled);
+  bool isGpsTelemetryUserEnabled() const { return gps_user_enabled; }
+#endif
+
 public:
   double node_lat, node_lon;  // modify these, if you want to affect Advert location
   double node_altitude;       // altitude in meters
@@ -20,6 +61,7 @@ public:
   virtual bool begin() { return false; }
   virtual bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { return false; }
   virtual void loop() { }
+  virtual void setTelemetryLocationAccessAvailable(bool available);
   virtual int getNumSettings() const { return 0; }
   virtual const char* getSettingName(int i) const { return NULL; }
   virtual const char* getSettingValue(int i) const { return NULL; }

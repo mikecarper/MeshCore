@@ -814,10 +814,10 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   }
 #endif
 
-#ifdef WITH_BRIDGE
+#ifdef WITH_MQTT_BRIDGE
   if (_prefs.bridge_enabled) {
     // Store raw radio data for MQTT messages
-    if (bridge) bridge->storeRawRadioData(raw, len, snr, rssi);
+    if (mqtt_bridge) mqtt_bridge->storeRawRadioData(raw, len, snr, rssi);
   }
 #endif
 }
@@ -825,11 +825,11 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets — bridge decides based on mqtt.rx setting
-  if (bridge) bridge->onPacketReceived(pkt);
+  if (mqtt_bridge) mqtt_bridge->onPacketReceived(pkt);
 #elif defined(WITH_BRIDGE)
-  // Non-MQTT bridge (ESP-NOW): use bridge.source setting
+  // Non-MQTT bridge: use bridge.source setting
   if (_prefs.bridge_pkt_src == 1) {
-    if (bridge) bridge->onPacketReceived(pkt);
+    activeBridge()->sendPacket(pkt);
   }
 #endif
 
@@ -855,11 +855,11 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed TX packets — bridge decides based on mqtt.tx setting
-  if (bridge) bridge->sendPacket(pkt);
+  if (mqtt_bridge) mqtt_bridge->sendPacket(pkt);
 #elif defined(WITH_BRIDGE)
-  // Non-MQTT bridge (ESP-NOW): use bridge.source setting
+  // Non-MQTT bridge: use bridge.source setting
   if (_prefs.bridge_pkt_src == 0) {
-    if (bridge) bridge->sendPacket(pkt);
+    activeBridge()->sendPacket(pkt);
   }
 #endif
 
@@ -2210,12 +2210,12 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       telemetry(MAX_PACKET_PAYLOAD - 4),
       discover_limiter(4, 120),  // max 4 every 2 minutes
       anon_limiter(4, 180)   // max 4 every 3 minutes
-#if defined(WITH_RS232_BRIDGE)
+#if defined(WITH_MQTT_BRIDGE)
+      , mqtt_bridge(nullptr)
+#elif defined(WITH_RS232_BRIDGE)
       , bridge(&_prefs, WITH_RS232_BRIDGE, _mgr, &rtc)
 #elif defined(WITH_ESPNOW_BRIDGE)
       , bridge(&_prefs, _mgr, &rtc)
-#elif defined(WITH_MQTT_BRIDGE)
-      , bridge(nullptr)
 #endif
 {
   last_millis = 0;
@@ -2365,38 +2365,39 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (_prefs.bridge_enabled) {
 #ifdef WITH_MQTT_BRIDGE
     // Defer construction to avoid static init crashes on ESP32 classic
-    bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
+    mqtt_bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
 #endif
-    if (bridge) {
+    BridgeBase* active_bridge = activeBridge();
+    if (active_bridge) {
+#ifdef WITH_MQTT_BRIDGE
       // Set device public key for MQTT topics
       char device_id[65];
       mesh::LocalIdentity self_id = getSelfId();
       mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
       MESH_DEBUG_PRINTLN("Setting device ID: %s", device_id);
-      bridge->setDeviceID(device_id);
+      mqtt_bridge->setDeviceID(device_id);
 
       // Set firmware version
-      bridge->setFirmwareVersion(getFirmwareVer());
+      mqtt_bridge->setFirmwareVersion(getFirmwareVer());
 
       // Set board model
-      bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
+      mqtt_bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
 
       // Set build date
-      bridge->setBuildDate(getBuildDate());
+      mqtt_bridge->setBuildDate(getBuildDate());
 
-#ifdef WITH_MQTT_BRIDGE
       // Set stats sources for automatic stats collection
-      bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+      mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #ifdef WITH_SNMP
       if (_cli.getObserverPrefs()->snmp_enabled) {
         _snmp_agent.setNodeName(_prefs.node_name);
         _snmp_agent.setFirmwareVersion(getFirmwareVer());
-        bridge->setSNMPAgent(&_snmp_agent);
+        mqtt_bridge->setSNMPAgent(&_snmp_agent);
       }
 #endif
 #endif
 
-      bridge->begin();
+      active_bridge->begin();
     }
   }
 #endif
@@ -2407,7 +2408,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // floods ride the same scope as adverts/channel messages.
 #ifdef WITH_MQTT_BRIDGE
   _alerter.begin(&_prefs, _cli.getObserverPrefs(), this, this);
-  _alerter.setBridge(bridge);
+  _alerter.setBridge(mqtt_bridge);
 #endif
 
   applySavedRadioParams();
@@ -3878,8 +3879,10 @@ void MyMesh::loop() {
   mesh::Mesh::loop();
   checkBatteryAlert();
 
-#ifdef WITH_BRIDGE
-  // bridge.loop() is now handled by FreeRTOS task on Core 0 - no need to call it here
+#if defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
+  // MQTT runs its own task; serial and ESP-NOW bridges remain cooperative.
+  BridgeBase* active_bridge = activeBridge();
+  if (active_bridge && active_bridge->isRunning()) active_bridge->loop();
 #endif
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
@@ -3953,7 +3956,8 @@ void MyMesh::loop() {
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
-  if (bridge && bridge->isRunning()) return true;  // bridge needs WiFi radio, can't sleep
+  const BridgeBase* active_bridge = activeBridge();
+  if (active_bridge && active_bridge->isRunning()) return true;
 #endif
   if (_mgr->getOutboundTotal() > 0) return true;
   if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;

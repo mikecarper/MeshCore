@@ -3,12 +3,15 @@
 ALL_PIO_ENVS=()
 SUPPORTED_PIO_ENVS=()
 declare -A PIO_ENV_PLATFORM_BY_NAME=()
+declare -A PIO_ENV_MQTT_BY_NAME=()
 PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
 SELECTED_COMMAND_ARGS=()
 MESHDEBUG_OVERRIDE=""
 PACKET_LOGGING_OVERRIDE=""
+MQTT_BRIDGE_OVERRIDE=""
+MQTT_DEBUG_OVERRIDE=""
 FIRMWARE_FILENAME_INFIX=""
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 RADIO_SETTING_TITLE=""
@@ -35,6 +38,7 @@ DEFAULT_VARIANT_LABEL="default"
 TAG_PREFIX_ROOM_SERVER="room-server"
 TAG_PREFIX_COMPANION="companion"
 TAG_PREFIX_REPEATER="repeater"
+TAG_PREFIX_SENSOR="sensor"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
 OUTPUT_DIR="out"
 FALLBACK_VERSION_PREFIX="dev"
@@ -54,11 +58,12 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares twice, first with MESH_DEBUG/MESH_PACKET_LOGGING off and then with both on for non-Bluetooth targets.
+  build-firmwares-logging-matrix: Build all firmwares in three profiles: logging off, logging on for non-Bluetooth targets, and MQTT bridge on with logging off.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
+  build-sensor-firmwares: Build all sensor firmwares for all build targets.
 
 Examples:
 Build firmware for the "RAK_4631_repeater" device target
@@ -70,7 +75,7 @@ $ bash build.sh
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
 
-Build all firmwares twice, with logging-off artifacts named "name-version" and logging-on artifacts named "name-logging-version":
+Build all firmwares in three profiles, adding MQTT observer firmware with logging off after the logging-off and logging-on passes:
 $ bash build.sh build-firmwares-logging-matrix
 
 Build all companion firmwares
@@ -81,6 +86,9 @@ $ bash build.sh build-repeater-firmwares
 
 Build all chat room server firmwares
 $ bash build.sh build-room-server-firmwares
+
+Build all sensor firmwares
+$ bash build.sh build-sensor-firmwares
 
 Environment Variables:
   FIRMWARE_VERSION=vX.Y.Z: Firmware version to embed in the build output.
@@ -117,12 +125,13 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
       SUPPORTED_PIO_ENVS+=("$env_name")
       PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
+      PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
     done < <(
       python3 -c '
 import json
@@ -135,18 +144,20 @@ for section, options in data:
     if not section.startswith("env:"):
         continue
     env_name = section[4:]
+    mqtt_enabled = False
+    platform = None
     for key, value in options:
         if key != "build_flags":
             continue
         values = value if isinstance(value, list) else str(value).split()
         for flag in values:
+            if "WITH_MQTT_BRIDGE" in str(flag):
+                mqtt_enabled = True
             match = pattern.search(str(flag))
-            if match:
-                print(f"{env_name}\t{match.group(0)}")
-                break
-        else:
-            continue
-        break
+            if match and platform is None:
+                platform = match.group(0)
+    if platform:
+        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}")
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
   fi
@@ -265,10 +276,11 @@ prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
     "Build all firmwares"
-    "Build all firmwares twice (logging off, then logging on for non-Bluetooth targets)"
+    "Build all firmwares in 3 profiles (logging off, logging on, MQTT bridge with logging off)"
     "Build all repeater firmwares"
     "Build all companion firmwares"
     "Build all chat room server firmwares"
+    "Build all sensor firmwares"
   )
 
   echo "No command provided. Select a build action:"
@@ -306,6 +318,10 @@ prompt_for_build_mode() {
         SELECTED_COMMAND_ARGS=(build-room-server-firmwares)
         return 0
         ;;
+      7)
+        SELECTED_COMMAND_ARGS=(build-sensor-firmwares)
+        return 0
+        ;;
     esac
   done
 }
@@ -319,6 +335,13 @@ prompt_for_debug_build_settings() {
   PACKET_LOGGING_OVERRIDE="$MENU_CHOICE"
 
   echo "Using debug options: meshdebug=${MESHDEBUG_OVERRIDE}, packet_logging=${PACKET_LOGGING_OVERRIDE}"
+}
+
+prompt_for_mqtt_bridge_build_setting() {
+  echo "MQTT bridge sends mesh radio traffic directly to MQTT over WiFi."
+  prompt_on_off_choice "MQTT bridge (radio WiFi to MQTT direct)" "off"
+  MQTT_BRIDGE_OVERRIDE="$MENU_CHOICE"
+  echo "Using MQTT bridge: ${MQTT_BRIDGE_OVERRIDE}"
 }
 
 is_logging_matrix_command() {
@@ -629,6 +652,9 @@ get_env_metadata() {
       ;;
     repeater*)
       tag_prefix="$TAG_PREFIX_REPEATER"
+      ;;
+    sensor)
+      tag_prefix="$TAG_PREFIX_SENSOR"
       ;;
     *)
       tag_prefix=""
@@ -943,6 +969,9 @@ get_pio_envs_for_variant_role() {
       room_server:room_server)
         echo "$env"
         ;;
+      sensor:sensor)
+        echo "$env"
+        ;;
     esac
   done
 }
@@ -1054,7 +1083,7 @@ normalize_resume_build_output() {
 }
 
 prompt_for_logging_matrix_output_policy() {
-  local choice
+  local choice file_count file_label
 
   normalize_resume_build_output
 
@@ -1063,15 +1092,23 @@ prompt_for_logging_matrix_output_policy() {
     return 0
   fi
 
+  file_count=$(find "$OUTPUT_DIR" -type f -printf '.' | wc -c)
+  file_count=$((file_count))
+  if [ "$file_count" -eq 1 ]; then
+    file_label="file"
+  else
+    file_label="files"
+  fi
+
   if ! [ -t 0 ]; then
     if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
-      echo "Resuming previous logging matrix output in ${OUTPUT_DIR}."
+      echo "Resuming previous logging matrix output in ${OUTPUT_DIR} (${file_count} ${file_label})."
     fi
     return 0
   fi
 
   while true; do
-    read -r -p "Output directory '${OUTPUT_DIR}' exists. Resume previous option 3 progress or clean it? [resume/clean] (default: clean): " choice
+    read -r -p "Output directory '${OUTPUT_DIR}' exists with ${file_count} ${file_label}. Resume previous option 3 progress or clean it? [resume/clean] (default: clean): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
       choice="clean"
@@ -1144,10 +1181,95 @@ is_supported_build_env() {
   [ -n "${PIO_ENV_PLATFORM_BY_NAME[$env_name]+x}" ]
 }
 
+is_mqtt_bridge_target() {
+  [ "${PIO_ENV_MQTT_BY_NAME[$1]:-0}" == "1" ]
+}
+
+normalize_resolved_targets_for_mqtt() {
+  local command=$1
+  local target
+  local candidate
+  local skipped_count=0
+  local -a candidates=("${RESOLVED_BUILD_TARGETS[@]}")
+  local -a normalized_targets=()
+  local -A seen_targets=()
+
+  if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+    case "$command" in
+      build-repeater-firmwares)
+        for target in "${SUPPORTED_PIO_ENVS[@]}"; do
+          if is_mqtt_bridge_target "$target" && [[ "$target" == *_repeater_observer_mqtt ]]; then
+            candidates+=("$target")
+          fi
+        done
+        ;;
+      build-room-server-firmwares)
+        for target in "${SUPPORTED_PIO_ENVS[@]}"; do
+          if is_mqtt_bridge_target "$target" && [[ "$target" == *_room_server_observer_mqtt ]]; then
+            candidates+=("$target")
+          fi
+        done
+        ;;
+    esac
+  fi
+
+  for target in "${candidates[@]}"; do
+    candidate=""
+    if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+      if is_mqtt_bridge_target "$target"; then
+        candidate=$target
+      elif is_mqtt_bridge_target "${target}_observer_mqtt"; then
+        candidate="${target}_observer_mqtt"
+      fi
+    else
+      if is_mqtt_bridge_target "$target"; then
+        candidate=${target%_observer_mqtt}
+        if ! is_supported_build_env "$candidate" || is_mqtt_bridge_target "$candidate"; then
+          candidate=""
+        fi
+      else
+        candidate=$target
+      fi
+    fi
+
+    if [ -z "$candidate" ]; then
+      skipped_count=$((skipped_count + 1))
+      continue
+    fi
+    if [ -z "${seen_targets[$candidate]+x}" ]; then
+      normalized_targets+=("$candidate")
+      seen_targets["$candidate"]=1
+    fi
+  done
+
+  RESOLVED_BUILD_TARGETS=("${normalized_targets[@]}")
+  if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
+    echo "No targets support the selected MQTT bridge setting. MQTT bridge is for direct radio-to-MQTT forwarding over WiFi."
+    return 1
+  fi
+
+  if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+    echo "MQTT bridge enabled for ${#RESOLVED_BUILD_TARGETS[@]} target(s); ${skipped_count} target(s) without a WiFi MQTT environment were skipped."
+  else
+    echo "MQTT bridge disabled; using ${#RESOLVED_BUILD_TARGETS[@]} standard target(s)."
+  fi
+}
+
 disable_debug_flags() {
   if [ "$DISABLE_DEBUG" == "1" ]; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -DCFG_DEBUG=0 -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
   fi
+}
+
+apply_mqtt_bridge_override() {
+  case "${MQTT_BRIDGE_OVERRIDE,,}" in
+    on)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWITH_MQTT_BRIDGE=1"
+      ;;
+    off)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWITH_MQTT_BRIDGE"
+      ;;
+  esac
 }
 
 apply_debug_overrides() {
@@ -1168,21 +1290,40 @@ apply_debug_overrides() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_PACKET_LOGGING"
       ;;
   esac
+
+  case "${MQTT_DEBUG_OVERRIDE,,}" in
+    off)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
+      ;;
+  esac
+}
+
+is_lora_ota_build() {
+  local env_name=$1
+
+  if [[ "$env_name" == *mqtt* ]] \
+      || is_mqtt_bridge_target "$env_name" \
+      || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ] \
+      || [ "${MESHDEBUG_OVERRIDE,,}" == "on" ] \
+      || [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
+      || [ "$FIRMWARE_FILENAME_INFIX" == "logging" ]; then
+    return 1
+  fi
+
+  case "$env_name" in
+    *repeater*|*repeatr*|*room_server*|*room_svr*|*sensor*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 apply_lora_ota_override() {
   local env_name=$1
 
-  if [[ "$env_name" == *mqtt* ]] \
-      || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ] \
-      || [ "${MESHDEBUG_OVERRIDE,,}" == "on" ] \
-      || [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
-      || [ "$FIRMWARE_FILENAME_INFIX" == "logging" ]; then
+  if is_lora_ota_build "$env_name"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DENABLE_OTA=1"
+  else
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"
-    return
   fi
-
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DENABLE_OTA=1"
 }
 
 apply_radio_overrides() {
@@ -1417,10 +1558,12 @@ build_firmware() {
   firmware_filename=$(get_firmware_filename "$env_name" "$firmware_version_string")
 
   # OTA target id = sha2-256:4(env_name) as a little-endian uint32 (matches tools/mota target_id_for_env
-  # and the device's MainBoard::getOtaTargetId()). Harmless when OTA is disabled.
-  mota_target_id=$(python3 -c "import hashlib,sys;print('0x%08x'%int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'little'))" "$env_name" 2>/dev/null || echo "")
-  if [ -n "$mota_target_id" ]; then
-    mota_target_flag=" -DMOTA_TARGET_ID=${mota_target_id}"
+  # and the device's MainBoard::getOtaTargetId()). Only OTA-enabled profiles receive this identifier.
+  if is_lora_ota_build "$env_name"; then
+    mota_target_id=$(python3 -c "import hashlib,sys;print('0x%08x'%int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'little'))" "$env_name" 2>/dev/null || echo "")
+    if [ -n "$mota_target_id" ]; then
+      mota_target_flag=" -DMOTA_TARGET_ID=${mota_target_id}"
+    fi
   fi
 
   # Fork CI hooks (consumed by .github/workflows/build-observer*-firmwares.yml).
@@ -1456,6 +1599,7 @@ build_firmware() {
   export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   disable_debug_flags
   apply_debug_overrides
+  apply_mqtt_bridge_override
   apply_lora_ota_override "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
@@ -1497,6 +1641,10 @@ resolve_room_server_firmwares() {
   get_pio_envs_for_variant_role room_server
 }
 
+resolve_sensor_firmwares() {
+  get_pio_envs_for_variant_role sensor
+}
+
 # Keep bulk build command names mapped to their target resolvers in one place.
 get_bulk_build_resolver_name() {
   case "$1" in
@@ -1514,6 +1662,9 @@ get_bulk_build_resolver_name() {
       ;;
     build-room-server-firmwares)
       echo "resolve_room_server_firmwares"
+      ;;
+    build-sensor-firmwares)
+      echo "resolve_sensor_firmwares"
       ;;
     *)
       return 1
@@ -1640,9 +1791,14 @@ run_resolved_build_targets() {
 
 run_logging_matrix_build_targets() {
   local targets=("$@")
+  local target
+  local standard_targets=()
   local logging_targets=()
+  local mqtt_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
+  local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
+  local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local bluetooth_skip_count=0
   local build_status=0
@@ -1652,26 +1808,38 @@ run_logging_matrix_build_targets() {
     return 1
   fi
 
-  echo "Building ${#targets[@]} target(s) with MESH_DEBUG=off and MESH_PACKET_LOGGING=off."
+  for target in "${targets[@]}"; do
+    if is_mqtt_bridge_target "$target"; then
+      mqtt_targets+=("$target")
+    else
+      standard_targets+=("$target")
+    fi
+  done
+
+  echo "Profile 1/3: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
   MESHDEBUG_OVERRIDE="off"
   PACKET_LOGGING_OVERRIDE="off"
+  MQTT_BRIDGE_OVERRIDE="off"
   FIRMWARE_FILENAME_INFIX=""
-  run_resolved_build_targets "${targets[@]}"
-  build_status=$?
+  if [ ${#standard_targets[@]} -gt 0 ]; then
+    run_resolved_build_targets "${standard_targets[@]}"
+    build_status=$?
+  fi
 
   if [ "$build_status" -eq 0 ]; then
-    mapfile -t logging_targets < <(filter_out_bluetooth_targets "${targets[@]}")
-    bluetooth_skip_count=$((${#targets[@]} - ${#logging_targets[@]}))
+    mapfile -t logging_targets < <(filter_out_bluetooth_targets "${standard_targets[@]}")
+    bluetooth_skip_count=$((${#standard_targets[@]} - ${#logging_targets[@]}))
 
     if [ "$bluetooth_skip_count" -gt 0 ]; then
       echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
     fi
 
     if [ ${#logging_targets[@]} -gt 0 ]; then
-      echo "Building ${#logging_targets[@]} target(s) with MESH_DEBUG=on and MESH_PACKET_LOGGING=on."
+      echo "Profile 2/3: building ${#logging_targets[@]} standard target(s) with logging on and MQTT bridge off."
       echo "Logging-on artifacts use filename form: name-logging-version"
       MESHDEBUG_OVERRIDE="on"
       PACKET_LOGGING_OVERRIDE="on"
+      MQTT_BRIDGE_OVERRIDE="off"
       FIRMWARE_FILENAME_INFIX="logging"
       run_resolved_build_targets "${logging_targets[@]}"
       build_status=$?
@@ -1680,8 +1848,25 @@ run_logging_matrix_build_targets() {
     fi
   fi
 
+  if [ "$build_status" -eq 0 ]; then
+    if [ ${#mqtt_targets[@]} -gt 0 ]; then
+      echo "Profile 3/3: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
+      MESHDEBUG_OVERRIDE="off"
+      PACKET_LOGGING_OVERRIDE="off"
+      MQTT_BRIDGE_OVERRIDE="on"
+      MQTT_DEBUG_OVERRIDE="off"
+      FIRMWARE_FILENAME_INFIX=""
+      run_resolved_build_targets "${mqtt_targets[@]}"
+      build_status=$?
+    else
+      echo "No MQTT bridge targets are configured; skipping profile 3/3."
+    fi
+  fi
+
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
   PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
+  MQTT_BRIDGE_OVERRIDE=$original_mqtt_bridge_override
+  MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
   FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
 
   return "$build_status"
@@ -1756,9 +1941,10 @@ main() {
 
     prompt_for_build_mode
     if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
-      echo "Skipping debug option prompts; this action builds logging off and logging on passes."
+      echo "Skipping debug and MQTT prompts; this action builds all three profiles automatically."
     else
       prompt_for_debug_build_settings
+      prompt_for_mqtt_bridge_build_setting
     fi
     prompt_for_radio_build_settings
     prompt_for_firmware_profile_settings
@@ -1768,6 +1954,12 @@ main() {
 
   if ! resolve_command_targets "$@"; then
     exit 1
+  fi
+
+  if ! is_logging_matrix_command "$1" && [ -n "$MQTT_BRIDGE_OVERRIDE" ]; then
+    if ! normalize_resolved_targets_for_mqtt "$1"; then
+      exit 1
+    fi
   fi
 
   prompt_for_resolved_firmware_version

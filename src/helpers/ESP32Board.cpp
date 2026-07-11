@@ -3,7 +3,266 @@
 #include "ESP32Board.h"
 #include <target.h>
 
-#if defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)   // Repeater or Room Server only
+#if defined(ADMIN_PASSWORD) && defined(LIGHTWEIGHT_WIFI_OTA)
+#include <WiFi.h>
+#include <Update.h>
+#include <SPIFFS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <strings.h>
+
+static bool lightweight_ota_started_ap;
+
+static const char LIGHTWEIGHT_OTA_PAGE[] = R"HTML(<!doctype html>
+<html><head><meta name="viewport" content="width=device-width"><title>MeshCore OTA</title>
+<style>body{font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}button,input{font-size:1rem;margin:.5rem 0}pre{white-space:pre-wrap}</style></head>
+<body><h2>MeshCore firmware update</h2><input id="file" type="file" accept=".bin,application/octet-stream"><br>
+<button id="upload">Upload and reboot</button><pre id="status"></pre><script>
+const f=document.getElementById('file'),s=document.getElementById('status'),b=document.getElementById('upload');
+b.onclick=()=>{if(!f.files.length){s.textContent='Select a firmware .bin file.';return}b.disabled=true;
+const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('Content-Type','application/octet-stream');
+x.upload.onprogress=e=>{if(e.lengthComputable)s.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%'};
+x.onload=()=>{s.textContent=x.responseText;b.disabled=false};x.onerror=()=>{s.textContent='Upload failed';b.disabled=false};x.send(f.files[0])};
+</script></body></html>)HTML";
+
+class LightweightOTAServer {
+  WiFiServer server{80};
+  TaskHandle_t task = nullptr;
+  volatile bool running = false;
+  ESP32Board* board = nullptr;
+
+  static void sendResponse(WiFiClient& client, int code, const char* reason,
+                           const char* content_type, const char* body, size_t length) {
+    client.printf("HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\n"
+                  "Connection: close\r\nCache-Control: no-store\r\n\r\n",
+                  code, reason, content_type, static_cast<unsigned>(length));
+    if (length) client.write(reinterpret_cast<const uint8_t*>(body), length);
+  }
+
+  bool readLine(WiFiClient& client, char* line, size_t capacity) {
+    size_t length = 0;
+    uint32_t deadline = millis() + 5000;
+    while (running && client.connected()) {
+      while (client.available()) {
+        int c = client.read();
+        if (c < 0) break;
+        if (c == '\n') {
+          if (length && line[length - 1] == '\r') length--;
+          line[length] = 0;
+          return true;
+        }
+        if (length + 1 < capacity) line[length++] = static_cast<char>(c);
+      }
+      if (static_cast<int32_t>(millis() - deadline) >= 0) break;
+      delay(1);
+    }
+    return false;
+  }
+
+  void sendPage(WiFiClient& client) {
+    sendResponse(client, 200, "OK", "text/html", LIGHTWEIGHT_OTA_PAGE,
+                 strlen(LIGHTWEIGHT_OTA_PAGE));
+  }
+
+  void sendLog(WiFiClient& client) {
+    File log = SPIFFS.open("/packet_log", FILE_READ);
+    if (!log) {
+      static const char missing[] = "packet log not found";
+      sendResponse(client, 404, "Not Found", "text/plain", missing, sizeof(missing) - 1);
+      return;
+    }
+
+    client.printf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %u\r\n"
+                  "Connection: close\r\nCache-Control: no-store\r\n\r\n",
+                  static_cast<unsigned>(log.size()));
+    uint8_t buf[1024];
+    while (running && log.available() && client.connected()) {
+      size_t count = log.read(buf, sizeof(buf));
+      if (!count || client.write(buf, count) != count) break;
+    }
+    log.close();
+  }
+
+  void sendUpdateError(WiFiClient& client, int code, const char* reason) {
+    char error[96];
+    snprintf(error, sizeof(error), "OTA error: %s", Update.errorString());
+    sendResponse(client, code, reason, "text/plain", error, strlen(error));
+  }
+
+  void receiveUpdate(WiFiClient& client, size_t total) {
+    if (total == 0) {
+      static const char empty[] = "empty firmware image";
+      sendResponse(client, 400, "Bad Request", "text/plain", empty, sizeof(empty) - 1);
+      return;
+    }
+
+    board->setInhibitSleep(true);
+    if (!Update.begin(total, U_FLASH)) {
+      sendUpdateError(client, 400, "Bad Request");
+      return;
+    }
+
+    uint8_t buf[1024];
+    size_t received_total = 0;
+    uint32_t deadline = millis() + 15000;
+    while (running && received_total < total && client.connected()) {
+      int available = client.available();
+      if (available <= 0) {
+        if (static_cast<int32_t>(millis() - deadline) >= 0) break;
+        delay(1);
+        continue;
+      }
+      size_t wanted = total - received_total;
+      if (wanted > sizeof(buf)) wanted = sizeof(buf);
+      if (wanted > static_cast<size_t>(available)) wanted = static_cast<size_t>(available);
+      int received = client.read(buf, wanted);
+      if (received <= 0) break;
+      deadline = millis() + 15000;
+      if (Update.write(buf, static_cast<size_t>(received)) != static_cast<size_t>(received)) {
+        sendUpdateError(client, 500, "Internal Server Error");
+        Update.abort();
+        return;
+      }
+      received_total += static_cast<size_t>(received);
+    }
+
+    if (received_total != total) {
+      Update.abort();
+      static const char incomplete[] = "firmware upload incomplete";
+      sendResponse(client, 408, "Request Timeout", "text/plain", incomplete, sizeof(incomplete) - 1);
+      return;
+    }
+    if (!Update.end()) {
+      sendUpdateError(client, 500, "Internal Server Error");
+      return;
+    }
+
+    static const char success[] = "OK - firmware installed; rebooting";
+    sendResponse(client, 200, "OK", "text/plain", success, sizeof(success) - 1);
+    delay(500);
+    client.stop();
+    esp_restart();
+  }
+
+  void handleClient(WiFiClient& client) {
+    char line[256];
+    if (!readLine(client, line, sizeof(line))) return;
+    bool get_page = strncmp(line, "GET / ", 6) == 0 || strncmp(line, "GET /update ", 12) == 0;
+    bool get_log = strncmp(line, "GET /log ", 9) == 0;
+    bool post_update = strncmp(line, "POST /update ", 13) == 0;
+
+    size_t content_length = 0;
+    do {
+      if (!readLine(client, line, sizeof(line))) return;
+      if (strncasecmp(line, "Content-Length:", 15) == 0) {
+        content_length = static_cast<size_t>(strtoul(line + 15, nullptr, 10));
+      }
+    } while (line[0]);
+
+    if (get_page) sendPage(client);
+    else if (get_log) sendLog(client);
+    else if (post_update) receiveUpdate(client, content_length);
+    else {
+      static const char missing[] = "not found";
+      sendResponse(client, 404, "Not Found", "text/plain", missing, sizeof(missing) - 1);
+    }
+  }
+
+  static void taskEntry(void* arg) {
+    LightweightOTAServer* self = static_cast<LightweightOTAServer*>(arg);
+    while (self->running) {
+      WiFiClient client = self->server.available();
+      if (client) {
+        client.setTimeout(15000);
+        self->handleClient(client);
+        client.stop();
+      } else {
+        delay(10);
+      }
+    }
+    self->task = nullptr;
+    vTaskDelete(nullptr);
+  }
+
+public:
+  bool begin(ESP32Board* owner) {
+    if (running) return true;
+    if (task != nullptr) return false;
+    board = owner;
+    server.begin();
+    server.setNoDelay(true);
+    running = true;
+    if (xTaskCreate(taskEntry, "ota-http", 6144, this, 4, &task) != pdPASS) {
+      running = false;
+      server.stop();
+      task = nullptr;
+      return false;
+    }
+    return true;
+  }
+
+  void end() {
+    running = false;
+    server.stop();
+    for (unsigned i = 0; task != nullptr && i < 100; i++) delay(10);
+    board = nullptr;
+  }
+};
+
+static LightweightOTAServer lightweight_ota_server;
+
+bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+  (void)id;
+  inhibit_sleep = true;
+
+  IPAddress ip;
+  if (WiFi.status() == WL_CONNECTED) {
+    ip = WiFi.localIP();
+  } else {
+    if (!lightweight_ota_started_ap) {
+      lightweight_ota_started_ap = WiFi.softAP("MeshCore-OTA", nullptr);
+    }
+    if (!lightweight_ota_started_ap) {
+      inhibit_sleep = false;
+      strcpy(reply, "ERR: OTA WiFi failed");
+      return false;
+    }
+    ip = WiFi.softAPIP();
+  }
+
+  if (ota_server == nullptr) {
+    if (!lightweight_ota_server.begin(this)) {
+      if (lightweight_ota_started_ap) WiFi.softAPdisconnect(true);
+      lightweight_ota_started_ap = false;
+      inhibit_sleep = false;
+      strcpy(reply, "ERR: OTA server failed");
+      return false;
+    }
+    ota_server = &lightweight_ota_server;
+  }
+
+  snprintf(reply, 160, "Started: http://%s/update", ip.toString().c_str());
+  MESH_DEBUG_PRINTLN("startOTAUpdate: %s", reply);
+  return true;
+}
+
+bool ESP32Board::stopOTAUpdate(char reply[]) {
+  if (ota_server == nullptr) {
+    strcpy(reply, "OK - OTA not running");
+    return true;
+  }
+
+  lightweight_ota_server.end();
+  ota_server = nullptr;
+  if (lightweight_ota_started_ap) WiFi.softAPdisconnect(true);
+  lightweight_ota_started_ap = false;
+  inhibit_sleep = false;
+  strcpy(reply, "OK - OTA stopped");
+  MESH_DEBUG_PRINTLN("stopOTAUpdate: %s", reply);
+  return true;
+}
+
+#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)   // Repeater or Room Server only
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>

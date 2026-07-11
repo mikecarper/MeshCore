@@ -1,3 +1,5 @@
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+
 #include "PsychicMqttClient.h"
 
 #include <string.h>
@@ -813,3 +815,5 @@ bool PsychicMqttClient::_isTopicMatch(const char *topic, const char *subscriptio
         s = s_end + 1;
     }
 }
+
+#endif

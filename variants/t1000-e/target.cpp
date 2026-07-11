@@ -80,6 +80,7 @@ mesh::LocalIdentity radio_new_identity() {
 }
 
 void T1000SensorManager::start_gps() {
+  if (gps_active) return;
   gps_active = true;
   //_nmea->begin();
   // this init sequence should be better 
@@ -135,9 +136,7 @@ bool T1000SensorManager::begin() {
 }
 
 bool T1000SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
-  if (requester_permissions & TELEM_PERM_LOCATION) {   // does requester have permission?
-    telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude);
-  }
+  queryGpsTelemetry(requester_permissions, telemetry);
   if (requester_permissions & TELEM_PERM_ENVIRONMENT) {
     // Firmware reports light as a 0-100 % scale, but expose it via Luminosity so app labels it "Luminosity".
     telemetry.addLuminosity(TELEM_CHANNEL_SELF, t1000e_get_light());
@@ -147,18 +146,21 @@ bool T1000SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP&
 }
 
 void T1000SensorManager::loop() {
-  static long next_gps_update = 0;
+  static unsigned long next_gps_update = 0;
+  unsigned long now = millis();
+  loopGpsTelemetry(now);
 
-  _nmea->loop();
+  if (gps_active) _nmea->loop();
 
-  if (millis() > next_gps_update) {
+  if ((long)(now - next_gps_update) >= 0) {
     if (gps_active && _nmea->isValid()) {
       node_lat = ((double)_nmea->getLatitude())/1000000.;
       node_lon = ((double)_nmea->getLongitude())/1000000.;
       node_altitude = ((double)_nmea->getAltitude()) / 1000.0;
+      processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       //Serial.printf("lat %f lon %f\r\n", _lat, _lon);
     }
-    next_gps_update = millis() + 1000;
+    next_gps_update = now + 1000;
   }
 }
 
@@ -169,17 +171,13 @@ const char* T1000SensorManager::getSettingName(int i) const {
 }
 const char* T1000SensorManager::getSettingValue(int i) const {
   if (i == 0) {
-    return gps_active ? "1" : "0";
+    return isGpsTelemetryUserEnabled() ? "1" : "0";
   }
   return NULL;
 }
 bool T1000SensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    if (strcmp(value, "0") == 0) {
-      sleep_gps(); // sleep for faster fix !
-    } else {
-      start_gps();
-    }
+    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
     return true;
   }
   return false;  // not supported

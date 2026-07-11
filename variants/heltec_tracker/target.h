@@ -19,6 +19,10 @@ class HWTSensorManager : public SensorManager {
 
   void start_gps();
   void stop_gps();
+  bool telemetryGpsDetected() const override { return true; }
+  bool telemetryGpsActive() const override { return gps_active; }
+  void telemetryGpsStart() override { start_gps(); }
+  void telemetryGpsStop() override { stop_gps(); }
 public:
   HWTSensorManager(LocationProvider &location): _location(&location) { }
   bool begin() override;

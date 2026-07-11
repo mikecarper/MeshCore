@@ -16,13 +16,19 @@
 #include "esp_system.h"
 #include <driver/rtc_io.h>
 
+#if !defined(LIGHTWEIGHT_WIFI_OTA)
 class AsyncWebServer;
+#endif
 
 class ESP32Board : public mesh::MainBoard {
 protected:
   uint8_t startup_reason;
   bool inhibit_sleep = false;
+#if defined(LIGHTWEIGHT_WIFI_OTA)
+  void* ota_server = nullptr;
+#else
   AsyncWebServer* ota_server = nullptr;
+#endif
   static inline portMUX_TYPE sleepMux = portMUX_INITIALIZER_UNLOCKED;
 
 public:

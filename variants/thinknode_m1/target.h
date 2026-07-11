@@ -20,6 +20,10 @@ class ThinkNodeM1SensorManager : public SensorManager {
 
   void start_gps();
   void stop_gps();
+  bool telemetryGpsDetected() const override { return true; }
+  bool telemetryGpsActive() const override { return gps_active; }
+  void telemetryGpsStart() override { start_gps(); }
+  void telemetryGpsStop() override { stop_gps(); }
 public:
   ThinkNodeM1SensorManager(LocationProvider &location): _location(&location) { }
   LocationProvider* getLocationProvider() override { return _location; }
@@ -44,4 +48,3 @@ extern ThinkNodeM1SensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef WITH_MQTT_BRIDGE
+
 #include "MeshCore.h"
 #include "Identity.h"
 
@@ -85,3 +87,5 @@ private:
   );
   
 };
+
+#endif

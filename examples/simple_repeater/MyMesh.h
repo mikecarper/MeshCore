@@ -167,12 +167,28 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t active_cr;   // live CR, including temporary radio overrides
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
   int  matching_peer_indexes[MAX_CLIENTS];
-#if defined(WITH_RS232_BRIDGE)
+#if defined(WITH_MQTT_BRIDGE)
+  MQTTBridge* mqtt_bridge;
+#elif defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
   ESPNowBridge bridge;
-#elif defined(WITH_MQTT_BRIDGE)
-  MQTTBridge* bridge;
+#endif
+#ifdef WITH_BRIDGE
+  BridgeBase* activeBridge() {
+#ifdef WITH_MQTT_BRIDGE
+    return mqtt_bridge;
+#else
+    return &bridge;
+#endif
+  }
+  const BridgeBase* activeBridge() const {
+#ifdef WITH_MQTT_BRIDGE
+    return mqtt_bridge;
+#else
+    return &bridge;
+#endif
+  }
 #endif
 #ifdef WITH_SNMP
   MeshSNMPAgent _snmp_agent;
@@ -402,34 +418,35 @@ public:
 
 #if defined(WITH_BRIDGE)
   void setBridgeState(bool enable) override {
-    if (!bridge) {
 #ifdef WITH_MQTT_BRIDGE
-      bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
-#endif
-      if (!bridge) return;
+    if (!mqtt_bridge) {
+      mqtt_bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
+      if (!mqtt_bridge) return;
     }
-    if (enable == bridge->isRunning()) return;
+#endif
+    BridgeBase* active_bridge = activeBridge();
+    if (!active_bridge || enable == active_bridge->isRunning()) return;
     if (enable)
     {
+#ifdef WITH_MQTT_BRIDGE
       // Set device metadata before starting bridge (same as in begin())
       char device_id[65];
       mesh::LocalIdentity self_id = getSelfId();
       mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
-      bridge->setDeviceID(device_id);
-      bridge->setFirmwareVersion(getFirmwareVer());
-      bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
-      bridge->setBuildDate(getBuildDate());
-#ifdef WITH_MQTT_BRIDGE
-      bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+      mqtt_bridge->setDeviceID(device_id);
+      mqtt_bridge->setFirmwareVersion(getFirmwareVer());
+      mqtt_bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
+      mqtt_bridge->setBuildDate(getBuildDate());
+      mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
-      bridge->begin();
+      active_bridge->begin();
 #ifdef WITH_MQTT_BRIDGE
-      _alerter.setBridge(bridge);
+      _alerter.setBridge(mqtt_bridge);
 #endif
     }
     else
     {
-      bridge->end();
+      active_bridge->end();
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(nullptr);
 #endif
@@ -437,26 +454,27 @@ public:
   }
 
   void restartBridge() override {
-    if (!bridge || !bridge->isRunning()) return;
-    bridge->end();
+    BridgeBase* active_bridge = activeBridge();
+    if (!active_bridge || !active_bridge->isRunning()) return;
+    active_bridge->end();
+#ifdef WITH_MQTT_BRIDGE
     // Set device metadata before restarting bridge (same as in begin())
     char device_id[65];
     mesh::LocalIdentity self_id = getSelfId();
     mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
-    bridge->setDeviceID(device_id);
-    bridge->setFirmwareVersion(getFirmwareVer());
-    bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
-    bridge->setBuildDate(getBuildDate());
-#ifdef WITH_MQTT_BRIDGE
-    bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+    mqtt_bridge->setDeviceID(device_id);
+    mqtt_bridge->setFirmwareVersion(getFirmwareVer());
+    mqtt_bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
+    mqtt_bridge->setBuildDate(getBuildDate());
+    mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
-    bridge->begin();
+    active_bridge->begin();
   }
 
   void restartBridgeSlot(int slot) override {
 #ifdef WITH_MQTT_BRIDGE
-    if (!bridge || !bridge->isRunning()) return;
-    bridge->setSlotPreset(slot, _cli.getObserverPrefs()->mqtt_slot_preset[slot]);
+    if (!mqtt_bridge || !mqtt_bridge->isRunning()) return;
+    mqtt_bridge->setSlotPreset(slot, _cli.getObserverPrefs()->mqtt_slot_preset[slot]);
 #else
     (void)slot;
 #endif
@@ -472,22 +490,41 @@ public:
   }
 
   int getQueueSize() override {
-    return bridge ? bridge->getQueueSize() : 0;
+#ifdef WITH_MQTT_BRIDGE
+    return mqtt_bridge ? mqtt_bridge->getQueueSize() : 0;
+#else
+    return 0;
+#endif
   }
 
   bool isMqttBridgeRunning() override {
-    return bridge && bridge->isRunning();
+#ifdef WITH_MQTT_BRIDGE
+    return mqtt_bridge && mqtt_bridge->isRunning();
+#else
+    return false;
+#endif
   }
 
   bool syncMqttNtp() override {
-    if (!bridge || !bridge->isRunning()) return false;
+#ifdef WITH_MQTT_BRIDGE
+    if (!mqtt_bridge || !mqtt_bridge->isRunning()) return false;
     // Marshal onto the MQTT task (Core 0); this runs on the CLI thread (Core 1).
-    return bridge->requestForcedNtpSync();
+    return mqtt_bridge->requestForcedNtpSync();
+#else
+    return false;
+#endif
   }
 
   bool runMqttNtpDiag(char* reply, size_t reply_size, bool verbose) override {
-    if (!bridge || !bridge->isRunning()) return false;
-    return bridge->ntpDiag(reply, reply_size, verbose);
+#ifdef WITH_MQTT_BRIDGE
+    if (!mqtt_bridge || !mqtt_bridge->isRunning()) return false;
+    return mqtt_bridge->ntpDiag(reply, reply_size, verbose);
+#else
+    (void)reply;
+    (void)reply_size;
+    (void)verbose;
+    return false;
+#endif
   }
 #endif
 

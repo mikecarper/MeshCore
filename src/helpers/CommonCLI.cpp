@@ -774,6 +774,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->ota_advert_interval = 0;
     _prefs->ota_max_hops = 3;
 #endif
+    _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
     // (upstream/flex 5-byte tails, or the ~384-byte keymind retry tail) takes the
@@ -957,9 +958,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       if (file.available() >= (int)sizeof(_prefs->flood_channel_data_max_hops)) {
         file.read((uint8_t *)&_prefs->flood_channel_data_max_hops, sizeof(_prefs->flood_channel_data_max_hops));
       }
+      if (file.available() >= (int)sizeof(_prefs->telemetry_access)) {
+        file.read((uint8_t *)&_prefs->telemetry_access, sizeof(_prefs->telemetry_access));
+      }
     }
 #if defined(ENABLE_OTA)
-    // OTA config starts at 674. Guard every appended field so older files keep defaults.
+    // OTA config starts at 675, after telemetry_access. Guard every appended field so older files keep defaults.
     if (file.available() >= (int)sizeof(_prefs->ota_autofetch)) {
       file.read((uint8_t *)&_prefs->ota_autofetch, sizeof(_prefs->ota_autofetch));
     }
@@ -981,7 +985,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     if (file.available() >= (int)sizeof(_prefs->ota_max_hops)) {
       file.read((uint8_t *)&_prefs->ota_max_hops, sizeof(_prefs->ota_max_hops));
     }
-    // next: 810
+    // next: 811
 #endif
     }
 
@@ -1044,6 +1048,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->battery_alert_enabled = constrain(_prefs->battery_alert_enabled, 0, 1);
     _prefs->direct_retry_recent_enabled = constrain(_prefs->direct_retry_recent_enabled, 0, 1);
     _prefs->flood_channel_data_enabled = constrain(_prefs->flood_channel_data_enabled, 0, 1);
+    _prefs->telemetry_access = constrain(_prefs->telemetry_access, 0, 1);
     if (_prefs->flood_channel_block_max_hops != FLOOD_CHANNEL_BLOCK_HOPS_ALL
         && (_prefs->flood_channel_block_max_hops < 1 || _prefs->flood_channel_block_max_hops > 7)) {
       _prefs->flood_channel_block_max_hops = FLOOD_CHANNEL_BLOCK_HOPS_ALL;
@@ -1163,15 +1168,16 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->flood_channel_data_enabled, sizeof(_prefs->flood_channel_data_enabled));
     file.write((uint8_t *)&_prefs->flood_channel_block_max_hops, sizeof(_prefs->flood_channel_block_max_hops));
     file.write((uint8_t *)&_prefs->flood_channel_data_max_hops, sizeof(_prefs->flood_channel_data_max_hops));
+    file.write((uint8_t *)&_prefs->telemetry_access, sizeof(_prefs->telemetry_access));             // 674
 #if defined(ENABLE_OTA)
-    file.write((uint8_t *)&_prefs->ota_autofetch, sizeof(_prefs->ota_autofetch));                   // 674
-    file.write((uint8_t *)&_prefs->ota_autoinstall, sizeof(_prefs->ota_autoinstall));               // 675
-    file.write((uint8_t *)&_prefs->ota_signer_count, sizeof(_prefs->ota_signer_count));             // 676
-    file.write((uint8_t *)_prefs->ota_signers, sizeof(_prefs->ota_signers));                        // 677
-    file.write((uint8_t *)&_prefs->ota_checkpoint_blocks, sizeof(_prefs->ota_checkpoint_blocks));   // 805
-    file.write((uint8_t *)&_prefs->ota_advert_interval, sizeof(_prefs->ota_advert_interval));       // 807
-    file.write((uint8_t *)&_prefs->ota_max_hops, sizeof(_prefs->ota_max_hops));                     // 809
-    // next: 810
+    file.write((uint8_t *)&_prefs->ota_autofetch, sizeof(_prefs->ota_autofetch));                   // 675
+    file.write((uint8_t *)&_prefs->ota_autoinstall, sizeof(_prefs->ota_autoinstall));               // 676
+    file.write((uint8_t *)&_prefs->ota_signer_count, sizeof(_prefs->ota_signer_count));             // 677
+    file.write((uint8_t *)_prefs->ota_signers, sizeof(_prefs->ota_signers));                        // 678
+    file.write((uint8_t *)&_prefs->ota_checkpoint_blocks, sizeof(_prefs->ota_checkpoint_blocks));   // 806
+    file.write((uint8_t *)&_prefs->ota_advert_interval, sizeof(_prefs->ota_advert_interval));       // 808
+    file.write((uint8_t *)&_prefs->ota_max_hops, sizeof(_prefs->ota_max_hops));                     // 810
+    // next: 811
 #endif
 
     file.close();
@@ -1528,6 +1534,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         strcpy(reply, "ERR: clock cannot go backwards");
       }
+#ifdef ESP_PLATFORM
     } else if (memcmp(command, "memory", 6) == 0) {
       sprintf(reply, "Free: %d, Min: %d, Max: %d, Queue: %d, IntFree: %d, IntMax: %d, PSRAM: %d/%d",
               ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(),
@@ -1536,15 +1543,27 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
               (int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
               (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
               (int)heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+#endif
     } else if (memcmp(command, "start ota", 9) == 0 && (command[9] == 0 || command[9] == ' ')) {
-      // Manual OTA: bring up the ElegantOTA server for a hand-uploaded binary.
+      // Manual OTA: bring up the board's browser server for a hand-uploaded binary.
       if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
         strcpy(reply, "Error");
       }
+#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
+      else {
+        // Keep WiFi up, but release MQTT/TLS heap while the browser uploader runs.
+        _callbacks->setBridgeState(false);
+      }
+#endif
     } else if (memcmp(command, "stop ota", 8) == 0 && (command[8] == 0 || command[8] == ' ')) {
       if (!_board->stopOTAUpdate(reply)) {
         strcpy(reply, "Error");
       }
+#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
+      else if (_prefs->bridge_enabled) {
+        _callbacks->setBridgeState(true);
+      }
+#endif
     } else if (memcmp(command, "clock", 5) == 0) {
       uint32_t now = getRTCClock()->getCurrentTime();
       DateTime dt = DateTime(now);
@@ -1881,6 +1900,18 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->allow_read_only = memcmp(&config[16], "on", 2) == 0;
     savePrefs();
     strcpy(reply, "OK");
+  } else if (memcmp(config, "telemetry.access ", 17) == 0) {
+    if (strcmp(&config[17], "all") == 0) {
+      _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(&config[17], "acl") == 0) {
+      _prefs->telemetry_access = TELEMETRY_ACCESS_ACL;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "ERROR: telemetry.access must be all or acl");
+    }
   } else if (memcmp(config, "flood.advert.interval ", 22) == 0) {
     int hours = _atoi(&config[22]);
     if ((hours > 0 && hours < 3) || (hours > 168)) {
@@ -2509,6 +2540,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", (uint32_t) _prefs->multi_acks);
   } else if (memcmp(config, "allow.read.only", 15) == 0) {
     sprintf(reply, "> %s", _prefs->allow_read_only ? "on" : "off");
+  } else if (memcmp(config, "telemetry.access", 16) == 0) {
+    sprintf(reply, "> %s", _prefs->telemetry_access == TELEMETRY_ACCESS_ACL ? "acl" : "all");
   } else if (memcmp(config, "flood.advert.interval", 21) == 0) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->flood_advert_interval));
   } else if (memcmp(config, "advert.interval", 15) == 0) {

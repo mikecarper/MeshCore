@@ -1663,6 +1663,22 @@ clear recent.repeater
 
 ### Sensors (When sensor support is compiled in)
 
+#### View or change telemetry access mode
+**Usage:**
+- `get telemetry.access`
+- `set telemetry.access <mode>`
+
+**Parameters:**
+- `mode`: `all`|`acl`
+  - `all`: allow telemetry requests using the requester-provided telemetry mask
+  - `acl`: require ACL read-only or higher for telemetry, including GPS
+
+**Default:** `all`
+
+**Note:** `all` matches the previous sensor telemetry behavior.
+
+---
+
 #### View the list of sensors on this node
 **Usage:** `sensor list [start]`
 

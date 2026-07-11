@@ -1,4 +1,7 @@
 #include "JWTHelper.h"
+
+#ifdef WITH_MQTT_BRIDGE
+
 #include <ArduinoJson.h>
 #include <SHA256.h>
 #include <string.h>
@@ -196,3 +199,4 @@ size_t JWTHelper::createPayload(
   return base64UrlEncode((uint8_t*)jsonBuffer, len, output, outputSize);
 }
 
+#endif

@@ -4,7 +4,8 @@ This guide is for **node operators**: how to update your MeshCore device's firmw
 plain language. No cables, no programmer — your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
 
-LoRa OTA is present only in standard, non-logging Keymind firmware. MQTT bridge and logging builds exclude it.
+LoRa OTA is present only in standard, non-logging Keymind repeater, room-server, and sensor firmware. MQTT
+bridge, logging, and roles without `tempradio` support exclude it.
 OTA radio traffic is accepted, generated, and relayed only while `tempradio` is actually running on that node.
 Every source, receiver, and intermediate repeater must therefore have an overlapping temporary-radio window.
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef WITH_MQTT_BRIDGE
+
 #include "MeshCore.h"
 #include <ArduinoJson.h>
 #include <Mesh.h>
@@ -226,3 +228,5 @@ private:
    */
   static void packetToHex(mesh::Packet* packet, char* hex, size_t hex_size);
 };
+
+#endif

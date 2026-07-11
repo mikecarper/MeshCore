@@ -19,6 +19,10 @@ class T1000SensorManager: public SensorManager {
   void start_gps();
   void sleep_gps();
   void stop_gps();
+  bool telemetryGpsDetected() const override { return true; }
+  bool telemetryGpsActive() const override { return gps_active; }
+  void telemetryGpsStart() override { start_gps(); }
+  void telemetryGpsStop() override { sleep_gps(); }
 public:
   T1000SensorManager(LocationProvider &nmea): _nmea(&nmea) { }
   bool begin() override;

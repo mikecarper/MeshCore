@@ -147,6 +147,36 @@ static float getFloat(const uint8_t * buffer, uint8_t size, uint32_t multiplier,
   return sign * ((float) value / multiplier);
 }
 
+static uint8_t getTelemetryPermissions(uint8_t acl_perms, uint8_t telemetry_access) {
+  if (telemetry_access == TELEMETRY_ACCESS_ALL) {
+    return TELEM_PERM_BASE | TELEM_PERM_LOCATION | TELEM_PERM_ENVIRONMENT;
+  }
+
+  uint8_t role = acl_perms & PERM_ACL_ROLE_MASK;
+  if (role >= PERM_ACL_READ_ONLY) {
+    return TELEM_PERM_BASE | TELEM_PERM_LOCATION | TELEM_PERM_ENVIRONMENT;
+  }
+  return 0;
+}
+
+bool SensorMesh::hasLocationTelemetryClient() {
+  if (_prefs.telemetry_access == TELEMETRY_ACCESS_ALL) {
+    return acl.getNumClients() > 0;
+  }
+
+  for (int i = 0; i < acl.getNumClients(); i++) {
+    ClientInfo* c = acl.getClientByIdx(i);
+    if ((c->permissions & PERM_ACL_ROLE_MASK) >= PERM_ACL_READ_ONLY) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void SensorMesh::updateGpsTelemetryPolicy() {
+  sensors.setTelemetryLocationAccessAvailable(hasLocationTelemetryClient());
+}
+
 static uint8_t putFloat(uint8_t * dest, float value, uint8_t size, uint32_t multiplier, bool is_signed) {
   // check sign
   bool sign = value < 0;
@@ -173,13 +203,16 @@ static uint8_t putFloat(uint8_t * dest, float value, uint8_t size, uint32_t mult
 uint8_t SensorMesh::handleRequest(uint8_t perms, uint32_t sender_timestamp, uint8_t req_type, uint8_t* payload, size_t payload_len) {
   memcpy(reply_data, &sender_timestamp, 4);   // reflect sender_timestamp back in response packet (kind of like a 'tag')
 
-  if (req_type == REQ_TYPE_GET_TELEMETRY_DATA) {  // allow all
+  if (req_type == REQ_TYPE_GET_TELEMETRY_DATA) {
     uint8_t perm_mask = ~(payload[0]);    // NEW: first reserved byte (of 4), is now inverse mask to apply to permissions
+    uint8_t telemetry_permissions = getTelemetryPermissions(perms, _prefs.telemetry_access) & perm_mask;
 
     telemetry.reset();
-    telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
+    if (telemetry_permissions & TELEM_PERM_BASE) {
+      telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
+    }
     // query other sensors -- target specific
-    sensors.querySensors(0xFF & perm_mask, telemetry);  // allow all telemetry permissions for admin or guest
+    sensors.querySensors(telemetry_permissions, telemetry);
     // TODO: let requester know permissions they have:  telemetry.addPresence(TELEM_CHANNEL_SELF, perms);
 
     uint8_t tlen = telemetry.getSize();
@@ -327,9 +360,6 @@ uint32_t SensorMesh::getDirectRetransmitDelay(const mesh::Packet* packet) {
 int SensorMesh::getInterferenceThreshold() const {
   return _prefs.interference_threshold;
 }
-bool SensorMesh::getCADEnabled() const {
-  return _prefs.cad_enabled;
-}
 int SensorMesh::getAGCResetInterval() const {
   return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
 }
@@ -365,6 +395,7 @@ uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* 
     memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
 
     dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+    updateGpsTelemetryPolicy();
   }
 
   if (is_flood) {
@@ -412,6 +443,7 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
         uint8_t perms = atoi(sp);
         if (acl.applyPermissions(self_id, pubkey, hex_len / 2, perms)) {
           dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
+          updateGpsTelemetryPolicy();
           strcpy(reply, "OK");
         } else {
           strcpy(reply, "Err - invalid params");
@@ -452,6 +484,7 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
     sprintf(reply, "%x", board.getGpio());
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
+    updateGpsTelemetryPolicy();
   }
 }
 
@@ -535,7 +568,7 @@ void SensorMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
     memcpy(&timestamp, data, 4);
 
     if (timestamp > from->last_timestamp) {  // prevent replay attacks
-      uint8_t reply_len = handleRequest(from->isAdmin() ? 0xFF : from->permissions, timestamp, data[4], &data[5], len - 5);
+      uint8_t reply_len = handleRequest(from->permissions, timestamp, data[4], &data[5], len - 5);
       if (reply_len == 0) return;  // invalid command
 
       from->last_timestamp = timestamp;
@@ -754,6 +787,7 @@ void SensorMesh::begin(FILESYSTEM* fs) {
 
   acl.load(_fs, self_id);
   region_map.load(_fs);
+  updateGpsTelemetryPolicy();
 
   // establish default-scope
   {
@@ -935,7 +969,7 @@ void SensorMesh::loop() {
     telemetry.reset();
     telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
     // query other sensors -- target specific
-    sensors.querySensors(0xFF, telemetry);  // allow all telemetry permissions
+    sensors.querySensors(TELEM_PERM_BASE | TELEM_PERM_ENVIRONMENT, telemetry);
 
     onSensorDataRead();
 

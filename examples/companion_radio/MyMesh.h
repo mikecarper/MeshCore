@@ -200,6 +200,8 @@ private:
   void checkCLIRescueCmd();
   void checkSerialInterface();
   bool isValidClientRepeatFreq(uint32_t f) const;
+  bool hasLocationTelemetryRecipient();
+  void updateGpsTelemetryPolicy();
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }

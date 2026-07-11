@@ -58,8 +58,8 @@ void initVariant() {
     pinMode(PIN_QSPI_CS, OUTPUT);
     digitalWrite(PIN_QSPI_CS, HIGH);
 
-    pinMode(LED_GREEN, OUTPUT);
-    digitalWrite(LED_GREEN, LOW);
+    pinMode(LED_WHITE, OUTPUT);
+    digitalWrite(LED_WHITE, LOW);
 
     pinMode(LED_BLUE, OUTPUT);
     digitalWrite(LED_BLUE, LOW);

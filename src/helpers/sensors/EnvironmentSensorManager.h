@@ -27,6 +27,10 @@ protected:
   LocationProvider* _location;
   void start_gps();
   void stop_gps();
+  bool telemetryGpsDetected() const override { return gps_detected; }
+  bool telemetryGpsActive() const override { return gps_active; }
+  void telemetryGpsStart() override { start_gps(); }
+  void telemetryGpsStop() override { stop_gps(); }
   void initBasicGPS();
   #ifdef RAK_BOARD
   void rakGPSInit();

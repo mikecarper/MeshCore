@@ -99,6 +99,9 @@
 #define DIRECT_RETRY_PREFS_MAGIC_0  0xD1
 #define DIRECT_RETRY_PREFS_MAGIC_1  0x52
 
+#define TELEMETRY_ACCESS_ALL  0
+#define TELEMETRY_ACCESS_ACL  1
+
 struct NodePrefs { // persisted to file
   float airtime_factor;
   char node_name[32];
@@ -176,10 +179,11 @@ struct NodePrefs { // persisted to file
   uint8_t flood_channel_data_enabled;
   uint8_t flood_channel_block_max_hops;
   uint8_t flood_channel_data_max_hops;
+  uint8_t telemetry_access;
 
   // NOTE: observer settings (MQTT/WiFi/timezone/SNMP/alert) were moved out of
   // NodePrefs into MQTTPrefs (persisted to /mqtt_prefs) so this struct stays
-  // aligned with upstream (plus the keymind retry/flood tail above). See
+  // aligned with upstream (plus the keymind retry/flood/telemetry tail above). See
   // struct MQTTPrefs below.
 
 #if defined(ENABLE_OTA)

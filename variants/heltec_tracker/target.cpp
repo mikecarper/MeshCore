@@ -64,25 +64,26 @@ bool HWTSensorManager::begin() {
 }
 
 bool HWTSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
-  if (requester_permissions & TELEM_PERM_LOCATION) {   // does requester have permission?
-    telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude);
-  }
+  queryGpsTelemetry(requester_permissions, telemetry);
   return true;
 }
 
 void HWTSensorManager::loop() {
-  static long next_gps_update = 0;
+  static unsigned long next_gps_update = 0;
+  unsigned long now = millis();
+  loopGpsTelemetry(now);
 
-  _location->loop();
+  if (gps_active) _location->loop();
 
-  if (millis() > next_gps_update) {
+  if ((long)(now - next_gps_update) >= 0) {
     if (gps_active && _location->isValid()) {
       node_lat = ((double)_location->getLatitude())/1000000.;
       node_lon = ((double)_location->getLongitude())/1000000.;
       node_altitude = ((double)_location->getAltitude()) / 1000.0;
+      processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
     }
-    next_gps_update = millis() + 1000;
+    next_gps_update = now + 1000;
   }
 }
 
@@ -93,17 +94,13 @@ const char* HWTSensorManager::getSettingName(int i) const {
 }
 const char* HWTSensorManager::getSettingValue(int i) const {
   if (i == 0) {
-    return gps_active ? "1" : "0";
+    return isGpsTelemetryUserEnabled() ? "1" : "0";
   }
   return NULL;
 }
 bool HWTSensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    if (strcmp(value, "0") == 0) {
-      stop_gps();
-    } else {
-      start_gps();
-    }
+    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
     return true;
   }
   return false;  // not supported
