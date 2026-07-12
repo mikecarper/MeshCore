@@ -148,6 +148,7 @@ for section, options in data:
     env_name = section[4:]
     mqtt_enabled = False
     ota_enabled = False
+    ota_disabled = False
     platform = None
     for key, value in options:
         values = value if isinstance(value, list) else str(value).split()
@@ -159,11 +160,13 @@ for section, options in data:
         for flag in values:
             if "WITH_MQTT_BRIDGE" in str(flag):
                 mqtt_enabled = True
+            if "DISABLE_LORA_OTA" in str(flag):
+                ota_disabled = True
             match = pattern.search(str(flag))
             if match and platform is None:
                 platform = match.group(0)
     if platform:
-        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}\t{1 if ota_enabled else 0}")
+        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}\t{1 if ota_enabled and not ota_disabled else 0}")
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
   fi
