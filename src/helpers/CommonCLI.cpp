@@ -2539,7 +2539,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (strcmp(&config[19], "on") == 0) {
       _prefs->flood_retry_bridge_enabled = 1;
       savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, "OK - flood.retry.prefixes acts as bucket 7 (other); multi-try bridge routing enabled");
     } else if (strcmp(&config[19], "off") == 0) {
       _prefs->flood_retry_bridge_enabled = 0;
       savePrefs();

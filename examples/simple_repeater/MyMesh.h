@@ -208,8 +208,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool floodRetryPrefixIgnored(const uint8_t* prefix, uint8_t prefix_len) const;
   uint8_t floodRetryEffectivePathLength(const mesh::Packet* packet, uint8_t max_hops = 0xFF) const;
   bool floodRetryPrefixFresh(const uint8_t* prefix, uint8_t prefix_len) const;
-  int floodRetryBucketForPrefix(const uint8_t* prefix, uint8_t prefix_len, bool require_fresh,
-                                bool include_other) const;
+  int floodRetryBucketForPrefix(const uint8_t* prefix, uint8_t prefix_len, bool require_fresh) const;
   int floodRetryBucketForPathHop(const uint8_t* prefix, uint8_t prefix_len, uint8_t hop,
                                  uint8_t progress_marker) const;
   int floodRetrySourceBucket(const mesh::Packet* packet) const;
