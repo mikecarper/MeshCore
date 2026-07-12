@@ -1267,7 +1267,7 @@ another qualifying repeater.
 **Parameters:**
 - `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
 
-**Note:** Actual attempts are capped at `15`. Hop 1 flood retries use `count * 2`; hop 2 flood retries use `count * 1.5`, rounded up.
+**Note:** Actual attempts are capped at `15`. Path count 0 flood retries use `count * 2`; path count 1 retries use `count * 1.5`, rounded up; path count 2 and higher use the configured base count.
 
 **Defaults:**
 - `infra`: `1`
@@ -1374,7 +1374,9 @@ set flood.retry.ignore none
 - `get flood.retry.bridge`
 - `set flood.retry.bridge <on|off>`
 
-**Note:** Bridge mode retries until each configured fresh bucket, plus the non-source `other` bucket, has been heard or the retry count is exhausted.
+**Note:** Bridge mode retries until each configured fresh bucket, plus the non-source `other` bucket, has been heard or the retry count is exhausted. If prefixes in different buckets share their first byte, configuration commands return a warning because a 1-byte path cannot distinguish those buckets. The configuration remains valid: an ambiguous source is treated as belonging to every matching source bucket, and an ambiguous echo credits every matching target bucket so it cannot force retry exhaustion.
+
+Flood retry timing retains its fixed maximum-frame plus 20 packet-airtime wait, then adds a random `0-200%` of one additional packet airtime on every attempt. This de-synchronizes repeaters that may have missed the same echo while capping the added wait at two frames.
 
 **Examples:**
 ```

@@ -402,13 +402,16 @@ uint8_t Mesh::getFloodRetryMaxAttempts(const Packet* packet) const {
   return FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT;
 }
 uint32_t Mesh::getFloodRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx) {
+  (void)attempt_idx;
   if (packet == NULL) {
     return _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
   }
 
   uint32_t max_packet_airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
   uint32_t packet_airtime = _radio->getEstAirtimeFor(packet->getRawLength());
-  return max_packet_airtime + (20UL * packet_airtime);
+  uint32_t jitter_percent = _rng->nextInt(0, 201);
+  uint32_t jitter = (packet_airtime * jitter_percent) / 100UL;
+  return max_packet_airtime + (20UL * packet_airtime) + jitter;
 }
 uint8_t Mesh::getExtraAckTransmitCount() const {
   return 0;

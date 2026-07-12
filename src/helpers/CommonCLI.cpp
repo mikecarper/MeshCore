@@ -571,6 +571,61 @@ static bool parseFloodRetryPrefixList(uint8_t dest[][FLOOD_RETRY_PREFIX_LEN], ui
   return true;
 }
 
+static const uint8_t* floodRetryBucketPrefixAt(const NodePrefs* prefs, uint8_t bucket, uint8_t index) {
+  if (bucket < FLOOD_RETRY_BRIDGE_BUCKETS && index < FLOOD_RETRY_BUCKET_PREFIXES) {
+    return prefs->flood_retry_bridge_buckets[bucket][index];
+  }
+  if (bucket == FLOOD_RETRY_BRIDGE_BUCKETS && index < FLOOD_RETRY_PREFIX_SLOTS) {
+    return prefs->flood_retry_prefixes[index];
+  }
+  return NULL;
+}
+
+static uint8_t floodRetryBucketPrefixCount(uint8_t bucket) {
+  return bucket < FLOOD_RETRY_BRIDGE_BUCKETS ? FLOOD_RETRY_BUCKET_PREFIXES : FLOOD_RETRY_PREFIX_SLOTS;
+}
+
+static bool findFloodRetryFirstByteCollision(const NodePrefs* prefs, uint8_t& first_byte,
+                                             uint8_t& first_bucket, uint8_t& second_bucket) {
+  for (uint8_t bucket_a = 0; bucket_a <= FLOOD_RETRY_BRIDGE_BUCKETS; bucket_a++) {
+    for (uint8_t bucket_b = bucket_a + 1; bucket_b <= FLOOD_RETRY_BRIDGE_BUCKETS; bucket_b++) {
+      for (uint8_t a = 0; a < floodRetryBucketPrefixCount(bucket_a); a++) {
+        const uint8_t* prefix_a = floodRetryBucketPrefixAt(prefs, bucket_a, a);
+        if (prefix_a == NULL || (prefix_a[0] == 0 && prefix_a[1] == 0 && prefix_a[2] == 0)) {
+          continue;
+        }
+        for (uint8_t b = 0; b < floodRetryBucketPrefixCount(bucket_b); b++) {
+          const uint8_t* prefix_b = floodRetryBucketPrefixAt(prefs, bucket_b, b);
+          if (prefix_b != NULL && (prefix_b[0] != 0 || prefix_b[1] != 0 || prefix_b[2] != 0)
+              && prefix_a[0] == prefix_b[0]) {
+            first_byte = prefix_a[0];
+            first_bucket = bucket_a;
+            second_bucket = bucket_b;
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+static bool formatFloodRetryBucketCollisionWarning(char* reply, const NodePrefs* prefs, const char* prefix) {
+  uint8_t first_byte, first_bucket, second_bucket;
+  if (!findFloodRetryFirstByteCollision(prefs, first_byte, first_bucket, second_bucket)) {
+    return false;
+  }
+  if (second_bucket == FLOOD_RETRY_BRIDGE_BUCKETS) {
+    snprintf(reply, 160, "%sWARNING: 1-byte %02X matches buckets %u and 7 (other)", prefix,
+             (unsigned int)first_byte, (unsigned int)first_bucket + 1U);
+  } else {
+    snprintf(reply, 160, "%sWARNING: 1-byte %02X matches buckets %u and %u", prefix,
+             (unsigned int)first_byte, (unsigned int)first_bucket + 1U,
+             (unsigned int)second_bucket + 1U);
+  }
+  return true;
+}
+
 static bool parseFloodChannelBlockKey(const char* text, uint8_t secret[PUB_KEY_SIZE], uint8_t& key_len) {
   if (text == NULL || text[0] == 0) {
     return false;
@@ -2509,7 +2564,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "flood.retry.prefixes ", 21) == 0) {
     if (parseFloodRetryPrefixList(_prefs->flood_retry_prefixes, FLOOD_RETRY_PREFIX_SLOTS, &config[21])) {
       savePrefs();
-      strcpy(reply, "OK");
+      if (!formatFloodRetryBucketCollisionWarning(reply, _prefs, "OK - ")) {
+        strcpy(reply, "OK");
+      }
     } else {
       sprintf(reply, "Error, use up to %u comma-separated 3-byte hex prefixes",
               (unsigned int)FLOOD_RETRY_PREFIX_SLOTS);
@@ -2539,7 +2596,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (strcmp(&config[19], "on") == 0) {
       _prefs->flood_retry_bridge_enabled = 1;
       savePrefs();
-      strcpy(reply, "OK - flood.retry.prefixes acts as bucket 7 (other); multi-try bridge routing enabled");
+      if (!formatFloodRetryBucketCollisionWarning(reply, _prefs, "OK - bucket 7=prefixes; ")) {
+        strcpy(reply, "OK - flood.retry.prefixes acts as bucket 7 (other); multi-try bridge routing enabled");
+      }
     } else if (strcmp(&config[19], "off") == 0) {
       _prefs->flood_retry_bridge_enabled = 0;
       savePrefs();
@@ -2556,7 +2615,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else if (parseFloodRetryPrefixList(_prefs->flood_retry_bridge_buckets[bucket - 1],
                                          FLOOD_RETRY_BUCKET_PREFIXES, list + 1)) {
       savePrefs();
-      strcpy(reply, "OK");
+      if (!formatFloodRetryBucketCollisionWarning(reply, _prefs, "OK - ")) {
+        strcpy(reply, "OK");
+      }
     } else {
       sprintf(reply, "Error, use up to %u comma-separated 3-byte hex prefixes",
               (unsigned int)FLOOD_RETRY_BUCKET_PREFIXES);

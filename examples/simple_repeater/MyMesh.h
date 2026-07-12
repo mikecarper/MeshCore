@@ -137,7 +137,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RateLimiter discover_limiter, anon_limiter;
   struct FloodRetryBridgeState {
     uint8_t key[MAX_HASH_SIZE];
-    uint8_t source_bucket;
+    uint8_t source_mask;
     uint8_t target_mask;
     uint8_t heard_mask;
     uint8_t progress_marker;
@@ -208,12 +208,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool floodRetryPrefixIgnored(const uint8_t* prefix, uint8_t prefix_len) const;
   uint8_t floodRetryEffectivePathLength(const mesh::Packet* packet, uint8_t max_hops = 0xFF) const;
   bool floodRetryPrefixFresh(const uint8_t* prefix, uint8_t prefix_len) const;
-  int floodRetryBucketForPrefix(const uint8_t* prefix, uint8_t prefix_len, bool require_fresh) const;
-  int floodRetryBucketForPathHop(const uint8_t* prefix, uint8_t prefix_len, uint8_t hop,
-                                 uint8_t progress_marker) const;
-  int floodRetrySourceBucket(const mesh::Packet* packet) const;
-  uint8_t floodRetryBridgeTargetMask(uint8_t source_bucket) const;
-  uint8_t floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t source_bucket,
+  uint8_t floodRetryBucketMaskForPrefix(const uint8_t* prefix, uint8_t prefix_len, bool require_fresh) const;
+  uint8_t floodRetryBucketMaskForPathHop(const uint8_t* prefix, uint8_t prefix_len, uint8_t hop,
+                                         uint8_t progress_marker) const;
+  uint8_t floodRetrySourceMask(const mesh::Packet* packet) const;
+  uint8_t floodRetryBridgeTargetMask(uint8_t source_mask) const;
+  uint8_t floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t source_mask,
                                     uint8_t progress_marker) const;
   FloodRetryBridgeState* floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const;
   void clearFloodRetryBridgeState(const mesh::Packet* packet);

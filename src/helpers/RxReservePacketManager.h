@@ -64,7 +64,8 @@ public:
     if (free_count < _emergency_floor
         || (free_count < _rx_reserve && priority > MAX_PROTECTED_PRI)) {
       MESH_DEBUG_PRINTLN("RxReservePacketManager: pool below RX reserve, shedding outbound (pri %d)", (int)priority);
-      free(packet);
+      // queueOutbound() follows the PacketManager ownership contract: a false
+      // return leaves the packet with the caller, which will release it once.
       return false;
     }
     recordAge(packet, scheduled_for);

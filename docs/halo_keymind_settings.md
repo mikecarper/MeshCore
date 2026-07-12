@@ -236,7 +236,7 @@ the bucket rules below instead.
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `flood.retry.count` | Base flood retry attempts after initial TX. Hop 1 doubles it, hop 2 uses 1.5x rounded up, and actual attempts cap at `15`; `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
+| `flood.retry.count` | Base flood retry attempts after initial TX. Path count 0 doubles it, path count 1 uses 1.5x rounded up, path count 2+ uses the base, and actual attempts cap at `15`; `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
 | `flood.retry.path` | Maximum path hash count eligible for flood retry, or `off` to disable the gate. | `get flood.retry.path`, `set flood.retry.path <0-63/off>` | `set flood.retry.path 1` |
 | `flood.retry.advert` | Allows or blocks retry for node advert packets (`type=4`). Default is `off`. | `get flood.retry.advert`, `set flood.retry.advert on/off` | `set flood.retry.advert off` |
 | `flood.retry.prefixes` | Target prefixes. If set, only same-packet echoes from matching last-hop prefixes cancel a retry. | `get flood.retry.prefixes`, `set flood.retry.prefixes <prefixes/none/off>` | `set flood.retry.prefixes BEEBB0,425E5C` |
@@ -337,6 +337,18 @@ Bridge retry stays eligible until every target bucket has been heard or
 `flood.retry.count` is exhausted. A configured bucket is a target only when at
 least one of its prefixes is fresh in `recent.repeater`. Prefixes in
 `flood.retry.ignore` never count as bucket hits.
+
+Configuration reports a warning when prefixes in different buckets, including
+bucket 7 (`flood.retry.prefixes`), share the same first byte. A 1-byte path cannot
+distinguish those buckets. Bridge mode therefore excludes every matching bucket
+when that short prefix is the source, and credits every matching target bucket
+when it is heard as an echo. This prevents an ambiguous short prefix from keeping
+an impossible target outstanding through every retry.
+
+Each flood retry wait retains the fixed maximum-frame plus 20 packet-airtime
+delay, then adds random jitter from zero to 200 percent of one additional packet
+airtime. This keeps nearby repeaters from repeating a collision on fixed timing
+while capping the added wait at two frames.
 
 ## Troubleshooting
 
