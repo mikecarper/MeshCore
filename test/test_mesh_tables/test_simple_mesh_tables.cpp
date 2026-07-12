@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#define MESH_ENABLE_RECENT_REPEATERS 1
+#define MAX_RECENT_REPEATERS 8
 #include "helpers/SimpleMeshTables.h"
 
 using namespace mesh;
@@ -95,6 +97,33 @@ TEST(SimpleMeshTables, Clear_RemovesSeenPacket) {
     ASSERT_TRUE(t.wasSeen(&p));
     t.clear(&p);
     EXPECT_FALSE(t.wasSeen(&p));
+}
+
+TEST(RouteHashPrefixes, MatchesSharedOneTwoOrThreeBytes) {
+    const uint8_t configured[] = {0x86, 0x0c, 0xca};
+    const uint8_t one_byte[] = {0x86};
+    const uint8_t two_bytes[] = {0x86, 0x0c};
+    const uint8_t three_bytes[] = {0x86, 0x0c, 0xca};
+    const uint8_t mismatch[] = {0x86, 0x0d};
+
+    EXPECT_TRUE(routeHashPrefixesOverlap(configured, 3, one_byte, 1));
+    EXPECT_TRUE(routeHashPrefixesOverlap(configured, 3, two_bytes, 2));
+    EXPECT_TRUE(routeHashPrefixesOverlap(configured, 3, three_bytes, 3));
+    EXPECT_TRUE(routeHashPrefixesOverlap(one_byte, 1, configured, 3));
+    EXPECT_FALSE(routeHashPrefixesOverlap(configured, 3, mismatch, 2));
+}
+
+TEST(SimpleMeshTables, ShortFailurePrefixUpdatesOverlappingLongEntry) {
+    SimpleMeshTables t;
+    const uint8_t configured[] = {0x86, 0x0c, 0xca};
+    const uint8_t observed[] = {0x86};
+
+    ASSERT_TRUE(t.setRecentRepeater(configured, 3, 12));
+    ASSERT_TRUE(t.decrementRecentRepeaterSnrX4(observed, 1, 1));
+    const auto* info = t.findRecentRepeaterByHash(configured, 3);
+    ASSERT_NE(nullptr, info);
+    EXPECT_EQ(11, info->snr_x4);
+    EXPECT_EQ(1, t.getRecentRepeaterCount());
 }
 
 int main(int argc, char** argv) {

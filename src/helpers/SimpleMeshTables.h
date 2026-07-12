@@ -29,6 +29,16 @@
 #define RECENT_REPEATER_STORAGE_SLOTS  (MAX_RECENT_REPEATERS > 0 ? MAX_RECENT_REPEATERS : 1)
 #define MAX_ROUTE_HASH_BYTES   3
 
+inline bool routeHashPrefixesOverlap(const uint8_t* a, uint8_t a_len,
+                                     const uint8_t* b, uint8_t b_len) {
+  if (a == NULL || b == NULL || a_len == 0 || b_len == 0
+      || a_len > MAX_ROUTE_HASH_BYTES || b_len > MAX_ROUTE_HASH_BYTES) {
+    return false;
+  }
+  uint8_t compare_len = a_len < b_len ? a_len : b_len;
+  return memcmp(a, b, compare_len) == 0;
+}
+
 class SimpleMeshTables : public mesh::MeshTables {
 public:
   struct RecentRepeaterInfo {
@@ -58,11 +68,6 @@ private:
   void storeHash(const uint8_t* hash) {
     memcpy(&_hashes[_next_idx*MAX_HASH_SIZE], hash, MAX_HASH_SIZE);
     _next_idx = (_next_idx + 1) % MAX_PACKET_HASHES;
-  }
-
-  bool prefixesOverlap(const uint8_t* a, uint8_t a_len, const uint8_t* b, uint8_t b_len) const {
-    uint8_t n = a_len < b_len ? a_len : b_len;
-    return n > 0 && memcmp(a, b, n) == 0;
   }
 
   int8_t weightedSnrX4RoundUp(int8_t curr_snr_x4, int8_t new_snr_x4) const {
@@ -293,16 +298,11 @@ public:
       prefix_len = MAX_ROUTE_HASH_BYTES;
     }
 
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      RecentRepeaterInfo& existing = _recent_repeaters[i];
-      if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
-        continue;
-      }
-      int16_t lowered = (int16_t)existing.snr_x4 - (int16_t)amount_x4;
-      if (lowered < -128) {
-        lowered = -128;
-      }
-      existing.snr_x4 = (int8_t)lowered;
+    RecentRepeaterInfo* existing = const_cast<RecentRepeaterInfo*>(findRecentRepeaterByHash(prefix, prefix_len));
+    if (existing != NULL) {
+      int16_t lowered = (int16_t)existing->snr_x4 - (int16_t)amount_x4;
+      if (lowered < -128) lowered = -128;
+      existing->snr_x4 = (int8_t)lowered;
       return true;
     }
     return false;
@@ -373,7 +373,7 @@ public:
       if (info->prefix_len == hash_len && memcmp(info->prefix, hash, hash_len) == 0) {
         return info;
       }
-      if (prefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
+      if (routeHashPrefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
         if (best == NULL || info->prefix_len > best->prefix_len
             || (info->prefix_len == best->prefix_len && info->snr_x4 > best->snr_x4)) {
           best = info;

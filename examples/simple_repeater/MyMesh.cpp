@@ -1230,6 +1230,13 @@ bool MyMesh::hasFloodRetryPrefixes() const {
   return false;
 }
 
+static bool configuredFloodRetryPrefixMatches(const uint8_t* configured,
+                                              const uint8_t* observed,
+                                              uint8_t observed_len) {
+  return (configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
+      && routeHashPrefixesOverlap(configured, FLOOD_RETRY_PREFIX_LEN, observed, observed_len);
+}
+
 bool MyMesh::floodRetryLastHopMatches(const mesh::Packet* packet) const {
   if (packet == NULL || packet->getPathHashCount() == 0) {
     return false;
@@ -1243,8 +1250,7 @@ bool MyMesh::floodRetryLastHopMatches(const mesh::Packet* packet) const {
   const uint8_t* heard_prefix = &packet->path[(packet->getPathHashCount() - 1) * hash_size];
   for (int i = 0; i < FLOOD_RETRY_PREFIX_SLOTS; i++) {
     const uint8_t* configured = _prefs.flood_retry_prefixes[i];
-    if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
-        && memcmp(configured, heard_prefix, hash_size) == 0) {
+    if (configuredFloodRetryPrefixMatches(configured, heard_prefix, hash_size)) {
       return true;
     }
   }
@@ -1266,8 +1272,7 @@ bool MyMesh::floodRetryPrefixMatches(const mesh::Packet* packet) const {
   for (int hop = 0; hop < packet->getPathHashCount(); hop++) {
     for (int i = 0; i < FLOOD_RETRY_PREFIX_SLOTS; i++) {
       const uint8_t* configured = _prefs.flood_retry_prefixes[i];
-      if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
-          && memcmp(configured, path, hash_size) == 0) {
+      if (configuredFloodRetryPrefixMatches(configured, path, hash_size)) {
         return true;
       }
     }
@@ -1283,8 +1288,7 @@ bool MyMesh::floodRetryPrefixIgnored(const uint8_t* prefix, uint8_t prefix_len) 
   }
   for (int i = 0; i < FLOOD_RETRY_IGNORE_PREFIXES; i++) {
     const uint8_t* ignored = _prefs.flood_retry_ignore_prefixes[i];
-    if ((ignored[0] != 0 || ignored[1] != 0 || ignored[2] != 0)
-        && memcmp(ignored, prefix, prefix_len) == 0) {
+    if (configuredFloodRetryPrefixMatches(ignored, prefix, prefix_len)) {
       return true;
     }
   }
@@ -1352,8 +1356,7 @@ int MyMesh::floodRetryBucketForPrefix(const uint8_t* prefix, uint8_t prefix_len,
   for (int bucket = 0; bucket < FLOOD_RETRY_BRIDGE_BUCKETS; bucket++) {
     for (int i = 0; i < FLOOD_RETRY_BUCKET_PREFIXES; i++) {
       const uint8_t* configured = _prefs.flood_retry_bridge_buckets[bucket][i];
-      if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
-          && memcmp(configured, prefix, prefix_len) == 0) {
+      if (configuredFloodRetryPrefixMatches(configured, prefix, prefix_len)) {
         return bucket;
       }
     }
@@ -1734,9 +1737,6 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
 }
 
 bool MyMesh::hasFloodRetryTargetPrefix(const mesh::Packet* packet) const {
-  if (_prefs.flood_retry_bridge_enabled) {
-    return false;
-  }
   return floodRetryPrefixMatches(packet);
 }
 
@@ -1776,14 +1776,6 @@ bool MyMesh::isFloodRetryEchoTarget(const mesh::Packet* packet, uint8_t progress
   if (packet == NULL || !packet->isRouteFlood()) {
     return false;
   }
-  if (_prefs.flood_retry_bridge_enabled) {
-    FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, false);
-    if (state == NULL) {
-      return false;
-    }
-    state->heard_mask |= floodRetryBridgeHeardMask(packet, state->source_bucket, state->progress_marker) & state->target_mask;
-    return (state->heard_mask & state->target_mask) == state->target_mask;
-  }
   if (packet->getPathHashCount() == 0) {
     return false;
   }
@@ -1795,10 +1787,21 @@ bool MyMesh::isFloodRetryEchoTarget(const mesh::Packet* packet, uint8_t progress
   if (floodRetryPrefixIgnored(heard_prefix, hash_size)) {
     return false;
   }
-  if (hasFloodRetryPrefixes()) {
-    return floodRetryLastHopMatches(packet);
+  // A configured target prefix is terminal in both normal and bridge modes.
+  // Bridge bucket completion remains the fallback when no target is configured
+  // or the newly heard hop is not one of the configured targets.
+  if (hasFloodRetryPrefixes() && floodRetryLastHopMatches(packet)) {
+    return true;
   }
-  return true;
+  if (_prefs.flood_retry_bridge_enabled) {
+    FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, false);
+    if (state == NULL) {
+      return false;
+    }
+    state->heard_mask |= floodRetryBridgeHeardMask(packet, state->source_bucket, state->progress_marker) & state->target_mask;
+    return (state->heard_mask & state->target_mask) == state->target_mask;
+  }
+  return !hasFloodRetryPrefixes();
 }
 
 static void formatLocalSnrX4(char* dest, size_t dest_len, int16_t snr_x4) {
