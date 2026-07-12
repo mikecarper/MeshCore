@@ -1145,14 +1145,8 @@ static uint8_t getRetryLogCodingRate(const mesh::Packet* packet, uint8_t default
 }
 
 static uint16_t getRetryLogPreambleLength(const mesh::Packet* packet, uint16_t default_preamble_len) {
-  if (packet == NULL || default_preamble_len <= 16 || !(packet->tx_cr == 4 || packet->tx_cr == 5)) {
-    return default_preamble_len;
-  }
-
-  bool has_direct_path = packet->getPathHashCount() > 0
-      || (packet->getPayloadType() == PAYLOAD_TYPE_TRACE && packet->payload_len > 9);
-  if (packet->isRouteDirect() && has_direct_path) {
-    return 16;
+  if (packet != NULL && packet->tx_cr >= 4 && packet->tx_cr <= 8) {
+    return 32;
   }
   return default_preamble_len;
 }
@@ -2294,6 +2288,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 #endif
   // Observer defaults (radio_watchdog, alert.*, snmp.*) moved to applyMQTTDefaults()
   // in MQTTDefaults.h — they live in /mqtt_prefs now, not NodePrefs.
+  _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
+  _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
 
   // bridge defaults
   _prefs.bridge_enabled = 1;    // enabled
@@ -2418,6 +2414,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
   board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);   // LoRa FEM LNA (FEM boards only)
+  setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();
   updateFloodAdvertTimer();
@@ -3095,6 +3092,21 @@ void MyMesh::dumpLogFile() {
 
 void MyMesh::setTxPower(int8_t power_dbm) {
   radio_driver.setTxPower(power_dbm);
+}
+
+bool MyMesh::setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) {
+  bool ok = radio_driver.setRxPowerSaving(enable, rx_us, sleep_us);
+  MESH_DEBUG_PRINTLN("RX Power Saving: %s (%lu/%lu us)%s",
+                     enable ? "Enabled" : "Disabled",
+                     (unsigned long)rx_us,
+                     (unsigned long)sleep_us,
+                     ok ? "" : " unsupported");
+  return ok;
+}
+
+void MyMesh::getRxPsWatchdogCounts(uint32_t* soft, uint32_t* hard) {
+  *soft = radio_driver.getRxPsWatchdogSoftCount();
+  *hard = radio_driver.getRxPsWatchdogHardCount();
 }
 
 bool MyMesh::setRxBoostedGain(bool enable) {
@@ -3959,6 +3971,8 @@ bool MyMesh::hasPendingWork() const {
   const BridgeBase* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) return true;
 #endif
+  if (radio_driver.isWatchdogObserving()) return true;  // keep MCU awake for one radio duty cycle
+  if (radio_driver.isCalibratingNoiseFloor()) return true;  // keep MCU awake for the noise-floor window
   if (_mgr->getOutboundTotal() > 0) return true;
   if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
   if (isMillisTimerDue(dirty_contacts_expiry)) return true;

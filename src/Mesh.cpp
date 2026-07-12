@@ -1364,6 +1364,7 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
       }
 
       *retry = *packet;
+      retry->tx_cr = getDefaultTxCodingRate();
       uint32_t retry_delay = getFloodRetryAttemptDelay(packet, _flood_retries[i].retry_attempts_sent);
       if (queueOutboundPacket(retry, _flood_retries[i].priority, retry_delay)) {
         _flood_retries[i].packet = retry;
@@ -1394,6 +1395,7 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
     }
 
     *retry = *packet;
+    retry->tx_cr = getDefaultTxCodingRate();
     if (queueOutboundPacket(retry, _flood_retries[i].priority, _flood_retries[i].retry_delay)) {
       unsigned long now = _ms->getMillis();
       _flood_retries[i].packet = retry;

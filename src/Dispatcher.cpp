@@ -381,25 +381,19 @@ void Dispatcher::checkSend() {
       outbound_restore_cr = 0;
       outbound_restore_preamble_len = 0;
       uint8_t default_cr = getDefaultTxCodingRate();
-      bool using_low_retry_cr = false;
+      bool is_retry = outbound->tx_cr >= 4 && outbound->tx_cr <= 8;
       if (outbound->tx_cr >= 4 && outbound->tx_cr <= 8 && default_cr >= 4 && default_cr <= 8
           && outbound->tx_cr != default_cr) {
         if (_radio->setCodingRate(outbound->tx_cr)) {
           outbound_restore_cr = default_cr;
-          using_low_retry_cr = outbound->tx_cr == 4 || outbound->tx_cr == 5;
           max_airtime = _radio->getEstAirtimeFor(len)*3/2;
         } else {
           MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): WARN: failed to set packet CR%d", getLogDateTime(), (uint32_t)outbound->tx_cr);
         }
-      } else if (outbound->tx_cr == 4 || outbound->tx_cr == 5) {
-        using_low_retry_cr = outbound->tx_cr == default_cr;
       }
-      bool has_direct_path = outbound->getPathHashCount() > 0
-          || (outbound->getPayloadType() == PAYLOAD_TYPE_TRACE && outbound->payload_len > 9);
-      if (outbound->isRouteDirect() && has_direct_path
-          && using_low_retry_cr) {
+      if (is_retry) {
         uint16_t default_preamble_len = _radio->getDefaultPreambleLength();
-        if (default_preamble_len > 16 && _radio->setPreambleLength(16)) {
+        if (default_preamble_len != 32 && _radio->setPreambleLength(32)) {
           outbound_restore_preamble_len = default_preamble_len;
           max_airtime = _radio->getEstAirtimeFor(len)*3/2;
         }
