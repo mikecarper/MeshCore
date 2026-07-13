@@ -269,6 +269,33 @@ TEST(SimpleMeshTables, FullRecentRepeaterTableStillEvictsDeterministically) {
     EXPECT_EQ(2, t.getRecentRepeaterCount());
 }
 
+TEST(SimpleMeshTables, ExpirationKeepsOccupiedEntriesPacked) {
+    SimpleMeshTables::RecentRepeaterInfo storage[4];
+    SimpleMeshTables t(storage, 4);
+    const uint8_t first[] = {0x10};
+    const uint8_t expired[] = {0x20};
+    const uint8_t third[] = {0x30};
+    const uint8_t added[] = {0x40};
+
+    ASSERT_TRUE(t.setRecentRepeater(first, 1, 4));
+    ASSERT_TRUE(t.setRecentRepeater(expired, 1, 8));
+    ASSERT_TRUE(t.setRecentRepeater(third, 1, 12));
+    storage[0].last_heard_millis = 100;
+    storage[1].last_heard_millis = 0;
+    storage[2].last_heard_millis = 100;
+
+    EXPECT_EQ(1, t.expireRecentRepeaters(101, 50));
+    EXPECT_EQ(2, t.getRecentRepeaterCount());
+    EXPECT_NE(nullptr, t.findRecentRepeaterByHash(first, 1));
+    EXPECT_EQ(nullptr, t.findRecentRepeaterByHash(expired, 1));
+    EXPECT_NE(nullptr, t.findRecentRepeaterByHash(third, 1));
+
+    ASSERT_TRUE(t.setRecentRepeater(added, 1, 16));
+    EXPECT_EQ(3, t.getRecentRepeaterCount());
+    EXPECT_NE(nullptr, t.findRecentRepeaterByHash(added, 1));
+    EXPECT_EQ(0, storage[3].prefix_len);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -204,6 +204,13 @@ protected:
    */
   bool cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]);
 
+  /**
+   * \brief  After a replacement packet is queued, retire the prior retry
+   *         sequence and ensure the queued packet owns the retry slot.
+   */
+  void replaceActiveRetries(const Packet* replacement_packet,
+                            const uint8_t retry_key[MAX_HASH_SIZE]);
+
   // Cancel every queued/future retry of one route type. A packet already on
   // air is allowed to finish, but no later retry is armed from it.
   void cancelAllDirectRetries();
@@ -457,7 +464,7 @@ public:
   /**
    * \brief  send a locally-generated Packet with Direct routing
   */
-  void sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
+  bool sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
 
   /**
    * \brief  send a locally-generated Packet to just neighbor nodes (zero hops)

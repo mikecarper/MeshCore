@@ -138,6 +138,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   unsigned long next_battery_alert_check;
   unsigned long next_recent_repeater_sweep;
   uint64_t last_battery_alert_sent;
+  mesh::Packet* pending_battery_alert_packet;
   bool battery_alert_sent;
   bool _logging;
   NodePrefs _prefs;
@@ -263,7 +264,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
-  bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr);
+  bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,
+                              mesh::Packet** queued_packet = nullptr);
   const RegionEntry* findNarrowestBatteryAlertRegion(bool& ambiguous);
   bool getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope);
   bool resolveBatteryAlertScope(TransportKey& scope);
@@ -374,6 +376,8 @@ protected:
 #endif
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override;
+  void onSendComplete(mesh::Packet* packet) override;
+  void onSendFail(mesh::Packet* packet) override;
 
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;

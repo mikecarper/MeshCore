@@ -9,11 +9,11 @@
   #define TXT_ACK_DELAY     200
 #endif
 
-void BaseChatMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
-  sendFlood(pkt, delay_millis);
+bool BaseChatMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
+  return sendFlood(pkt, delay_millis);
 }
-void BaseChatMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
-  sendFlood(pkt, delay_millis);
+bool BaseChatMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
+  return sendFlood(pkt, delay_millis);
 }
 
 mesh::Packet* BaseChatMesh::createSelfAdvert(const char* name) {
@@ -447,26 +447,35 @@ int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, 
   if (packet_hash != NULL) {
     pkt->calculatePacketHash(packet_hash);
   }
-  if (replace_retry_key != NULL) {
-    // Composition succeeded, so the new submission now owns this semantic DM.
-    // Cancel before sendDirect()/sendFloodScoped() registers its retry: when
-    // timestamp and attempt are unchanged, both encrypted packets have the
-    // same retry key and registering first would suppress the new sequence.
-    cancelActiveRetries(replace_retry_key);
+  if (recipient.out_path_len != OUT_PATH_UNKNOWN
+      && !mesh::Packet::isValidPathLen(recipient.out_path_len)) {
+    releasePacket(pkt);
+    expected_ack = 0;
+    est_timeout = 0;
+    return MSG_SEND_FAILED;
   }
-
   uint32_t t = _radio->getEstAirtimeFor(pkt->getRawLength());
 
   int rc;
+  bool sent;
   if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-    sendFloodScoped(recipient, pkt);
-    txt_send_timeout = futureMillis(est_timeout = calcFloodTimeoutMillisFor(t));
+    sent = sendFloodScoped(recipient, pkt);
+    est_timeout = calcFloodTimeoutMillisFor(t);
     rc = MSG_SEND_SENT_FLOOD;
   } else {
-    sendDirect(pkt, recipient.out_path, recipient.out_path_len);
-    txt_send_timeout = futureMillis(est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len));
+    sent = sendDirect(pkt, recipient.out_path, recipient.out_path_len);
+    est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
     rc = MSG_SEND_SENT_DIRECT;
   }
+  if (!sent) {
+    expected_ack = 0;
+    est_timeout = 0;
+    return MSG_SEND_FAILED;
+  }
+  if (replace_retry_key != NULL) {
+    replaceActiveRetries(pkt, replace_retry_key);
+  }
+  txt_send_timeout = futureMillis(est_timeout);
   return rc;
 }
 

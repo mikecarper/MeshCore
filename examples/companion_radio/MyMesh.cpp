@@ -689,39 +689,39 @@ bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
   return _prefs.client_repeat != 0;
 }
 
-void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
+bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
   if (scope.isNull()) {
-    sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);
+    return sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);
   } else {
     uint16_t codes[2];
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;  // REVISIT: set to 'home' Region, for sender/return region?
-    sendFlood(pkt, codes, delay_millis, _prefs.path_hash_mode + 1);
+    return sendFlood(pkt, codes, delay_millis, _prefs.path_hash_mode + 1);
   }
 }
 
-void MyMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
+bool MyMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
   // TODO: dynamic send_scope, depending on recipient and current 'home' Region
   if (send_unscoped) {
-    sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app has explicitly requested un-scoped
+    return sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app explicitly requested un-scoped
   } else {
     TransportKey default_scope;
     memcpy(&default_scope.key, _prefs.default_scope_key, sizeof(default_scope.key));
 
     auto scope = send_scope.isNull() ? &default_scope : &send_scope;
-    sendFloodScoped(*scope, pkt, delay_millis);
+    return sendFloodScoped(*scope, pkt, delay_millis);
   }
 }
-void MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
+bool MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
   // TODO: have per-channel send_scope
   if (send_unscoped) {
-    sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app has explicitly requested un-scoped
+    return sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);  // app explicitly requested un-scoped
   } else {
     TransportKey default_scope;
     memcpy(&default_scope.key, _prefs.default_scope_key, sizeof(default_scope.key));
 
     auto scope = send_scope.isNull() ? &default_scope : &send_scope;
-    sendFloodScoped(*scope, pkt, delay_millis);
+    return sendFloodScoped(*scope, pkt, delay_millis);
   }
 }
 
@@ -1375,9 +1375,8 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         if (replacement_entry != NULL) {
-          // The newest successfully-composed submission wins. Keep the older
-          // sequence intact if packet allocation failed. sendMessage() already
-          // stopped only its matching retries before registering the new send.
+          // The newest successfully-queued submission wins. Keep the older
+          // entry intact if composition, validation, or queueing failed.
           clearExpectedAck(*replacement_entry, false);
         }
         if (expected_ack) {
@@ -1708,6 +1707,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       bool applied = radio_driver.setParams(new_freq, new_bw, sf, cr);
 #endif
       if (!applied) {
+        // Persisted settings remain authoritative after a rejected change.
+        saved_radio_apply_pending = true;
+        radio_apply_retry_at = 0;
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }
@@ -2085,7 +2087,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_BAD_STATE);
     }
-  } else if (cmd_frame[0] == CMD_SEND_TRACE_PATH && len > 10 && len - 10 < MAX_PACKET_PAYLOAD-5) {
+  } else if (cmd_frame[0] == CMD_SEND_TRACE_PATH && len > 10 && len - 10 <= MAX_PACKET_PAYLOAD - 9) {
     uint8_t path_len = len - 10;
     uint8_t flags = cmd_frame[9];
     uint8_t path_sz = flags & 0x03;  // NEW v1.11+
@@ -2097,16 +2099,19 @@ void MyMesh::handleCmdFrame(size_t len) {
       memcpy(&auth, &cmd_frame[5], 4);
       auto pkt = createTrace(tag, auth, flags);
       if (pkt) {
-        sendDirect(pkt, &cmd_frame[10], path_len);
-
-        uint32_t t = _radio->getEstAirtimeFor(pkt->payload_len + pkt->path_len + 2);
+        // Compute before handing ownership to sendDirect(), which releases the
+        // packet itself if validation or queueing fails.
+        uint32_t t = _radio->getEstAirtimeFor(9 + path_len + 2);
         uint32_t est_timeout = calcDirectTimeoutMillisFor(t, path_len >> path_sz);
-
-        out_frame[0] = RESP_CODE_SENT;
-        out_frame[1] = 0;
-        memcpy(&out_frame[2], &tag, 4);
-        memcpy(&out_frame[6], &est_timeout, 4);
-        _serial->writeFrame(out_frame, 10);
+        if (sendDirect(pkt, &cmd_frame[10], path_len)) {
+          out_frame[0] = RESP_CODE_SENT;
+          out_frame[1] = 0;
+          memcpy(&out_frame[2], &tag, 4);
+          memcpy(&out_frame[6], &est_timeout, 4);
+          _serial->writeFrame(out_frame, 10);
+        } else {
+          writeErrFrame(ERR_CODE_TABLE_FULL);
+        }
       } else {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       }

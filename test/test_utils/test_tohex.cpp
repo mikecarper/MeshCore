@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "Utils.h"
+#include <SHA256.h>
 
 using namespace mesh;
 
@@ -71,6 +72,40 @@ TEST(UtilsFromHex, RejectsWrongLength) {
 
     EXPECT_FALSE(Utils::fromHex(output, sizeof(output), "001"));
     EXPECT_FALSE(Utils::fromHex(output, sizeof(output), "001122"));
+}
+
+TEST(UtilsCrypto, RejectsNonBlockAlignedCiphertext) {
+    uint8_t key[PUB_KEY_SIZE] = {};
+    uint8_t plaintext[MAX_PACKET_PAYLOAD] = {};
+    uint8_t ciphertext[15] = {};
+
+    EXPECT_EQ(0, Utils::decrypt(key, plaintext, ciphertext, sizeof(ciphertext)));
+
+    uint8_t framed[CIPHER_MAC_SIZE + sizeof(ciphertext)] = {};
+    for (size_t i = 0; i < sizeof(ciphertext); i++) {
+        framed[CIPHER_MAC_SIZE + i] = (uint8_t)(i + 1);
+    }
+    SHA256 sha;
+    sha.resetHMAC(key, sizeof(key));
+    sha.update(framed + CIPHER_MAC_SIZE, sizeof(ciphertext));
+    sha.finalizeHMAC(key, sizeof(key), framed, CIPHER_MAC_SIZE);
+
+    EXPECT_EQ(0, Utils::MACThenDecrypt(key, plaintext, framed, sizeof(framed)));
+}
+
+TEST(UtilsCrypto, AcceptsBlockAlignedCiphertextWithValidMac) {
+    uint8_t key[PUB_KEY_SIZE] = {};
+    uint8_t plaintext[MAX_PACKET_PAYLOAD] = {};
+    uint8_t framed[CIPHER_MAC_SIZE + CIPHER_BLOCK_SIZE] = {};
+    for (size_t i = 0; i < CIPHER_BLOCK_SIZE; i++) {
+        framed[CIPHER_MAC_SIZE + i] = (uint8_t)(i + 1);
+    }
+    SHA256 sha;
+    sha.resetHMAC(key, sizeof(key));
+    sha.update(framed + CIPHER_MAC_SIZE, CIPHER_BLOCK_SIZE);
+    sha.finalizeHMAC(key, sizeof(key), framed, CIPHER_MAC_SIZE);
+
+    EXPECT_EQ(CIPHER_BLOCK_SIZE, Utils::MACThenDecrypt(key, plaintext, framed, sizeof(framed)));
 }
 
 int main(int argc, char **argv) {

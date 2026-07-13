@@ -97,6 +97,7 @@ public:
         _rx_ps_rx_us(RX_PS_FALLBACK_RX_US), _rx_ps_sleep_us(RX_PS_FALLBACK_SLEEP_US),
         _wd_last_busy(false), _wd_stage(0), _wd_strikes(0), _startrx_fails(0), _wd_last_transition(0),
         _wd_stuck_thresh(0), _wd_observe_until(0), _wd_observe_ms(0),
+        _cur_freq(0), _cur_bw(0), _cur_sf(0), _cur_cr(0), _cur_dbm(0),
         _cur_rx_boosted_gain(false), _params_valid(false), _dbm_valid(false), _rx_boosted_gain_valid(false),
         _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0),
         _nf_next_sample_at(0)

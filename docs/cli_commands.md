@@ -481,10 +481,10 @@ send text.flood checking ridge link
 - Region hierarchy edits are not persistent until `region save` is run. After `region def west pnw wa w-wa sea`, run `region save` before enabling the alert if the hierarchy must survive a reboot.
 - A region must have a usable transport key. Public named regions derive one automatically; a private region without an available key is rejected.
 - The first alert is suppressed until the repeater has been up for at least 30 minutes. After that, the repeater checks every 30 minutes and sends low-battery warnings to the `#repeaters` channel in the selected region.
-- Once an alert is successfully queued, another battery alert is suppressed for at least 12 hours. Battery recovery or toggling alerts off and back on does not bypass that cooldown during the same boot.
+- Once an alert finishes transmitting, another battery alert is suppressed for at least 12 hours. A queue rejection, stale-queue drop, or radio send failure does not start the cooldown. Battery recovery or toggling alerts off and back on does not bypass a completed alert's cooldown during the same boot.
 - With `region def west pnw wa w-wa sea`, `set battery.alert on` selects `sea`; `set battery.alert on w-wa` overrides that default.
 - `get battery.alert.region` returns the selected scope, for example `> sea`.
-- The battery check never requests a wake earlier than its 30-minute deadline. If the normal loop is already awake when that deadline has elapsed, the check is effectively free of an additional wake. Time in light/event sleep counts toward the startup delay, and a queued alert keeps the repeater awake until the packet is handled.
+- The battery check never requests a wake earlier than its 30-minute deadline. If the normal loop is already awake when that deadline has elapsed, the check is effectively free of an additional wake. Time in light/event sleep counts toward the startup delay, and a pending alert keeps the repeater awake until the packet is handled.
 
 ---
 

@@ -48,6 +48,7 @@ private:
   uint32_t _direct_dups, _flood_dups;
   RecentRepeaterInfo* _recent_repeaters;
   int _max_recent_repeaters;
+  int _recent_repeater_count;
 
   bool hasSeenHash(const uint8_t* hash) const {
     const uint8_t* sp = _hashes;
@@ -198,7 +199,8 @@ public:
   SimpleMeshTables(RecentRepeaterInfo* recent_repeaters = NULL, int max_recent_repeaters = 0)
       : _recent_repeaters(recent_repeaters),
         _max_recent_repeaters(recent_repeaters != NULL && max_recent_repeaters > 0
-                                  ? max_recent_repeaters : 0) {
+                                  ? max_recent_repeaters : 0),
+        _recent_repeater_count(0) {
     memset(_hashes, 0, sizeof(_hashes));
     _next_idx = 0;
     memset(_ack_hashes, 0, sizeof(_ack_hashes));
@@ -329,7 +331,6 @@ public:
       prefix_len = MAX_ROUTE_HASH_BYTES;
     }
 
-    int empty_idx = -1;
     int oldest_idx = 0;
 #if ARDUINO
     const uint32_t now = millis();
@@ -337,15 +338,12 @@ public:
     bool have_oldest = false;
 #endif
 
-    // Find a match, the first empty slot, and the oldest occupied slot in one
-    // pass. Keep exact prefixes distinct so a 1-byte path prefix does not
-    // collapse independent 2/3-byte repeaters that share the same first byte.
-    for (int i = 0; i < _max_recent_repeaters; i++) {
+    // Occupied entries are kept packed at the front of the externally supplied
+    // array. Normal traffic therefore scans only learned repeaters, not the
+    // full 512/2048-slot capacity. Keep exact prefixes distinct so a 1-byte
+    // path prefix does not collapse 2/3-byte repeaters sharing its first byte.
+    for (int i = 0; i < _recent_repeater_count; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
-      if (existing.prefix_len == 0) {
-        if (empty_idx < 0) empty_idx = i;
-        continue;
-      }
       if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
   #if ARDUINO
         uint32_t age = (uint32_t)(now - existing.last_heard_millis);
@@ -368,7 +366,12 @@ public:
 
     // Non-Arduino tests have no monotonic clock, so a full table retains the
     // historical deterministic fallback of evicting slot zero.
-    int slot_idx = empty_idx >= 0 ? empty_idx : oldest_idx;
+    int slot_idx;
+    if (_recent_repeater_count < _max_recent_repeaters) {
+      slot_idx = _recent_repeater_count++;
+    } else {
+      slot_idx = oldest_idx;
+    }
 
     RecentRepeaterInfo& slot = _recent_repeaters[slot_idx];
     memset(slot.prefix, 0, sizeof(slot.prefix));
@@ -403,16 +406,7 @@ public:
     return false;
   }
   int getRecentRepeaterCount() const {
-    if (_max_recent_repeaters == 0) {
-      return 0;
-    }
-    int count = 0;
-    for (int i = 0; i < _max_recent_repeaters; i++) {
-      if (_recent_repeaters[i].prefix_len > 0) {
-        count++;
-      }
-    }
-    return count;
+    return _recent_repeater_count;
   }
   const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
     if (_max_recent_repeaters == 0) {
@@ -427,11 +421,8 @@ public:
     for (int rank = 0; rank <= idx_wanted; rank++) {
       const RecentRepeaterInfo* best = NULL;
       int best_idx = -1;
-      for (int i = 0; i < _max_recent_repeaters; i++) {
+      for (int i = 0; i < _recent_repeater_count; i++) {
         const RecentRepeaterInfo* info = &_recent_repeaters[i];
-        if (info->prefix_len == 0) {
-          continue;
-        }
         if (last != NULL && !recentRepeaterComesBefore(*last, last_idx, *info, i)) {
           continue;
         }
@@ -460,11 +451,8 @@ public:
     // Prefer exact matches. If none exists, fall back to the longest overlapping
     // prefix, using highest SNR to break ties.
     const RecentRepeaterInfo* best = NULL;
-    for (int i = 0; i < _max_recent_repeaters; i++) {
+    for (int i = 0; i < _recent_repeater_count; i++) {
       const RecentRepeaterInfo* info = &_recent_repeaters[i];
-      if (info->prefix_len == 0) {
-        continue;
-      }
       if (info->prefix_len == hash_len && memcmp(info->prefix, hash, hash_len) == 0) {
         return info;
       }
@@ -481,6 +469,7 @@ public:
     if (_max_recent_repeaters > 0) {
       memset(_recent_repeaters, 0, _max_recent_repeaters * sizeof(RecentRepeaterInfo));
     }
+    _recent_repeater_count = 0;
   }
   int expireRecentRepeaters(uint32_t now_millis, uint32_t max_age_millis) {
     if (_max_recent_repeaters == 0) {
@@ -488,12 +477,17 @@ public:
     }
 
     int expired = 0;
-    for (int i = 0; i < _max_recent_repeaters; i++) {
+    for (int i = 0; i < _recent_repeater_count; ) {
       RecentRepeaterInfo& info = _recent_repeaters[i];
-      if (info.prefix_len > 0
-          && (uint32_t)(now_millis - info.last_heard_millis) > max_age_millis) {
-        memset(&info, 0, sizeof(info));
+      if ((uint32_t)(now_millis - info.last_heard_millis) > max_age_millis) {
+        _recent_repeater_count--;
+        if (i != _recent_repeater_count) {
+          info = _recent_repeaters[_recent_repeater_count];
+        }
+        memset(&_recent_repeaters[_recent_repeater_count], 0, sizeof(RecentRepeaterInfo));
         expired++;
+      } else {
+        i++;
       }
     }
     return expired;

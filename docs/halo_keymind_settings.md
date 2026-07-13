@@ -105,7 +105,8 @@ checks every 30 minutes and sends a flood text warning to `#repeaters` when
 voltage is above `1 V` and the estimated battery percent is below
 `battery.alert.low`.
 
-Warnings and critical alerts both use a `12`-hour resend cooldown.
+Warnings and critical alerts both use a `12`-hour resend cooldown, beginning
+only after the radio reports that the alert transmission completed.
 
 Defaults:
 

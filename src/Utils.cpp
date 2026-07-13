@@ -28,6 +28,11 @@ void Utils::sha256(uint8_t *hash, size_t hash_len, const uint8_t* frag1, int fra
 }
 
 int Utils::decrypt(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* src, int src_len) {
+  if (shared_secret == NULL || dest == NULL || src == NULL || src_len <= 0
+      || (src_len % CIPHER_BLOCK_SIZE) != 0) {
+    return 0;
+  }
+
   AES128 aes;
   uint8_t* dp = dest;
   const uint8_t* sp = src;
@@ -72,17 +77,20 @@ int Utils::encryptThenMAC(const uint8_t* shared_secret, uint8_t* dest, const uin
 }
 
 int Utils::MACThenDecrypt(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* src, int src_len) {
-  if (src_len <= CIPHER_MAC_SIZE) return 0;  // invalid src bytes
+  if (shared_secret == NULL || dest == NULL || src == NULL || src_len <= CIPHER_MAC_SIZE) return 0;
+
+  const int enc_len = src_len - CIPHER_MAC_SIZE;
+  if ((enc_len % CIPHER_BLOCK_SIZE) != 0) return 0;  // reject partial AES blocks before hashing/decrypting
 
   uint8_t hmac[CIPHER_MAC_SIZE];
   {
     SHA256 sha;
     sha.resetHMAC(shared_secret, PUB_KEY_SIZE);
-    sha.update(src + CIPHER_MAC_SIZE, src_len - CIPHER_MAC_SIZE);
+    sha.update(src + CIPHER_MAC_SIZE, enc_len);
     sha.finalizeHMAC(shared_secret, PUB_KEY_SIZE, hmac, CIPHER_MAC_SIZE);
   }
   if (memcmp(hmac, src, CIPHER_MAC_SIZE) == 0) {
-    return decrypt(shared_secret, dest, src + CIPHER_MAC_SIZE, src_len - CIPHER_MAC_SIZE);
+    return decrypt(shared_secret, dest, src + CIPHER_MAC_SIZE, enc_len);
   }
   return 0; // invalid HMAC
 }

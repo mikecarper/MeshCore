@@ -44,7 +44,72 @@ public:
     return getNextQueueWakeDelay(delay_millis);
   }
   bool queuedWorkDue() const { return hasQueuedWorkDue(); }
+  bool parse(mesh::Packet* packet, const uint8_t* raw, int len) {
+    return tryParsePacket(packet, raw, len);
+  }
 };
+
+TEST(Packet, ReadFromRejectsTruncatedHeadersAndPaths) {
+  mesh::Packet packet;
+  const uint8_t one_byte[] = {ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT)};
+  EXPECT_FALSE(packet.readFrom(one_byte, sizeof(one_byte)));
+
+  const uint8_t short_transport[] = {
+    ROUTE_TYPE_TRANSPORT_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0
+  };
+  EXPECT_FALSE(packet.readFrom(short_transport, sizeof(short_transport)));
+
+  const uint8_t missing_path_byte[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 1
+  };
+  EXPECT_FALSE(packet.readFrom(missing_path_byte, sizeof(missing_path_byte)));
+}
+
+TEST(Packet, ReadFromAcceptsACompletePacketWithEmptyPayload) {
+  mesh::Packet packet;
+  const uint8_t raw[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0
+  };
+  ASSERT_TRUE(packet.readFrom(raw, sizeof(raw)));
+  EXPECT_EQ(0U, packet.path_len);
+  EXPECT_EQ(0U, packet.payload_len);
+}
+
+TEST(Dispatcher, ParserRejectsTruncatedHeadersAndPaths) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  mesh::Packet packet;
+
+  const uint8_t one_byte[] = {ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT)};
+  EXPECT_FALSE(dispatcher.parse(&packet, one_byte, sizeof(one_byte)));
+
+  const uint8_t short_transport[] = {
+    ROUTE_TYPE_TRANSPORT_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0
+  };
+  EXPECT_FALSE(dispatcher.parse(&packet, short_transport, sizeof(short_transport)));
+
+  const uint8_t missing_path_byte[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 1
+  };
+  EXPECT_FALSE(dispatcher.parse(&packet, missing_path_byte, sizeof(missing_path_byte)));
+}
+
+TEST(Dispatcher, ParserAcceptsACompletePacketWithEmptyPayload) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  mesh::Packet packet;
+  const uint8_t raw[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0
+  };
+
+  ASSERT_TRUE(dispatcher.parse(&packet, raw, sizeof(raw)));
+  EXPECT_EQ(0U, packet.path_len);
+  EXPECT_EQ(0U, packet.payload_len);
+}
 
 TEST(StaticPoolPacketManager, ReportsEarliestQueueTimesWithoutDequeuing) {
   StaticPoolPacketManager manager(8);

@@ -1069,17 +1069,8 @@ uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
     return base_wait_millis;
   }
 
-  // Approximate LoRa line rate in kilobits/sec from the live radio params the repeater is using now.
-  float kbps = (((float)active_sf) * active_bw * ((float)active_cr)) / ((float)(1UL << active_sf));
-  if (kbps <= 0.0f) {
-    return base_wait_millis;
-  }
-
-  // Wait roughly long enough for our TX, the next hop's receive/forward window, and its echo back.
-  uint32_t bits = ((uint32_t)packet->getRawLength()) * 8;
-  float length_factor = (float)getDirectRetryPacketAirtimeFactor(packet);
-  uint32_t scaled_wait_millis = (uint32_t)((((float)bits) * length_factor) / kbps);
-  return base_wait_millis + scaled_wait_millis;
+  // Use the driver's LoRa airtime calculation for the echo window.
+  return base_wait_millis + getDirectRetryPacketAirtimeDelay(packet);
 }
 
 static uint8_t decodeDirectRetryTraceHashSize(uint8_t flags, uint8_t route_bytes) {
@@ -2327,6 +2318,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_battery_alert_check = 0;
   next_recent_repeater_sweep = 0;
   last_battery_alert_sent = 0;
+  pending_battery_alert_packet = NULL;
   battery_alert_sent = false;
   dirty_contacts_expiry = 0;
   active_bw = 0.0f;
@@ -2638,7 +2630,9 @@ bool MyMesh::resolveBatteryAlertScope(TransportKey& scope) {
   return region != NULL && getBatteryAlertScopeForRegion(*region, scope);
 }
 
-bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope) {
+bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope,
+                                    mesh::Packet** queued_packet) {
+  if (queued_packet != NULL) *queued_packet = NULL;
   if (text == NULL || *text == 0) return false;
 
   mesh::GroupChannel channel;
@@ -2683,7 +2677,27 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope)
   }
 
   const TransportKey& send_scope = scope == NULL ? default_scope : *scope;
-  return sendFloodScoped(send_scope, pkt, 0, _prefs.path_hash_mode + 1);
+  if (!sendFloodScoped(send_scope, pkt, 0, _prefs.path_hash_mode + 1)) {
+    return false;
+  }
+  if (queued_packet != NULL) *queued_packet = pkt;
+  return true;
+}
+
+void MyMesh::onSendComplete(mesh::Packet* packet) {
+  mesh::Mesh::onSendComplete(packet);
+  if (packet == pending_battery_alert_packet) {
+    pending_battery_alert_packet = NULL;
+    battery_alert_sent = true;
+    last_battery_alert_sent = uptime_millis + (uint32_t)(millis() - last_millis);
+  }
+}
+
+void MyMesh::onSendFail(mesh::Packet* packet) {
+  mesh::Mesh::onSendFail(packet);
+  if (packet == pending_battery_alert_packet) {
+    pending_battery_alert_packet = NULL;
+  }
 }
 
 void MyMesh::checkBatteryAlert() {
@@ -2695,25 +2709,33 @@ void MyMesh::checkBatteryAlert() {
     return;
   }
 
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+
   // Ignore startup voltage sag and give solar/charger hardware time to settle.
   // uptime_millis is 64-bit and includes time spent in the platform's light or
   // event sleep, so this guard remains reliable across millis() wraparound.
   // Arm the remaining startup delay once so subsequent loops use the cheaper
   // 32-bit deadline check above and powersaving can include it as a wake limit.
-  if (uptime_millis < LOW_BATTERY_STARTUP_DELAY) {
+  if (current_uptime_millis < LOW_BATTERY_STARTUP_DELAY) {
     next_battery_alert_check = futureMillis(
-        (unsigned long)(LOW_BATTERY_STARTUP_DELAY - uptime_millis));
+        (unsigned long)(LOW_BATTERY_STARTUP_DELAY - current_uptime_millis));
     return;
   }
 
   next_battery_alert_check = futureMillis(LOW_BATTERY_CHECK_INTERVAL);
 
-  // A successful queue operation starts one fixed cooldown. Do this before
-  // region resolution and ADC sampling so repeat checks during the cooldown
-  // stay as cheap as possible. Battery recovery and alert toggles must not
-  // bypass the cooldown within this boot.
+  // Only a completed over-the-air transmission starts the fixed cooldown.
+  // A queued packet remains tracked until Dispatcher reports success/failure.
+  if (pending_battery_alert_packet != NULL) {
+    return;
+  }
+
+  // Do this before region resolution and ADC sampling so repeat checks during
+  // the cooldown stay cheap. Battery recovery and alert toggles must not bypass
+  // the cooldown within this boot.
   if (battery_alert_sent) {
-    if (uptime_millis - last_battery_alert_sent < LOW_BATTERY_ALERT_INTERVAL) {
+    if (current_uptime_millis - last_battery_alert_sent < LOW_BATTERY_ALERT_INTERVAL) {
       return;
     }
     battery_alert_sent = false;
@@ -2738,9 +2760,9 @@ void MyMesh::checkBatteryAlert() {
     ? "CRITICAL BATTERY"
     : "LOW BATTERY";
   snprintf(text, sizeof(text), "%s %u%% (%u mV)", severity, (uint32_t)batt_pct, (uint32_t)batt_mv);
-  if (sendRepeatersFloodText(text, &alert_scope)) {
-    battery_alert_sent = true;
-    last_battery_alert_sent = uptime_millis;
+  mesh::Packet* queued_packet = NULL;
+  if (sendRepeatersFloodText(text, &alert_scope, &queued_packet)) {
+    pending_battery_alert_packet = queued_packet;
   }
 }
 

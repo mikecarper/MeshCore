@@ -99,6 +99,12 @@ bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
   uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return false;
 
+  const bool had_previous_params = _params_valid;
+  const float previous_freq = _cur_freq;
+  const float previous_bw = _cur_bw;
+  const uint8_t previous_sf = _cur_sf;
+  const uint8_t previous_cr = _cur_cr;
+
   bool success = applyParams(freq, bw, sf, cr);
   if (success) {
     cacheParams(freq, bw, sf, cr);
@@ -106,6 +112,27 @@ bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
       _rx_ps_enabled = true;
       _rx_ps_rx_us = rx_ps_timings[0];
       _rx_ps_sleep_us = rx_ps_timings[1];
+    }
+  } else {
+    bool restored = had_previous_params
+      && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
+
+    if (!restored && radioDeepInit()) {
+      _rx_ps_armed = false;
+      state = STATE_IDLE;
+      _radio->setPacketReceivedAction(setFlag);
+      if (had_previous_params) {
+        restored = applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
+      } else {
+        _preamble_sf = getSpreadingFactor();
+        restored = _radio->setPreambleLength(preambleLengthForSF(_preamble_sf)) == RADIOLIB_ERR_NONE;
+      }
+      if (_dbm_valid) _radio->setOutputPower(_cur_dbm);
+      if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
+    }
+
+    if (!restored) {
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: failed to restore radio parameters after apply failure");
     }
   }
 

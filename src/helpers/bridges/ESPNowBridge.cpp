@@ -197,7 +197,6 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
   }
 
   if (!_seen_packets.wasSeen(packet)) {
-    _seen_packets.markSeen(packet);
     // Check the serialized size before writing into the ESP-NOW-sized buffer.
     const int expectedMeshPacketLen = packet->getRawLength();
     if (expectedMeshPacketLen < 0 || (size_t)expectedMeshPacketLen > MAX_PAYLOAD_SIZE) {
@@ -240,6 +239,7 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
     esp_err_t result = esp_now_send(broadcastAddress, buffer, totalPacketSize);
 
     if (result == ESP_OK) {
+      _seen_packets.markSeen(packet);
       BRIDGE_DEBUG_PRINTLN("TX, len=%d\n", meshPacketLen);
     } else {
       BRIDGE_DEBUG_PRINTLN("TX FAILED!\n");
