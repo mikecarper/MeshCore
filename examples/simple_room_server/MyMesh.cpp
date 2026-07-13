@@ -307,6 +307,71 @@ uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
   return getRNG()->nextInt(0, 5*t + 1);
 }
 
+bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash,
+                              uint8_t next_hop_hash_len) const {
+  (void)packet;
+  (void)next_hop_hash;
+  (void)next_hop_hash_len;
+  return _prefs.direct_retry_enabled != 0;
+}
+
+void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original,
+                                        uint8_t retry_attempt) {
+  if (!_prefs.direct_retry_cr_enabled) {
+    if (retry != NULL) retry->tx_cr = 0;
+    return;
+  }
+  mesh::Mesh::configureDirectRetryPacket(retry, original, retry_attempt);
+}
+
+uint32_t MyMesh::getDirectRetryEchoDelay(const mesh::Packet* packet) const {
+  uint32_t base_ms = constrain((uint32_t)_prefs.direct_retry_base_ms, (uint32_t)10, (uint32_t)5000);
+  return base_ms + getDirectRetryPacketAirtimeDelay(packet);
+}
+
+uint8_t MyMesh::getDirectRetryMaxAttempts(const mesh::Packet* packet) const {
+  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) return 21;
+  return constrain(_prefs.direct_retry_attempts, 1, 15);
+}
+
+uint32_t MyMesh::getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx) {
+  uint32_t step_ms = constrain((uint32_t)_prefs.direct_retry_step_ms, (uint32_t)0, (uint32_t)5000);
+  return getDirectRetransmitDelay(packet) + getDirectRetryEchoDelay(packet)
+      + ((uint32_t)attempt_idx * step_ms);
+}
+
+bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
+  if (_prefs.disable_fwd || _prefs.flood_retry_attempts == 0) return false;
+  return packet == NULL || packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
+      || _prefs.flood_retry_advert_enabled;
+}
+
+uint8_t MyMesh::getFloodRetryMaxPathLength(const mesh::Packet* packet) const {
+  (void)packet;
+  return _prefs.flood_retry_max_path == FLOOD_RETRY_PATH_GATE_DISABLED
+      ? FLOOD_RETRY_PATH_GATE_DISABLED
+      : constrain(_prefs.flood_retry_max_path, 0, 63);
+}
+
+uint8_t MyMesh::getFloodRetryMaxAttempts(const mesh::Packet* packet) const {
+  if (_prefs.disable_fwd) return 0;
+
+  uint8_t attempts = constrain(_prefs.flood_retry_attempts, 0, 15);
+  uint16_t scaled_attempts = attempts;
+  uint8_t hops = packet != NULL ? packet->getPathHashCount() : 0;
+  if (hops == 0) {
+    scaled_attempts = (uint16_t)attempts * 2U;
+  } else if (hops == 1) {
+    scaled_attempts = (((uint16_t)attempts * 3U) + 1U) / 2U;
+  }
+  return scaled_attempts > 15 ? 15 : (uint8_t)scaled_attempts;
+}
+
+void MyMesh::onRetryConfigChanged() {
+  if (!_prefs.direct_retry_enabled) cancelAllDirectRetries();
+  if (_prefs.disable_fwd || _prefs.flood_retry_attempts == 0) cancelAllFloodRetries();
+}
+
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood()) {

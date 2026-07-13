@@ -918,6 +918,11 @@ uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
   return getRNG()->nextInt(0, 5*t + 1);
 }
 
+void MyMesh::onRetryConfigChanged() {
+  if (!_prefs.direct_retry_enabled) cancelAllDirectRetries();
+  if (_prefs.disable_fwd || _prefs.flood_retry_attempts == 0) cancelAllFloodRetries();
+}
+
 bool MyMesh::extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const {
   if (packet == NULL || !packet->isRouteDirect() || packet->getPathHashCount() == 0) {
     return false;

@@ -92,6 +92,8 @@ class Mesh : public Dispatcher {
   MeshTables* _tables;
   DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
   FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
+  uint8_t _active_direct_retry_count;
+  uint8_t _active_flood_retry_count;
   uint8_t _waiting_direct_retry_count;
   uint8_t _waiting_flood_retry_count;
   unsigned long _next_direct_retry_timeout;
@@ -201,6 +203,11 @@ protected:
    * \returns true if at least one active retry sequence was cancelled.
    */
   bool cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]);
+
+  // Cancel every queued/future retry of one route type. A packet already on
+  // air is allowed to finish, but no later retry is armed from it.
+  void cancelAllDirectRetries();
+  void cancelAllFloodRetries();
 
   /**
    * \returns true while a direct or flood retry sequence owns this packet payload hash.

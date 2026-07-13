@@ -326,6 +326,9 @@ protected:
 
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
+  bool supportsBasicRetryConfig() const override { return true; }
+  bool supportsAdvancedRetryConfig() const override { return true; }
+  void onRetryConfigChanged() override;
   uint8_t getDefaultTxCodingRate() const override { return active_cr; }
   bool allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const override;
   bool maybeShortCircuitDirect(mesh::Packet* packet) override;

@@ -140,6 +140,8 @@ uint8_t Mesh::getOtaHopLimit() const { return ota::ota_ctx().manager.max_hops();
 #endif
 
 void Mesh::begin() {
+  _active_direct_retry_count = 0;
+  _active_flood_retry_count = 0;
   _waiting_direct_retry_count = 0;
   _waiting_flood_retry_count = 0;
   _next_direct_retry_timeout = 0;
@@ -866,6 +868,9 @@ void Mesh::clearDirectRetrySlot(int idx) {
       && _waiting_direct_retry_count > 0) {
     _waiting_direct_retry_count--;
   }
+  if (_direct_retries[idx].active && _active_direct_retry_count > 0) {
+    _active_direct_retry_count--;
+  }
   _direct_retries[idx].packet = NULL;
   _direct_retries[idx].trigger_packet = NULL;
   _direct_retries[idx].retry_started_at = 0;
@@ -905,10 +910,12 @@ void Mesh::rebuildNextDirectRetryTimeout() {
 }
 
 bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
-    if (_direct_retries[i].active && _direct_retries[i].queued
-        && _direct_retries[i].packet == packet) {
-      return true;
+  if (_active_direct_retry_count != 0) {
+    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+      if (_direct_retries[i].active && _direct_retries[i].queued
+          && _direct_retries[i].packet == packet) {
+        return true;
+      }
     }
   }
 
@@ -917,10 +924,12 @@ bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
   // CAD here too, since restarting RX can hide that echo. The initial flood
   // has trigger_packet set but queued=false, so ordinary flood forwarding
   // continues to use the normal CAD check.
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (_flood_retries[i].active && _flood_retries[i].queued
-        && _flood_retries[i].packet == packet) {
-      return true;
+  if (_active_flood_retry_count != 0) {
+    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+      if (_flood_retries[i].active && _flood_retries[i].queued
+          && _flood_retries[i].packet == packet) {
+        return true;
+      }
     }
   }
 
@@ -954,6 +963,8 @@ void Mesh::calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) cons
 }
 
 bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
+  if (_active_direct_retry_count == 0) return false;
+
   uint8_t recv_key[MAX_HASH_SIZE];
   calculateDirectRetryKey(packet, recv_key);
 
@@ -1016,6 +1027,8 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
 }
 
 void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
+  if (_active_direct_retry_count == 0) return;
+
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) {
       continue;
@@ -1136,6 +1149,8 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
 }
 
 void Mesh::clearPendingDirectRetryOnSendFail(const Packet* packet) {
+  if (_active_direct_retry_count == 0) return;
+
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) {
       continue;
@@ -1339,6 +1354,7 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   _direct_retries[slot_idx].waiting_final_echo = false;
   _direct_retries[slot_idx].queued = false;
   _direct_retries[slot_idx].active = true;
+  _active_direct_retry_count++;
 }
 
 void Mesh::clearFloodRetrySlot(int idx) {
@@ -1346,6 +1362,9 @@ void Mesh::clearFloodRetrySlot(int idx) {
       && _flood_retries[idx].waiting_final_echo
       && _flood_retries[idx].retry_at == _next_flood_retry_timeout;
   if (_flood_retries[idx].active) {
+    if (_active_flood_retry_count > 0) {
+      _active_flood_retry_count--;
+    }
     if (_flood_retries[idx].waiting_final_echo && _waiting_flood_retry_count > 0) {
       _waiting_flood_retry_count--;
     }
@@ -1386,8 +1405,52 @@ void Mesh::rebuildNextFloodRetryTimeout() {
   if (!found) _next_flood_retry_timeout = 0;
 }
 
+void Mesh::cancelAllDirectRetries() {
+  if (_active_direct_retry_count == 0) return;
+
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (!_direct_retries[i].active) continue;
+
+    Packet* retry = _direct_retries[i].queued ? _direct_retries[i].packet : NULL;
+    if (retry != NULL && retry != getOutboundInFlight()) {
+      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
+        if (_mgr->getOutboundByIdx(j) != retry) continue;
+        Packet* pending = _mgr->removeOutboundByIdx(j);
+        if (pending != NULL) {
+          _direct_retries[i].packet = NULL;
+          releasePacket(pending);
+        }
+        break;
+      }
+    }
+    clearDirectRetrySlot(i);
+  }
+}
+
+void Mesh::cancelAllFloodRetries() {
+  if (_active_flood_retry_count == 0) return;
+
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (!_flood_retries[i].active) continue;
+
+    Packet* retry = _flood_retries[i].queued ? _flood_retries[i].packet : NULL;
+    if (retry != NULL && retry != getOutboundInFlight()) {
+      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
+        if (_mgr->getOutboundByIdx(j) != retry) continue;
+        Packet* pending = _mgr->removeOutboundByIdx(j);
+        if (pending != NULL) {
+          _flood_retries[i].packet = NULL;
+          releasePacket(pending);
+        }
+        break;
+      }
+    }
+    clearFloodRetrySlot(i);
+  }
+}
+
 bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
-  if (retry_key == NULL) {
+  if (retry_key == NULL || (_active_direct_retry_count == 0 && _active_flood_retry_count == 0)) {
     return false;
   }
 
@@ -1444,7 +1507,7 @@ bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
 }
 
 bool Mesh::hasActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) const {
-  if (retry_key == NULL) {
+  if (retry_key == NULL || (_active_direct_retry_count == 0 && _active_flood_retry_count == 0)) {
     return false;
   }
 
@@ -1468,6 +1531,8 @@ bool Mesh::isFloodRetryEchoTarget(const Packet* packet, uint8_t progress_marker)
 }
 
 bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
+  if (_active_flood_retry_count == 0) return false;
+
   uint8_t recv_key[MAX_HASH_SIZE];
   packet->calculatePacketHash(recv_key);
 
@@ -1507,6 +1572,8 @@ bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
 }
 
 void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
+  if (_active_flood_retry_count == 0) return;
+
   for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) {
       continue;
@@ -1604,6 +1671,8 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
 }
 
 void Mesh::clearPendingFloodRetryOnSendFail(const Packet* packet) {
+  if (_active_flood_retry_count == 0) return;
+
   for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) {
       continue;
@@ -1627,17 +1696,19 @@ void Mesh::clearPendingFloodRetryOnSendFail(const Packet* packet) {
 }
 
 void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
-  if (packet == NULL || !packet->isRouteFlood() || hasFloodRetryTargetPrefix(packet)) {
+  if (packet == NULL || !packet->isRouteFlood()) {
+    return;
+  }
+
+  // Check the inexpensive global kill switch before prefix/path eligibility.
+  // This makes flood.retry.count=0 a genuinely cheap disabled state.
+  uint8_t max_attempts = getFloodRetryMaxAttempts(packet);
+  if (max_attempts == 0 || hasFloodRetryTargetPrefix(packet)) {
     return;
   }
 
   uint8_t max_path_len = getFloodRetryMaxPathLength(packet);
   if (max_path_len != FLOOD_RETRY_PATH_GATE_DISABLED && packet->getPathHashCount() > max_path_len) {
-    return;
-  }
-
-  uint8_t max_attempts = getFloodRetryMaxAttempts(packet);
-  if (max_attempts == 0) {
     return;
   }
 
@@ -1680,6 +1751,7 @@ void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
   _flood_retries[slot_idx].waiting_final_echo = false;
   _flood_retries[slot_idx].queued = false;
   _flood_retries[slot_idx].active = true;
+  _active_flood_retry_count++;
 }
 
 Packet* Mesh::createAdvert(const LocalIdentity& id, const uint8_t* app_data, size_t app_data_len) {

@@ -126,6 +126,19 @@ protected:
   int calcRxDelay(float score, uint32_t air_time) const override;
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
+  bool allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash,
+                        uint8_t next_hop_hash_len) const override;
+  void configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original,
+                                  uint8_t retry_attempt) override;
+  uint32_t getDirectRetryEchoDelay(const mesh::Packet* packet) const override;
+  uint8_t getDirectRetryMaxAttempts(const mesh::Packet* packet) const override;
+  uint32_t getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx) override;
+  bool allowFloodRetry(const mesh::Packet* packet) const override;
+  uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
+  uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
+
+  bool supportsBasicRetryConfig() const override { return true; }
+  void onRetryConfigChanged() override;
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
   int getAGCResetInterval() const override;

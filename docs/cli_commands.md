@@ -1199,6 +1199,10 @@ region save
 
 Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages, ACK packets, multipart packets carrying ACK payloads, and TRACE packets.
 
+The shared state, count, base, and step controls work on repeater, room-server,
+and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
+other roles do not keep the repeater reachability table they require.
+
 #### View or change direct retry state
 **Usage:**
 - `get direct.retry`
@@ -1231,7 +1235,7 @@ set direct.retry off
 
 **Default:** `on`
 
-**Note:** When enabled, the recent repeater table is the direct retry eligibility
+**Note:** This command is repeater-only. When enabled, the recent repeater table is the direct retry eligibility
 gate. Prefixes missing from the table are assumed reachable; prefixes in the
 table below the active SNR gate are blocked.
 
@@ -1274,6 +1278,10 @@ set retry.preset mobile
 Flood retry resends flood-routed packets when the same packet is not heard from
 another qualifying repeater.
 
+The count, path, and advert controls work on repeater, room-server, and sensor
+firmware. Flood forwarding must also be enabled for retries to run. Prefix,
+ignore, bridge, and bucket controls are repeater-only.
+
 #### View or change flood retry count
 **Usage:**
 - `get flood.retry.count`
@@ -1282,7 +1290,7 @@ another qualifying repeater.
 **Parameters:**
 - `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
 
-**Note:** Actual attempts are capped at `15`. Path count 0 flood retries use `count * 2`; path count 1 retries use `count * 1.5`, rounded up; path count 2 and higher use the configured base count.
+**Note:** Actual attempts are capped at `15`. Path count 0 flood retries use `count * 2`; path count 1 retries use `count * 1.5`, rounded up; path count 2 and higher use the configured base count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
 
 **Defaults:**
 - `infra`: `1`
@@ -1462,8 +1470,8 @@ set direct.retry.count 15
 - The failed echo window includes a packet-length add-on. TRACE and
   ANON_REQ/type 7 packets keep the existing 4x line-time add-on. TXT_MSG/type 2
   packets use 7x. Other direct retry packets use 6x.
-- Non-repeater firmware uses the same packet-type add-ons with the shared
-  fixed base retry timing.
+- Room-server and sensor firmware use this configured base with the same
+  packet-type add-ons.
 - For non-TRACE direct paths shorter than 6 remaining hops, the effective wait is scaled by `hops / 6`.
 - Non-TRACE direct paths with 6 or more remaining hops use the configured value unchanged.
 - TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the configured value unchanged.
@@ -1495,8 +1503,8 @@ set direct.retry.base 500
 - This is added after the failed echo window. TRACE and ANON_REQ/type 7 packets
   keep the existing 4x packet-length add-on. TXT_MSG/type 2 packets use 7x.
   Other direct retry packets use 6x.
-- Non-repeater firmware uses the same packet-type add-ons with the shared
-  fixed retry step.
+- Room-server and sensor firmware use this configured step with the same
+  packet-type add-ons.
 - For non-TRACE direct paths shorter than 6 remaining hops, that computed delay is scaled by `hops / 6`.
 - Non-TRACE direct paths with 6 or more remaining hops use the computed delay unchanged.
 - TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the computed delay unchanged.
@@ -1526,6 +1534,7 @@ set direct.retry.step 250
 **Default:** `5.00` with the `rooftop` preset
 
 **Notes:**
+- This command is repeater-only.
 - Unknown repeaters are still retried.
 - Known repeaters below the receive floor plus this margin are skipped.
 - Failed attempts lower the recent repeater SNR estimate by `0.25 dB`.
@@ -1545,6 +1554,7 @@ set direct.retry.margin 10
 **Usage:**
 - `get direct.retry.cr`
 - `set direct.retry.cr off`
+- `set direct.retry.cr on` (room-server and sensor)
 - `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`
 
 **Parameters:**
@@ -1561,6 +1571,8 @@ set direct.retry.margin 10
 - Repeater retry attempts escalate from the adaptive starting CR. CR4 starts as CR4, CR5, CR7, CR7, then CR8. CR5 starts as CR5, CR7, CR7, then CR8. CR7 gets two attempts, then CR8.
 - Repeater adaptive CR selection intentionally skips CR6.
 - Non-repeater retry packets start at the current radio CR and follow the same escalation pattern, clamped at CR8. With the normal CR5 radio setting this is CR5, CR7, CR7, then CR8.
+- Room-server and sensor firmware accept `on` or `off`; numeric SNR thresholds
+  are repeater-only because those roles do not keep recent-repeater SNR data.
 - `off` disables per-packet retry CR overrides and uses the current radio CR.
 - Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
 - Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
@@ -1571,6 +1583,7 @@ set direct.retry.margin 10
 ```
 get direct.retry.cr
 set direct.retry.cr off
+set direct.retry.cr on
 set direct.retry.cr 10.0,7.5,2.5,2.5
 set direct.retry.cr 12.0,8.0,4.0,1.0
 set direct.retry.cr 8.0,5.0,1.5,0
@@ -1611,6 +1624,8 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - `prefix`: Repeater path-hash prefix as hex.
 - `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
 - `page`: 1-based result page.
+
+**Note:** These commands are repeater-only.
 
 **Output order:**
 - `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.

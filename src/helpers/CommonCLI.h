@@ -447,6 +447,12 @@ public:
   }
   virtual void clearRecentRepeaters() {
   }
+  // Basic retry controls are portable across roles (enable/count/timing,
+  // flood count/path/advert, and the current-CR retry progression). Advanced
+  // controls require the repeater's recent-SNR and bridge-routing tables.
+  virtual bool supportsBasicRetryConfig() const { return false; }
+  virtual bool supportsAdvancedRetryConfig() const { return false; }
+  virtual void onRetryConfigChanged() { }
   virtual mesh::LocalIdentity& getSelfId() = 0;
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;

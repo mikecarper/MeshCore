@@ -146,6 +146,32 @@ static bool looksUnsignedInteger(const char* s) {
   return saw_digit;
 }
 
+static bool configKeyMatches(const char* config, const char* key) {
+  if (config == NULL || key == NULL) return false;
+  size_t key_len = strlen(key);
+  return strncmp(config, key, key_len) == 0
+      && (config[key_len] == 0 || config[key_len] == ' ' || config[key_len] == '.');
+}
+
+static bool isAdvancedRetryConfig(const char* config) {
+  return configKeyMatches(config, "direct.retry.heard")
+      || configKeyMatches(config, "direct.retry.margin")
+      || configKeyMatches(config, "flood.retry.prefixes")
+      || configKeyMatches(config, "flood.retry.ignore")
+      || configKeyMatches(config, "flood.retry.bridge")
+      || configKeyMatches(config, "flood.retry.bucket")
+      || configKeyMatches(config, "recent.repeater")
+      || configKeyMatches(config, "recent.repeaters");
+}
+
+static bool isBasicRetryConfig(const char* config) {
+  return configKeyMatches(config, "retry.preset")
+      || configKeyMatches(config, "direct.retry")
+      || configKeyMatches(config, "flood.retry.count")
+      || configKeyMatches(config, "flood.retry.path")
+      || configKeyMatches(config, "flood.retry.advert");
+}
+
 static bool parseUint8Strict(const char* value, uint8_t min_value, uint8_t max_value, uint8_t& result) {
   if (value == NULL || *value == 0) {
     return false;
@@ -1818,8 +1844,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _callbacks->clearStats();
       strcpy(reply, "(OK - stats reset)");
     } else if (memcmp(command, "clear recent.repeater", 21) == 0 && (command[21] == 0 || command[21] == ' ')) {
-      _callbacks->clearRecentRepeaters();
-      strcpy(reply, "OK");
+      if (_callbacks->supportsAdvancedRetryConfig()) {
+        _callbacks->clearRecentRepeaters();
+        strcpy(reply, "OK");
+      } else {
+        strcpy(reply, "Error, unsupported on this role");
+      }
     } else if (memcmp(command, "get ", 4) == 0) {
       handleGetCmd(sender_timestamp, command, reply);
     } else if (memcmp(command, "set ", 4) == 0) {
@@ -2066,6 +2096,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   const char* config = &command[4];
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
+  if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
+    strcpy(reply, "Error, unsupported on this role");
+    return;
+  }
+  if (isBasicRetryConfig(config) && !_callbacks->supportsBasicRetryConfig()) {
+    strcpy(reply, "Error, retry configuration unsupported on this role");
+    return;
+  }
   if (memcmp(config, "dutycycle ", 10) == 0) {
     float dc = atof(&config[10]);
     if (dc < 1 || dc > 100) {
@@ -2160,9 +2198,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, bad chars");
     }
   } else if (memcmp(config, "repeat ", 7) == 0) {
-    _prefs->disable_fwd = memcmp(&config[7], "off", 3) == 0;
-    savePrefs();
-    strcpy(reply, _prefs->disable_fwd ? "OK - repeat is now OFF" : "OK - repeat is now ON");
+    if (strcmp(&config[7], "on") == 0 || strcmp(&config[7], "off") == 0) {
+      _prefs->disable_fwd = strcmp(&config[7], "off") == 0;
+      savePrefs();
+      _callbacks->onRetryConfigChanged();
+      strcpy(reply, _prefs->disable_fwd ? "OK - repeat is now OFF" : "OK - repeat is now ON");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
   } else if (memcmp(config, "radio.rxgain ", 13) == 0) {
     bool enabled = memcmp(&config[13], "on", 2) == 0;
     if (_callbacks->setRxBoostedGain(enabled)) {
@@ -2411,10 +2454,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (strcmp(&config[13], "on") == 0) {
       _prefs->direct_retry_enabled = 1;
       savePrefs();
+      _callbacks->onRetryConfigChanged();
       strcpy(reply, "OK");
     } else if (strcmp(&config[13], "off") == 0) {
       _prefs->direct_retry_enabled = 0;
       savePrefs();
+      _callbacks->onRetryConfigChanged();
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error, must be on or off");
@@ -2558,6 +2603,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->flood_retry_attempts = (uint8_t)attempts;
       _prefs->retry_preset = RETRY_PRESET_CUSTOM;
       savePrefs();
+      _callbacks->onRetryConfigChanged();
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error, must be 0-15");
@@ -2638,6 +2684,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->direct_retry_cr_enabled = 0;
       savePrefs();
       strcpy(reply, "OK");
+    } else if (!_callbacks->supportsAdvancedRetryConfig()) {
+      if (strcmp(&config[16], "on") == 0) {
+        _prefs->direct_retry_cr_enabled = 1;
+        savePrefs();
+        strcpy(reply, "OK");
+      } else {
+        strcpy(reply, "Error, use on or off on this role");
+      }
     } else {
       strcpy(tmp, &config[16]);
       const char *parts[4];
@@ -2837,6 +2891,14 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   const char* config = &command[4];
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
+  if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
+    strcpy(reply, "Error, unsupported on this role");
+    return;
+  }
+  if (isBasicRetryConfig(config) && !_callbacks->supportsBasicRetryConfig()) {
+    strcpy(reply, "Error, retry configuration unsupported on this role");
+    return;
+  }
   int recent_page = 1;
   if (memcmp(config, "dutycycle", 9) == 0) {
     float dc = 100.0f / (_prefs->airtime_factor + 1.0f);
@@ -2988,6 +3050,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "direct.retry.cr", 15) == 0) {
     if (!_prefs->direct_retry_cr_enabled) {
       strcpy(reply, "> off");
+    } else if (!_callbacks->supportsAdvancedRetryConfig()) {
+      strcpy(reply, "> on");
     } else {
       char cr4[12], cr5[12], cr7[12], cr8[12];
       formatSnrDbX4(cr4, sizeof(cr4), _prefs->direct_retry_cr4_snr_x4);
