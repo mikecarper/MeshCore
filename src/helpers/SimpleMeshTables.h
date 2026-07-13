@@ -329,44 +329,46 @@ public:
       prefix_len = MAX_ROUTE_HASH_BYTES;
     }
 
-    // Keep exact prefixes distinct so a 1-byte path prefix does not collapse
-    // independent 2/3-byte repeaters that share the same first byte.
+    int empty_idx = -1;
+    int oldest_idx = 0;
+#if ARDUINO
+    const uint32_t now = millis();
+    uint32_t oldest_age = 0;
+    bool have_oldest = false;
+#endif
+
+    // Find a match, the first empty slot, and the oldest occupied slot in one
+    // pass. Keep exact prefixes distinct so a 1-byte path prefix does not
+    // collapse independent 2/3-byte repeaters that share the same first byte.
     for (int i = 0; i < _max_recent_repeaters; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
+      if (existing.prefix_len == 0) {
+        if (empty_idx < 0) empty_idx = i;
+        continue;
+      }
       if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
+  #if ARDUINO
+        uint32_t age = (uint32_t)(now - existing.last_heard_millis);
+        if (!have_oldest || age > oldest_age) {
+          oldest_age = age;
+          oldest_idx = i;
+          have_oldest = true;
+        }
+  #endif
         continue;
       }
       existing.snr_x4 = weightedSnrX4RoundUp(existing.snr_x4, snr_x4);
 #if ARDUINO
-      existing.last_heard_millis = millis();
+      existing.last_heard_millis = now;
 #else
       existing.last_heard_millis = 0;
 #endif
       return true;
     }
 
-    int slot_idx = -1;
-    for (int i = 0; i < _max_recent_repeaters; i++) {
-      if (_recent_repeaters[i].prefix_len == 0) {
-        slot_idx = i;
-        break;
-      }
-    }
-    if (slot_idx < 0) {
-      // Table is full: evict the oldest heard entry.
-      slot_idx = 0;
-#if ARDUINO
-      uint32_t now = millis();
-      uint32_t oldest_age = (uint32_t)(now - _recent_repeaters[0].last_heard_millis);
-      for (int i = 1; i < _max_recent_repeaters; i++) {
-        uint32_t age = (uint32_t)(now - _recent_repeaters[i].last_heard_millis);
-        if (age > oldest_age) {
-          oldest_age = age;
-          slot_idx = i;
-        }
-      }
-#endif
-    }
+    // Non-Arduino tests have no monotonic clock, so a full table retains the
+    // historical deterministic fallback of evicting slot zero.
+    int slot_idx = empty_idx >= 0 ? empty_idx : oldest_idx;
 
     RecentRepeaterInfo& slot = _recent_repeaters[slot_idx];
     memset(slot.prefix, 0, sizeof(slot.prefix));
@@ -374,7 +376,7 @@ public:
     slot.prefix_len = prefix_len;
     slot.snr_x4 = snr_x4;
 #if ARDUINO
-    slot.last_heard_millis = millis();
+    slot.last_heard_millis = now;
 #else
     slot.last_heard_millis = 0;
 #endif

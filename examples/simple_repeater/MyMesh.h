@@ -115,6 +115,8 @@ struct NeighbourInfo {
 
 #define RECENT_REPEATER_MAX_AGE_MILLIS        (24UL * 60UL * 60UL * 1000UL)
 #define RECENT_REPEATER_SWEEP_INTERVAL_MILLIS (3UL * 60UL * 60UL * 1000UL)
+#define RADIO_APPLY_RETRY_INTERVAL_MILLIS     1000UL
+#define SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS 60UL
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   struct ScheduledRadioSetting {
@@ -189,6 +191,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t active_cr;   // live CR, including temporary radio overrides
   bool saved_radio_apply_pending;
   bool temp_radio_handoff_pending;
+  bool scheduled_temp_radio_started;
+  uint32_t next_scheduled_radio_time;
+  unsigned long next_scheduled_radio_check_at;
+  uint32_t scheduled_temp_radio_end_time;
+  unsigned long scheduled_temp_radio_end_check_at;
+  bool scheduled_temp_radio_end_check_final;
+  unsigned long scheduled_radio_retry_at;
+  uint8_t scheduled_radio_retry_failures;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
   int  matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_MQTT_BRIDGE)
@@ -265,6 +275,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
   bool applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
   bool applySavedRadioParams();
+  void queueSavedRadioApply();
+  void refreshScheduledRadioState();
   void processScheduledRadioSettings();
   bool isMillisTimerDue(unsigned long timestamp) const;
   void loadFloodChannelBlocks();
@@ -283,7 +295,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   void formatFloodChannelBlockDetail(char* reply, int idx) const;
   bool hasScheduledRadioWorkDue() const;
   uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const;
-  uint32_t limitSleepToRtcTime(uint32_t timestamp, uint32_t sleep_secs) const;
   uint32_t limitSleepToScheduledRadioWork(uint32_t sleep_secs) const;
   bool hasStartedScheduledTempRadio() const;
   int findFreeScheduledRadioSlot() const;

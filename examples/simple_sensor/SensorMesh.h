@@ -165,6 +165,8 @@ private:
   uint8_t active_cr;
   bool temp_radio_applied;
   bool saved_radio_apply_pending;
+  unsigned long radio_apply_retry_at;
+  uint8_t radio_apply_failures;
 
   bool applySavedRadioParams();
 

@@ -6,6 +6,7 @@ PacketQueue::PacketQueue(int max_entries) {
   _schedule_table = new uint32_t[max_entries];
   _size = max_entries;
   _num = 0;
+  _next_schedule = 0;
 }
 
 int PacketQueue::countBefore(uint32_t now) const {
@@ -17,6 +18,25 @@ int PacketQueue::countBefore(uint32_t now) const {
     n++;
   }
   return n;
+}
+
+bool PacketQueue::getNextTime(uint32_t now, uint32_t& scheduled_for) const {
+  if (_num == 0) return false;
+  scheduled_for = (int32_t)(_next_schedule - now) <= 0 ? now : _next_schedule;
+  return true;
+}
+
+void PacketQueue::rebuildNextTime() {
+  if (_num == 0) {
+    _next_schedule = 0;
+    return;
+  }
+  _next_schedule = _schedule_table[0];
+  for (int i = 1; i < _num; i++) {
+    if ((int32_t)(_schedule_table[i] - _next_schedule) < 0) {
+      _next_schedule = _schedule_table[i];
+    }
+  }
 }
 
 mesh::Packet* PacketQueue::get(uint32_t now) {
@@ -31,16 +51,7 @@ mesh::Packet* PacketQueue::get(uint32_t now) {
   }
   if (best_idx < 0) return NULL;   // empty, or all items are still in the future
 
-  mesh::Packet* top = _table[best_idx];
-  int i = best_idx;
-  _num--;
-  while (i < _num) {
-    _table[i] = _table[i+1];
-    _pri_table[i] = _pri_table[i+1];
-    _schedule_table[i] = _schedule_table[i+1];
-    i++;
-  }
-  return top;
+  return removeByIdx(best_idx);
 }
 
 mesh::Packet* PacketQueue::peek(uint32_t now) const {
@@ -57,9 +68,10 @@ mesh::Packet* PacketQueue::peek(uint32_t now) const {
 }
 
 mesh::Packet* PacketQueue::removeByIdx(int i) {
-  if (i >= _num) return NULL;  // invalid index
+  if (i < 0 || i >= _num) return NULL;  // invalid index
 
   mesh::Packet* item = _table[i];
+  uint32_t removed_schedule = _schedule_table[i];
   _num--;
   while (i < _num) {
     _table[i] = _table[i+1];
@@ -67,6 +79,7 @@ mesh::Packet* PacketQueue::removeByIdx(int i) {
     _schedule_table[i] = _schedule_table[i+1];
     i++;
   }
+  if (_num == 0 || removed_schedule == _next_schedule) rebuildNextTime();
   return item;
 }
 
@@ -77,6 +90,9 @@ bool PacketQueue::add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled
   _table[_num] = packet;
   _pri_table[_num] = priority;
   _schedule_table[_num] = scheduled_for;
+  if (_num == 0 || (int32_t)(scheduled_for - _next_schedule) < 0) {
+    _next_schedule = scheduled_for;
+  }
   _num++;
   return true;
 }
@@ -121,6 +137,10 @@ int  StaticPoolPacketManager::getOutboundTotal() const {
   return send_queue.count();
 }
 
+bool StaticPoolPacketManager::getNextOutboundTime(uint32_t now, uint32_t& scheduled_for) const {
+  return send_queue.getNextTime(now, scheduled_for);
+}
+
 int StaticPoolPacketManager::getFreeCount() const {
   return unused.count();
 }
@@ -140,4 +160,8 @@ void StaticPoolPacketManager::queueInbound(mesh::Packet* packet, uint32_t schedu
 }
 mesh::Packet* StaticPoolPacketManager::getNextInbound(uint32_t now) {
   return rx_queue.get(now);
+}
+
+bool StaticPoolPacketManager::getNextInboundTime(uint32_t now, uint32_t& scheduled_for) const {
+  return rx_queue.getNextTime(now, scheduled_for);
 }

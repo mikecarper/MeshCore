@@ -224,6 +224,8 @@ private:
   bool _iter_started;
   bool _cli_rescue;
   bool saved_radio_apply_pending;
+  unsigned long radio_apply_retry_at;
+  uint8_t radio_apply_failures;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   uint8_t app_target_ver;

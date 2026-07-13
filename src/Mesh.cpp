@@ -140,6 +140,10 @@ uint8_t Mesh::getOtaHopLimit() const { return ota::ota_ctx().manager.max_hops();
 #endif
 
 void Mesh::begin() {
+  _waiting_direct_retry_count = 0;
+  _waiting_flood_retry_count = 0;
+  _next_direct_retry_timeout = 0;
+  _next_flood_retry_timeout = 0;
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     _direct_retries[i].packet = NULL;
     _direct_retries[i].trigger_packet = NULL;
@@ -192,12 +196,12 @@ void Mesh::begin() {
 void Mesh::loop() {
   Dispatcher::loop();
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
-    if (!_direct_retries[i].active) {
-      continue;
-    }
-
-    if (_direct_retries[i].waiting_final_echo) {
+  if (_waiting_direct_retry_count != 0
+      && millisHasNowPassed(_next_direct_retry_timeout)) {
+    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+      if (!_direct_retries[i].active || !_direct_retries[i].waiting_final_echo) {
+        continue;
+      }
       if (!millisHasNowPassed(_direct_retries[i].retry_at)) {
         continue;
       }
@@ -213,42 +217,15 @@ void Mesh::loop() {
                          _direct_retries[i].payload_type);
       onDirectRetryFailed(_direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
       clearDirectRetrySlot(i);
-      continue;
-    }
-
-    Packet* tracked_packet = _direct_retries[i].queued
-      ? _direct_retries[i].packet
-      : _direct_retries[i].trigger_packet;
-    if (tracked_packet == NULL
-        || (!isDirectRetryQueued(tracked_packet) && tracked_packet != getOutboundInFlight())) {
-      uint32_t elapsed_millis = _direct_retries[i].retry_started_at == 0
-        ? 0
-        : (uint32_t)(_ms->getMillis() - _direct_retries[i].retry_started_at);
-      uint8_t attempt = _direct_retries[i].queued
-        ? _direct_retries[i].retry_attempts_sent + 1
-        : 1;
-      onDirectRetryEvent("dropped_queue_removed", NULL, elapsed_millis, attempt,
-                         _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
-                         _direct_retries[i].payload_type);
-      onDirectRetryEvent("failure", NULL, elapsed_millis, attempt,
-                         _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
-                         _direct_retries[i].payload_type);
-      // A local queue eviction says nothing about the next hop's RF quality.
-      clearDirectRetrySlot(i);
-      continue;
-    }
-
-    if (!_direct_retries[i].queued || !millisHasNowPassed(_direct_retries[i].retry_at)) {
-      continue;
     }
   }
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active) {
-      continue;
-    }
-
-    if (_flood_retries[i].waiting_final_echo) {
+  if (_waiting_flood_retry_count != 0
+      && millisHasNowPassed(_next_flood_retry_timeout)) {
+    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+      if (!_flood_retries[i].active || !_flood_retries[i].waiting_final_echo) {
+        continue;
+      }
       if (!millisHasNowPassed(_flood_retries[i].retry_at)) {
         continue;
       }
@@ -259,28 +236,6 @@ void Mesh::loop() {
       onFloodRetryEvent("failed_all_tries", _flood_retries[i].packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
       onFloodRetryEvent("failure", _flood_retries[i].packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
       clearFloodRetrySlot(i);
-      continue;
-    }
-
-    Packet* tracked_packet = _flood_retries[i].queued
-      ? _flood_retries[i].packet
-      : _flood_retries[i].trigger_packet;
-    if (tracked_packet == NULL
-        || (!isFloodRetryQueued(tracked_packet) && tracked_packet != getOutboundInFlight())) {
-      uint32_t elapsed_millis = _flood_retries[i].retry_started_at == 0
-        ? 0
-        : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
-      uint8_t attempt = _flood_retries[i].queued
-        ? _flood_retries[i].retry_attempts_sent + 1
-        : 1;
-      onFloodRetryEvent("dropped_queue_removed", NULL, elapsed_millis, attempt);
-      onFloodRetryEvent("failure", NULL, elapsed_millis, attempt);
-      clearFloodRetrySlot(i);
-      continue;
-    }
-
-    if (!_flood_retries[i].queued || !millisHasNowPassed(_flood_retries[i].retry_at)) {
-      continue;
     }
   }
 #if defined(ENABLE_OTA)
@@ -904,6 +859,13 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
 }
 
 void Mesh::clearDirectRetrySlot(int idx) {
+  const bool rebuild_timeout = _direct_retries[idx].active
+      && _direct_retries[idx].waiting_final_echo
+      && _direct_retries[idx].retry_at == _next_direct_retry_timeout;
+  if (_direct_retries[idx].active && _direct_retries[idx].waiting_final_echo
+      && _waiting_direct_retry_count > 0) {
+    _waiting_direct_retry_count--;
+  }
   _direct_retries[idx].packet = NULL;
   _direct_retries[idx].trigger_packet = NULL;
   _direct_retries[idx].retry_started_at = 0;
@@ -922,15 +884,24 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].waiting_final_echo = false;
   _direct_retries[idx].queued = false;
   _direct_retries[idx].active = false;
+  if (rebuild_timeout) rebuildNextDirectRetryTimeout();
 }
 
-bool Mesh::isDirectRetryQueued(const Packet* packet) const {
-  for (int i = 0; i < _mgr->getOutboundTotal(); i++) {
-    if (_mgr->getOutboundByIdx(i) == packet) {
-      return true;
+void Mesh::rebuildNextDirectRetryTimeout() {
+  bool found = false;
+  uint32_t shortest_delay = 0;
+  const uint32_t now = _ms->getMillis();
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (!_direct_retries[i].active || !_direct_retries[i].waiting_final_echo) continue;
+    int32_t signed_delay = (int32_t)(_direct_retries[i].retry_at - now);
+    uint32_t delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
+    if (!found || delay < shortest_delay) {
+      shortest_delay = delay;
+      _next_direct_retry_timeout = _direct_retries[i].retry_at;
+      found = true;
     }
   }
-  return false;
+  if (!found) _next_direct_retry_timeout = 0;
 }
 
 bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
@@ -954,6 +925,27 @@ bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
   }
 
   return false;
+}
+
+bool Mesh::getNextRetryWakeDelay(uint32_t& delay_millis) const {
+  const uint32_t now = _ms->getMillis();
+  bool found = false;
+  uint32_t shortest_delay = 0;
+
+  if (_waiting_direct_retry_count != 0) {
+    int32_t signed_delay = (int32_t)(_next_direct_retry_timeout - now);
+    shortest_delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
+    found = true;
+  }
+  if (_waiting_flood_retry_count != 0) {
+    int32_t signed_delay = (int32_t)(_next_flood_retry_timeout - now);
+    uint32_t flood_delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
+    if (!found || flood_delay < shortest_delay) shortest_delay = flood_delay;
+    found = true;
+  }
+
+  if (found) delay_millis = shortest_delay;
+  return found;
 }
 
 void Mesh::calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const {
@@ -1058,6 +1050,11 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
           _direct_retries[i].packet = NULL;
           _direct_retries[i].retry_at = futureMillis(_direct_retries[i].retry_delay);
           _direct_retries[i].waiting_final_echo = true;
+          if (_waiting_direct_retry_count == 0
+              || (int32_t)(_direct_retries[i].retry_at - _next_direct_retry_timeout) < 0) {
+            _next_direct_retry_timeout = _direct_retries[i].retry_at;
+          }
+          _waiting_direct_retry_count++;
           _direct_retries[i].queued = false;
           continue;
         }
@@ -1345,7 +1342,13 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
 }
 
 void Mesh::clearFloodRetrySlot(int idx) {
+  const bool rebuild_timeout = _flood_retries[idx].active
+      && _flood_retries[idx].waiting_final_echo
+      && _flood_retries[idx].retry_at == _next_flood_retry_timeout;
   if (_flood_retries[idx].active) {
+    if (_flood_retries[idx].waiting_final_echo && _waiting_flood_retry_count > 0) {
+      _waiting_flood_retry_count--;
+    }
     onFloodRetrySlotReleased(_flood_retries[idx].retry_key);
   }
   if (_flood_retries[idx].waiting_final_echo && _flood_retries[idx].packet != NULL) {
@@ -1363,6 +1366,24 @@ void Mesh::clearFloodRetrySlot(int idx) {
   _flood_retries[idx].waiting_final_echo = false;
   _flood_retries[idx].queued = false;
   _flood_retries[idx].active = false;
+  if (rebuild_timeout) rebuildNextFloodRetryTimeout();
+}
+
+void Mesh::rebuildNextFloodRetryTimeout() {
+  bool found = false;
+  uint32_t shortest_delay = 0;
+  const uint32_t now = _ms->getMillis();
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (!_flood_retries[i].active || !_flood_retries[i].waiting_final_echo) continue;
+    int32_t signed_delay = (int32_t)(_flood_retries[i].retry_at - now);
+    uint32_t delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
+    if (!found || delay < shortest_delay) {
+      shortest_delay = delay;
+      _next_flood_retry_timeout = _flood_retries[i].retry_at;
+      found = true;
+    }
+  }
+  if (!found) _next_flood_retry_timeout = 0;
 }
 
 bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
@@ -1442,15 +1463,6 @@ bool Mesh::hasActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) const {
   return false;
 }
 
-bool Mesh::isFloodRetryQueued(const Packet* packet) const {
-  for (int i = 0; i < _mgr->getOutboundTotal(); i++) {
-    if (_mgr->getOutboundByIdx(i) == packet) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool Mesh::isFloodRetryEchoTarget(const Packet* packet, uint8_t progress_marker) const {
   return packet->isRouteFlood() && packet->getPathHashCount() > progress_marker;
 }
@@ -1523,6 +1535,11 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
         _flood_retries[i].packet = NULL;
         _flood_retries[i].retry_at = futureMillis(_flood_retries[i].retry_delay);
         _flood_retries[i].waiting_final_echo = true;
+        if (_waiting_flood_retry_count == 0
+            || (int32_t)(_flood_retries[i].retry_at - _next_flood_retry_timeout) < 0) {
+          _next_flood_retry_timeout = _flood_retries[i].retry_at;
+        }
+        _waiting_flood_retry_count++;
         _flood_retries[i].queued = false;
         continue;
       }

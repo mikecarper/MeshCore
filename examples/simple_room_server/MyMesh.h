@@ -125,6 +125,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t active_cr;
   bool temp_radio_applied;
   bool saved_radio_apply_pending;
+  unsigned long radio_apply_retry_at;
+  uint8_t radio_apply_failures;
   int  matching_peer_indexes[MAX_CLIENTS];
 #ifdef WITH_MQTT_BRIDGE
   MQTTBridge* bridge;

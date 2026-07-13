@@ -1,6 +1,13 @@
 #include "MyMesh.h"
 #include <helpers/RxReservePacketManager.h>
 
+static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
+  uint8_t shift = failure_count < 5 ? failure_count : 5;
+  if (failure_count < 6) failure_count++;
+  uint32_t delay_ms = 1000UL << shift;
+  return delay_ms > 30000UL ? 30000UL : delay_ms;
+}
+
 #define REPLY_DELAY_MILLIS          1500
 #define PUSH_NOTIFY_DELAY_MILLIS    2000
 #define SYNC_PUSH_INTERVAL          1200
@@ -655,6 +662,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   active_cr = LORA_CR;
   temp_radio_applied = false;
   saved_radio_apply_pending = false;
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
   recv_pkt_region = NULL;
 
   // defaults
@@ -853,6 +862,8 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
   set_radio_at = futureMillis(2000); // give CLI reply some time to be sent back, before applying temp radio params
   pending_freq = freq;
   pending_bw = bw;
@@ -1146,12 +1157,16 @@ void MyMesh::loop() {
   }
 
   const bool revert_radio_due = revert_radio_at && millisHasNowPassed(revert_radio_at);
+  const bool radio_apply_ready = !radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at);
+  bool radio_apply_failed = false;
   if (revert_radio_due && !temp_radio_applied) {
     // The temporary window ended before it could be applied. Drop both timers
     // so a previously busy radio cannot switch to the expired channel later.
     set_radio_at = revert_radio_at = 0;
+    radio_apply_retry_at = 0;
+    radio_apply_failures = 0;
     MESH_DEBUG_PRINTLN("Temp radio params expired before apply");
-  } else if (revert_radio_due && !hasOutbound()) {
+  } else if (revert_radio_due && !hasOutbound() && radio_apply_ready) {
     if (applySavedRadioParams()) {
       if (saved_radio_apply_pending) {
         radio_driver.setTxPower(_prefs.tx_power_dbm);
@@ -1159,9 +1174,14 @@ void MyMesh::loop() {
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
       saved_radio_apply_pending = false;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
       MESH_DEBUG_PRINTLN("Radio params restored");
+    } else {
+      radio_apply_failed = true;
     }
-  } else if (set_radio_at && millisHasNowPassed(set_radio_at) && !hasOutbound()) {
+  } else if (set_radio_at && millisHasNowPassed(set_radio_at) && !hasOutbound()
+             && radio_apply_ready) {
     uint32_t rx_us = _prefs.rx_ps_rx_us;
     uint32_t sleep_us = _prefs.rx_ps_sleep_us;
     bool timing_ok = true;
@@ -1179,14 +1199,30 @@ void MyMesh::loop() {
       set_radio_at = 0;
       active_cr = pending_cr;
       temp_radio_applied = true;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
       MESH_DEBUG_PRINTLN("Temp radio params");
+    } else {
+      // A failed setParams() may have applied only a prefix of the tuple.
+      // Ensure expiry restores the complete saved configuration.
+      saved_radio_apply_pending = true;
+      radio_apply_failed = true;
     }
   }
 
   if (saved_radio_apply_pending && !temp_radio_applied && !hasOutbound()
-      && applySavedRadioParams()) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-    saved_radio_apply_pending = false;
+      && radio_apply_ready && !radio_apply_failed) {
+    if (applySavedRadioParams()) {
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      saved_radio_apply_pending = false;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
+    } else {
+      radio_apply_failed = true;
+    }
+  }
+  if (radio_apply_failed) {
+    radio_apply_retry_at = futureMillis(nextRadioApplyRetryDelay(radio_apply_failures));
   }
 
   // is pending dirty contacts write needed?
@@ -1230,13 +1266,28 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   }
 
   uint32_t sleep_secs = max_secs;
+  uint32_t queue_delay_ms;
+  if (getNextQueueWakeDelay(queue_delay_ms)) {
+    uint32_t queue_delay_secs = (queue_delay_ms + 999UL) / 1000UL;
+    if (queue_delay_secs < sleep_secs) sleep_secs = queue_delay_secs;
+  }
+  uint32_t retry_delay_ms;
+  if (getNextRetryWakeDelay(retry_delay_ms)) {
+    uint32_t retry_delay_secs = (retry_delay_ms + 999UL) / 1000UL;
+    if (retry_delay_secs < sleep_secs) sleep_secs = retry_delay_secs;
+  }
   if (acl.getNumClients() > 0) {
     sleep_secs = limitSleepToMillisTimer(next_push, sleep_secs);
   }
   sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(set_radio_at, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(revert_radio_at, sleep_secs);
+  const bool radio_apply_backoff = radio_apply_retry_at && !millisHasNowPassed(radio_apply_retry_at);
+  if (radio_apply_backoff) {
+    sleep_secs = limitSleepToMillisTimer(radio_apply_retry_at, sleep_secs);
+  } else {
+    sleep_secs = limitSleepToMillisTimer(set_radio_at, sleep_secs);
+    sleep_secs = limitSleepToMillisTimer(revert_radio_at, sleep_secs);
+  }
   sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
   return sleep_secs;
 }
@@ -1248,9 +1299,12 @@ bool MyMesh::hasPendingWork() const {
 #endif
   if (radio_driver.isWatchdogObserving()) return true; // keep MCU awake for one radio duty cycle
   if (radio_driver.isCalibratingNoiseFloor()) return true; // keep MCU awake for the noise-floor window
-  if (_mgr->getOutboundTotal() > 0) return true;
+  if (hasQueuedWorkDue() || hasRetryWorkDue()) return true;
   if (acl.getNumClients() > 0 && isMillisTimerDue(next_push)) return true;
   if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
-  if (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)) return true;
+  const bool radio_apply_backoff = radio_apply_retry_at && !isMillisTimerDue(radio_apply_retry_at);
+  if (!radio_apply_backoff
+      && (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)
+          || (saved_radio_apply_pending && !temp_radio_applied))) return true;
   return isMillisTimerDue(dirty_contacts_expiry);
 }

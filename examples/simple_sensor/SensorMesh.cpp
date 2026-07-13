@@ -1,5 +1,12 @@
 #include "SensorMesh.h"
 
+static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
+  uint8_t shift = failure_count < 5 ? failure_count : 5;
+  if (failure_count < 6) failure_count++;
+  uint32_t delay_ms = 1000UL << shift;
+  return delay_ms > 30000UL ? 30000UL : delay_ms;
+}
+
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef LORA_FREQ
@@ -753,6 +760,8 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
   active_cr = LORA_CR;
   temp_radio_applied = false;
   saved_radio_apply_pending = false;
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
 
   // defaults
   memset(&_prefs, 0, sizeof(_prefs));
@@ -875,6 +884,8 @@ void SensorMesh::saveIdentity(const mesh::LocalIdentity& new_id) {
 }
 
 void SensorMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
   set_radio_at = futureMillis(2000);   // give CLI reply some time to be sent back, before applying temp radio params
   pending_freq = freq;
   pending_bw = bw;
@@ -987,11 +998,15 @@ void SensorMesh::loop() {
   }
 
   const bool revert_radio_due = revert_radio_at && millisHasNowPassed(revert_radio_at);
+  const bool radio_apply_ready = !radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at);
+  bool radio_apply_failed = false;
   if (revert_radio_due && !temp_radio_applied) {
     // Never apply a temporary channel after its window has already ended.
     set_radio_at = revert_radio_at = 0;
+    radio_apply_retry_at = 0;
+    radio_apply_failures = 0;
     MESH_DEBUG_PRINTLN("Temp radio params expired before apply");
-  } else if (revert_radio_due && !hasOutbound()) {
+  } else if (revert_radio_due && !hasOutbound() && radio_apply_ready) {
     if (applySavedRadioParams()) {
       if (saved_radio_apply_pending) {
         radio_driver.setTxPower(_prefs.tx_power_dbm);
@@ -999,9 +1014,14 @@ void SensorMesh::loop() {
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
       saved_radio_apply_pending = false;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
       MESH_DEBUG_PRINTLN("Radio params restored");
+    } else {
+      radio_apply_failed = true;
     }
-  } else if (set_radio_at && millisHasNowPassed(set_radio_at) && !hasOutbound()) {
+  } else if (set_radio_at && millisHasNowPassed(set_radio_at) && !hasOutbound()
+             && radio_apply_ready) {
     uint32_t rx_us = _prefs.rx_ps_rx_us;
     uint32_t sleep_us = _prefs.rx_ps_sleep_us;
     bool timing_ok = true;
@@ -1019,14 +1039,30 @@ void SensorMesh::loop() {
       set_radio_at = 0;
       active_cr = pending_cr;
       temp_radio_applied = true;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
       MESH_DEBUG_PRINTLN("Temp radio params");
+    } else {
+      // A failed setParams() may have applied only a prefix of the tuple.
+      // Ensure expiry restores the complete saved configuration.
+      saved_radio_apply_pending = true;
+      radio_apply_failed = true;
     }
   }
 
   if (saved_radio_apply_pending && !temp_radio_applied && !hasOutbound()
-      && applySavedRadioParams()) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-    saved_radio_apply_pending = false;
+      && radio_apply_ready && !radio_apply_failed) {
+    if (applySavedRadioParams()) {
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      saved_radio_apply_pending = false;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
+    } else {
+      radio_apply_failed = true;
+    }
+  }
+  if (radio_apply_failed) {
+    radio_apply_retry_at = futureMillis(nextRadioApplyRetryDelay(radio_apply_failures));
   }
 
   uint32_t curr = getRTCClock()->getCurrentTime();

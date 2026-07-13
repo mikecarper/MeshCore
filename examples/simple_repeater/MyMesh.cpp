@@ -105,6 +105,13 @@
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
 
+static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
+  uint8_t shift = failure_count < 5 ? failure_count : 5;
+  if (failure_count < 6) failure_count++;
+  uint32_t delay_ms = 1000UL << shift;
+  return delay_ms > 30000UL ? 30000UL : delay_ms;
+}
+
 static const char* skipLocalSpaces(const char* text) {
   while (text != NULL && *text == ' ') text++;
   return text;
@@ -2322,6 +2329,14 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   active_cr = 0;
   saved_radio_apply_pending = false;
   temp_radio_handoff_pending = false;
+  scheduled_temp_radio_started = false;
+  next_scheduled_radio_time = 0;
+  next_scheduled_radio_check_at = 0;
+  scheduled_temp_radio_end_time = 0;
+  scheduled_temp_radio_end_check_at = 0;
+  scheduled_temp_radio_end_check_final = false;
+  scheduled_radio_retry_at = 0;
+  scheduled_radio_retry_failures = 0;
   memset(scheduled_radio_settings, 0, sizeof(scheduled_radio_settings));
   _logging = false;
   region_load_active = false;
@@ -2750,26 +2765,83 @@ bool MyMesh::applySavedRadioParams() {
   return applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
 }
 
-bool MyMesh::hasStartedScheduledTempRadio() const {
+void MyMesh::queueSavedRadioApply() {
+  saved_radio_apply_pending = true;
+  scheduled_radio_retry_at = 0;
+  scheduled_radio_retry_failures = 0;
+}
+
+void MyMesh::refreshScheduledRadioState() {
+  next_scheduled_radio_time = 0;
+  scheduled_temp_radio_started = false;
+  scheduled_temp_radio_end_time = 0;
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && setting.started) {
-      return true;
+    if (!setting.active) continue;
+
+    uint32_t deadline = setting.start_time;
+    if (setting.temporary && setting.started) {
+      scheduled_temp_radio_started = true;
+      if (scheduled_temp_radio_end_time == 0 || setting.end_time < scheduled_temp_radio_end_time) {
+        scheduled_temp_radio_end_time = setting.end_time;
+      }
+      deadline = setting.end_time;
+    }
+    if (next_scheduled_radio_time == 0 || deadline < next_scheduled_radio_time) {
+      next_scheduled_radio_time = deadline;
     }
   }
-  return false;
+  const uint32_t now = (next_scheduled_radio_time != 0 || scheduled_temp_radio_end_time != 0)
+      ? getRTCClock()->getCurrentTime()
+      : 0;
+  if (next_scheduled_radio_time != 0) {
+    uint32_t delay_ms = 0;
+    if (next_scheduled_radio_time > now) {
+      uint32_t delay_secs = next_scheduled_radio_time - now;
+      // millis timers are only unambiguous for half of their rollover range.
+      // A minute checkpoint handles RTC corrections without per-loop RTC reads
+      // or table scans, while bounding a forward clock-sync delay to one minute.
+      if (delay_secs > SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS) {
+        delay_secs = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS;
+      }
+      delay_ms = delay_secs * 1000UL;
+    }
+    next_scheduled_radio_check_at = futureMillis(delay_ms);
+  } else {
+    next_scheduled_radio_check_at = 0;
+  }
+  if (scheduled_temp_radio_end_time != 0) {
+    uint32_t delay_ms = 0;
+    scheduled_temp_radio_end_check_final = true;
+    if (scheduled_temp_radio_end_time > now) {
+      uint32_t delay_secs = scheduled_temp_radio_end_time - now;
+      if (delay_secs > SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS) {
+        delay_secs = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS;
+        scheduled_temp_radio_end_check_final = false;
+      }
+      delay_ms = delay_secs * 1000UL;
+    }
+    scheduled_temp_radio_end_check_at = futureMillis(delay_ms);
+  } else {
+    scheduled_temp_radio_end_check_at = 0;
+    scheduled_temp_radio_end_check_final = false;
+  }
+  if (next_scheduled_radio_time == 0 && !saved_radio_apply_pending) {
+    scheduled_radio_retry_at = 0;
+    scheduled_radio_retry_failures = 0;
+  }
+}
+
+bool MyMesh::hasStartedScheduledTempRadio() const {
+  return scheduled_temp_radio_started;
 }
 
 #if defined(ENABLE_OTA)
 bool MyMesh::isTempRadioActive() const {
-  const uint32_t now = getRTCClock()->getCurrentTime();
-  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
-    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && setting.started && now < setting.end_time) {
-      return true;
-    }
-  }
-  return false;
+  return scheduled_temp_radio_started
+      && (!scheduled_temp_radio_end_check_final
+          || scheduled_temp_radio_end_check_at == 0
+          || !millisHasNowPassed(scheduled_temp_radio_end_check_at));
 }
 #endif
 
@@ -2863,13 +2935,14 @@ void MyMesh::clearScheduledRadioSetting(int idx, bool restore_if_started) {
       && scheduled_radio_settings[idx].started;
   scheduled_radio_settings[idx].active = false;
   scheduled_radio_settings[idx].started = false;
+  refreshScheduledRadioState();
   if (scheduled_radio_settings[idx].temporary && temp_radio_handoff_pending
       && countScheduledRadioSettings(true) == 0) {
     temp_radio_handoff_pending = false;
-    saved_radio_apply_pending = true;
+    queueSavedRadioApply();
   }
-  if (restore_radio && !hasStartedScheduledTempRadio()) {
-    saved_radio_apply_pending = true;
+  if ((restore_radio || saved_radio_apply_pending) && !hasStartedScheduledTempRadio()) {
+    queueSavedRadioApply();
   }
 }
 
@@ -2984,6 +3057,11 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
   scheduled_radio_settings[slot].cr = cr;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = temporary ? end_time : 0;
+  // A newly requested schedule must not inherit the backoff of an older radio
+  // apply failure, especially when its deadline is sooner than that retry.
+  scheduled_radio_retry_at = 0;
+  scheduled_radio_retry_failures = 0;
+  refreshScheduledRadioState();
 
   char delay[16];
   formatScheduledRadioDuration(delay, sizeof(delay), start_time);
@@ -3060,12 +3138,13 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
         deleted++;
       }
     }
-    if (restore_radio && !hasStartedScheduledTempRadio()) {
-      saved_radio_apply_pending = true;
+    refreshScheduledRadioState();
+    if ((restore_radio || saved_radio_apply_pending) && !hasStartedScheduledTempRadio()) {
+      queueSavedRadioApply();
     }
     if (temporary && temp_radio_handoff_pending) {
       temp_radio_handoff_pending = false;
-      saved_radio_apply_pending = true;
+      queueSavedRadioApply();
     }
     snprintf(reply, 160, "OK - deleted %d", deleted);
     return;
@@ -3087,14 +3166,33 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
 }
 
 void MyMesh::processScheduledRadioSettings() {
-  // Never touch modulation registers while a packet is still on air. Due work
-  // remains queued and is retried on the first loop after TX completion.
-  if (hasOutbound()) return;
+  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) return;
 
-  uint32_t now = getRTCClock()->getCurrentTime();
+  const bool schedule_check_due = next_scheduled_radio_time != 0
+      && (next_scheduled_radio_check_at == 0
+          || millisHasNowPassed(next_scheduled_radio_check_at));
+  uint32_t now = 0;
+  bool schedule_due = false;
+  if (schedule_check_due) {
+    now = getRTCClock()->getCurrentTime();
+    schedule_due = now >= next_scheduled_radio_time;
+    if (!schedule_due) refreshScheduledRadioState();
+  }
+  bool saved_apply_due = saved_radio_apply_pending && !temp_radio_handoff_pending
+      && !scheduled_temp_radio_started;
+  if (!schedule_due && !saved_apply_due) return;
+
+  // Never touch modulation registers while a packet is still on air. Back off
+  // this check too; a long packet should not make the scheduler poll every loop.
+  if (hasOutbound()) {
+    scheduled_radio_retry_at = futureMillis(RADIO_APPLY_RETRY_INTERVAL_MILLIS);
+    return;
+  }
+
+  bool apply_failed = false;
   bool saved_params_changed = false;
 
-  while (true) {
+  while (schedule_due) {
     int due_idx = -1;
     for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
       const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
@@ -3125,36 +3223,46 @@ void MyMesh::processScheduledRadioSettings() {
     // persisted SF/BW. Manual RX/sleep timings intentionally remain fixed.
     CommonCLI::recalculateRxPowerSavingFromLevel(&_prefs);
     savePrefs();
-    saved_radio_apply_pending = true;
+    queueSavedRadioApply();
   }
 
-  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
-    ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && setting.started && now >= setting.end_time) {
-      setting.active = false;
-      setting.started = false;
-      saved_radio_apply_pending = true;
-    }
-  }
-
-  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
-    ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && !setting.started && now >= setting.start_time) {
-      if (now >= setting.end_time) {
+  if (schedule_due) {
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+      ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+      if (setting.active && setting.temporary && setting.started && now >= setting.end_time) {
         setting.active = false;
-        if (temp_radio_handoff_pending) {
+        setting.started = false;
+        queueSavedRadioApply();
+      }
+    }
+
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+      ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+      if (setting.active && setting.temporary && !setting.started && now >= setting.start_time) {
+        if (now >= setting.end_time) {
+          setting.active = false;
+          if (temp_radio_handoff_pending) {
+            temp_radio_handoff_pending = false;
+            queueSavedRadioApply();
+          }
+        } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr)) {
+          setting.started = true;
           temp_radio_handoff_pending = false;
+        } else {
+          // setParams() can fail after changing only part of the modulation
+          // tuple. Restore the saved tuple if this temporary window expires
+          // before a later retry succeeds.
           saved_radio_apply_pending = true;
+          apply_failed = true;
+          break;
         }
-      } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr)) {
-        setting.started = true;
-        temp_radio_handoff_pending = false;
       }
     }
   }
 
+  refreshScheduledRadioState();
   if (saved_radio_apply_pending && !temp_radio_handoff_pending
-      && !hasStartedScheduledTempRadio()) {
+      && !scheduled_temp_radio_started && !apply_failed) {
     // If begin() deferred the saved params to preserve a wake packet, its gain
     // update was deferred for the same reason. Retry both at the first safe
     // handoff; unsupported boosted-gain modes remain harmless here.
@@ -3162,7 +3270,15 @@ void MyMesh::processScheduledRadioSettings() {
     if (applySavedRadioParams()) {
       radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
+    } else {
+      apply_failed = true;
     }
+  }
+  if (apply_failed) {
+    scheduled_radio_retry_at = futureMillis(nextRadioApplyRetryDelay(scheduled_radio_retry_failures));
+  } else {
+    scheduled_radio_retry_at = 0;
+    scheduled_radio_retry_failures = 0;
   }
 }
 
@@ -3171,27 +3287,12 @@ bool MyMesh::isMillisTimerDue(unsigned long timestamp) const {
 }
 
 bool MyMesh::hasScheduledRadioWorkDue() const {
-  if (saved_radio_apply_pending) return true;
-
-  uint32_t now = getRTCClock()->getCurrentTime();
-  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
-    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (!setting.active) {
-      continue;
-    }
-    if (!setting.temporary && now >= setting.start_time) {
-      return true;
-    }
-    if (setting.temporary) {
-      if (!setting.started && now >= setting.start_time) {
-        return true;
-      }
-      if (setting.started && now >= setting.end_time) {
-        return true;
-      }
-    }
-  }
-  return false;
+  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) return false;
+  if (saved_radio_apply_pending && !temp_radio_handoff_pending
+      && !scheduled_temp_radio_started) return true;
+  return next_scheduled_radio_time != 0
+      && (next_scheduled_radio_check_at == 0
+          || millisHasNowPassed(next_scheduled_radio_check_at));
 }
 
 uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const {
@@ -3207,32 +3308,11 @@ uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep
   return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
 }
 
-uint32_t MyMesh::limitSleepToRtcTime(uint32_t timestamp, uint32_t sleep_secs) const {
-  if (!timestamp || sleep_secs == 0) {
-    return sleep_secs;
-  }
-  uint32_t now = getRTCClock()->getCurrentTime();
-  if (now >= timestamp) {
-    return 0;
-  }
-  uint32_t remaining_secs = timestamp - now;
-  return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
-}
-
 uint32_t MyMesh::limitSleepToScheduledRadioWork(uint32_t sleep_secs) const {
-  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
-    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (!setting.active) {
-      continue;
-    }
-    if (!setting.temporary || !setting.started) {
-      sleep_secs = limitSleepToRtcTime(setting.start_time, sleep_secs);
-    }
-    if (setting.temporary && setting.started) {
-      sleep_secs = limitSleepToRtcTime(setting.end_time, sleep_secs);
-    }
+  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) {
+    return limitSleepToMillisTimer(scheduled_radio_retry_at, sleep_secs);
   }
-  return sleep_secs;
+  return limitSleepToMillisTimer(next_scheduled_radio_check_at, sleep_secs);
 }
 
 uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
@@ -3241,6 +3321,16 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   }
 
   uint32_t sleep_secs = max_secs;
+  uint32_t queue_delay_ms;
+  if (getNextQueueWakeDelay(queue_delay_ms)) {
+    uint32_t queue_delay_secs = (queue_delay_ms + 999UL) / 1000UL;
+    if (queue_delay_secs < sleep_secs) sleep_secs = queue_delay_secs;
+  }
+  uint32_t retry_delay_ms;
+  if (getNextRetryWakeDelay(retry_delay_ms)) {
+    uint32_t retry_delay_secs = (retry_delay_ms + 999UL) / 1000UL;
+    if (retry_delay_secs < sleep_secs) sleep_secs = retry_delay_secs;
+  }
   sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
@@ -3253,6 +3343,8 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+  scheduled_radio_retry_at = 0;
+  scheduled_radio_retry_failures = 0;
   bool cancelled_started_temp = false;
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     if (scheduled_radio_settings[i].active && scheduled_radio_settings[i].temporary) {
@@ -3272,8 +3364,9 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   if (slot < 0) {
     if (temp_radio_handoff_pending) {
       temp_radio_handoff_pending = false;
-      saved_radio_apply_pending = true;
+      queueSavedRadioApply();
     }
+    refreshScheduledRadioState();
     return;
   }
 
@@ -3287,6 +3380,7 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   scheduled_radio_settings[slot].cr = cr;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = start_time + ((uint32_t)timeout_mins * 60);
+  refreshScheduledRadioState();
 }
 
 bool MyMesh::formatFileSystem() {
@@ -4291,7 +4385,7 @@ bool MyMesh::hasPendingWork() const {
 #endif
   if (radio_driver.isWatchdogObserving()) return true;  // keep MCU awake for one radio duty cycle
   if (radio_driver.isCalibratingNoiseFloor()) return true;  // keep MCU awake for the noise-floor window
-  if (_mgr->getOutboundTotal() > 0) return true;
+  if (hasQueuedWorkDue() || hasRetryWorkDue()) return true;
   if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
   if (isMillisTimerDue(dirty_contacts_expiry)) return true;
   if (isMillisTimerDue(next_recent_repeater_sweep)) return true;

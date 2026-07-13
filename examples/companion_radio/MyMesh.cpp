@@ -3,6 +3,13 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 
+static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
+  uint8_t shift = failure_count < 5 ? failure_count : 5;
+  if (failure_count < 6) failure_count++;
+  uint32_t delay_ms = 1000UL << shift;
+  return delay_ms > 30000UL ? 30000UL : delay_ms;
+}
+
 #ifndef RXPS_FIXED_ENABLED
 #define RXPS_FIXED_ENABLED 1
 #endif
@@ -1082,6 +1089,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _iter_started = false;
   _cli_rescue = false;
   saved_radio_apply_pending = false;
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
   offline_queue_len = 0;
   app_target_ver = 0;
   clearPendingReqs();
@@ -2573,7 +2582,8 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
-  if (saved_radio_apply_pending && !hasOutbound()) {
+  if (saved_radio_apply_pending && !hasOutbound()
+      && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at))) {
     // A power-saving wake can enter begin() with a complete packet already
     // waiting. Preserve that packet, then apply the persisted radio settings
     // once the receive/response path is idle.
@@ -2581,6 +2591,10 @@ void MyMesh::loop() {
     if (applySavedRadioParams()) {
       radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
+    } else {
+      radio_apply_retry_at = futureMillis(nextRadioApplyRetryDelay(radio_apply_failures));
     }
   }
   if (has_next_ack_expiry
@@ -2627,6 +2641,11 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0
-      || emergency_client_repeat_packet != NULL;
+  if (radio_driver.isWatchdogObserving() || radio_driver.isCalibratingNoiseFloor()) return true;
+  return hasQueuedWorkDue() || hasRetryWorkDue()
+      || (saved_radio_apply_pending
+          && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
+      || (dirty_contacts_expiry != 0 && millisHasNowPassed(dirty_contacts_expiry))
+      || (emergency_client_repeat_packet != NULL
+          && millisHasNowPassed(emergency_client_repeat_send_at));
 }

@@ -17,6 +17,8 @@ protected:
   uint32_t n_recv, n_sent, n_recv_errors;
   int16_t _noise_floor, _threshold;
   bool _cad_enabled;
+  bool _noise_floor_valid;
+  bool _nf_refresh_requested;
   uint16_t _num_floor_samples;
   int32_t _floor_sample_sum;
   unsigned long last_recv_millis;
@@ -51,20 +53,21 @@ protected:
   bool _cur_rx_boosted_gain;
   bool _params_valid, _dbm_valid, _rx_boosted_gain_valid;
 
-  // Periodic noise-floor calibration (only while RX duty-cycle powersaving is
-  // armed): a duty-cycled receiver can't be sampled reliably, so at least once
-  // a minute the wrapper drops to plain continuous RX, collects a fresh sample
-  // batch exactly like the non-powersaving path does, publishes the average
-  // into _noise_floor and re-arms the duty cycle.
+  // On-demand noise-floor calibration while RX duty-cycle powersaving is
+  // armed. A duty-cycled receiver can't be sampled reliably, so a requested
+  // refresh briefly drops to continuous RX, publishes an average, then re-arms
+  // the duty cycle.
   bool _nf_calib_active;
   unsigned long _nf_last_calib;       // millis of last completed/attempted window
   unsigned long _nf_calib_deadline;   // abort window if the batch can't complete
   unsigned long _nf_sample_from;      // no samples before this (RX entry settle)
+  unsigned long _nf_next_sample_at;   // pace SPI RSSI reads during a sample batch
 
   void idle() override;
   void startRecv() override;
   void rxPsWatchdogCheck();
-  void noiseFloorCalibCheck();
+  void requestNoiseFloorRefresh();
+  void noiseFloorCalibCheck(unsigned long now);
   void endNoiseFloorCalib(unsigned long now);
   void cacheParams(float freq, float bw, uint8_t sf, uint8_t cr) {
     _cur_freq = freq; _cur_bw = bw; _cur_sf = sf; _cur_cr = cr; _params_valid = true;
@@ -89,12 +92,14 @@ protected:
 
 public:
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
-      : _radio(&radio), _board(&board), _preamble_sf(0), _rx_ps_enabled(false), _rx_ps_armed(false),
+      : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
+        _preamble_sf(0), _rx_ps_enabled(false), _rx_ps_armed(false),
         _rx_ps_rx_us(RX_PS_FALLBACK_RX_US), _rx_ps_sleep_us(RX_PS_FALLBACK_SLEEP_US),
         _wd_last_busy(false), _wd_stage(0), _wd_strikes(0), _startrx_fails(0), _wd_last_transition(0),
         _wd_stuck_thresh(0), _wd_observe_until(0), _wd_observe_ms(0),
         _cur_rx_boosted_gain(false), _params_valid(false), _dbm_valid(false), _rx_boosted_gain_valid(false),
-        _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0)
+        _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0),
+        _nf_next_sample_at(0)
         {
           n_recv = n_sent = n_recv_errors = n_wd_soft = n_wd_hard = 0;
           last_recv_millis = 0;
@@ -154,10 +159,11 @@ public:
   // true while the watchdog is actively watching for BUSY transitions; used by
   // the app's hasPendingWork() to keep the MCU out of light sleep for the window
   bool isWatchdogObserving() const { return _wd_observe_until != 0; }
-  // true while a periodic noise-floor calibration window is in progress; the
-  // app's hasPendingWork() must keep the MCU awake so the sample batch and the
-  // return to duty-cycle complete promptly
-  bool isCalibratingNoiseFloor() const { return _nf_calib_active; }
+  // true while a noise-floor batch needs prompt loop service; the app's
+  // hasPendingWork() keeps the MCU awake only for this short sample burst.
+  bool isCalibratingNoiseFloor() const {
+    return _nf_calib_active || (_nf_refresh_requested && !_rx_ps_enabled);
+  }
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 
   uint8_t getRadioState() const override;

@@ -13,7 +13,7 @@ namespace mesh {
 #define MIN_TX_BUDGET_AIRTIME_DIV  2      // require at least 1/N of estimated airtime as budget before TX
 
 #ifndef NOISE_FLOOR_CALIB_INTERVAL
-  #define NOISE_FLOOR_CALIB_INTERVAL   2000     // 2 seconds
+  #define NOISE_FLOOR_CALIB_INTERVAL   30000    // request at most every 30 seconds
 #endif
 
 void Dispatcher::begin() {
@@ -78,6 +78,42 @@ uint32_t Dispatcher::getCADFailRetryDelay() const {
 }
 uint32_t Dispatcher::getCADFailMaxDuration() const {
   return 4000;   // 4 seconds
+}
+
+bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
+  const uint32_t now = _ms->getMillis();
+  bool found = false;
+  uint32_t shortest_delay = 0;
+
+  if (outbound != NULL) {
+    // TX completion/timeout still needs the normal fast lifecycle path.
+    delay_millis = 0;
+    return true;
+  }
+
+  uint32_t scheduled_for;
+  if (_mgr->getNextOutboundTime(now, scheduled_for)) {
+    int32_t signed_queue_delay = (int32_t)(scheduled_for - now);
+    uint32_t outbound_delay = signed_queue_delay > 0 ? (uint32_t)signed_queue_delay : 0;
+    int32_t signed_tx_delay = (int32_t)(next_tx_time - now);
+    if (signed_tx_delay > 0 && (uint32_t)signed_tx_delay > outbound_delay) {
+      outbound_delay = (uint32_t)signed_tx_delay;
+    }
+    shortest_delay = outbound_delay;
+    found = true;
+  }
+
+  if (_mgr->getNextInboundTime(now, scheduled_for)) {
+    int32_t signed_inbound_delay = (int32_t)(scheduled_for - now);
+    uint32_t inbound_delay = signed_inbound_delay > 0 ? (uint32_t)signed_inbound_delay : 0;
+    if (!found || inbound_delay < shortest_delay) {
+      shortest_delay = inbound_delay;
+      found = true;
+    }
+  }
+
+  if (found) delay_millis = shortest_delay;
+  return found;
 }
 
 #ifdef WITH_MQTT_BRIDGE
@@ -191,9 +227,17 @@ void Dispatcher::loop() {
 
   // check inbound (delayed) queue
   {
-    Packet* pkt = _mgr->getNextInbound(_ms->getMillis());
-    if (pkt) {
-      processRecvPacket(pkt);
+    const uint32_t now = _ms->getMillis();
+    uint32_t next_inbound;
+    // Packet managers with deadline support avoid a full priority scan while
+    // every delayed packet is still in the future. Legacy managers retain the
+    // original getNextInbound() behavior.
+    if (!_mgr->getNextInboundTime(now, next_inbound)
+        || (int32_t)(next_inbound - now) <= 0) {
+      Packet* pkt = _mgr->getNextInbound(now);
+      if (pkt) {
+        processRecvPacket(pkt);
+      }
     }
   }
   checkRecv();
@@ -340,7 +384,15 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
 }
 
 void Dispatcher::checkSend() {
-  if (_mgr->getOutboundCount(_ms->getMillis()) == 0) return;
+  const uint32_t now = _ms->getMillis();
+  uint32_t next_outbound;
+  if (_mgr->getNextOutboundTime(now, next_outbound)) {
+    if ((int32_t)(next_outbound - now) > 0) return;
+  } else if (_mgr->getOutboundCount(now) == 0) {
+    // Compatibility fallback for custom PacketManager implementations that do
+    // not provide the optional O(1) deadline query.
+    return;
+  }
   
   updateTxBudget();
   

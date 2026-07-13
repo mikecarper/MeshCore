@@ -136,11 +136,24 @@ public:
   virtual Packet* getNextDroppedOutbound() { return NULL; }
   virtual int getOutboundCount(uint32_t now) const = 0;
   virtual int getOutboundTotal() const = 0;
+  // Returns the earliest runnable time in the queue. A queue with any overdue
+  // entry reports `now`, which keeps rollover-safe timer comparisons local to
+  // the queue implementation.
+  virtual bool getNextOutboundTime(uint32_t now, uint32_t& scheduled_for) const {
+    (void)now;
+    (void)scheduled_for;
+    return false;
+  }
   virtual int getFreeCount() const = 0;
   virtual Packet* getOutboundByIdx(int i) = 0;
   virtual Packet* removeOutboundByIdx(int i) = 0;
   virtual void queueInbound(Packet* packet, uint32_t scheduled_for) = 0;
   virtual Packet* getNextInbound(uint32_t now) = 0;
+  virtual bool getNextInboundTime(uint32_t now, uint32_t& scheduled_for) const {
+    (void)now;
+    (void)scheduled_for;
+    return false;
+  }
 };
 
 typedef uint32_t  DispatcherAction;
@@ -242,6 +255,14 @@ protected:
   virtual uint32_t getRadioWatchdogMillis() const;  // observer-only radio recovery
 #endif
   const Packet* getOutboundInFlight() const { return outbound; }
+  // Milliseconds until Dispatcher can next make progress on a queued packet.
+  // This includes queue schedules, delayed inbound processing, airtime-budget
+  // waits, and short channel-busy deferrals.
+  bool getNextQueueWakeDelay(uint32_t& delay_millis) const;
+  bool hasQueuedWorkDue() const {
+    uint32_t delay_millis;
+    return getNextQueueWakeDelay(delay_millis) && delay_millis == 0;
+  }
   bool queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t delay_millis);
   bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
 

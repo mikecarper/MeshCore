@@ -8,13 +8,16 @@
 #define STATE_TX_DONE    4
 #define STATE_INT_READY 16
 
-#define NUM_NOISE_FLOOR_SAMPLES  64
+#define NUM_NOISE_FLOOR_SAMPLES  16
 #define SAMPLING_THRESHOLD  14
 
-// periodic noise-floor calibration windows (RX duty-cycle powersaving only)
-#define NF_CALIB_INTERVAL_MS  60000UL   // at least once a minute
+// On-demand noise-floor calibration windows (RX duty-cycle powersaving only).
+// Requests are coalesced so retries cannot repeatedly force continuous RX.
+#define NF_CALIB_INTERVAL_MS  300000UL  // no more than once every five minutes
 #define NF_CALIB_TIMEOUT_MS   5000UL    // give up on the batch (busy channel)
+#define NF_CONTINUOUS_TIMEOUT_MS 1000UL // bound awake time without RX powersaving
 #define NF_CALIB_SETTLE_MS    20UL      // frontend/AGC settle after RX entry
+#define NF_SAMPLE_INTERVAL_MS  20UL      // avoid back-to-back SPI RSSI reads
 
 static volatile uint8_t state = STATE_IDLE;
 
@@ -40,12 +43,19 @@ void RadioLibWrapper::begin() {
   }
 
   _noise_floor = 0;
+  _noise_floor_valid = false;
   _threshold = 0;
   _cad_enabled = false;
 
   // start average out some samples
   _num_floor_samples = 0;
   _floor_sample_sum = 0;
+  _nf_calib_active = false;
+  _nf_last_calib = 0;
+  _nf_sample_from = 0;
+  _nf_refresh_requested = true;  // establish one baseline after startup
+  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  _nf_next_sample_at = 0;
 }
 
 uint32_t RadioLibWrapper::getRngSeed() {
@@ -124,10 +134,19 @@ void RadioLibWrapper::idle() {
 
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
-  if (_num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES) {  // ignore trigger if currently sampling
-    _num_floor_samples = 0;
-    _floor_sample_sum = 0;
-  }
+  // With interference detection disabled, Dispatcher polling is a free flag
+  // update: passive retries request a refresh themselves only when the cached
+  // floor is stale. An enabled threshold keeps the floor periodically fresh.
+  if (threshold != 0) requestNoiseFloorRefresh();
+}
+
+void RadioLibWrapper::requestNoiseFloorRefresh() {
+  if (_nf_refresh_requested) return;
+  _nf_refresh_requested = true;
+  _num_floor_samples = 0;
+  _floor_sample_sum = 0;
+  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  _nf_next_sample_at = 0;
 }
 
 void RadioLibWrapper::doResetAGC() {
@@ -147,8 +166,15 @@ void RadioLibWrapper::resetAGC() {
   // too low (-106) to accept normal samples (~-105), self-reinforcing the
   // stuck value even after the receiver has recovered.
   _noise_floor = 0;
+  _noise_floor_valid = false;
+  _nf_calib_active = false;
+  _nf_refresh_requested = true;
+  _nf_last_calib = 0;
+  _nf_sample_from = 0;
   _num_floor_samples = 0;
   _floor_sample_sum = 0;
+  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  _nf_next_sample_at = 0;
 }
 
 void RadioLibWrapper::rxPsWatchdogCheck() {
@@ -225,28 +251,30 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
   }
 }
 
-// Periodic noise-floor calibration, active only with RX duty-cycle powersaving:
+// On-demand noise-floor calibration, active only with RX duty-cycle powersaving:
 // a duty-cycled receiver can't be sampled reliably (the frontend is off in the
-// sleep windows and settling right after each wake), so at least once a minute
-// the receive mode is dropped to plain continuous RX, a fresh sample batch is
-// collected exactly like the non-powersaving path does, and the duty cycle is
-// re-armed. The published average stays in _noise_floor as usual.
-void RadioLibWrapper::noiseFloorCalibCheck() {
-  unsigned long now = millis();
+// sleep windows and settling right after each wake), so a requested refresh
+// drops receive mode to plain continuous RX, collects a fresh sample batch,
+// and re-arms the duty cycle. Requests are rate-limited and coalesced.
+void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
   if (_nf_calib_active) {
-    if (!_rx_ps_enabled || (long)(now - _nf_calib_deadline) >= 0) {
+    if (!_rx_ps_enabled
+        || ((long)(now - _nf_calib_deadline) >= 0
+            && _num_floor_samples < NUM_NOISE_FLOOR_SAMPLES)) {
       // powersaving turned off mid-window, or the batch couldn't complete
       // (busy channel / stuck filter) - keep the previous floor
       endNoiseFloorCalib(now);
     }
-  } else if (_rx_ps_enabled && _rx_ps_armed && state == STATE_RX
-             && now - _nf_last_calib >= NF_CALIB_INTERVAL_MS
+  } else if (_nf_refresh_requested && _rx_ps_enabled && _rx_ps_armed && state == STATE_RX
+             && ((!_noise_floor_valid && _nf_last_calib == 0)
+                 || now - _nf_last_calib >= NF_CALIB_INTERVAL_MS)
              && !isReceivingPacket()) {
     // never interrupt an ongoing reception to calibrate (a TX in flight is
     // already excluded by state == STATE_RX); retries next loop iteration
     _nf_calib_active = true;
     _nf_calib_deadline = now + NF_CALIB_TIMEOUT_MS;
     _nf_sample_from = now + NF_CALIB_SETTLE_MS;
+    _nf_next_sample_at = _nf_sample_from;
     _num_floor_samples = 0;   // start a fresh batch for this window
     _floor_sample_sum = 0;
     state = STATE_IDLE;   // recvRaw() re-arms; startReceiveMode() sees the
@@ -256,7 +284,9 @@ void RadioLibWrapper::noiseFloorCalibCheck() {
 
 void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   _nf_calib_active = false;
+  _nf_refresh_requested = false;
   _nf_last_calib = now;
+  _nf_next_sample_at = 0;
   // force a receive re-arm back into duty-cycle mode, but don't clobber a
   // completed-but-unread packet or an in-flight TX (recvRaw()/onSendFinished()
   // will re-arm right after those anyway; same guard style as setRxPowerSaving)
@@ -269,33 +299,58 @@ void RadioLibWrapper::loop() {
   if (_rx_ps_enabled) {
     rxPsWatchdogCheck();
   }
-  noiseFloorCalibCheck();
-
-  if (state == STATE_RX && _num_floor_samples < NUM_NOISE_FLOOR_SAMPLES) {
-    // Noise floor is only sampled outside RX duty-cycle mode: continuously in
-    // plain RX (powersaving off), or inside the periodic calibration window
-    // (powersaving on), skipping the first moments after RX entry there while
-    // the frontend/AGC settles (unsettled GetRssiInst reads ~-127 dBm garbage).
-    if (!_rx_ps_armed
-        && !(_nf_calib_active && (long)(millis() - _nf_sample_from) < 0)
-        && !isReceivingPacket()) {
-      int rssi = getCurrentRSSI();
-      if (rssi < _noise_floor + SAMPLING_THRESHOLD) {  // only consider samples below current floor + sampling THRESHOLD
-        _num_floor_samples++;
-        _floor_sample_sum += rssi;
-      }
-    }
-  } else if (_num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES && _floor_sample_sum != 0) {
+  unsigned long now = millis();
+  if (_nf_calib_active || _nf_refresh_requested) {
+    noiseFloorCalibCheck(now);
+  }
+  if (_nf_refresh_requested && _num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES
+      && _floor_sample_sum != 0) {
     _noise_floor = _floor_sample_sum / NUM_NOISE_FLOOR_SAMPLES;
     if (_noise_floor < -120) {
       _noise_floor = -120;    // clamp to lower bound of -120dBi
     }
     _floor_sample_sum = 0;
+    _noise_floor_valid = true;
+    _nf_refresh_requested = false;
+    _nf_last_calib = now;
+    _nf_next_sample_at = 0;
 
     MESH_DEBUG_PRINTLN("RadioLibWrapper: noise_floor = %d", (int)_noise_floor);
 
     if (_nf_calib_active) {
-      endNoiseFloorCalib(millis());   // fresh floor published - back to duty cycle
+      endNoiseFloorCalib(now);   // fresh floor published - back to duty cycle
+    }
+    return;
+  }
+
+  if (_nf_refresh_requested && !_rx_ps_enabled && _nf_calib_deadline != 0
+      && (long)(now - _nf_calib_deadline) >= 0) {
+    // A continuously busy channel can reject every candidate sample. Do not
+    // keep the MCU awake indefinitely; retain the previous floor and wait for
+    // the normal stale-floor interval before another requested burst.
+    _nf_refresh_requested = false;
+    _nf_last_calib = now;
+    _nf_next_sample_at = 0;
+    _num_floor_samples = 0;
+    _floor_sample_sum = 0;
+  }
+
+  if (_nf_refresh_requested && state == STATE_RX
+      && _num_floor_samples < NUM_NOISE_FLOOR_SAMPLES
+      && (_nf_next_sample_at == 0 || (long)(now - _nf_next_sample_at) >= 0)) {
+    // Noise floor is only sampled outside RX duty-cycle mode: continuously in
+    // plain RX (powersaving off), or inside an on-demand calibration window
+    // (powersaving on), skipping the first moments after RX entry there while
+    // the frontend/AGC settles (unsettled GetRssiInst reads ~-127 dBm garbage).
+    if (!_rx_ps_armed
+        && !(_nf_calib_active && (long)(now - _nf_sample_from) < 0)
+        && !isReceivingPacket()) {
+      int rssi = getCurrentRSSI();
+      _nf_next_sample_at = now + NF_SAMPLE_INTERVAL_MS;
+      if (rssi < _noise_floor + SAMPLING_THRESHOLD) {  // only consider samples below current floor + sampling THRESHOLD
+        _num_floor_samples++;
+        _floor_sample_sum += rssi;
+      }
     }
   }
 }
@@ -470,6 +525,16 @@ bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
   // retains its bounded busy timeout as a last-resort escape.
   if (isChipBusy()) return true;
   if (isReceivingPacket()) return true;
+
+  unsigned long now = millis();
+  if ((!_noise_floor_valid && _nf_last_calib == 0)
+      || now - _nf_last_calib >= NF_CALIB_INTERVAL_MS) {
+    requestNoiseFloorRefresh();
+  }
+  // Until the startup baseline is ready, defer rather than compare against the
+  // zero-initialized floor and transmit blind. Dispatcher retains its bounded
+  // busy timeout if sampling cannot complete.
+  if (!_noise_floor_valid) return true;
 
   // Use a fixed margin for retries even when the normal interference threshold
   // is disabled. This is passive (RSSI only): unlike CAD it does not restart RX

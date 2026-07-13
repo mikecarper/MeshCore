@@ -252,6 +252,23 @@ TEST(SimpleMeshTables, RecentRepeatersExpireOnlyAfterTwentyFourHours) {
     EXPECT_EQ(nullptr, t.findRecentRepeaterByHash(first, 3));
 }
 
+TEST(SimpleMeshTables, FullRecentRepeaterTableStillEvictsDeterministically) {
+    SimpleMeshTables::RecentRepeaterInfo storage[2];
+    SimpleMeshTables t(storage, 2);
+    const uint8_t first[] = {0x10};
+    const uint8_t second[] = {0x20};
+    const uint8_t replacement[] = {0x30};
+
+    ASSERT_TRUE(t.setRecentRepeater(first, 1, 4));
+    ASSERT_TRUE(t.setRecentRepeater(second, 1, 8));
+    ASSERT_TRUE(t.setRecentRepeater(replacement, 1, 12));
+
+    EXPECT_EQ(nullptr, t.findRecentRepeaterByHash(first, 1));
+    EXPECT_NE(nullptr, t.findRecentRepeaterByHash(second, 1));
+    EXPECT_NE(nullptr, t.findRecentRepeaterByHash(replacement, 1));
+    EXPECT_EQ(2, t.getRecentRepeaterCount());
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

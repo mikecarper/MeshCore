@@ -92,11 +92,16 @@ class Mesh : public Dispatcher {
   MeshTables* _tables;
   DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
   FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
+  uint8_t _waiting_direct_retry_count;
+  uint8_t _waiting_flood_retry_count;
+  unsigned long _next_direct_retry_timeout;
+  unsigned long _next_flood_retry_timeout;
 
   void removePathPrefix(Packet* packet, uint8_t prefix_count);
   void routeDirectRecvAcks(Packet* packet, uint32_t delay_millis);
+  void rebuildNextDirectRetryTimeout();
+  void rebuildNextFloodRetryTimeout();
   void clearDirectRetrySlot(int idx);
-  bool isDirectRetryQueued(const Packet* packet) const;
   void calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const;
   bool cancelDirectRetryOnEcho(const Packet* packet);
   void armDirectRetryOnSendComplete(const Packet* packet);
@@ -106,7 +111,6 @@ class Mesh : public Dispatcher {
   bool canDecodeDirectPayloadForSelf(const Packet* packet);
   void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool final_hop_retry = false);
   void clearFloodRetrySlot(int idx);
-  bool isFloodRetryQueued(const Packet* packet) const;
   bool cancelFloodRetryOnEcho(const Packet* packet);
   void armFloodRetryOnSendComplete(const Packet* packet);
   void clearPendingFloodRetryOnSendFail(const Packet* packet);
@@ -120,6 +124,11 @@ protected:
   void onSendFail(Packet* packet) override;
   bool allowPacketTransmit(const Packet* packet) const override;
   bool usePassiveChannelCheck(const Packet* packet) const override;
+  bool getNextRetryWakeDelay(uint32_t& delay_millis) const;
+  bool hasRetryWorkDue() const {
+    uint32_t delay_millis;
+    return getNextRetryWakeDelay(delay_millis) && delay_millis == 0;
+  }
 
   virtual uint32_t getCADFailRetryDelay() const override;
 
