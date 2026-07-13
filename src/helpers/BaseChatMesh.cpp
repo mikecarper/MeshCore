@@ -439,9 +439,21 @@ mesh::Packet* BaseChatMesh::composeMsgPacket(const ContactInfo& recipient, uint3
   return createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id, recipient.getSharedSecret(self_id), temp, len);
 }
 
-int  BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char* text, uint32_t& expected_ack, uint32_t& est_timeout) {
+int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char* text,
+                              uint32_t& expected_ack, uint32_t& est_timeout, uint8_t* packet_hash,
+                              const uint8_t* replace_retry_key) {
   mesh::Packet* pkt = composeMsgPacket(recipient, timestamp, attempt, text, expected_ack);
   if (pkt == NULL) return MSG_SEND_FAILED;
+  if (packet_hash != NULL) {
+    pkt->calculatePacketHash(packet_hash);
+  }
+  if (replace_retry_key != NULL) {
+    // Composition succeeded, so the new submission now owns this semantic DM.
+    // Cancel before sendDirect()/sendFloodScoped() registers its retry: when
+    // timestamp and attempt are unchanged, both encrypted packets have the
+    // same retry key and registering first would suppress the new sequence.
+    cancelActiveRetries(replace_retry_key);
+  }
 
   uint32_t t = _radio->getEstAirtimeFor(pkt->getRawLength());
 

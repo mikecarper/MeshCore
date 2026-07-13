@@ -28,6 +28,7 @@ class RegionMap {
   RegionEntry wildcard;
 
   void printChildRegions(int indent, const RegionEntry* parent, Stream& out) const;
+  bool wouldCreateCycle(uint16_t region_id, uint16_t parent_id) const;
 
 public:
   RegionMap(TransportKeyStore& store);
@@ -49,7 +50,7 @@ public:
   void setDefaultRegion(const RegionEntry* def);
   bool removeRegion(const RegionEntry& region);
   bool clear();
-  void resetFrom(const RegionMap& src) { num_regions = 0; next_id = src.next_id; }
+  void resetFrom(const RegionMap& src);
   int getCount() const { return num_regions; }
   const RegionEntry* getByIdx(int i) const { return &regions[i]; }
   const RegionEntry* getRoot() const { return &wildcard; }

@@ -103,8 +103,7 @@
 #define LOW_BATTERY_MIN_VALID_MV       1000
 #define LOW_BATTERY_STARTUP_DELAY      (30ULL * 60ULL * 1000ULL)
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
-#define LOW_BATTERY_WARN_INTERVAL      (24UL * 60UL * 60UL * 1000UL)
-#define LOW_BATTERY_CRITICAL_INTERVAL  (12UL * 60UL * 60UL * 1000UL)
+#define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
 
 static const char* skipLocalSpaces(const char* text) {
   while (text != NULL && *text == ' ') text++;
@@ -2003,6 +2002,21 @@ void MyMesh::clearRecentRepeaters() {
   }
 }
 
+void MyMesh::expireRecentRepeatersIfDue() {
+  if (!next_recent_repeater_sweep || !millisHasNowPassed(next_recent_repeater_sweep)) {
+    return;
+  }
+
+  SimpleMeshTables* tables = static_cast<SimpleMeshTables*>(getTables());
+  if (tables != NULL) {
+    int expired = tables->expireRecentRepeaters(_ms->getMillis(), RECENT_REPEATER_MAX_AGE_MILLIS);
+    if (expired > 0) {
+      MESH_DEBUG_PRINTLN("Recent repeaters: expired %d entries", expired);
+    }
+  }
+  next_recent_repeater_sweep = futureMillis(RECENT_REPEATER_SWEEP_INTERVAL_MILLIS);
+}
+
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
@@ -2299,12 +2313,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   next_battery_alert_check = 0;
+  next_recent_repeater_sweep = 0;
   last_battery_alert_sent = 0;
   battery_alert_sent = false;
   dirty_contacts_expiry = 0;
   active_bw = 0.0f;
   active_sf = 0;
   active_cr = 0;
+  saved_radio_apply_pending = false;
+  temp_radio_handoff_pending = false;
   memset(scheduled_radio_settings, 0, sizeof(scheduled_radio_settings));
   _logging = false;
   region_load_active = false;
@@ -2491,10 +2508,11 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _alerter.setBridge(mqtt_bridge);
 #endif
 
-  applySavedRadioParams();
-  radio_driver.setTxPower(_prefs.tx_power_dbm);
-
-  radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+  saved_radio_apply_pending = !applySavedRadioParams();
+  if (!saved_radio_apply_pending) {
+    radio_driver.setTxPower(_prefs.tx_power_dbm);
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+  }
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
   board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);   // LoRa FEM LNA (FEM boards only)
@@ -2502,6 +2520,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   updateAdvertTimer();
   updateFloodAdvertTimer();
+  next_recent_repeater_sweep = futureMillis(RECENT_REPEATER_SWEEP_INTERVAL_MILLIS);
 
 #if ENV_INCLUDE_GPS == 1
   applyGpsPrefs();
@@ -2649,21 +2668,36 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope)
 
 void MyMesh::checkBatteryAlert() {
   if (!_prefs.battery_alert_enabled) {
-    battery_alert_sent = false;
-    return;
-  }
-
-  // Ignore startup voltage sag and give solar/charger hardware time to settle.
-  // uptime_millis is 64-bit and includes time spent in the platform's light or
-  // event sleep, so this guard remains reliable across millis() wraparound.
-  if (uptime_millis < LOW_BATTERY_STARTUP_DELAY) {
     return;
   }
 
   if (next_battery_alert_check && !millisHasNowPassed(next_battery_alert_check)) {
     return;
   }
+
+  // Ignore startup voltage sag and give solar/charger hardware time to settle.
+  // uptime_millis is 64-bit and includes time spent in the platform's light or
+  // event sleep, so this guard remains reliable across millis() wraparound.
+  // Arm the remaining startup delay once so subsequent loops use the cheaper
+  // 32-bit deadline check above and powersaving can include it as a wake limit.
+  if (uptime_millis < LOW_BATTERY_STARTUP_DELAY) {
+    next_battery_alert_check = futureMillis(
+        (unsigned long)(LOW_BATTERY_STARTUP_DELAY - uptime_millis));
+    return;
+  }
+
   next_battery_alert_check = futureMillis(LOW_BATTERY_CHECK_INTERVAL);
+
+  // A successful queue operation starts one fixed cooldown. Do this before
+  // region resolution and ADC sampling so repeat checks during the cooldown
+  // stay as cheap as possible. Battery recovery and alert toggles must not
+  // bypass the cooldown within this boot.
+  if (battery_alert_sent) {
+    if (uptime_millis - last_battery_alert_sent < LOW_BATTERY_ALERT_INTERVAL) {
+      return;
+    }
+    battery_alert_sent = false;
+  }
 
   // Check the cheap configuration path first. This avoids powering the ADC or
   // battery-divider circuitry when the selected region has been removed or no
@@ -2676,34 +2710,44 @@ void MyMesh::checkBatteryAlert() {
   uint16_t batt_mv = board.getBattMilliVolts();
   uint8_t batt_pct = batteryPercentFromMilliVolts(batt_mv);
   if (batt_mv <= LOW_BATTERY_MIN_VALID_MV || batt_pct >= _prefs.battery_alert_low_percent) {
-    battery_alert_sent = false;
-    return;
-  }
-
-  unsigned long interval = batt_pct <= _prefs.battery_alert_critical_percent
-      ? LOW_BATTERY_CRITICAL_INTERVAL
-      : LOW_BATTERY_WARN_INTERVAL;
-  if (battery_alert_sent && !millisHasNowPassed(last_battery_alert_sent + interval)) {
     return;
   }
 
   char text[96];
-  snprintf(text, sizeof(text), "LOW BATTERY %u%% (%u mV)", (uint32_t)batt_pct, (uint32_t)batt_mv);
+  const char* severity = batt_pct <= _prefs.battery_alert_critical_percent
+    ? "CRITICAL BATTERY"
+    : "LOW BATTERY";
+  snprintf(text, sizeof(text), "%s %u%% (%u mV)", severity, (uint32_t)batt_pct, (uint32_t)batt_mv);
   if (sendRepeatersFloodText(text, &alert_scope)) {
     battery_alert_sent = true;
-    last_battery_alert_sent = millis();
+    last_battery_alert_sent = uptime_millis;
   }
 }
 
-void MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
-  radio_driver.setParams(freq, bw, sf, cr);
+bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+  uint32_t rx_us = _prefs.rx_ps_rx_us;
+  uint32_t sleep_us = _prefs.rx_ps_sleep_us;
+  if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0) {
+    uint32_t preamble = _prefs.rx_ps_preamble ? _prefs.rx_ps_preamble : (sf <= 8 ? 32UL : 16UL);
+    if (!CommonCLI::calculateRxPowerSavingLevel(
+          _prefs.rx_ps_level, sf, bw, preamble, &rx_us, &sleep_us)) return false;
+  }
+  uint32_t timings[2] = {rx_us, sleep_us};
+  const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
+      && radio_driver.supportsRxPowerSaving() ? timings : NULL;
+  if (!radio_driver.setParams(freq, bw, sf, cr,
+                              applied_timings)) {
+    MESH_DEBUG_PRINTLN("Radio schedule: radio busy or parameter apply failed");
+    return false;
+  }
   active_bw = bw;
   active_sf = sf;
   active_cr = cr;
+  return true;
 }
 
-void MyMesh::applySavedRadioParams() {
-  applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+bool MyMesh::applySavedRadioParams() {
+  return applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
 }
 
 bool MyMesh::hasStartedScheduledTempRadio() const {
@@ -2819,8 +2863,13 @@ void MyMesh::clearScheduledRadioSetting(int idx, bool restore_if_started) {
       && scheduled_radio_settings[idx].started;
   scheduled_radio_settings[idx].active = false;
   scheduled_radio_settings[idx].started = false;
+  if (scheduled_radio_settings[idx].temporary && temp_radio_handoff_pending
+      && countScheduledRadioSettings(true) == 0) {
+    temp_radio_handoff_pending = false;
+    saved_radio_apply_pending = true;
+  }
   if (restore_radio && !hasStartedScheduledTempRadio()) {
-    applySavedRadioParams();
+    saved_radio_apply_pending = true;
   }
 }
 
@@ -3012,7 +3061,11 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
       }
     }
     if (restore_radio && !hasStartedScheduledTempRadio()) {
-      applySavedRadioParams();
+      saved_radio_apply_pending = true;
+    }
+    if (temporary && temp_radio_handoff_pending) {
+      temp_radio_handoff_pending = false;
+      saved_radio_apply_pending = true;
     }
     snprintf(reply, 160, "OK - deleted %d", deleted);
     return;
@@ -3034,9 +3087,12 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
 }
 
 void MyMesh::processScheduledRadioSettings() {
+  // Never touch modulation registers while a packet is still on air. Due work
+  // remains queued and is retried on the first loop after TX completion.
+  if (hasOutbound()) return;
+
   uint32_t now = getRTCClock()->getCurrentTime();
   bool saved_params_changed = false;
-  bool temp_ended = false;
 
   while (true) {
     int due_idx = -1;
@@ -3059,28 +3115,26 @@ void MyMesh::processScheduledRadioSettings() {
     _prefs.bw = setting.bw;
     _prefs.sf = setting.sf;
     _prefs.cr = setting.cr;
-    savePrefs();
     setting.active = false;
     setting.started = false;
     saved_params_changed = true;
   }
 
-  if (saved_params_changed && !hasStartedScheduledTempRadio()) {
-    applySavedRadioParams();
+  if (saved_params_changed) {
+    // Keep level-derived RX duty-cycle windows synchronized with the newly
+    // persisted SF/BW. Manual RX/sleep timings intentionally remain fixed.
+    CommonCLI::recalculateRxPowerSavingFromLevel(&_prefs);
+    savePrefs();
+    saved_radio_apply_pending = true;
   }
 
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && setting.started && now >= setting.end_time
-        && !hasOutbound()) {
+    if (setting.active && setting.temporary && setting.started && now >= setting.end_time) {
       setting.active = false;
       setting.started = false;
-      temp_ended = true;
+      saved_radio_apply_pending = true;
     }
-  }
-
-  if (temp_ended && !hasStartedScheduledTempRadio()) {
-    applySavedRadioParams();
   }
 
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
@@ -3088,10 +3142,26 @@ void MyMesh::processScheduledRadioSettings() {
     if (setting.active && setting.temporary && !setting.started && now >= setting.start_time) {
       if (now >= setting.end_time) {
         setting.active = false;
-      } else {
-        applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr);
+        if (temp_radio_handoff_pending) {
+          temp_radio_handoff_pending = false;
+          saved_radio_apply_pending = true;
+        }
+      } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr)) {
         setting.started = true;
+        temp_radio_handoff_pending = false;
       }
+    }
+  }
+
+  if (saved_radio_apply_pending && !temp_radio_handoff_pending
+      && !hasStartedScheduledTempRadio()) {
+    // If begin() deferred the saved params to preserve a wake packet, its gain
+    // update was deferred for the same reason. Retry both at the first safe
+    // handoff; unsupported boosted-gain modes remain harmless here.
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+    if (applySavedRadioParams()) {
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      saved_radio_apply_pending = false;
     }
   }
 }
@@ -3101,6 +3171,8 @@ bool MyMesh::isMillisTimerDue(unsigned long timestamp) const {
 }
 
 bool MyMesh::hasScheduledRadioWorkDue() const {
+  if (saved_radio_apply_pending) return true;
+
   uint32_t now = getRTCClock()->getCurrentTime();
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
@@ -3172,6 +3244,7 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(next_recent_repeater_sweep, sleep_secs);
   if (_prefs.battery_alert_enabled) {
     sleep_secs = limitSleepToMillisTimer(next_battery_alert_check, sleep_secs);
   }
@@ -3180,15 +3253,27 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+  bool cancelled_started_temp = false;
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     if (scheduled_radio_settings[i].active && scheduled_radio_settings[i].temporary) {
+      cancelled_started_temp = cancelled_started_temp || scheduled_radio_settings[i].started;
       scheduled_radio_settings[i].active = false;
       scheduled_radio_settings[i].started = false;
     }
   }
+  if (cancelled_started_temp) {
+    // Keep the currently-active channel long enough for the CLI reply and use
+    // the new temporary entry as an explicit handoff. If that entry expires or
+    // is deleted before applying, the scheduler restores saved parameters.
+    temp_radio_handoff_pending = true;
+  }
 
   int slot = findFreeScheduledRadioSlot();
   if (slot < 0) {
+    if (temp_radio_handoff_pending) {
+      temp_radio_handoff_pending = false;
+      saved_radio_apply_pending = true;
+    }
     return;
   }
 
@@ -3876,10 +3961,19 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 
   if (region_load_active) {
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
-      region_map = temp_map;  // copy over the temp instance as new current map
       region_load_active = false;
-
-      sprintf(reply, "OK - loaded %d regions", region_map.getCount());
+      // resetFrom() preserves the selected IDs. Reject a replacement that
+      // omitted either selected region instead of leaving a dangling ID.
+      bool missing_default = region_map.getDefaultRegion() != NULL
+          && temp_map.getDefaultRegion() == NULL;
+      bool missing_home = region_map.getHomeRegion() != NULL
+          && temp_map.getHomeRegion() == NULL;
+      if (!missing_default && !missing_home) {
+        region_map = temp_map;
+        sprintf(reply, "OK - loaded %d regions", region_map.getCount());
+      } else {
+        strcpy(reply, "Err - invalid region map; previous map retained");
+      }
     } else {
       char *np = command;
       while (*np == ' ') np++;   // skip indent
@@ -4060,13 +4154,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
                          sizeof(_prefs.battery_alert_region));
       _prefs.battery_alert_enabled = 1;
       next_battery_alert_check = 0;
-      battery_alert_sent = false;
       savePrefs();
       sprintf(reply, "OK - battery alerts scoped to %s", _prefs.battery_alert_region);
     } else if (strcmp(value, "off") == 0) {
       _prefs.battery_alert_enabled = 0;
       next_battery_alert_check = 0;
-      battery_alert_sent = false;
       savePrefs();
       strcpy(reply, "OK");
     } else {
@@ -4115,6 +4207,7 @@ void MyMesh::loop() {
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
   checkBatteryAlert();
+  expireRecentRepeatersIfDue();
 
 #if defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
   // MQTT runs its own task; serial and ESP-NOW bridges remain cooperative.
@@ -4201,6 +4294,7 @@ bool MyMesh::hasPendingWork() const {
   if (_mgr->getOutboundTotal() > 0) return true;
   if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
   if (isMillisTimerDue(dirty_contacts_expiry)) return true;
+  if (isMillisTimerDue(next_recent_repeater_sweep)) return true;
   if (_prefs.battery_alert_enabled && isMillisTimerDue(next_battery_alert_check)) return true;
   return hasScheduledRadioWorkDue();
 }

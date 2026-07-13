@@ -1,4 +1,5 @@
 #include "RegionMap.h"
+#include <helpers/RegionNameUtils.h>
 #include <helpers/TxtDataHelpers.h>
 #include <SHA256.h>
 
@@ -55,7 +56,7 @@ bool RegionMap::is_name_char(uint8_t c) {
 }
 
 static const char* skip_hash(const char* name) {
-  return *name == '#' ? name + 1 : name;
+  return RegionNameUtils::canonical(name);
 }
 
 static File openWrite(FILESYSTEM* _fs, const char* filename) {
@@ -107,7 +108,8 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
         if (!success) break;
 
         const char* terminator = (const char*)memchr(r.name, 0, sizeof(r.name));
-        if (r.id == 0 || r.id == 0xFFFF || terminator == NULL || r.name[0] == 0) {
+        if (r.id == 0 || r.id == 0xFFFF || terminator == NULL || r.name[0] == 0
+            || RegionNameUtils::canonical(r.name)[0] == 0) {
           success = false;
           break;
         }
@@ -126,7 +128,10 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
       // parent references are allowed. A bounded walk also rejects cycles.
       for (uint16_t i = 0; success && i < loaded_count; i++) {
         for (uint16_t j = i + 1; j < loaded_count; j++) {
-          if (loaded[i].id == loaded[j].id) success = false;
+          if (loaded[i].id == loaded[j].id
+              || RegionNameUtils::equivalent(loaded[i].name, loaded[j].name)) {
+            success = false;
+          }
         }
         uint16_t parent = loaded[i].parent;
         for (uint16_t depth = 0; success && parent != 0; depth++) {
@@ -209,24 +214,41 @@ bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
 }
 
 RegionEntry* RegionMap::putRegion(const char* name, uint16_t parent_id, uint16_t id) {
-  const char* sp = name;  // check for illegal name chars
+  if (name == NULL || RegionNameUtils::canonical(name)[0] == 0) return NULL;
+
+  size_t name_len = 0;
+  const char* sp = name;  // check length and illegal name chars in one pass
   while (*sp) {
-    if (!is_name_char(*sp)) return NULL;   // error
+    if (!is_name_char(*sp) || ++name_len >= sizeof(regions[0].name)) return NULL;
     sp++;
   }
 
   auto region = findByName(name);
   if (region) {
-    if (region->id == parent_id) return NULL;   // ERROR: invalid parent!
+    if ((id != 0 && id != region->id) || wouldCreateCycle(region->id, parent_id)) {
+      return NULL;
+    }
 
     region->parent = parent_id;   // re-parent / move this region in the hierarchy
   } else {
     if (num_regions >= MAX_REGION_ENTRIES) return NULL;  // full!
+    if (findById(parent_id) == NULL) return NULL;
     if (id == 0xFFFF || (id == 0 && (next_id == 0 || next_id == 0xFFFF))) return NULL;
+    if (id != 0 && findById(id) != NULL) return NULL;
+    // 0xFFFF is the reserved/exhausted sentinel. Only consume 0xFFFE when this
+    // entry fills the table; otherwise saving would produce a map that load()
+    // correctly rejects as unable to allocate its remaining slots.
+    if ((id == 0 ? next_id : id) == 0xFFFE
+        && num_regions + 1 < MAX_REGION_ENTRIES) return NULL;
 
     region = &regions[num_regions++];   // alloc new RegionEntry
     region->flags = REGION_DENY_FLOOD;     // DENY by default
-    region->id = id == 0 ? next_id++ : id;
+    if (id == 0) {
+      region->id = next_id++;
+    } else {
+      region->id = id;
+      if (id >= next_id) next_id = id + 1;
+    }
     StrHelper::strncpy(region->name, name, sizeof(region->name));
     region->parent = parent_id;
   }
@@ -268,6 +290,7 @@ RegionEntry* RegionMap::findMatch(mesh::Packet* packet, uint8_t mask) {
 }
 
 RegionEntry* RegionMap::findByName(const char* name) {
+  if (name == NULL) return NULL;
   if (strcmp(name, "*") == 0) return &wildcard;
 
   if (*name == '#') { name++; }  // ignore the '#' when matching by name
@@ -279,18 +302,27 @@ RegionEntry* RegionMap::findByName(const char* name) {
 }
 
 RegionEntry* RegionMap::findByNamePrefix(const char* prefix) {
+  if (prefix == NULL) return NULL;
   if (strcmp(prefix, "*") == 0) return &wildcard;
 
   if (*prefix == '#') { prefix++; }  // ignore the '#' when matching by name
+  if (*prefix == 0) return NULL;
+  size_t prefix_len = strlen(prefix);
   RegionEntry* partial = NULL;
+  bool ambiguous = false;
   for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
-    if (strcmp(prefix, skip_hash(region->name)) == 0) return region;  // is a complete match, preference this one
-    if (memcmp(prefix, skip_hash(region->name), strlen(prefix)) == 0) {
-      partial = region;
+    const char* candidate = skip_hash(region->name);
+    if (strcmp(prefix, candidate) == 0) return region;  // exact matches always win
+    if (strlen(candidate) >= prefix_len && memcmp(prefix, candidate, prefix_len) == 0) {
+      if (partial != NULL) {
+        ambiguous = true;
+      } else {
+        partial = region;
+      }
     }
   }
-  return partial;
+  return ambiguous ? NULL : partial;
 }
 
 RegionEntry* RegionMap::findById(uint16_t id) {
@@ -339,12 +371,48 @@ bool RegionMap::removeRegion(const RegionEntry& region) {
     regions[i] = regions[i + 1];
     i++;
   }
+  memset(&regions[num_regions], 0, sizeof(regions[num_regions]));
+  if (default_id == region.id) default_id = 0;
+  if (home_id == region.id) home_id = 0;
   return true;  // success
 }
 
 bool RegionMap::clear() {
   num_regions = 0;
+  next_id = 1;
+  default_id = home_id = 0;
+  memset(regions, 0, sizeof(regions));
+  wildcard.id = wildcard.parent = 0;
+  wildcard.flags = 0;
+  strcpy(wildcard.name, "*");
   return true;  // success
+}
+
+bool RegionMap::wouldCreateCycle(uint16_t region_id, uint16_t parent_id) const {
+  uint16_t current = parent_id;
+  for (uint16_t depth = 0; current != 0; depth++) {
+    if (current == region_id || depth >= num_regions) return true;
+
+    const RegionEntry* parent = NULL;
+    for (uint16_t i = 0; i < num_regions; i++) {
+      if (regions[i].id == current) {
+        parent = &regions[i];
+        break;
+      }
+    }
+    if (parent == NULL) return true;
+    current = parent->parent;
+  }
+  return false;
+}
+
+void RegionMap::resetFrom(const RegionMap& src) {
+  next_id = src.next_id;
+  home_id = src.home_id;
+  default_id = src.default_id;
+  num_regions = 0;
+  memset(regions, 0, sizeof(regions));
+  wildcard = src.wildcard;
 }
 
 void RegionMap::printChildRegions(int indent, const RegionEntry* parent, Stream& out) const {

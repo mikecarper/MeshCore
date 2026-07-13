@@ -12,14 +12,16 @@ class CustomSX1268Wrapper : public RadioLibWrapper {
 public:
   CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
-  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    ((CustomSX1268 *)_radio)->setFrequency(freq);
-    ((CustomSX1268 *)_radio)->setSpreadingFactor(sf);
-    ((CustomSX1268 *)_radio)->setBandwidth(bw);
-    ((CustomSX1268 *)_radio)->setCodingRate(cr);
-    updatePreamble(sf);
+protected:
+  bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    return ((CustomSX1268 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
+        && ((CustomSX1268 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
+        && ((CustomSX1268 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
+        && ((CustomSX1268 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
+        && updatePreamble(sf);
   }
 
+public:
   bool setCodingRate(uint8_t cr) override {
     return ((CustomSX1268 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
@@ -41,9 +43,11 @@ public:
 
   void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
 
-  bool setRxBoostedGainMode(bool en) override {
+protected:
+  bool applyRxBoostedGainMode(bool en) override {
     return ((CustomSX1268 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }
+public:
   bool getRxBoostedGainMode() const override {
     return ((CustomSX1268 *)_radio)->getRxBoostedGainMode();
   }

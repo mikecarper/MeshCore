@@ -12,14 +12,16 @@ class CustomLR1110Wrapper : public RadioLibWrapper {
 public:
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
-  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    ((CustomLR1110 *)_radio)->setFrequency(freq);
-    ((CustomLR1110 *)_radio)->setSpreadingFactor(sf);
-    ((CustomLR1110 *)_radio)->setBandwidth(bw);
-    ((CustomLR1110 *)_radio)->setCodingRate(cr);
-    updatePreamble(sf);
+protected:
+  bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    return ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
+        && ((CustomLR1110 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
+        && ((CustomLR1110 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
+        && ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
+        && updatePreamble(sf);
   }
 
+public:
   bool setCodingRate(uint8_t cr) override {
     return ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
@@ -87,9 +89,11 @@ public:
 
   uint8_t getSpreadingFactor() const override { return ((CustomLR1110 *)_radio)->getSpreadingFactor(); }
   
-  bool setRxBoostedGainMode(bool en) override {
+protected:
+  bool applyRxBoostedGainMode(bool en) override {
     return ((CustomLR1110 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }
+public:
   bool getRxBoostedGainMode() const override {
     return ((CustomLR1110 *)_radio)->getRxBoostedGainMode();
   }

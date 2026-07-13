@@ -652,6 +652,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _logging = false;
   region_load_active = false;
   set_radio_at = revert_radio_at = 0;
+  active_cr = LORA_CR;
+  temp_radio_applied = false;
+  saved_radio_apply_pending = false;
   recv_pkt_region = NULL;
 
   // defaults
@@ -741,8 +744,10 @@ void MyMesh::begin(FILESYSTEM *fs) {
     }
   }
 
-  radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  radio_driver.setTxPower(_prefs.tx_power_dbm);
+  saved_radio_apply_pending = !applySavedRadioParams();
+  if (!saved_radio_apply_pending) {
+    radio_driver.setTxPower(_prefs.tx_power_dbm);
+  }
   board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);   // LoRa FEM LNA (FEM boards only)
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
@@ -791,6 +796,18 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _alerter.begin(&_prefs, _cli.getObserverPrefs(), this, this);
   _alerter.setBridge(bridge);
 #endif
+}
+
+bool MyMesh::applySavedRadioParams() {
+  uint32_t timings[2] = {_prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us};
+  const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
+      && radio_driver.supportsRxPowerSaving() ? timings : NULL;
+  if (!radio_driver.setParams(
+        _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr, applied_timings)) {
+    return false;
+  }
+  active_cr = _prefs.cr;
+  return true;
 }
 
 void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
@@ -969,10 +986,19 @@ void MyMesh::formatPacketStatsReply(char *reply) {
 void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply) {
   if (region_load_active) {
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
-      region_map = temp_map;  // copy over the temp instance as new current map
       region_load_active = false;
-
-      sprintf(reply, "OK - loaded %d regions", region_map.getCount());
+      // resetFrom() preserves the selected IDs. Reject a replacement that
+      // omitted either selected region instead of leaving a dangling ID.
+      bool missing_default = region_map.getDefaultRegion() != NULL
+          && temp_map.getDefaultRegion() == NULL;
+      bool missing_home = region_map.getHomeRegion() != NULL
+          && temp_map.getHomeRegion() == NULL;
+      if (!missing_default && !missing_home) {
+        region_map = temp_map;
+        sprintf(reply, "OK - loaded %d regions", region_map.getCount());
+      } else {
+        strcpy(reply, "Err - invalid region map; previous map retained");
+      }
     } else {
       char *np = command;
       while (*np == ' ') np++;   // skip indent
@@ -1119,16 +1145,48 @@ void MyMesh::loop() {
     updateAdvertTimer(); // schedule next local advert
   }
 
-  if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
-    set_radio_at = 0;                                     // clear timer
-    radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
-    MESH_DEBUG_PRINTLN("Temp radio params");
+  const bool revert_radio_due = revert_radio_at && millisHasNowPassed(revert_radio_at);
+  if (revert_radio_due && !temp_radio_applied) {
+    // The temporary window ended before it could be applied. Drop both timers
+    // so a previously busy radio cannot switch to the expired channel later.
+    set_radio_at = revert_radio_at = 0;
+    MESH_DEBUG_PRINTLN("Temp radio params expired before apply");
+  } else if (revert_radio_due && !hasOutbound()) {
+    if (applySavedRadioParams()) {
+      if (saved_radio_apply_pending) {
+        radio_driver.setTxPower(_prefs.tx_power_dbm);
+      }
+      set_radio_at = revert_radio_at = 0;
+      temp_radio_applied = false;
+      saved_radio_apply_pending = false;
+      MESH_DEBUG_PRINTLN("Radio params restored");
+    }
+  } else if (set_radio_at && millisHasNowPassed(set_radio_at) && !hasOutbound()) {
+    uint32_t rx_us = _prefs.rx_ps_rx_us;
+    uint32_t sleep_us = _prefs.rx_ps_sleep_us;
+    bool timing_ok = true;
+    if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0) {
+      uint32_t preamble = _prefs.rx_ps_preamble ? _prefs.rx_ps_preamble
+                                                : (pending_sf <= 8 ? 32UL : 16UL);
+      timing_ok = CommonCLI::calculateRxPowerSavingLevel(
+          _prefs.rx_ps_level, pending_sf, pending_bw, preamble, &rx_us, &sleep_us);
+    }
+    uint32_t timings[2] = {rx_us, sleep_us};
+    const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
+        && radio_driver.supportsRxPowerSaving() ? timings : NULL;
+    if (timing_ok && radio_driver.setParams(
+          pending_freq, pending_bw, pending_sf, pending_cr, applied_timings)) {
+      set_radio_at = 0;
+      active_cr = pending_cr;
+      temp_radio_applied = true;
+      MESH_DEBUG_PRINTLN("Temp radio params");
+    }
   }
 
-  if (revert_radio_at && millisHasNowPassed(revert_radio_at) && !hasOutbound()) { // revert radio params to orig
-    revert_radio_at = 0;                                        // clear timer
-    radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-    MESH_DEBUG_PRINTLN("Radio params restored");
+  if (saved_radio_apply_pending && !temp_radio_applied && !hasOutbound()
+      && applySavedRadioParams()) {
+    radio_driver.setTxPower(_prefs.tx_power_dbm);
+    saved_radio_apply_pending = false;
   }
 
   // is pending dirty contacts write needed?

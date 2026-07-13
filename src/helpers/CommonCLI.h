@@ -616,6 +616,10 @@ class CommonCLI {
   bool handleObserverCommand(uint32_t sender_timestamp, char* command, char* reply);
 
 public:
+  static bool calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
+                                          uint32_t* rx_us, uint32_t* sleep_us);
+  static bool recalculateRxPowerSavingFromLevel(NodePrefs* prefs);
+
   CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, RegionMap& region_map, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
       : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
 

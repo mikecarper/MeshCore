@@ -148,6 +148,7 @@ void Mesh::begin() {
     _direct_retries[i].retry_at = 0;
     _direct_retries[i].retry_delay = 0;
     _direct_retries[i].retry_attempts_sent = 0;
+    memset(_direct_retries[i].retry_key, 0, sizeof(_direct_retries[i].retry_key));
     memset(_direct_retries[i].next_hop_hash, 0, sizeof(_direct_retries[i].next_hop_hash));
     _direct_retries[i].next_hop_hash_len = 0;
     _direct_retries[i].payload_type = 0;
@@ -215,27 +216,30 @@ void Mesh::loop() {
       continue;
     }
 
-    if (!_direct_retries[i].queued || !millisHasNowPassed(_direct_retries[i].retry_at)) {
-      continue;
-    }
-
-    if (!isDirectRetryQueued(_direct_retries[i].packet)) {
-      if (_direct_retries[i].packet == getOutboundInFlight()) {
-        continue;  // currently transmitting; keep slot until onSendComplete/onSendFail emits event
-      }
+    Packet* tracked_packet = _direct_retries[i].queued
+      ? _direct_retries[i].packet
+      : _direct_retries[i].trigger_packet;
+    if (tracked_packet == NULL
+        || (!isDirectRetryQueued(tracked_packet) && tracked_packet != getOutboundInFlight())) {
       uint32_t elapsed_millis = _direct_retries[i].retry_started_at == 0
         ? 0
         : (uint32_t)(_ms->getMillis() - _direct_retries[i].retry_started_at);
-      onDirectRetryEvent("dropped_queue_removed", NULL, elapsed_millis,
-                         _direct_retries[i].retry_attempts_sent + 1,
+      uint8_t attempt = _direct_retries[i].queued
+        ? _direct_retries[i].retry_attempts_sent + 1
+        : 1;
+      onDirectRetryEvent("dropped_queue_removed", NULL, elapsed_millis, attempt,
                          _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
                          _direct_retries[i].payload_type);
-      onDirectRetryEvent("failure", NULL, elapsed_millis,
-                         _direct_retries[i].retry_attempts_sent + 1,
+      onDirectRetryEvent("failure", NULL, elapsed_millis, attempt,
                          _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
                          _direct_retries[i].payload_type);
-      onDirectRetryFailed(_direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
+      // A local queue eviction says nothing about the next hop's RF quality.
       clearDirectRetrySlot(i);
+      continue;
+    }
+
+    if (!_direct_retries[i].queued || !millisHasNowPassed(_direct_retries[i].retry_at)) {
+      continue;
     }
   }
 
@@ -258,22 +262,25 @@ void Mesh::loop() {
       continue;
     }
 
-    if (!_flood_retries[i].queued || !millisHasNowPassed(_flood_retries[i].retry_at)) {
-      continue;
-    }
-
-    if (!isFloodRetryQueued(_flood_retries[i].packet)) {
-      if (_flood_retries[i].packet == getOutboundInFlight()) {
-        continue;
-      }
+    Packet* tracked_packet = _flood_retries[i].queued
+      ? _flood_retries[i].packet
+      : _flood_retries[i].trigger_packet;
+    if (tracked_packet == NULL
+        || (!isFloodRetryQueued(tracked_packet) && tracked_packet != getOutboundInFlight())) {
       uint32_t elapsed_millis = _flood_retries[i].retry_started_at == 0
         ? 0
         : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
-      onFloodRetryEvent("dropped_queue_removed", NULL, elapsed_millis,
-                        _flood_retries[i].retry_attempts_sent + 1);
-      onFloodRetryEvent("failure", NULL, elapsed_millis,
-                        _flood_retries[i].retry_attempts_sent + 1);
+      uint8_t attempt = _flood_retries[i].queued
+        ? _flood_retries[i].retry_attempts_sent + 1
+        : 1;
+      onFloodRetryEvent("dropped_queue_removed", NULL, elapsed_millis, attempt);
+      onFloodRetryEvent("failure", NULL, elapsed_millis, attempt);
       clearFloodRetrySlot(i);
+      continue;
+    }
+
+    if (!_flood_retries[i].queued || !millisHasNowPassed(_flood_retries[i].retry_at)) {
+      continue;
     }
   }
 #if defined(ENABLE_OTA)
@@ -758,14 +765,13 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         uint8_t type = pkt->payload[0] & 0x0F;
 
         if (type == PAYLOAD_TYPE_ACK && pkt->payload_len >= 5) {    // a multipart ACK
-          Packet tmp;
-          tmp.header = pkt->header;
-          tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
-          tmp.payload_len = pkt->payload_len - 1;
-          memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
-
-          if (!_tables->wasSeen(&tmp)) {
-            _tables->markSeen(&tmp);
+          if (!_tables->wasSeen(pkt)) {
+            _tables->markSeen(pkt);
+            Packet tmp;
+            tmp.header = pkt->header;
+            tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
+            tmp.payload_len = pkt->payload_len - 1;
+            memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
             uint32_t ack_crc;
             memcpy(&ack_crc, tmp.payload, 4);
 
@@ -856,14 +862,13 @@ DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt) {
   uint8_t type = pkt->payload[0] & 0x0F;
 
   if (type == PAYLOAD_TYPE_ACK && pkt->payload_len >= 5) {    // a multipart ACK
-    Packet tmp;
-    tmp.header = pkt->header;
-    tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
-    tmp.payload_len = pkt->payload_len - 1;
-    memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
-
-    if (!_tables->wasSeen(&tmp)) {   // don't retransmit!
-      _tables->markSeen(&tmp);
+    if (!_tables->wasSeen(pkt)) {   // don't retransmit this multipart transmission!
+      _tables->markSeen(pkt);
+      Packet tmp;
+      tmp.header = pkt->header;
+      tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
+      tmp.payload_len = pkt->payload_len - 1;
+      memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
       removePathPrefix(&tmp, 1);
       routeDirectRecvAcks(&tmp, ((uint32_t)remaining + 1) * 300);  // expect multipart ACKs 300ms apart (x2)
     }
@@ -906,6 +911,7 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].retry_at = 0;
   _direct_retries[idx].retry_delay = 0;
   _direct_retries[idx].retry_attempts_sent = 0;
+  memset(_direct_retries[idx].retry_key, 0, sizeof(_direct_retries[idx].retry_key));
   memset(_direct_retries[idx].next_hop_hash, 0, sizeof(_direct_retries[idx].next_hop_hash));
   _direct_retries[idx].next_hop_hash_len = 0;
   _direct_retries[idx].payload_type = 0;
@@ -1293,6 +1299,15 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
     return;
   }
 
+  uint8_t retry_key[MAX_HASH_SIZE];
+  calculateDirectRetryKey(packet, retry_key);
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (_direct_retries[i].active
+        && memcmp(retry_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
+      return;  // the normal direct send still happens, but only one retry sequence owns this logical packet
+    }
+  }
+
   int slot_idx = -1;
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) {
@@ -1308,7 +1323,7 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
 
   // Only store retry metadata here; allocate the retry packet after the initial TX really completes.
   uint32_t retry_delay = getDirectRetryAttemptDelay(packet, 0);
-  calculateDirectRetryKey(packet, _direct_retries[slot_idx].retry_key);
+  memcpy(_direct_retries[slot_idx].retry_key, retry_key, sizeof(retry_key));
   _direct_retries[slot_idx].packet = NULL;
   _direct_retries[slot_idx].trigger_packet = const_cast<Packet*>(packet);
   _direct_retries[slot_idx].retry_started_at = 0;
@@ -1348,6 +1363,83 @@ void Mesh::clearFloodRetrySlot(int idx) {
   _flood_retries[idx].waiting_final_echo = false;
   _flood_retries[idx].queued = false;
   _flood_retries[idx].active = false;
+}
+
+bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
+  if (retry_key == NULL) {
+    return false;
+  }
+
+  uint8_t key[MAX_HASH_SIZE];
+  memcpy(key, retry_key, sizeof(key));  // tolerate callers passing storage owned by a retry slot
+  bool cancelled = false;
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (!_direct_retries[i].active
+        || memcmp(key, _direct_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
+      continue;
+    }
+
+    Packet* retry = _direct_retries[i].queued ? _direct_retries[i].packet : NULL;
+    if (retry != NULL && retry != getOutboundInFlight()) {
+      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
+        if (_mgr->getOutboundByIdx(j) == retry) {
+          Packet* pending = _mgr->removeOutboundByIdx(j);
+          if (pending != NULL) {
+            _direct_retries[i].packet = NULL;
+            releasePacket(pending);
+          }
+          break;
+        }
+      }
+    }
+    clearDirectRetrySlot(i);
+    cancelled = true;
+  }
+
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (!_flood_retries[i].active
+        || memcmp(key, _flood_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
+      continue;
+    }
+
+    Packet* retry = _flood_retries[i].queued ? _flood_retries[i].packet : NULL;
+    if (retry != NULL && retry != getOutboundInFlight()) {
+      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
+        if (_mgr->getOutboundByIdx(j) == retry) {
+          Packet* pending = _mgr->removeOutboundByIdx(j);
+          if (pending != NULL) {
+            _flood_retries[i].packet = NULL;
+            releasePacket(pending);
+          }
+          break;
+        }
+      }
+    }
+    clearFloodRetrySlot(i);
+    cancelled = true;
+  }
+
+  return cancelled;
+}
+
+bool Mesh::hasActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) const {
+  if (retry_key == NULL) {
+    return false;
+  }
+
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (_direct_retries[i].active
+        && memcmp(retry_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
+      return true;
+    }
+  }
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (_flood_retries[i].active
+        && memcmp(retry_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool Mesh::isFloodRetryQueued(const Packet* packet) const {

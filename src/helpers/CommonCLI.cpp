@@ -339,8 +339,8 @@ static uint32_t ceilPositiveFloat(float value) {
   return value > (float)rounded ? rounded + 1 : rounded;
 }
 
-static bool calcRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
-                                   uint32_t* rx_us, uint32_t* sleep_us) {
+bool CommonCLI::calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
+                                            uint32_t* rx_us, uint32_t* sleep_us) {
   if (level < 1 || level > 10 || sf < 5 || sf > 12 || bw <= 0.0f || (preamble != 16 && preamble != 32)) {
     return false;
   }
@@ -372,12 +372,12 @@ static void ensureRxPowerSavingDefaults(NodePrefs* prefs) {
 // Recomputes rx_ps_rx_us/rx_ps_sleep_us from the stored level and the current
 // radio SF/BW. No-op (returns false) for manual timings (rx_ps_level == 0).
 // Lets level-based RX powersaving auto-retune when SF/BW change.
-static bool recalcRxPowerSavingFromLevel(NodePrefs* prefs) {
+bool CommonCLI::recalculateRxPowerSavingFromLevel(NodePrefs* prefs) {
   if (prefs->rx_ps_level < 1 || prefs->rx_ps_level > 10) return false;  // manual: nothing to recompute
   uint32_t preamble = prefs->rx_ps_preamble ? prefs->rx_ps_preamble
                                             : rxPowerSavingPreambleForSF(prefs->sf);
   uint32_t rx_us, sleep_us;
-  if (!calcRxPowerSavingLevel(prefs->rx_ps_level, prefs->sf, prefs->bw, preamble, &rx_us, &sleep_us)) {
+  if (!calculateRxPowerSavingLevel(prefs->rx_ps_level, prefs->sf, prefs->bw, preamble, &rx_us, &sleep_us)) {
     return false;
   }
   if (!isValidRxPowerSavingPeriod(rx_us) || !isValidRxPowerSavingPeriod(sleep_us)) {
@@ -1247,7 +1247,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       _prefs->rx_ps_preamble = 0;   // 0 = auto (derive from SF)
     }
     ensureRxPowerSavingDefaults(_prefs);
-    recalcRxPowerSavingFromLevel(_prefs);   // retune level-based timings to the loaded SF/BW
+    recalculateRxPowerSavingFromLevel(_prefs);   // retune level-based timings to the loaded SF/BW
 
     file.close();
   }
@@ -2165,9 +2165,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(reply, _prefs->disable_fwd ? "OK - repeat is now OFF" : "OK - repeat is now ON");
   } else if (memcmp(config, "radio.rxgain ", 13) == 0) {
     bool enabled = memcmp(&config[13], "on", 2) == 0;
-    _prefs->rx_boosted_gain = enabled;
-    savePrefs();
     if (_callbacks->setRxBoostedGain(enabled)) {
+      _prefs->rx_boosted_gain = enabled;
+      savePrefs();
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error: unsupported");
@@ -2251,7 +2251,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       }
     }
 
-    if (level_requested && !calcRxPowerSavingLevel(level, _prefs->sf, _prefs->bw, preamble, &rx_us, &sleep_us)) {
+    if (level_requested && !calculateRxPowerSavingLevel(level, _prefs->sf, _prefs->bw, preamble, &rx_us, &sleep_us)) {
       strcpy(reply, "ERROR: level range is 1-10; preamble is 16 or 32");
       return;
     }
@@ -2308,7 +2308,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->bw = bw;
       // Retune level-based RX powersaving to the new SF/BW. Persist only; the
       // radio itself is "reboot to apply", and begin() re-arms the timings then.
-      bool rxps_retuned = recalcRxPowerSavingFromLevel(_prefs);
+      bool rxps_retuned = recalculateRxPowerSavingFromLevel(_prefs);
       _callbacks->savePrefs();
       strcpy(reply, rxps_retuned ? "OK - reboot to apply (rxps retuned)" : "OK - reboot to apply");
     } else {
@@ -3186,7 +3186,7 @@ static bool processRegionDefSegment(RegionMap* map, char* tok, RegionEntry** cur
 
   if (jump) {
     RegionEntry* j = map->findByNamePrefix(jump);
-    if (j == NULL) { snprintf(reply, 160, "Err - unknown jump: %s", jump); return false; }
+    if (j == NULL) { snprintf(reply, 160, "Err - unknown or ambiguous jump: %s", jump); return false; }
     *cursor = j;
   } else {
     *cursor = r;
@@ -3204,10 +3204,14 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     rtrimSpaces(payload);
     if (*payload == '\0') { snprintf(reply, 160, "Err - empty def"); return; }
 
-    RegionEntry* cursor = &_region_map->getWildcard();
+    // Build the complete definition on a staged copy. A bad name, jump, table
+    // overflow, or cycle leaves the live hierarchy completely unchanged.
+    RegionMap staged(*_region_map);
+    RegionEntry* cursor = &staged.getWildcard();
     for (char* tok; (tok = takeToken(&payload)) != nullptr; ) {
-      if (!processRegionDefSegment(_region_map, tok, &cursor, reply)) return;
+      if (!processRegionDefSegment(&staged, tok, &cursor, reply)) return;
     }
+    *_region_map = staged;
     _region_map->exportTo(reply, 160);
     return;
   }
@@ -3302,7 +3306,10 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
   } else if (n >= 3 && strcmp(parts[1], "remove") == 0) {
     auto region = _region_map->findByName(parts[2]);
     if (region) {
+      RegionEntry* current_default = _region_map->getDefaultRegion();
+      bool removed_default = current_default != NULL && current_default->id == region->id;
       if (_region_map->removeRegion(*region)) {
+        if (removed_default) _callbacks->onDefaultRegionChanged(NULL);
         strcpy(reply, "OK");
       } else {
         strcpy(reply, "Err - not empty");

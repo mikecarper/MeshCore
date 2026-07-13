@@ -117,6 +117,7 @@
 #define DIRECT_SEND_PERHOP_FACTOR       6.0f
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS 250
 #define LAZY_CONTACTS_WRITE_DELAY       5000
+#define EXPECTED_ACK_RETRY_RECHECK_MILLIS 1000
 
 #ifndef DEFAULT_MULTI_ACKS
 #define DEFAULT_MULTI_ACKS 0
@@ -338,20 +339,27 @@ static bool calcFixedRxPowerSaving(uint8_t sf, float bw, uint32_t* rx_us, uint32
   return true;
 }
 
-static void applyFixedRxPowerSaving(uint8_t sf, float bw) {
+static bool applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   uint32_t rx_us, sleep_us;
   if (!calcFixedRxPowerSaving(sf, bw, &rx_us, &sleep_us)) {
     MESH_DEBUG_PRINTLN("RX Power Saving fixed profile invalid");
-    return;
+    return false;
   }
 
-  bool ok = radio_driver.setRxPowerSaving(true, rx_us, sleep_us);
+  uint32_t timings[2] = {rx_us, sleep_us};
+  const bool supports_rxps = radio_driver.supportsRxPowerSaving();
+  // Keep ordinary radio configuration working on companion targets whose
+  // radio does not implement RX duty cycling. This matches the former
+  // setParams()+setRxPowerSaving() behavior while retaining one atomic
+  // transition on radios that do support it.
+  bool ok = radio_driver.setParams(freq, bw, sf, cr, supports_rxps ? timings : NULL);
   MESH_DEBUG_PRINTLN("RX Power Saving fixed level %d p%d: %s (%lu/%lu us)",
                      RXPS_FIXED_LEVEL,
                      RXPS_FIXED_PREAMBLE,
-                     ok ? "Enabled" : "Unsupported",
+                     ok && supports_rxps ? "Enabled" : (ok ? "Unsupported" : "Apply failed"),
                      (unsigned long)rx_us,
                      (unsigned long)sleep_us);
+  return ok;
 }
 #endif
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
@@ -521,10 +529,66 @@ void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
 }
 
+void MyMesh::clearExpectedAck(AckTableEntry& entry, bool cancel_retries) {
+  if (cancel_retries && entry.ack != 0) {
+    cancelActiveRetries(entry.retry_key);
+  }
+  memset(&entry, 0, sizeof(entry));
+}
+
+void MyMesh::expireExpectedAcks() {
+  unsigned long now = _ms->getMillis();
+  unsigned long nearest_delay = 0;
+  has_next_ack_expiry = false;
+
+  for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
+    AckTableEntry& entry = expected_ack_table[i];
+    if (entry.ack == 0) {
+      continue;
+    }
+
+    if (entry.expires_at == now || millisHasNowPassed(entry.expires_at)) {
+      if (!hasActiveRetries(entry.retry_key)) {
+        clearExpectedAck(entry, false);
+        continue;
+      }
+      // Keep the semantic match alive while its lower-level retry sequence is
+      // active, so a newer app submission can replace that sequence cleanly.
+      entry.expires_at = futureMillis(EXPECTED_ACK_RETRY_RECHECK_MILLIS);
+    }
+
+    unsigned long delay = entry.expires_at - now;
+    if (!has_next_ack_expiry || delay < nearest_delay) {
+      nearest_delay = delay;
+      next_ack_expiry = entry.expires_at;
+      has_next_ack_expiry = true;
+    }
+  }
+
+  if (!has_next_ack_expiry) {
+    next_ack_expiry = 0;
+  }
+}
+
+MyMesh::AckTableEntry* MyMesh::findPendingTextMessage(const uint8_t text_fingerprint[MAX_HASH_SIZE]) {
+  expireExpectedAcks();
+  for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
+    AckTableEntry& entry = expected_ack_table[i];
+    if (entry.ack != 0
+        && memcmp(entry.text_fingerprint, text_fingerprint, MAX_HASH_SIZE) == 0) {
+      return &entry;
+    }
+  }
+  return NULL;
+}
+
 ContactInfo*  MyMesh::processAck(const uint8_t *data) {
+  expireExpectedAcks();
+
   // see if matches any in a table
   for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
-    if (memcmp(data, &expected_ack_table[i].ack, 4) == 0) { // got an ACK from recipient
+    if (expected_ack_table[i].ack != 0
+        && memcmp(data, &expected_ack_table[i].ack, 4) == 0) { // got an ACK from recipient
       out_frame[0] = PUSH_CODE_SEND_CONFIRMED;
       memcpy(&out_frame[1], data, 4);
       uint32_t trip_time = _ms->getMillis() - expected_ack_table[i].msg_sent;
@@ -532,8 +596,10 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       _serial->writeFrame(out_frame, 9);
 
       // NOTE: the same ACK can be received multiple times!
-      expected_ack_table[i].ack = 0; // clear expected hash, now that we have received ACK
-      return expected_ack_table[i].contact;
+      ContactInfo* contact = expected_ack_table[i].contact;
+      clearExpectedAck(expected_ack_table[i]);
+      expireExpectedAcks();
+      return contact;
     }
   }
   return checkConnectionsAck(data);
@@ -1006,17 +1072,23 @@ uint32_t MyMesh::calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8_t
           (path_hash_count + 1));
 }
 
-void MyMesh::onSendTimeout() {}
+void MyMesh::onSendTimeout() {
+  expireExpectedAcks();
+}
 
 MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store, AbstractUITask* ui)
     : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
       _serial(NULL), telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
   _iter_started = false;
   _cli_rescue = false;
+  saved_radio_apply_pending = false;
   offline_queue_len = 0;
   app_target_ver = 0;
   clearPendingReqs();
+  memset(expected_ack_table, 0, sizeof(expected_ack_table));
   next_ack_idx = 0;
+  next_ack_expiry = 0;
+  has_next_ack_expiry = false;
   sign_data = NULL;
   dirty_contacts_expiry = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
@@ -1128,17 +1200,24 @@ void MyMesh::begin(bool has_display) {
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
   _store->loadChannels(this);
 
-  radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-  radio_driver.setTxPower(_prefs.tx_power_dbm);
-  radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+  saved_radio_apply_pending = !applySavedRadioParams();
+  if (!saved_radio_apply_pending) {
+    radio_driver.setTxPower(_prefs.tx_power_dbm);
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+  }
   board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);
-#if RXPS_FIXED_ENABLED
-  applyFixedRxPowerSaving(_prefs.sf, _prefs.bw);
-#endif
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
   // NOTE: no FEM LNA wiring here — companion has its own NodePrefs without
   // radio_fem_rxgain, matching upstream (which also doesn't wire companion).
+}
+
+bool MyMesh::applySavedRadioParams() {
+#if RXPS_FIXED_ENABLED
+  return applyFixedRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+#else
+  return radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+#endif
 }
 
 const char *MyMesh::getNodeName() {
@@ -1261,6 +1340,17 @@ void MyMesh::handleCmdFrame(size_t len) {
       int tlen = len - i;
       uint32_t est_timeout;
       text[tlen] = 0; // ensure null
+
+      uint8_t text_fingerprint[MAX_HASH_SIZE] = { 0 };
+      uint8_t packet_retry_key[MAX_HASH_SIZE] = { 0 };
+      AckTableEntry* replacement_entry = NULL;
+      if (txt_type == TXT_TYPE_PLAIN) {
+        mesh::Utils::sha256(text_fingerprint, sizeof(text_fingerprint),
+                            recipient->id.pub_key, PUB_KEY_SIZE,
+                            (const uint8_t*)text, strlen(text));
+        replacement_entry = findPendingTextMessage(text_fingerprint);
+      }
+
       int result;
       uint32_t expected_ack;
       if (txt_type == TXT_TYPE_CLI_DATA) {
@@ -1268,17 +1358,39 @@ void MyMesh::handleCmdFrame(size_t len) {
         result = sendCommandData(*recipient, msg_timestamp, attempt, text, est_timeout);
         expected_ack = 0; // no Ack expected
       } else {
-        result = sendMessage(*recipient, msg_timestamp, attempt, text, expected_ack, est_timeout);
+        result = sendMessage(*recipient, msg_timestamp, attempt, text, expected_ack, est_timeout,
+                             packet_retry_key,
+                             replacement_entry != NULL ? replacement_entry->retry_key : NULL);
       }
-      // TODO: add expected ACK to table
       if (result == MSG_SEND_FAILED) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
+        if (replacement_entry != NULL) {
+          // The newest successfully-composed submission wins. Keep the older
+          // sequence intact if packet allocation failed. sendMessage() already
+          // stopped only its matching retries before registering the new send.
+          clearExpectedAck(*replacement_entry, false);
+        }
         if (expected_ack) {
-          expected_ack_table[next_ack_idx].msg_sent = _ms->getMillis(); // add to circular table
-          expected_ack_table[next_ack_idx].ack = expected_ack;
-          expected_ack_table[next_ack_idx].contact = recipient;
-          next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+          AckTableEntry& entry = replacement_entry != NULL
+              ? *replacement_entry
+              : expected_ack_table[next_ack_idx];
+          // Reusing a circular-table slot is only ACK bookkeeping. The evicted
+          // message still owns its lower-level retry sequence; only a semantic
+          // same-text replacement (cleared above) or a received ACK may cancel it.
+          clearExpectedAck(entry, false);
+          entry.msg_sent = _ms->getMillis(); // add to circular table
+          entry.expires_at = futureMillis(est_timeout);
+          entry.ack = expected_ack;
+          entry.contact = recipient;
+          memcpy(entry.text_fingerprint, text_fingerprint, sizeof(entry.text_fingerprint));
+          memcpy(entry.retry_key, packet_retry_key, sizeof(entry.retry_key));
+          if (replacement_entry == NULL) {
+            next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+          }
+        }
+        if (replacement_entry != NULL || expected_ack != 0) {
+          expireExpectedAcks();
         }
 
         out_frame[0] = RESP_CODE_SENT;
@@ -1579,17 +1691,24 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (freq >= 150000 && freq <= 2500000 && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && bw >= 7000 &&
         bw <= 500000) {
+      float new_freq = (float)freq / 1000.0;
+      float new_bw = (float)bw / 1000.0;
+#if RXPS_FIXED_ENABLED
+      bool applied = applyFixedRadioParams(new_freq, new_bw, sf, cr);
+#else
+      bool applied = radio_driver.setParams(new_freq, new_bw, sf, cr);
+#endif
+      if (!applied) {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+        return;
+      }
+
       _prefs.sf = sf;
       _prefs.cr = cr;
-      _prefs.freq = (float)freq / 1000.0;
-      _prefs.bw = (float)bw / 1000.0;
+      _prefs.freq = new_freq;
+      _prefs.bw = new_bw;
       _prefs.client_repeat = repeat;
       savePrefs();
-
-      radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-#if RXPS_FIXED_ENABLED
-      applyFixedRxPowerSaving(_prefs.sf, _prefs.bw);
-#endif
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 
@@ -2454,6 +2573,20 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
+  if (saved_radio_apply_pending && !hasOutbound()) {
+    // A power-saving wake can enter begin() with a complete packet already
+    // waiting. Preserve that packet, then apply the persisted radio settings
+    // once the receive/response path is idle.
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+    if (applySavedRadioParams()) {
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      saved_radio_apply_pending = false;
+    }
+  }
+  if (has_next_ack_expiry
+      && (next_ack_expiry == _ms->getMillis() || millisHasNowPassed(next_ack_expiry))) {
+    expireExpectedAcks();
+  }
   if (emergency_client_repeat_packet != NULL && millisHasNowPassed(emergency_client_repeat_send_at)) {
     mesh::Packet* pkt = emergency_client_repeat_packet;
     emergency_client_repeat_packet = NULL;

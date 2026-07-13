@@ -130,6 +130,10 @@ public:
     (void)now;
     return NULL;
   }
+  // Managers that shed queued outbound packets return them here instead of
+  // freeing them silently. Dispatcher will run the normal send-failure
+  // lifecycle hook before returning each packet to the pool.
+  virtual Packet* getNextDroppedOutbound() { return NULL; }
   virtual int getOutboundCount(uint32_t now) const = 0;
   virtual int getOutboundTotal() const = 0;
   virtual int getFreeCount() const = 0;
@@ -178,6 +182,7 @@ class Dispatcher {
   unsigned long duty_cycle_window_ms;
 
   void processRecvPacket(Packet* pkt);
+  void releaseDroppedOutbound();
   void restoreOutboundTxOverrides();
   void updateTxBudget();
 

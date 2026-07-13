@@ -9,7 +9,12 @@
 #endif
 
 StdRNG fast_rng;
+#if MAX_RECENT_REPEATERS > 0
+SimpleMeshTables::RecentRepeaterInfo recent_repeater_storage[MAX_RECENT_REPEATERS];
+SimpleMeshTables tables(recent_repeater_storage, MAX_RECENT_REPEATERS);
+#else
 SimpleMeshTables tables;
+#endif
 
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 

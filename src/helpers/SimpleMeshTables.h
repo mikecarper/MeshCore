@@ -13,24 +13,10 @@
 #ifndef MAX_PACKET_ACKS
   #define MAX_PACKET_ACKS  64
 #endif
+#if MAX_PACKET_ACKS < 1
+  #error "MAX_PACKET_ACKS must be at least 1"
+#endif
 #define ACK_VALID_BYTES  ((MAX_PACKET_ACKS + 7) / 8)
-#ifndef MESH_ENABLE_RECENT_REPEATERS
-  #define MESH_ENABLE_RECENT_REPEATERS  0
-#endif
-#ifndef MAX_RECENT_REPEATERS
-  // Recent repeater history is only needed by repeater firmware. Other roles
-  // use unconditional retry decisions and skip this RAM-heavy cache.
-  #if !MESH_ENABLE_RECENT_REPEATERS
-    #define MAX_RECENT_REPEATERS  0
-  #elif defined(ESP32) || defined(ESP32_PLATFORM)
-    #define MAX_RECENT_REPEATERS  2048
-  #elif defined(NRF52_PLATFORM)
-    #define MAX_RECENT_REPEATERS  512
-  #else
-    #define MAX_RECENT_REPEATERS  64
-  #endif
-#endif
-#define RECENT_REPEATER_STORAGE_SLOTS  (MAX_RECENT_REPEATERS > 0 ? MAX_RECENT_REPEATERS : 1)
 #define MAX_ROUTE_HASH_BYTES   3
 
 inline bool routeHashPrefixesOverlap(const uint8_t* a, uint8_t a_len,
@@ -56,11 +42,12 @@ public:
 private:
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
   int _next_idx;
-  uint32_t _acks[MAX_PACKET_ACKS];
+  uint8_t _ack_hashes[MAX_PACKET_ACKS*MAX_HASH_SIZE];
   uint8_t _ack_valid[ACK_VALID_BYTES];
-  uint8_t _next_ack_idx;
+  int _next_ack_idx;
   uint32_t _direct_dups, _flood_dups;
-  RecentRepeaterInfo _recent_repeaters[RECENT_REPEATER_STORAGE_SLOTS];
+  RecentRepeaterInfo* _recent_repeaters;
+  int _max_recent_repeaters;
 
   bool hasSeenHash(const uint8_t* hash) const {
     const uint8_t* sp = _hashes;
@@ -77,15 +64,20 @@ private:
     _next_idx = (_next_idx + 1) % MAX_PACKET_HASHES;
   }
 
-  bool isAckPacket(const mesh::Packet* packet) const {
-    return packet->getPayloadType() == PAYLOAD_TYPE_ACK && packet->payload_len >= sizeof(uint32_t);
+  bool isDedicatedAckPacket(const mesh::Packet* packet) const {
+    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
+      return packet->payload_len >= sizeof(uint32_t);
+    }
+    return packet->getPayloadType() == PAYLOAD_TYPE_MULTIPART
+      && packet->payload_len >= sizeof(uint32_t) + 1
+      && (packet->payload[0] & 0x0F) == PAYLOAD_TYPE_ACK;
   }
 
-  bool isAckSlotValid(uint8_t idx) const {
+  bool isAckSlotValid(int idx) const {
     return (_ack_valid[idx >> 3] & (uint8_t)(1U << (idx & 7))) != 0;
   }
 
-  void setAckSlotValid(uint8_t idx, bool valid) {
+  void setAckSlotValid(int idx, bool valid) {
     uint8_t mask = (uint8_t)(1U << (idx & 7));
     if (valid) {
       _ack_valid[idx >> 3] |= mask;
@@ -94,25 +86,27 @@ private:
     }
   }
 
-  bool hasSeenAck(uint32_t ack) const {
-    for (uint8_t i = 0; i < MAX_PACKET_ACKS; i++) {
-      if (isAckSlotValid(i) && _acks[i] == ack) {
+  bool hasSeenAckHash(const uint8_t* hash) const {
+    for (int i = 0; i < MAX_PACKET_ACKS; i++) {
+      if (isAckSlotValid(i)
+          && memcmp(&_ack_hashes[i*MAX_HASH_SIZE], hash, MAX_HASH_SIZE) == 0) {
         return true;
       }
     }
     return false;
   }
 
-  void storeAck(uint32_t ack) {
-    if (hasSeenAck(ack)) return;
-    _acks[_next_ack_idx] = ack;
+  void storeAckHash(const uint8_t* hash) {
+    if (hasSeenAckHash(hash)) return;
+    memcpy(&_ack_hashes[_next_ack_idx*MAX_HASH_SIZE], hash, MAX_HASH_SIZE);
     setAckSlotValid(_next_ack_idx, true);
-    _next_ack_idx = (uint8_t)((_next_ack_idx + 1) % MAX_PACKET_ACKS);
+    _next_ack_idx = (_next_ack_idx + 1) % MAX_PACKET_ACKS;
   }
 
-  void clearAck(uint32_t ack) {
-    for (uint8_t i = 0; i < MAX_PACKET_ACKS; i++) {
-      if (isAckSlotValid(i) && _acks[i] == ack) {
+  void clearAckHash(const uint8_t* hash) {
+    for (int i = 0; i < MAX_PACKET_ACKS; i++) {
+      if (isAckSlotValid(i)
+          && memcmp(&_ack_hashes[i*MAX_HASH_SIZE], hash, MAX_HASH_SIZE) == 0) {
         setAckSlotValid(i, false);
         return;
       }
@@ -185,7 +179,7 @@ private:
   }
 
   void recordRecentRepeater(const mesh::Packet* packet) {
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return;
     }
 
@@ -198,14 +192,22 @@ private:
   }
 
 public:
-  SimpleMeshTables() { 
+  // Recent-repeater storage is supplied only by repeater firmware. Keeping it
+  // external makes this class layout identical in every translation unit;
+  // role-local feature macros must never change a C++ class definition.
+  SimpleMeshTables(RecentRepeaterInfo* recent_repeaters = NULL, int max_recent_repeaters = 0)
+      : _recent_repeaters(recent_repeaters),
+        _max_recent_repeaters(recent_repeaters != NULL && max_recent_repeaters > 0
+                                  ? max_recent_repeaters : 0) {
     memset(_hashes, 0, sizeof(_hashes));
     _next_idx = 0;
-    memset(_acks, 0, sizeof(_acks));
+    memset(_ack_hashes, 0, sizeof(_ack_hashes));
     memset(_ack_valid, 0, sizeof(_ack_valid));
     _next_ack_idx = 0;
     _direct_dups = _flood_dups = 0;
-    memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
+    if (_max_recent_repeaters > 0) {
+      memset(_recent_repeaters, 0, _max_recent_repeaters * sizeof(RecentRepeaterInfo));
+    }
   }
 
 #ifdef ESP32
@@ -213,13 +215,13 @@ public:
     f.read(_hashes, sizeof(_hashes));
     f.read((uint8_t *) &_next_idx, sizeof(_next_idx));
     // ACKs are short-lived transport state and are intentionally not persisted.
-    memset(_acks, 0, sizeof(_acks));
+    memset(_ack_hashes, 0, sizeof(_ack_hashes));
     memset(_ack_valid, 0, sizeof(_ack_valid));
     _next_ack_idx = 0;
     // Recent repeater entries are intentionally not restored across boots.
     // This avoids struct-layout migration issues and keeps stale path quality
     // stats from persisting indefinitely.
-    memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
+    clearRecentRepeaters();
   }
   void saveTo(File f) {
     f.write(_hashes, sizeof(_hashes));
@@ -228,10 +230,10 @@ public:
 #endif
 
   bool wasSeen(const mesh::Packet* packet) override {
-    if (isAckPacket(packet)) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, sizeof(ack));
-      if (hasSeenAck(ack)) {
+    if (isDedicatedAckPacket(packet)) {
+      uint8_t hash[MAX_HASH_SIZE];
+      packet->calculatePacketHash(hash);
+      if (hasSeenAckHash(hash)) {
         if (packet->isRouteDirect()) {
           _direct_dups++;
         } else {
@@ -258,10 +260,10 @@ public:
   }
 
   void markSeen(const mesh::Packet* packet) override {
-    if (isAckPacket(packet)) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, sizeof(ack));
-      storeAck(ack);
+    if (isDedicatedAckPacket(packet)) {
+      uint8_t hash[MAX_HASH_SIZE];
+      packet->calculatePacketHash(hash);
+      storeAckHash(hash);
       return;
     }
 
@@ -274,10 +276,10 @@ public:
   }
 
   void markSent(const mesh::Packet* packet) override {
-    if (isAckPacket(packet)) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, sizeof(ack));
-      storeAck(ack);
+    if (isDedicatedAckPacket(packet)) {
+      uint8_t hash[MAX_HASH_SIZE];
+      packet->calculatePacketHash(hash);
+      storeAckHash(hash);
       return;
     }
 
@@ -290,10 +292,10 @@ public:
   }
 
   void clear(const mesh::Packet* packet) override {
-    if (isAckPacket(packet)) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, sizeof(ack));
-      clearAck(ack);
+    if (isDedicatedAckPacket(packet)) {
+      uint8_t hash[MAX_HASH_SIZE];
+      packet->calculatePacketHash(hash);
+      clearAckHash(hash);
       return;
     }
 
@@ -316,7 +318,7 @@ public:
                          bool snr_locked = false, bool bypass_allow_filter = false) {
     (void)snr_locked;
     (void)bypass_allow_filter;
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return false;
     }
     if (prefix == NULL || prefix_len == 0) {
@@ -329,7 +331,7 @@ public:
 
     // Keep exact prefixes distinct so a 1-byte path prefix does not collapse
     // independent 2/3-byte repeaters that share the same first byte.
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+    for (int i = 0; i < _max_recent_repeaters; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
       if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
         continue;
@@ -344,7 +346,7 @@ public:
     }
 
     int slot_idx = -1;
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+    for (int i = 0; i < _max_recent_repeaters; i++) {
       if (_recent_repeaters[i].prefix_len == 0) {
         slot_idx = i;
         break;
@@ -356,7 +358,7 @@ public:
 #if ARDUINO
       uint32_t now = millis();
       uint32_t oldest_age = (uint32_t)(now - _recent_repeaters[0].last_heard_millis);
-      for (int i = 1; i < MAX_RECENT_REPEATERS; i++) {
+      for (int i = 1; i < _max_recent_repeaters; i++) {
         uint32_t age = (uint32_t)(now - _recent_repeaters[i].last_heard_millis);
         if (age > oldest_age) {
           oldest_age = age;
@@ -379,7 +381,7 @@ public:
     return true;
   }
   bool decrementRecentRepeaterSnrX4(const uint8_t* prefix, uint8_t prefix_len, uint8_t amount_x4 = 1) {
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return false;
     }
     if (prefix == NULL || prefix_len == 0 || amount_x4 == 0) {
@@ -399,11 +401,11 @@ public:
     return false;
   }
   int getRecentRepeaterCount() const {
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return 0;
     }
     int count = 0;
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+    for (int i = 0; i < _max_recent_repeaters; i++) {
       if (_recent_repeaters[i].prefix_len > 0) {
         count++;
       }
@@ -411,7 +413,7 @@ public:
     return count;
   }
   const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return NULL;
     }
     if (idx_wanted < 0) {
@@ -423,7 +425,7 @@ public:
     for (int rank = 0; rank <= idx_wanted; rank++) {
       const RecentRepeaterInfo* best = NULL;
       int best_idx = -1;
-      for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+      for (int i = 0; i < _max_recent_repeaters; i++) {
         const RecentRepeaterInfo* info = &_recent_repeaters[i];
         if (info->prefix_len == 0) {
           continue;
@@ -446,7 +448,7 @@ public:
   }
 
   const RecentRepeaterInfo* findRecentRepeaterByHash(const uint8_t* hash, uint8_t hash_len) const {
-    if (MAX_RECENT_REPEATERS == 0) {
+    if (_max_recent_repeaters == 0) {
       return NULL;
     }
     if (hash == NULL || hash_len == 0) {
@@ -456,7 +458,7 @@ public:
     // Prefer exact matches. If none exists, fall back to the longest overlapping
     // prefix, using highest SNR to break ties.
     const RecentRepeaterInfo* best = NULL;
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+    for (int i = 0; i < _max_recent_repeaters; i++) {
       const RecentRepeaterInfo* info = &_recent_repeaters[i];
       if (info->prefix_len == 0) {
         continue;
@@ -474,7 +476,25 @@ public:
     return best;
   }
   void clearRecentRepeaters() {
-    memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
+    if (_max_recent_repeaters > 0) {
+      memset(_recent_repeaters, 0, _max_recent_repeaters * sizeof(RecentRepeaterInfo));
+    }
+  }
+  int expireRecentRepeaters(uint32_t now_millis, uint32_t max_age_millis) {
+    if (_max_recent_repeaters == 0) {
+      return 0;
+    }
+
+    int expired = 0;
+    for (int i = 0; i < _max_recent_repeaters; i++) {
+      RecentRepeaterInfo& info = _recent_repeaters[i];
+      if (info.prefix_len > 0
+          && (uint32_t)(now_millis - info.last_heard_millis) > max_age_millis) {
+        memset(&info, 0, sizeof(info));
+        expired++;
+      }
+    }
+    return expired;
   }
 
   void resetStats() { _direct_dups = _flood_dups = 0; }

@@ -187,6 +187,18 @@ protected:
   virtual uint32_t getDirectRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx);
 
   /**
+   * \brief  Cancel queued or future direct/flood retries for a packet payload hash.
+   *         The original transmission and any retry already in progress are allowed to finish.
+   * \returns true if at least one active retry sequence was cancelled.
+   */
+  bool cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]);
+
+  /**
+   * \returns true while a direct or flood retry sequence owns this packet payload hash.
+   */
+  bool hasActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) const;
+
+  /**
    * \brief  Decide whether a FLOOD packet should retry when no downstream echo is overheard.
    */
   virtual bool allowFloodRetry(const Packet* packet) const;

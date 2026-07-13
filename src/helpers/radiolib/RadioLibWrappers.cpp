@@ -58,6 +58,65 @@ void RadioLibWrapper::setTxPower(int8_t dbm) {
   _radio->setOutputPower(dbm);
 }
 
+uint8_t RadioLibWrapper::beginReconfigure() {
+  const uint8_t base_state = state & ~STATE_INT_READY;
+  // On SX126x/LR11xx duty-cycle RX, BUSY may remain asserted during the sleep
+  // side of the cycle. Do not issue an IRQ/preamble query over SPI then; due
+  // scheduled work will retry as soon as the next safe listen window opens.
+  if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT
+      || isChipBusy() || isReceivingPacket()) {
+    return 2;
+  }
+
+  const bool resume_rx = base_state == STATE_RX;
+  if (_rx_ps_armed) {
+    stopReceiveDutyCycle();
+  } else if (resume_rx) {
+    _radio->standby();
+  }
+  state = STATE_IDLE;
+  return resume_rx;
+}
+
+void RadioLibWrapper::endReconfigure(bool resume_rx) {
+  if (resume_rx) startRecv();
+}
+
+bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                const uint32_t* rx_ps_timings) {
+  if (rx_ps_timings != NULL && !supportsRxPowerSaving()) return false;
+
+  uint8_t resume_rx = beginReconfigure();
+  if (resume_rx > 1) return false;
+
+  bool success = applyParams(freq, bw, sf, cr);
+  if (success) {
+    cacheParams(freq, bw, sf, cr);
+    if (rx_ps_timings != NULL) {
+      _rx_ps_enabled = true;
+      _rx_ps_rx_us = rx_ps_timings[0];
+      _rx_ps_sleep_us = rx_ps_timings[1];
+    }
+  }
+
+  endReconfigure(resume_rx);
+  return success;
+}
+
+bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
+  uint8_t resume_rx = beginReconfigure();
+  if (resume_rx > 1) return false;
+
+  bool success = applyRxBoostedGainMode(enabled);
+  if (success) {
+    _cur_rx_boosted_gain = enabled;
+    _rx_boosted_gain_valid = true;
+  }
+
+  endReconfigure(resume_rx);
+  return success;
+}
+
 void RadioLibWrapper::idle() {
   _radio->standby();
   state = STATE_IDLE;   // need another startReceive()
@@ -81,6 +140,7 @@ void RadioLibWrapper::resetAGC() {
 
   doResetAGC();
   state = STATE_IDLE;   // trigger a startReceive()
+  if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
 
   // Reset noise floor sampling so it reconverges from scratch.
   // Without this, a stuck _noise_floor of -120 makes the sampling threshold
@@ -155,9 +215,11 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
     MESH_DEBUG_PRINTLN("RadioLibWrapper: watchdog: still stuck, hard radio reset");
     if (radioDeepInit()) {
       _rx_ps_armed = false;   // chip is factory-fresh after NRST
+      state = STATE_IDLE;
       _radio->setPacketReceivedAction(setFlag);
       if (_params_valid) setParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr);
       if (_dbm_valid) _radio->setOutputPower(_cur_dbm);
+      if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
     }
     state = STATE_IDLE;   // re-arm (rx powersaving settings are kept in members)
   }
@@ -297,16 +359,13 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
     return false;
   }
 
+  uint8_t resume_rx = beginReconfigure();
+  if (resume_rx > 1) return false;
+
   _rx_ps_enabled = enabled;
   _rx_ps_rx_us = rx_us;
   _rx_ps_sleep_us = sleep_us;
-  // Force the next recvRaw() to arm the requested RX mode, but don't clobber a
-  // completed-but-unread packet (STATE_INT_READY): recvRaw() will consume it and
-  // then re-arm with the new mode. Also leave an in-flight TX alone. (Same
-  // non-atomic guard style as resetAGC().)
-  if ((state & STATE_INT_READY) == 0 && (state & ~STATE_INT_READY) != STATE_TX_WAIT) {
-    state = STATE_IDLE;
-  }
+  endReconfigure(resume_rx);
   return true;
 }
 

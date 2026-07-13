@@ -75,8 +75,8 @@ set flood.retry.ignore none
 | --- | --- | --- | --- |
 | `battery.alert` | Sends opt-in, region-scoped low-battery warnings to `#repeaters` after 30 minutes of uptime. | `get battery.alert`, `get battery.alert.region`, `set battery.alert on [region]`, `set battery.alert off` | `set battery.alert on sea` |
 | `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
-| `battery.alert.critical` | Critical threshold percentage. Critical warnings repeat more often. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
-| `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
+| `battery.alert.critical` | Critical threshold percentage. Critical and warning alerts use the same 12-hour resend cooldown. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
+| `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. Entries older than 24 hours are removed by a three-hour sweep. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
 | `flood.channel.data` | Turns forwarding of flood `GRP_DATA` channel packets on or off. With the default `on`, `GRP_DATA` repeats normally even when `flood.channel.block.hops` is set. | `get flood.channel.data`, `set flood.channel.data on/off` | `set flood.channel.data off` |
 | `flood.channel.data.hops` | Separate hop gate used only when `flood.channel.data` is `off`; `all` blocks `GRP_DATA` at any hop count, `1`-`7` repeats at that hop count or lower and blocks longer paths. | `get flood.channel.data.hops`, `set flood.channel.data.hops <all|1-7>` | `set flood.channel.data.hops 7` |
 | `flood.channel.block` | Blocks selected flood `GRP_TXT`/`GRP_DATA` channels when the key validates the packet. New repeater block lists start with editable/deletable `#wardriving h=4`. Add `h=<all|1-7|default>` for a per-channel hop override. | `get flood.channel.block`, `set flood.channel.block[.n] <key|#channel> [name] [h=...]`, `del flood.channel.block[.n]` | `set flood.channel.block #wardriving h=4` |
@@ -105,8 +105,7 @@ checks every 30 minutes and sends a flood text warning to `#repeaters` when
 voltage is above `1 V` and the estimated battery percent is below
 `battery.alert.low`.
 
-Warnings repeat every `24` hours, or every `12` hours when the estimate is
-below `battery.alert.critical`.
+Warnings and critical alerts both use a `12`-hour resend cooldown.
 
 Defaults:
 

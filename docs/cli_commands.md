@@ -481,6 +481,7 @@ send text.flood checking ridge link
 - Region hierarchy edits are not persistent until `region save` is run. After `region def west pnw wa w-wa sea`, run `region save` before enabling the alert if the hierarchy must survive a reboot.
 - A region must have a usable transport key. Public named regions derive one automatically; a private region without an available key is rejected.
 - The first alert is suppressed until the repeater has been up for at least 30 minutes. After that, the repeater checks every 30 minutes and sends low-battery warnings to the `#repeaters` channel in the selected region.
+- Once an alert is successfully queued, another battery alert is suppressed for at least 12 hours. Battery recovery or toggling alerts off and back on does not bypass that cooldown during the same boot.
 - With `region def west pnw wa w-wa sea`, `set battery.alert on` selects `sea`; `set battery.alert on w-wa` overrides that default.
 - `get battery.alert.region` returns the selected scope, for example `> sea`.
 - The battery check never requests a wake earlier than its 30-minute deadline. If the normal loop is already awake when that deadline has elapsed, the check is effectively free of an additional wake. Time in light/event sleep counts toward the startup delay, and a queued alert keeps the repeater awake until the packet is handled.
@@ -498,7 +499,7 @@ send text.flood checking ridge link
 - `battery.alert.low`: `20`
 - `battery.alert.critical`: `10`
 
-**Note:** The low threshold must be greater than the critical threshold.
+**Note:** The low threshold must be greater than the critical threshold. Alerts at or below the critical threshold use `CRITICAL BATTERY` in the message; both severities use the same 12-hour resend cooldown.
 
 ---
 
@@ -1042,7 +1043,7 @@ del flood.channel.block.2
 - **`name`** — Create `name` as a child of the current cursor (equivalent to `region put name` with the cursor as parent). Cursor moves to `name`.
 - **`name|jump`** *(or `name,jump`)* — Create `name` as a child of the current cursor, then move the cursor to `jump` (must already exist on the node, or have been created earlier in this command). `jump` is **not** the parent of `name`; use this form to pop back up and start another branch.
 
-**Behavior:** Each created region defaults to flood-allowed (same as `region put`). The reply is the resulting region tree (same format as bare `region`); review it before running `region save` to persist. On error, the reply is `Err - ...` and any regions placed before the failure remain on the node, just like a partial chain of `region put`.
+**Behavior:** Each created region defaults to flood-allowed (same as `region put`). The reply is the resulting region tree (same format as bare `region`); review it before running `region save` to persist. The command is transactional: invalid names, unknown or ambiguous jumps, table overflow, and hierarchy cycles return `Err - ...` without changing the existing tree.
 
 **Existing regions:** `region def` does not clear the existing tree — if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, `region remove` the unwanted regions first.
 
@@ -1060,11 +1061,11 @@ region def a b c d|b e f
 region save
 ```
 
-**Example — error and partial state:**
+**Example — transactional error:**
 ```
 region def a b c|nope d
 ```
-The reply is `Err - unknown jump: nope`. `a`, `b`, and `c` were placed before the failure; `d` was not. Run `region` to inspect, then re-run with a corrected jump or repair with `region remove` / `region put`.
+The reply is `Err - unknown or ambiguous jump: nope`. The existing tree is unchanged; re-run with a corrected jump.
 
 **Example — flat list** (each region a child of `*`). Use `|*` after each token to pop the cursor back to the root before the next token:
 ```
@@ -1624,6 +1625,7 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - If an unknown repeater fails, it is seeded into the table at `+2.75 dB`.
 - `set recent.repeater <prefix> [snr_db]` seeds a missing prefix or adds another weighted sample for an existing prefix.
 - Successful `set recent.repeater` replies include the stored prefix and SNR, for example `OK - set A1B2C3 at 3.0 SNR`.
+- Entries strictly older than 24 hours are removed during a sweep every three hours, so an entry can remain for at most approximately 27 hours.
 
 **Examples:**
 ```

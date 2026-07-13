@@ -12,6 +12,18 @@
 #ifndef MESH_ENABLE_RECENT_REPEATERS
   #define MESH_ENABLE_RECENT_REPEATERS  1
 #endif
+#ifndef MAX_RECENT_REPEATERS
+  // Only repeater firmware supplies this RAM-heavy history storage.
+  #if !MESH_ENABLE_RECENT_REPEATERS
+    #define MAX_RECENT_REPEATERS  0
+  #elif defined(ESP32) || defined(ESP32_PLATFORM)
+    #define MAX_RECENT_REPEATERS  2048
+  #elif defined(NRF52_PLATFORM)
+    #define MAX_RECENT_REPEATERS  512
+  #else
+    #define MAX_RECENT_REPEATERS  64
+  #endif
+#endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
@@ -101,6 +113,9 @@ struct NeighbourInfo {
 
 #define MAX_SCHEDULED_RADIO_SETTINGS (MAX_SCHEDULED_RADIO_SETTINGS_PER_TYPE * 2)
 
+#define RECENT_REPEATER_MAX_AGE_MILLIS        (24UL * 60UL * 60UL * 1000UL)
+#define RECENT_REPEATER_SWEEP_INTERVAL_MILLIS (3UL * 60UL * 60UL * 1000UL)
+
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   struct ScheduledRadioSetting {
     bool active;
@@ -119,7 +134,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
   unsigned long next_battery_alert_check;
-  unsigned long last_battery_alert_sent;
+  unsigned long next_recent_repeater_sweep;
+  uint64_t last_battery_alert_sent;
   bool battery_alert_sent;
   bool _logging;
   NodePrefs _prefs;
@@ -171,6 +187,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   float active_bw;  // live BW, including temporary radio overrides
   uint8_t active_sf;  // live SF, including temporary radio overrides
   uint8_t active_cr;   // live CR, including temporary radio overrides
+  bool saved_radio_apply_pending;
+  bool temp_radio_handoff_pending;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
   int  matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_MQTT_BRIDGE)
@@ -240,12 +258,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope);
   bool resolveBatteryAlertScope(TransportKey& scope);
   void checkBatteryAlert();
+  void expireRecentRepeatersIfDue();
   void printRecentRepeatersSerial();
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
-  void applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
-  void applySavedRadioParams();
+  bool applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
+  bool applySavedRadioParams();
   void processScheduledRadioSettings();
   bool isMillisTimerDue(unsigned long timestamp) const;
   void loadFloodChannelBlocks();

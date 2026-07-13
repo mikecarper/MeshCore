@@ -86,7 +86,7 @@ public:
 protected:
 #if defined(ENABLE_OTA)
   bool isTempRadioActive() const override {
-    return set_radio_at == 0 && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
+    return temp_radio_applied && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
   }
 #endif
   // current telemetry data queries
@@ -130,7 +130,7 @@ protected:
   bool getCADEnabled() const override;
   int getAGCResetInterval() const override;
   uint8_t getDefaultTxCodingRate() const override {
-    return set_radio_at == 0 && revert_radio_at != 0 ? pending_cr : _prefs.cr;
+    return active_cr;
   }
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;
@@ -162,6 +162,11 @@ private:
   float pending_bw;
   uint8_t pending_sf;
   uint8_t pending_cr;
+  uint8_t active_cr;
+  bool temp_radio_applied;
+  bool saved_radio_apply_pending;
+
+  bool applySavedRadioParams();
 
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
   uint8_t handleRequest(uint8_t perms, uint32_t sender_timestamp, uint8_t req_type, uint8_t* payload, size_t payload_len);

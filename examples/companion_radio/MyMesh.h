@@ -202,6 +202,7 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
   void updateGpsTelemetryPolicy();
+  bool applySavedRadioParams();
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
@@ -222,6 +223,7 @@ private:
   uint32_t _active_ble_pin;
   bool _iter_started;
   bool _cli_rescue;
+  bool saved_radio_apply_pending;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   uint8_t app_target_ver;
@@ -246,12 +248,21 @@ private:
 
   struct AckTableEntry {
     unsigned long msg_sent;
+    unsigned long expires_at;
     uint32_t ack;
     ContactInfo* contact;
+    uint8_t text_fingerprint[MAX_HASH_SIZE];
+    uint8_t retry_key[MAX_HASH_SIZE];
   };
   #define EXPECTED_ACK_TABLE_SIZE 8
   AckTableEntry expected_ack_table[EXPECTED_ACK_TABLE_SIZE]; // circular table
   int next_ack_idx;
+  unsigned long next_ack_expiry;
+  bool has_next_ack_expiry;
+
+  void clearExpectedAck(AckTableEntry& entry, bool cancel_retries = true);
+  void expireExpectedAcks();
+  AckTableEntry* findPendingTextMessage(const uint8_t text_fingerprint[MAX_HASH_SIZE]);
 
   #define ADVERT_PATH_TABLE_SIZE   16
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table

@@ -27,6 +27,7 @@
 class RxReservePacketManager : public StaticPoolPacketManager {
   int _rx_reserve, _emergency_floor;
   int _cap;
+  PacketQueue _dropped;
   // scheduled_for per queued packet, keyed by packet pointer. The pool is a fixed set
   // of _cap Packet objects, so _cap slots cover every possible key with no eviction.
   struct AgeEntry { mesh::Packet* pkt; uint32_t scheduled_for; };
@@ -58,8 +59,13 @@ class RxReservePacketManager : public StaticPoolPacketManager {
       if (pkt && lookupAge(pkt, &scheduled_for)
           && (int32_t)(now - scheduled_for) > (int32_t)STALE_OUTBOUND_MS) {
         MESH_DEBUG_PRINTLN("RxReservePacketManager: dropping stale queued outbound");
-        removeOutboundByIdx(i);
-        free(pkt);
+        mesh::Packet* dropped = removeOutboundByIdx(i);
+        if (dropped != NULL) {
+          // Keep ownership until Dispatcher can notify retry/application state.
+          // The dropped queue cannot overflow: every entry is one of the same
+          // fixed _cap pool packets and is no longer in another manager queue.
+          _dropped.add(dropped, 0, 0);
+        }
       }
     }
   }
@@ -67,7 +73,7 @@ class RxReservePacketManager : public StaticPoolPacketManager {
 public:
   RxReservePacketManager(int pool_size, int rx_reserve)
     : StaticPoolPacketManager(pool_size), _rx_reserve(rx_reserve),
-      _emergency_floor(rx_reserve / 2), _cap(pool_size) {
+      _emergency_floor(rx_reserve / 2), _cap(pool_size), _dropped(pool_size) {
     _ages = new AgeEntry[pool_size];
     for (int i = 0; i < pool_size; i++) { _ages[i].pkt = NULL; _ages[i].scheduled_for = 0; }
   }
@@ -96,6 +102,10 @@ public:
     // apply the same expiry policy as getNextOutbound() before exposing it.
     expireStaleOutbound(now);
     return StaticPoolPacketManager::peekNextOutbound(now);
+  }
+
+  mesh::Packet* getNextDroppedOutbound() override {
+    return _dropped.removeByIdx(0);
   }
 };
 

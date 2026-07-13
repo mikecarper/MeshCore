@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#define MESH_ENABLE_RECENT_REPEATERS 1
 #define MAX_RECENT_REPEATERS 8
 #include "helpers/SimpleMeshTables.h"
 
@@ -31,6 +30,17 @@ static Packet makeAckPacket(uint32_t crc, bool direct = true) {
         | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
     memcpy(p.payload, &crc, sizeof(crc));
     p.payload_len = sizeof(crc);
+    p.path_len = 0;
+    return p;
+}
+
+static Packet makeMultipartAckPacket(uint32_t crc, uint8_t remaining = 1, bool direct = true) {
+    Packet p;
+    p.header = (direct ? ROUTE_TYPE_DIRECT : ROUTE_TYPE_FLOOD)
+        | (PAYLOAD_TYPE_MULTIPART << PH_TYPE_SHIFT);
+    p.payload[0] = (remaining << 4) | PAYLOAD_TYPE_ACK;
+    memcpy(&p.payload[1], &crc, sizeof(crc));
+    p.payload_len = sizeof(crc) + 1;
     p.path_len = 0;
     return p;
 }
@@ -118,19 +128,24 @@ TEST(SimpleMeshTables, AckCrcZeroIsAValidUnseenValue) {
     EXPECT_TRUE(t.wasSeen(&p));
 }
 
-TEST(SimpleMeshTables, AckDedupUsesCrcAndIgnoresOptionalSuffix) {
+TEST(SimpleMeshTables, AckDedupUsesTheCompletePayloadIdentity) {
     SimpleMeshTables t;
     Packet first = makeAckPacket(0xC3B2A141);
     Packet repeated = first;
+    Packet different_attempt = first;
     first.payload[4] = 0x10;
     first.payload[5] = 0x20;
     first.payload_len = 6;
-    repeated.payload[4] = 0x99;
-    repeated.payload[5] = 0x88;
+    repeated.payload[4] = 0x10;
+    repeated.payload[5] = 0x20;
     repeated.payload_len = 6;
+    different_attempt.payload[4] = 0x14;
+    different_attempt.payload[5] = 0x20;
+    different_attempt.payload_len = 6;
 
     t.markSeen(&first);
     EXPECT_TRUE(t.wasSeen(&repeated));
+    EXPECT_FALSE(t.wasSeen(&different_attempt));
 }
 
 TEST(SimpleMeshTables, AckTrafficDoesNotEvictGeneralPacketHashes) {
@@ -144,6 +159,40 @@ TEST(SimpleMeshTables, AckTrafficDoesNotEvictGeneralPacketHashes) {
     }
 
     EXPECT_TRUE(t.wasSeen(&retained));
+}
+
+TEST(SimpleMeshTables, MultipartAckTrafficDoesNotEvictGeneralPacketHashes) {
+    SimpleMeshTables t;
+    Packet retained = makeFloodPacket(0x5B);
+    t.markSeen(&retained);
+
+    for (int i = 0; i < MAX_PACKET_HASHES + 1; i++) {
+        Packet ack = makeMultipartAckPacket((uint32_t)i, (uint8_t)(i & 0x0F));
+        t.markSeen(&ack);
+    }
+
+    EXPECT_TRUE(t.wasSeen(&retained));
+}
+
+TEST(SimpleMeshTables, NormalAndMultipartAckTransmissionsAreDistinct) {
+    SimpleMeshTables t;
+    Packet normal = makeAckPacket(0x10203040);
+    Packet multipart = makeMultipartAckPacket(0x10203040);
+
+    t.markSeen(&normal);
+    EXPECT_FALSE(t.wasSeen(&multipart));
+    t.markSeen(&multipart);
+    EXPECT_TRUE(t.wasSeen(&multipart));
+    EXPECT_TRUE(t.wasSeen(&normal));
+}
+
+TEST(SimpleMeshTables, MultipartRemainingCountIsPartOfItsIdentity) {
+    SimpleMeshTables t;
+    Packet first = makeMultipartAckPacket(0x55667788, 1);
+    Packet second = makeMultipartAckPacket(0x55667788, 0);
+
+    t.markSeen(&first);
+    EXPECT_FALSE(t.wasSeen(&second));
 }
 
 TEST(SimpleMeshTables, ShortAckPayloadFallsBackToSafeGeneralDedup) {
@@ -173,7 +222,8 @@ TEST(RouteHashPrefixes, MatchesSharedOneTwoOrThreeBytes) {
 }
 
 TEST(SimpleMeshTables, ShortFailurePrefixUpdatesOverlappingLongEntry) {
-    SimpleMeshTables t;
+    SimpleMeshTables::RecentRepeaterInfo storage[MAX_RECENT_REPEATERS];
+    SimpleMeshTables t(storage, MAX_RECENT_REPEATERS);
     const uint8_t configured[] = {0x86, 0x0c, 0xca};
     const uint8_t observed[] = {0x86};
 
@@ -183,6 +233,23 @@ TEST(SimpleMeshTables, ShortFailurePrefixUpdatesOverlappingLongEntry) {
     ASSERT_NE(nullptr, info);
     EXPECT_EQ(11, info->snr_x4);
     EXPECT_EQ(1, t.getRecentRepeaterCount());
+}
+
+TEST(SimpleMeshTables, RecentRepeatersExpireOnlyAfterTwentyFourHours) {
+    SimpleMeshTables::RecentRepeaterInfo storage[MAX_RECENT_REPEATERS];
+    SimpleMeshTables t(storage, MAX_RECENT_REPEATERS);
+    const uint8_t first[] = {0x86, 0x0c, 0xca};
+    const uint8_t second[] = {0x71, 0xce, 0x82};
+    constexpr uint32_t twenty_four_hours = 24UL * 60UL * 60UL * 1000UL;
+
+    ASSERT_TRUE(t.setRecentRepeater(first, 3, 12));
+    ASSERT_TRUE(t.setRecentRepeater(second, 3, 8));
+    EXPECT_EQ(0, t.expireRecentRepeaters(twenty_four_hours, twenty_four_hours));
+    EXPECT_EQ(2, t.getRecentRepeaterCount());
+
+    EXPECT_EQ(2, t.expireRecentRepeaters(twenty_four_hours + 1, twenty_four_hours));
+    EXPECT_EQ(0, t.getRecentRepeaterCount());
+    EXPECT_EQ(nullptr, t.findRecentRepeaterByHash(first, 3));
 }
 
 int main(int argc, char** argv) {

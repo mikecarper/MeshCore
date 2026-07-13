@@ -2,6 +2,43 @@
 
 #include <helpers/RxReservePacketManager.h>
 
+class TestClock : public mesh::MillisecondClock {
+public:
+  unsigned long now = 0;
+  unsigned long getMillis() override { return now; }
+};
+
+class TestRadio : public mesh::Radio {
+public:
+  int send_starts = 0;
+
+  int recvRaw(uint8_t*, int) override { return 0; }
+  uint32_t getEstAirtimeFor(int) override { return 1; }
+  float packetScore(float, int) override { return 0; }
+  bool startSendRaw(const uint8_t*, int) override { send_starts++; return true; }
+  bool isSendComplete() override { return false; }
+  void onSendFinished() override { }
+  bool isInRecvMode() const override { return true; }
+};
+
+class TestDispatcher : public mesh::Dispatcher {
+  RxReservePacketManager& manager;
+
+protected:
+  mesh::DispatcherAction onRecvPacket(mesh::Packet*) override { return ACTION_RELEASE; }
+  void onSendFail(mesh::Packet* packet) override {
+    failed_packet = packet;
+    free_count_during_failure = manager.getFreeCount();
+  }
+
+public:
+  mesh::Packet* failed_packet = nullptr;
+  int free_count_during_failure = -1;
+
+  TestDispatcher(TestRadio& radio, TestClock& clock, RxReservePacketManager& mgr)
+    : mesh::Dispatcher(radio, clock, mgr), manager(mgr) { }
+};
+
 TEST(RxReservePacketManager, RejectedOutboundRemainsOwnedByCaller) {
   RxReservePacketManager manager(8, 4);
   mesh::Packet* held[6];
@@ -49,7 +86,36 @@ TEST(RxReservePacketManager, PeekExpiresStalePacketBeforeChannelSelection) {
 
   EXPECT_EQ(nullptr, manager.peekNextOutbound(30001));
   EXPECT_EQ(0, manager.getOutboundTotal());
+  // The manager must not silently free a packet while Dispatcher/application
+  // retry state can still refer to it.
+  EXPECT_EQ(7, manager.getFreeCount());
+  EXPECT_EQ(stale, manager.getNextDroppedOutbound());
+  EXPECT_EQ(nullptr, manager.getNextDroppedOutbound());
+  manager.free(stale);
   EXPECT_EQ(8, manager.getFreeCount());
+}
+
+TEST(RxReservePacketManager, DispatcherNotifiesBeforeReleasingStaleOutbound) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  mesh::Packet* stale = dispatcher.obtainNewPacket();
+  ASSERT_NE(stale, nullptr);
+  stale->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  stale->payload[0] = 0x42;
+  stale->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(stale, 0));
+
+  clock.now = 30001;
+  dispatcher.loop();
+
+  EXPECT_EQ(stale, dispatcher.failed_packet);
+  EXPECT_EQ(7, dispatcher.free_count_during_failure);
+  EXPECT_EQ(8, manager.getFreeCount());
+  EXPECT_EQ(0, radio.send_starts);
 }
 
 int main(int argc, char** argv) {

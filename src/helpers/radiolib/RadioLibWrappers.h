@@ -48,7 +48,8 @@ protected:
   float _cur_freq, _cur_bw;
   uint8_t _cur_sf, _cur_cr;
   int8_t _cur_dbm;
-  bool _params_valid, _dbm_valid;
+  bool _cur_rx_boosted_gain;
+  bool _params_valid, _dbm_valid, _rx_boosted_gain_valid;
 
   // Periodic noise-floor calibration (only while RX duty-cycle powersaving is
   // armed): a duty-cycled receiver can't be sampled reliably, so at least once
@@ -77,6 +78,11 @@ protected:
   // full radio recovery: hardware reset (NRST) + re-init to boot defaults;
   // returns false if unsupported. Caller reapplies cached runtime params.
   virtual bool radioDeepInit() { return false; }
+  virtual bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
+  virtual bool applyRxBoostedGainMode(bool) { return false; }
+  // 0 = reconfigure from idle, 1 = resume RX afterwards, 2 = currently busy.
+  uint8_t beginReconfigure();
+  void endReconfigure(bool resume_rx);
   float packetScoreInt(float snr, int sf, int packet_len);
   virtual bool isReceivingPacket() =0;
   virtual void doResetAGC();
@@ -87,7 +93,7 @@ public:
         _rx_ps_rx_us(RX_PS_FALLBACK_RX_US), _rx_ps_sleep_us(RX_PS_FALLBACK_SLEEP_US),
         _wd_last_busy(false), _wd_stage(0), _wd_strikes(0), _startrx_fails(0), _wd_last_transition(0),
         _wd_stuck_thresh(0), _wd_observe_until(0), _wd_observe_ms(0),
-        _params_valid(false), _dbm_valid(false),
+        _cur_rx_boosted_gain(false), _params_valid(false), _dbm_valid(false), _rx_boosted_gain_valid(false),
         _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0)
         {
           n_recv = n_sent = n_recv_errors = n_wd_soft = n_wd_hard = 0;
@@ -114,7 +120,10 @@ public:
   }
   bool isReceivingPassive(int interference_margin_db) override;
 
-  virtual void setParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
+  // When rx_ps_timings is supplied, update and re-arm the RX duty cycle in the
+  // same standby transition as the modulation change. Values are {rx, sleep}.
+  bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                 const uint32_t* rx_ps_timings = NULL);
   uint16_t getDefaultPreambleLength() const override { return preambleLengthForSF(_preamble_sf); }
   bool setPreambleLength(uint16_t len) override { return _radio->setPreambleLength(len) == RADIOLIB_ERR_NONE; }
   uint32_t getRngSeed();
@@ -123,7 +132,11 @@ public:
   virtual float getCurrentRSSI() =0;
   virtual uint8_t getSpreadingFactor() const { return LORA_SF; }
   static uint16_t preambleLengthForSF(uint8_t sf) { return sf <= 8 ? 32 : 16; }
-  void updatePreamble(uint8_t sf) { _preamble_sf = sf; _radio->setPreambleLength(preambleLengthForSF(sf)); }
+  bool updatePreamble(uint8_t sf) {
+    if (_radio->setPreambleLength(preambleLengthForSF(sf)) != RADIOLIB_ERR_NONE) return false;
+    _preamble_sf = sf;
+    return true;
+  }
   virtual int16_t performChannelScan();
 
   int getNoiseFloor() const override { return _noise_floor; }
@@ -156,7 +169,7 @@ public:
 
   float packetScore(float snr, int packet_len) override { return packetScoreInt(snr, 10, packet_len); }  // assume sf=10
 
-  virtual bool setRxBoostedGainMode(bool) { return false; }
+  bool setRxBoostedGainMode(bool enabled);
   virtual bool getRxBoostedGainMode() const { return false; }
 };
 

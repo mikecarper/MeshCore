@@ -198,6 +198,15 @@ void Dispatcher::loop() {
   }
   checkRecv();
   checkSend();
+  releaseDroppedOutbound();
+}
+
+void Dispatcher::releaseDroppedOutbound() {
+  Packet* dropped;
+  while ((dropped = _mgr->getNextDroppedOutbound()) != NULL) {
+    onSendFail(dropped);
+    releasePacket(dropped);
+  }
 }
 
 bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {

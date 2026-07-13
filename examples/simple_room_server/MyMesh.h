@@ -122,6 +122,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   float pending_bw;
   uint8_t pending_sf;
   uint8_t pending_cr;
+  uint8_t active_cr;
+  bool temp_radio_applied;
+  bool saved_radio_apply_pending;
   int  matching_peer_indexes[MAX_CLIENTS];
 #ifdef WITH_MQTT_BRIDGE
   MQTTBridge* bridge;
@@ -131,6 +134,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #endif
 
   void addPost(ClientInfo* client, const char* postData);
+  bool applySavedRadioParams();
   void pushPostToClient(ClientInfo* client, PostInfo& post);
   uint8_t getUnsyncedCount(ClientInfo* client);
   bool processAck(const uint8_t *data);
@@ -141,7 +145,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 protected:
 #if defined(ENABLE_OTA)
   bool isTempRadioActive() const override {
-    return set_radio_at == 0 && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
+    return temp_radio_applied && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
   }
 #endif
   float getAirtimeBudgetFactor() const override {
@@ -171,7 +175,7 @@ protected:
     return _prefs.multi_acks;
   }
   uint8_t getDefaultTxCodingRate() const override {
-    return set_radio_at == 0 && revert_radio_at != 0 ? pending_cr : _prefs.cr;
+    return active_cr;
   }
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override;
