@@ -66,6 +66,7 @@ class Mesh : public Dispatcher {
     uint8_t priority;
     uint8_t progress_marker;
     bool expect_path_growth;
+    bool final_hop_retry;
     bool waiting_final_echo;
     bool queued;
     bool active;
@@ -103,7 +104,7 @@ class Mesh : public Dispatcher {
   bool getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_hash, uint8_t& next_hop_hash_len,
                             uint8_t& progress_marker, bool& expect_path_growth) const;
   bool canDecodeDirectPayloadForSelf(const Packet* packet);
-  void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority);
+  void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool final_hop_retry = false);
   void clearFloodRetrySlot(int idx);
   bool isFloodRetryQueued(const Packet* packet) const;
   bool cancelFloodRetryOnEcho(const Packet* packet);
@@ -118,6 +119,7 @@ protected:
   void onSendComplete(Packet* packet) override;
   void onSendFail(Packet* packet) override;
   bool allowPacketTransmit(const Packet* packet) const override;
+  bool usePassiveChannelCheck(const Packet* packet) const override;
 
   virtual uint32_t getCADFailRetryDelay() const override;
 

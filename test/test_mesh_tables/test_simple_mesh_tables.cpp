@@ -9,7 +9,7 @@ using namespace mesh;
 // header selects ROUTE_TYPE_FLOOD so isRouteDirect() returns false.
 static Packet makeFloodPacket(uint8_t seed) {
     Packet p;
-    p.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+    p.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
     p.payload[0] = seed;
     p.payload_len = 1;
     p.path_len = 0;
@@ -18,9 +18,19 @@ static Packet makeFloodPacket(uint8_t seed) {
 
 static Packet makeDirectPacket(uint8_t seed) {
     Packet p;
-    p.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+    p.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
     p.payload[0] = seed;
     p.payload_len = 1;
+    p.path_len = 0;
+    return p;
+}
+
+static Packet makeAckPacket(uint32_t crc, bool direct = true) {
+    Packet p;
+    p.header = (direct ? ROUTE_TYPE_DIRECT : ROUTE_TYPE_FLOOD)
+        | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+    memcpy(p.payload, &crc, sizeof(crc));
+    p.payload_len = sizeof(crc);
     p.path_len = 0;
     return p;
 }
@@ -95,6 +105,55 @@ TEST(SimpleMeshTables, Clear_RemovesSeenPacket) {
     Packet p = makeFloodPacket(0x01);
     t.markSeen(&p);
     ASSERT_TRUE(t.wasSeen(&p));
+    t.clear(&p);
+    EXPECT_FALSE(t.wasSeen(&p));
+}
+
+TEST(SimpleMeshTables, AckCrcZeroIsAValidUnseenValue) {
+    SimpleMeshTables t;
+    Packet p = makeAckPacket(0);
+
+    EXPECT_FALSE(t.wasSeen(&p));
+    t.markSeen(&p);
+    EXPECT_TRUE(t.wasSeen(&p));
+}
+
+TEST(SimpleMeshTables, AckDedupUsesCrcAndIgnoresOptionalSuffix) {
+    SimpleMeshTables t;
+    Packet first = makeAckPacket(0xC3B2A141);
+    Packet repeated = first;
+    first.payload[4] = 0x10;
+    first.payload[5] = 0x20;
+    first.payload_len = 6;
+    repeated.payload[4] = 0x99;
+    repeated.payload[5] = 0x88;
+    repeated.payload_len = 6;
+
+    t.markSeen(&first);
+    EXPECT_TRUE(t.wasSeen(&repeated));
+}
+
+TEST(SimpleMeshTables, AckTrafficDoesNotEvictGeneralPacketHashes) {
+    SimpleMeshTables t;
+    Packet retained = makeFloodPacket(0x5A);
+    t.markSeen(&retained);
+
+    for (int i = 0; i < MAX_PACKET_HASHES + 1; i++) {
+        Packet ack = makeAckPacket((uint32_t)i);
+        t.markSeen(&ack);
+    }
+
+    EXPECT_TRUE(t.wasSeen(&retained));
+}
+
+TEST(SimpleMeshTables, ShortAckPayloadFallsBackToSafeGeneralDedup) {
+    SimpleMeshTables t;
+    Packet p = makeAckPacket(0x7B);
+    p.payload_len = 1;
+
+    EXPECT_FALSE(t.wasSeen(&p));
+    t.markSeen(&p);
+    EXPECT_TRUE(t.wasSeen(&p));
     t.clear(&p);
     EXPECT_FALSE(t.wasSeen(&p));
 }

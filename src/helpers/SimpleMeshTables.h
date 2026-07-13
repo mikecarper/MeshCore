@@ -10,6 +10,10 @@
 #endif
 
 #define MAX_PACKET_HASHES  (128+32)
+#ifndef MAX_PACKET_ACKS
+  #define MAX_PACKET_ACKS  64
+#endif
+#define ACK_VALID_BYTES  ((MAX_PACKET_ACKS + 7) / 8)
 #ifndef MESH_ENABLE_RECENT_REPEATERS
   #define MESH_ENABLE_RECENT_REPEATERS  0
 #endif
@@ -52,6 +56,9 @@ public:
 private:
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
   int _next_idx;
+  uint32_t _acks[MAX_PACKET_ACKS];
+  uint8_t _ack_valid[ACK_VALID_BYTES];
+  uint8_t _next_ack_idx;
   uint32_t _direct_dups, _flood_dups;
   RecentRepeaterInfo _recent_repeaters[RECENT_REPEATER_STORAGE_SLOTS];
 
@@ -68,6 +75,48 @@ private:
   void storeHash(const uint8_t* hash) {
     memcpy(&_hashes[_next_idx*MAX_HASH_SIZE], hash, MAX_HASH_SIZE);
     _next_idx = (_next_idx + 1) % MAX_PACKET_HASHES;
+  }
+
+  bool isAckPacket(const mesh::Packet* packet) const {
+    return packet->getPayloadType() == PAYLOAD_TYPE_ACK && packet->payload_len >= sizeof(uint32_t);
+  }
+
+  bool isAckSlotValid(uint8_t idx) const {
+    return (_ack_valid[idx >> 3] & (uint8_t)(1U << (idx & 7))) != 0;
+  }
+
+  void setAckSlotValid(uint8_t idx, bool valid) {
+    uint8_t mask = (uint8_t)(1U << (idx & 7));
+    if (valid) {
+      _ack_valid[idx >> 3] |= mask;
+    } else {
+      _ack_valid[idx >> 3] &= (uint8_t)~mask;
+    }
+  }
+
+  bool hasSeenAck(uint32_t ack) const {
+    for (uint8_t i = 0; i < MAX_PACKET_ACKS; i++) {
+      if (isAckSlotValid(i) && _acks[i] == ack) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void storeAck(uint32_t ack) {
+    if (hasSeenAck(ack)) return;
+    _acks[_next_ack_idx] = ack;
+    setAckSlotValid(_next_ack_idx, true);
+    _next_ack_idx = (uint8_t)((_next_ack_idx + 1) % MAX_PACKET_ACKS);
+  }
+
+  void clearAck(uint32_t ack) {
+    for (uint8_t i = 0; i < MAX_PACKET_ACKS; i++) {
+      if (isAckSlotValid(i) && _acks[i] == ack) {
+        setAckSlotValid(i, false);
+        return;
+      }
+    }
   }
 
   int8_t weightedSnrX4RoundUp(int8_t curr_snr_x4, int8_t new_snr_x4) const {
@@ -152,6 +201,9 @@ public:
   SimpleMeshTables() { 
     memset(_hashes, 0, sizeof(_hashes));
     _next_idx = 0;
+    memset(_acks, 0, sizeof(_acks));
+    memset(_ack_valid, 0, sizeof(_ack_valid));
+    _next_ack_idx = 0;
     _direct_dups = _flood_dups = 0;
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
   }
@@ -160,6 +212,10 @@ public:
   void restoreFrom(File f) {
     f.read(_hashes, sizeof(_hashes));
     f.read((uint8_t *) &_next_idx, sizeof(_next_idx));
+    // ACKs are short-lived transport state and are intentionally not persisted.
+    memset(_acks, 0, sizeof(_acks));
+    memset(_ack_valid, 0, sizeof(_ack_valid));
+    _next_ack_idx = 0;
     // Recent repeater entries are intentionally not restored across boots.
     // This avoids struct-layout migration issues and keeps stale path quality
     // stats from persisting indefinitely.
@@ -172,6 +228,20 @@ public:
 #endif
 
   bool wasSeen(const mesh::Packet* packet) override {
+    if (isAckPacket(packet)) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, sizeof(ack));
+      if (hasSeenAck(ack)) {
+        if (packet->isRouteDirect()) {
+          _direct_dups++;
+        } else {
+          _flood_dups++;
+        }
+        return true;
+      }
+      return false;
+    }
+
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
 
@@ -188,6 +258,13 @@ public:
   }
 
   void markSeen(const mesh::Packet* packet) override {
+    if (isAckPacket(packet)) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, sizeof(ack));
+      storeAck(ack);
+      return;
+    }
+
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
     if (!hasSeenHash(hash)) {
@@ -197,6 +274,13 @@ public:
   }
 
   void markSent(const mesh::Packet* packet) override {
+    if (isAckPacket(packet)) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, sizeof(ack));
+      storeAck(ack);
+      return;
+    }
+
     // Outbound packets must be marked as already-sent without teaching the recent-heard cache about ourselves.
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
@@ -206,6 +290,13 @@ public:
   }
 
   void clear(const mesh::Packet* packet) override {
+    if (isAckPacket(packet)) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, sizeof(ack));
+      clearAck(ack);
+      return;
+    }
+
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
 

@@ -154,6 +154,7 @@ void Mesh::begin() {
     _direct_retries[i].priority = 0;
     _direct_retries[i].progress_marker = 0;
     _direct_retries[i].expect_path_growth = false;
+    _direct_retries[i].final_hop_retry = false;
     _direct_retries[i].waiting_final_echo = false;
     _direct_retries[i].queued = false;
     _direct_retries[i].active = false;
@@ -547,10 +548,13 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
         if (!_tables->wasSeen(pkt)) {
           _tables->markSeen(pkt);
+          bool final_hop_retry = pkt->getPathHashCount() == 1
+              && pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG
+              && pkt->payload_len >= 2 + CIPHER_MAC_SIZE;
           removePathPrefix(pkt, 1);
 
           uint32_t d = getDirectRetransmitDelay(pkt);
-          maybeScheduleDirectRetry(pkt, 0);
+          maybeScheduleDirectRetry(pkt, 0, final_hop_retry);
           return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority
         }
       }
@@ -908,6 +912,7 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].priority = 0;
   _direct_retries[idx].progress_marker = 0;
   _direct_retries[idx].expect_path_growth = false;
+  _direct_retries[idx].final_hop_retry = false;
   _direct_retries[idx].waiting_final_echo = false;
   _direct_retries[idx].queued = false;
   _direct_retries[idx].active = false;
@@ -919,6 +924,29 @@ bool Mesh::isDirectRetryQueued(const Packet* packet) const {
       return true;
     }
   }
+  return false;
+}
+
+bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (_direct_retries[i].active && _direct_retries[i].queued
+        && _direct_retries[i].packet == packet) {
+      return true;
+    }
+  }
+
+  // Flood retries use the same receive-side cancellation as direct retries:
+  // an overheard downstream forwarding echo removes the queued retry. Avoid
+  // CAD here too, since restarting RX can hide that echo. The initial flood
+  // has trigger_packet set but queued=false, so ordinary flood forwarding
+  // continues to use the normal CAD check.
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (_flood_retries[i].active && _flood_retries[i].queued
+        && _flood_retries[i].packet == packet) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -1005,6 +1033,13 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
                            _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
         _direct_retries[i].echo_wait_started_at = _ms->getMillis();
         _direct_retries[i].retry_attempts_sent++;
+        if (_direct_retries[i].final_hop_retry) {
+          // The destination does not forward the packet, so no downstream echo
+          // can confirm this hop. Send exactly one duplicate and finish without
+          // treating the lack of an echo as a link failure.
+          clearDirectRetrySlot(i);
+          continue;
+        }
         uint8_t max_attempts = getDirectRetryMaxAttempts(packet);
         if (max_attempts < 1) {
           max_attempts = 1;
@@ -1235,13 +1270,26 @@ bool Mesh::canDecodeDirectPayloadForSelf(const Packet* packet) {
   }
 }
 
-void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority) {
-  const uint8_t* next_hop_hash;
-  uint8_t next_hop_hash_len;
-  uint8_t progress_marker;
-  bool expect_path_growth;
-  if (!getDirectRetryTarget(packet, next_hop_hash, next_hop_hash_len, progress_marker, expect_path_growth)
-      || !allowDirectRetry(packet, next_hop_hash, next_hop_hash_len)) {
+void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool final_hop_retry) {
+  const uint8_t* next_hop_hash = NULL;
+  uint8_t next_hop_hash_len = 0;
+  uint8_t progress_marker = 0;
+  bool expect_path_growth = false;
+  if (final_hop_retry) {
+    if (packet == NULL || !packet->isRouteDirect()
+        || packet->getPayloadType() != PAYLOAD_TYPE_TXT_MSG
+        || packet->getPathHashCount() != 0 || packet->payload_len < 2 + CIPHER_MAC_SIZE
+        || !allowDirectRetry(packet, NULL, 0)) {
+      return;
+    }
+    // The encrypted payload exposes only the destination hash to a relay. Keep
+    // it for diagnostics, but do not apply recent-repeater/SNR eligibility to
+    // the destination itself.
+    next_hop_hash = packet->payload;
+    next_hop_hash_len = 1;
+  } else if (!getDirectRetryTarget(packet, next_hop_hash, next_hop_hash_len,
+                                   progress_marker, expect_path_growth)
+             || !allowDirectRetry(packet, next_hop_hash, next_hop_hash_len)) {
     return;
   }
 
@@ -1275,6 +1323,7 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority) {
   _direct_retries[slot_idx].priority = priority;
   _direct_retries[slot_idx].progress_marker = progress_marker;
   _direct_retries[slot_idx].expect_path_growth = expect_path_growth;
+  _direct_retries[slot_idx].final_hop_retry = final_hop_retry;
   _direct_retries[slot_idx].waiting_final_echo = false;
   _direct_retries[slot_idx].queued = false;
   _direct_retries[slot_idx].active = true;

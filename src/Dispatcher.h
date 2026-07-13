@@ -94,6 +94,18 @@ public:
   */
   virtual bool isReceiving() { return false; }
 
+  /**
+   * \brief Non-invasive channel check for a queued retry.
+   *
+   * Implementations should avoid CAD or any operation that restarts RX, because
+   * doing so can hide the downstream forwarding echo that would cancel the
+   * retry. Radios without a passive implementation retain the legacy check.
+   */
+  virtual bool isReceivingPassive(int interference_margin_db) {
+    (void)interference_margin_db;
+    return isReceiving();
+  }
+
   virtual float getLastRSSI() const { return 0; }
   virtual float getLastSNR() const { return 0; }
 
@@ -114,6 +126,10 @@ public:
 
   virtual bool queueOutbound(Packet* packet, uint8_t priority, uint32_t scheduled_for) = 0;
   virtual Packet* getNextOutbound(uint32_t now) = 0;    // by priority
+  virtual Packet* peekNextOutbound(uint32_t now) {
+    (void)now;
+    return NULL;
+  }
   virtual int getOutboundCount(uint32_t now) const = 0;
   virtual int getOutboundTotal() const = 0;
   virtual int getFreeCount() const = 0;
@@ -208,6 +224,11 @@ protected:
   virtual uint32_t getCADFailMaxDuration() const;
   virtual uint8_t getDefaultTxCodingRate() const { return 0; }
   virtual bool allowPacketTransmit(const Packet* packet) const { return true; }
+  virtual bool usePassiveChannelCheck(const Packet* packet) const {
+    (void)packet;
+    return false;
+  }
+  virtual int getRetryInterferenceMargin() const { return 12; }
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual bool getCADEnabled() const { return false; }    // hardware CAD disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default

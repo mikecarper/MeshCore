@@ -112,6 +112,7 @@ public:
 
     return isChannelActive();
   }
+  bool isReceivingPassive(int interference_margin_db) override;
 
   virtual void setParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
   uint16_t getDefaultPreambleLength() const override { return preambleLengthForSF(_preamble_sf); }

@@ -3862,6 +3862,18 @@ static bool isRegionMgrAllowed(const char* cmd) {
 void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command, char *reply) {
   char* reply_start = reply;
   int recent_page = 1;
+
+  // Remote admin clients may include a line ending in the command payload.
+  // Normalize it here so exact-match commands such as `get outpath` behave the
+  // same over LoRa and serial. Keep leading whitespace intact until after the
+  // region-load handler because it encodes region hierarchy indentation.
+  char* command_end = command + strlen(command);
+  while (command_end > command
+      && (command_end[-1] == ' ' || command_end[-1] == '\t'
+          || command_end[-1] == '\r' || command_end[-1] == '\n')) {
+    *--command_end = 0;
+  }
+
   if (region_load_active) {
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
       region_map = temp_map;  // copy over the temp instance as new current map

@@ -51,6 +51,19 @@ class RxReservePacketManager : public StaticPoolPacketManager {
     return false;
   }
 
+  void expireStaleOutbound(uint32_t now) {
+    for (int i = getOutboundTotal() - 1; i >= 0; i--) {
+      mesh::Packet* pkt = getOutboundByIdx(i);
+      uint32_t scheduled_for;
+      if (pkt && lookupAge(pkt, &scheduled_for)
+          && (int32_t)(now - scheduled_for) > (int32_t)STALE_OUTBOUND_MS) {
+        MESH_DEBUG_PRINTLN("RxReservePacketManager: dropping stale queued outbound");
+        removeOutboundByIdx(i);
+        free(pkt);
+      }
+    }
+  }
+
 public:
   RxReservePacketManager(int pool_size, int rx_reserve)
     : StaticPoolPacketManager(pool_size), _rx_reserve(rx_reserve),
@@ -73,18 +86,16 @@ public:
   }
 
   mesh::Packet* getNextOutbound(uint32_t now) override {
-    // Expire queued packets that have waited too long past their scheduled time.
-    for (int i = getOutboundTotal() - 1; i >= 0; i--) {
-      mesh::Packet* pkt = getOutboundByIdx(i);
-      uint32_t scheduled_for;
-      if (pkt && lookupAge(pkt, &scheduled_for)
-          && (int32_t)(now - scheduled_for) > (int32_t)STALE_OUTBOUND_MS) {
-        MESH_DEBUG_PRINTLN("RxReservePacketManager: dropping stale queued outbound");
-        removeOutboundByIdx(i);
-        free(pkt);
-      }
-    }
+    expireStaleOutbound(now);
     return StaticPoolPacketManager::getNextOutbound(now);
+  }
+
+
+  mesh::Packet* peekNextOutbound(uint32_t now) override {
+    // Dispatcher chooses active/passive channel sensing from this pointer, so
+    // apply the same expiry policy as getNextOutbound() before exposing it.
+    expireStaleOutbound(now);
+    return StaticPoolPacketManager::peekNextOutbound(now);
   }
 };
 

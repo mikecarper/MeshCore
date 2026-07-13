@@ -404,6 +404,21 @@ bool RadioLibWrapper::isChannelActive() {
   return false;
 }
 
+bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
+  // RX duty-cycle radios hold BUSY high while asleep. Do not attempt an SPI
+  // IRQ/RSSI read until the next listen window. Treat the unknown channel as
+  // busy so the retry is deferred instead of transmitting blind; Dispatcher
+  // retains its bounded busy timeout as a last-resort escape.
+  if (isChipBusy()) return true;
+  if (isReceivingPacket()) return true;
+
+  // Use a fixed margin for retries even when the normal interference threshold
+  // is disabled. This is passive (RSSI only): unlike CAD it does not restart RX
+  // and cannot erase the forwarding echo that would cancel the retry.
+  return interference_margin_db > 0
+      && getCurrentRSSI() - _noise_floor >= interference_margin_db;
+}
+
 uint8_t RadioLibWrapper::getRadioState() const {
   return state;
 }

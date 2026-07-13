@@ -344,7 +344,12 @@ void Dispatcher::checkSend() {
   }
   
   if (!millisHasNowPassed(next_tx_time)) return;
-  if (_radio->isReceiving()) {
+
+  Packet* pending = _mgr->peekNextOutbound(_ms->getMillis());
+  bool channel_busy = pending != NULL && usePassiveChannelCheck(pending)
+    ? _radio->isReceivingPassive(getRetryInterferenceMargin())
+    : _radio->isReceiving();
+  if (channel_busy) {
     if (cad_busy_start == 0) {
       cad_busy_start = _ms->getMillis();   // record when CAD busy state started
     }

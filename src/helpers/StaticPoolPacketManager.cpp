@@ -43,6 +43,19 @@ mesh::Packet* PacketQueue::get(uint32_t now) {
   return top;
 }
 
+mesh::Packet* PacketQueue::peek(uint32_t now) const {
+  uint8_t min_pri = 0xFF;
+  int best_idx = -1;
+  for (int j = 0; j < _num; j++) {
+    if ((int32_t)(_schedule_table[j] - now) > 0) continue;
+    if (_pri_table[j] < min_pri) {
+      min_pri = _pri_table[j];
+      best_idx = j;
+    }
+  }
+  return best_idx < 0 ? NULL : _table[best_idx];
+}
+
 mesh::Packet* PacketQueue::removeByIdx(int i) {
   if (i >= _num) return NULL;  // invalid index
 
@@ -94,6 +107,10 @@ bool StaticPoolPacketManager::queueOutbound(mesh::Packet* packet, uint8_t priori
 mesh::Packet* StaticPoolPacketManager::getNextOutbound(uint32_t now) {
   //send_queue.sort();   // sort by scheduled_for/priority first
   return send_queue.get(now);
+}
+
+mesh::Packet* StaticPoolPacketManager::peekNextOutbound(uint32_t now) {
+  return send_queue.peek(now);
 }
 
 int  StaticPoolPacketManager::getOutboundCount(uint32_t now) const {
