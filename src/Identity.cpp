@@ -11,6 +11,7 @@ Identity::Identity() {
 }
 
 Identity::Identity(const char* pub_hex) {
+  memset(pub_key, 0, sizeof(pub_key));
   Utils::fromHex(pub_key, PUB_KEY_SIZE, pub_hex);
 }
 
@@ -39,6 +40,7 @@ LocalIdentity::LocalIdentity() {
   memset(prv_key, 0, sizeof(prv_key));
 }
 LocalIdentity::LocalIdentity(const char* prv_hex, const char* pub_hex) : Identity(pub_hex) {
+  memset(prv_key, 0, sizeof(prv_key));
   Utils::fromHex(prv_key, PRV_KEY_SIZE, prv_hex);
 }
 

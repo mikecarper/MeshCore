@@ -5,6 +5,7 @@
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
 #include <RTClib.h>
 #include <Utils.h>
+#include <stddef.h>
 
 #if defined(NRF52_PLATFORM)
 #include <nrf.h>
@@ -1048,6 +1049,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->battery_alert_enabled = 0;
     _prefs->battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
     _prefs->battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
+    memset(_prefs->battery_alert_region, 0, sizeof(_prefs->battery_alert_region));
     _prefs->direct_retry_recent_enabled = DIRECT_RETRY_RECENT_DEFAULT;
     _prefs->flood_channel_data_enabled = 1;
     _prefs->flood_channel_block_max_hops = FLOOD_CHANNEL_BLOCK_HOPS_ALL;
@@ -1150,6 +1152,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       file.read((uint8_t *)&_prefs->rx_ps_sleep_us, sizeof(_prefs->rx_ps_sleep_us));
       file.read((uint8_t *)&_prefs->rx_ps_level, sizeof(_prefs->rx_ps_level));
       file.read((uint8_t *)&_prefs->rx_ps_preamble, sizeof(_prefs->rx_ps_preamble));
+    }
+    if (file.available() >= (int)sizeof(_prefs->battery_alert_region)) {
+      file.read((uint8_t *)_prefs->battery_alert_region, sizeof(_prefs->battery_alert_region));
+      _prefs->battery_alert_region[sizeof(_prefs->battery_alert_region) - 1] = '\0';
     }
     }
 
@@ -1369,7 +1375,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->rx_ps_sleep_us, sizeof(_prefs->rx_ps_sleep_us));                 // 816
     file.write((uint8_t *)&_prefs->rx_ps_level, sizeof(_prefs->rx_ps_level));                       // 820
     file.write((uint8_t *)&_prefs->rx_ps_preamble, sizeof(_prefs->rx_ps_preamble));                 // 821
-    // next: 822
+    file.write((uint8_t *)_prefs->battery_alert_region, sizeof(_prefs->battery_alert_region));      // 822
+    // next: 853
 
     file.close();
   }
@@ -1422,12 +1429,15 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
             // hadn't appended a tail field) leaves the trailing fields at their
             // defaults, and a longer one (a future append) is truncated harmlessly.
             size_t payload_avail = file_size - sizeof(hdr);
+            if (hdr.payload_len < payload_avail) payload_avail = hdr.payload_len;
             size_t to_read = payload_avail < sizeof(_mqtt_prefs) ? payload_avail : sizeof(_mqtt_prefs);
             size_t got = file.read((uint8_t *)&_mqtt_prefs, to_read);
             if (got != to_read) {
               setMQTTPrefsDefaults(&_mqtt_prefs);
             } else {
-              has_observer_fields = true;  // observer tail is part of the v1 payload
+              const size_t observer_tail_end = offsetof(MQTTPrefs, alert_region)
+                  + sizeof(_mqtt_prefs.alert_region);
+              has_observer_fields = to_read >= observer_tail_end;
             }
           } else {
             // Unknown (newer) version: don't risk misreading a layout we don't know.
@@ -1775,9 +1785,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else if (memcmp(command, "neighbor.remove ", 16) == 0) {
       const char* hex = &command[16];
       uint8_t pubkey[PUB_KEY_SIZE];
-      int hex_len = min((int)strlen(hex), PUB_KEY_SIZE*2);
-      int pubkey_len = hex_len / 2;
-      if (mesh::Utils::fromHex(pubkey, pubkey_len, hex)) {
+      size_t hex_len = strlen(hex);
+      int pubkey_len = (int)(hex_len / 2);
+      if (hex_len > 0 && hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
+          && mesh::Utils::fromHex(pubkey, pubkey_len, hex)) {
         _callbacks->removeNeighbor(pubkey, pubkey_len);
         strcpy(reply, "OK");
       } else {
@@ -2781,10 +2792,15 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error: channel must be between 1-14");
     }
   } else if (memcmp(config, "bridge.secret ", 14) == 0) {
-    StrHelper::strncpy(_prefs->bridge_secret, &config[14], sizeof(_prefs->bridge_secret));
-    _callbacks->restartBridge();
-    savePrefs();
-    strcpy(reply, "OK");
+    const char* secret = &config[14];
+    if (secret[0] == 0 || strlen(secret) >= sizeof(_prefs->bridge_secret)) {
+      sprintf(reply, "Error: secret must be 1-%u characters", (unsigned)(sizeof(_prefs->bridge_secret) - 1));
+    } else {
+      StrHelper::strncpy(_prefs->bridge_secret, secret, sizeof(_prefs->bridge_secret));
+      _callbacks->restartBridge();
+      savePrefs();
+      strcpy(reply, "OK");
+    }
 #endif
   } else if (memcmp(config, "adc.multiplier ", 15) == 0) {
     _prefs->adc_multiplier = atof(&config[15]);

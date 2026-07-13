@@ -85,7 +85,9 @@ public:
 
 protected:
 #if defined(ENABLE_OTA)
-  bool isTempRadioActive() const override { return set_radio_at == 0 && revert_radio_at != 0; }
+  bool isTempRadioActive() const override {
+    return set_radio_at == 0 && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
+  }
 #endif
   // current telemetry data queries
   float getVoltage(uint8_t channel) { return getTelemValue(channel, LPP_VOLTAGE); }

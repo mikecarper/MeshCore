@@ -214,6 +214,7 @@ struct NodePrefs { // persisted to file
   uint32_t rx_ps_sleep_us;
   uint8_t rx_ps_level;      // 0 = manual/explicit us timings; 1..10 = level-derived (auto-retunes on SF/BW change)
   uint8_t rx_ps_preamble;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
+  char battery_alert_region[31]; // named scope for low-battery floods; empty = no alert scope
 };
 
 #ifdef WITH_MQTT_BRIDGE

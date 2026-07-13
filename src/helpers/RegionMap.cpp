@@ -79,36 +79,100 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
 
     if (file) {
       uint8_t pad[128];
-
-      num_regions = 0; next_id = 1;
-      default_id = home_id = 0;
+      RegionEntry loaded[MAX_REGION_ENTRIES];
+      uint16_t loaded_count = 0;
+      uint16_t loaded_default = 0;
+      uint16_t loaded_home = 0;
+      uint16_t loaded_next = 1;
+      uint8_t loaded_wildcard_flags = 0;
 
       bool success = file.read(pad, 3) == 3;  // reserved header
-      success = success && file.read((uint8_t *) &default_id, sizeof(default_id)) == sizeof(default_id);
-      success = success && file.read((uint8_t *) &home_id, sizeof(home_id)) == sizeof(home_id);
-      success = success && file.read((uint8_t *) &wildcard.flags, sizeof(wildcard.flags)) == sizeof(wildcard.flags);
-      success = success && file.read((uint8_t *) &next_id, sizeof(next_id)) == sizeof(next_id);
+      success = success && file.read((uint8_t *) &loaded_default, sizeof(loaded_default)) == sizeof(loaded_default);
+      success = success && file.read((uint8_t *) &loaded_home, sizeof(loaded_home)) == sizeof(loaded_home);
+      success = success && file.read((uint8_t *) &loaded_wildcard_flags, sizeof(loaded_wildcard_flags)) == sizeof(loaded_wildcard_flags);
+      success = success && file.read((uint8_t *) &loaded_next, sizeof(loaded_next)) == sizeof(loaded_next);
 
-      if (success) {
-        while (num_regions < MAX_REGION_ENTRIES) {
-          auto r = &regions[num_regions];
-
-          success = file.read((uint8_t *) &r->id, sizeof(r->id)) == sizeof(r->id);
-          success = success && file.read((uint8_t *) &r->parent, sizeof(r->parent)) == sizeof(r->parent);
-          success = success && file.read((uint8_t *) r->name, sizeof(r->name)) == sizeof(r->name);
-          success = success && file.read((uint8_t *) &r->flags, sizeof(r->flags)) == sizeof(r->flags);
-          success = success && file.read(pad, sizeof(pad)) == sizeof(pad);
-
-          if (!success) break; // EOF
-
-          if (r->id >= next_id) {    // make sure next_id is valid
-            next_id = r->id + 1;
-          }
-          num_regions++;
+      while (success && file.available() > 0) {
+        if (loaded_count >= MAX_REGION_ENTRIES) {
+          success = false;
+          break;
         }
+        RegionEntry& r = loaded[loaded_count];
+        memset(&r, 0, sizeof(r));
+        success = file.read((uint8_t *) &r.id, sizeof(r.id)) == sizeof(r.id);
+        success = success && file.read((uint8_t *) &r.parent, sizeof(r.parent)) == sizeof(r.parent);
+        success = success && file.read((uint8_t *) r.name, sizeof(r.name)) == sizeof(r.name);
+        success = success && file.read((uint8_t *) &r.flags, sizeof(r.flags)) == sizeof(r.flags);
+        success = success && file.read(pad, sizeof(pad)) == sizeof(pad);
+        if (!success) break;
+
+        const char* terminator = (const char*)memchr(r.name, 0, sizeof(r.name));
+        if (r.id == 0 || r.id == 0xFFFF || terminator == NULL || r.name[0] == 0) {
+          success = false;
+          break;
+        }
+        for (const char* p = r.name; *p; p++) {
+          if (!is_name_char((uint8_t)*p)) {
+            success = false;
+            break;
+          }
+        }
+        if (!success) break;
+        loaded_count++;
       }
       file.close();
-      return true;
+
+      // Validate IDs and parent links only after every record is present so forward
+      // parent references are allowed. A bounded walk also rejects cycles.
+      for (uint16_t i = 0; success && i < loaded_count; i++) {
+        for (uint16_t j = i + 1; j < loaded_count; j++) {
+          if (loaded[i].id == loaded[j].id) success = false;
+        }
+        uint16_t parent = loaded[i].parent;
+        for (uint16_t depth = 0; success && parent != 0; depth++) {
+          if (depth >= loaded_count || parent == loaded[i].id) {
+            success = false;
+            break;
+          }
+          const RegionEntry* found = NULL;
+          for (uint16_t j = 0; j < loaded_count; j++) {
+            if (loaded[j].id == parent) {
+              found = &loaded[j];
+              break;
+            }
+          }
+          if (found == NULL) {
+            success = false;
+            break;
+          }
+          parent = found->parent;
+        }
+      }
+
+      bool default_found = loaded_default == 0;
+      bool home_found = loaded_home == 0;
+      uint16_t minimum_next = 1;
+      for (uint16_t i = 0; success && i < loaded_count; i++) {
+        if (loaded[i].id == loaded_default) default_found = true;
+        if (loaded[i].id == loaded_home) home_found = true;
+        if (loaded[i].id >= minimum_next) minimum_next = loaded[i].id + 1;
+      }
+      if (!default_found || !home_found) success = false;
+      if (loaded_next == 0 || loaded_next == 0xFFFF || loaded_next < minimum_next) loaded_next = minimum_next;
+      if (loaded_next == 0xFFFF && loaded_count < MAX_REGION_ENTRIES) success = false;
+
+      if (success) {
+        memcpy(regions, loaded, loaded_count * sizeof(RegionEntry));
+        if (loaded_count < MAX_REGION_ENTRIES) {
+          memset(&regions[loaded_count], 0, (MAX_REGION_ENTRIES - loaded_count) * sizeof(RegionEntry));
+        }
+        num_regions = loaded_count;
+        default_id = loaded_default;
+        home_id = loaded_home;
+        next_id = loaded_next;
+        wildcard.flags = loaded_wildcard_flags;
+      }
+      return success;
     }
   }
   return false;  // failed
@@ -157,7 +221,8 @@ RegionEntry* RegionMap::putRegion(const char* name, uint16_t parent_id, uint16_t
 
     region->parent = parent_id;   // re-parent / move this region in the hierarchy
   } else {
-    if (id == 0 && num_regions >= MAX_REGION_ENTRIES) return NULL;  // full!
+    if (num_regions >= MAX_REGION_ENTRIES) return NULL;  // full!
+    if (id == 0xFFFF || (id == 0 && (next_id == 0 || next_id == 0xFFFF))) return NULL;
 
     region = &regions[num_regions++];   // alloc new RegionEntry
     region->flags = REGION_DENY_FLOOD;     // DENY by default

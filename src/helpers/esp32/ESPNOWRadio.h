@@ -38,8 +38,14 @@ public:
    * These two functions do nothing for ESP-NOW, but are needed for the
    * Radio interface.
    */
-  virtual bool setRxBoostedGainMode(bool) { }
+  virtual bool setRxBoostedGainMode(bool) { return false; }
   virtual bool getRxBoostedGainMode() const { return false; }
+
+  // ESP-NOW has no LoRa RX power-saving watchdog or noise-floor calibration.
+  uint32_t getRxPsWatchdogSoftCount() const { return 0; }
+  uint32_t getRxPsWatchdogHardCount() const { return 0; }
+  bool isWatchdogObserving() const { return false; }
+  bool isCalibratingNoiseFloor() const { return false; }
 
   uint32_t intID();
   void setTxPower(uint8_t dbm);

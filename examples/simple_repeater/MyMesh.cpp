@@ -101,7 +101,8 @@
 #endif
 
 #define LOW_BATTERY_MIN_VALID_MV       1000
-#define LOW_BATTERY_CHECK_INTERVAL     (60UL * 1000UL)
+#define LOW_BATTERY_STARTUP_DELAY      (30ULL * 60ULL * 1000ULL)
+#define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_WARN_INTERVAL      (24UL * 60UL * 60UL * 1000UL)
 #define LOW_BATTERY_CRITICAL_INTERVAL  (12UL * 60UL * 60UL * 1000UL)
 
@@ -315,6 +316,10 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
     }
 
     client = acl.putClient(sender, 0);  // add to contacts (if not already known)
+    if (client == NULL) {
+      MESH_DEBUG_PRINTLN("Login rejected: ACL is full of protected contacts");
+      return 0;
+    }
     if (sender_timestamp <= client->last_timestamp) {
       MESH_DEBUG_PRINTLN("Possible login replay attack!");
       return 0;  // FATAL: client table is full -OR- replay attack
@@ -1391,6 +1396,61 @@ uint8_t MyMesh::floodRetrySourceMask(const mesh::Packet* packet) const {
   return floodRetryBucketMaskForPrefix(source_prefix, hash_size, true);
 }
 
+bool MyMesh::floodRetryBridgeBucketFresh(uint8_t bucket) const {
+  if (bucket > FLOOD_RETRY_BRIDGE_OTHER_BUCKET) {
+    return false;
+  }
+
+  const uint8_t (*prefixes)[FLOOD_RETRY_PREFIX_LEN];
+  uint8_t prefix_count;
+  if (bucket == FLOOD_RETRY_BRIDGE_OTHER_BUCKET) {
+    prefixes = _prefs.flood_retry_prefixes;
+    prefix_count = FLOOD_RETRY_PREFIX_SLOTS;
+  } else {
+    prefixes = _prefs.flood_retry_bridge_buckets[bucket];
+    prefix_count = FLOOD_RETRY_BUCKET_PREFIXES;
+  }
+
+  for (uint8_t i = 0; i < prefix_count; i++) {
+    const uint8_t* configured = prefixes[i];
+    if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
+        && !floodRetryPrefixIgnored(configured, FLOOD_RETRY_PREFIX_LEN)
+        && floodRetryPrefixFresh(configured, FLOOD_RETRY_PREFIX_LEN)) {
+      return true;
+    }
+  }
+
+  const FloodRetryBridgeReachability& reachable = flood_retry_bridge_reachability[bucket];
+  if (reachable.prefix_len == 0 || reachable.last_heard_millis == 0
+      || (uint32_t)(millis() - reachable.last_heard_millis) > 3600000UL) {
+    return false;
+  }
+  return (floodRetryBucketMaskForPrefix(reachable.prefix, reachable.prefix_len, false)
+          & floodRetryBucketMask(bucket)) != 0;
+}
+
+void MyMesh::recordFloodRetryBridgeReachability(const uint8_t* prefix, uint8_t prefix_len,
+                                                uint8_t bucket_mask) {
+  if (prefix == NULL || prefix_len == 0 || prefix_len > MAX_ROUTE_HASH_BYTES) {
+    return;
+  }
+
+  uint32_t now = millis();
+  if (now == 0) {
+    now = 1;  // zero means unused
+  }
+  for (uint8_t bucket = 0; bucket <= FLOOD_RETRY_BRIDGE_OTHER_BUCKET; bucket++) {
+    if ((bucket_mask & floodRetryBucketMask(bucket)) == 0) {
+      continue;
+    }
+    FloodRetryBridgeReachability& reachable = flood_retry_bridge_reachability[bucket];
+    memset(reachable.prefix, 0, sizeof(reachable.prefix));
+    memcpy(reachable.prefix, prefix, prefix_len);
+    reachable.prefix_len = prefix_len;
+    reachable.last_heard_millis = now;
+  }
+}
+
 uint8_t MyMesh::floodRetryBridgeTargetMask(uint8_t source_mask) const {
   uint8_t mask = 0;
   for (int bucket = 0; bucket < FLOOD_RETRY_BRIDGE_BUCKETS; bucket++) {
@@ -1398,27 +1458,14 @@ uint8_t MyMesh::floodRetryBridgeTargetMask(uint8_t source_mask) const {
     if ((source_mask & bucket_mask) != 0) {
       continue;
     }
-    for (int i = 0; i < FLOOD_RETRY_BUCKET_PREFIXES; i++) {
-      const uint8_t* configured = _prefs.flood_retry_bridge_buckets[bucket][i];
-      if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
-          && !floodRetryPrefixIgnored(configured, FLOOD_RETRY_PREFIX_LEN)
-          && floodRetryPrefixFresh(configured, FLOOD_RETRY_PREFIX_LEN)) {
-        mask |= bucket_mask;
-        break;
-      }
+    if (floodRetryBridgeBucketFresh((uint8_t)bucket)) {
+      mask |= bucket_mask;
     }
   }
   uint8_t other_mask = floodRetryBucketMask(FLOOD_RETRY_BRIDGE_OTHER_BUCKET);
-  if ((source_mask & other_mask) == 0) {
-    for (int i = 0; i < FLOOD_RETRY_PREFIX_SLOTS; i++) {
-      const uint8_t* configured = _prefs.flood_retry_prefixes[i];
-      if ((configured[0] != 0 || configured[1] != 0 || configured[2] != 0)
-          && !floodRetryPrefixIgnored(configured, FLOOD_RETRY_PREFIX_LEN)
-          && floodRetryPrefixFresh(configured, FLOOD_RETRY_PREFIX_LEN)) {
-        mask |= other_mask;
-        break;
-      }
-    }
+  if ((source_mask & other_mask) == 0
+      && floodRetryBridgeBucketFresh(FLOOD_RETRY_BRIDGE_OTHER_BUCKET)) {
+    mask |= other_mask;
   }
   return mask;
 }
@@ -1515,14 +1562,20 @@ bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
   return true;
 }
 
-void MyMesh::clearFloodRetryBridgeState(const mesh::Packet* packet) {
-  FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, false);
-  if (state != NULL) {
-    state->active = false;
+void MyMesh::clearFloodRetryBridgeStateByKey(const uint8_t* retry_key) {
+  if (retry_key == NULL) {
+    return;
+  }
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (flood_retry_bridge_states[i].active
+        && memcmp(flood_retry_bridge_states[i].key, retry_key, MAX_HASH_SIZE) == 0) {
+      flood_retry_bridge_states[i].active = false;
+      return;
+    }
   }
 }
 
-void MyMesh::refreshFloodRetryHeardRecent(const mesh::Packet* packet) {
+void MyMesh::refreshFloodRetryReachability(const mesh::Packet* packet) {
   if (packet == NULL || !packet->isRouteFlood() || packet->getPathHashCount() == 0) {
     return;
   }
@@ -1536,11 +1589,16 @@ void MyMesh::refreshFloodRetryHeardRecent(const mesh::Packet* packet) {
   if (tables == NULL) {
     return;
   }
+
+  uint8_t path_count = packet->getPathHashCount();
+  const uint8_t* last_hop = &packet->path[(path_count - 1) * hash_size];
+  tables->setRecentRepeater(last_hop, hash_size, packet->_snr, false, true);
+
   const uint8_t* path = packet->path;
   if (_prefs.flood_retry_bridge_enabled) {
     FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, false);
     if (state != NULL) {
-      for (int hop = 0; hop < packet->getPathHashCount(); hop++) {
+      for (uint8_t hop = 0; hop < path_count; hop++) {
         if (state->progress_marker > 0 && hop == state->progress_marker - 1) {
           path += hash_size;
           continue;
@@ -1548,17 +1606,13 @@ void MyMesh::refreshFloodRetryHeardRecent(const mesh::Packet* packet) {
         uint8_t bucket_mask = floodRetryBucketMaskForPathHop(path, hash_size, (uint8_t)hop,
                                                              state->progress_marker);
         bucket_mask &= state->target_mask & (uint8_t)~state->source_mask;
-        if (bucket_mask != 0) {
-          tables->setRecentRepeater(path, hash_size, packet->_snr, false, true);
+        if (bucket_mask != 0 && hop != path_count - 1) {
+          recordFloodRetryBridgeReachability(path, hash_size, bucket_mask);
         }
         path += hash_size;
       }
-      return;
     }
   }
-
-  const uint8_t* heard_prefix = &packet->path[(packet->getPathHashCount() - 1) * hash_size];
-  tables->setRecentRepeater(heard_prefix, hash_size, packet->_snr, false, true);
 }
 
 void MyMesh::formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const {
@@ -1676,19 +1730,26 @@ bool MyMesh::formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Pack
 }
 
 void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) {
-  if (event == NULL || packet == NULL) {
+  if (event == NULL) {
     return;
   }
 
-  bool clear_bridge_state = _prefs.flood_retry_bridge_enabled
-      && (strcmp(event, "good") == 0 || strcmp(event, "failure") == 0 || strcmp(event, "failed_all_tries") == 0
-          || strncmp(event, "dropped_", 8) == 0);
-
-  if (clear_bridge_state && strcmp(event, "failure") == 0) {
-    clearFloodRetryBridgeState(packet);
+  if (strcmp(event, "failure") == 0) {
+    return;
   }
 
-  if (strcmp(event, "failure") == 0) {
+  if (packet == NULL) {
+    MESH_DEBUG_PRINTLN("flood retry %s (retry=%u, elapsed_ms=%lu, packet=released)",
+                       event, (unsigned int)retry_attempt, (unsigned long)delay_millis);
+    if (_logging) {
+      File f = openAppend(PACKET_LOG_FILE);
+      if (f) {
+        f.print(getLogDateTime());
+        f.printf(": FLOOD RETRY %s (retry=%u, elapsed_ms=%lu, packet=released)\n",
+                 event, (unsigned int)retry_attempt, (unsigned long)delay_millis);
+        f.close();
+      }
+    }
     return;
   }
 
@@ -1708,7 +1769,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
   formatFloodRetryPath(path_log, sizeof(path_log), packet);
   heard_suffix[0] = 0;
   if (strcmp(event, "good") == 0 && formatFloodRetryHeard(heard_log, sizeof(heard_log), packet)) {
-    refreshFloodRetryHeardRecent(packet);
+    refreshFloodRetryReachability(packet);
     snprintf(heard_suffix, sizeof(heard_suffix), ", heard=%s", heard_log);
   }
   uint8_t log_cr = getRetryLogCodingRate(packet, getDefaultTxCodingRate());
@@ -1749,9 +1810,10 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
     }
   }
 
-  if (clear_bridge_state) {
-    clearFloodRetryBridgeState(packet);
-  }
+}
+
+void MyMesh::onFloodRetrySlotReleased(const uint8_t* retry_key) {
+  clearFloodRetryBridgeStateByKey(retry_key);
 }
 
 bool MyMesh::hasFloodRetryTargetPrefix(const mesh::Packet* packet) const {
@@ -2247,6 +2309,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _logging = false;
   region_load_active = false;
   memset(flood_retry_bridge_states, 0, sizeof(flood_retry_bridge_states));
+  memset(flood_retry_bridge_reachability, 0, sizeof(flood_retry_bridge_reachability));
   recv_pkt_region = NULL;
   memset(flood_channel_blocks, 0, sizeof(flood_channel_blocks));
 
@@ -2445,14 +2508,14 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 }
 
-void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
   if (scope.isNull()) {
-    sendFlood(pkt, delay_millis, path_hash_size);
+    return sendFlood(pkt, delay_millis, path_hash_size);
   } else {
     uint16_t codes[2];
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;  // REVISIT: set to 'home' Region, for sender/return region?
-    sendFlood(pkt, codes, delay_millis, path_hash_size);
+    return sendFlood(pkt, codes, delay_millis, path_hash_size);
   }
 }
 
@@ -2477,7 +2540,66 @@ bool MyMesh::resolveAlertScope(TransportKey& dest) {
   return false;
 }
 
-bool MyMesh::sendRepeatersFloodText(const char* text) {
+const RegionEntry* MyMesh::findNarrowestBatteryAlertRegion(bool& ambiguous) {
+  ambiguous = false;
+  const RegionEntry* narrowest = NULL;
+  uint8_t narrowest_depth = 0;
+  const int region_count = region_map.getCount();
+
+  for (int i = 0; i < region_count; i++) {
+    const RegionEntry* candidate = region_map.getByIdx(i);
+    uint8_t depth = 1;
+    uint16_t parent_id = candidate->parent;
+    bool valid = true;
+
+    // Region files are validated when loaded, but the live map can be edited
+    // before it is saved. Bound the walk so a temporary cycle cannot hang the
+    // repeater while selecting the default battery-alert scope.
+    for (int hops = 0; parent_id != 0; hops++) {
+      if (hops >= region_count) {
+        valid = false;
+        break;
+      }
+      const RegionEntry* parent = region_map.findById(parent_id);
+      if (parent == NULL || parent->isWildcard()) {
+        valid = false;
+        break;
+      }
+      depth++;
+      parent_id = parent->parent;
+    }
+    if (!valid) continue;
+
+    // A named region is not necessarily a usable transport scope. In
+    // particular, private regions need a stored key; do not select one merely
+    // because it happens to be the deepest entry in the hierarchy.
+    TransportKey candidate_scope;
+    if (!getBatteryAlertScopeForRegion(*candidate, candidate_scope)) continue;
+
+    if (depth > narrowest_depth) {
+      narrowest = candidate;
+      narrowest_depth = depth;
+      ambiguous = false;
+    } else if (depth == narrowest_depth) {
+      ambiguous = true;
+    }
+  }
+  return narrowest;
+}
+
+bool MyMesh::getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope) {
+  if (region.isWildcard()) return false;
+  return region_map.getTransportKeysFor(region, &scope, 1) > 0 && !scope.isNull();
+}
+
+bool MyMesh::resolveBatteryAlertScope(TransportKey& scope) {
+  if (_prefs.battery_alert_region[0] == 0) return false;
+
+  const RegionEntry* region = region_map.findByName(_prefs.battery_alert_region);
+  return region != NULL && getBatteryAlertScopeForRegion(*region, scope);
+}
+
+bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope) {
   if (text == NULL || *text == 0) return false;
 
   mesh::GroupChannel channel;
@@ -2521,8 +2643,8 @@ bool MyMesh::sendRepeatersFloodText(const char* text) {
     return false;
   }
 
-  sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
-  return true;
+  const TransportKey& send_scope = scope == NULL ? default_scope : *scope;
+  return sendFloodScoped(send_scope, pkt, 0, _prefs.path_hash_mode + 1);
 }
 
 void MyMesh::checkBatteryAlert() {
@@ -2531,10 +2653,25 @@ void MyMesh::checkBatteryAlert() {
     return;
   }
 
+  // Ignore startup voltage sag and give solar/charger hardware time to settle.
+  // uptime_millis is 64-bit and includes time spent in the platform's light or
+  // event sleep, so this guard remains reliable across millis() wraparound.
+  if (uptime_millis < LOW_BATTERY_STARTUP_DELAY) {
+    return;
+  }
+
   if (next_battery_alert_check && !millisHasNowPassed(next_battery_alert_check)) {
     return;
   }
   next_battery_alert_check = futureMillis(LOW_BATTERY_CHECK_INTERVAL);
+
+  // Check the cheap configuration path first. This avoids powering the ADC or
+  // battery-divider circuitry when the selected region has been removed or no
+  // longer has a usable transport key.
+  TransportKey alert_scope;
+  if (!resolveBatteryAlertScope(alert_scope)) {
+    return;  // low-battery alerts are never sent as an unscoped flood
+  }
 
   uint16_t batt_mv = board.getBattMilliVolts();
   uint8_t batt_pct = batteryPercentFromMilliVolts(batt_mv);
@@ -2552,7 +2689,7 @@ void MyMesh::checkBatteryAlert() {
 
   char text[96];
   snprintf(text, sizeof(text), "LOW BATTERY %u%% (%u mV)", (uint32_t)batt_pct, (uint32_t)batt_mv);
-  if (sendRepeatersFloodText(text)) {
+  if (sendRepeatersFloodText(text, &alert_scope)) {
     battery_alert_sent = true;
     last_battery_alert_sent = millis();
   }
@@ -2578,6 +2715,19 @@ bool MyMesh::hasStartedScheduledTempRadio() const {
   }
   return false;
 }
+
+#if defined(ENABLE_OTA)
+bool MyMesh::isTempRadioActive() const {
+  const uint32_t now = getRTCClock()->getCurrentTime();
+  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+    if (setting.active && setting.temporary && setting.started && now < setting.end_time) {
+      return true;
+    }
+  }
+  return false;
+}
+#endif
 
 int MyMesh::findFreeScheduledRadioSlot() const {
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
@@ -2921,7 +3071,8 @@ void MyMesh::processScheduledRadioSettings() {
 
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-    if (setting.active && setting.temporary && setting.started && now >= setting.end_time) {
+    if (setting.active && setting.temporary && setting.started && now >= setting.end_time
+        && !hasOutbound()) {
       setting.active = false;
       setting.started = false;
       temp_ended = true;
@@ -3180,6 +3331,7 @@ void MyMesh::formatNeighborsReply(char *reply) {
 
 void MyMesh::removeNeighbor(const uint8_t *pubkey, int key_len) {
 #if MAX_NEIGHBOURS
+  if (pubkey == NULL || key_len <= 0 || key_len > PUB_KEY_SIZE) return;
   for (int i = 0; i < MAX_NEIGHBOURS; i++) {
     NeighbourInfo *neighbour = &neighbours[i];
     if (memcmp(neighbour->id.pub_key, pubkey, key_len) == 0) {
@@ -3768,13 +3920,14 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     if (sp == NULL) {
       strcpy(reply, "Err - bad params");
     } else {
+      size_t hex_len = (size_t)(sp - hex);
       *sp++ = 0;   // replace space with null terminator
 
       uint8_t pubkey[PUB_KEY_SIZE];
-      int hex_len = min(sp - hex, PUB_KEY_SIZE*2);
-      if (mesh::Utils::fromHex(pubkey, hex_len / 2, hex)) {
+      if (hex_len > 0 && hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
+          && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
         uint8_t perms = atoi(sp);
-        if (acl.applyPermissions(self_id, pubkey, hex_len / 2, perms)) {
+        if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
           dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
           strcpy(reply, "OK");
         } else {
@@ -3849,24 +4002,63 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     }
   } else if (strcmp(command, "get battery.alert") == 0) {
     sprintf(reply, "> %s", _prefs.battery_alert_enabled ? "on" : "off");
+  } else if (strcmp(command, "get battery.alert.region") == 0) {
+    sprintf(reply, "> %s", _prefs.battery_alert_region[0]
+            ? _prefs.battery_alert_region : "<unset>");
   } else if (strcmp(command, "get battery.alert.low") == 0) {
     sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_low_percent);
   } else if (strcmp(command, "get battery.alert.critical") == 0) {
     sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_critical_percent);
   } else if (strncmp(command, "set battery.alert ", 18) == 0) {
     const char* value = command + 18;
-    if (strcmp(value, "on") == 0) {
+    if (strncmp(value, "on", 2) == 0 && (value[2] == 0 || value[2] == ' ')) {
+      const char* region_name = skipLocalSpaces(value + 2);
+      const RegionEntry* region = NULL;
+      bool ambiguous = false;
+
+      if (*region_name) {
+        if (strchr(region_name, ' ') != NULL) {
+          strcpy(reply, "Err - region names cannot contain spaces");
+          return;
+        }
+        region = region_map.findByName(region_name);
+        if (region == NULL || region->isWildcard()) {
+          strcpy(reply, "Err - unknown or invalid alert region");
+          return;
+        }
+      } else {
+        region = findNarrowestBatteryAlertRegion(ambiguous);
+        if (region == NULL) {
+          strcpy(reply, "Err - define a usable region before enabling battery alerts");
+          return;
+        }
+        if (ambiguous) {
+          strcpy(reply, "Err - multiple narrowest regions; specify one");
+          return;
+        }
+      }
+
+      TransportKey region_scope;
+      if (!getBatteryAlertScopeForRegion(*region, region_scope)) {
+        strcpy(reply, "Err - alert region has no usable transport key");
+        return;
+      }
+
+      StrHelper::strncpy(_prefs.battery_alert_region, region->name,
+                         sizeof(_prefs.battery_alert_region));
       _prefs.battery_alert_enabled = 1;
       next_battery_alert_check = 0;
+      battery_alert_sent = false;
       savePrefs();
-      strcpy(reply, "OK");
+      sprintf(reply, "OK - battery alerts scoped to %s", _prefs.battery_alert_region);
     } else if (strcmp(value, "off") == 0) {
       _prefs.battery_alert_enabled = 0;
+      next_battery_alert_check = 0;
       battery_alert_sent = false;
       savePrefs();
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Err - usage: set battery.alert <on|off>");
+      strcpy(reply, "Err - usage: set battery.alert <on [region]|off>");
     }
   } else if (strncmp(command, "set battery.alert.low ", 22) == 0) {
     uint8_t percent;

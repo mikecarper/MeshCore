@@ -143,6 +143,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
     uint8_t progress_marker;
     bool active;
   };
+  struct FloodRetryBridgeReachability {
+    uint8_t prefix[MAX_ROUTE_HASH_BYTES];
+    uint8_t prefix_len;
+    uint32_t last_heard_millis;
+  };
   struct FloodChannelBlockEntry {
     bool active;
     uint8_t key_len;
@@ -152,6 +157,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
     char name[FLOOD_CHANNEL_BLOCK_NAME_LEN];
   };
   mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
+  FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
   FloodChannelBlockEntry flood_channel_blocks[FLOOD_CHANNEL_BLOCK_SLOTS];
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
@@ -212,12 +218,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t floodRetryBucketMaskForPathHop(const uint8_t* prefix, uint8_t prefix_len, uint8_t hop,
                                          uint8_t progress_marker) const;
   uint8_t floodRetrySourceMask(const mesh::Packet* packet) const;
+  bool floodRetryBridgeBucketFresh(uint8_t bucket) const;
+  void recordFloodRetryBridgeReachability(const uint8_t* prefix, uint8_t prefix_len, uint8_t bucket_mask);
   uint8_t floodRetryBridgeTargetMask(uint8_t source_mask) const;
   uint8_t floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t source_mask,
                                     uint8_t progress_marker) const;
   FloodRetryBridgeState* floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const;
-  void clearFloodRetryBridgeState(const mesh::Packet* packet);
-  void refreshFloodRetryHeardRecent(const mesh::Packet* packet);
+  void clearFloodRetryBridgeStateByKey(const uint8_t* retry_key);
+  void refreshFloodRetryReachability(const mesh::Packet* packet);
   void formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   bool formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
@@ -227,7 +235,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
-  bool sendRepeatersFloodText(const char* text);
+  bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr);
+  const RegionEntry* findNarrowestBatteryAlertRegion(bool& ambiguous);
+  bool getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope);
+  bool resolveBatteryAlertScope(TransportKey& scope);
   void checkBatteryAlert();
   void printRecentRepeatersSerial();
 
@@ -268,7 +279,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 
 protected:
 #if defined(ENABLE_OTA)
-  bool isTempRadioActive() const override { return hasStartedScheduledTempRadio(); }
+  bool isTempRadioActive() const override;
 #endif
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
@@ -299,6 +310,7 @@ protected:
   void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) override;
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   void onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
+  void onFloodRetrySlotReleased(const uint8_t* retry_key) override;
   bool hasFloodRetryTargetPrefix(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
@@ -359,7 +371,7 @@ public:
     _cli.savePrefs(_fs);
   }
 
-  void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
+  bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
 
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;

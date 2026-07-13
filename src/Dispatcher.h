@@ -207,6 +207,7 @@ protected:
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;
   virtual uint8_t getDefaultTxCodingRate() const { return 0; }
+  virtual bool allowPacketTransmit(const Packet* packet) const { return true; }
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual bool getCADEnabled() const { return false; }    // hardware CAD disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default

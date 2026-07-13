@@ -29,6 +29,12 @@ void Dispatcher::begin() {
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
+#ifdef WITH_MQTT_BRIDGE
+  // Use begin() as the watchdog baseline even if the radio never reports an
+  // RX/IRQ timestamp. This lets a radio that is dead from startup recover.
+  last_radio_active_ms = _ms->getMillis();
+  last_watchdog_recovery = last_radio_active_ms;
+#endif
 }
 
 float Dispatcher::getAirtimeBudgetFactor() const {
@@ -107,20 +113,20 @@ void Dispatcher::loop() {
   {
     const uint32_t watchdog_ms = getRadioWatchdogMillis();
     if (watchdog_ms > 0) {
-      unsigned long last_recv = _radio->getLastRecvMillis();
-      unsigned long last_irq  = _radio->getLastRadioInterruptMillis();
-      unsigned long last_active = (last_recv > last_irq ? last_recv : last_irq);
-      if (last_radio_active_ms > last_active) last_active = last_radio_active_ms;
-      if (is_recv && last_active > 0) {
-        unsigned long silent_ms = _ms->getMillis() - last_active;
-        unsigned long since_recovery = _ms->getMillis() - last_watchdog_recovery;
-        if (silent_ms > watchdog_ms && since_recovery > watchdog_ms) {
-          _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
-          MESH_DEBUG_PRINTLN("Radio watchdog: silent %lu ms, state=%d, recovering", silent_ms, _radio->getRadioState());
-          _radio->idle();
-          _radio->startRecv();
-          last_watchdog_recovery = _ms->getMillis();
-        }
+      const unsigned long now = _ms->getMillis();
+      unsigned long silent_ms = now - last_radio_active_ms;
+      const unsigned long last_recv = _radio->getLastRecvMillis();
+      const unsigned long last_irq = _radio->getLastRadioInterruptMillis();
+      if (last_recv != 0 && now - last_recv < silent_ms) silent_ms = now - last_recv;
+      if (last_irq != 0 && now - last_irq < silent_ms) silent_ms = now - last_irq;
+      const unsigned long since_recovery = now - last_watchdog_recovery;
+      if (is_recv && silent_ms >= watchdog_ms && since_recovery >= watchdog_ms) {
+        _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
+        MESH_DEBUG_PRINTLN("Radio watchdog: silent %lu ms, state=%d, recovering", silent_ms, _radio->getRadioState());
+        _radio->idle();
+        _radio->startRecv();
+        last_watchdog_recovery = now;
+        last_radio_active_ms = now;
       }
     }
   }
@@ -358,6 +364,15 @@ void Dispatcher::checkSend() {
 
   outbound = _mgr->getNextOutbound(_ms->getMillis());
   if (outbound) {
+    if (!allowPacketTransmit(outbound)) {
+      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): packet no longer allowed, type=%u", getLogDateTime(),
+                         (uint32_t)outbound->getPayloadType());
+      onSendFail(outbound);
+      releasePacket(outbound);
+      outbound = NULL;
+      return;
+    }
+
     int len = 0;
     uint8_t raw[MAX_TRANS_UNIT];
 

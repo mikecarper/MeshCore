@@ -38,24 +38,34 @@ ESPNowBridge::ESPNowBridge(NodePrefs *prefs, mesh::PacketManager *mgr, mesh::RTC
 void ESPNowBridge::begin() {
   BRIDGE_DEBUG_PRINTLN("Initializing...\n");
 
+  if (_initialized) return;
+
   // Initialize WiFi in station mode
   WiFi.mode(WIFI_STA);
   
   // Set Wi-Fi channel
   if (esp_wifi_set_channel(_prefs->bridge_channel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error setting WIFI channel to %d\n", _prefs->bridge_channel);
+    WiFi.mode(WIFI_OFF);
     return;
   }
 
   // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error initializing ESP-NOW\n");
+    WiFi.mode(WIFI_OFF);
     return;
   }
 
   // Register callbacks
-  esp_now_register_recv_cb(recv_cb);
-  esp_now_register_send_cb(send_cb);
+  if (esp_now_register_recv_cb(recv_cb) != ESP_OK || esp_now_register_send_cb(send_cb) != ESP_OK) {
+    BRIDGE_DEBUG_PRINTLN("Error registering ESP-NOW callbacks\n");
+    esp_now_register_recv_cb(nullptr);
+    esp_now_register_send_cb(nullptr);
+    esp_now_deinit();
+    WiFi.mode(WIFI_OFF);
+    return;
+  }
 
   // Add broadcast peer
   esp_now_peer_info_t peerInfo = {};
@@ -66,6 +76,10 @@ void ESPNowBridge::begin() {
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Failed to add broadcast peer\n");
+    esp_now_register_recv_cb(nullptr);
+    esp_now_register_send_cb(nullptr);
+    esp_now_deinit();
+    WiFi.mode(WIFI_OFF);
     return;
   }
 
@@ -102,11 +116,17 @@ void ESPNowBridge::loop() {
   // Nothing to do here - ESP-NOW is callback based
 }
 
-void ESPNowBridge::xorCrypt(uint8_t *data, size_t len) {
-  size_t keyLen = strlen(_prefs->bridge_secret);
+bool ESPNowBridge::xorCrypt(uint8_t *data, size_t len) {
+  size_t keyLen = 0;
+  while (keyLen < sizeof(_prefs->bridge_secret) && _prefs->bridge_secret[keyLen] != 0) keyLen++;
+  if (keyLen == 0 || keyLen == sizeof(_prefs->bridge_secret)) {
+    BRIDGE_DEBUG_PRINTLN("Invalid empty or unterminated bridge secret\n");
+    return false;
+  }
   for (size_t i = 0; i < len; i++) {
     data[i] ^= _prefs->bridge_secret[i % keyLen];
   }
+  return true;
 }
 
 void ESPNowBridge::onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
@@ -135,7 +155,7 @@ void ESPNowBridge::onDataRecv(const uint8_t *mac, const uint8_t *data, int len) 
   memcpy(decrypted, data + BRIDGE_MAGIC_SIZE, encryptedDataLen);
 
   // Try to decrypt (checksum + payload)
-  xorCrypt(decrypted, encryptedDataLen);
+  if (!xorCrypt(decrypted, encryptedDataLen)) return;
 
   // Validate checksum
   uint16_t received_checksum = (decrypted[0] << 8) | decrypted[1];
@@ -178,14 +198,19 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
 
   if (!_seen_packets.wasSeen(packet)) {
     _seen_packets.markSeen(packet);
-    // Create a temporary buffer just for size calculation and reuse for actual writing
+    // Check the serialized size before writing into the ESP-NOW-sized buffer.
+    const int expectedMeshPacketLen = packet->getRawLength();
+    if (expectedMeshPacketLen < 0 || (size_t)expectedMeshPacketLen > MAX_PAYLOAD_SIZE) {
+      BRIDGE_DEBUG_PRINTLN("TX packet too large (payload=%d, max=%d)\n", expectedMeshPacketLen,
+                           MAX_PAYLOAD_SIZE);
+      return;
+    }
+
     uint8_t sizingBuffer[MAX_PAYLOAD_SIZE];
     uint16_t meshPacketLen = packet->writeTo(sizingBuffer);
-
-    // Check if packet fits within our maximum payload size
-    if (meshPacketLen > MAX_PAYLOAD_SIZE) {
-      BRIDGE_DEBUG_PRINTLN("TX packet too large (payload=%d, max=%d)\n", meshPacketLen,
-                           MAX_PAYLOAD_SIZE);
+    if (meshPacketLen != (uint16_t)expectedMeshPacketLen) {
+      BRIDGE_DEBUG_PRINTLN("TX packet length mismatch (actual=%d, expected=%d)\n", meshPacketLen,
+                           expectedMeshPacketLen);
       return;
     }
 
@@ -205,7 +230,7 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
     buffer[3] = checksum & 0xFF;        // Low byte
 
     // Encrypt payload and checksum (not including magic header)
-    xorCrypt(buffer + BRIDGE_MAGIC_SIZE, meshPacketLen + BRIDGE_CHECKSUM_SIZE);
+    if (!xorCrypt(buffer + BRIDGE_MAGIC_SIZE, meshPacketLen + BRIDGE_CHECKSUM_SIZE)) return;
 
     // Total packet size: magic header + checksum + payload
     const size_t totalPacketSize = BRIDGE_MAGIC_SIZE + BRIDGE_CHECKSUM_SIZE + meshPacketLen;

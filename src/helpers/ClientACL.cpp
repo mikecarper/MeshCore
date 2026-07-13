@@ -98,6 +98,7 @@ bool ClientACL::clear() {
 }
 
 ClientInfo* ClientACL::getClient(const uint8_t* pubkey, int key_len) {
+  if (pubkey == NULL || key_len <= 0 || key_len > PUB_KEY_SIZE) return NULL;
   for (int i = 0; i < num_clients; i++) {
     if (memcmp(pubkey, clients[i].id.pub_key, key_len) == 0) return &clients[i];  // already known
   }
@@ -106,7 +107,7 @@ ClientInfo* ClientACL::getClient(const uint8_t* pubkey, int key_len) {
 
 ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   uint32_t min_time = 0xFFFFFFFF;
-  ClientInfo* oldest = &clients[MAX_CLIENTS - 1];
+  ClientInfo* oldest = NULL;
   for (int i = 0; i < num_clients; i++) {
     if (id.matches(clients[i].id)) return &clients[i];  // already known
     if (  (!clients[i].isAdmin() && !clients[i].isRegionMgr()) 
@@ -120,6 +121,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   if (num_clients < MAX_CLIENTS) {
     c = &clients[num_clients++];
   } else {
+    if (oldest == NULL) return NULL;  // every entry is protected
     c = oldest;  // evict least active contact
   }
   memset(c, 0, sizeof(*c));
@@ -131,6 +133,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
 }
 
 bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8_t* pubkey, int key_len, uint8_t perms) {
+  if (pubkey == NULL || key_len <= 0 || key_len > PUB_KEY_SIZE) return false;
   ClientInfo* c;
   if ((perms & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) {  // guest role is not persisted in contacts
     c = getClient(pubkey, key_len);
@@ -143,10 +146,11 @@ bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8
       i++;
     }
   } else {
-    if (key_len < PUB_KEY_SIZE) return false;   // need complete pubkey when adding/modifying
+    if (key_len != PUB_KEY_SIZE) return false;   // need complete pubkey when adding/modifying
 
     mesh::Identity id(pubkey);
     c = putClient(id, 0);
+    if (c == NULL) return false;
 
     c->permissions = perms;  // update their permissions
     self_id.calcSharedSecret(c->shared_secret, pubkey);

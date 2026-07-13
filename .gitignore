@@ -5,6 +5,9 @@
 .vscode/launch.json
 .vscode/ipch
 out/
+# Local firmware archives and build logs
+out.*/
+build-logs/
 .direnv/
 .DS_Store
 .vscode/settings.json

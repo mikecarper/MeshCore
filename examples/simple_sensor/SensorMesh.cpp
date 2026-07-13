@@ -383,6 +383,10 @@ uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* 
     }
 
     client = acl.putClient(sender, PERM_RECV_ALERTS_HI | PERM_RECV_ALERTS_LO);  // add to contacts (if not already known)
+    if (client == NULL) {
+      MESH_DEBUG_PRINTLN("Login rejected: ACL is full of protected contacts");
+      return 0;
+    }
     if (sender_timestamp <= client->last_timestamp) {
       MESH_DEBUG_PRINTLN("Possible login replay attack!");
       return 0;  // FATAL: client table is full -OR- replay attack
@@ -435,13 +439,14 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
     if (sp == NULL) {
       strcpy(reply, "Err - bad params");
     } else {
+      size_t hex_len = (size_t)(sp - hex);
       *sp++ = 0;   // replace space with null terminator
 
       uint8_t pubkey[PUB_KEY_SIZE];
-      int hex_len = min(sp - hex, PUB_KEY_SIZE*2);
-      if (mesh::Utils::fromHex(pubkey, hex_len / 2, hex)) {
+      if (hex_len > 0 && hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
+          && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
         uint8_t perms = atoi(sp);
-        if (acl.applyPermissions(self_id, pubkey, hex_len / 2, perms)) {
+        if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
           dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
           updateGpsTelemetryPolicy();
           strcpy(reply, "OK");
@@ -970,7 +975,7 @@ void SensorMesh::loop() {
     MESH_DEBUG_PRINTLN("Temp radio params");
   }
 
-  if (revert_radio_at && millisHasNowPassed(revert_radio_at)) {   // revert radio params to orig
+  if (revert_radio_at && millisHasNowPassed(revert_radio_at) && !hasOutbound()) {   // revert radio params to orig
     revert_radio_at = 0;  // clear timer
     radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
     MESH_DEBUG_PRINTLN("Radio params restored");

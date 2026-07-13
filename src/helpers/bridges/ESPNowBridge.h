@@ -85,7 +85,7 @@ private:
    * @param data Pointer to data to encrypt/decrypt
    * @param len Length of data in bytes
    */
-  void xorCrypt(uint8_t *data, size_t len);
+  bool xorCrypt(uint8_t *data, size_t len);
 
   /**
    * ESP-NOW receive callback

@@ -434,6 +434,7 @@ void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) 
   memcpy(_fid, mid, 4);
   _fstate = WANT_MANIFEST;
   _mf_total = 0; _mf_mask = 0; _mf_len = 0; _mf_retries = 0; _loop_last_mfmask = 0;   // fresh manifest reassembly
+  memset(_mf_buf, 0, sizeof(_mf_buf));
   GetManifestMsg gm; memcpy(gm.manifest_id, _fid, 4); gm.want_mask = 0xFFFF;   // first ask: send all fragments
   uint8_t b[16];
   emit(b, encode_get_manifest(b, sizeof(b), gm), false);
@@ -445,10 +446,21 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   if (_fstate != WANT_MANIFEST || memcmp(mm.manifest_id, _fid, 4) != 0) return;
   if (mm.frag_total == 0 || mm.frag_total > OTA_MF_MAXFRAG || mm.frag_idx >= mm.frag_total) return;
 
+  const uint8_t expected_total = (uint8_t)((MOTA_MFL + OTA_MF_FRAG - 1) / OTA_MF_FRAG);
+  const uint16_t expected_len = mm.frag_idx + 1 == expected_total
+      ? (uint16_t)(MOTA_MFL - (uint32_t)mm.frag_idx * OTA_MF_FRAG)
+      : (uint16_t)OTA_MF_FRAG;
+  if (mm.frag_total != expected_total || mm.len != expected_len) return;
+
   // reassemble the (possibly multi-fragment) manifest into _mf_buf; place fragment frag_idx at its offset
   uint32_t foff = (uint32_t)mm.frag_idx * OTA_MF_FRAG;
   if (foff + mm.len > sizeof(_mf_buf)) return;
-  if (mm.frag_total != _mf_total) { _mf_total = mm.frag_total; _mf_mask = 0; _mf_len = 0; }  // (re)start
+  if (mm.frag_total != _mf_total) {
+    _mf_total = mm.frag_total;
+    _mf_mask = 0;
+    _mf_len = 0;
+    memset(_mf_buf, 0, sizeof(_mf_buf));
+  }
   memcpy(_mf_buf + foff, mm.bytes, mm.len);
   _mf_mask |= (uint16_t)(1u << mm.frag_idx);
   if (mm.frag_idx == mm.frag_total - 1) _mf_len = foff + mm.len;     // last fragment fixes the length
@@ -461,6 +473,7 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   if (!codecOk(mf[56])) { _fstate = IDLE; return; }   // codec we can't apply (lying/stale ADV) — abort
   uint32_t payload_size = rd_u32le(mf + 15);
   uint8_t  bsl = mf[19];
+  if (bsl >= 32) { _fstate = FAILED; return; }
   uint32_t bs = 1u << bsl;
   // a block must fit our reassembly buffer (and be non-empty) — reject an oversized block_size up front
   if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { _fstate = FAILED; return; }
@@ -534,7 +547,9 @@ void OtaManager::handleLeaves(const uint8_t* m, uint16_t n) {
   uint8_t ftotal = (uint8_t)((leaves_len + OTA_LEAVES_FRAG - 1) / OTA_LEAVES_FRAG); if (ftotal == 0) ftotal = 1;
   if (lv.frag_total != ftotal || lv.frag_idx >= ftotal) return;
   uint32_t foff = (uint32_t)lv.frag_idx * OTA_LEAVES_FRAG;
-  if (foff + lv.len > leaves_len) return;                       // slice out of range
+  uint32_t expected_len = leaves_len - foff;
+  if (expected_len > OTA_LEAVES_FRAG) expected_len = OTA_LEAVES_FRAG;
+  if (lv.len != expected_len) return;                            // reject short/oversized slices
   if (lv.frag_total != _lv_total) { _lv_total = lv.frag_total; _lv_mask = 0; }   // (re)start
   memcpy(_leaves_buf + foff, lv.bytes, lv.len);
   _lv_mask |= (uint16_t)(1u << lv.frag_idx);

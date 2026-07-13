@@ -178,9 +178,9 @@ bool AlertReporter::sendChannel(const char* text) {
     uint16_t codes[2];
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;
-    _mesh->sendFlood(pkt, codes, 0, path_hash_size);
+    if (!_mesh->sendFlood(pkt, codes, 0, path_hash_size)) return false;
   } else {
-    _mesh->sendFlood(pkt, 0, path_hash_size);
+    if (!_mesh->sendFlood(pkt, 0, path_hash_size)) return false;
   }
   ALERT_DEBUG_PRINTLN("sent: %s", text);
   return true;
@@ -232,7 +232,7 @@ void AlertReporter::onLoop(unsigned long now_ms) {
 
     if (_wifi.state == OK) {
       if (wifi_down && down_ms >= thresh_ms &&
-          (now_ms - _wifi.fired_at_ms) >= min_interval_ms) {
+          (_wifi.fired_at_ms == 0 || (now_ms - _wifi.fired_at_ms) >= min_interval_ms)) {
         char age[16];
         formatAge(down_ms, age, sizeof(age));
         uint8_t reason = MQTTBridge::getLastWifiDisconnectReason();
@@ -256,8 +256,7 @@ void AlertReporter::onLoop(unsigned long now_ms) {
         formatAge(total, age, sizeof(age));
         char text[80];
         snprintf(text, sizeof(text), "WiFi recovered after %s", age);
-        sendChannel(text);
-        _wifi.state = OK;
+        if (sendChannel(text)) _wifi.state = OK;
       }
     }
   } else if (_wifi.state == FIRING) {
@@ -282,7 +281,7 @@ void AlertReporter::onLoop(unsigned long now_ms) {
 
       if (f.state == OK) {
         if (down && down_ms >= thresh_ms &&
-            (now_ms - f.fired_at_ms) >= min_interval_ms) {
+            (f.fired_at_ms == 0 || (now_ms - f.fired_at_ms) >= min_interval_ms)) {
           char age[16];
           formatAge(down_ms, age, sizeof(age));
           char text[100];
@@ -303,8 +302,7 @@ void AlertReporter::onLoop(unsigned long now_ms) {
           char text[100];
           snprintf(text, sizeof(text), "MQTT slot %d (%s) recovered after %s",
                    i + 1, _bridge->getSlotPresetName(i), age);
-          sendChannel(text);
-          f.state = OK;
+          if (sendChannel(text)) f.state = OK;
         }
       }
     }

@@ -51,6 +51,28 @@ TEST(UtilsToHex, NullTerminatesOnEmptyInput) {
     EXPECT_EQ('\0', output[0]);
 }
 
+TEST(UtilsFromHex, ConvertsUpperAndLowerCase) {
+    uint8_t output[3] = {};
+
+    ASSERT_TRUE(Utils::fromHex(output, sizeof(output), "0aBCfF"));
+    EXPECT_EQ(0x0A, output[0]);
+    EXPECT_EQ(0xBC, output[1]);
+    EXPECT_EQ(0xFF, output[2]);
+}
+
+TEST(UtilsFromHex, RejectsInvalidCharacters) {
+    uint8_t output[2] = {0xAA, 0xAA};
+
+    EXPECT_FALSE(Utils::fromHex(output, sizeof(output), "0G!1"));
+}
+
+TEST(UtilsFromHex, RejectsWrongLength) {
+    uint8_t output[2] = {};
+
+    EXPECT_FALSE(Utils::fromHex(output, sizeof(output), "001"));
+    EXPECT_FALSE(Utils::fromHex(output, sizeof(output), "001122"));
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

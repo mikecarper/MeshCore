@@ -73,7 +73,7 @@ set flood.retry.ignore none
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `battery.alert` | Sends opt-in low-battery warnings to `#repeaters`. | `get battery.alert`, `set battery.alert on/off` | `set battery.alert on` |
+| `battery.alert` | Sends opt-in, region-scoped low-battery warnings to `#repeaters` after 30 minutes of uptime. | `get battery.alert`, `get battery.alert.region`, `set battery.alert on [region]`, `set battery.alert off` | `set battery.alert on sea` |
 | `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
 | `battery.alert.critical` | Critical threshold percentage. Critical warnings repeat more often. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
 | `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
@@ -92,9 +92,18 @@ set flood.retry.ignore none
 
 ## Battery Alerts
 
-Battery alerts are off by default. When enabled, the repeater checks once per
-minute and sends a flood text warning to `#repeaters` when voltage is above
-`1 V` and the estimated battery percent is below `battery.alert.low`.
+Battery alerts are off by default. Enabling requires a named region. With no
+region argument, the repeater selects the single deepest (most narrow) region
+in the hierarchy; if multiple regions tie, the command asks for an explicit
+region. For example, after `region def west pnw wa w-wa sea`, `set
+battery.alert on` selects `sea`, while `set battery.alert on w-wa` overrides
+the default. Alerts are never sent as unscoped floods, and removing the selected
+region stops alerts until a valid scope is selected again.
+
+The repeater suppresses alerts for its first 30 minutes of uptime. It then
+checks every 30 minutes and sends a flood text warning to `#repeaters` when
+voltage is above `1 V` and the estimated battery percent is below
+`battery.alert.low`.
 
 Warnings repeat every `24` hours, or every `12` hours when the estimate is
 below `battery.alert.critical`.
@@ -104,6 +113,7 @@ Defaults:
 | Setting | Default |
 | --- | ---: |
 | `battery.alert` | `off` |
+| `battery.alert.region` | `<unset>` |
 | `battery.alert.low` | `20` |
 | `battery.alert.critical` | `10` |
 
@@ -114,7 +124,16 @@ set battery.alert.low 20
 set battery.alert.critical 10
 set battery.alert on
 get battery.alert
+get battery.alert.region
 ```
+
+CPU power saving remains compatible with the check. The battery timer never
+requests a wake earlier than its 30-minute deadline; when the normal loop is
+already awake after that deadline, no additional wake is needed. Sleeping time
+counts toward the startup delay, and an outbound warning prevents another sleep
+until the queued packet has been handled. This is separate from RX duty-cycle
+power saving, which only cycles the LoRa receiver and does not stop the main
+loop's battery timer.
 
 ## Recent Repeater Table
 
@@ -349,6 +368,16 @@ Each flood retry wait retains the fixed maximum-frame plus 20 packet-airtime
 delay, then adds random jitter from zero to 200 percent of one additional packet
 airtime. This keeps nearby repeaters from repeating a collision on fixed timing
 while capping the added wait at two frames.
+
+Only one enhanced retry sequence can be active for the same logical flood
+packet. Identical floods still receive their normal transmission, but do not
+multiply the extra attempts. Evicted queued retries release their bridge state,
+and the final echo wait does not reserve a packet-pool entry.
+
+Earlier path hops from a successful bridge echo refresh a separate per-bucket
+reachability cache without an SNR value. Only the final hop, which actually sent
+the received RF frame, updates `recent.repeater` and its SNR. Indirect path hops
+therefore cannot change direct-retry SNR gating or coding-rate selection.
 
 ## Troubleshooting
 

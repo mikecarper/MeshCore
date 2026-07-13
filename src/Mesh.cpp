@@ -165,6 +165,7 @@ void Mesh::begin() {
     _flood_retries[i].retry_at = 0;
     _flood_retries[i].retry_delay = 0;
     _flood_retries[i].retry_attempts_sent = 0;
+    memset(_flood_retries[i].retry_key, 0, sizeof(_flood_retries[i].retry_key));
     _flood_retries[i].priority = 0;
     _flood_retries[i].progress_marker = 0;
     _flood_retries[i].waiting_final_echo = false;
@@ -221,6 +222,18 @@ void Mesh::loop() {
       if (_direct_retries[i].packet == getOutboundInFlight()) {
         continue;  // currently transmitting; keep slot until onSendComplete/onSendFail emits event
       }
+      uint32_t elapsed_millis = _direct_retries[i].retry_started_at == 0
+        ? 0
+        : (uint32_t)(_ms->getMillis() - _direct_retries[i].retry_started_at);
+      onDirectRetryEvent("dropped_queue_removed", NULL, elapsed_millis,
+                         _direct_retries[i].retry_attempts_sent + 1,
+                         _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
+                         _direct_retries[i].payload_type);
+      onDirectRetryEvent("failure", NULL, elapsed_millis,
+                         _direct_retries[i].retry_attempts_sent + 1,
+                         _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
+                         _direct_retries[i].payload_type);
+      onDirectRetryFailed(_direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
       clearDirectRetrySlot(i);
     }
   }
@@ -252,6 +265,13 @@ void Mesh::loop() {
       if (_flood_retries[i].packet == getOutboundInFlight()) {
         continue;
       }
+      uint32_t elapsed_millis = _flood_retries[i].retry_started_at == 0
+        ? 0
+        : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
+      onFloodRetryEvent("dropped_queue_removed", NULL, elapsed_millis,
+                        _flood_retries[i].retry_attempts_sent + 1);
+      onFloodRetryEvent("failure", NULL, elapsed_millis,
+                        _flood_retries[i].retry_attempts_sent + 1);
       clearFloodRetrySlot(i);
     }
   }
@@ -331,6 +351,17 @@ void Mesh::loop() {
     }
   }
 #endif
+}
+
+bool Mesh::allowPacketTransmit(const Packet* packet) const {
+#if defined(ENABLE_OTA)
+  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA) {
+    return isTempRadioActive();
+  }
+#else
+  (void)packet;
+#endif
+  return true;
 }
 
 bool Mesh::allowPacketForward(const mesh::Packet* packet) { 
@@ -1250,6 +1281,9 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority) {
 }
 
 void Mesh::clearFloodRetrySlot(int idx) {
+  if (_flood_retries[idx].active) {
+    onFloodRetrySlotReleased(_flood_retries[idx].retry_key);
+  }
   if (_flood_retries[idx].waiting_final_echo && _flood_retries[idx].packet != NULL) {
     releasePacket(_flood_retries[idx].packet);
   }
@@ -1259,6 +1293,7 @@ void Mesh::clearFloodRetrySlot(int idx) {
   _flood_retries[idx].retry_at = 0;
   _flood_retries[idx].retry_delay = 0;
   _flood_retries[idx].retry_attempts_sent = 0;
+  memset(_flood_retries[idx].retry_key, 0, sizeof(_flood_retries[idx].retry_key));
   _flood_retries[idx].priority = 0;
   _flood_retries[idx].progress_marker = 0;
   _flood_retries[idx].waiting_final_echo = false;
@@ -1342,16 +1377,9 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
         max_attempts = FLOOD_RETRY_MAX_ATTEMPTS_HARD_MAX;
       }
       if (_flood_retries[i].retry_attempts_sent >= max_attempts) {
-        Packet* final_wait = obtainNewPacket();
-        if (final_wait == NULL) {
-          onFloodRetryEvent("dropped_no_packet", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-          onFloodRetryEvent("failure", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-          clearFloodRetrySlot(i);
-          continue;
-        }
-
-        *final_wait = *packet;
-        _flood_retries[i].packet = final_wait;
+        // Dispatcher releases the transmitted packet after this hook. Keep only
+        // retry metadata during the final echo window so RX retains the pool slot.
+        _flood_retries[i].packet = NULL;
         _flood_retries[i].retry_at = futureMillis(_flood_retries[i].retry_delay);
         _flood_retries[i].waiting_final_echo = true;
         _flood_retries[i].queued = false;
@@ -1455,6 +1483,15 @@ void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
     return;
   }
 
+  uint8_t retry_key[MAX_HASH_SIZE];
+  packet->calculatePacketHash(retry_key);
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (_flood_retries[i].active
+        && memcmp(retry_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
+      return;  // the normal flood still sends, but only one retry sequence owns this logical packet
+    }
+  }
+
   int slot_idx = -1;
   for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) {
@@ -1473,7 +1510,7 @@ void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
   }
 
   uint32_t retry_delay = getFloodRetryAttemptDelay(packet, 0);
-  packet->calculatePacketHash(_flood_retries[slot_idx].retry_key);
+  memcpy(_flood_retries[slot_idx].retry_key, retry_key, sizeof(retry_key));
   _flood_retries[slot_idx].packet = NULL;
   _flood_retries[slot_idx].trigger_packet = const_cast<Packet*>(packet);
   _flood_retries[slot_idx].retry_started_at = 0;
@@ -1755,14 +1792,16 @@ void Mesh::sendOtaFlood(Packet* packet, uint32_t delay_millis) {
 }
 #endif
 
-void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size) {
+bool Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
-    return;
+    releasePacket(packet);
+    return false;
   }
   if (path_hash_size == 0 || path_hash_size > 3) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): invalid path_hash_size", getLogDateTime());
-    return;
+    releasePacket(packet);
+    return false;
   }
 
   packet->header &= ~PH_ROUTE_MASK;
@@ -1780,17 +1819,19 @@ void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_si
     pri = 1;
   }
   maybeScheduleFloodRetry(packet, pri);
-  sendPacket(packet, pri, delay_millis);
+  return sendPacket(packet, pri, delay_millis);
 }
 
-void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size) {
+bool Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
-    return;
+    releasePacket(packet);
+    return false;
   }
   if (path_hash_size == 0 || path_hash_size > 3) {
     MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): invalid path_hash_size", getLogDateTime());
-    return;
+    releasePacket(packet);
+    return false;
   }
 
   packet->header &= ~PH_ROUTE_MASK;
@@ -1810,7 +1851,7 @@ void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_m
     pri = 1;
   }
   maybeScheduleFloodRetry(packet, pri);
-  sendPacket(packet, pri, delay_millis);
+  return sendPacket(packet, pri, delay_millis);
 }
 
 void Mesh::sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis) {

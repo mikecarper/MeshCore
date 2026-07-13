@@ -546,6 +546,65 @@ TEST(OtaTransfer, TwoManagersFullTransfer) {
   EXPECT_TRUE(mota_check_image_hash_full(m));
 }
 
+static void deliver_manifest_fragment(OtaManager& client, const uint8_t mid[4], uint8_t frag_idx,
+                                      const uint8_t* bytes, uint16_t len) {
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  ManifestMsg msg;
+  memcpy(msg.manifest_id, mid, 4);
+  msg.frag_idx = frag_idx;
+  msg.frag_total = (uint8_t)((MOTA_MFL + OTA_MF_FRAG - 1) / OTA_MF_FRAG);
+  msg.bytes = bytes;
+  msg.len = len;
+  uint16_t wire_len = encode_manifest(wire, sizeof(wire), msg);
+  ASSERT_GT(wire_len, 0);
+  client.on_message(wire, wire_len);
+}
+
+TEST(OtaTransfer, RejectsShortNonFinalManifestFragment) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  SendTo to_none{&client};
+  client.begin(SIM_TARGET_ID, sim_send, &to_none);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  g_q.clear();
+
+  const uint8_t* bytes = manifest.manifest_start;
+  const uint16_t final_len = (uint16_t)(MOTA_MFL - OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, bytes + OTA_MF_FRAG, final_len);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, bytes, OTA_MF_FRAG - 1);
+  EXPECT_EQ(client.fetchState(), OtaManager::WANT_MANIFEST);
+
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, bytes, OTA_MF_FRAG);
+  EXPECT_EQ(client.fetchState(), OtaManager::FETCHING);
+}
+
+TEST(OtaTransfer, RejectsManifestBlockExponentBeforeShift) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  std::array<uint8_t, MOTA_MFL> bytes;
+  memcpy(bytes.data(), manifest.manifest_start, bytes.size());
+  bytes[19] = 32;
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  SendTo to_none{&client};
+  client.begin(SIM_TARGET_ID, sim_send, &to_none);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  g_q.clear();
+
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, bytes.data(), OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, bytes.data() + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  EXPECT_EQ(client.fetchState(), OtaManager::FAILED);
+}
+
 // Same end-to-end transfer, but with 1 KB logical blocks: each block is delivered as several
 // self-describing DATA fragments (frag_off), reassembled by the client, then its merkle PROOF is
 // requested + verified separately before the block is committed. Exercises the multi-fragment path.

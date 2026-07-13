@@ -203,9 +203,8 @@ void OtaStoreFlashEsp32::checkpoint() {
 bool OtaStoreFlashEsp32::reopen() {
   if (!acquire() || _psize < SEC) return false;
   uint8_t hb[8];
-  // the meta/container is staged at the BOTTOM of the slot, so scan upward from there; cap the scan (a
-  // miss just means "fetch fresh"). 128 sectors (512 KB) covers any full image's meta + typical deltas.
-  uint32_t scanned = 0;
+  // The meta/container is staged at the bottom of the slot. Large delta containers can begin well above
+  // the final 512 KB, so scan the complete partition rather than silently losing resumability after reboot.
   for (uint32_t o = align_down(_psize - SEC, SEC); ; o -= SEC) {
     if (esp_partition_read(_part, o, hb, 8) == ESP_OK && memcmp(hb, MOTA_MAGIC, 4) == 0) {
       uint32_t total = rd_u32le(hb + 4);
@@ -232,7 +231,7 @@ bool OtaStoreFlashEsp32::reopen() {
         }
       }
     }
-    if (o == 0 || ++scanned >= 128) break;
+    if (o == 0) break;
   }
   return false;
 }

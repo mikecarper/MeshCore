@@ -117,6 +117,7 @@ protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
   void onSendComplete(Packet* packet) override;
   void onSendFail(Packet* packet) override;
+  bool allowPacketTransmit(const Packet* packet) const override;
 
   virtual uint32_t getCADFailRetryDelay() const override;
 
@@ -215,8 +216,14 @@ protected:
 
   /**
    * \brief  Optional hook for logging flood-retry lifecycle events.
+   *         packet is null when the retained packet has already been released.
    */
   virtual void onFloodRetryEvent(const char* event, const Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) { }
+
+  /**
+   * \brief  Called exactly once whenever an active flood-retry slot is released.
+   */
+  virtual void onFloodRetrySlotReleased(const uint8_t* retry_key) { }
 
   /**
    * \returns  number of extra (Direct) ACK transmissions wanted.
@@ -409,13 +416,13 @@ public:
   /**
    * \brief  send a locally-generated Packet with flood routing
   */
-  void sendFlood(Packet* packet, uint32_t delay_millis=0, uint8_t path_hash_size=1);
+  bool sendFlood(Packet* packet, uint32_t delay_millis=0, uint8_t path_hash_size=1);
 
   /**
    * \brief  send a locally-generated Packet with flood routing
    * \param transport_codes   array of 2 codes to attach to packet
   */
-  void sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0, uint8_t path_hash_size=1);
+  bool sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0, uint8_t path_hash_size=1);
 
   /**
    * \brief  send a locally-generated Packet with Direct routing

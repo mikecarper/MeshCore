@@ -120,6 +120,7 @@ bool Utils::isHexChar(char c) {
 }
 
 bool Utils::fromHex(uint8_t* dest, int dest_size, const char *src_hex) {
+  if (dest == NULL || src_hex == NULL || dest_size < 0) return false;
   int len = strlen(src_hex);
   if (len != dest_size*2) return false;  // incorrect length
 
@@ -127,6 +128,7 @@ bool Utils::fromHex(uint8_t* dest, int dest_size, const char *src_hex) {
   while (dp - dest < dest_size) {
     char ch = *src_hex++;
     char cl = *src_hex++;
+    if (!isHexChar(ch) || !isHexChar(cl)) return false;
     *dp++ = (hexVal(ch) << 4) | hexVal(cl);
   }
   return true;

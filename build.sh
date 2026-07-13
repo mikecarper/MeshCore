@@ -24,6 +24,12 @@ FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-}"
 BATCH_BUILD_MODE=0
 RESOLVED_BUILD_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
+LOGGING_MATRIX_FAILURES=()
+RADIO_PRESET_SELECTION=""
+KISS_MODE_OVERRIDE=""
+PARSED_COMMAND_ARGS=()
+FIRMWARE_VERSION_EXPLICIT=0
+OUTPUT_POLICY_EXPLICIT=0
 
 ENV_VARIANT_SUFFIX_PATTERN='companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
@@ -52,19 +58,26 @@ FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 global_usage() {
   cat - <<EOF
 Usage:
-bash build.sh <command> [target]
+bash build.sh <command> [target] [options]
 
 Commands:
   help|usage|-h|--help: Shows this message.
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares in three profiles: logging off, logging on for non-Bluetooth targets, and MQTT bridge on with logging off.
+  build-firmwares-logging-matrix: Build all firmwares in three profiles, logging each target under out/build-logs/ and continuing after failures.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
+
+Options:
+  --firmware-version <version>: Firmware version to embed.
+  --radio-preset <number>: Use the numbered radio choice from the interactive menu (1 keeps target defaults).
+  --profile <default|cascade>: Select the firmware settings profile.
+  --skip-kiss|--include-kiss: Exclude or include KISS modem targets in bulk builds.
+  --clean|--resume: Clean output or resume existing option 3 artifacts.
 
 Examples:
 Build firmware for the "RAK_4631_repeater" device target
@@ -367,6 +380,103 @@ clear_radio_overrides() {
 
 clear_firmware_profile_overrides() {
   FIRMWARE_PROFILE_OVERRIDE=""
+}
+
+apply_cli_radio_preset() {
+  local selection=$1
+  local preset_output row
+  local -a preset_rows=()
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ]; then
+    echo "Invalid --radio-preset value: ${selection}"
+    return 1
+  fi
+  clear_radio_overrides
+  if [ "$selection" -eq 1 ]; then
+    echo "Using target default radio settings."
+    return 0
+  fi
+
+  if ! preset_output=$(fetch_suggested_radio_settings) || [ -z "$preset_output" ]; then
+    echo "Could not fetch radio preset ${selection} from ${RADIO_SETTINGS_API_URL}."
+    return 1
+  fi
+  mapfile -t preset_rows <<< "$preset_output"
+  if [ "$selection" -gt $((${#preset_rows[@]} + 1)) ]; then
+    echo "Radio preset ${selection} is out of range; available menu choices are 1-$((${#preset_rows[@]} + 1))."
+    return 1
+  fi
+
+  row=${preset_rows[$((selection - 2))]}
+  IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
+  set_radio_overrides "$title" "$freq" "$bw" "$sf" "$cr"
+  echo "Using radio setting ${selection}: ${RADIO_SETTING_TITLE} (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})"
+}
+
+parse_cli_options() {
+  local -a positional=()
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --firmware-version|--version)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then echo "$1 requires a value"; return 1; fi
+        FIRMWARE_VERSION=$2
+        FIRMWARE_VERSION_EXPLICIT=1
+        export FIRMWARE_VERSION
+        shift 2
+        ;;
+      --radio-preset)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then echo "$1 requires a value"; return 1; fi
+        RADIO_PRESET_SELECTION=$2
+        shift 2
+        ;;
+      --profile)
+        if [ $# -lt 2 ]; then echo "$1 requires a value"; return 1; fi
+        case "${2,,}" in
+          default) FIRMWARE_PROFILE_OVERRIDE="" ;;
+          cascade) FIRMWARE_PROFILE_OVERRIDE="cascade" ;;
+          *) echo "Invalid profile: $2 (use default or cascade)"; return 1 ;;
+        esac
+        shift 2
+        ;;
+      --skip-kiss)
+        KISS_MODE_OVERRIDE="skip"
+        shift
+        ;;
+      --include-kiss)
+        KISS_MODE_OVERRIDE="build"
+        shift
+        ;;
+      --clean)
+        RESUME_BUILD_OUTPUT=0
+        OUTPUT_POLICY_EXPLICIT=1
+        shift
+        ;;
+      --resume)
+        RESUME_BUILD_OUTPUT=1
+        OUTPUT_POLICY_EXPLICIT=1
+        shift
+        ;;
+      --)
+        shift
+        positional+=("$@")
+        break
+        ;;
+      help|usage|-h|--help|list|-l)
+        positional+=("$1")
+        shift
+        ;;
+      -*)
+        echo "Unknown option: $1"
+        return 1
+        ;;
+      *)
+        positional+=("$1")
+        shift
+        ;;
+    esac
+  done
+  PARSED_COMMAND_ARGS=("${positional[@]}")
 }
 
 set_radio_overrides() {
@@ -920,6 +1030,11 @@ prompt_for_resolved_firmware_version() {
     return 0
   fi
 
+  if [ "$FIRMWARE_VERSION_EXPLICIT" -eq 1 ]; then
+    echo "Using firmware version from --firmware-version: ${FIRMWARE_VERSION}"
+    return 0
+  fi
+
   if ! [ -t 0 ]; then
     return 0
   fi
@@ -1036,6 +1151,27 @@ filter_out_bluetooth_targets() {
   done
 }
 
+is_logging_size_constrained_target() {
+  case "$1" in
+    Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+filter_out_logging_size_constrained_targets() {
+  local target
+
+  for target in "$@"; do
+    if ! is_logging_size_constrained_target "$target"; then
+      printf '%s\n' "$target"
+    fi
+  done
+}
+
 prompt_for_kiss_modem_build_policy() {
   local kiss_count=0
   local target
@@ -1050,6 +1186,18 @@ prompt_for_kiss_modem_build_policy() {
   if [ "$kiss_count" -eq 0 ]; then
     return 0
   fi
+
+  case "$KISS_MODE_OVERRIDE" in
+    skip)
+      filter_out_kiss_modem_targets
+      echo "Skipped ${kiss_count} KISS modem target(s)."
+      return 0
+      ;;
+    build)
+      echo "Including ${kiss_count} KISS modem target(s)."
+      return 0
+      ;;
+  esac
 
   if ! [ -t 0 ]; then
     echo "Including ${kiss_count} KISS modem target(s)."
@@ -1095,6 +1243,15 @@ prompt_for_logging_matrix_output_policy() {
   local choice file_count file_label
 
   normalize_resume_build_output
+
+  if [ "$OUTPUT_POLICY_EXPLICIT" -eq 1 ]; then
+    if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
+      echo "Using --resume for existing option 3 output."
+    else
+      echo "Using --clean for option 3 output."
+    fi
+    return 0
+  fi
 
   if ! [ -d "$OUTPUT_DIR" ]; then
     RESUME_BUILD_OUTPUT=0
@@ -1802,11 +1959,70 @@ run_resolved_build_targets() {
   return "$build_status"
 }
 
+run_logged_build_targets() {
+  local targets=("$@")
+  local env profile log_dir log_path log_tmp
+  local previous_batch_build_mode=$BATCH_BUILD_MODE
+  local build_status=0
+  local overall_status=0
+  local preserved_log=0
+
+  if [ ${#targets[@]} -eq 0 ]; then
+    echo "No build targets resolved."
+    return 1
+  fi
+
+  if [ -n "$FIRMWARE_FILENAME_INFIX" ]; then
+    profile=$FIRMWARE_FILENAME_INFIX
+  elif [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+    profile="mqtt"
+  else
+    profile="standard"
+  fi
+  log_dir="${OUTPUT_DIR}/build-logs"
+  mkdir -p -- "$log_dir" || return 1
+
+  if [ ${#targets[@]} -gt 1 ]; then
+    BATCH_BUILD_MODE=1
+  fi
+  for env in "${targets[@]}"; do
+    log_path="${log_dir}/${env}-${profile}.log"
+    log_tmp="${log_path}.tmp"
+    preserved_log=0
+    echo "Building ${env} (${profile}); log: ${log_path}"
+    build_firmware "$env" > "$log_tmp" 2>&1
+    build_status=$?
+    if [ "$build_status" -eq 0 ] \
+        && grep -q "^Skipping ${env}; existing artifacts found" "$log_tmp" \
+        && [ -s "$log_path" ]; then
+      rm -f -- "$log_tmp"
+      preserved_log=1
+    else
+      mv -f -- "$log_tmp" "$log_path"
+    fi
+    if [ "$build_status" -ne 0 ]; then
+      overall_status=1
+      LOGGING_MATRIX_FAILURES+=("${env} (${profile}) -> ${log_path}")
+      echo "FAILED: ${env} (${profile}), status ${build_status}"
+      echo "FAILED: ${env} (${profile}), status ${build_status}" >> "$log_path"
+    else
+      echo "SUCCEEDED: ${env} (${profile})"
+      if [ "$preserved_log" -eq 0 ]; then
+        echo "SUCCEEDED: ${env} (${profile})" >> "$log_path"
+      fi
+    fi
+  done
+  BATCH_BUILD_MODE=$previous_batch_build_mode
+
+  return "$overall_status"
+}
+
 run_logging_matrix_build_targets() {
   local targets=("$@")
   local target
   local standard_targets=()
   local logging_targets=()
+  local constrained_logging_targets=()
   local mqtt_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
@@ -1814,12 +2030,15 @@ run_logging_matrix_build_targets() {
   local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local bluetooth_skip_count=0
+  local logging_target_count=0
   local build_status=0
+  local pass_status=0
 
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No build targets resolved."
     return 1
   fi
+  LOGGING_MATRIX_FAILURES=()
 
   for target in "${targets[@]}"; do
     if is_mqtt_bridge_target "$target"; then
@@ -1835,45 +2054,66 @@ run_logging_matrix_build_targets() {
   MQTT_BRIDGE_OVERRIDE="off"
   FIRMWARE_FILENAME_INFIX=""
   if [ ${#standard_targets[@]} -gt 0 ]; then
-    run_resolved_build_targets "${standard_targets[@]}"
-    build_status=$?
+    run_logged_build_targets "${standard_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
-  if [ "$build_status" -eq 0 ]; then
-    mapfile -t logging_targets < <(filter_out_bluetooth_targets "${standard_targets[@]}")
-    bluetooth_skip_count=$((${#standard_targets[@]} - ${#logging_targets[@]}))
+  mapfile -t logging_targets < <(filter_out_bluetooth_targets "${standard_targets[@]}")
+  bluetooth_skip_count=$((${#standard_targets[@]} - ${#logging_targets[@]}))
 
-    if [ "$bluetooth_skip_count" -gt 0 ]; then
-      echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
-    fi
-
-    if [ ${#logging_targets[@]} -gt 0 ]; then
-      echo "Profile 2/3: building ${#logging_targets[@]} standard target(s) with logging on and MQTT bridge off."
-      echo "Logging-on artifacts use filename form: name-logging-version"
-      MESHDEBUG_OVERRIDE="on"
-      PACKET_LOGGING_OVERRIDE="on"
-      MQTT_BRIDGE_OVERRIDE="off"
-      FIRMWARE_FILENAME_INFIX="logging"
-      run_resolved_build_targets "${logging_targets[@]}"
-      build_status=$?
-    else
-      echo "No non-Bluetooth targets remain for logging-on pass."
-    fi
+  if [ "$bluetooth_skip_count" -gt 0 ]; then
+    echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
   fi
 
-  if [ "$build_status" -eq 0 ]; then
-    if [ ${#mqtt_targets[@]} -gt 0 ]; then
-      echo "Profile 3/3: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
-      MESHDEBUG_OVERRIDE="off"
-      PACKET_LOGGING_OVERRIDE="off"
-      MQTT_BRIDGE_OVERRIDE="on"
-      MQTT_DEBUG_OVERRIDE="off"
-      FIRMWARE_FILENAME_INFIX=""
-      run_resolved_build_targets "${mqtt_targets[@]}"
-      build_status=$?
-    else
-      echo "No MQTT bridge targets are configured; skipping profile 3/3."
+  for target in "${logging_targets[@]}"; do
+    if is_logging_size_constrained_target "$target"; then
+      constrained_logging_targets+=("$target")
     fi
+  done
+  mapfile -t logging_targets < <(filter_out_logging_size_constrained_targets "${logging_targets[@]}")
+  logging_target_count=$((${#logging_targets[@]} + ${#constrained_logging_targets[@]}))
+
+  if [ "$logging_target_count" -gt 0 ]; then
+    echo "Profile 2/3: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
+    echo "Logging-on artifacts use filename form: name-logging-version"
+  else
+    echo "No non-Bluetooth targets remain for logging-on pass."
+  fi
+
+  if [ ${#logging_targets[@]} -gt 0 ]; then
+    MESHDEBUG_OVERRIDE="on"
+    PACKET_LOGGING_OVERRIDE="on"
+    MQTT_BRIDGE_OVERRIDE="off"
+    FIRMWARE_FILENAME_INFIX="logging"
+    run_logged_build_targets "${logging_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  fi
+
+  if [ ${#constrained_logging_targets[@]} -gt 0 ]; then
+    echo "Building ${#constrained_logging_targets[@]} 224KB STM32 repeater target(s) with packet logging on and MESH_DEBUG off to fit flash: Tiny_Relay_repeater, RAK_3x72_repeater, wio-e5_repeater."
+    MESHDEBUG_OVERRIDE="off"
+    PACKET_LOGGING_OVERRIDE="on"
+    MQTT_BRIDGE_OVERRIDE="off"
+    FIRMWARE_FILENAME_INFIX="logging"
+    run_logged_build_targets "${constrained_logging_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  fi
+
+  if [ ${#mqtt_targets[@]} -gt 0 ]; then
+    echo "Profile 3/3: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
+    MESHDEBUG_OVERRIDE="off"
+    PACKET_LOGGING_OVERRIDE="off"
+    MQTT_BRIDGE_OVERRIDE="on"
+    MQTT_DEBUG_OVERRIDE="off"
+    FIRMWARE_FILENAME_INFIX=""
+    run_logged_build_targets "${mqtt_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  else
+    echo "No MQTT bridge targets are configured; skipping profile 3/3."
   fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
@@ -1881,6 +2121,15 @@ run_logging_matrix_build_targets() {
   MQTT_BRIDGE_OVERRIDE=$original_mqtt_bridge_override
   MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
   FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
+
+  if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
+    echo "Logging matrix completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
+    printf '  %s\n' "${LOGGING_MATRIX_FAILURES[@]}"
+  elif [ "$build_status" -ne 0 ]; then
+    echo "Logging matrix completed with an output/logging error; inspect ${OUTPUT_DIR}/build-logs/."
+  else
+    echo "Logging matrix completed successfully. Per-target logs are in ${OUTPUT_DIR}/build-logs/."
+  fi
 
   return "$build_status"
 }
@@ -1927,6 +2176,11 @@ run_command() {
 }
 
 main() {
+  if ! parse_cli_options "$@"; then
+    exit 1
+  fi
+  set -- "${PARSED_COMMAND_ARGS[@]}"
+
   case "${1:-}" in
     help|usage|-h|--help)
       global_usage
@@ -1944,6 +2198,12 @@ main() {
   fi
 
   init_project_context
+
+  if [ -n "$RADIO_PRESET_SELECTION" ]; then
+    if ! apply_cli_radio_preset "$RADIO_PRESET_SELECTION"; then
+      exit 1
+    fi
+  fi
 
   if [ $# -eq 0 ]; then
     if ! [ -t 0 ]; then
@@ -1985,4 +2245,6 @@ main() {
   run_command "$@"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

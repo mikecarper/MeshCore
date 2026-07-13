@@ -465,11 +465,25 @@ send text.flood checking ridge link
 #### View or change battery alert state
 **Usage:**
 - `get battery.alert`
-- `set battery.alert <on|off>`
+- `get battery.alert.region`
+- `set battery.alert on [region]`
+- `set battery.alert off`
 
-**Default:** `off`
+**Parameters:**
+- `region`: Optional named region scope. When omitted, the repeater selects the single deepest (most narrow) named region in the configured hierarchy. If multiple regions tie for deepest, specify one explicitly.
 
-**Note:** When enabled, the repeater checks battery level once per minute and sends low-battery warnings to the `#repeaters` flood channel.
+**Defaults:**
+- `battery.alert`: `off`
+- `battery.alert.region`: `<unset>`
+
+**Notes:**
+- Enabling fails until at least one usable named region is defined. Alerts are never sent as unscoped floods. If the selected region is later removed, alerts stop until battery alerts are enabled again with a valid region.
+- Region hierarchy edits are not persistent until `region save` is run. After `region def west pnw wa w-wa sea`, run `region save` before enabling the alert if the hierarchy must survive a reboot.
+- A region must have a usable transport key. Public named regions derive one automatically; a private region without an available key is rejected.
+- The first alert is suppressed until the repeater has been up for at least 30 minutes. After that, the repeater checks every 30 minutes and sends low-battery warnings to the `#repeaters` channel in the selected region.
+- With `region def west pnw wa w-wa sea`, `set battery.alert on` selects `sea`; `set battery.alert on w-wa` overrides that default.
+- `get battery.alert.region` returns the selected scope, for example `> sea`.
+- The battery check never requests a wake earlier than its 30-minute deadline. If the normal loop is already awake when that deadline has elapsed, the check is effectively free of an additional wake. Time in light/event sleep counts toward the startup delay, and a queued alert keeps the repeater awake until the packet is handled.
 
 ---
 
@@ -1378,6 +1392,10 @@ set flood.retry.ignore none
 
 Flood retry timing retains its fixed maximum-frame plus 20 packet-airtime wait, then adds a random `0-200%` of one additional packet airtime on every attempt. This de-synchronizes repeaters that may have missed the same echo while capping the added wait at two frames.
 
+Only one active retry sequence is kept for a given logical flood packet. An identical flood can still transmit normally, but it does not create a second sequence of extra attempts. Retry state is released if a queued packet is evicted, and the final echo window retains metadata without reserving a packet-pool entry.
+
+Bridge reachability learned from earlier hops in a successful echo is cached separately from `recent.repeater`. Only the final RF hop updates `recent.repeater` and its SNR, so indirect path entries cannot affect direct-retry SNR gating or coding-rate selection.
+
 **Examples:**
 ```
 get flood.retry.bridge
@@ -1833,7 +1851,7 @@ Requires WiFi connected and the MQTT bridge running.
 - `set bridge.secret <secret>`
 
 **Parameters:**
-- `secret`: ESP-NOW bridge secret, up to 15 characters
+- `secret`: ESP-NOW bridge secret, 1-15 characters
 
 **Default:** Varies by board
 
