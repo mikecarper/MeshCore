@@ -1827,18 +1827,22 @@ bool MyMesh::hasFloodRetryTargetPrefix(const mesh::Packet* packet) const {
 
 uint8_t MyMesh::getFloodRetryMaxPathLength(const mesh::Packet* packet) const {
   uint8_t gate = _prefs.flood_retry_max_path;
-  if (gate == FLOOD_RETRY_PATH_GATE_DISABLED) {
-    return FLOOD_RETRY_PATH_GATE_DISABLED;
-  }
-  if (gate > 63) {
-    gate = FLOOD_RETRY_ROOFTOP_MAX_PATH;
+  if (gate != FLOOD_RETRY_PATH_GATE_DISABLED) {
+    if (gate > 63) {
+      gate = FLOOD_RETRY_ROOFTOP_MAX_PATH;
+    }
+
+    uint8_t raw_hops = packet != NULL ? packet->getPathHashCount() : 0;
+    uint8_t effective_hops = floodRetryEffectivePathLength(packet);
+    uint8_t ignored_hops = raw_hops > effective_hops ? raw_hops - effective_hops : 0;
+    uint16_t adjusted_gate = (uint16_t)gate + ignored_hops;
+    gate = adjusted_gate > 63 ? 63 : (uint8_t)adjusted_gate;
   }
 
-  uint8_t raw_hops = packet != NULL ? packet->getPathHashCount() : 0;
-  uint8_t effective_hops = floodRetryEffectivePathLength(packet);
-  uint8_t ignored_hops = raw_hops > effective_hops ? raw_hops - effective_hops : 0;
-  uint16_t adjusted_gate = (uint16_t)gate + ignored_hops;
-  return adjusted_gate > 63 ? 63 : (uint8_t)adjusted_gate;
+  uint8_t group_data_gate = _prefs.flood_retry_group_max_path == FLOOD_RETRY_PATH_GATE_DISABLED
+      ? FLOOD_RETRY_PATH_GATE_DISABLED
+      : constrain(_prefs.flood_retry_group_max_path, 0, 63);
+  return applyGroupDataFloodRetryPathGate(packet, gate, group_data_gate);
 }
 
 uint8_t MyMesh::getFloodRetryMaxAttempts(const mesh::Packet* packet) const {
@@ -2388,6 +2392,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.direct_retry_recent_enabled = DIRECT_RETRY_RECENT_DEFAULT;
   _prefs.flood_retry_attempts = FLOOD_RETRY_ROOFTOP_COUNT;
   _prefs.flood_retry_max_path = FLOOD_RETRY_ROOFTOP_MAX_PATH;
+  _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.flood_retry_bridge_enabled = 0;
   _prefs.flood_retry_advert_enabled = FLOOD_RETRY_ADVERT_DEFAULT;
   _prefs.flood_channel_data_enabled = 1;

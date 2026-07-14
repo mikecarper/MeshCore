@@ -1261,7 +1261,7 @@ set direct.retry.heard off
 - `infra`: fewer, slower retries for stable fixed infrastructure.
 - `rooftop`: default long retry window for weak rooftop links.
 - `mobile`: long retry count with shorter spacing for moving or changing links; flood retry count is `15`.
-- Changing `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, `direct.retry.margin`, `flood.retry.count`, or `flood.retry.path` makes the preset report as `custom`.
+- Changing `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, `direct.retry.margin`, `flood.retry.count`, `flood.retry.path`, or `flood.retry.group.path` makes the preset report as `custom`.
 
 **Examples:**
 ```
@@ -1278,7 +1278,7 @@ set retry.preset mobile
 Flood retry resends flood-routed packets when the same packet is not heard from
 another qualifying repeater.
 
-The count, path, and advert controls work on repeater, room-server, and sensor
+The count, path, group-data path, and advert controls work on repeater, room-server, and sensor
 firmware. Flood forwarding must also be enabled for retries to run. Prefix,
 ignore, bridge, and bucket controls are repeater-only.
 
@@ -1325,6 +1325,30 @@ set flood.retry.count 15
 get flood.retry.path
 set flood.retry.path 1
 set flood.retry.path off
+```
+
+---
+
+#### View or change the group-data flood retry path gate
+**Usage:**
+- `get flood.retry.group.path`
+- `set flood.retry.group.path <count|off>`
+
+**Parameters:**
+- `count`: Maximum flood path hash count eligible for retry for group data packets (`PAYLOAD_TYPE_GRP_DATA`/type 6), from `0` to `63`.
+- `off`: Disable only the group-data-specific gate. The general `flood.retry.path` gate still applies.
+
+**Default:** `1` for `infra`, `rooftop`, and `mobile` presets.
+
+**Note:** The stricter of `flood.retry.path` and `flood.retry.group.path` is used. A value of `1` allows retry sequences at path counts `0` and `1`; group data at path count `2` or higher is still forwarded normally but does not start a flood retry sequence. A value of `0` allows retries only at the originating sender.
+
+Setting `flood.retry.path` to `0` also sets `flood.retry.group.path` to `off` because the general zero-hop gate is already stricter. While the general gate remains `0`, attempts to set the group-data gate keep it `off`. Applying a named retry preset restores the group-data default of `1`.
+
+**Examples:**
+```
+get flood.retry.group.path
+set flood.retry.group.path 1
+set flood.retry.group.path off
 ```
 
 ---
@@ -1466,15 +1490,13 @@ set direct.retry.count 15
 **Default:** `175` with the `rooftop` preset
 
 **Explanation:**
-- The first retry waits `base` milliseconds after the failed echo window.
-- The failed echo window includes a packet-length add-on. TRACE and
-  ANON_REQ/type 7 packets keep the existing 4x line-time add-on. TXT_MSG/type 2
+- The first retry waits for `base + packet-length add-on + random forwarding jitter`
+  after the preceding transmission completes.
+- TRACE and
+  ANON_REQ/type 7 packets use a 3x line-time add-on. TXT_MSG/type 2
   packets use 7x. Other direct retry packets use 6x.
 - Room-server and sensor firmware use this configured base with the same
   packet-type add-ons.
-- For non-TRACE direct paths shorter than 6 remaining hops, the effective wait is scaled by `hops / 6`.
-- Non-TRACE direct paths with 6 or more remaining hops use the configured value unchanged.
-- TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the configured value unchanged.
 - Larger values reduce channel pressure and give slow repeaters more time.
 - Smaller values recover faster but create tighter retry bursts.
 
@@ -1499,16 +1521,14 @@ set direct.retry.base 500
 **Default:** `100` with the `rooftop` preset
 
 **Explanation:**
-- Retry delay is `base + attempt_index * step`.
-- This is added after the failed echo window. TRACE and ANON_REQ/type 7 packets
-  keep the existing 4x packet-length add-on. TXT_MSG/type 2 packets use 7x.
+- Retry delay is `base + packet-length add-on + random forwarding jitter + attempt_index * step`.
+- TRACE and ANON_REQ/type 7 packets
+  use a 3x packet-length add-on. TXT_MSG/type 2 packets use 7x.
   Other direct retry packets use 6x.
 - Room-server and sensor firmware use this configured step with the same
   packet-type add-ons.
-- For non-TRACE direct paths shorter than 6 remaining hops, that computed delay is scaled by `hops / 6`.
-- Non-TRACE direct paths with 6 or more remaining hops use the computed delay unchanged.
-- TRACE retries shorter than 16 remaining hops use `hops / 16`; 16 or more remaining hops use the computed delay unchanged.
-- With `base=175` and `step=100`, non-TRACE paths with 6 or more remaining hops wait about `175`, `275`, `375`, `475` ms, and so on.
+- With `base=175` and `step=100`, the fixed portion is `175`, `275`, `375`,
+  `475` ms, and so on, before the packet-length add-on and random jitter.
 - `step=0` keeps every retry at the same delay.
 - Larger steps spread retries over time and are safer on busy channels.
 

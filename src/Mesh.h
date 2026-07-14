@@ -60,6 +60,7 @@ class Mesh : public Dispatcher {
     uint32_t retry_delay;
     uint8_t retry_attempts_sent;
     uint8_t retry_key[MAX_HASH_SIZE];
+    uint8_t trace_replacement_key[MAX_HASH_SIZE];
     uint8_t next_hop_hash[MAX_HASH_SIZE];
     uint8_t next_hop_hash_len;
     uint8_t payload_type;
@@ -104,7 +105,10 @@ class Mesh : public Dispatcher {
   void rebuildNextDirectRetryTimeout();
   void rebuildNextFloodRetryTimeout();
   void clearDirectRetrySlot(int idx);
+  void retireDirectRetrySlot(int idx);
   void calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const;
+  bool calculateTraceReplacementKey(const Packet* packet, uint8_t* dest_key) const;
+  void replaceQueuedTraceRetries(const Packet* packet);
   bool cancelDirectRetryOnEcho(const Packet* packet);
   void armDirectRetryOnSendComplete(const Packet* packet);
   void clearPendingDirectRetryOnSendFail(const Packet* packet);
@@ -122,6 +126,7 @@ class Mesh : public Dispatcher {
 
 protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
+  void onTracePacketQueuedForSend(Packet* packet) override;
   void onSendComplete(Packet* packet) override;
   void onSendFail(Packet* packet) override;
   bool allowPacketTransmit(const Packet* packet) const override;
@@ -235,6 +240,13 @@ protected:
    * \returns  maximum flood path hash count eligible for retry, or FLOOD_RETRY_PATH_GATE_DISABLED.
    */
   virtual uint8_t getFloodRetryMaxPathLength(const Packet* packet) const;
+
+  /**
+   * \returns  the stricter of the general flood retry gate and the group-data-specific gate.
+   */
+  static uint8_t applyGroupDataFloodRetryPathGate(const Packet* packet,
+                                                  uint8_t general_gate,
+                                                  uint8_t group_data_gate);
 
   /**
    * \returns  maximum number of FLOOD retry transmissions after the initial TX.

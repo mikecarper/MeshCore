@@ -50,6 +50,7 @@
 #define FLOOD_RETRY_MOBILE_COUNT         15
 #define FLOOD_RETRY_MOBILE_MAX_PATH       1
 #define FLOOD_RETRY_ADVERT_DEFAULT        0
+#define FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT 1
 
 #define BATTERY_ALERT_LOW_PERCENT_DEFAULT       20
 #define BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT  10
@@ -215,6 +216,7 @@ struct NodePrefs { // persisted to file
   uint8_t rx_ps_level;      // 0 = manual/explicit us timings; 1..10 = level-derived (auto-retunes on SF/BW change)
   uint8_t rx_ps_preamble;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
   char battery_alert_region[31]; // named scope for low-battery floods; empty = no alert scope
+  uint8_t flood_retry_group_max_path; // PAYLOAD_TYPE_GRP_DATA retry path gate; 0xFF = use only the general gate
 };
 
 #ifdef WITH_MQTT_BRIDGE

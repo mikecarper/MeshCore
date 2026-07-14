@@ -169,6 +169,7 @@ static bool isBasicRetryConfig(const char* config) {
       || configKeyMatches(config, "direct.retry")
       || configKeyMatches(config, "flood.retry.count")
       || configKeyMatches(config, "flood.retry.path")
+      || configKeyMatches(config, "flood.retry.group.path")
       || configKeyMatches(config, "flood.retry.advert");
 }
 
@@ -430,6 +431,9 @@ static void applyFloodRetryPreset(NodePrefs* prefs, uint8_t preset) {
     prefs->flood_retry_attempts = FLOOD_RETRY_ROOFTOP_COUNT;
     prefs->flood_retry_max_path = FLOOD_RETRY_ROOFTOP_MAX_PATH;
   }
+  prefs->flood_retry_group_max_path = prefs->flood_retry_max_path == 0
+      ? FLOOD_RETRY_PATH_GATE_DISABLED
+      : FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
 }
 
 static bool parseFloodRetryPathGate(const char* value, uint8_t& path_gate) {
@@ -936,6 +940,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->ota_max_hops = 3;
 #endif
     _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
+    _prefs->flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
     // (upstream/flex 5-byte tails, or the ~384-byte keymind retry tail) takes the
@@ -1183,6 +1188,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       file.read((uint8_t *)_prefs->battery_alert_region, sizeof(_prefs->battery_alert_region));
       _prefs->battery_alert_region[sizeof(_prefs->battery_alert_region) - 1] = '\0';
     }
+    if (file.available() >= (int)sizeof(_prefs->flood_retry_group_max_path)) {
+      file.read((uint8_t *)&_prefs->flood_retry_group_max_path,
+                sizeof(_prefs->flood_retry_group_max_path));
+    }
     }
 
     // sanitise bad pref values
@@ -1238,6 +1247,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->flood_retry_attempts = constrain(_prefs->flood_retry_attempts, 0, 15);
     if (_prefs->flood_retry_max_path != FLOOD_RETRY_PATH_GATE_DISABLED) {
       _prefs->flood_retry_max_path = constrain(_prefs->flood_retry_max_path, 0, 63);
+    }
+    if (_prefs->flood_retry_group_max_path != FLOOD_RETRY_PATH_GATE_DISABLED) {
+      _prefs->flood_retry_group_max_path = constrain(_prefs->flood_retry_group_max_path, 0, 63);
+    }
+    if (_prefs->flood_retry_max_path == 0) {
+      _prefs->flood_retry_group_max_path = FLOOD_RETRY_PATH_GATE_DISABLED;
     }
     _prefs->flood_retry_bridge_enabled = constrain(_prefs->flood_retry_bridge_enabled, 0, 1);
     _prefs->flood_retry_advert_enabled = constrain(_prefs->flood_retry_advert_enabled, 0, 1);
@@ -1402,7 +1417,9 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->rx_ps_level, sizeof(_prefs->rx_ps_level));                       // 820
     file.write((uint8_t *)&_prefs->rx_ps_preamble, sizeof(_prefs->rx_ps_preamble));                 // 821
     file.write((uint8_t *)_prefs->battery_alert_region, sizeof(_prefs->battery_alert_region));      // 822
-    // next: 853
+    file.write((uint8_t *)&_prefs->flood_retry_group_max_path,
+               sizeof(_prefs->flood_retry_group_max_path));                                        // 853
+    // next: 854
 
     file.close();
   }
@@ -2612,6 +2629,21 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     uint8_t path_gate;
     if (parseFloodRetryPathGate(&config[17], path_gate)) {
       _prefs->flood_retry_max_path = path_gate;
+      if (path_gate == 0) {
+        _prefs->flood_retry_group_max_path = FLOOD_RETRY_PATH_GATE_DISABLED;
+      }
+      _prefs->retry_preset = RETRY_PRESET_CUSTOM;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-63 or off");
+    }
+  } else if (memcmp(config, "flood.retry.group.path ", 23) == 0) {
+    uint8_t path_gate;
+    if (parseFloodRetryPathGate(&config[23], path_gate)) {
+      _prefs->flood_retry_group_max_path = _prefs->flood_retry_max_path == 0
+          ? FLOOD_RETRY_PATH_GATE_DISABLED
+          : path_gate;
       _prefs->retry_preset = RETRY_PRESET_CUSTOM;
       savePrefs();
       strcpy(reply, "OK");
@@ -3028,6 +3060,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "flood.retry.path", 16) == 0) {
     char path_gate[8];
     formatFloodRetryPathGate(path_gate, _prefs->flood_retry_max_path);
+    sprintf(reply, "> %s", path_gate);
+  } else if (memcmp(config, "flood.retry.group.path", 22) == 0) {
+    char path_gate[8];
+    formatFloodRetryPathGate(path_gate, _prefs->flood_retry_group_max_path);
     sprintf(reply, "> %s", path_gate);
   } else if (memcmp(config, "flood.retry.prefixes", 20) == 0) {
     formatFloodRetryPrefixList(tmp, _prefs->flood_retry_prefixes, FLOOD_RETRY_PREFIX_SLOTS);

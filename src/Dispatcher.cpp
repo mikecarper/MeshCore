@@ -393,6 +393,8 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
     if (!queueOutboundPacket(pkt, priority, _delay)) {
       onSendFail(pkt);
       releasePacket(pkt);
+    } else if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+      onTracePacketQueuedForSend(pkt);
     }
   }
 }
@@ -553,6 +555,9 @@ bool Dispatcher::sendPacket(Packet* packet, uint8_t priority, uint32_t delay_mil
     onSendFail(packet);
     releasePacket(packet);
     return false;
+  }
+  if (packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    onTracePacketQueuedForSend(packet);
   }
   return true;
 }

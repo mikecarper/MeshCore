@@ -347,10 +347,13 @@ bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
 }
 
 uint8_t MyMesh::getFloodRetryMaxPathLength(const mesh::Packet* packet) const {
-  (void)packet;
-  return _prefs.flood_retry_max_path == FLOOD_RETRY_PATH_GATE_DISABLED
+  uint8_t general_gate = _prefs.flood_retry_max_path == FLOOD_RETRY_PATH_GATE_DISABLED
       ? FLOOD_RETRY_PATH_GATE_DISABLED
       : constrain(_prefs.flood_retry_max_path, 0, 63);
+  uint8_t group_data_gate = _prefs.flood_retry_group_max_path == FLOOD_RETRY_PATH_GATE_DISABLED
+      ? FLOOD_RETRY_PATH_GATE_DISABLED
+      : constrain(_prefs.flood_retry_group_max_path, 0, 63);
+  return applyGroupDataFloodRetryPathGate(packet, general_gate, group_data_gate);
 }
 
 uint8_t MyMesh::getFloodRetryMaxAttempts(const mesh::Packet* packet) const {
@@ -753,6 +756,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_max_unscoped = 64;
   _prefs.flood_max_advert = 8;
   _prefs.flood_channel_data_enabled = 1;
+  _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.interference_threshold = 0; // disabled
   _prefs.radio_fem_rxgain = 1;       // LoRa FEM RX gain on by default (FEM boards)
   _prefs.cad_enabled = 0;            // hardware CAD before TX (off by default; 'set cad on')

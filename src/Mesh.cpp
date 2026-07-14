@@ -161,6 +161,7 @@ void Mesh::begin() {
     _direct_retries[i].retry_delay = 0;
     _direct_retries[i].retry_attempts_sent = 0;
     memset(_direct_retries[i].retry_key, 0, sizeof(_direct_retries[i].retry_key));
+    memset(_direct_retries[i].trace_replacement_key, 0, sizeof(_direct_retries[i].trace_replacement_key));
     memset(_direct_retries[i].next_hop_hash, 0, sizeof(_direct_retries[i].next_hop_hash));
     _direct_retries[i].next_hop_hash_len = 0;
     _direct_retries[i].payload_type = 0;
@@ -359,7 +360,7 @@ uint8_t Mesh::getDirectRetryPacketAirtimeFactor(const Packet* packet) const {
 
   uint8_t payload_type = packet->getPayloadType();
   if (payload_type == PAYLOAD_TYPE_TRACE || payload_type == PAYLOAD_TYPE_ANON_REQ) {
-    return 4;
+    return 3;
   }
   if (payload_type == PAYLOAD_TYPE_TXT_MSG) {
     return 7;
@@ -399,6 +400,18 @@ uint8_t Mesh::getFloodRetryMaxPathLength(const Packet* packet) const {
   (void)packet;
   return FLOOD_RETRY_MAX_PATH_DEFAULT;
 }
+uint8_t Mesh::applyGroupDataFloodRetryPathGate(const Packet* packet,
+                                               uint8_t general_gate,
+                                               uint8_t group_data_gate) {
+  if (packet == NULL || packet->getPayloadType() != PAYLOAD_TYPE_GRP_DATA
+      || group_data_gate == FLOOD_RETRY_PATH_GATE_DISABLED) {
+    return general_gate;
+  }
+  if (general_gate == FLOOD_RETRY_PATH_GATE_DISABLED || group_data_gate < general_gate) {
+    return group_data_gate;
+  }
+  return general_gate;
+}
 uint8_t Mesh::getFloodRetryMaxAttempts(const Packet* packet) const {
   (void)packet;
   return FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT;
@@ -422,6 +435,10 @@ uint8_t Mesh::getExtraAckTransmitCount() const {
 void Mesh::onSendComplete(Packet* packet) {
   armDirectRetryOnSendComplete(packet);
   armFloodRetryOnSendComplete(packet);
+}
+
+void Mesh::onTracePacketQueuedForSend(Packet* packet) {
+  replaceQueuedTraceRetries(packet);
 }
 
 void Mesh::onSendFail(Packet* packet) {
@@ -913,6 +930,7 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].retry_delay = 0;
   _direct_retries[idx].retry_attempts_sent = 0;
   memset(_direct_retries[idx].retry_key, 0, sizeof(_direct_retries[idx].retry_key));
+  memset(_direct_retries[idx].trace_replacement_key, 0, sizeof(_direct_retries[idx].trace_replacement_key));
   memset(_direct_retries[idx].next_hop_hash, 0, sizeof(_direct_retries[idx].next_hop_hash));
   _direct_retries[idx].next_hop_hash_len = 0;
   _direct_retries[idx].payload_type = 0;
@@ -924,6 +942,26 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].queued = false;
   _direct_retries[idx].active = false;
   if (rebuild_timeout) rebuildNextDirectRetryTimeout();
+}
+
+void Mesh::retireDirectRetrySlot(int idx) {
+  if (idx < 0 || idx >= MAX_DIRECT_RETRY_SLOTS || !_direct_retries[idx].active) {
+    return;
+  }
+
+  Packet* retry = _direct_retries[idx].queued ? _direct_retries[idx].packet : NULL;
+  if (retry != NULL && retry != getOutboundInFlight()) {
+    for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
+      if (_mgr->getOutboundByIdx(j) != retry) continue;
+      Packet* pending = _mgr->removeOutboundByIdx(j);
+      if (pending != NULL) {
+        _direct_retries[idx].packet = NULL;
+        releasePacket(pending);
+      }
+      break;
+    }
+  }
+  clearDirectRetrySlot(idx);
 }
 
 void Mesh::rebuildNextDirectRetryTimeout() {
@@ -994,6 +1032,62 @@ bool Mesh::getNextRetryWakeDelay(uint32_t& delay_millis) const {
 void Mesh::calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const {
   uint8_t type = packet->getPayloadType();
   Utils::sha256(dest_key, MAX_HASH_SIZE, &type, 1, packet->payload, packet->payload_len);
+}
+
+bool Mesh::calculateTraceReplacementKey(const Packet* packet, uint8_t* dest_key) const {
+  if (packet == NULL || dest_key == NULL || !packet->isRouteDirect()
+      || packet->getPayloadType() != PAYLOAD_TYPE_TRACE || packet->payload_len < 9) {
+    return false;
+  }
+
+  uint8_t prefix[3] = {
+    PAYLOAD_TYPE_TRACE,
+    (uint8_t)(packet->path_len & 0xFF),
+    (uint8_t)(packet->path_len >> 8)
+  };
+  // Ignore tag/auth (payload bytes 0..7), which change for a new request.
+  // Keep flags, route, and current progress so an older trace that has already
+  // advanced is not mistaken for the stale retry being replaced.
+  Utils::sha256(dest_key, MAX_HASH_SIZE, prefix, sizeof(prefix),
+                &packet->payload[8], packet->payload_len - 8);
+  return true;
+}
+
+void Mesh::replaceQueuedTraceRetries(const Packet* packet) {
+  uint8_t replacement_key[MAX_HASH_SIZE];
+  if (!calculateTraceReplacementKey(packet, replacement_key)) return;
+
+  int replacement_slot = -1;
+  bool found_prior = false;
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (!_direct_retries[i].active || _direct_retries[i].payload_type != PAYLOAD_TYPE_TRACE
+        || memcmp(replacement_key, _direct_retries[i].trace_replacement_key, MAX_HASH_SIZE) != 0) {
+      continue;
+    }
+    if (_direct_retries[i].trigger_packet == packet) {
+      replacement_slot = i;
+    } else {
+      found_prior = true;
+    }
+  }
+
+  if (!found_prior) return;
+
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (i == replacement_slot || !_direct_retries[i].active
+        || _direct_retries[i].payload_type != PAYLOAD_TYPE_TRACE
+        || memcmp(replacement_key, _direct_retries[i].trace_replacement_key, MAX_HASH_SIZE) != 0) {
+      continue;
+    }
+    retireDirectRetrySlot(i);
+  }
+
+  // An exact duplicate retry key, or a full retry table, can prevent the new
+  // packet from reserving its slot before it is queued. The prior slots are now
+  // gone, so register the successfully queued packet as the retry owner.
+  if (replacement_slot < 0) {
+    maybeScheduleDirectRetry(packet, getTraceDirectPriority(packet));
+  }
 }
 
 bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
@@ -1351,6 +1445,8 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
 
   uint8_t retry_key[MAX_HASH_SIZE];
   calculateDirectRetryKey(packet, retry_key);
+  uint8_t trace_replacement_key[MAX_HASH_SIZE] = { 0 };
+  bool has_trace_replacement_key = calculateTraceReplacementKey(packet, trace_replacement_key);
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     if (_direct_retries[i].active
         && memcmp(retry_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
@@ -1366,6 +1462,17 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
     }
   }
   if (slot_idx < 0) {
+    if (has_trace_replacement_key) {
+      for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+        if (_direct_retries[i].active && _direct_retries[i].payload_type == PAYLOAD_TYPE_TRACE
+            && memcmp(trace_replacement_key, _direct_retries[i].trace_replacement_key,
+                      MAX_HASH_SIZE) == 0) {
+          // The post-queue hook will retire this older matching TRACE and use
+          // the slot for the successfully queued replacement.
+          return;
+        }
+      }
+    }
     onDirectRetryEvent("dropped_no_slot", packet, 0, 0, next_hop_hash, next_hop_hash_len);
     onDirectRetryEvent("failure", packet, 0, 0, next_hop_hash, next_hop_hash_len);
     return;
@@ -1374,6 +1481,8 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   // Only store retry metadata here; allocate the retry packet after the initial TX really completes.
   uint32_t retry_delay = getDirectRetryAttemptDelay(packet, 0);
   memcpy(_direct_retries[slot_idx].retry_key, retry_key, sizeof(retry_key));
+  memcpy(_direct_retries[slot_idx].trace_replacement_key, trace_replacement_key,
+         sizeof(trace_replacement_key));
   _direct_retries[slot_idx].packet = NULL;
   _direct_retries[slot_idx].trigger_packet = const_cast<Packet*>(packet);
   _direct_retries[slot_idx].retry_started_at = 0;
@@ -1448,20 +1557,7 @@ void Mesh::cancelAllDirectRetries() {
 
   for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) continue;
-
-    Packet* retry = _direct_retries[i].queued ? _direct_retries[i].packet : NULL;
-    if (retry != NULL && retry != getOutboundInFlight()) {
-      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
-        if (_mgr->getOutboundByIdx(j) != retry) continue;
-        Packet* pending = _mgr->removeOutboundByIdx(j);
-        if (pending != NULL) {
-          _direct_retries[i].packet = NULL;
-          releasePacket(pending);
-        }
-        break;
-      }
-    }
-    clearDirectRetrySlot(i);
+    retireDirectRetrySlot(i);
   }
 }
 
@@ -1501,20 +1597,7 @@ bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
       continue;
     }
 
-    Packet* retry = _direct_retries[i].queued ? _direct_retries[i].packet : NULL;
-    if (retry != NULL && retry != getOutboundInFlight()) {
-      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
-        if (_mgr->getOutboundByIdx(j) == retry) {
-          Packet* pending = _mgr->removeOutboundByIdx(j);
-          if (pending != NULL) {
-            _direct_retries[i].packet = NULL;
-            releasePacket(pending);
-          }
-          break;
-        }
-      }
-    }
-    clearDirectRetrySlot(i);
+    retireDirectRetrySlot(i);
     cancelled = true;
   }
 
