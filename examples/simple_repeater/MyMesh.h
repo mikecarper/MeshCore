@@ -136,6 +136,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
   unsigned long next_battery_alert_check;
+  unsigned long next_rx_watchdog_check;
   unsigned long next_recent_repeater_sweep;
   uint64_t last_battery_alert_sent;
   mesh::Packet* pending_battery_alert_packet;
@@ -270,6 +271,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope);
   bool resolveBatteryAlertScope(TransportKey& scope);
   void checkBatteryAlert();
+  void checkRxInactivityWatchdog();
   void expireRecentRepeatersIfDue();
   void printRecentRepeatersSerial();
 

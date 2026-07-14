@@ -104,6 +104,7 @@
 #define LOW_BATTERY_STARTUP_DELAY      (30ULL * 60ULL * 1000ULL)
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
+#define RX_INACTIVITY_WATCHDOG_INTERVAL (12UL * 60UL * 60UL * 1000UL)
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
@@ -2320,6 +2321,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   next_battery_alert_check = 0;
+  next_rx_watchdog_check = 0;
   next_recent_repeater_sweep = 0;
   last_battery_alert_sent = 0;
   pending_battery_alert_packet = NULL;
@@ -2768,6 +2770,32 @@ void MyMesh::checkBatteryAlert() {
   mesh::Packet* queued_packet = NULL;
   if (sendRepeatersFloodText(text, &alert_scope, &queued_packet)) {
     pending_battery_alert_packet = queued_packet;
+  }
+}
+
+void MyMesh::checkRxInactivityWatchdog() {
+  if (!_prefs.rx_watchdog_enabled) {
+    next_rx_watchdog_check = 0;
+    return;
+  }
+
+  if (next_rx_watchdog_check == 0) {
+    next_rx_watchdog_check = futureMillis(RX_INACTIVITY_WATCHDOG_INTERVAL);
+    if (next_rx_watchdog_check == 0) next_rx_watchdog_check = 1;
+    return;
+  }
+  if (!millisHasNowPassed(next_rx_watchdog_check)) {
+    return;
+  }
+
+  next_rx_watchdog_check = futureMillis(RX_INACTIVITY_WATCHDOG_INTERVAL);
+  if (next_rx_watchdog_check == 0) next_rx_watchdog_check = 1;
+
+  const unsigned long now = millis();
+  const unsigned long last_rx = _radio->getLastRecvMillis();
+  if (last_rx == 0 || (uint32_t)(now - last_rx) >= RX_INACTIVITY_WATCHDOG_INTERVAL) {
+    MESH_DEBUG_PRINTLN("RX watchdog: no packet received in 12 hours, rebooting");
+    _cli.getBoard()->reboot();
   }
 }
 
@@ -4241,6 +4269,23 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_low_percent);
   } else if (strcmp(command, "get battery.alert.critical") == 0) {
     sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_critical_percent);
+  } else if (strcmp(command, "get rx.watchdog") == 0) {
+    sprintf(reply, "> %s", _prefs.rx_watchdog_enabled ? "on" : "off");
+  } else if (strncmp(command, "set rx.watchdog ", 16) == 0) {
+    const char* value = command + 16;
+    if (strcmp(value, "on") == 0) {
+      _prefs.rx_watchdog_enabled = 1;
+      next_rx_watchdog_check = 0;
+      savePrefs();
+      strcpy(reply, "OK - RX watchdog enabled; first check in 12 hours");
+    } else if (strcmp(value, "off") == 0) {
+      _prefs.rx_watchdog_enabled = 0;
+      next_rx_watchdog_check = 0;
+      savePrefs();
+      strcpy(reply, "OK - RX watchdog disabled");
+    } else {
+      strcpy(reply, "Err - usage: set rx.watchdog <on|off>");
+    }
   } else if (strncmp(command, "set battery.alert ", 18) == 0) {
     const char* value = command + 18;
     if (strncmp(value, "on", 2) == 0 && (value[2] == 0 || value[2] == ' ')) {
@@ -4332,6 +4377,7 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+  checkRxInactivityWatchdog();
   checkBatteryAlert();
   expireRecentRepeatersIfDue();
 

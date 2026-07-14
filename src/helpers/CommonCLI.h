@@ -217,6 +217,7 @@ struct NodePrefs { // persisted to file
   uint8_t rx_ps_preamble;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
   char battery_alert_region[31]; // named scope for low-battery floods; empty = no alert scope
   uint8_t flood_retry_group_max_path; // PAYLOAD_TYPE_GRP_DATA retry path gate; 0xFF = use only the general gate
+  uint8_t rx_watchdog_enabled; // repeater RX-inactivity reboot watchdog (boolean)
 };
 
 #ifdef WITH_MQTT_BRIDGE

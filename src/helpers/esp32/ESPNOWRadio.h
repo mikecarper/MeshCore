@@ -11,8 +11,9 @@ public:
 
   uint32_t getRngSeed();
 
-  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) {
-    // no-op
+  bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                 const uint32_t* rx_ps_timings = nullptr) {
+    return true;
   }
   void powerOff() { /* no-op */ }
 

@@ -503,6 +503,21 @@ send text.flood checking ridge link
 
 ---
 
+#### Enable or disable the RX inactivity watchdog (Repeater Only)
+**Usage:**
+- `get rx.watchdog`
+- `set rx.watchdog on`
+- `set rx.watchdog off`
+
+**Default:** `off`
+
+**Notes:**
+- When enabled, the first check is due after a full 12-hour observation window. The repeater then checks roughly every 12 hours and reboots if it has not successfully received a radio packet during the preceding 12 hours.
+- Enabling the watchdog starts a new 12-hour observation window. Rebooting also starts a new window, so a quiet mesh can reboot no more often than once every 12 hours.
+- The check reuses the radio driver's existing last-receive timestamp. It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake, so its actual cadence can drift around the 12-hour target. With RX power saving enabled, packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.
+
+---
+
 #### View this node's public key
 **Usage:** `get public.key`
 

@@ -941,6 +941,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 #endif
     _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
     _prefs->flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
+    _prefs->rx_watchdog_enabled = 0;
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
     // (upstream/flex 5-byte tails, or the ~384-byte keymind retry tail) takes the
@@ -1192,6 +1193,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       file.read((uint8_t *)&_prefs->flood_retry_group_max_path,
                 sizeof(_prefs->flood_retry_group_max_path));
     }
+    if (file.available() >= (int)sizeof(_prefs->rx_watchdog_enabled)) {
+      file.read((uint8_t *)&_prefs->rx_watchdog_enabled,
+                sizeof(_prefs->rx_watchdog_enabled));
+    }
     }
 
     // sanitise bad pref values
@@ -1283,6 +1288,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     if (_prefs->ota_signer_count > 4) _prefs->ota_signer_count = 0;     // corrupt count -> drop keys
 #endif
     _prefs->rx_powersaving_enabled = constrain(_prefs->rx_powersaving_enabled, 0, 1);
+    _prefs->rx_watchdog_enabled = constrain(_prefs->rx_watchdog_enabled, 0, 1);
     _prefs->rx_ps_level = constrain(_prefs->rx_ps_level, 0, 10);
     if (_prefs->rx_ps_preamble != 16 && _prefs->rx_ps_preamble != 32) {
       _prefs->rx_ps_preamble = 0;   // 0 = auto (derive from SF)
@@ -1419,7 +1425,9 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)_prefs->battery_alert_region, sizeof(_prefs->battery_alert_region));      // 822
     file.write((uint8_t *)&_prefs->flood_retry_group_max_path,
                sizeof(_prefs->flood_retry_group_max_path));                                        // 853
-    // next: 854
+    file.write((uint8_t *)&_prefs->rx_watchdog_enabled,
+               sizeof(_prefs->rx_watchdog_enabled));                                               // 854
+    // next: 855
 
     file.close();
   }
