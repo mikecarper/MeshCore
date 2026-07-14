@@ -1466,12 +1466,13 @@ apply_debug_overrides() {
 
 is_lora_ota_build() {
   local env_name=$1
+  local env_name_lc=${env_name,,}
 
   if [ "${PIO_ENV_OTA_BY_NAME[$env_name]:-0}" != "1" ]; then
     return 1
   fi
 
-  if [[ "$env_name" == *mqtt* ]] \
+  if [[ "$env_name_lc" == *mqtt* ]] \
       || is_mqtt_bridge_target "$env_name" \
       || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ] \
       || [ "${MESHDEBUG_OVERRIDE,,}" == "on" ] \
@@ -1480,7 +1481,9 @@ is_lora_ota_build() {
     return 1
   fi
 
-  case "$env_name" in
+  # PlatformIO environment names are not consistently cased (for example, several ESP32 targets use
+  # `_Repeater`). Match roles case-insensitively while keeping OTA limited to unattended deployments.
+  case "$env_name_lc" in
     *repeater*|*repeatr*|*room_server*|*room_svr*|*sensor*) return 0 ;;
     *) return 1 ;;
   esac

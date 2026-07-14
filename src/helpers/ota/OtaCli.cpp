@@ -253,9 +253,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     OtaStore* store; const char* dname;
     if (strncmp(dst, "flash", 5) == 0) {
       store = &c.fetch_store; c.fetch_store.clear(); dname = "flash"; validate = false;   // seed lives in the folder
+#if defined(NRF52_PLATFORM)
+      c.manager.set_accept_full(false);                 // nRF52 flash can install only in-place deltas
+#endif
     } else if (strncmp(dst, "folder", 6) == 0) {
       if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
       c.folder_dest->set_mid(selmid); store = c.folder_dest; dname = validate ? "folder+validate" : "folder";
+#if defined(NRF52_PLATFORM)
+      c.manager.set_accept_full(true);                  // capture can store a full image; it is not applied
+#endif
     } else { strcpy(reply, "ERR destination must be `flash` or `folder`"); return true; }
     c.manager.reset_session();
     c.manager.set_fetch_store(store);                        // stage this pull to the chosen destination
@@ -270,6 +276,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (fs != OtaManager::IDLE) mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
+#if defined(NRF52_PLATFORM)
+    c.manager.set_accept_full(false);
+#endif
     c.fetch_store.clear(); c.serving = false; c.serve_expected = 0; c.session_started_ms = 0;
     snprintf(reply, 160, "OK dropped session (was %c mid=%s); slot free for a new pull", fstate_char(fs), midhx);
 

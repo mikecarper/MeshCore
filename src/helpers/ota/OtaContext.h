@@ -40,7 +40,13 @@ namespace ota {
 class FolderMotaStore;   // pull destination over the seeder link (full type only where instantiated/used)
 
 #ifndef OTA_SERVE_BUF_SIZE
-#define OTA_SERVE_BUF_SIZE 16384
+  // nRF52 self-serving streams from flash; this buffer is only for the manual `ota dev stage` helper.
+  // Keep it to one flash page so the OTA singleton does not consume another 16 KB of scarce SRAM.
+  #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+    #define OTA_SERVE_BUF_SIZE 4096
+  #else
+    #define OTA_SERVE_BUF_SIZE 16384
+  #endif
 #endif
 #ifndef OTA_FETCH_BUF_SIZE
 #define OTA_FETCH_BUF_SIZE 16384
@@ -191,8 +197,10 @@ struct OtaContext {
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place
 #if defined(NRF52_PLATFORM)
+    manager.set_accept_full(false);                       // single-slot bootloader applies deltas only
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(ESP32_PLATFORM)
+    manager.set_accept_full(true);
     manager.set_apply_codec(CODEC_DETOOLS_SEQUENTIAL);   // preferred (streams straight to the slot)
     manager.set_apply_codec2(CODEC_DETOOLS_INPLACE);     // also accepted -> a single in-place .mota fits both
 #endif

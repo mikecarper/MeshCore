@@ -104,6 +104,8 @@ def _firmware_ident():
     import re
     target_id = ml.target_id_for_env(env["PIOENV"])           # noqa: F821
     hw_id = (_cppdef("MOTA_HW_ID") or "").replace("\\", "").strip().strip('"').strip("'")
+    if not hw_id:
+        hw_id = ml.hardware_id_for_env(env["PIOENV"])          # noqa: F821
     ver_s = (_cppdef("FIRMWARE_VERSION") or "").replace("\\", "").strip().strip('"').strip("'")
     if not ver_s:                                             # not a -D -> read the header MeshCore ships
         ver_s = _version_from_headers()
@@ -138,9 +140,12 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     body = bytes(ih.tobinarray(start=app_start, size=app_end - app_start))
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
+    if len(out) > ml.NRF52_INPLACE_MEMORY:
+        raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; in-place limit is "
+                           f"{ml.NRF52_INPLACE_MEMORY} bytes")
     if len(out) == len(body):
         print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
-    trailer = out[len(body):]                      # the EndF trailer (60 bytes with identity)
+    trailer = out[len(body):]                      # the EndF trailer (56 bytes with identity)
     for i, b in enumerate(trailer):
         ih[app_end + i] = b                        # write it right after the app's last byte
     ih.write_hex_file(path)

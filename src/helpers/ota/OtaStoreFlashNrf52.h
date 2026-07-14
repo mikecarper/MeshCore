@@ -5,7 +5,7 @@
 #include "OtaStore.h"
 #include "OtaFlashLayout_nrf52.h"
 
-// Persistent flash-backed OtaStore for nRF52 (RAK4631). Stages the received `.mota` in the free flash
+// Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` in the free flash
 // below the primary LittleFS (FS_START), bottom-aligned so its trailer ends at FS_START and the
 // bootloader can scan for it. Survives reboot — the whole point — so the bootloader can apply the
 // staged delta on the next boot.
@@ -58,7 +58,7 @@ public:
   bool begin(uint32_t total_size) override;
   bool write(uint32_t offset, const uint8_t* data, uint32_t len) override;
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;
-  uint32_t capacity() const override { return MOTA_NRF52_FS_START - MOTA_NRF52_APP_BASE; }
+  uint32_t capacity() const override { return mota_nrf52_stage_capacity(mota_nrf52_app_base()); }
   uint32_t staged_size() const override { return _total; }
   void clear() override { _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true; }
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes <= PG; }  // leaves must fit page 0

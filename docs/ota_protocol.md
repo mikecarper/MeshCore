@@ -195,7 +195,7 @@ cover `approval` or `leaves[]`:
 
 | `codec_id` | Meaning | Used by |
 |---|---|---|
-| 0 | full / raw | PAYLOAD = reconstructed image (`BODY‖EndF`). ESP32 A/B (and any board for a full image). |
+| 0 | full / raw | PAYLOAD = reconstructed image (`BODY‖EndF`). ESP32 A/B only. |
 | 1 | detools **sequential** | random read of base + sequential write of result → ESP32 A→B inactive slot. |
 | 2 | detools **in-place** | bounded scratch; rewrites the app region in place → nRF52 single-slot. |
 
@@ -204,9 +204,10 @@ delta only if `base_hash` matches its own `EndF.body_hash`. After applying, the 
 (sha2-256:32) to `image_hash` before it is booted — the hard security gate.
 
 **A fetcher only requests firmware it can apply.** Each node declares the codec(s) it can apply
-(`set_apply_codec`/`set_apply_codec2`): ESP32 accepts `full` + `sequential` (+ `in-place`), nRF52 accepts
-`full` + `in-place`. `CODEC_FULL` is always acceptable. A `.mota` with an unsupported codec is rejected at
-discovery time, before any blocks are requested.
+(`set_apply_codec`/`set_apply_codec2`): ESP32 accepts `full` + `sequential` (+ `in-place`), while nRF52
+accepts only `in-place` because its single slot cannot stage a full application image. A `.mota` with an
+unsupported codec is rejected at discovery time, before any blocks are requested. A manual pull to an
+external folder may accept other codecs because that path captures bytes and never installs them.
 
 Compression is internal to the detools patch and must be supported by the applier. Patches are produced by
 **detools 0.53.0** (`tools/mota` → `detools.create_patch`) and decoded on-device by detools' embeddable C

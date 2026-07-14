@@ -1,4 +1,4 @@
-# Easy full-firmware update over LoRa
+# Easy full-firmware update over LoRa (ESP32)
 
 This guide shows the shortest manual path for sending a **full firmware image** from a computer to a
 MeshCore node over LoRa. It uses this temporary OTA channel:
@@ -30,10 +30,10 @@ You need:
 
 - A standard, non-logging Keymind OTA build on the source and destination nodes. Logging and MQTT builds do
   not include LoRa OTA. Use the WiFi or USB connection to update those.
-- An OTA-capable destination. ESP32 boards use their A/B firmware slots. nRF52 nodes also need the
-  MeshCore OTAFIX bootloader.
-- The new, non-merged application firmware for the destination's exact board **and role**. Use `.bin` for
-  ESP32 or `.hex` for nRF52; do not package an ESP32 `-merged.bin` factory image.
+- An OTA-capable ESP32 destination with an A/B partition table. nRF52 has a single application slot and
+  cannot install this guide's full-image container; it requires an in-place delta plus the OTAFIX bootloader.
+- The new, non-merged `.bin` application firmware for the destination's exact board **and role**. Do not
+  package an ESP32 `-merged.bin` factory image.
 - A source node connected to the computer by USB serial.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
 

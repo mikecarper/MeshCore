@@ -256,7 +256,7 @@ that only contains what changed). You get them by:
 | See my firmware + any download | `ota status` (or just `ota`) |
 | Admin: ids/hashes + serving + policy | `ota stats` (admin-only remotely) |
 | Find updates nearby | `ota ls` |
-| Download update #1 | `ota get 1` |
+| Download update #1 for installation | `ota get 1 flash` |
 | Cancel a download | `ota cancel` |
 | Install a finished download | `ota install` |
 | Turn on auto-download | `ota config autofetch any` |

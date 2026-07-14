@@ -40,6 +40,18 @@ def test_target_id_for_env():
     assert ml.target_id_for_env("RAK_4631_repeater") != ml.target_id_for_env("RAK_4631_companion_radio_usb")
 
 
+def test_hardware_id_for_env():
+    assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK_4631"
+    assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK_4631"
+    assert ml.hardware_id_for_env("ThinkNode_M2_Repeater_bridge_espnow") == "ThinkNode_M2"
+    assert ml.hardware_id_for_env("wio-e5-repeater_bridge_rs232") == "wio-e5"
+    long_env = "ikoka_handheld_nrf_e22_30dbm_096_rotated_room_server"
+    tag = ml.hardware_id_for_env(long_env)
+    assert len(tag) <= 32 and tag.startswith("ikoka_handheld_nrf_e22")
+    assert tag == ml.hardware_id_for_env(long_env.replace("room_server", "companion_radio_usb"))
+    assert tag != ml.hardware_id_for_env("ikoka_handheld_nrf_e22_22dbm_096_rotated_room_server")
+
+
 # --- EndF ------------------------------------------------------------------
 
 def test_endf_roundtrip_and_idempotent():

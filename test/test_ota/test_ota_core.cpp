@@ -808,7 +808,7 @@ static uint16_t make_have1(uint8_t* buf, uint16_t cap, const uint8_t mid[4],
 }
 
 // A node must not fetch firmware it can't apply: a catalog row whose codec the platform can't decode is
-// not fetched. FULL + the platform's delta codec(s) are accepted.
+// not fetched. Full-image acceptance is platform-selectable (nRF52 single-slot disables it).
 TEST(OtaTransfer, RejectsIncompatibleCodec) {
   g_q.clear();
   OtaManager client; OtaStoreRam<4096> store;
@@ -816,12 +816,18 @@ TEST(OtaTransfer, RejectsIncompatibleCodec) {
   client.begin(SIM_TARGET_ID, sim_send, &to_server);
   client.set_fetch_store(&store);
   client.set_autofetch(OtaManager::AUTOFETCH_ANY);
-  client.set_apply_codec(CODEC_DETOOLS_INPLACE);   // nRF52-style: accepts only full + in-place
+  client.set_apply_codec(CODEC_DETOOLS_INPLACE);
+  client.set_accept_full(false);                   // nRF52-style: in-place delta only
   uint8_t b[64];
 
   // a SEQUENTIAL delta for our target -> incompatible -> not fetched (stays IDLE)
   uint8_t midA[4] = {1,2,3,4};
   client.on_message(b, make_have1(b, sizeof(b), midA, SIM_TARGET_ID, 0x01000000, CODEC_DETOOLS_SEQUENTIAL, 0));
+  EXPECT_EQ(client.fetchState(), OtaManager::IDLE);
+
+  // a FULL image cannot be installed in an nRF52 single slot -> do not spend hours fetching it
+  uint8_t midFull[4] = {2,3,4,5};
+  client.on_message(b, make_have1(b, sizeof(b), midFull, SIM_TARGET_ID, 0x01000000, CODEC_FULL, MFLAG_FULL));
   EXPECT_EQ(client.fetchState(), OtaManager::IDLE);
 
   // an IN-PLACE delta for our target -> compatible -> begins fetching (requests the manifest)

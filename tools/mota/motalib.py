@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import struct
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -52,6 +53,10 @@ APPROVAL_NOT = b"\xff\xff\xff\xff"   # erased = not approved
 APPROVAL_YES = b"APRV"               # 41 50 52 56 = approved
 
 DEFAULT_BLOCK_SIZE = 1024
+
+# nRF52840 OTAFIX's detools in-place workspace. A firmware image (including EndF) must fit here, and
+# the staged .mota must begin above it. Keep in sync with OtaFlashLayout_nrf52.h / the OTAFIX bootloader.
+NRF52_INPLACE_MEMORY = 0x00098000
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +111,23 @@ def target_id_for_env(env_name: str) -> int:
     """
     d = hashlib.sha256(env_name.encode()).digest()[:4]
     return int.from_bytes(d, "little")
+
+
+def hardware_id_for_env(env_name: str) -> str:
+    """Derive a stable hardware-family tag from a PlatformIO environment name.
+
+    Role/profile suffixes are removed so a deliberate role switch on the same physical board remains
+    possible, while a cross-board install is rejected. Long family names retain a short hash suffix to
+    avoid collisions inside EndF's fixed 32-byte field.
+    """
+    role = re.search(
+        r"[_-](?:repeater|repeatr|room_server|room_svr|sensor|terminal_chat|kiss_modem|"
+        r"companion_radio|companion|comp_radio)(?=[_-]|$)", env_name, re.IGNORECASE)
+    family = (env_name[:role.start()] if role else env_name).strip("_-") or env_name.strip("_-")
+    if len(family) <= 32:
+        return family
+    suffix = hashlib.sha256(family.encode()).hexdigest()[:8]
+    return f"{family[:23].rstrip('_-')}-{suffix}"
 
 
 # ---------------------------------------------------------------------------

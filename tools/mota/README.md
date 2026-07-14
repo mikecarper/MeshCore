@@ -48,6 +48,6 @@ firmware and matches a delta's `base_hash` against its own `EndF`. Wiring (handl
 - **nRF52 / STM32** (emit `.hex` → `.uf2`): the same hook rewrites the `.hex` with the trailer at the image
   end. The byte logic is `motalib.ensure_endf`, used everywhere.
 
-`target_id` = `sha2-256:4(pio_env_name)`, `hw_id` = `-D MOTA_HW_ID`, `fw_version` = parsed from
-`FIRMWARE_VERSION` — so a node (and `motatool`, reading the firmware's `EndF`) auto-discovers identity
-without relying on filenames.
+`target_id` = `sha2-256:4(pio_env_name)`, `hw_id` = explicit `-D MOTA_HW_ID` or a role-stripped hardware
+family derived from the environment name, and `fw_version` = parsed from `FIRMWARE_VERSION`. A node (and
+`motatool`, reading the firmware's `EndF`) therefore auto-discovers identity without relying on filenames.

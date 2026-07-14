@@ -73,14 +73,19 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
   clear();
 
   // never collide with the running application image (its extent comes from its EndF trailer)
-  uint32_t app_end = MOTA_NRF52_APP_BASE;
+  const uint32_t app_base = mota_nrf52_app_base();
+  if (!mota_nrf52_layout_valid(app_base)) return false;
+  uint32_t app_end = app_base;
   SelfFwInfo fi;
-  if (ota_self_firmware(fi) && fi.valid) app_end = MOTA_NRF52_APP_BASE + fi.image_len;
+  if (ota_self_firmware(fi) && fi.valid) {
+    if ((uint64_t)app_base + fi.image_len > MOTA_NRF52_FS_START) return false;
+    app_end = app_base + fi.image_len;
+  }
 
-  // bottom-align below FS_START + reject if it won't fit above the running image (the FS/prefs-safe
-  // bounds check; pure + unit-tested in test/test_ota/test_ota_flashplan.cpp)
+  // Bottom-align below FS_START and reject unless it sits above the running image AND the full detools
+  // workspace (the FS/prefs-safe bounds check; pure + unit-tested in the native OTA suite).
   uint32_t start;
-  if (!mota_nrf52_stage_plan(total_size, app_end, start)) return false;
+  if (!mota_nrf52_stage_plan(total_size, app_base, app_end, start)) return false;
 
   _write_start = start;
   _total = total_size;
@@ -156,15 +161,20 @@ void OtaStoreFlashNrf52::checkpoint() {
 // the first match (highest address = most recent for the common single-container case). The manager then
 // parses the loaded manifest and validates geometry/root, so a stale leftover is rejected there.
 bool OtaStoreFlashNrf52::reopen() {
-  uint32_t app_end = MOTA_NRF52_APP_BASE;
+  const uint32_t app_base = mota_nrf52_app_base();
+  if (!mota_nrf52_layout_valid(app_base)) return false;
+  uint32_t app_end = app_base;
   SelfFwInfo fi;
-  if (ota_self_firmware(fi) && fi.valid) app_end = MOTA_NRF52_APP_BASE + fi.image_len;
+  if (ota_self_firmware(fi) && fi.valid) {
+    if ((uint64_t)app_base + fi.image_len > MOTA_NRF52_FS_START) return false;
+    app_end = app_base + fi.image_len;
+  }
   for (uint32_t start = align_down(MOTA_NRF52_FS_START - PG, PG); start >= app_end; start -= PG) {
     const uint8_t* p = (const uint8_t*)(uintptr_t)start;
     if (memcmp(p, MOTA_MAGIC, 4) != 0) continue;
     uint32_t total = rd_u32le(p + 4);
     uint32_t want;   // must be valid + placed exactly where begin() would have staged it (same bounds fn)
-    if (!mota_nrf52_stage_plan(total, app_end, want) || want != start) continue;
+    if (!mota_nrf52_stage_plan(total, app_base, app_end, want) || want != start) continue;
     _write_start = start;
     _total = total;
     memcpy(_meta_page, p, PG);                  // load page 0 (header+manifest+leaves) into RAM to continue

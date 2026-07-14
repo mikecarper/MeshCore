@@ -217,14 +217,17 @@ public:
   // Coarse clock for source/catalog ages + LRU (the Mesh adapter feeds millis; 0 in host tests is fine).
   void set_clock(uint32_t ms) { _now_ms = ms; }
 
-  // Codec compatibility: a node only fetches/accepts fw it can actually apply. CODEC_FULL is always
-  // acceptable; the platform's single delta codec is set here (ESP32 A/B -> sequential, nRF52 single-
-  // slot -> in-place). A mismatching `.mota` is rejected at OTA_ADV time, before fetching anything.
+  // Codec compatibility: a node only fetches/accepts firmware it can actually apply. ESP32 A/B accepts
+  // full images; nRF52 single-slot does not and disables them (it requires an in-place delta). A manual
+  // pull to an external folder may temporarily allow full images because it is capture, not install.
   void set_apply_codec(uint8_t c) { _apply_codec = c; }
   // A platform may apply MORE than one delta codec (ESP32 does both sequential AND in-place, so a single
   // in-place `.mota` can target both ESP32 and nRF52). 0xFF = unset.
   void set_apply_codec2(uint8_t c) { _apply_codec2 = c; }
-  bool codecOk(uint8_t c) const { return c == CODEC_FULL || c == _apply_codec || c == _apply_codec2; }
+  void set_accept_full(bool on) { _accept_full = on; }
+  bool codecOk(uint8_t c) const {
+    return (c == CODEC_FULL && _accept_full) || c == _apply_codec || c == _apply_codec2;
+  }
 
   // Auto-fetch policy (manual `ota pull` always works regardless): 0=off (discover only), 1=any
   // compatible own-target advert, 2=only signed adverts. Conservative default = off.
@@ -351,6 +354,7 @@ private:
   bool       _have_desired_mid = false;
   uint8_t    _apply_codec = CODEC_DETOOLS_SEQUENTIAL;  // platform's delta codec (OtaContext sets it)
   uint8_t    _apply_codec2 = 0xFF;                     // optional 2nd accepted delta codec (ESP32: in-place)
+  bool       _accept_full = true;                       // false on nRF52 flash (single-slot cannot apply full)
   uint8_t    _seeder_id[4] = {0,0,0,0};        // our node id (pubkey[0:4]) for advert seeder counting
   uint8_t    _autofetch = AUTOFETCH_OFF;       // auto-fetch policy (persisted in NodePrefs)
   uint16_t   _checkpoint_blocks = OTA_CHECKPOINT_BLOCKS;  // resume checkpoint cadence (persisted)
