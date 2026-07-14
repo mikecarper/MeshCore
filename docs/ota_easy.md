@@ -8,7 +8,7 @@ MeshCore node over LoRa. It uses this temporary OTA channel:
 | Center frequency | 909.950 MHz |
 | Bandwidth | 125 kHz |
 | Spreading factor | SF5 |
-| Coding rate | CR5 |
+| Example coding rate | CR5 |
 | Example window | 120 minutes |
 
 The copy/paste command is:
@@ -16,6 +16,8 @@ The copy/paste command is:
 ```text
 tempradio 909.950,125,5,5,120
 ```
+
+The fourth value is the transmit coding rate. This example uses CR5, but LoRa OTA does not require CR5.
 
 `tempradio` is not saved and the node returns to its normal radio settings when the window ends or the node
 reboots. This frequency is intended for North American configurations. Confirm that it is permitted in your
@@ -70,9 +72,8 @@ On the source node, destination node, and every intermediate repeater, run:
 tempradio 909.950,125,5,5,120
 ```
 
-All participating nodes must use exactly the same frequency, bandwidth, spreading factor, and coding rate.
-Their time windows must overlap. Start with the farthest hop (the destination) and work back toward the source
-when using `tempradio`.
+All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
+overlap. Start with the farthest hop (the destination) and work back toward the source when using `tempradio`.
 
 If you administer the destination over LoRa, the controller used to send later `ota` commands must also be
 able to communicate on this temporary channel. For unattended nodes, use synchronized `tempradioat` entries
