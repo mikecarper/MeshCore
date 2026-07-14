@@ -1153,7 +1153,7 @@ filter_out_bluetooth_targets() {
 
 is_logging_size_constrained_target() {
   case "$1" in
-    Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater)
+    Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_repeater|wio-e5-mini_sensor)
       return 0
       ;;
     *)
