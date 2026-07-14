@@ -12,6 +12,7 @@ VerifyResult ota_verify(const uint8_t* buf, uint32_t len, const SignerAllowlist&
   if (!mota_parse(buf, len, m)) return r;
   r.parsed = true;
   r.root_ok = mota_check_root(m);
+  r.payload_ok = mota_check_payload(m);
   r.image_ok = m.is_full() ? mota_check_image_hash_full(m)
                            : true;   // delta image_hash needs the base; verified at apply time
   r.is_signed = m.is_signed();

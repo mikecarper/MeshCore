@@ -92,7 +92,7 @@ public:
   uint32_t staged_size() const override { return _total; }
   void clear() override;
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes < OTA_ESP32_META_CAP; }
-  void finalize() override;
+  bool finalize() override;
   void checkpoint() override;   // persist meta(leaves) + open payload sector so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in the slot (scan + rebuild geometry)
 

@@ -72,6 +72,22 @@ bool mota_check_root(const MotaManifest& m) {
   return memcmp(root, m.merkle_root, 4) == 0;
 }
 
+bool mota_check_payload(const MotaManifest& m) {
+  if (!m.payload || !m.leaves || m.block_count == 0) return false;
+  uint32_t off = 0;
+  uint32_t bs = m.block_size();
+  for (uint32_t i = 0; i < m.block_count; i++) {
+    if (off >= m.payload_size) return false;
+    uint32_t len = m.payload_size - off;
+    if (len > bs) len = bs;
+    uint8_t leaf[4];
+    merkle_leaf(leaf, m.payload + off, len);
+    if (memcmp(leaf, m.leaves + i * 4, 4) != 0) return false;
+    off += len;
+  }
+  return off == m.payload_size;
+}
+
 bool mota_check_image_hash_full(const MotaManifest& m) {
   if (!m.is_full() || !m.payload || !m.image_hash) return false;
   uint8_t h[32];

@@ -115,6 +115,21 @@ TEST(OtaMerkle, RootMatchesVectorAndLeaves) {
     merkle_leaf(leaf, m.payload + off, len);
     EXPECT_EQ(0, memcmp(leaf, m.leaves + i * 4, 4)) << "leaf " << i;
   }
+  EXPECT_TRUE(mota_check_payload(m));
+}
+
+TEST(OtaMerkle, PayloadCheckDetectsCorruptionNotVisibleInStoredLeaves) {
+  std::vector<uint8_t> b(MOTA_VEC, MOTA_VEC + MOTA_VEC_LEN);
+  MotaManifest m;
+  ASSERT_TRUE(mota_parse(b.data(), b.size(), m));
+  ASSERT_TRUE(mota_check_root(m));
+  ASSERT_TRUE(mota_check_payload(m));
+
+  size_t payload_off = (size_t)(m.payload - b.data());
+  b[payload_off + m.payload_size / 2] ^= 0x01;
+  ASSERT_TRUE(mota_parse(b.data(), b.size(), m));
+  EXPECT_TRUE(mota_check_root(m));       // leaves[] and its root are still self-consistent
+  EXPECT_FALSE(mota_check_payload(m));   // actual staged payload no longer matches those leaves
 }
 
 TEST(OtaMerkle, FullImageHashMatches) {

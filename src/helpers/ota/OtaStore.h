@@ -33,8 +33,9 @@ public:
 
   // Optional: commit any RAM-buffered data to persistent storage. Called once when the transfer
   // reaches COMPLETE (radio idle), so a flash store does its page writes off the RX critical path.
-  // After this returns, a flash store's data() view is coherent. No-op for purely in-RAM stores.
-  virtual void finalize() {}
+  // After a true return, a flash store's data() view is coherent. False means persistence failed and the
+  // transfer must not be marked COMPLETE or approved for installation. No-op for purely in-RAM stores.
+  virtual bool finalize() { return true; }
 
   // Optional: persist in-progress state (the metadata/leaf-progress page + any open payload buffer) so a
   // reboot mid-transfer can resume. Called by OtaManager every OTA_CHECKPOINT_BLOCKS committed blocks.

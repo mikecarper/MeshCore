@@ -433,7 +433,8 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     c.serving = c.manager.serve(c.serve_buf, c.serve_expected);
     if (!c.serving) { strcpy(reply, "ERR serve (bad .mota)"); return true; }
     VerifyResult r = ota_verify(c.serve_buf, c.serve_expected, c.allow);
-    sprintf(reply, "OK serving | root=%d img=%d sig=%d trust=%d", r.root_ok, r.image_ok, r.sig_ok, r.trusted);
+    sprintf(reply, "OK serving | root=%d payload=%d img=%d sig=%d trust=%d",
+            r.root_ok, r.payload_ok, r.image_ok, r.sig_ok, r.trusted);
 
   } else if (strncmp(d, "resume", 6) == 0) {     // re-adopt a container already staged in flash (test/debug)
     bool ok = c.manager.resumeStaged(nullptr);
@@ -451,8 +452,9 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     else { buf = c.serve_buf; len = c.serve_expected; }
     if (len == 0 || !buf) { strcpy(reply, "ERR nothing to verify (flash-staged: applydelta verifies)"); return true; }
     VerifyResult r = ota_verify(buf, len, c.allow);
-    sprintf(reply, "verify parsed=%d root=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
-            r.parsed, r.root_ok, r.image_ok, r.is_signed, r.sig_ok, r.trusted, r.integrity_ok(), r.auto_appliable());
+    sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
+            r.parsed, r.root_ok, r.payload_ok, r.image_ok, r.is_signed, r.sig_ok, r.trusted,
+            r.integrity_ok(), r.auto_appliable());
 
   } else if (strncmp(d, "want ", 5) == 0) {
     const char* p = d + 5; while (*p == ' ') p++;

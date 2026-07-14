@@ -462,7 +462,9 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
   st.sig_ok = vr.sig_ok; st.trusted = vr.trusted;
 
   // 1) downloaded payload: the fetched blocks must match the manifest's merkle root (intact + complete)
-  if (!vr.root_ok || !vr.image_ok) { strcpy(msg, "payload hash mismatch (incomplete or corrupt .mota)"); return false; }
+  if (!vr.root_ok || !vr.payload_ok || !vr.image_ok) {
+    strcpy(msg, "payload hash mismatch (incomplete or corrupt .mota)"); return false;
+  }
 
   // 2) target firmware: the delta must be built against THIS running image (base_hash == our EndF body
   //    hash). The resulting image_hash is re-checked by the bootloader after the in-place decode -- a

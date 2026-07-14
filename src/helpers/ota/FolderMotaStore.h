@@ -33,7 +33,7 @@ public:
   uint32_t capacity() const override { return 0xF0000000u; }   // host disk — effectively unbounded
   uint32_t staged_size() const override { return _total; }
   void clear() override { _total = 0; }
-  void finalize() override;
+  bool finalize() override;
   bool reopen() override;                                       // OP_STAT: adopt an existing file for resume
 
   // A host-backed store is fully random-access, so it needs no pinned-meta RAM page and no layout planning.

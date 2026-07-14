@@ -38,6 +38,7 @@ class OtaStoreFlashNrf52 : public OtaStore {
   uint32_t _write_start = 0;        // flash address of container offset 0 (page-aligned)
   uint32_t _total = 0;              // staged container size (0 = none)
   bool     _flushed = false;        // finalize() committed everything to flash
+  bool     _io_ok = true;           // cleared on a failed/out-of-bounds flash write or readback mismatch
 
   uint8_t  _meta_page[PG];          // pinned flash page 0 (header + manifest + leaves + 1st payload)
   uint8_t  _pay_page[PG];           // sliding buffer for one payload page (index _pay_idx)
@@ -50,8 +51,8 @@ class OtaStoreFlashNrf52 : public OtaStore {
   // opens/advances the sliding payload page and returns nullptr if `pos` is in an already-flushed page.
   const uint8_t* read_slot(uint32_t pos) const;
   uint8_t* write_slot(uint32_t pos);
-  void flush_pay();                 // commit _pay_page to flash (erase + program, one page)
-  void flush_page(uint32_t page_idx, const uint8_t* buf);   // write a full page to flash
+  bool flush_pay();                 // commit _pay_page to flash (erase + program, one page)
+  bool flush_page(uint32_t page_idx, const uint8_t* buf);   // write + verify a full page
 
 public:
   bool begin(uint32_t total_size) override;
@@ -59,15 +60,15 @@ public:
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;
   uint32_t capacity() const override { return MOTA_NRF52_FS_START - MOTA_NRF52_APP_BASE; }
   uint32_t staged_size() const override { return _total; }
-  void clear() override { _total = 0; _pay_idx = 0; _flushed = false; }
+  void clear() override { _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true; }
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes <= PG; }  // leaves must fit page 0
-  void finalize() override;
+  bool finalize() override;
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in flash (scan for it)
 
   // Contiguous view (flash is memory-mapped). VALID ONLY AFTER finalize() — before that, page 0 and the
   // tail are still in RAM. OtaManager/OtaCli/verify use this only once the transfer is COMPLETE.
-  const uint8_t* data() const { return (const uint8_t*)(uintptr_t)_write_start; }
+  const uint8_t* data() const { return (_flushed && _io_ok) ? (const uint8_t*)(uintptr_t)_write_start : nullptr; }
   uint32_t write_start() const { return _write_start; }
 };
 

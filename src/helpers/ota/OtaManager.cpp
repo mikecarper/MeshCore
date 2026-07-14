@@ -585,7 +585,7 @@ void OtaManager::diffStep() {
   OTA_DBG("OTA: leaf-diff %u/%u already valid; fetching the rest\n", (unsigned)_have, (unsigned)_fbc);
   freeLeaves();                                                            // clears _diffing + frees the buffer
   if (_have >= _fbc) {                                                      // seed covered the whole image
-    _fstate = COMPLETE; _fetch->finalize();
+    _fstate = _fetch->finalize() ? COMPLETE : FAILED;
     return;
   }
   _fstate = FETCHING; requestMissing();
@@ -630,7 +630,7 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
     } else {
       _fstate = COMPLETE;
     }
-    if (_fstate == COMPLETE) _fetch->finalize();
+    if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
     return true;
   }
   _fstate = FETCHING;                                 // resume fetching the holes
@@ -687,7 +687,7 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   // verified -> commit the payload block, then its leaf (the present marker). A write failure here means a
   // FOLDER destination's seeder link dropped mid-transfer: PAUSE (hold progress on the host, stop
   // requesting, do NOT fall back to RAM/flash). The block is left uncommitted (its leaf stays 0xFF), so on
-  // reconnect resumeStaged() re-requests exactly it. (A flash store never fails these writes.)
+  // reconnect resumeStaged() re-requests exactly it. Flash failures also pause instead of being ignored.
   uint8_t leaf[4]; merkle_leaf(leaf, _reasm_buf, blen);
   if (!_fetch->write(_fpoff + (uint32_t)_reasm_block * _fbs, _reasm_buf, blen) ||
       !_fetch->write(_floff + (uint32_t)_reasm_block * 4, leaf, 4)) {
@@ -707,8 +707,8 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   } else {
     _fstate = COMPLETE;   // per-block proofs already guaranteed integrity vs the root
   }
-  if (_fstate == COMPLETE) _fetch->finalize();
-  OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(root)");
+  if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
+  OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");
 }
 
 void OtaManager::requestMissing() {

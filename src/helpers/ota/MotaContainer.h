@@ -57,6 +57,11 @@ bool mota_parse_manifest(const uint8_t* mf, uint32_t len, MotaManifest& out);
 // Recompute the merkle root from the manifest's leaves[] and compare to the merkle_root field.
 bool mota_check_root(const MotaManifest& m);
 
+// Rehash every actual payload block and compare it with the corresponding stored leaf. This must be
+// checked in addition to mota_check_root(): a self-consistent leaves[] array alone says nothing about
+// bytes lost or corrupted while programming the staging flash.
+bool mota_check_payload(const MotaManifest& m);
+
 // For FULL images only: check sha2-256:32(payload) == image_hash.
 bool mota_check_image_hash_full(const MotaManifest& m);
 

@@ -95,8 +95,8 @@ bool FolderMotaStore::read(uint32_t off, uint8_t* buf, uint32_t len) const {
   return true;
 }
 
-void FolderMotaStore::finalize() {
-  txn(MS_OP_FIN, _mid, 4, nullptr, 0);   // publish <midhex>.mota.part as <midhex>.mota (best-effort)
+bool FolderMotaStore::finalize() {
+  return txn(MS_OP_FIN, _mid, 4, nullptr, 0);   // publish <midhex>.mota.part as <midhex>.mota
 }
 
 bool FolderMotaStore::reopen() {

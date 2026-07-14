@@ -165,8 +165,9 @@ bool OtaStoreFlashEsp32::read(uint32_t offset, uint8_t* buf, uint32_t len) const
   return true;
 }
 
-void OtaStoreFlashEsp32::finalize() {
-  if (_flushed || _total == 0) return;
+bool OtaStoreFlashEsp32::finalize() {
+  if (_flushed) return _io_ok;
+  if (_total == 0 || !_io_ok) return false;
   if (!_full) {
     // delta: drop the 5-byte trailer into the sliding payload sector(s) so it flushes with them (the
     // trailer sits right after the payload; this also covers the rare case it spills into a fresh sector).
@@ -181,8 +182,9 @@ void OtaStoreFlashEsp32::finalize() {
   }
   flush_pay();                                        // last payload sector(s) (+ delta trailer)
   flush_sector(_meta_part, _meta, _meta_flush);       // meta (+ trailer for full)
-  _flushed = true;
+  _flushed = _io_ok;
   OTA_DBG("OTA esp32: finalize %s io_ok=%d\n", _full ? "FULL" : "DELTA", (int)_io_ok);
+  return _io_ok;
 }
 
 // Persist mid-transfer progress so a reboot can resume. Flush the open payload sector (KEEP it buffered so
