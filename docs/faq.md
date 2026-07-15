@@ -760,9 +760,9 @@ After this bootloader is flashed onto the device, you can trigger an over-the-ai
 2. From the MeshCore app, log in remotely to the repeater you want to update with admin privileges.
 3. Go to the Command Line tab, type `start ota` and hit enter.
 4. You should see `OK` to confirm the repeater device is now in OTA mode.
-5. The command `start ota` on an ESP32-based device starts a Wi-Fi hotspot named `MeshCore OTA`.
-6. From your phone or computer connect to the 'MeshCore OTA' hotspot.
-7. From a browser, go to <http://192.168.4.1/update> and upload the non-merged bin from the flasher.
+5. If the ESP32 is not already joined to Wi-Fi, `start ota` starts an open hotspot named `MeshCore-OTA` at `192.168.4.1`. If it is already joined, the command reports and uses its router-assigned address instead.
+6. From your phone or computer, connect to the `MeshCore-OTA` hotspot when one was started.
+7. Open the URL reported by `start ota` and upload the non-merged bin from the flasher. When the device started `MeshCore-OTA`, the URL is <http://192.168.4.1/update>.
 
 
 ### 7.3. Q: Is there a way to lower the chance of a failed OTA device firmware update (DFU)?
@@ -800,8 +800,13 @@ Where `&type` is:
 
 ### 7.6. Q: How do I connect to the companion via Wi-Fi, e.g. using a Heltec V3?
 **A:**
-Wi-Fi firmware requires you to compile it yourself, as you need to set the Wi-Fi SSID and password.
-Edit WIFI_SSID and WIFI_PWD in `./variants/heltec_v3/platformio.ini` and then flash it to your device.
+Flash a companion Wi-Fi build. If it has no saved Wi-Fi configuration, it starts an open `MeshCore-Setup` access point. Join it, browse to <http://192.168.4.1/>, and submit the network SSID and password. The device saves the credentials only after a successful connection. The page and device screen then show the station IP assigned by your router.
+
+If a saved network remains unreachable for two minutes, `MeshCore-Setup` starts as a fallback. The node retries the saved SSID and password every two minutes while the setup AP is open. If the original network returns, the node reconnects and closes `MeshCore-Setup` automatically.
+
+The setup AP always uses `192.168.4.1`; the companion's station IP is assigned by DHCP and can be different. A real `WIFI_SSID` and `WIFI_PWD` can still be supplied at compile time as initial defaults, but they are no longer required.
+
+The `Heltec_v3_companion_radio_wifi_mqtt` and `heltec_v4_companion_radio_wifi_mqtt` builds use a two-stage first-run setup. The open `MeshCore-Setup` AP serves only the SSID/password form at <http://192.168.4.1/>. After the companion joins that network, reconnect your phone or computer to the same network and open the station IP shown on the setup page or device screen. That second, station-only page asks for the MQTT preset or broker, routing identity, credentials, and publish options. It remains available at the node's station IP so MQTT settings can be changed later; the companion interface remains available on TCP port `5000`.
 
 ### 7.7. Q: I have a Station G2, or a Heltec V4, or an Ikoka Stick, or a radio with an EByte E22-900M30S or an EByte E22-900M33S module, what should their transmit power be set to?
 **A:**

@@ -1,19 +1,28 @@
 #pragma once
 
+#include <cstring>
+
 // Maximum number of configurable MQTT connection slots (available to all builds for struct layout).
 // Used in NodePrefs/MQTTPrefs for persistent storage — do NOT change without migration.
 static const int MAX_MQTT_SLOTS = 6;
 
 // Runtime slot array size: fewer slots on non-PSRAM boards to save ~1.2KB of heap.
 // Non-PSRAM boards are limited to 2 active connections (_max_active_slots), so 3 runtime
-// slots (2 active + 1 spare for reconfiguration) is sufficient.
-#if defined(BOARD_HAS_PSRAM)
+// slots (2 active + 1 spare for reconfiguration) is sufficient. Purpose-built builds
+// can set MQTT_RUNTIME_SLOT_COUNT lower when they intentionally expose fewer slots.
+#if defined(MQTT_RUNTIME_SLOT_COUNT)
+static const int RUNTIME_MQTT_SLOTS = MQTT_RUNTIME_SLOT_COUNT;
+#elif defined(BOARD_HAS_PSRAM)
 static const int RUNTIME_MQTT_SLOTS = 6;
 #else
 static const int RUNTIME_MQTT_SLOTS = 3;
 #endif
+static_assert(RUNTIME_MQTT_SLOTS >= 1 && RUNTIME_MQTT_SLOTS <= MAX_MQTT_SLOTS,
+              "MQTT_RUNTIME_SLOT_COUNT must be between 1 and MAX_MQTT_SLOTS");
 
 #ifdef WITH_MQTT_BRIDGE
+
+#include <Arduino.h>
 
 enum MQTTAuthType : uint8_t {
   MQTT_AUTH_NONE,      // No authentication

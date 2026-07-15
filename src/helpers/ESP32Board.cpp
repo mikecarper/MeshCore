@@ -220,7 +220,10 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
     ip = WiFi.localIP();
   } else {
     if (!lightweight_ota_started_ap) {
-      lightweight_ota_started_ap = WiFi.softAP("MeshCore-OTA", nullptr);
+      const IPAddress ap_ip(192, 168, 4, 1);
+      const IPAddress ap_mask(255, 255, 255, 0);
+      lightweight_ota_started_ap = WiFi.softAPConfig(ap_ip, ap_ip, ap_mask)
+          && WiFi.softAP("MeshCore-OTA", nullptr);
     }
     if (!lightweight_ota_started_ap) {
       inhibit_sleep = false;
@@ -286,7 +289,14 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   if (WiFi.status() == WL_CONNECTED) {
     ip = WiFi.localIP();
   } else {
-    WiFi.softAP("MeshCore-OTA", NULL);
+    const IPAddress ap_ip(192, 168, 4, 1);
+    const IPAddress ap_mask(255, 255, 255, 0);
+    if (!WiFi.softAPConfig(ap_ip, ap_ip, ap_mask)
+        || !WiFi.softAP("MeshCore-OTA", NULL)) {
+      inhibit_sleep = false;
+      strcpy(reply, "ERR: OTA WiFi failed");
+      return false;
+    }
     ip = WiFi.softAPIP();
   }
 

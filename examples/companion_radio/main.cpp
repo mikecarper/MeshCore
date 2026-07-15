@@ -42,9 +42,13 @@ static uint32_t _atoi(const char* sp) {
 #ifdef ESP32
   #ifdef WIFI_SSID
     #include <helpers/esp32/SerialWifiInterface.h>
+    #include <helpers/WiFiSetupPortal.h>
     SerialWifiInterface serial_interface;
     #ifndef TCP_PORT
       #define TCP_PORT 5000
+    #endif
+    #ifndef WIFI_PWD
+      #define WIFI_PWD ""
     #endif
   #elif defined(BLE_PIN_CODE)
     #include <helpers/esp32/SerialBLEInterface.h>
@@ -112,8 +116,75 @@ void halt() {
 
 /* WIFI RECONNECT TRACKERS */
 #if defined(ESP32) && defined(WIFI_SSID)
+  static const unsigned long WIFI_SETUP_FALLBACK_MS = 120000UL;
+  static const char COMPANION_WIFI_SETUP_AP[] = "MeshCore-Setup";
   bool wifi_needs_reconnect = false;
   unsigned long last_wifi_reconnect_attempt = 0;
+  unsigned long wifi_disconnected_since = 0;
+  bool wifi_setup_recovery_mode = false;
+  static char configured_wifi_ssid[32];
+  static char configured_wifi_password[64];
+
+  #if defined(WITH_MQTT_BRIDGE) && defined(DISPLAY_CLASS)
+    static DisplayDriver* companion_setup_display = nullptr;
+    static unsigned long companion_setup_display_refresh = 0;
+
+    static void renderCompanionSetupDisplay() {
+      if (!companion_setup_display
+          || static_cast<int32_t>(millis() - companion_setup_display_refresh) < 0) return;
+      companion_setup_display_refresh = millis() + 1000;
+
+      companion_setup_display->turnOn();
+      companion_setup_display->startFrame();
+      companion_setup_display->setTextSize(1);
+      companion_setup_display->setColor(DisplayDriver::LIGHT);
+
+      if (WiFi.status() == WL_CONNECTED) {
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 0, "MQTT setup");
+        companion_setup_display->setCursor(0, 14);
+        companion_setup_display->print("Join WiFi:");
+        companion_setup_display->drawTextEllipsized(
+            0, 25, companion_setup_display->width(), configured_wifi_ssid);
+        companion_setup_display->setCursor(0, 39);
+        companion_setup_display->print("Open in browser:");
+        const String ip = WiFi.localIP().toString();
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 51, ip.c_str());
+      } else if (wifiSetupPortal().isActive()) {
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 0, "WiFi setup");
+        companion_setup_display->setCursor(0, 14);
+        companion_setup_display->print("Join open WiFi:");
+        companion_setup_display->drawTextEllipsized(
+            0, 25, companion_setup_display->width(), COMPANION_WIFI_SETUP_AP);
+        companion_setup_display->setCursor(0, 39);
+        companion_setup_display->print("Open in browser:");
+        const String ip = wifiSetupPortal().apIP().toString();
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 51, ip.c_str());
+      } else {
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 8, "WiFi connecting");
+        companion_setup_display->setCursor(0, 25);
+        companion_setup_display->print("SSID:");
+        companion_setup_display->drawTextEllipsized(
+            0, 38, companion_setup_display->width(), configured_wifi_ssid);
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, 52, "Please wait...");
+      }
+      companion_setup_display->endFrame();
+    }
+  #endif
+
+  static bool saveCompanionWiFi(void*, const char* ssid, const char* password) {
+    if (!WiFiSetupPortal::saveStoredCredentials(ssid, password)) return false;
+    strncpy(configured_wifi_ssid, ssid, sizeof(configured_wifi_ssid) - 1);
+    configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
+    strncpy(configured_wifi_password, password ? password : "", sizeof(configured_wifi_password) - 1);
+    configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
+    return true;
+  }
 #endif
 
 /* WIFI OTA SEEDER — relay a host folder of .mota over WiFi (motatool `serve --tcp`), on a DEDICATED port
@@ -213,6 +284,9 @@ void setup() {
   DisplayDriver* disp = NULL;
   if (display.begin()) {
     disp = &display;
+  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_MQTT_BRIDGE)
+    companion_setup_display = disp;
+  #endif
     disp->startFrame();
   #ifdef ST7789
     disp->setTextSize(2);
@@ -300,14 +374,35 @@ void setup() {
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
           WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
           wifi_needs_reconnect = true;
+          if (wifi_disconnected_since == 0) {
+            wifi_disconnected_since = millis() ? millis() : 1;
+          }
       } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
           WIFI_DEBUG_PRINTLN("connected! IP %s  (companion app on :%d)",
                              WiFi.localIP().toString().c_str(), TCP_PORT);
           wifi_needs_reconnect = false;
+          wifi_disconnected_since = 0;
       }
   });
 
-  WiFi.begin(WIFI_SSID, WIFI_PWD);
+  bool have_wifi = WiFiSetupPortal::loadStoredCredentials(
+      configured_wifi_ssid, sizeof(configured_wifi_ssid),
+      configured_wifi_password, sizeof(configured_wifi_password));
+  if (!have_wifi && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
+    strncpy(configured_wifi_ssid, WIFI_SSID, sizeof(configured_wifi_ssid) - 1);
+    configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
+    strncpy(configured_wifi_password, WIFI_PWD, sizeof(configured_wifi_password) - 1);
+    configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
+    have_wifi = true;
+  }
+
+  if (have_wifi) {
+    WiFi.mode(WIFI_STA);
+    wifi_disconnected_since = millis() ? millis() : 1;
+    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+  } else if (!wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP, saveCompanionWiFi, nullptr)) {
+    WIFI_DEBUG_PRINTLN("WiFi setup: could not start setup portal");
+  }
   // Disable WiFi modem power-save: its periodic modem/light-sleep stalls the SX1262 SPI+DIO servicing,
   // which makes the LoRa radio go deaf (no TX/RX) while WiFi is associated. Required for LoRa+WiFi to
   // coexist on this ESP32 — the small extra idle current is well worth a working radio.
@@ -381,7 +476,15 @@ void loop() {
   the_mesh.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
+  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_MQTT_BRIDGE)
+  if (the_mesh.isMQTTConfigured()) {
+    ui_task.loop();
+  } else {
+    renderCompanionSetupDisplay();
+  }
+  #else
   ui_task.loop();
+  #endif
 #endif
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG
@@ -403,12 +506,41 @@ void loop() {
     ota_seeder_loop();   // accept/drop a motatool `serve --tcp` connection on the dedicated seeder port
     ota_console_loop();  // service the OTA text console (port 5002)
   #endif
+  if (WiFi.status() == WL_CONNECTED) {
+    wifi_disconnected_since = 0;
+    if (wifi_setup_recovery_mode && !wifiSetupPortal().isActive()) {
+      wifi_setup_recovery_mode = false;
+    }
+  } else if (configured_wifi_ssid[0]) {
+    unsigned long now = millis();
+    if (wifi_disconnected_since == 0) wifi_disconnected_since = now ? now : 1;
+    if (!wifi_setup_recovery_mode && !wifiSetupPortal().isActive()
+        && now - wifi_disconnected_since >= WIFI_SETUP_FALLBACK_MS) {
+#ifdef WITH_MQTT_BRIDGE
+      the_mesh.stopMQTTSetupPage();
+#endif
+      if (wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP, saveCompanionWiFi, nullptr)) {
+        wifiSetupPortal().configureRecovery(
+            configured_wifi_ssid, configured_wifi_password, WIFI_SETUP_FALLBACK_MS);
+        wifi_setup_recovery_mode = true;
+        WIFI_DEBUG_PRINTLN("WiFi unavailable for two minutes; setup AP started");
+      } else {
+        // Avoid retrying portal creation on every pass through loop().
+        wifi_disconnected_since = now;
+      }
+    }
+  }
   // Safely attempt to reconnect every 10 seconds if flagged
-  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+  if (!wifiSetupPortal().isActive() && wifi_needs_reconnect
+      && (millis() - last_wifi_reconnect_attempt > 10000)) {
     WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
     WiFi.disconnect();
     WiFi.reconnect();
     last_wifi_reconnect_attempt = millis();
   }
+#ifdef WITH_MQTT_BRIDGE
+  the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password,
+                       !wifiSetupPortal().isActive());
+#endif
 #endif
 }

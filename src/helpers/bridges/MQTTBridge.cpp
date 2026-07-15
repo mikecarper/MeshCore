@@ -24,10 +24,11 @@
 #endif
 
 // Effective MQTT origin: empty mqtt_origin follows node_name; otherwise mqtt_origin override (quotes stripped).
-static void applyEffectiveOrigin(const NodePrefs* np, const MQTTPrefs* obs, char* dest, size_t dest_size) {
-  if (!np || !obs || !dest || dest_size == 0) return;
+static void applyEffectiveOrigin(const char* node_name, const MQTTPrefs* obs,
+                                 char* dest, size_t dest_size) {
+  if (!node_name || !obs || !dest || dest_size == 0) return;
   if (obs->mqtt_origin[0] == '\0') {
-    strncpy(dest, np->node_name, dest_size - 1);
+    strncpy(dest, node_name, dest_size - 1);
   } else {
     strncpy(dest, obs->mqtt_origin, dest_size - 1);
   }
@@ -80,17 +81,26 @@ const char* MQTTBridge::effectiveNtpPrimary(const MQTTPrefs* obs) {
 }
 
 void MQTTBridge::refreshOriginFromPrefs() {
-  if (!_prefs) return;
-  applyEffectiveOrigin(_prefs, _obs, _origin, sizeof(_origin));
+  if (!_node_info.node_name) return;
+  applyEffectiveOrigin(_node_info.node_name, _obs, _origin, sizeof(_origin));
 }
 
-void MQTTBridge::getEffectiveMqttOrigin(const NodePrefs* np, const MQTTPrefs* obs, char* buf, size_t buf_size) {
+void MQTTBridge::getEffectiveMqttOrigin(const char* node_name, const MQTTPrefs* obs,
+                                       char* buf, size_t buf_size) {
   if (!buf || buf_size == 0) return;
-  if (!np || !obs) {
+  if (!node_name || !obs) {
     buf[0] = '\0';
     return;
   }
-  applyEffectiveOrigin(np, obs, buf, buf_size);
+  applyEffectiveOrigin(node_name, obs, buf, buf_size);
+}
+
+const char* MQTTBridge::repeatStatus() const {
+  if (!_node_info.repeat_flag) return nullptr;
+  const bool enabled = _node_info.repeat_when_nonzero
+      ? (*_node_info.repeat_flag != 0)
+      : (*_node_info.repeat_flag == 0);
+  return enabled ? "on" : "off";
 }
 
 // Helper function to check if WiFi credentials are valid
@@ -391,9 +401,13 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
-MQTTBridge::MQTTBridge(NodePrefs *prefs, MQTTPrefs *obs, mesh::PacketManager *mgr, mesh::RTCClock *rtc, mesh::LocalIdentity *identity)
-    : BridgeBase(prefs, mgr, rtc),
+MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
+                       mesh::RTCClock *rtc, mesh::LocalIdentity *identity,
+                       bool manage_wifi)
+    : _rtc(rtc),
       _obs(obs),
+      _node_info(node_info),
+      _manage_wifi(manage_wifi),
       _queue_count(0),
       _last_status_publish(0), _last_status_retry(0), _status_interval(300000),
       _ntp_client(_ntp_udp, effectiveNtpPrimary(obs), 0, 60000), _last_ntp_sync(0), _ntp_synced(false), _ntp_sync_pending(false), _slots_setup_done(false), _max_active_slots(RUNTIME_MQTT_SLOTS),
@@ -502,6 +516,37 @@ MQTTBridge::MQTTBridge(NodePrefs *prefs, MQTTPrefs *obs, mesh::PacketManager *mg
 // ---------------------------------------------------------------------------
 void MQTTBridge::begin() {
   MQTT_DEBUG_PRINTLN("Initializing MQTT Bridge...");
+  if (_initialized) return;
+
+  // end() releases the PSRAM-backed scratch buffers. Recreate them when the
+  // same bridge object is started again after a settings or OTA restart.
+  #if defined(BOARD_HAS_PSRAM)
+  if (_last_raw_data == nullptr) {
+    _last_raw_data = static_cast<uint8_t*>(psram_malloc(LAST_RAW_DATA_SIZE));
+  }
+  if (_publish_json_buffer == nullptr) {
+    _publish_json_buffer = static_cast<char*>(psram_malloc(PUBLISH_JSON_BUFFER_SIZE));
+  }
+  if (_status_json_buffer == nullptr) {
+    _status_json_buffer = static_cast<char*>(psram_malloc(STATUS_JSON_BUFFER_SIZE));
+  }
+  #endif
+
+  // A restarted bridge may be using a different preset or custom endpoint.
+  // Clear the old slot description before rebuilding it from _obs below.
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
+    _slots[i].enabled = false;
+    _slots[i].preset = nullptr;
+    _slots[i].host[0] = '\0';
+    _slots[i].username[0] = '\0';
+    _slots[i].password[0] = '\0';
+    _slots[i].audience[0] = '\0';
+    _slots[i].broker_uri[0] = '\0';
+    _slots[i].port = 1883;
+    _slot_reconfigure_pending[i] = false;
+  }
+  _cached_has_connected_slots = false;
+  _slots_setup_done = false;
 
   // PSRAM diagnostic - helps debug memory fragmentation on boards with external RAM
   #ifdef BOARD_HAS_PSRAM
@@ -853,7 +898,9 @@ void MQTTBridge::initializeWiFiInTask() {
   // When already connected, the deferred slot setup still fires in mqttTaskLoop()
   // because _ntp_synced persists across end() (only _slots_setup_done is reset).
   if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(_obs->wifi_ssid, _obs->wifi_password);
+    if (_manage_wifi) {
+      WiFi.begin(_obs->wifi_ssid, _obs->wifi_password);
+    }
   } else if (!_ntp_synced && !_ntp_sync_pending) {
     _ntp_sync_pending = true;  // already connected but never synced — kick NTP now
   }
@@ -1826,7 +1873,10 @@ void MQTTBridge::publishStatusToSlot(int index) {
   MQTTMessageBuilder::formatIsoTimestampForMqtt(now_tv.tv_sec, now_tv.tv_usec, _timezone, timestamp, sizeof(timestamp));
 
   snprintf(radio_info, sizeof(radio_info), "%.6f,%.1f,%d,%d",
-           _prefs->freq, _prefs->bw, _prefs->sf, _prefs->cr);
+           _node_info.freq ? *_node_info.freq : 0.0f,
+           _node_info.bw ? *_node_info.bw : 0.0f,
+           _node_info.sf ? *_node_info.sf : 0,
+           _node_info.cr ? *_node_info.cr : 0);
 
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
@@ -1869,7 +1919,7 @@ void MQTTBridge::publishStatusToSlot(int index) {
     battery_mv, uptime_secs, errors, _queue_count, noise_floor,
     tx_air_secs, rx_air_secs, recv_errors, internal_heap_free,
     packets_sent, packets_received,
-    _prefs->disable_fwd ? "off" : "on"
+    repeatStatus()
   );
 
   if (len > 0) {
@@ -2056,7 +2106,7 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       unsigned long elapsed_since_attempt = (now >= _last_wifi_reconnect_attempt)
           ? (now - _last_wifi_reconnect_attempt)
           : (ULONG_MAX - _last_wifi_reconnect_attempt + now + 1);
-      if (disconnected_duration >= delay_ms && elapsed_since_attempt >= delay_ms) {
+      if (_manage_wifi && disconnected_duration >= delay_ms && elapsed_since_attempt >= delay_ms) {
         _last_wifi_reconnect_attempt = now;
         if (_wifi_reconnect_backoff_attempt < 5) {
           _wifi_reconnect_backoff_attempt++;
@@ -2539,7 +2589,10 @@ bool MQTTBridge::publishStatus() {
   MQTTMessageBuilder::formatIsoTimestampForMqtt(now_tv.tv_sec, now_tv.tv_usec, _timezone, timestamp, sizeof(timestamp));
 
   snprintf(radio_info, sizeof(radio_info), "%.6f,%.1f,%d,%d",
-           _prefs->freq, _prefs->bw, _prefs->sf, _prefs->cr);
+           _node_info.freq ? *_node_info.freq : 0.0f,
+           _node_info.bw ? *_node_info.bw : 0.0f,
+           _node_info.sf ? *_node_info.sf : 0,
+           _node_info.cr ? *_node_info.cr : 0);
 
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
@@ -2582,7 +2635,7 @@ bool MQTTBridge::publishStatus() {
     battery_mv, uptime_secs, errors, _queue_count, noise_floor,
     tx_air_secs, rx_air_secs, recv_errors, internal_heap_free,
     packets_sent, packets_received,
-    _prefs->disable_fwd ? "off" : "on"
+    repeatStatus()
   );
 
   if (len > 0) {

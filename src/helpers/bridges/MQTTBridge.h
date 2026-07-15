@@ -1,7 +1,9 @@
 #pragma once
 
 #include "MeshCore.h"
-#include "helpers/bridges/BridgeBase.h"
+#include "helpers/AbstractBridge.h"
+#include "helpers/MQTTPrefs.h"
+#include <ArduinoJson.h>
 #include <PsychicMqttClient.h>
 #include <WiFi.h>
 #include <NTPClient.h>
@@ -35,6 +37,19 @@ class MeshSNMPAgent;  // Forward declaration
 
 #ifdef WITH_MQTT_BRIDGE
 
+// Live pointers to the small set of role-specific values MQTT publishes. This
+// avoids treating repeater and companion NodePrefs as though they had the same
+// binary layout (they intentionally do not).
+struct MQTTNodeInfo {
+  const char* node_name = nullptr;
+  const float* freq = nullptr;
+  const float* bw = nullptr;
+  const uint8_t* sf = nullptr;
+  const uint8_t* cr = nullptr;
+  const uint8_t* repeat_flag = nullptr;
+  bool repeat_when_nonzero = true;
+};
+
 /**
  * @brief Bridge implementation using MQTT protocol for packet transport
  *
@@ -55,13 +70,16 @@ class MeshSNMPAgent;  // Forward declaration
  * - Configure slots via: set mqtt1.preset <name>, set mqtt2.preset <name>, etc.
  * - Available presets: analyzer-us, analyzer-eu, meshmapper, custom, none
  */
-class MQTTBridge : public BridgeBase {
+class MQTTBridge : public AbstractBridge {
 public:
   // Max NTP servers in a try-list: 1 custom primary + the built-in fallbacks.
   static const int kMaxNtpServers = 6;
 
 private:
   static const size_t AUTH_TOKEN_SIZE = 768;
+
+  bool _initialized = false;
+  mesh::RTCClock* _rtc = nullptr;
 
   // Connection slot - each slot holds one MQTT connection
   struct MQTTSlot {
@@ -376,14 +394,20 @@ private:
   void refreshOriginFromPrefs();
 
   // Observer config (MQTT/WiFi/timezone/SNMP/alert), persisted to /mqtt_prefs.
-  // _prefs (held by BridgeBase) still provides upstream fields (freq/sf/node_name…).
   MQTTPrefs* _obs = nullptr;
+  MQTTNodeInfo _node_info;
+  bool _manage_wifi;
+
+  const char* repeatStatus() const;
 
 public:
-  MQTTBridge(NodePrefs *prefs, MQTTPrefs *obs, mesh::PacketManager *mgr, mesh::RTCClock *rtc, mesh::LocalIdentity *identity);
+  MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
+             mesh::RTCClock *rtc, mesh::LocalIdentity *identity,
+             bool manage_wifi = true);
 
   void begin() override;
   void end() override;
+  bool isRunning() const override { return _initialized; }
   void loop() override;
   void onPacketReceived(mesh::Packet *packet) override;
   void sendPacket(mesh::Packet *packet) override;
@@ -443,7 +467,8 @@ public:
   const char* getSlotPresetName(int slot_index) const;
   static int getRuntimeSlotCount() { return RUNTIME_MQTT_SLOTS; }
   /** Resolved origin for MQTT JSON: node_name when mqtt_origin is empty, else mqtt_origin (with quote stripping). */
-  static void getEffectiveMqttOrigin(const NodePrefs* np, const MQTTPrefs* obs, char* buf, size_t buf_size);
+  static void getEffectiveMqttOrigin(const char* node_name, const MQTTPrefs* obs,
+                                     char* buf, size_t buf_size);
   static const char* effectiveNtpPrimary(const MQTTPrefs* obs);
   /** Sync system clock via NTP. force=true bypasses the 5s post-sync rate limit.
    *  primary_only=true tests just the effective primary server (no fallback walk) so a

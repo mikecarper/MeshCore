@@ -840,7 +840,16 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #ifdef WITH_MQTT_BRIDGE
   if (_prefs.bridge_enabled) {
     // Defer construction to avoid static init crashes on ESP32 classic
-    bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
+    MQTTNodeInfo node_info;
+    node_info.node_name = _prefs.node_name;
+    node_info.freq = &_prefs.freq;
+    node_info.bw = &_prefs.bw;
+    node_info.sf = &_prefs.sf;
+    node_info.cr = &_prefs.cr;
+    node_info.repeat_flag = &_prefs.disable_fwd;
+    node_info.repeat_when_nonzero = false;
+    bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
+                            getRTCClock(), &self_id);
     if (bridge) {
       // Set device public key for MQTT topics
       char device_id[65];

@@ -674,7 +674,8 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
 #ifdef WITH_MQTT_BRIDGE
   } else if (memcmp(config, "mqtt.origin", 11) == 0) {
     char effective_origin[32];
-    MQTTBridge::getEffectiveMqttOrigin(_prefs, &_mqtt_prefs, effective_origin, sizeof(effective_origin));
+    MQTTBridge::getEffectiveMqttOrigin(_prefs->node_name, &_mqtt_prefs,
+                                       effective_origin, sizeof(effective_origin));
     sprintf(reply, "> %s", effective_origin);
   } else if (memcmp(config, "mqtt.iata", 9) == 0) {
     sprintf(reply, "> %s", _mqtt_prefs.mqtt_iata);

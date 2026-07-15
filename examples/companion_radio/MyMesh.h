@@ -26,6 +26,12 @@
 #include "DataStore.h"
 #include "NodePrefs.h"
 
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+#include <helpers/CompanionMqttSetupPortal.h>
+#include <helpers/MQTTPrefs.h>
+#include <helpers/bridges/MQTTBridge.h>
+#endif
+
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/BaseSerialInterface.h>
@@ -95,6 +101,13 @@ public:
   NodePrefs *getNodePrefs();
   uint32_t getBLEPin();
 
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  void serviceMQTT(const char* wifi_ssid, const char* wifi_password,
+                   bool allow_setup_page);
+  void stopMQTTSetupPage();
+  bool isMQTTConfigured() const { return _mqtt_configured; }
+#endif
+
   void loop();
   void handleCmdFrame(size_t len);
   bool advert();
@@ -106,6 +119,9 @@ protected:
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
+#ifdef WITH_MQTT_BRIDGE
+  uint32_t getRadioWatchdogMillis() const override { return 0; }
+#endif
   int calcRxDelay(float score, uint32_t air_time) const override;
   uint32_t getRetransmitDelay(const mesh::Packet *packet) override;
   uint32_t getDirectRetransmitDelay(const mesh::Packet *packet) override;
@@ -119,6 +135,10 @@ protected:
   bool sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis=0) override;
 
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  void logRx(mesh::Packet* packet, int len, float score) override;
+  void logTx(mesh::Packet* packet, int len) override;
+#endif
   bool isAutoAddEnabled() const override;
   bool shouldAutoAddContactType(uint8_t type) const override;
   bool shouldOverwriteWhenFull() const override;
@@ -210,6 +230,13 @@ private:
 
   DataStore* _store;
   NodePrefs _prefs;
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  MQTTPrefs _mqtt_prefs;
+  MQTTBridge* _mqtt_bridge;
+  CompanionMqttSetupPortal _mqtt_setup;
+  bool _mqtt_configured;
+  bool _mqtt_started;
+#endif
   uint32_t pending_login;
   uint32_t pending_status;
   uint32_t pending_telemetry, pending_discovery;   // pending _TELEMETRY_REQ

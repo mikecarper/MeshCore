@@ -2481,9 +2481,18 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (_prefs.bridge_enabled) {
 #ifdef WITH_MQTT_BRIDGE
     // Defer construction to avoid static init crashes on ESP32 classic
-    mqtt_bridge = new MQTTBridge(&_prefs, _cli.getObserverPrefs(), _mgr, getRTCClock(), &self_id);
+    MQTTNodeInfo node_info;
+    node_info.node_name = _prefs.node_name;
+    node_info.freq = &_prefs.freq;
+    node_info.bw = &_prefs.bw;
+    node_info.sf = &_prefs.sf;
+    node_info.cr = &_prefs.cr;
+    node_info.repeat_flag = &_prefs.disable_fwd;
+    node_info.repeat_when_nonzero = false;
+    mqtt_bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
+                                 getRTCClock(), &self_id);
 #endif
-    BridgeBase* active_bridge = activeBridge();
+    AbstractBridge* active_bridge = activeBridge();
     if (active_bridge) {
 #ifdef WITH_MQTT_BRIDGE
       // Set device public key for MQTT topics
@@ -4383,7 +4392,7 @@ void MyMesh::loop() {
 
 #if defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
   // MQTT runs its own task; serial and ESP-NOW bridges remain cooperative.
-  BridgeBase* active_bridge = activeBridge();
+  AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) active_bridge->loop();
 #endif
 
@@ -4458,7 +4467,7 @@ void MyMesh::loop() {
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
-  const BridgeBase* active_bridge = activeBridge();
+  const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) return true;
 #endif
   if (radio_driver.isWatchdogObserving()) return true;  // keep MCU awake for one radio duty cycle

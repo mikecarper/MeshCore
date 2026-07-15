@@ -31,7 +31,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_wifi_mqtt|companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -360,6 +360,12 @@ prompt_for_debug_build_settings() {
 }
 
 prompt_for_mqtt_bridge_build_setting() {
+  if [ -n "$SELECTED_TARGET" ] && is_mqtt_bridge_target "$SELECTED_TARGET"; then
+    MQTT_BRIDGE_OVERRIDE="on"
+    echo "MQTT bridge enabled by selected target: ${SELECTED_TARGET}"
+    return 0
+  fi
+
   echo "MQTT bridge sends mesh radio traffic directly to MQTT over WiFi."
   prompt_on_off_choice "MQTT bridge (radio WiFi to MQTT direct)" "off"
   MQTT_BRIDGE_OVERRIDE="$MENU_CHOICE"
@@ -1384,12 +1390,18 @@ normalize_resolved_targets_for_mqtt() {
     if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
       if is_mqtt_bridge_target "$target"; then
         candidate=$target
+      elif is_mqtt_bridge_target "${target}_mqtt"; then
+        candidate="${target}_mqtt"
       elif is_mqtt_bridge_target "${target}_observer_mqtt"; then
         candidate="${target}_observer_mqtt"
       fi
     else
       if is_mqtt_bridge_target "$target"; then
-        candidate=${target%_observer_mqtt}
+        if [[ "$target" == *_observer_mqtt ]]; then
+          candidate=${target%_observer_mqtt}
+        elif [[ "$target" == *_companion_radio_wifi_mqtt ]]; then
+          candidate=${target%_mqtt}
+        fi
         if ! is_supported_build_env "$candidate" || is_mqtt_bridge_target "$candidate"; then
           candidate=""
         fi

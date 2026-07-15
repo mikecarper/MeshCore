@@ -4,7 +4,7 @@
 
 #include <string.h>
 #include <MeshCore.h>
-#include "CommonCLI.h"
+#include "MQTTPrefs.h"
 #include "MQTTPresets.h"
 
 // Compile-time defaults for fresh /mqtt_prefs (override via platformio build_flags).

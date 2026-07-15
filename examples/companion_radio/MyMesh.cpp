@@ -3,6 +3,10 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+#include <helpers/MQTTDefaults.h>
+#endif
+
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
   if (failure_count < 6) failure_count++;
@@ -408,6 +412,12 @@ void MyMesh::updateGpsTelemetryPolicy() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (_mqtt_bridge && _mqtt_bridge->isRunning()) {
+    _mqtt_bridge->storeRawRadioData(raw, len, snr, rssi);
+  }
+#endif
+
   if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;
@@ -419,6 +429,20 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
     _serial->writeFrame(out_frame, i);
   }
 }
+
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+void MyMesh::logRx(mesh::Packet* packet, int, float) {
+  if (_mqtt_bridge && _mqtt_bridge->isRunning()) {
+    _mqtt_bridge->onPacketReceived(packet);
+  }
+}
+
+void MyMesh::logTx(mesh::Packet* packet, int) {
+  if (_mqtt_bridge && _mqtt_bridge->isRunning()) {
+    _mqtt_bridge->sendPacket(packet);
+  }
+}
+#endif
 
 bool MyMesh::isAutoAddEnabled() const {
   return (_prefs.manual_add_contacts & 1) == 0;
@@ -1128,6 +1152,13 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 #endif
 #endif
   _prefs.radio_fem_rxgain = 1;
+
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  memset(&_mqtt_prefs, 0, sizeof(_mqtt_prefs));
+  _mqtt_bridge = nullptr;
+  _mqtt_configured = false;
+  _mqtt_started = false;
+#endif
 }
 
 void MyMesh::begin(bool has_display) {
@@ -1219,6 +1250,32 @@ void MyMesh::begin(bool has_display) {
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
   // NOTE: no FEM LNA wiring here — companion has its own NodePrefs without
   // radio_fem_rxgain, matching upstream (which also doesn't wire companion).
+
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  applyMQTTDefaults(&_mqtt_prefs);
+  _mqtt_configured = CompanionMqttSetupPortal::loadStoredConfig(_mqtt_prefs);
+  if (!_mqtt_configured) applyMQTTDefaults(&_mqtt_prefs);
+
+  MQTTNodeInfo node_info;
+  node_info.node_name = _prefs.node_name;
+  node_info.freq = &_prefs.freq;
+  node_info.bw = &_prefs.bw;
+  node_info.sf = &_prefs.sf;
+  node_info.cr = &_prefs.cr;
+  node_info.repeat_flag = &_prefs.client_repeat;
+  node_info.repeat_when_nonzero = true;
+  _mqtt_bridge = new MQTTBridge(node_info, &_mqtt_prefs,
+                                getRTCClock(), &self_id, false);
+  if (_mqtt_bridge) {
+    char device_id[65];
+    mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
+    _mqtt_bridge->setDeviceID(device_id);
+    _mqtt_bridge->setFirmwareVersion(FIRMWARE_VERSION);
+    _mqtt_bridge->setBoardModel(board.getManufacturerName());
+    _mqtt_bridge->setBuildDate(FIRMWARE_BUILD_DATE);
+    _mqtt_bridge->setStatsSources(this, _radio, &board, _ms);
+  }
+#endif
 }
 
 bool MyMesh::applySavedRadioParams() {
@@ -1238,6 +1295,57 @@ NodePrefs *MyMesh::getNodePrefs() {
 uint32_t MyMesh::getBLEPin() {
   return _active_ble_pin;
 }
+
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+static void copyMqttString(char* dest, size_t dest_size, const char* src) {
+  strncpy(dest, src ? src : "", dest_size - 1);
+  dest[dest_size - 1] = 0;
+}
+
+void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password,
+                         bool allow_setup_page) {
+  if (!_mqtt_started && !_mqtt_setup.isActive()) {
+    if (strcmp(_mqtt_prefs.wifi_ssid, wifi_ssid ? wifi_ssid : "") != 0) {
+      copyMqttString(_mqtt_prefs.wifi_ssid, sizeof(_mqtt_prefs.wifi_ssid), wifi_ssid);
+    }
+    if (strcmp(_mqtt_prefs.wifi_password, wifi_password ? wifi_password : "") != 0) {
+      copyMqttString(_mqtt_prefs.wifi_password, sizeof(_mqtt_prefs.wifi_password), wifi_password);
+    }
+  }
+
+  if (WiFi.status() != WL_CONNECTED || !allow_setup_page) {
+    _mqtt_setup.stop();
+    return;
+  }
+
+  if (_mqtt_setup.loop()) {
+    if (_mqtt_started && _mqtt_bridge) {
+      _mqtt_bridge->end();
+    }
+    _mqtt_started = false;
+    _mqtt_configured = true;
+    Serial.println("MQTT companion: applying settings saved from the web page");
+  }
+
+  if (!_mqtt_setup.isActive()) {
+    _mqtt_setup.begin(&_mqtt_prefs);
+  }
+
+  if (_mqtt_configured && !_mqtt_started && _mqtt_bridge) {
+    _mqtt_started = true;  // begin is one-shot; avoid retrying partial allocations
+    _mqtt_bridge->begin();
+    if (_mqtt_bridge->isRunning()) {
+      Serial.println("MQTT companion: bridge started");
+    } else {
+      Serial.println("MQTT companion: bridge could not start");
+    }
+  }
+}
+
+void MyMesh::stopMQTTSetupPage() {
+  _mqtt_setup.stop();
+}
+#endif
 
 struct FreqRange {
   uint32_t lower_freq, upper_freq;
