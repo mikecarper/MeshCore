@@ -28,11 +28,15 @@ import motalib as ml
 
 
 def _ota_enabled() -> bool:
+    disabled = False
+    enabled = False
     for d in env.get("CPPDEFINES", []):  # noqa: F821
         name = d[0] if isinstance(d, (list, tuple)) else d
+        if name == "DISABLE_LORA_OTA":
+            disabled = True
         if name == "ENABLE_OTA":
-            return True
-    return False
+            enabled = True
+    return enabled and not disabled
 
 
 def _is_nrf52() -> bool:
