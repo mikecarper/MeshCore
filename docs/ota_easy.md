@@ -31,7 +31,10 @@ You need:
 - A standard, non-logging Keymind OTA build on the source and destination nodes. Logging and MQTT builds do
   not include LoRa OTA. Use the WiFi or USB connection to update those.
 - An OTA-capable ESP32 destination with an A/B partition table. nRF52 has a single application slot and
-  cannot install this guide's full-image container; it requires an in-place delta plus the OTAFIX bootloader.
+  cannot install this guide's full-image container; it requires an in-place delta plus the exact matching
+  OTAFIX bootloader. On RAK4631 repeaters, the OTA target is named
+  `RAK_4631_repeater_no_external_sensors_lora_ota`; it retains built-in battery monitoring but omits optional
+  external environmental/GPS sensor packages to fit the safe in-place update limit.
 - The new, non-merged `.bin` application firmware for the destination's exact board **and role**. Do not
   package an ESP32 `-merged.bin` factory image.
 - A source node connected to the computer by USB serial.

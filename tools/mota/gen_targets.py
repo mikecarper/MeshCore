@@ -4,7 +4,7 @@
 A target_id is sha2-256:4(pio_env_name); it travels in beacons / the .mota manifest as 4 bytes. This
 table lets a node (and motatool) print the human-readable env name for a target seen over the air, WITHOUT
 ever transmitting the string. The set of envs is resolved from PlatformIO (every env whose build_flags
-include ENABLE_OTA), so it stays in sync with what actually ships OTA.
+include ENABLE_OTA and do not include DISABLE_LORA_OTA), so explicit size/safety exclusions stay out.
 
 Run:  ./meshcore/bin/python tools/mota/gen_targets.py            # resolves via `pio project config`
       ./meshcore/bin/python tools/mota/gen_targets.py cfg.json   # or reuse a cached config dump (faster)
@@ -40,7 +40,7 @@ def ota_envs(cfg):
         for k, v in opts:
             if k == "build_flags":
                 flags = " ".join(v) if isinstance(v, list) else str(v)
-                if "ENABLE_OTA" in flags:
+                if "ENABLE_OTA" in flags and "DISABLE_LORA_OTA" not in flags:
                     envs.append(section[4:])
                 break
     return sorted(set(envs))

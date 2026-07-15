@@ -40,6 +40,17 @@ def test_target_id_for_env():
     assert ml.target_id_for_env("RAK_4631_repeater") != ml.target_id_for_env("RAK_4631_companion_radio_usb")
 
 
+def test_ota_target_generation_honors_explicit_disable():
+    from gen_targets import ota_envs
+
+    cfg = [
+        ["env:enabled", [["build_flags", ["-D ENABLE_OTA=1"]]]],
+        ["env:disabled", [["build_flags", ["-D ENABLE_OTA=1", "-D DISABLE_LORA_OTA=1"]]]],
+        ["env:unrelated", [["build_flags", ["-D NRF52_PLATFORM"]]]],
+    ]
+    assert ota_envs(cfg) == ["enabled"]
+
+
 def test_hardware_id_for_env():
     assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK_4631"
     assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK_4631"

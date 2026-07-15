@@ -1157,6 +1157,21 @@ filter_out_bluetooth_targets() {
   done
 }
 
+is_lora_ota_only_target() {
+  local target_lc=${1,,}
+  [[ "$target_lc" == *lora_ota* ]]
+}
+
+filter_out_lora_ota_only_targets() {
+  local target
+
+  for target in "$@"; do
+    if ! is_lora_ota_only_target "$target"; then
+      printf '%s\n' "$target"
+    fi
+  done
+}
+
 is_logging_size_constrained_target() {
   case "$1" in
     Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_repeater|wio-e5-mini_sensor)
@@ -2045,6 +2060,7 @@ run_logging_matrix_build_targets() {
   local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local bluetooth_skip_count=0
+  local lora_ota_only_skip_count=0
   local logging_target_count=0
   local build_status=0
   local pass_status=0
@@ -2079,6 +2095,18 @@ run_logging_matrix_build_targets() {
 
   if [ "$bluetooth_skip_count" -gt 0 ]; then
     echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
+  fi
+
+  lora_ota_only_skip_count=0
+  for target in "${logging_targets[@]}"; do
+    if is_lora_ota_only_target "$target"; then
+      lora_ota_only_skip_count=$((lora_ota_only_skip_count + 1))
+    fi
+  done
+  mapfile -t logging_targets < <(filter_out_lora_ota_only_targets "${logging_targets[@]}")
+
+  if [ "$lora_ota_only_skip_count" -gt 0 ]; then
+    echo "Skipping ${lora_ota_only_skip_count} LoRa-OTA-only target(s) for logging-on pass because logging disables LoRa OTA."
   fi
 
   for target in "${logging_targets[@]}"; do

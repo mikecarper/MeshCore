@@ -9,8 +9,22 @@ bridge, logging, and roles without `tempradio` support exclude it.
 OTA radio traffic is accepted, generated, and relayed only while `tempradio` is actually running on that node.
 Every source, receiver, and intermediate repeater must therefore have an overlapping temporary-radio window.
 
-> **Is my node supported?** OTA works on **ESP32** boards (e.g. Heltec V3) and on the **RAK4631** (nRF52,
-> which needs the special MeshCore bootloader). Other boards build fine but can't self-update yet.
+> **Is my node supported?** LoRa OTA firmware is available for supported **ESP32** boards and nRF52
+> repeater targets. Every nRF52 installation requires the OTAFIX bootloader built for that exact board;
+> having an OTA-capable application image alone is not enough. Check the bootloader release for an exact
+> board match before attempting an update.
+
+The following nRF52 repeater targets gained firmware-side LoRa OTA support in this release without losing
+their normal external-sensor support:
+
+- Heltec Mesh Solar, T1, and Tower V2
+- Keepteen LT1, LilyGo T-Impulse Plus, Mesh Pocket, and Nano G2 Ultra
+- Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110
+
+The full-sensor `RAK_4631_repeater` image is too large for the safe nRF52 in-place update limit. Use
+`RAK_4631_repeater_no_external_sensors_lora_ota` when LoRa OTA is required. That target removes optional
+external environmental/GPS sensor packages, but retains the RAK4631's built-in battery-voltage reading,
+battery telemetry, and `battery.alert` behavior.
 
 ---
 
@@ -150,7 +164,8 @@ After it reboots, run `ota status` to confirm the new version.
 
 - A download that stalls or gets interrupted just **resumes** later, or you can `ota cancel` and try again.
 - If an **install** fails, the node won't boot a broken image — it lands in **recovery mode**:
-  - **RAK4631 / nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` onto it to recover.
+  - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
+    to recover.
   - **ESP32:** it keeps the previous firmware in the other slot and rolls back.
 - When in doubt, you can always re-flash over USB the normal way.
 
