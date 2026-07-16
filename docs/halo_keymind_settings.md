@@ -2,6 +2,8 @@
 
 This file covers only CLI settings and helper commands added by the Halo or
 Keymind branches. Use `docs/cli_commands.md` for the general MeshCore CLI.
+See [Repeater Flood Filtering and Moderation](flood_filtering.md) for a focused
+filter setup and troubleshooting guide.
 
 ## Quick Start
 
@@ -81,6 +83,12 @@ set flood.retry.ignore none
 | `flood.channel.data.hops` | Separate hop gate used only when `flood.channel.data` is `off`; `all` blocks `GRP_DATA` at any hop count, `1`-`7` repeats at that hop count or lower and blocks longer paths. | `get flood.channel.data.hops`, `set flood.channel.data.hops <all|1-7>` | `set flood.channel.data.hops 7` |
 | `flood.channel.block` | Blocks selected flood `GRP_TXT`/`GRP_DATA` channels when the key validates the packet. New repeater block lists start with editable/deletable `#wardriving h=4`. Add `h=<all|1-7|default>` for a per-channel hop override. | `get flood.channel.block`, `set flood.channel.block[.n] <key|#channel> [name] [h=...]`, `del flood.channel.block[.n]` | `set flood.channel.block #wardriving h=4` |
 | `flood.channel.block.hops` | Limits keyed channel-block matches to short flood paths. `all` blocks matching packets at any hop count; `1`-`7` repeats packets at that hop count or lower and blocks longer matches. This does not restrict unkeyed `GRP_DATA`; use `flood.channel.data.hops` for that. | `get flood.channel.block.hops`, `set flood.channel.block.hops <all|1-7>` | `set flood.channel.block.hops 3` |
+| `flood.filter` | Persistent repeater-only forwarding rules for flood routes `0x00`/`0x01`, selected by payload type and received hop count/range. Direct routing and local receive/logging are unchanged. | `get flood.filter[.n]`, `set flood.filter[.n] <type> <N|N+|N-M|all>`, `del flood.filter.<n>|all` | `set flood.filter grp_data 4+` |
+| `flood.moderation` | Decrypts keyed `GRP_TXT` channels and applies drop, per-username messages/minute, and maximum-hop controls, optionally matched against the first 1-3 path hashes. Supports `public`, `#channel`, and 128/256-bit channel keys. Sender names and truncated path hashes are moderation hints, not authenticated identities. | `get flood.moderation[.n]`, `set flood.moderation[.n] <channel> <sender> <drop|rate=X/min|hops=N> [path=...]`, `del flood.moderation.<n>|all` | `set flood.moderation public "Noisy User" rate=5/min hops=4` |
+| `clock.sync.mesh` | After 30 minutes of uptime, estimates UTC from a configurable consensus of fresh signed-advert or valid Public-channel sources. Only timestamps from firmware build time through build time plus ten years are recorded. Successful CLI, GPS, or WiFi/NTP clock updates suppress LoRa time collection until reboot; after reboot LoRa is the fallback if NTP cannot sync. | `get clock.sync.mesh`, `set clock.sync.mesh <on|off>`, `get clock.sync.status` | `set clock.sync.mesh on` |
+| `clock.sync.internet` | Adds a read-only internet/NTP estimate at the same delayed check on WiFi MQTT repeater-observer builds. Other builds retain the setting but report internet unavailable. | `get clock.sync.internet`, `set clock.sync.internet <on|off>` | `set clock.sync.internet on` |
+| `clock.sync.drift` | Absolute correction threshold in seconds. The clock is moved forward or backward only when the estimate differs by more than this value. | `get clock.sync.drift`, `set clock.sync.drift <30-86400>` | `set clock.sync.drift 3600` |
+| `clock.sync.samples` | Minimum number of distinct, in-window receive paths that must agree before mesh time can be used. A strict majority of all fresh samples is also required. Range `3-16`; default `9`. | `get clock.sync.samples`, `set clock.sync.samples <3-16>` | `set clock.sync.samples 9` |
 | `outpath` | Overrides the primary direct route used for replies to the current remote client. | `get outpath`, `set outpath <hops>`, `set outpath direct`, `set outpath clear`, `set outpath flood` | `set outpath A1B2C3,D4E5F6` |
 | `altpath` | Adds a secondary direct route for repeater replies to the current remote client. | `get altpath`, `set altpath <hops>`, `set altpath direct`, `set altpath clear`, `set altpath flood` | `set altpath 71CE82,BA09F0` |
 

@@ -11,9 +11,18 @@ public:
 
   uint32_t getRngSeed();
 
+  mesh::RadioParamApplyResult trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                           const uint32_t* rx_ps_timings = nullptr) override {
+    (void)freq;
+    (void)bw;
+    (void)sf;
+    (void)cr;
+    (void)rx_ps_timings;
+    return mesh::RadioParamApplyResult::APPLIED;
+  }
   bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
                  const uint32_t* rx_ps_timings = nullptr) {
-    return true;
+    return trySetParams(freq, bw, sf, cr, rx_ps_timings) == mesh::RadioParamApplyResult::APPLIED;
   }
   void powerOff() { /* no-op */ }
 

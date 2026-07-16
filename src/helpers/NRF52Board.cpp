@@ -297,8 +297,9 @@ void NRF52Board::sleep(uint32_t secs) {
   sd_softdevice_is_enabled(&sd_enabled);
 
   if (sd_enabled) {
-    // first call processes pending softdevice events, second call sleeps.
-    sd_app_evt_wait();
+    // A single call is required here. If an interrupt arrived since the last
+    // wait, SoftDevice returns immediately so the main loop can service the
+    // flag or BLE queue before sleeping again.
     sd_app_evt_wait();
   } else {
     // softdevice is disabled, use raw WFE

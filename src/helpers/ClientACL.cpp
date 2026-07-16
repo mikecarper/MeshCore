@@ -110,8 +110,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   ClientInfo* oldest = NULL;
   for (int i = 0; i < num_clients; i++) {
     if (id.matches(clients[i].id)) return &clients[i];  // already known
-    if (  (!clients[i].isAdmin() && !clients[i].isRegionMgr()) 
-	  && clients[i].last_activity < min_time) {
+    if (!clients[i].isProtectedManager() && clients[i].last_activity < min_time) {
       oldest = &clients[i];
       min_time = oldest->last_activity;
     }

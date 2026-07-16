@@ -2,6 +2,7 @@
 
 #include <Ed25519.h>
 #include <Mesh.h>
+#include <helpers/ClockSyncUtils.h>
 #include <helpers/StaticPoolPacketManager.h>
 
 class TraceTestClock : public mesh::MillisecondClock {
@@ -65,6 +66,54 @@ public:
     return applyGroupDataFloodRetryPathGate(packet, general_gate, group_data_gate);
   }
 };
+
+TEST(RTCClock, UniqueSequenceCanFollowAnIntentionalBackwardCorrection) {
+  TraceTestRTC rtc;
+  rtc.now = 100;
+  EXPECT_EQ(100U, rtc.getCurrentTimeUnique());
+  EXPECT_EQ(101U, rtc.getCurrentTimeUnique());
+
+  rtc.setCurrentTime(50);
+  rtc.resetUniqueTime(50);
+  EXPECT_EQ(50U, rtc.getCurrentTimeUnique());
+}
+
+TEST(ClockSyncConsensus, EightVsEightSplitDoesNotChooseTheUpperMedian) {
+  uint32_t values[16];
+  for (int i = 0; i < 8; i++) values[i] = 1000;
+  for (int i = 8; i < 16; i++) values[i] = 5000;
+
+  mesh::ClockSyncConsensusResult result =
+      mesh::evaluateClockSyncConsensus(values, 16, 9, 600);
+  EXPECT_FALSE(result.consensus);
+  EXPECT_EQ(16, result.fresh_count);
+  EXPECT_EQ(8, result.agreeing_count);
+  EXPECT_EQ(9, result.required_count);
+}
+
+TEST(ClockSyncConsensus, NineVsSevenStrictMajorityIsAccepted) {
+  uint32_t values[16];
+  for (int i = 0; i < 7; i++) values[i] = 1000;
+  for (int i = 7; i < 16; i++) values[i] = 5000;
+
+  mesh::ClockSyncConsensusResult result =
+      mesh::evaluateClockSyncConsensus(values, 16, 9, 600);
+  EXPECT_TRUE(result.consensus);
+  EXPECT_EQ(5000U, result.estimate);
+  EXPECT_EQ(9, result.agreeing_count);
+  EXPECT_EQ(9, result.required_count);
+}
+
+TEST(ClockSyncConsensus, ConfiguredEightStillCannotAcceptAnEightVsEightSplit) {
+  uint32_t values[16];
+  for (int i = 0; i < 8; i++) values[i] = 1000;
+  for (int i = 8; i < 16; i++) values[i] = 5000;
+
+  mesh::ClockSyncConsensusResult result =
+      mesh::evaluateClockSyncConsensus(values, 16, 8, 600);
+  EXPECT_FALSE(result.consensus);
+  EXPECT_EQ(9, result.required_count);
+}
 
 static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,
                                const uint8_t* route, uint8_t route_len) {

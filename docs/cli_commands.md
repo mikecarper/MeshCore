@@ -13,6 +13,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
   - [Radio](#radio)
   - [System](#system)
   - [Routing](#routing)
+  - [Flood Filtering](#filter-flood-packets-by-payload-type-and-hop)
+  - [Group Text Moderation](#moderate-flood-group-text-by-channel-sender-and-source-path)
   - [ACL](#acl)
   - [Region Management](#region-management-v110)
     - [Region Examples](#region-examples)
@@ -518,6 +520,112 @@ send text.flood checking ridge link
 
 ---
 
+#### Estimate and correct repeater time after startup
+
+**Usage:**
+- `get clock.sync`
+- `get clock.sync.status`
+- `get clock.sync.mesh`
+- `set clock.sync.mesh <on|off>`
+- `get clock.sync.internet`
+- `set clock.sync.internet <on|off>`
+- `get clock.sync.drift`
+- `set clock.sync.drift <30-86400>`
+- `get clock.sync.samples`
+- `set clock.sync.samples <3-16>`
+
+**Defaults:**
+- `clock.sync.mesh`: `off`
+- `clock.sync.internet`: `off`
+- `clock.sync.drift`: `3600` seconds
+- `clock.sync.samples`: `9`
+
+When either source is enabled, the repeater makes its first clock-bootstrap
+attempt after 30 minutes of uptime. A successful estimate changes the RTC only
+when the absolute difference is **greater than** `clock.sync.drift`; correction
+can move the clock forward or backward. A valid estimate within the threshold
+completes the one-time check without changing the clock. If no source is
+available yet, the repeater retries every 30 minutes.
+
+`clock.sync.mesh` collects signature-verified advert timestamps and MAC-valid,
+decrypted Public-channel plain-text timestamps, but only after the packet passes
+every forwarding filter. Sources are deduplicated by advert public key or
+case-insensitive Public-channel display name. Every fresh sample must also have
+a different full received path; all direct, zero-hop receptions count as the
+same empty path. This prevents repeated packets or multiple names arriving over
+one route from increasing the vote count.
+
+At least the configured number of distinct fresh paths (nine by default) and a
+strict majority of all fresh samples must fall within ten minutes of the
+median. The effective quorum is therefore the larger of `clock.sync.samples`
+and half the fresh sample count plus one. For example, a 9-vs-7 split can
+succeed but an 8-vs-8 split cannot. The median is used. `clock.sync.samples`
+accepts `3` through `16`; samples older than two hours are ignored. Status
+reports `collecting` when fewer than the configured number of paths exist, and
+`no consensus` when enough paths exist but the effective quorum does not agree.
+
+A timestamp is eligible for a clock-sync sample only when it falls between the
+UTC build epoch embedded by `build.sh` and that time plus ten calendar years.
+Direct developer builds that bypass `build.sh` fall back to the compiler
+timestamp. Validation happens before a slot is selected or written, so an
+advert or Public-channel timestamp outside that window is not recorded as a
+clock sample.
+
+Before voting, the node advances each packet timestamp by an estimated transit
+time. The estimate sums the radio airtime at the original packet length and at
+each progressively longer relay length, plus the expected midpoint of the
+random flood-forward delay at every prior hop. The normal elapsed time since
+the radio recorded local receipt is then added when consensus is evaluated, so
+local signature/decryption/filter processing time is included too. This is
+better than using hop count alone because LoRa airtime changes with packet
+length and radio settings. Transit compensation is capped at the ten-minute
+consensus window. It cannot know sender queueing, channel contention, or a
+remote relay's non-matching `txdelay`, so the consensus window and median still
+absorb residual error.
+
+If a `clock sync` or `time <epoch>` CLI command successfully sets the clock, or
+a GPS provider writes a valid GPS time, LoRa-derived clock collection and
+correction are suppressed for the rest of that boot. Turning
+`clock.sync.mesh` off and back on does not clear this safety latch; only a
+reboot does. `get clock.sync.mesh` and `get clock.sync.status` report whether
+CLI or GPS time caused the suppression. On a WiFi MQTT build, a successful NTP
+sync is authoritative and also suppresses LoRa correction for the rest of that
+boot. Source selection starts fresh after a reboot, so LoRa remains the fallback
+when NTP cannot obtain internet time during that boot.
+
+Public-channel display names are not authenticated and can be spoofed. Received
+path hashes are also truncated, unauthenticated routing hints; requiring unique
+paths prevents ordinary duplicate-route inflation but is not a cryptographic
+identity check. Signed adverts authenticate the advert contents but do not
+prove that the advertising node's own clock is correct. Mesh time is therefore
+a consensus estimate, not an authoritative time service.
+
+`clock.sync.internet` is available on WiFi MQTT repeater-observer builds. Its
+30-minute query runs on the MQTT/WiFi task and is read-only until the repeater
+applies the configured drift test. On other repeater builds, the preference can
+be stored but status reports that internet time is unavailable. MQTT builds
+retain their existing startup NTP behavior required for MQTT/TLS/JWT operation;
+this setting controls the additional delayed drift check. Startup NTP is always
+preferred when it succeeds, regardless of this setting.
+
+Changing any `clock.sync.*` setting starts a new attempt for the current boot.
+Settings are persistent in `/clock_sync`.
+
+A backward correction is intentionally allowed, but peers that already recorded
+a later timestamp from this node may temporarily reject its lower timestamps as
+replays until corrected time passes the previously observed value.
+
+**Example:**
+```text
+set clock.sync.drift 1800
+set clock.sync.samples 9
+set clock.sync.mesh on
+set clock.sync.internet on
+get clock.sync.status
+```
+
+---
+
 #### View this node's public key
 **Usage:** `get public.key`
 
@@ -924,6 +1032,135 @@ del flood.channel.block.2
 
 ---
 
+#### Filter flood packets by payload type and hop
+
+For setup guidance, interactions with the existing forwarding controls, and
+worked moderation examples, see [Repeater Flood Filtering and Moderation](flood_filtering.md).
+
+**Usage:**
+- `get flood.filter`
+- `get flood.filter.<n>`
+- `set flood.filter <type> <hops>`
+- `set flood.filter.<n> <type> <hops>`
+- `del flood.filter.<n>`
+- `del flood.filter all`
+
+**Parameters:**
+- `n`: Rule slot from `1` to `16`.
+- `type`: Payload type name, full `PAYLOAD_TYPE_*` name, numeric value `0-15`, or `any`.
+- `hops`:
+  - `N`: Block only at received hop count `N`.
+  - `N+`: Block at received hop count `N` and higher.
+  - `N-M`: Block the inclusive received-hop range.
+  - `all`: Block at every received hop count (`0-63`).
+
+The payload names follow the [MeshCore packet-format allocation](https://docs.meshcore.io/packet_format/):
+
+| Value | Short name | Full name |
+| --- | --- | --- |
+| `0x00` | `req` | `PAYLOAD_TYPE_REQ` |
+| `0x01` | `response` | `PAYLOAD_TYPE_RESPONSE` |
+| `0x02` | `txt_msg` | `PAYLOAD_TYPE_TXT_MSG` |
+| `0x03` | `ack` | `PAYLOAD_TYPE_ACK` |
+| `0x04` | `advert` | `PAYLOAD_TYPE_ADVERT` |
+| `0x05` | `grp_txt` | `PAYLOAD_TYPE_GRP_TXT` |
+| `0x06` | `grp_data` | `PAYLOAD_TYPE_GRP_DATA` |
+| `0x07` | `anon_req` | `PAYLOAD_TYPE_ANON_REQ` |
+| `0x08` | `path` | `PAYLOAD_TYPE_PATH` |
+| `0x09` | `trace` | `PAYLOAD_TYPE_TRACE` |
+| `0x0A` | `multipart` | `PAYLOAD_TYPE_MULTIPART` |
+| `0x0B` | `control` | `PAYLOAD_TYPE_CONTROL` |
+| `0x0C` | `ota` | `PAYLOAD_TYPE_OTA` (this fork's LoRa OTA extension; reserved upstream) |
+| `0x0D` | `13` | reserved |
+| `0x0E` | `14` | reserved |
+| `0x0F` | `raw_custom` | `PAYLOAD_TYPE_RAW_CUSTOM` |
+
+**Route scope:** Rules are evaluated only for the two flood route values:
+`ROUTE_TYPE_TRANSPORT_FLOOD` (`0x00`, flood plus transport codes) and
+`ROUTE_TYPE_FLOOD` (`0x01`, unscoped flood). Direct routes `0x02` and `0x03`
+are never affected.
+
+**Behavior:** A match prevents retransmission by this repeater. The packet is
+still received and can still be logged. Rules are persistent and default to an
+empty table, so upgrading does not change forwarding. A malformed persisted
+table fails open (no general rules are applied).
+
+Without `.n`, `set` returns an identical existing rule or uses the first empty
+slot. With `.n`, it replaces that slot. `get flood.filter` gives a compact list;
+use `get flood.filter.<n>` for full details.
+
+**Examples:**
+```text
+set flood.filter grp_data 4+
+set flood.filter.2 PAYLOAD_TYPE_ADVERT 6+
+set flood.filter ota 2-4
+set flood.filter any 12+
+get flood.filter
+get flood.filter.2
+del flood.filter.2
+```
+
+---
+
+#### Moderate flood group text by channel, sender, and source path
+
+**Usage:**
+- `get flood.moderation`
+- `get flood.moderation.<n>`
+- `set flood.moderation <channel> <sender> <action> [action...]`
+- `set flood.moderation.<n> <channel> <sender> <action> [action...]`
+- `del flood.moderation.<n>`
+- `del flood.moderation all`
+
+**Parameters:**
+- `n`: Moderation slot from `1` to `16`.
+- `channel`:
+  - `public`: Built-in Public channel.
+  - `#channel`: Derive the well-known hashtag-channel key.
+  - A 128-bit or 256-bit channel key in hex, for any other/private channel.
+- `sender`: Exact group-text display name. Matching is ASCII case-insensitive.
+  Quote names containing spaces, for example `"Field User"`.
+- `drop`: Do not forward matching messages. Equivalent to `rate=0/min`.
+- `rate=X/min`: Forward at most `X` matching messages per 60-second local
+  window. This option requires an exact sender rather than `*`.
+- `hops=N`: Do not forward a matching message whose received flood path count
+  is `N` or higher. `hops=all` removes this constraint.
+- `path=H1[,H2,H3]`: Match the start of the flood path. One to three hashes are
+  accepted; every hash must have the same 1-, 2-, or 3-byte width.
+- `path=*`: Match any source path (the default).
+
+At least one of `drop`, `rate=X/min`, or `hops=N` is required. Rate and hop
+limits can be combined. Rate counters are local to this repeater and rule, use a
+60-second window beginning with the first matching message, and reset on reboot.
+
+**Decode and identity behavior:** Moderation applies only to flood
+`PAYLOAD_TYPE_GRP_TXT`. The repeater first checks the packet's channel-hash byte,
+then validates and decrypts with the configured key. It extracts the text before
+the first `:` from the standard `<sender>: <message>` plaintext. The channel key
+is stored locally but is never printed by `get`.
+
+The group-text sender is an **unverified display name**, not a public key. It can
+be spoofed. Combining it with the first one to three path hashes makes a more
+useful moderation signal, but path hashes are truncated and are not proof of the
+originating user. A path-qualified rule begins matching only after the packet
+contains all configured starting hops; it cannot identify a first hop on a
+zero-hop packet.
+
+As with general filtering, matching messages are still received/logged; only
+retransmission is denied. There are no moderation rules by default.
+
+**Examples:**
+```text
+set flood.moderation public "Noisy User" rate=5/min
+set flood.moderation #local bot drop path=A1B2C3,D4E5F6
+set flood.moderation.3 00112233445566778899AABBCCDDEEFF alice rate=10/min hops=4 path=71CE82
+get flood.moderation
+get flood.moderation.3
+del flood.moderation.3
+```
+
+---
+
 ### ACL
 
 #### Add, update or remove permissions for a companion
@@ -937,6 +1174,18 @@ del flood.channel.block.2
   - `1`: Read-only
   - `2`: Read-write
   - `3`: Admin
+  - `4`: Region manager (repeater delegated region management)
+  - `5`: Filter manager (repeater delegated forwarding-filter management)
+
+**Filter manager scope:** Permission `5` can use an explicit allowlist of
+non-secret operational/filter status commands and can change the forwarding
+controls `repeat`, `loop.detect`, `flood.max*`, `flood.channel.data*`,
+`flood.channel.block*`, `flood.filter*`, and `flood.moderation*`. It cannot read
+guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
+ACL entries, radio settings, or other admin configuration. Permission `4`
+remains limited to region commands and the same non-secret status allowlist.
+Both delegated manager roles are protected from least-recently-active ACL
+eviction like administrators.
 
 **Note:** Removes the entry when `permissions` is omitted
 

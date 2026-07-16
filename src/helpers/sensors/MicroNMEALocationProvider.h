@@ -150,6 +150,7 @@ public :
             if (_time_sync_needed && time_valid > 2) {
                 if (_clock != NULL) {
                     _clock->setCurrentTime(getTimestamp());
+                    markTimeSyncApplied();
                     _time_sync_needed = false;
                     _last_time_sync = millis();
                 }

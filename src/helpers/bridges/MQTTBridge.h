@@ -199,7 +199,7 @@ private:
   WiFiUDP _ntp_udp;
   NTPClient _ntp_client;
   unsigned long _last_ntp_sync;
-  bool _ntp_synced;
+  volatile bool _ntp_synced;
   bool _ntp_sync_pending;  // Flag to trigger NTP sync from loop() instead of event handler
   bool _slots_setup_done;  // Deferred: slots set up after NTP sync
   // WiFi.onEvent() handler registered once and never removed by end(); the bridge
@@ -236,6 +236,12 @@ private:
   };
   NtpDiagResult _ntp_diag_results[kMaxNtpServers];
   int _ntp_diag_count;
+  // Non-blocking, read-only NTP estimate used by the delayed clock-bootstrap
+  // policy. The MQTT task performs network I/O; the radio/main task only polls.
+  volatile bool _ntp_estimate_requested;
+  volatile bool _ntp_estimate_done;
+  volatile bool _ntp_estimate_ok;
+  volatile uint32_t _ntp_estimate_epoch;
 
   // Timezone handling.
   // _timezone_storage is inline class storage (zero heap) that is reconfigured
@@ -380,6 +386,7 @@ private:
   bool isAnySlotConnected();
   void refreshNTP();  // Lightweight periodic NTP refresh (non-blocking)
   void runNtpDiagProbe();  // Probe every server for connectivity; never sets the clock. Core 0 only.
+  void runNtpEstimateProbe();  // Query the first usable server without changing any clock. Core 0 only.
   // Populates dst_out/std_out with TimeChangeRules for the given IANA or
   // abbreviation string. Returns false if the string is not recognized
   // (callers should fall back to UTC). Zero-allocation.
@@ -488,6 +495,12 @@ public:
    *  summary in reply; verbose=false fills reply with a compact "<server> ok|fail" list
    *  (for LoRa). Returns false if the bridge is not running. */
   bool ntpDiag(char* reply, size_t reply_size, bool verbose);
+  /** Queue a read-only NTP query on the MQTT task without blocking the radio loop. */
+  bool requestNtpTimeEstimate();
+  /** Poll/consume the queued estimate. finished=false means it is still pending. */
+  bool takeNtpTimeEstimate(uint32_t& epoch, bool& finished);
+  /** True after this bridge has successfully set the RTC from NTP this boot. */
+  bool hasNtpTime() const { return _ntp_synced; }
   static void formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPrefs* obs);
   /** True when WiFi is set and at least one MQTT slot can run (preset + custom host if needed). */
   static bool isConfigValid(const MQTTPrefs* obs);

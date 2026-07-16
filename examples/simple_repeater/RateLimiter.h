@@ -10,6 +10,11 @@ class RateLimiter {
 public:
   RateLimiter(uint16_t maximum, uint32_t secs): _maximum(maximum), _secs(secs), _start_timestamp(0), _count(0) { }
 
+  void reset() {
+    _start_timestamp = 0;
+    _count = 0;
+  }
+
   bool allow(uint32_t now) {
     if (now < _start_timestamp + _secs) {
       _count++;

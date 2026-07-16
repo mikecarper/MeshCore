@@ -408,3 +408,7 @@ bool SerialBLEInterface::isReadBusy() const {
 bool SerialBLEInterface::isWriteBusy() const {
   return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
 }
+
+bool SerialBLEInterface::hasPendingIO() const {
+  return recv_queue_len > 0 || send_queue_len > 0;
+}

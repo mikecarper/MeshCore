@@ -10,6 +10,7 @@
 #define PERM_ACL_READ_WRITE    2
 #define PERM_ACL_ADMIN         3
 #define PERM_ACL_REGION_MGR    4
+#define PERM_ACL_FILTER_MGR    5
 
 #define OUT_PATH_FORCE_FLOOD  0xFE
 #define OUT_PATH_UNKNOWN      0xFF
@@ -36,6 +37,8 @@ struct ClientInfo {
   
   bool isAdmin() const { return (permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_ADMIN; }
   bool isRegionMgr() const { return (permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_REGION_MGR; }
+  bool isFilterMgr() const { return (permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_FILTER_MGR; }
+  bool isProtectedManager() const { return isAdmin() || isRegionMgr() || isFilterMgr(); }
 };
 
 #ifndef MAX_CLIENTS

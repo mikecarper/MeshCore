@@ -140,6 +140,13 @@ public:
     }
     return last_unique = t;
   }
+
+  /** Reset the monotonic timestamp helper after an intentional RTC correction.
+   *  This is needed when a caller explicitly permits moving the wall clock
+   *  backward and wants subsequent generated timestamps to use the new clock. */
+  void resetUniqueTime(uint32_t time) {
+    last_unique = time > 0 ? time - 1 : 0;
+  }
 };
 
 }

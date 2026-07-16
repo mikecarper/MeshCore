@@ -8,6 +8,12 @@
 
 namespace mesh {
 
+enum class RadioParamApplyResult : uint8_t {
+  APPLIED,
+  BUSY,
+  FAILED
+};
+
 /**
  * \brief  Abstraction of local/volatile clock with Millisecond granularity.
 */
@@ -88,6 +94,24 @@ public:
 
   virtual bool supportsRxPowerSaving() const { return false; }
   virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
+
+  /**
+   * \brief Attempts to change the radio modulation parameters without waiting.
+   *
+   * BUSY means the request is valid but the radio is temporarily unable to
+   * leave RX/TX. Callers may retry it from their main loop. FAILED means the
+   * radio attempted or rejected the change and retrying the same tuple is not
+   * expected to help.
+   */
+  virtual RadioParamApplyResult trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                             const uint32_t* rx_ps_timings = nullptr) {
+    (void)freq;
+    (void)bw;
+    (void)sf;
+    (void)cr;
+    (void)rx_ps_timings;
+    return RadioParamApplyResult::FAILED;
+  }
 
   /**
    * \returns  true if the radio is currently mid-receive of a packet.

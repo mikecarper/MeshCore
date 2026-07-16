@@ -222,7 +222,11 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
   void updateGpsTelemetryPolicy();
+  mesh::RadioParamApplyResult tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
   bool applySavedRadioParams();
+  void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat);
+  void cancelPendingRadioParamApply();
+  void servicePendingRadioParamApply();
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
@@ -253,6 +257,13 @@ private:
   bool saved_radio_apply_pending;
   unsigned long radio_apply_retry_at;
   uint8_t radio_apply_failures;
+  bool command_radio_apply_pending;
+  float command_radio_freq;
+  float command_radio_bw;
+  uint8_t command_radio_sf;
+  uint8_t command_radio_cr;
+  uint8_t command_radio_repeat;
+  unsigned long command_radio_apply_deadline;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   uint8_t app_target_ver;

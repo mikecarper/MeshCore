@@ -92,12 +92,14 @@ void RadioLibWrapper::endReconfigure(bool resume_rx) {
   if (resume_rx) startRecv();
 }
 
-bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
-                                const uint32_t* rx_ps_timings) {
-  if (rx_ps_timings != NULL && !supportsRxPowerSaving()) return false;
+mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                                          const uint32_t* rx_ps_timings) {
+  if (rx_ps_timings != NULL && !supportsRxPowerSaving()) {
+    return mesh::RadioParamApplyResult::FAILED;
+  }
 
   uint8_t resume_rx = beginReconfigure();
-  if (resume_rx > 1) return false;
+  if (resume_rx > 1) return mesh::RadioParamApplyResult::BUSY;
 
   const bool had_previous_params = _params_valid;
   const float previous_freq = _cur_freq;
@@ -137,7 +139,12 @@ bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
   }
 
   endReconfigure(resume_rx);
-  return success;
+  return success ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
+}
+
+bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                const uint32_t* rx_ps_timings) {
+  return trySetParams(freq, bw, sf, cr, rx_ps_timings) == mesh::RadioParamApplyResult::APPLIED;
 }
 
 bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {

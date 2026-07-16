@@ -351,6 +351,10 @@ struct LegacyObserverTail {
 class CommonCLICallbacks {
 public:
   virtual void savePrefs() = 0;
+  // Called only after a CLI command successfully changes the RTC. Roles that
+  // derive time from untrusted radio traffic can use this to prefer the manual
+  // value for the remainder of the boot.
+  virtual void onManualClockSet() { }
   virtual const char* getFirmwareVer() = 0;
   virtual const char* getBuildDate() = 0;
   virtual const char* getRole() = 0;

@@ -1,6 +1,7 @@
 #include "MyMesh.h"
 #include <algorithm>
 #include <stdlib.h>  // for qsort()
+#include <helpers/ClockSyncUtils.h>
 #include <helpers/RxReservePacketManager.h>
 
 /* ------------------------------ Config -------------------------------- */
@@ -85,6 +86,9 @@
 #define LAZY_CONTACTS_WRITE_DELAY    5000
 
 #define FLOOD_CHANNEL_BLOCK_FILE      "/flood_ch_block"
+#define FLOOD_PACKET_FILTER_FILE      "/flood_filter"
+#define FLOOD_GROUP_MODERATION_FILE   "/flood_grp_mod"
+#define CLOCK_SYNC_PREFS_FILE         "/clock_sync"
 #define DEFAULT_FLOOD_CHANNEL_BLOCK_NAME  "#wardriving"
 #ifndef DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS
   #define DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS 4
@@ -105,6 +109,63 @@
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
 #define RX_INACTIVITY_WATCHDOG_INTERVAL (12UL * 60UL * 60UL * 1000UL)
+
+#define CLOCK_SYNC_VALID_YEARS 10
+
+enum ClockSyncSource : uint8_t {
+  CLOCK_SYNC_SOURCE_NONE = 0,
+  CLOCK_SYNC_SOURCE_MESH = 1,
+  CLOCK_SYNC_SOURCE_INTERNET = 2
+};
+
+enum ClockSyncResult : uint8_t {
+  CLOCK_SYNC_RESULT_WAITING = 0,
+  CLOCK_SYNC_RESULT_COLLECTING = 1,
+  CLOCK_SYNC_RESULT_INTERNET_PENDING = 2,
+  CLOCK_SYNC_RESULT_NO_CONSENSUS = 3,
+  CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE = 4,
+  CLOCK_SYNC_RESULT_WITHIN_DRIFT = 5,
+  CLOCK_SYNC_RESULT_CORRECTED_FORWARD = 6,
+  CLOCK_SYNC_RESULT_CORRECTED_BACKWARD = 7
+};
+
+static bool clockSyncLeapYear(uint16_t year) {
+  return (year % 4U == 0 && year % 100U != 0) || year % 400U == 0;
+}
+
+static uint32_t clockSyncMinimumValidEpoch() {
+#if FIRMWARE_BUILD_EPOCH > 0
+  return (uint32_t)FIRMWARE_BUILD_EPOCH;
+#else
+  static uint32_t minimum = 0;
+  if (minimum == 0) minimum = DateTime(__DATE__, __TIME__).unixtime();
+  return minimum;
+#endif
+}
+
+static uint32_t clockSyncMaximumValidEpoch() {
+  static uint32_t maximum = 0;
+  if (maximum == 0) {
+    DateTime built(clockSyncMinimumValidEpoch());
+    uint16_t upper_year = built.year() + CLOCK_SYNC_VALID_YEARS;
+    uint8_t upper_day = built.day();
+    if (built.month() == 2 && upper_day == 29 && !clockSyncLeapYear(upper_year)) upper_day = 28;
+    maximum = DateTime(upper_year, built.month(), upper_day,
+                       built.hour(), built.minute(), built.second()).unixtime();
+  }
+  return maximum;
+}
+
+static bool clockSyncEpochIsValid(uint32_t epoch) {
+  return epoch >= clockSyncMinimumValidEpoch() && epoch <= clockSyncMaximumValidEpoch();
+}
+
+// Channel encryption uses a 128-bit key, while MACThenDecrypt's shared-secret
+// buffer is PUB_KEY_SIZE bytes. Keep the unused half zero-padded like GroupChannel.
+static const uint8_t FLOOD_PUBLIC_CHANNEL_SECRET[PUB_KEY_SIZE] = {
+  0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
+  0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
+};
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
@@ -352,7 +413,7 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
   memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
   reply_data[4] = RESP_SERVER_LOGIN_OK;
   reply_data[5] = 0;  // Legacy: was recommended keep-alive interval (secs / 16)
-  reply_data[6] = (client->isAdmin() || client->isRegionMgr()) ? 1 : 0;
+  reply_data[6] = (client->isAdmin() || client->isRegionMgr() || client->isFilterMgr()) ? 1 : 0;
   reply_data[7] = client->permissions;
   getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
   reply_data[12] = FIRMWARE_VER_LEVEL;  // New field
@@ -784,6 +845,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
                          packet->getPathHashCount());
       return false;
     }
+    if (shouldBlockFloodPacketForward(packet)) return false;
     if (shouldBlockFloodChannelForward(packet)) return false;
   }
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
@@ -804,6 +866,14 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
       return false;
     }
   }
+  // Moderation has rate-counter side effects, so evaluate it only after every
+  // other forwarding gate has accepted the packet. Quota is then spent only
+  // for a message this repeater will actually retransmit.
+  if (packet->isRouteFlood() && shouldBlockFloodGroupTextForward(packet)) return false;
+  // Clock evidence is collected only after every forwarding filter accepts the
+  // packet. Blocked regions, moderated users, hop/type rules, and looped packets
+  // therefore cannot influence the estimate.
+  recordAcceptedFloodClockSample(packet);
   return true;
 }
 
@@ -2154,7 +2224,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     } else {
       MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
     }
-  } else if (type == PAYLOAD_TYPE_TXT_MSG && len > 5 && (client->isAdmin() || client->isRegionMgr())) { // a CLI command
+  } else if (type == PAYLOAD_TYPE_TXT_MSG && len > 5
+      && (client->isAdmin() || client->isRegionMgr() || client->isFilterMgr())) { // a CLI command
     uint32_t sender_timestamp;
     memcpy(&sender_timestamp, data, 4); // timestamp (by sender's RTC clock - which could be wrong)
     uint8_t flags = (data[4] >> 2);        // message attempt number, and other flags
@@ -2347,6 +2418,25 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(flood_retry_bridge_reachability, 0, sizeof(flood_retry_bridge_reachability));
   recv_pkt_region = NULL;
   memset(flood_channel_blocks, 0, sizeof(flood_channel_blocks));
+  memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
+  memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
+  clock_sync_mesh_enabled = false;
+  clock_sync_internet_enabled = false;
+  clock_sync_complete = false;
+  clock_sync_internet_pending = false;
+  clock_sync_mesh_suppressed_by = CLOCK_SYNC_MESH_SUPPRESS_NONE;
+  clock_sync_last_result = CLOCK_SYNC_RESULT_WAITING;
+  clock_sync_last_source = CLOCK_SYNC_SOURCE_NONE;
+  clock_sync_last_sample_count = 0;
+  clock_sync_last_fresh_count = 0;
+  clock_sync_last_required_count = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
+  clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
+  clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
+  clock_sync_last_estimate = 0;
+  clock_sync_last_abs_drift = 0;
+  clock_sync_internet_requested_millis = 0;
+  clock_sync_next_attempt_uptime = CLOCK_SYNC_STARTUP_DELAY_MILLIS;
 
 #if MAX_NEIGHBOURS
   memset(neighbours, 0, sizeof(neighbours));
@@ -2456,6 +2546,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // TODO: key_store.begin();
   region_map.load(_fs);
   loadFloodChannelBlocks();
+  loadFloodPacketFilters();
+  loadFloodGroupModeration();
+  loadClockSyncPrefs();
 
   // establish default-scope
   {
@@ -3722,6 +3815,1471 @@ bool MyMesh::saveFloodChannelBlocks() {
   return success;
 }
 
+static const char* skipFloodFilterSpaces(const char* text) {
+  while (text != NULL && *text == ' ') text++;
+  return text == NULL ? "" : text;
+}
+
+static bool floodFilterAsciiEqual(const char* left, const char* right) {
+  if (left == NULL || right == NULL) return false;
+  while (*left && *right) {
+    char a = *left++;
+    char b = *right++;
+    if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+    if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+    if (a != b) return false;
+  }
+  return *left == 0 && *right == 0;
+}
+
+static bool floodFilterAsciiStartsWith(const char* text, const char* prefix) {
+  if (text == NULL || prefix == NULL) return false;
+  while (*prefix) {
+    char a = *text++;
+    char b = *prefix++;
+    if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+    if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+    if (a != b) return false;
+  }
+  return true;
+}
+
+static bool parseFloodFilterUnsigned(const char* text, uint8_t maximum, uint8_t& value) {
+  if (text == NULL || *text == 0) return false;
+  uint16_t parsed = 0;
+  for (const char* p = text; *p; p++) {
+    if (*p < '0' || *p > '9') return false;
+    uint16_t digit = (uint16_t)(*p - '0');
+    if (digit > maximum || parsed > (uint16_t)(maximum - digit) / 10U) return false;
+    parsed = (uint16_t)(parsed * 10U + digit);
+  }
+  value = (uint8_t)parsed;
+  return true;
+}
+
+static const char* floodFilterPayloadTypeName(uint8_t type) {
+  switch (type) {
+    case PAYLOAD_TYPE_REQ: return "req";
+    case PAYLOAD_TYPE_RESPONSE: return "response";
+    case PAYLOAD_TYPE_TXT_MSG: return "txt_msg";
+    case PAYLOAD_TYPE_ACK: return "ack";
+    case PAYLOAD_TYPE_ADVERT: return "advert";
+    case PAYLOAD_TYPE_GRP_TXT: return "grp_txt";
+    case PAYLOAD_TYPE_GRP_DATA: return "grp_data";
+    case PAYLOAD_TYPE_ANON_REQ: return "anon_req";
+    case PAYLOAD_TYPE_PATH: return "path";
+    case PAYLOAD_TYPE_TRACE: return "trace";
+    case PAYLOAD_TYPE_MULTIPART: return "multipart";
+    case PAYLOAD_TYPE_CONTROL: return "control";
+    case PAYLOAD_TYPE_OTA: return "ota";
+    case 0x0D: return "reserved13";
+    case 0x0E: return "reserved14";
+    case PAYLOAD_TYPE_RAW_CUSTOM: return "raw_custom";
+    case FLOOD_PACKET_FILTER_ANY_TYPE: return "any";
+    default: return "invalid";
+  }
+}
+
+static bool parseFloodFilterPayloadType(const char* text, uint8_t& type) {
+  uint8_t numeric;
+  if (parseFloodFilterUnsigned(text, PH_TYPE_MASK, numeric)) {
+    type = numeric;
+    return true;
+  }
+  if (floodFilterAsciiStartsWith(text, "payload_type_")) text += strlen("payload_type_");
+  if (floodFilterAsciiEqual(text, "any")) type = FLOOD_PACKET_FILTER_ANY_TYPE;
+  else if (floodFilterAsciiEqual(text, "req")) type = PAYLOAD_TYPE_REQ;
+  else if (floodFilterAsciiEqual(text, "response") || floodFilterAsciiEqual(text, "resp")) type = PAYLOAD_TYPE_RESPONSE;
+  else if (floodFilterAsciiEqual(text, "txt_msg") || floodFilterAsciiEqual(text, "txt")) type = PAYLOAD_TYPE_TXT_MSG;
+  else if (floodFilterAsciiEqual(text, "ack")) type = PAYLOAD_TYPE_ACK;
+  else if (floodFilterAsciiEqual(text, "advert")) type = PAYLOAD_TYPE_ADVERT;
+  else if (floodFilterAsciiEqual(text, "grp_txt") || floodFilterAsciiEqual(text, "group_text")) type = PAYLOAD_TYPE_GRP_TXT;
+  else if (floodFilterAsciiEqual(text, "grp_data") || floodFilterAsciiEqual(text, "group_data")) type = PAYLOAD_TYPE_GRP_DATA;
+  else if (floodFilterAsciiEqual(text, "anon_req")) type = PAYLOAD_TYPE_ANON_REQ;
+  else if (floodFilterAsciiEqual(text, "path")) type = PAYLOAD_TYPE_PATH;
+  else if (floodFilterAsciiEqual(text, "trace")) type = PAYLOAD_TYPE_TRACE;
+  else if (floodFilterAsciiEqual(text, "multipart")) type = PAYLOAD_TYPE_MULTIPART;
+  else if (floodFilterAsciiEqual(text, "control")) type = PAYLOAD_TYPE_CONTROL;
+  else if (floodFilterAsciiEqual(text, "ota")) type = PAYLOAD_TYPE_OTA;
+  else if (floodFilterAsciiEqual(text, "raw") || floodFilterAsciiEqual(text, "raw_custom")) type = PAYLOAD_TYPE_RAW_CUSTOM;
+  else return false;
+  return true;
+}
+
+static bool parseFloodFilterHopSpec(const char* text, uint8_t& min_hops, uint8_t& max_hops) {
+  if (text == NULL || *text == 0) return false;
+  if (floodFilterAsciiEqual(text, "all")) {
+    min_hops = 0;
+    max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
+    return true;
+  }
+
+  char spec[12];
+  if (strlen(text) >= sizeof(spec)) return false;
+  strcpy(spec, text);
+  size_t len = strlen(spec);
+  if (len > 1 && spec[len - 1] == '+') {
+    spec[len - 1] = 0;
+    if (!parseFloodFilterUnsigned(spec, FLOOD_PACKET_FILTER_MAX_HOPS, min_hops)) return false;
+    max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
+    return true;
+  }
+
+  char* dash = strchr(spec, '-');
+  if (dash != NULL) {
+    *dash++ = 0;
+    if (!parseFloodFilterUnsigned(spec, FLOOD_PACKET_FILTER_MAX_HOPS, min_hops)
+        || !parseFloodFilterUnsigned(dash, FLOOD_PACKET_FILTER_MAX_HOPS, max_hops)) {
+      return false;
+    }
+    return min_hops <= max_hops;
+  }
+
+  if (!parseFloodFilterUnsigned(spec, FLOOD_PACKET_FILTER_MAX_HOPS, min_hops)) return false;
+  max_hops = min_hops;
+  return true;
+}
+
+static void formatFloodFilterHopSpec(char* dest, size_t dest_len, uint8_t min_hops, uint8_t max_hops) {
+  if (min_hops == 0 && max_hops == FLOOD_PACKET_FILTER_MAX_HOPS) {
+    snprintf(dest, dest_len, "all");
+  } else if (max_hops == FLOOD_PACKET_FILTER_MAX_HOPS) {
+    snprintf(dest, dest_len, "%u+", (uint32_t)min_hops);
+  } else if (min_hops == max_hops) {
+    snprintf(dest, dest_len, "%u", (uint32_t)min_hops);
+  } else {
+    snprintf(dest, dest_len, "%u-%u", (uint32_t)min_hops, (uint32_t)max_hops);
+  }
+}
+
+void MyMesh::loadFloodPacketFilters() {
+  memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  if (_fs == NULL || !_fs->exists(FLOOD_PACKET_FILTER_FILE)) return;
+
+  File file = openFloodChannelBlockRead(_fs, FLOOD_PACKET_FILTER_FILE);
+  if (!file) return;
+
+  FloodPacketFilterEntry loaded[FLOOD_PACKET_FILTER_SLOTS];
+  memset(loaded, 0, sizeof(loaded));
+  uint8_t magic[4];
+  uint8_t count = 0;
+  bool success = file.read(magic, sizeof(magic)) == sizeof(magic)
+      && memcmp(magic, "FPF1", sizeof(magic)) == 0
+      && file.read(&count, sizeof(count)) == sizeof(count)
+      && count <= FLOOD_PACKET_FILTER_SLOTS;
+
+  for (int i = 0; success && i < count; i++) {
+    uint8_t active = 0;
+    success = file.read(&active, sizeof(active)) == sizeof(active);
+    success = success && file.read(&loaded[i].payload_type, sizeof(loaded[i].payload_type)) == sizeof(loaded[i].payload_type);
+    success = success && file.read(&loaded[i].min_hops, sizeof(loaded[i].min_hops)) == sizeof(loaded[i].min_hops);
+    success = success && file.read(&loaded[i].max_hops, sizeof(loaded[i].max_hops)) == sizeof(loaded[i].max_hops);
+    loaded[i].active = active != 0;
+    if (success && loaded[i].active
+        && !((loaded[i].payload_type <= PH_TYPE_MASK
+                || loaded[i].payload_type == FLOOD_PACKET_FILTER_ANY_TYPE)
+            && loaded[i].min_hops <= loaded[i].max_hops
+            && loaded[i].max_hops <= FLOOD_PACKET_FILTER_MAX_HOPS)) {
+      success = false;
+    }
+  }
+  file.close();
+
+  // A truncated or invalid file fails open; filtering must never be enabled by corrupt bytes.
+  if (success) memcpy(flood_packet_filters, loaded, sizeof(flood_packet_filters));
+}
+
+bool MyMesh::saveFloodPacketFilters() {
+  if (_fs == NULL) return false;
+  File file = openFloodChannelBlockWrite(_fs, FLOOD_PACKET_FILTER_FILE);
+  if (!file) return false;
+
+  const uint8_t magic[4] = {'F', 'P', 'F', '1'};
+  uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
+  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
+      && file.write(&count, sizeof(count)) == sizeof(count);
+  for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    const auto& entry = flood_packet_filters[i];
+    uint8_t active = entry.active ? 1 : 0;
+    success = file.write(&active, sizeof(active)) == sizeof(active);
+    success = success && file.write(&entry.payload_type, sizeof(entry.payload_type)) == sizeof(entry.payload_type);
+    success = success && file.write(&entry.min_hops, sizeof(entry.min_hops)) == sizeof(entry.min_hops);
+    success = success && file.write(&entry.max_hops, sizeof(entry.max_hops)) == sizeof(entry.max_hops);
+  }
+  file.close();
+  return success;
+}
+
+bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
+  if (packet == NULL || !packet->isRouteFlood()) return false;
+  uint8_t type = packet->getPayloadType();
+  uint8_t hops = packet->getPathHashCount();
+  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    const auto& entry = flood_packet_filters[i];
+    if (entry.active
+        && (entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE || entry.payload_type == type)
+        && hops >= entry.min_hops && hops <= entry.max_hops) {
+      MESH_DEBUG_PRINTLN("allowPacketForward: flood.filter matched slot=%d type=%d hops=%d range=%d-%d",
+                         i + 1, type, hops, entry.min_hops, entry.max_hops);
+      return true;
+    }
+  }
+  return false;
+}
+
+void MyMesh::formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const {
+  if (index < 0 || index >= FLOOD_PACKET_FILTER_SLOTS || !flood_packet_filters[index].active) {
+    snprintf(reply, reply_len, "Err - empty filter slot");
+    return;
+  }
+  const auto& entry = flood_packet_filters[index];
+  char hops[12];
+  formatFloodFilterHopSpec(hops, sizeof(hops), entry.min_hops, entry.max_hops);
+  if (entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE) {
+    snprintf(reply, reply_len, "> %d type=any hops=%s route=flood", index + 1, hops);
+  } else {
+    snprintf(reply, reply_len, "> %d type=%s(%u) hops=%s route=flood", index + 1,
+             floodFilterPayloadTypeName(entry.payload_type), (uint32_t)entry.payload_type, hops);
+  }
+}
+
+void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
+  const char* selector = skipFloodFilterSpaces(args);
+  if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
+  if (*selector != 0) {
+    uint8_t slot;
+    if (!parseFloodFilterUnsigned(selector, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+      return;
+    }
+    formatFloodPacketFilterDetail(slot - 1, reply, 160);
+    return;
+  }
+
+  size_t used = (size_t)snprintf(reply, 160, ">");
+  int active_count = 0;
+  bool truncated = false;
+  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    const auto& entry = flood_packet_filters[i];
+    if (!entry.active) continue;
+    active_count++;
+    char hops[12];
+    char item[40];
+    formatFloodFilterHopSpec(hops, sizeof(hops), entry.min_hops, entry.max_hops);
+    snprintf(item, sizeof(item), " %d=%s@%s", i + 1,
+             floodFilterPayloadTypeName(entry.payload_type), hops);
+    size_t item_len = strlen(item);
+    if (used + item_len >= 156) {
+      truncated = true;
+      break;
+    }
+    memcpy(&reply[used], item, item_len + 1);
+    used += item_len;
+  }
+  if (active_count == 0) {
+    strcpy(reply, "> off");
+  } else if (truncated) {
+    StrHelper::strncpy(&reply[used], " ...", 160 - used);
+  }
+}
+
+void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
+  const char* cursor = skipFloodFilterSpaces(args);
+  int requested_slot = -1;
+  if (*cursor == '.') {
+    cursor++;
+    const char* slot_start = cursor;
+    while (*cursor >= '0' && *cursor <= '9') cursor++;
+    size_t slot_len = (size_t)(cursor - slot_start);
+    char slot_text[8];
+    if (slot_len == 0 || slot_len >= sizeof(slot_text)) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+      return;
+    }
+    memcpy(slot_text, slot_start, slot_len);
+    slot_text[slot_len] = 0;
+    uint8_t slot;
+    if (!parseFloodFilterUnsigned(slot_text, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+      return;
+    }
+    requested_slot = slot - 1;
+    if (*cursor != ' ') {
+      strcpy(reply, "Err - expected packet type and hops");
+      return;
+    }
+  }
+  cursor = skipFloodFilterSpaces(cursor);
+  if (strlen(cursor) >= 64) {
+    strcpy(reply, "Err - filter parameters too long");
+    return;
+  }
+
+  char params[64];
+  strcpy(params, cursor);
+  char* type_text = params;
+  char* separator = strchr(type_text, ' ');
+  if (separator == NULL) {
+    strcpy(reply, "Err - use: set flood.filter[.n] <type> <hops>");
+    return;
+  }
+  *separator++ = 0;
+  while (*separator == ' ') separator++;
+  char* hops_text = separator;
+  char* extra = strchr(hops_text, ' ');
+  if (extra != NULL) {
+    *extra++ = 0;
+    while (*extra == ' ') extra++;
+    if (*extra != 0) {
+      strcpy(reply, "Err - use one packet type and one hop expression");
+      return;
+    }
+  }
+
+  uint8_t payload_type;
+  uint8_t min_hops;
+  uint8_t max_hops;
+  if (!parseFloodFilterPayloadType(type_text, payload_type)) {
+    strcpy(reply, "Err - packet type must be name, any, or 0-15");
+    return;
+  }
+  if (!parseFloodFilterHopSpec(hops_text, min_hops, max_hops)) {
+    strcpy(reply, "Err - hops must be N, N+, N-M, or all (0-63)");
+    return;
+  }
+
+  int slot = requested_slot;
+  if (slot < 0) {
+    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+      const auto& entry = flood_packet_filters[i];
+      if (entry.active && entry.payload_type == payload_type
+          && entry.min_hops == min_hops && entry.max_hops == max_hops) {
+        slot = i;
+        break;
+      }
+    }
+  }
+  if (slot < 0) {
+    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+      if (!flood_packet_filters[i].active) {
+        slot = i;
+        break;
+      }
+    }
+  }
+  if (slot < 0) {
+    strcpy(reply, "Err - filter table full");
+    return;
+  }
+
+  FloodPacketFilterEntry previous = flood_packet_filters[slot];
+  auto& entry = flood_packet_filters[slot];
+  entry.active = true;
+  entry.payload_type = payload_type;
+  entry.min_hops = min_hops;
+  entry.max_hops = max_hops;
+  if (!saveFloodPacketFilters()) {
+    entry = previous;
+    strcpy(reply, "Err - unable to save flood filter");
+    return;
+  }
+
+  char detail[160];
+  formatFloodPacketFilterDetail(slot, detail, sizeof(detail));
+  snprintf(reply, 160, "OK - %s", detail[0] == '>' ? skipFloodFilterSpaces(detail + 1) : detail);
+}
+
+void MyMesh::deleteFloodPacketFilter(const char* args, char* reply) {
+  const char* selector = skipFloodFilterSpaces(args);
+  if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
+  if (floodFilterAsciiEqual(selector, "all")) {
+    FloodPacketFilterEntry previous[FLOOD_PACKET_FILTER_SLOTS];
+    memcpy(previous, flood_packet_filters, sizeof(previous));
+    memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+    if (!saveFloodPacketFilters()) {
+      memcpy(flood_packet_filters, previous, sizeof(flood_packet_filters));
+      strcpy(reply, "Err - unable to save flood filter");
+    } else {
+      strcpy(reply, "OK - all flood filters removed");
+    }
+    return;
+  }
+
+  uint8_t slot;
+  if (!parseFloodFilterUnsigned(selector, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
+    snprintf(reply, 160, "Err - use: del flood.filter.<1-%d>|all", FLOOD_PACKET_FILTER_SLOTS);
+    return;
+  }
+  int index = slot - 1;
+  if (!flood_packet_filters[index].active) {
+    strcpy(reply, "Err - empty filter slot");
+    return;
+  }
+  FloodPacketFilterEntry previous = flood_packet_filters[index];
+  memset(&flood_packet_filters[index], 0, sizeof(flood_packet_filters[index]));
+  if (!saveFloodPacketFilters()) {
+    flood_packet_filters[index] = previous;
+    strcpy(reply, "Err - unable to save flood filter");
+  } else {
+    strcpy(reply, "OK");
+  }
+}
+
+static bool parseFloodModerationUnsigned(const char* text, uint32_t maximum, uint32_t& value) {
+  if (text == NULL || *text == 0) return false;
+  uint32_t parsed = 0;
+  for (const char* p = text; *p; p++) {
+    if (*p < '0' || *p > '9') return false;
+    uint32_t digit = (uint32_t)(*p - '0');
+    if (digit > maximum || parsed > (maximum - digit) / 10U) return false;
+    parsed = parsed * 10U + digit;
+  }
+  value = parsed;
+  return true;
+}
+
+// Returns 1 for a token, 0 at end of input, and -1 for malformed/oversize input.
+static int takeFloodModerationToken(const char*& cursor, char* dest, size_t dest_len) {
+  cursor = skipFloodFilterSpaces(cursor);
+  if (*cursor == 0) return 0;
+  char quote = 0;
+  if (*cursor == '\'' || *cursor == '"') quote = *cursor++;
+  const char* start = cursor;
+  if (quote) {
+    while (*cursor && *cursor != quote) cursor++;
+    if (*cursor != quote) return -1;
+  } else {
+    while (*cursor && *cursor != ' ') cursor++;
+  }
+  size_t len = (size_t)(cursor - start);
+  if (len >= dest_len) return -1;
+  memcpy(dest, start, len);
+  dest[len] = 0;
+  if (quote) {
+    cursor++;
+    if (*cursor != 0 && *cursor != ' ') return -1;
+  }
+  return 1;
+}
+
+static bool parseFloodModerationChannel(const char* text, uint8_t secret[PUB_KEY_SIZE],
+                                        uint8_t& key_len, uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN],
+                                        char* name, size_t name_len) {
+  if (text == NULL || *text == 0) return false;
+  memset(secret, 0, PUB_KEY_SIZE);
+  if (floodFilterAsciiEqual(text, "public")) {
+    key_len = CIPHER_KEY_SIZE;
+    memcpy(secret, FLOOD_PUBLIC_CHANNEL_SECRET, sizeof(FLOOD_PUBLIC_CHANNEL_SECRET));
+    StrHelper::strncpy(name, "public", name_len);
+  } else if (text[0] == '#' && text[1] != 0) {
+    key_len = CIPHER_KEY_SIZE;
+    mesh::Utils::sha256(secret, key_len, (const uint8_t*)text, strlen(text));
+    StrHelper::strncpy(name, text, name_len);
+  } else {
+    size_t hex_len = strlen(text);
+    if (hex_len != CIPHER_KEY_SIZE * 2 && hex_len != PUB_KEY_SIZE * 2) return false;
+    for (size_t i = 0; i < hex_len; i++) {
+      if (!mesh::Utils::isHexChar(text[i])) return false;
+    }
+    key_len = (uint8_t)(hex_len / 2);
+    if (!mesh::Utils::fromHex(secret, key_len, text)) return false;
+    mesh::Utils::sha256(hash_prefix, FLOOD_CHANNEL_BLOCK_PREFIX_LEN, secret, key_len);
+    char prefix_hex[FLOOD_CHANNEL_BLOCK_PREFIX_LEN * 2 + 1];
+    mesh::Utils::toHex(prefix_hex, hash_prefix, FLOOD_CHANNEL_BLOCK_PREFIX_LEN);
+    snprintf(name, name_len, "key:%s", prefix_hex);
+  }
+  mesh::Utils::sha256(hash_prefix, FLOOD_CHANNEL_BLOCK_PREFIX_LEN, secret, key_len);
+  return true;
+}
+
+static bool parseFloodModerationPath(const char* text, uint8_t& hash_size, uint8_t& path_hops,
+                                     uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]) {
+  memset(path, 0, FLOOD_GROUP_MODERATION_PATH_BYTES_MAX);
+  if (text == NULL || *text == 0 || strcmp(text, "*") == 0) {
+    hash_size = 0;
+    path_hops = 0;
+    return text != NULL && *text != 0;
+  }
+  if (strlen(text) >= 32) return false;
+  char input[32];
+  strcpy(input, text);
+  char* token = input;
+  uint8_t parsed_size = 0;
+  uint8_t count = 0;
+  while (token != NULL) {
+    char* comma = strchr(token, ',');
+    if (comma) *comma = 0;
+    size_t hex_len = strlen(token);
+    if (hex_len != 2 && hex_len != 4 && hex_len != 6) return false;
+    uint8_t token_size = (uint8_t)(hex_len / 2);
+    if ((parsed_size != 0 && parsed_size != token_size)
+        || count >= FLOOD_GROUP_MODERATION_PATH_HOPS_MAX) return false;
+    for (size_t i = 0; i < hex_len; i++) {
+      if (!mesh::Utils::isHexChar(token[i])) return false;
+    }
+    parsed_size = token_size;
+    if (!mesh::Utils::fromHex(&path[count * parsed_size], parsed_size, token)) return false;
+    count++;
+    token = comma ? comma + 1 : NULL;
+  }
+  if (count == 0) return false;
+  hash_size = parsed_size;
+  path_hops = count;
+  return true;
+}
+
+static void formatFloodModerationPath(char* dest, size_t dest_len, uint8_t hash_size, uint8_t path_hops,
+                                      const uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]) {
+  if (hash_size == 0 || path_hops == 0) {
+    StrHelper::strncpy(dest, "*", dest_len);
+    return;
+  }
+  size_t used = 0;
+  dest[0] = 0;
+  for (uint8_t i = 0; i < path_hops; i++) {
+    char hop[7];
+    mesh::Utils::toHex(hop, &path[i * hash_size], hash_size);
+    int written = snprintf(&dest[used], dest_len - used, "%s%s", i == 0 ? "" : ",", hop);
+    if (written < 0 || (size_t)written >= dest_len - used) {
+      dest[dest_len - 1] = 0;
+      return;
+    }
+    used += (size_t)written;
+  }
+}
+
+static bool floodModerationSenderNameValid(const char* sender) {
+  if (sender == NULL || *sender == 0 || strlen(sender) >= FLOOD_GROUP_MODERATION_NAME_LEN) return false;
+  if (strcmp(sender, "*") == 0) return true;
+  for (const char* p = sender; *p; p++) {
+    if (*p == ':' || *p == '\r' || *p == '\n' || (uint8_t)*p < 0x20) return false;
+  }
+  return true;
+}
+
+static bool floodModerationPathMatches(const mesh::Packet* packet, uint8_t hash_size, uint8_t path_hops,
+                                       const uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]) {
+  if (path_hops == 0) return true;
+  if (packet == NULL || packet->getPathHashSize() != hash_size
+      || packet->getPathHashCount() < path_hops) return false;
+  return memcmp(packet->path, path, path_hops * hash_size) == 0;
+}
+
+void MyMesh::loadFloodGroupModeration() {
+  memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
+  if (_fs == NULL || !_fs->exists(FLOOD_GROUP_MODERATION_FILE)) return;
+  File file = openFloodChannelBlockRead(_fs, FLOOD_GROUP_MODERATION_FILE);
+  if (!file) return;
+
+  FloodGroupModerationEntry loaded[FLOOD_GROUP_MODERATION_SLOTS];
+  memset(loaded, 0, sizeof(loaded));
+  uint8_t magic[4];
+  uint8_t count = 0;
+  bool success = file.read(magic, sizeof(magic)) == sizeof(magic)
+      && memcmp(magic, "FGM1", sizeof(magic)) == 0
+      && file.read(&count, sizeof(count)) == sizeof(count)
+      && count <= FLOOD_GROUP_MODERATION_SLOTS;
+  for (int i = 0; success && i < count; i++) {
+    auto& entry = loaded[i];
+    uint8_t active = 0;
+    success = file.read(&active, sizeof(active)) == sizeof(active);
+    success = success && file.read(&entry.key_len, sizeof(entry.key_len)) == sizeof(entry.key_len);
+    success = success && file.read(entry.secret, sizeof(entry.secret)) == sizeof(entry.secret);
+    success = success && file.read((uint8_t*)entry.channel_name, sizeof(entry.channel_name)) == sizeof(entry.channel_name);
+    success = success && file.read((uint8_t*)entry.sender, sizeof(entry.sender)) == sizeof(entry.sender);
+    success = success && file.read(&entry.path_hash_size, sizeof(entry.path_hash_size)) == sizeof(entry.path_hash_size);
+    success = success && file.read(&entry.path_hops, sizeof(entry.path_hops)) == sizeof(entry.path_hops);
+    success = success && file.read(entry.path, sizeof(entry.path)) == sizeof(entry.path);
+    success = success && file.read(&entry.max_hops, sizeof(entry.max_hops)) == sizeof(entry.max_hops);
+    success = success && file.read((uint8_t*)&entry.rate_per_minute, sizeof(entry.rate_per_minute)) == sizeof(entry.rate_per_minute);
+    entry.channel_name[sizeof(entry.channel_name) - 1] = 0;
+    entry.sender[sizeof(entry.sender) - 1] = 0;
+    entry.active = active != 0;
+    if (success && entry.active) {
+      bool path_valid = (entry.path_hops == 0 && entry.path_hash_size == 0)
+          || (entry.path_hops >= 1 && entry.path_hops <= FLOOD_GROUP_MODERATION_PATH_HOPS_MAX
+              && entry.path_hash_size >= 1 && entry.path_hash_size <= 3);
+      bool hops_valid = entry.max_hops == FLOOD_GROUP_MODERATION_HOPS_ALL
+          || entry.max_hops <= FLOOD_PACKET_FILTER_MAX_HOPS;
+      success = (entry.key_len == CIPHER_KEY_SIZE || entry.key_len == PUB_KEY_SIZE)
+          && entry.channel_name[0] != 0 && floodModerationSenderNameValid(entry.sender)
+          && path_valid && hops_valid;
+      if (success) {
+        mesh::Utils::sha256(entry.hash_prefix, sizeof(entry.hash_prefix), entry.secret, entry.key_len);
+      }
+    }
+  }
+  file.close();
+  // As with the general table, malformed persistence fails open.
+  if (success) memcpy(flood_group_moderation, loaded, sizeof(flood_group_moderation));
+}
+
+bool MyMesh::saveFloodGroupModeration() {
+  if (_fs == NULL) return false;
+  File file = openFloodChannelBlockWrite(_fs, FLOOD_GROUP_MODERATION_FILE);
+  if (!file) return false;
+  const uint8_t magic[4] = {'F', 'G', 'M', '1'};
+  uint8_t count = FLOOD_GROUP_MODERATION_SLOTS;
+  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
+      && file.write(&count, sizeof(count)) == sizeof(count);
+  for (int i = 0; success && i < FLOOD_GROUP_MODERATION_SLOTS; i++) {
+    const auto& entry = flood_group_moderation[i];
+    uint8_t active = entry.active ? 1 : 0;
+    success = file.write(&active, sizeof(active)) == sizeof(active);
+    success = success && file.write(&entry.key_len, sizeof(entry.key_len)) == sizeof(entry.key_len);
+    success = success && file.write(entry.secret, sizeof(entry.secret)) == sizeof(entry.secret);
+    success = success && file.write((const uint8_t*)entry.channel_name, sizeof(entry.channel_name)) == sizeof(entry.channel_name);
+    success = success && file.write((const uint8_t*)entry.sender, sizeof(entry.sender)) == sizeof(entry.sender);
+    success = success && file.write(&entry.path_hash_size, sizeof(entry.path_hash_size)) == sizeof(entry.path_hash_size);
+    success = success && file.write(&entry.path_hops, sizeof(entry.path_hops)) == sizeof(entry.path_hops);
+    success = success && file.write(entry.path, sizeof(entry.path)) == sizeof(entry.path);
+    success = success && file.write(&entry.max_hops, sizeof(entry.max_hops)) == sizeof(entry.max_hops);
+    success = success && file.write((const uint8_t*)&entry.rate_per_minute, sizeof(entry.rate_per_minute)) == sizeof(entry.rate_per_minute);
+  }
+  file.close();
+  return success;
+}
+
+bool MyMesh::decodeFloodGroupPlainText(const mesh::Packet* packet, const uint8_t* secret, uint8_t key_len,
+                                       uint32_t& timestamp, char* sender, size_t sender_len) const {
+  if (sender != NULL && sender_len > 0) sender[0] = 0;
+  if (packet == NULL || secret == NULL || sender == NULL || sender_len < 2
+      || !packet->isRouteFlood() || packet->getPayloadType() != PAYLOAD_TYPE_GRP_TXT
+      || (key_len != CIPHER_KEY_SIZE && key_len != PUB_KEY_SIZE)
+      || packet->payload_len <= PATH_HASH_SIZE + CIPHER_MAC_SIZE) return false;
+
+  uint8_t channel_hash = 0;
+  mesh::Utils::sha256(&channel_hash, sizeof(channel_hash), secret, key_len);
+  if (packet->payload[0] != channel_hash) return false;
+
+  uint8_t data[MAX_PACKET_PAYLOAD];
+  int len = mesh::Utils::MACThenDecrypt(secret, data, &packet->payload[PATH_HASH_SIZE],
+                                        packet->payload_len - PATH_HASH_SIZE);
+  if (len <= 5 || (data[4] >> 2) != TXT_TYPE_PLAIN) return false;
+
+  memcpy(&timestamp, data, sizeof(timestamp));
+  const uint8_t* text = &data[5];
+  size_t text_len = (size_t)len - 5;
+  const uint8_t* colon = (const uint8_t*)memchr(text, ':', text_len);
+  if (colon == NULL) return false;
+
+  size_t parsed_len = (size_t)(colon - text);
+  while (parsed_len > 0 && text[parsed_len - 1] == ' ') parsed_len--;
+  if (parsed_len == 0 || parsed_len >= sender_len) return false;
+  for (size_t i = 0; i < parsed_len; i++) {
+    if (text[i] == '\r' || text[i] == '\n' || text[i] < 0x20) return false;
+  }
+  memcpy(sender, text, parsed_len);
+  sender[parsed_len] = 0;
+  return true;
+}
+
+bool MyMesh::shouldBlockFloodGroupTextForward(const mesh::Packet* packet) {
+  if (packet == NULL || !packet->isRouteFlood() || packet->getPayloadType() != PAYLOAD_TYPE_GRP_TXT
+      || packet->payload_len <= PATH_HASH_SIZE + CIPHER_MAC_SIZE) return false;
+
+  uint8_t cached_secret[PUB_KEY_SIZE];
+  uint8_t cached_key_len = 0;
+  bool cache_present = false;
+  bool cache_valid = false;
+  char decoded_sender[FLOOD_GROUP_MODERATION_NAME_LEN];
+  decoded_sender[0] = 0;
+  uint8_t hops = packet->getPathHashCount();
+  uint8_t rate_slots[FLOOD_GROUP_MODERATION_SLOTS];
+  uint8_t rate_slot_count = 0;
+  uint32_t now = _ms->getMillis();
+
+  for (int i = 0; i < FLOOD_GROUP_MODERATION_SLOTS; i++) {
+    auto& entry = flood_group_moderation[i];
+    if (!entry.active || packet->payload[0] != entry.hash_prefix[0]
+        || !floodModerationPathMatches(packet, entry.path_hash_size, entry.path_hops, entry.path)) continue;
+
+    bool same_cached_key = cache_present && cached_key_len == entry.key_len
+        && memcmp(cached_secret, entry.secret, entry.key_len) == 0;
+    if (!same_cached_key) {
+      cache_present = true;
+      cached_key_len = entry.key_len;
+      memcpy(cached_secret, entry.secret, entry.key_len);
+      cache_valid = false;
+      decoded_sender[0] = 0;
+
+      uint32_t ignored_timestamp = 0;
+      cache_valid = decodeFloodGroupPlainText(packet, entry.secret, entry.key_len,
+                                              ignored_timestamp, decoded_sender,
+                                              sizeof(decoded_sender));
+    }
+    if (!cache_valid
+        || (strcmp(entry.sender, "*") != 0 && !floodFilterAsciiEqual(entry.sender, decoded_sender))) continue;
+
+    bool rule_blocked = entry.max_hops != FLOOD_GROUP_MODERATION_HOPS_ALL && hops >= entry.max_hops;
+    if (entry.rate_per_minute != FLOOD_GROUP_MODERATION_RATE_UNLIMITED) {
+      uint16_t effective_count = (!entry.rate_window_active
+              || now - entry.rate_window_started >= 60000UL)
+          ? 0 : entry.rate_window_count;
+      if (entry.rate_per_minute == 0 || effective_count >= entry.rate_per_minute) {
+        rule_blocked = true;
+      }
+    }
+    if (rule_blocked) {
+      MESH_DEBUG_PRINTLN("allowPacketForward: flood.moderation slot=%d channel=%s sender=%s hops=%d rate=%d",
+                         i + 1, entry.channel_name, decoded_sender, hops, entry.rate_per_minute);
+      return true;
+    }
+    if (entry.rate_per_minute != FLOOD_GROUP_MODERATION_RATE_UNLIMITED) {
+      rate_slots[rate_slot_count++] = (uint8_t)i;
+    }
+  }
+
+  // All matching deny rules accepted the packet. Only now spend the quota for
+  // each applicable rate rule, so hop-blocked or otherwise denied packets do
+  // not reduce the number of messages this repeater may actually forward.
+  for (uint8_t i = 0; i < rate_slot_count; i++) {
+    auto& entry = flood_group_moderation[rate_slots[i]];
+    if (!entry.rate_window_active || now - entry.rate_window_started >= 60000UL) {
+      entry.rate_window_active = true;
+      entry.rate_window_started = now;
+      entry.rate_window_count = 0;
+    }
+    entry.rate_window_count++;
+  }
+  return false;
+}
+
+void MyMesh::formatFloodGroupModerationDetail(int index, char* reply, size_t reply_len) const {
+  if (index < 0 || index >= FLOOD_GROUP_MODERATION_SLOTS || !flood_group_moderation[index].active) {
+    snprintf(reply, reply_len, "Err - empty moderation slot");
+    return;
+  }
+  const auto& entry = flood_group_moderation[index];
+  char path[32];
+  char rate[24];
+  char hops[12];
+  formatFloodModerationPath(path, sizeof(path), entry.path_hash_size, entry.path_hops, entry.path);
+  if (entry.rate_per_minute == FLOOD_GROUP_MODERATION_RATE_UNLIMITED) strcpy(rate, "unlimited");
+  else snprintf(rate, sizeof(rate), "%u/min", (uint32_t)entry.rate_per_minute);
+  if (entry.max_hops == FLOOD_GROUP_MODERATION_HOPS_ALL) strcpy(hops, "all");
+  else snprintf(hops, sizeof(hops), "%u", (uint32_t)entry.max_hops);
+  snprintf(reply, reply_len, "> %d channel=%s sender=\"%s\" path=%s rate=%s hops=%s",
+           index + 1, entry.channel_name, entry.sender, path, rate, hops);
+}
+
+void MyMesh::formatFloodGroupModeration(const char* args, char* reply) const {
+  const char* selector = skipFloodFilterSpaces(args);
+  if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
+  if (*selector != 0) {
+    uint8_t slot;
+    if (!parseFloodFilterUnsigned(selector, FLOOD_GROUP_MODERATION_SLOTS, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - moderation slot must be 1-%d", FLOOD_GROUP_MODERATION_SLOTS);
+      return;
+    }
+    formatFloodGroupModerationDetail(slot - 1, reply, 160);
+    return;
+  }
+
+  size_t used = (size_t)snprintf(reply, 160, ">");
+  int active_count = 0;
+  bool truncated = false;
+  for (int i = 0; i < FLOOD_GROUP_MODERATION_SLOTS; i++) {
+    const auto& entry = flood_group_moderation[i];
+    if (!entry.active) continue;
+    active_count++;
+    char action[20];
+    if (entry.rate_per_minute == 0) strcpy(action, "drop");
+    else if (entry.rate_per_minute != FLOOD_GROUP_MODERATION_RATE_UNLIMITED) {
+      snprintf(action, sizeof(action), "r%u", (uint32_t)entry.rate_per_minute);
+    } else if (entry.max_hops != FLOOD_GROUP_MODERATION_HOPS_ALL) {
+      snprintf(action, sizeof(action), "h%u", (uint32_t)entry.max_hops);
+    } else {
+      strcpy(action, "off");
+    }
+    char item[72];
+    snprintf(item, sizeof(item), " %d=%s/%s@%s", i + 1, entry.channel_name, entry.sender, action);
+    size_t item_len = strlen(item);
+    if (used + item_len >= 156) {
+      truncated = true;
+      break;
+    }
+    memcpy(&reply[used], item, item_len + 1);
+    used += item_len;
+  }
+  if (active_count == 0) strcpy(reply, "> off");
+  else if (truncated) StrHelper::strncpy(&reply[used], " ...", 160 - used);
+}
+
+void MyMesh::setFloodGroupModeration(const char* args, char* reply) {
+  const char* cursor = skipFloodFilterSpaces(args);
+  int requested_slot = -1;
+  if (*cursor == '.') {
+    cursor++;
+    const char* slot_start = cursor;
+    while (*cursor >= '0' && *cursor <= '9') cursor++;
+    size_t slot_len = (size_t)(cursor - slot_start);
+    char slot_text[8];
+    if (slot_len == 0 || slot_len >= sizeof(slot_text)) {
+      snprintf(reply, 160, "Err - moderation slot must be 1-%d", FLOOD_GROUP_MODERATION_SLOTS);
+      return;
+    }
+    memcpy(slot_text, slot_start, slot_len);
+    slot_text[slot_len] = 0;
+    uint8_t slot;
+    if (!parseFloodFilterUnsigned(slot_text, FLOOD_GROUP_MODERATION_SLOTS, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - moderation slot must be 1-%d", FLOOD_GROUP_MODERATION_SLOTS);
+      return;
+    }
+    requested_slot = slot - 1;
+    if (*cursor != ' ') {
+      strcpy(reply, "Err - expected channel, sender, and action");
+      return;
+    }
+  }
+
+  char channel_text[80];
+  char sender[FLOOD_GROUP_MODERATION_NAME_LEN];
+  int token_result = takeFloodModerationToken(cursor, channel_text, sizeof(channel_text));
+  if (token_result != 1 || takeFloodModerationToken(cursor, sender, sizeof(sender)) != 1) {
+    strcpy(reply, "Err - use: set flood.moderation[.n] <channel> <sender> <action>");
+    return;
+  }
+  if (!floodModerationSenderNameValid(sender)) {
+    strcpy(reply, "Err - sender must be 1-31 chars; quote names with spaces");
+    return;
+  }
+
+  uint8_t path_hash_size = 0;
+  uint8_t path_hops = 0;
+  uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX];
+  memset(path, 0, sizeof(path));
+  uint8_t max_hops = FLOOD_GROUP_MODERATION_HOPS_ALL;
+  uint16_t rate_per_minute = FLOOD_GROUP_MODERATION_RATE_UNLIMITED;
+  bool action_set = false;
+  bool rate_set = false;
+  char option[48];
+  while ((token_result = takeFloodModerationToken(cursor, option, sizeof(option))) == 1) {
+    if (strcmp(option, "drop") == 0) {
+      if (rate_set) {
+        strcpy(reply, "Err - use only one rate/drop option");
+        return;
+      }
+      rate_per_minute = 0;
+      rate_set = true;
+      action_set = true;
+    } else if (strncmp(option, "rate=", 5) == 0) {
+      if (rate_set) {
+        strcpy(reply, "Err - use only one rate/drop option");
+        return;
+      }
+      char rate_text[24];
+      StrHelper::strncpy(rate_text, option + 5, sizeof(rate_text));
+      char* slash = strchr(rate_text, '/');
+      if (slash == NULL || !(strcmp(slash, "/min") == 0 || strcmp(slash, "/m") == 0)) {
+        strcpy(reply, "Err - rate format is X/min");
+        return;
+      }
+      *slash = 0;
+      uint32_t parsed;
+      if (!parseFloodModerationUnsigned(rate_text, FLOOD_GROUP_MODERATION_RATE_UNLIMITED - 1, parsed)) {
+        strcpy(reply, "Err - rate must be 0-65534/min");
+        return;
+      }
+      rate_per_minute = (uint16_t)parsed;
+      rate_set = true;
+      action_set = true;
+    } else if (strncmp(option, "hops=", 5) == 0) {
+      if (strcmp(option + 5, "all") == 0) {
+        max_hops = FLOOD_GROUP_MODERATION_HOPS_ALL;
+      } else {
+        uint32_t parsed;
+        if (!parseFloodModerationUnsigned(option + 5, FLOOD_PACKET_FILTER_MAX_HOPS, parsed)) {
+          strcpy(reply, "Err - hops must be all or 0-63");
+          return;
+        }
+        max_hops = (uint8_t)parsed;
+        action_set = true;
+      }
+    } else if (strncmp(option, "path=", 5) == 0) {
+      if (!parseFloodModerationPath(option + 5, path_hash_size, path_hops, path)) {
+        strcpy(reply, "Err - path is * or 1-3 comma-separated 1/2/3-byte hashes");
+        return;
+      }
+    } else {
+      strcpy(reply, "Err - options: drop rate=X/min hops=N|all path=H1[,H2,H3]");
+      return;
+    }
+  }
+  if (token_result < 0) {
+    strcpy(reply, "Err - malformed or overlong moderation option");
+    return;
+  }
+  if (!action_set) {
+    strcpy(reply, "Err - set drop, rate=X/min, or hops=N");
+    return;
+  }
+  if (strcmp(sender, "*") == 0 && rate_per_minute != FLOOD_GROUP_MODERATION_RATE_UNLIMITED) {
+    strcpy(reply, "Err - rate limiting requires an exact sender name");
+    return;
+  }
+
+  uint8_t secret[PUB_KEY_SIZE];
+  uint8_t key_len = 0;
+  uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
+  char channel_name[FLOOD_GROUP_MODERATION_NAME_LEN];
+  if (!parseFloodModerationChannel(channel_text, secret, key_len, hash_prefix,
+                                   channel_name, sizeof(channel_name))) {
+    strcpy(reply, "Err - channel must be public, #channel, or 128/256-bit hex key");
+    return;
+  }
+
+  int slot = requested_slot;
+  if (slot < 0) {
+    for (int i = 0; i < FLOOD_GROUP_MODERATION_SLOTS; i++) {
+      const auto& entry = flood_group_moderation[i];
+      if (entry.active && entry.key_len == key_len && memcmp(entry.secret, secret, key_len) == 0
+          && floodFilterAsciiEqual(entry.sender, sender)
+          && entry.path_hash_size == path_hash_size && entry.path_hops == path_hops
+          && memcmp(entry.path, path, sizeof(path)) == 0) {
+        slot = i;
+        break;
+      }
+    }
+  }
+  if (slot < 0) {
+    for (int i = 0; i < FLOOD_GROUP_MODERATION_SLOTS; i++) {
+      if (!flood_group_moderation[i].active) {
+        slot = i;
+        break;
+      }
+    }
+  }
+  if (slot < 0) {
+    strcpy(reply, "Err - moderation table full");
+    return;
+  }
+
+  FloodGroupModerationEntry previous = flood_group_moderation[slot];
+  auto& entry = flood_group_moderation[slot];
+  memset(&entry, 0, sizeof(entry));
+  entry.active = true;
+  entry.key_len = key_len;
+  memcpy(entry.hash_prefix, hash_prefix, sizeof(entry.hash_prefix));
+  memcpy(entry.secret, secret, sizeof(entry.secret));
+  StrHelper::strncpy(entry.channel_name, channel_name, sizeof(entry.channel_name));
+  StrHelper::strncpy(entry.sender, sender, sizeof(entry.sender));
+  entry.path_hash_size = path_hash_size;
+  entry.path_hops = path_hops;
+  memcpy(entry.path, path, sizeof(entry.path));
+  entry.max_hops = max_hops;
+  entry.rate_per_minute = rate_per_minute;
+  if (!saveFloodGroupModeration()) {
+    entry = previous;
+    strcpy(reply, "Err - unable to save moderation rule");
+    return;
+  }
+  char detail[160];
+  formatFloodGroupModerationDetail(slot, detail, sizeof(detail));
+  snprintf(reply, 160, "OK - %s", detail[0] == '>' ? skipFloodFilterSpaces(detail + 1) : detail);
+}
+
+void MyMesh::deleteFloodGroupModeration(const char* args, char* reply) {
+  const char* selector = skipFloodFilterSpaces(args);
+  if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
+  if (floodFilterAsciiEqual(selector, "all")) {
+    FloodGroupModerationEntry previous[FLOOD_GROUP_MODERATION_SLOTS];
+    memcpy(previous, flood_group_moderation, sizeof(previous));
+    memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
+    if (!saveFloodGroupModeration()) {
+      memcpy(flood_group_moderation, previous, sizeof(flood_group_moderation));
+      strcpy(reply, "Err - unable to save moderation rules");
+    } else {
+      strcpy(reply, "OK - all moderation rules removed");
+    }
+    return;
+  }
+  uint8_t slot;
+  if (!parseFloodFilterUnsigned(selector, FLOOD_GROUP_MODERATION_SLOTS, slot) || slot == 0) {
+    snprintf(reply, 160, "Err - use: del flood.moderation.<1-%d>|all", FLOOD_GROUP_MODERATION_SLOTS);
+    return;
+  }
+  int index = slot - 1;
+  if (!flood_group_moderation[index].active) {
+    strcpy(reply, "Err - empty moderation slot");
+    return;
+  }
+  FloodGroupModerationEntry previous = flood_group_moderation[index];
+  memset(&flood_group_moderation[index], 0, sizeof(flood_group_moderation[index]));
+  if (!saveFloodGroupModeration()) {
+    flood_group_moderation[index] = previous;
+    strcpy(reply, "Err - unable to save moderation rules");
+  } else {
+    strcpy(reply, "OK");
+  }
+}
+
+void MyMesh::loadClockSyncPrefs() {
+  clock_sync_mesh_enabled = false;
+  clock_sync_internet_enabled = false;
+  clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
+  clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
+
+  if (_fs != NULL && _fs->exists(CLOCK_SYNC_PREFS_FILE)) {
+    File file = openFloodChannelBlockRead(_fs, CLOCK_SYNC_PREFS_FILE);
+    if (file) {
+      uint8_t magic[4];
+      uint8_t mesh_enabled = 0;
+      uint8_t internet_enabled = 0;
+      uint8_t required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
+      uint32_t drift_seconds = 0;
+      bool valid = file.read(magic, sizeof(magic)) == sizeof(magic);
+      valid = valid && memcmp(magic, "CTS3", sizeof(magic)) == 0
+          && file.read(&mesh_enabled, sizeof(mesh_enabled)) == sizeof(mesh_enabled)
+          && file.read(&internet_enabled, sizeof(internet_enabled)) == sizeof(internet_enabled)
+          && file.read((uint8_t*)&drift_seconds, sizeof(drift_seconds)) == sizeof(drift_seconds)
+          && file.read(&required_samples, sizeof(required_samples)) == sizeof(required_samples);
+      valid = valid && mesh_enabled <= 1 && internet_enabled <= 1
+          && drift_seconds >= CLOCK_SYNC_DRIFT_MIN_SECONDS
+          && drift_seconds <= CLOCK_SYNC_DRIFT_MAX_SECONDS
+          && required_samples >= CLOCK_SYNC_REQUIRED_SAMPLES_MIN
+          && required_samples <= CLOCK_SYNC_REQUIRED_SAMPLES_MAX;
+      file.close();
+      if (valid) {
+        clock_sync_mesh_enabled = mesh_enabled != 0;
+        clock_sync_internet_enabled = internet_enabled != 0;
+        clock_sync_drift_seconds = drift_seconds;
+        clock_sync_required_samples = required_samples;
+      }
+    }
+  }
+  resetClockSyncAttempt();
+}
+
+bool MyMesh::saveClockSyncPrefs() {
+  if (_fs == NULL) return false;
+  File file = openFloodChannelBlockWrite(_fs, CLOCK_SYNC_PREFS_FILE);
+  if (!file) return false;
+  const uint8_t magic[4] = {'C', 'T', 'S', '3'};
+  const uint8_t mesh_enabled = clock_sync_mesh_enabled ? 1 : 0;
+  const uint8_t internet_enabled = clock_sync_internet_enabled ? 1 : 0;
+  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
+      && file.write(&mesh_enabled, sizeof(mesh_enabled)) == sizeof(mesh_enabled)
+      && file.write(&internet_enabled, sizeof(internet_enabled)) == sizeof(internet_enabled)
+      && file.write((const uint8_t*)&clock_sync_drift_seconds,
+                    sizeof(clock_sync_drift_seconds)) == sizeof(clock_sync_drift_seconds)
+      && file.write(&clock_sync_required_samples,
+                    sizeof(clock_sync_required_samples)) == sizeof(clock_sync_required_samples);
+  file.close();
+  return success;
+}
+
+void MyMesh::resetClockSyncAttempt() {
+  clock_sync_complete = false;
+  clock_sync_internet_pending = false;
+  clock_sync_last_result = CLOCK_SYNC_RESULT_WAITING;
+  clock_sync_last_source = CLOCK_SYNC_SOURCE_NONE;
+  clock_sync_last_sample_count = 0;
+  clock_sync_last_fresh_count = 0;
+  clock_sync_last_required_count = clock_sync_required_samples;
+  clock_sync_last_estimate = 0;
+  clock_sync_last_abs_drift = 0;
+  clock_sync_internet_requested_millis = 0;
+  clock_sync_next_attempt_uptime = uptime_millis < CLOCK_SYNC_STARTUP_DELAY_MILLIS
+      ? CLOCK_SYNC_STARTUP_DELAY_MILLIS : uptime_millis;
+}
+
+static const char* clockSyncMeshSuppressionName(uint8_t source) {
+  switch (source) {
+    case CLOCK_SYNC_MESH_SUPPRESS_CLI: return "cli";
+    case CLOCK_SYNC_MESH_SUPPRESS_GPS: return "gps";
+    case CLOCK_SYNC_MESH_SUPPRESS_INTERNET: return "internet";
+    default: return "none";
+  }
+}
+
+void MyMesh::suppressMeshClockSyncForBoot(uint8_t source) {
+  if (source == CLOCK_SYNC_MESH_SUPPRESS_NONE
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return;
+
+  clock_sync_mesh_suppressed_by = source;
+  memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
+  MESH_DEBUG_PRINTLN("Clock sync: LoRa estimate suppressed by %s until reboot",
+                     clockSyncMeshSuppressionName(source));
+}
+
+void MyMesh::onManualClockSet() {
+  suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_CLI);
+}
+
+void MyMesh::checkGpsClockSyncOverride() {
+  LocationProvider* location = sensors.getLocationProvider();
+  if (location != NULL && location->consumeTimeSyncApplied()) {
+    suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_GPS);
+  }
+}
+
+static void deriveClockSyncPathId(const mesh::Packet* packet,
+                                  uint8_t path_id[CLOCK_SYNC_PATH_ID_SIZE]) {
+  uint8_t material[2 + MAX_PATH_SIZE];
+  uint8_t count = packet->getPathHashCount();
+  uint8_t path_bytes = packet->getPathByteLen();
+  // All zero-hop receptions represent the same empty route, regardless of the
+  // otherwise-unused hash-size bits in path_len.
+  material[0] = count == 0 ? 0 : packet->getPathHashSize();
+  material[1] = count;
+  if (path_bytes > 0) memcpy(&material[2], packet->path, path_bytes);
+  mesh::Utils::sha256(path_id, CLOCK_SYNC_PATH_ID_SIZE, material, 2 + path_bytes);
+}
+
+uint32_t MyMesh::estimateClockTransitMillis(const mesh::Packet* packet) const {
+  if (packet == NULL || _radio == NULL) return 0;
+
+  uint8_t hops = packet->getPathHashCount();
+  uint8_t hash_size = packet->getPathHashSize();
+  int base_length = packet->getRawLength() - packet->getPathByteLen();
+  if (base_length < 2) return 0;
+
+  // The origin sends the packet without a path entry. Each relay then appends
+  // one entry, waits for its flood jitter, and transmits the longer packet.
+  uint64_t total = _radio->getEstAirtimeFor(base_length);
+  const uint64_t maximum = (uint64_t)CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS * 1000ULL;
+  for (uint8_t relay = 1; relay <= hops; relay++) {
+    uint32_t airtime = _radio->getEstAirtimeFor(base_length + relay * hash_size);
+    if (_prefs.tx_delay_factor > 0.0f) {
+      // Flood forwarding selects uniformly from 0..5*t, where
+      // t=airtime*tx_delay_factor. Use its midpoint as the best expectation.
+      float expected_delay = (float)airtime * _prefs.tx_delay_factor * 2.5f;
+      if (expected_delay > 0.0f) total += (uint32_t)(expected_delay + 0.5f);
+    }
+    total += airtime;
+    if (total >= maximum) return (uint32_t)maximum;
+  }
+  return (uint32_t)total;
+}
+
+void MyMesh::recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[4], uint32_t epoch,
+                                   const mesh::Packet* packet) {
+  if (!clock_sync_mesh_enabled || clock_sync_complete
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE || source_id == NULL
+      || packet == NULL || !packet->isRouteFlood() || !clockSyncEpochIsValid(epoch)) return;
+
+  uint32_t transit_millis = estimateClockTransitMillis(packet);
+  uint32_t transit_seconds = (transit_millis + 500UL) / 1000UL;
+  uint32_t maximum = clockSyncMaximumValidEpoch();
+  if (epoch > maximum - transit_seconds) return;
+  epoch += transit_seconds;
+
+  uint8_t path_id[CLOCK_SYNC_PATH_ID_SIZE];
+  deriveClockSyncPathId(packet, path_id);
+  uint32_t now = _ms->getMillis();
+  uint32_t received_millis = _radio == NULL ? 0 : _radio->getLastRecvMillis();
+  // RadioLib records this immediately after reading the packet. Starting age
+  // there also accounts for signature/decryption/filter processing before this
+  // function runs. Fall back for radio backends that do not expose RX time.
+  if (received_millis == 0 || now - received_millis > 60000UL) received_millis = now;
+
+  int source_slot = -1;
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    const ClockSyncSample& sample = clock_sync_samples[i];
+    if (sample.active && sample.source_kind == source_kind
+        && memcmp(sample.source_id, source_id, sizeof(sample.source_id)) == 0) {
+      source_slot = i;
+      break;
+    }
+  }
+
+  if (source_slot >= 0) {
+    const ClockSyncSample& prior = clock_sync_samples[source_slot];
+    // An identical reception must not make old evidence look fresh.
+    if (prior.epoch == epoch
+        && memcmp(prior.path_id, path_id, sizeof(prior.path_id)) == 0) return;
+  }
+
+  // Every fresh vote must arrive through a distinct full received path. This
+  // also means only one zero-hop vote can be present at a time.
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    const ClockSyncSample& sample = clock_sync_samples[i];
+    if (i == source_slot || !sample.active
+        || now - sample.received_millis > CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) continue;
+    if (memcmp(sample.path_id, path_id, sizeof(sample.path_id)) == 0) return;
+  }
+
+  int slot = source_slot;
+  int reusable = -1;
+  int oldest = 0;
+  uint32_t oldest_age = 0;
+  for (int i = 0; slot < 0 && i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    const ClockSyncSample& sample = clock_sync_samples[i];
+    uint32_t age = sample.active ? now - sample.received_millis : 0;
+    if ((!sample.active || age > CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) && reusable < 0) reusable = i;
+    if (sample.active && age >= oldest_age) {
+      oldest_age = age;
+      oldest = i;
+    }
+  }
+  if (slot < 0) slot = reusable >= 0 ? reusable : oldest;
+
+  ClockSyncSample& sample = clock_sync_samples[slot];
+  sample.active = true;
+  sample.source_kind = source_kind;
+  memcpy(sample.source_id, source_id, sizeof(sample.source_id));
+  memcpy(sample.path_id, path_id, sizeof(sample.path_id));
+  sample.epoch = epoch;
+  sample.received_millis = received_millis;
+}
+
+void MyMesh::recordAcceptedFloodClockSample(const mesh::Packet* packet) {
+  if (!clock_sync_mesh_enabled || clock_sync_complete
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE || packet == NULL) return;
+
+  if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) {
+    recordPublicChannelClockSample(packet);
+  } else if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
+    // Mesh::onRecvPacket reaches allowPacketForward() for adverts only after
+    // verifying the Ed25519 signature over this identity and timestamp.
+    const size_t minimum = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+    if (packet->payload_len < minimum) return;
+    uint8_t source_id[4];
+    mesh::Utils::sha256(source_id, sizeof(source_id), packet->payload, PUB_KEY_SIZE);
+    uint32_t timestamp = 0;
+    memcpy(&timestamp, &packet->payload[PUB_KEY_SIZE], sizeof(timestamp));
+    recordClockSyncSample(1, source_id, timestamp, packet);
+  }
+}
+
+void MyMesh::recordPublicChannelClockSample(const mesh::Packet* packet) {
+  if (!clock_sync_mesh_enabled || clock_sync_complete
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return;
+  uint32_t timestamp = 0;
+  char sender[FLOOD_GROUP_MODERATION_NAME_LEN];
+  if (!decodeFloodGroupPlainText(packet, FLOOD_PUBLIC_CHANNEL_SECRET, CIPHER_KEY_SIZE,
+                                 timestamp, sender, sizeof(sender))) return;
+
+  // Treat ASCII case variants of the same display name as one (unverified) source.
+  for (char* p = sender; *p; p++) {
+    if (*p >= 'A' && *p <= 'Z') *p = (char)(*p - 'A' + 'a');
+  }
+  uint8_t source_id[4];
+  mesh::Utils::sha256(source_id, sizeof(source_id), (const uint8_t*)sender, strlen(sender));
+  recordClockSyncSample(2, source_id, timestamp, packet);
+}
+
+bool MyMesh::estimateMeshClock(uint32_t& estimate, uint8_t& fresh_count,
+                               uint8_t& agreeing_count, uint8_t& required_count) const {
+  uint32_t values[CLOCK_SYNC_SAMPLE_SLOTS];
+  uint8_t count = 0;
+  uint32_t now = _ms->getMillis();
+  uint32_t maximum = clockSyncMaximumValidEpoch();
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    const ClockSyncSample& sample = clock_sync_samples[i];
+    if (!sample.active) continue;
+    uint32_t age_millis = now - sample.received_millis;
+    if (age_millis > CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) continue;
+    uint32_t age_seconds = age_millis / 1000UL;
+    if (sample.epoch > maximum - age_seconds) continue;
+    values[count++] = sample.epoch + age_seconds;
+  }
+  mesh::ClockSyncConsensusResult result = mesh::evaluateClockSyncConsensus(
+      values, count, clock_sync_required_samples, CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS);
+  fresh_count = result.fresh_count;
+  agreeing_count = result.agreeing_count;
+  required_count = result.required_count;
+  estimate = result.estimate;
+  return result.consensus;
+}
+
+static uint32_t rebaseClockTimestamp(uint32_t timestamp, uint32_t old_now, uint32_t new_now) {
+  if (timestamp == 0) return 0;
+  uint32_t age = old_now >= timestamp ? old_now - timestamp : 0;
+  return new_now > age ? new_now - age : 1;
+}
+
+bool MyMesh::applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sample_count) {
+  if (!clockSyncEpochIsValid(estimate)) return false;
+#ifdef WITH_MQTT_BRIDGE
+  // Close the normal cross-core race where NTP can finish after checkClockSync()
+  // selected mesh fallback but before that estimate reaches the RTC.
+  if (source == CLOCK_SYNC_SOURCE_MESH && mqtt_bridge != NULL && mqtt_bridge->hasNtpTime()) {
+    suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_INTERNET);
+    return true;
+  }
+#endif
+  uint32_t old_now = getRTCClock()->getCurrentTime();
+  int64_t delta = (int64_t)estimate - (int64_t)old_now;
+  uint64_t magnitude = delta < 0 ? (uint64_t)(-delta) : (uint64_t)delta;
+
+  clock_sync_last_source = source;
+  clock_sync_last_sample_count = sample_count;
+  clock_sync_last_estimate = estimate;
+  clock_sync_last_abs_drift = magnitude > UINT32_MAX ? UINT32_MAX : (uint32_t)magnitude;
+  clock_sync_complete = true;
+  clock_sync_next_attempt_uptime = 0;
+
+  if (magnitude <= clock_sync_drift_seconds) {
+    clock_sync_last_result = CLOCK_SYNC_RESULT_WITHIN_DRIFT;
+    MESH_DEBUG_PRINTLN("Clock sync: within drift (%lu seconds, source=%u)",
+                       (unsigned long)clock_sync_last_abs_drift, (unsigned int)source);
+    return true;
+  }
+
+  getRTCClock()->setCurrentTime(estimate);
+  getRTCClock()->resetUniqueTime(estimate);
+  clock_sync_last_result = delta > 0
+      ? CLOCK_SYNC_RESULT_CORRECTED_FORWARD : CLOCK_SYNC_RESULT_CORRECTED_BACKWARD;
+
+#if MAX_NEIGHBOURS
+  for (int i = 0; i < MAX_NEIGHBOURS; i++) {
+    neighbours[i].heard_timestamp = rebaseClockTimestamp(neighbours[i].heard_timestamp,
+                                                         old_now, estimate);
+  }
+#endif
+  for (int i = 0; i < acl.getNumClients(); i++) {
+    ClientInfo* client = acl.getClientByIdx(i);
+    client->last_activity = rebaseClockTimestamp(client->last_activity, old_now, estimate);
+  }
+  discover_limiter.reset();
+  anon_limiter.reset();
+  refreshScheduledRadioState();
+
+  MESH_DEBUG_PRINTLN("Clock sync: corrected %s by %lu seconds (source=%u samples=%u)",
+                     delta > 0 ? "forward" : "backward",
+                     (unsigned long)clock_sync_last_abs_drift,
+                     (unsigned int)source, (unsigned int)sample_count);
+  return true;
+}
+
+void MyMesh::checkClockSync() {
+#ifdef WITH_MQTT_BRIDGE
+  // MQTT/WiFi builds already set the RTC as soon as an NTP server answers.
+  // Once that authoritative source succeeds, LoRa remains only a next-boot
+  // fallback and must not replace internet time later in this boot.
+  if (mqtt_bridge != NULL && mqtt_bridge->hasNtpTime()) {
+    suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_INTERNET);
+  }
+#endif
+
+  bool mesh_available = clock_sync_mesh_enabled
+      && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
+  if (clock_sync_complete || (!mesh_available && !clock_sync_internet_enabled)
+      || uptime_millis < clock_sync_next_attempt_uptime) return;
+
+#ifdef WITH_MQTT_BRIDGE
+  if (clock_sync_internet_enabled && mqtt_bridge != NULL && mqtt_bridge->isRunning()) {
+    if (clock_sync_internet_pending) {
+      uint32_t estimate = 0;
+      bool finished = false;
+      bool success = mqtt_bridge->takeNtpTimeEstimate(estimate, finished);
+      if (!finished && _ms->getMillis() - clock_sync_internet_requested_millis < 30000UL) return;
+      clock_sync_internet_pending = false;
+      if (success && applyClockEstimate(estimate, CLOCK_SYNC_SOURCE_INTERNET, 1)) return;
+      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+    } else if (mqtt_bridge->requestNtpTimeEstimate()) {
+      clock_sync_internet_pending = true;
+      clock_sync_internet_requested_millis = _ms->getMillis();
+      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_PENDING;
+      return;
+    } else {
+      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+    }
+  } else if (clock_sync_internet_enabled) {
+    clock_sync_internet_pending = false;
+    clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+  }
+#else
+  if (clock_sync_internet_enabled) {
+    clock_sync_internet_pending = false;
+    clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+  }
+#endif
+
+  if (mesh_available) {
+    uint32_t estimate = 0;
+    uint8_t fresh = 0;
+    uint8_t agreeing = 0;
+    uint8_t required = clock_sync_required_samples;
+    bool consensus = estimateMeshClock(estimate, fresh, agreeing, required);
+    clock_sync_last_fresh_count = fresh;
+    clock_sync_last_sample_count = agreeing;
+    clock_sync_last_required_count = required;
+    if (consensus && applyClockEstimate(estimate, CLOCK_SYNC_SOURCE_MESH, agreeing)) return;
+    clock_sync_last_result = fresh < clock_sync_required_samples
+        ? CLOCK_SYNC_RESULT_COLLECTING : CLOCK_SYNC_RESULT_NO_CONSENSUS;
+  }
+  clock_sync_next_attempt_uptime = uptime_millis + CLOCK_SYNC_RETRY_INTERVAL_MILLIS;
+}
+
+void MyMesh::formatClockSyncStatus(char* reply, size_t reply_len) const {
+  if (reply == NULL || reply_len == 0) return;
+  uint8_t fresh = 0;
+  uint32_t now = _ms->getMillis();
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    if (clock_sync_samples[i].active
+        && now - clock_sync_samples[i].received_millis <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) fresh++;
+  }
+  bool mesh_available = clock_sync_mesh_enabled
+      && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
+  const char* mesh_state = !clock_sync_mesh_enabled ? "off"
+      : (mesh_available ? "on"
+          : (clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_CLI
+              ? "suppressed-cli"
+              : (clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_GPS
+                  ? "suppressed-gps" : "suppressed-internet")));
+  if (!mesh_available && !clock_sync_internet_enabled) {
+    if (clock_sync_mesh_enabled) {
+      snprintf(reply, reply_len, "> mesh=%s until reboot, internet=off drift=%lus samples=%u",
+               mesh_state, (unsigned long)clock_sync_drift_seconds,
+               (unsigned int)clock_sync_required_samples);
+      return;
+    }
+    snprintf(reply, reply_len, "> off, drift=%lus", (unsigned long)clock_sync_drift_seconds);
+    return;
+  }
+
+  const char* result = "waiting";
+  switch (clock_sync_last_result) {
+    case CLOCK_SYNC_RESULT_COLLECTING: result = "collecting"; break;
+    case CLOCK_SYNC_RESULT_INTERNET_PENDING: result = "internet pending"; break;
+    case CLOCK_SYNC_RESULT_NO_CONSENSUS: result = "no consensus"; break;
+    case CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE: result = "internet unavailable"; break;
+    case CLOCK_SYNC_RESULT_WITHIN_DRIFT: result = "within drift"; break;
+    case CLOCK_SYNC_RESULT_CORRECTED_FORWARD: result = "corrected forward"; break;
+    case CLOCK_SYNC_RESULT_CORRECTED_BACKWARD: result = "corrected backward"; break;
+    default: break;
+  }
+  const char* source = clock_sync_last_source == CLOCK_SYNC_SOURCE_INTERNET ? "internet"
+      : (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH ? "mesh" : "none");
+  if (clock_sync_complete) {
+    if (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH) {
+      snprintf(reply, reply_len, "> %s %lus via %s epoch=%lu agree=%u/%u paths=%u mesh=%s",
+               result, (unsigned long)clock_sync_last_abs_drift, source,
+               (unsigned long)clock_sync_last_estimate,
+               (unsigned int)clock_sync_last_sample_count,
+               (unsigned int)clock_sync_last_required_count,
+               (unsigned int)clock_sync_last_fresh_count, mesh_state);
+    } else {
+      snprintf(reply, reply_len, "> %s %lus via %s, epoch=%lu drift=%lus mesh=%s",
+               result, (unsigned long)clock_sync_last_abs_drift, source,
+               (unsigned long)clock_sync_last_estimate,
+               (unsigned long)clock_sync_drift_seconds, mesh_state);
+    }
+  } else {
+    uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
+        ? clock_sync_next_attempt_uptime - uptime_millis : 0;
+    if (clock_sync_last_result == CLOCK_SYNC_RESULT_NO_CONSENSUS) {
+      snprintf(reply, reply_len,
+               "> no consensus, mesh=%s internet=%s agree=%u/%u paths=%u next=%lus",
+               mesh_state, clock_sync_internet_enabled ? "on" : "off",
+               (unsigned int)clock_sync_last_sample_count,
+               (unsigned int)clock_sync_last_required_count,
+               (unsigned int)clock_sync_last_fresh_count,
+               (unsigned long)((remaining_ms + 999ULL) / 1000ULL));
+    } else {
+      snprintf(reply, reply_len, "> %s, mesh=%s internet=%s drift=%lus paths=%u/%u next=%lus",
+               result, mesh_state,
+               clock_sync_internet_enabled ? "on" : "off",
+               (unsigned long)clock_sync_drift_seconds, (unsigned int)fresh,
+               (unsigned int)clock_sync_required_samples,
+               (unsigned long)((remaining_ms + 999ULL) / 1000ULL));
+    }
+  }
+}
+
 static void trimFloodChannelBlockSelector(const char* selector, char* dest, size_t dest_len) {
   selector = skipLocalSpaces(selector);
   StrHelper::strncpy(dest, selector == NULL ? "" : selector, dest_len);
@@ -4088,23 +5646,60 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
   snprintf(out, out_len, "> hs=%u hops=%u hex=%s", (uint32_t)hash_size, (uint32_t)hop_count, hex);
 }
 
-// Whitelist helper for region manager command perms
-static bool isRegionMgrAllowed(const char* cmd) {
+static bool commandFamilyMatches(const char* command, const char* family) {
+  size_t len = strlen(family);
+  if (strncmp(command, family, len) != 0) return false;
+  return command[len] == 0 || command[len] == ' ' || command[len] == '.';
+}
+
+static bool isCommonManagerReadOnlyAllowed(const char* cmd) {
   while (*cmd == ' ') cmd++; // skip leading spaces
-  // region commands (read + write region map)
-  if (memcmp(cmd, "region", 6) == 0) return true;
-  // read-only getters / status
-  if (memcmp(cmd, "get ", 4) == 0) return true;
-  if (memcmp(cmd, "ver", 3) == 0) return true;
-  if (memcmp(cmd, "board", 5) == 0) return true;
-  // "neighbors" (plural) is read-only; reject "neighbor.remove" by checking next char
-  if (memcmp(cmd, "neighbors", 9) == 0) return true;
-  // bare "clock" is read-only; "clock sync" must be denied
-  if (memcmp(cmd, "clock", 5) == 0 && memcmp(cmd, "clock sync", 10) != 0) return true;
+  if (commandFamilyMatches(cmd, "ver") || commandFamilyMatches(cmd, "board")
+      || commandFamilyMatches(cmd, "neighbors") || strcmp(cmd, "clock") == 0) return true;
   // sensor reads only
-  if (memcmp(cmd, "sensor get ", 11) == 0) return true;
-  if (memcmp(cmd, "sensor list", 11) == 0) return true;
-  return false;
+  if (commandFamilyMatches(cmd, "sensor get") || commandFamilyMatches(cmd, "sensor list")) return true;
+
+  // Keep delegated reads explicit. CommonCLI's generic `get` namespace also
+  // contains credentials (guest.password, WiFi/MQTT secrets, bridge.secret,
+  // and similar settings), so it must never be granted wholesale.
+  return commandFamilyMatches(cmd, "get role")
+      || commandFamilyMatches(cmd, "get public.key")
+      || commandFamilyMatches(cmd, "get clock.sync")
+      || commandFamilyMatches(cmd, "get battery.alert")
+      || commandFamilyMatches(cmd, "get rx.watchdog")
+      || commandFamilyMatches(cmd, "get recent.repeater")
+      || commandFamilyMatches(cmd, "get recent.repeaters")
+      || commandFamilyMatches(cmd, "get outpath")
+      || commandFamilyMatches(cmd, "get altpath");
+}
+
+// Whitelist helpers for delegated manager roles. Admins bypass both lists.
+static bool isRegionMgrAllowed(const char* cmd) {
+  while (*cmd == ' ') cmd++;
+  return commandFamilyMatches(cmd, "region") || isCommonManagerReadOnlyAllowed(cmd);
+}
+
+static bool isFilterMgrAllowed(const char* cmd) {
+  while (*cmd == ' ') cmd++;
+  if (isCommonManagerReadOnlyAllowed(cmd)) return true;
+  if (commandFamilyMatches(cmd, "get repeat")
+      || commandFamilyMatches(cmd, "get loop.detect")
+      || commandFamilyMatches(cmd, "get flood.max")
+      || commandFamilyMatches(cmd, "get flood.channel.data")
+      || commandFamilyMatches(cmd, "get flood.channel.block")
+      || commandFamilyMatches(cmd, "get flood.filter")
+      || commandFamilyMatches(cmd, "get flood.moderation")) return true;
+  // General payload/hop filters plus the existing keyed-channel and flood-hop gates.
+  return commandFamilyMatches(cmd, "set flood.filter")
+      || commandFamilyMatches(cmd, "del flood.filter")
+      || commandFamilyMatches(cmd, "set flood.moderation")
+      || commandFamilyMatches(cmd, "del flood.moderation")
+      || commandFamilyMatches(cmd, "set flood.channel.data")
+      || commandFamilyMatches(cmd, "set flood.channel.block")
+      || commandFamilyMatches(cmd, "del flood.channel.block")
+      || commandFamilyMatches(cmd, "set flood.max")
+      || commandFamilyMatches(cmd, "set loop.detect")
+      || commandFamilyMatches(cmd, "set repeat");
 }
 
 void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command, char *reply) {
@@ -4120,6 +5715,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       && (command_end[-1] == ' ' || command_end[-1] == '\t'
           || command_end[-1] == '\r' || command_end[-1] == '\n')) {
     *--command_end = 0;
+  }
+
+  if (region_load_active && sender && !sender->isAdmin() && !sender->isRegionMgr()) {
+    strcpy(reply, "Err - region load owned by admin/region manager");
+    return;
   }
 
   if (region_load_active) {
@@ -4173,17 +5773,128 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     command += 3;
   }
 
-  // Region managers are limited to read-only queries and region commands
-  // Admins are unrestricted
-  if (sender && !sender->isAdmin() && sender->isRegionMgr()) {
-    if (!isRegionMgrAllowed(command)) {
+  if (sender && !sender->isAdmin()) {
+    bool allowed = (sender->isRegionMgr() && isRegionMgrAllowed(command))
+        || (sender->isFilterMgr() && isFilterMgrAllowed(command));
+    if (!allowed) {
       strcpy(reply, "Err - not permitted");
       return;
     }
   }
 
   // handle ACL related commands
-  if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
+  if (commandFamilyMatches(command, "get flood.filter")) {
+    formatFloodPacketFilters(command + strlen("get flood.filter"), reply);
+  } else if (commandFamilyMatches(command, "set flood.filter")) {
+    setFloodPacketFilter(command + strlen("set flood.filter"), reply);
+  } else if (commandFamilyMatches(command, "del flood.filter")) {
+    deleteFloodPacketFilter(command + strlen("del flood.filter"), reply);
+  } else if (commandFamilyMatches(command, "get flood.moderation")) {
+    formatFloodGroupModeration(command + strlen("get flood.moderation"), reply);
+  } else if (commandFamilyMatches(command, "set flood.moderation")) {
+    setFloodGroupModeration(command + strlen("set flood.moderation"), reply);
+  } else if (commandFamilyMatches(command, "del flood.moderation")) {
+    deleteFloodGroupModeration(command + strlen("del flood.moderation"), reply);
+  } else if (strcmp(command, "get clock.sync") == 0
+          || strcmp(command, "get clock.sync.status") == 0) {
+    formatClockSyncStatus(reply, 160);
+  } else if (strcmp(command, "get clock.sync.mesh") == 0) {
+    if (clock_sync_mesh_enabled
+        && clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) {
+      sprintf(reply, "> on (suppressed by %s until reboot)",
+              clockSyncMeshSuppressionName(clock_sync_mesh_suppressed_by));
+    } else {
+      sprintf(reply, "> %s", clock_sync_mesh_enabled ? "on" : "off");
+    }
+  } else if (strcmp(command, "get clock.sync.internet") == 0) {
+#ifdef WITH_MQTT_BRIDGE
+    sprintf(reply, "> %s", clock_sync_internet_enabled ? "on" : "off");
+#else
+    sprintf(reply, "> %s (unavailable on this build)", clock_sync_internet_enabled ? "on" : "off");
+#endif
+  } else if (strcmp(command, "get clock.sync.drift") == 0) {
+    sprintf(reply, "> %lu", (unsigned long)clock_sync_drift_seconds);
+  } else if (strcmp(command, "get clock.sync.samples") == 0) {
+    sprintf(reply, "> %u", (unsigned int)clock_sync_required_samples);
+  } else if (strncmp(command, "set clock.sync.mesh ", 20) == 0) {
+    const char* value = command + 20;
+    bool enabled;
+    if (strcmp(value, "on") == 0) enabled = true;
+    else if (strcmp(value, "off") == 0) enabled = false;
+    else {
+      strcpy(reply, "Err - usage: set clock.sync.mesh <on|off>");
+      return;
+    }
+    bool previous = clock_sync_mesh_enabled;
+    clock_sync_mesh_enabled = enabled;
+    if (!saveClockSyncPrefs()) {
+      clock_sync_mesh_enabled = previous;
+      strcpy(reply, "Err - unable to save clock sync settings");
+    } else {
+      if (enabled && !previous) memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
+      resetClockSyncAttempt();
+      if (enabled && clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) {
+        sprintf(reply, "OK - enabled; suppressed by %s until reboot",
+                clockSyncMeshSuppressionName(clock_sync_mesh_suppressed_by));
+      } else {
+        strcpy(reply, enabled ? "OK - mesh clock sync enabled" : "OK - mesh clock sync disabled");
+      }
+    }
+  } else if (strncmp(command, "set clock.sync.internet ", 24) == 0) {
+    const char* value = command + 24;
+    bool enabled;
+    if (strcmp(value, "on") == 0) enabled = true;
+    else if (strcmp(value, "off") == 0) enabled = false;
+    else {
+      strcpy(reply, "Err - usage: set clock.sync.internet <on|off>");
+      return;
+    }
+    bool previous = clock_sync_internet_enabled;
+    clock_sync_internet_enabled = enabled;
+    if (!saveClockSyncPrefs()) {
+      clock_sync_internet_enabled = previous;
+      strcpy(reply, "Err - unable to save clock sync settings");
+    } else {
+      resetClockSyncAttempt();
+#ifdef WITH_MQTT_BRIDGE
+      strcpy(reply, enabled ? "OK - internet clock sync enabled" : "OK - internet clock sync disabled");
+#else
+      strcpy(reply, enabled ? "OK - enabled (internet unavailable on this build)" : "OK - internet clock sync disabled");
+#endif
+    }
+  } else if (strncmp(command, "set clock.sync.drift ", 21) == 0) {
+    uint32_t drift = 0;
+    if (!parseFloodModerationUnsigned(command + 21, CLOCK_SYNC_DRIFT_MAX_SECONDS, drift)
+        || drift < CLOCK_SYNC_DRIFT_MIN_SECONDS) {
+      strcpy(reply, "Err - drift must be 30-86400 seconds");
+    } else {
+      uint32_t previous = clock_sync_drift_seconds;
+      clock_sync_drift_seconds = drift;
+      if (!saveClockSyncPrefs()) {
+        clock_sync_drift_seconds = previous;
+        strcpy(reply, "Err - unable to save clock sync settings");
+      } else {
+        resetClockSyncAttempt();
+        sprintf(reply, "OK - clock drift threshold %lu seconds", (unsigned long)drift);
+      }
+    }
+  } else if (strncmp(command, "set clock.sync.samples ", 23) == 0) {
+    uint32_t required = 0;
+    if (!parseFloodModerationUnsigned(command + 23, CLOCK_SYNC_REQUIRED_SAMPLES_MAX, required)
+        || required < CLOCK_SYNC_REQUIRED_SAMPLES_MIN) {
+      strcpy(reply, "Err - samples must be 3-16");
+    } else {
+      uint8_t previous = clock_sync_required_samples;
+      clock_sync_required_samples = (uint8_t)required;
+      if (!saveClockSyncPrefs()) {
+        clock_sync_required_samples = previous;
+        strcpy(reply, "Err - unable to save clock sync settings");
+      } else {
+        resetClockSyncAttempt();
+        sprintf(reply, "OK - clock sync requires %u samples", (unsigned int)required);
+      }
+    }
+  } else if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
     char* hex = &command[8];
     char* sp = strchr(hex, ' ');   // look for separator char
     if (sp == NULL) {
@@ -4439,6 +6150,8 @@ void MyMesh::loop() {
   uint32_t now = millis();
   uptime_millis += now - last_millis;
   last_millis = now;
+  checkGpsClockSyncOverride();
+  checkClockSync();
 
 #ifdef WITH_MQTT_BRIDGE
   _alerter.onLoop(now);

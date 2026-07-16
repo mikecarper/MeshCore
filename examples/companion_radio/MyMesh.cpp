@@ -14,8 +14,10 @@ static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   return delay_ms > 30000UL ? 30000UL : delay_ms;
 }
 
+static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
+
 #ifndef RXPS_FIXED_ENABLED
-#define RXPS_FIXED_ENABLED 1
+#define RXPS_FIXED_ENABLED 0
 #endif
 #ifndef RXPS_FIXED_LEVEL
 #define RXPS_FIXED_LEVEL 2
@@ -350,11 +352,11 @@ static bool calcFixedRxPowerSaving(uint8_t sf, float bw, uint32_t* rx_us, uint32
   return true;
 }
 
-static bool applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+static mesh::RadioParamApplyResult applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   uint32_t rx_us, sleep_us;
   if (!calcFixedRxPowerSaving(sf, bw, &rx_us, &sleep_us)) {
     MESH_DEBUG_PRINTLN("RX Power Saving fixed profile invalid");
-    return false;
+    return mesh::RadioParamApplyResult::FAILED;
   }
 
   uint32_t timings[2] = {rx_us, sleep_us};
@@ -363,14 +365,17 @@ static bool applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) 
   // radio does not implement RX duty cycling. This matches the former
   // setParams()+setRxPowerSaving() behavior while retaining one atomic
   // transition on radios that do support it.
-  bool ok = radio_driver.setParams(freq, bw, sf, cr, supports_rxps ? timings : NULL);
+  mesh::RadioParamApplyResult result =
+      radio_driver.trySetParams(freq, bw, sf, cr, supports_rxps ? timings : NULL);
   MESH_DEBUG_PRINTLN("RX Power Saving fixed level %d p%d: %s (%lu/%lu us)",
                      RXPS_FIXED_LEVEL,
                      RXPS_FIXED_PREAMBLE,
-                     ok && supports_rxps ? "Enabled" : (ok ? "Unsupported" : "Apply failed"),
+                     result == mesh::RadioParamApplyResult::APPLIED
+                         ? (supports_rxps ? "Enabled" : "Unsupported")
+                         : (result == mesh::RadioParamApplyResult::BUSY ? "Busy" : "Apply failed"),
                      (unsigned long)rx_us,
                      (unsigned long)sleep_us);
-  return ok;
+  return result;
 }
 #endif
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
@@ -1115,6 +1120,13 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   saved_radio_apply_pending = false;
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
+  command_radio_apply_pending = false;
+  command_radio_freq = 0.0f;
+  command_radio_bw = 0.0f;
+  command_radio_sf = 0;
+  command_radio_cr = 0;
+  command_radio_repeat = 0;
+  command_radio_apply_deadline = 0;
   offline_queue_len = 0;
   app_target_ver = 0;
   clearPendingReqs();
@@ -1278,12 +1290,78 @@ void MyMesh::begin(bool has_display) {
 #endif
 }
 
-bool MyMesh::applySavedRadioParams() {
+mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
 #if RXPS_FIXED_ENABLED
-  return applyFixedRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  return applyFixedRadioParams(freq, bw, sf, cr);
 #else
-  return radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  return radio_driver.trySetParams(freq, bw, sf, cr);
 #endif
+}
+
+bool MyMesh::applySavedRadioParams() {
+  return tryApplyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr)
+      == mesh::RadioParamApplyResult::APPLIED;
+}
+
+void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat) {
+  _prefs.sf = sf;
+  _prefs.cr = cr;
+  _prefs.freq = freq;
+  _prefs.bw = bw;
+  _prefs.client_repeat = repeat;
+  savePrefs();
+
+  saved_radio_apply_pending = false;
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
+
+  MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d",
+                     (uint32_t)(freq * 1000.0f), (uint32_t)(bw * 1000.0f),
+                     (uint32_t)sf, (uint32_t)cr);
+  writeOKFrame();
+}
+
+void MyMesh::cancelPendingRadioParamApply() {
+  if (!command_radio_apply_pending) return;
+
+  command_radio_apply_pending = false;
+  command_radio_apply_deadline = 0;
+  // The requested tuple was not committed. Reassert the persisted tuple in
+  // case a failed hardware apply only restored part of the old configuration.
+  saved_radio_apply_pending = true;
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
+}
+
+void MyMesh::servicePendingRadioParamApply() {
+  if (!command_radio_apply_pending) return;
+  if (!_serial || !_serial->isConnected()) {
+    cancelPendingRadioParamApply();
+    return;
+  }
+
+  // Leave enough queue headroom for the eventual command response.
+  if (_serial->isWriteBusy()) return;
+
+  mesh::RadioParamApplyResult result = tryApplyRadioParams(
+      command_radio_freq, command_radio_bw, command_radio_sf, command_radio_cr);
+  if (result == mesh::RadioParamApplyResult::APPLIED) {
+    float freq = command_radio_freq;
+    float bw = command_radio_bw;
+    uint8_t sf = command_radio_sf;
+    uint8_t cr = command_radio_cr;
+    uint8_t repeat = command_radio_repeat;
+    command_radio_apply_pending = false;
+    command_radio_apply_deadline = 0;
+    finishRadioParamApply(freq, bw, sf, cr, repeat);
+  } else if (result == mesh::RadioParamApplyResult::FAILED) {
+    cancelPendingRadioParamApply();
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+  } else if (command_radio_apply_deadline == _ms->getMillis()
+             || millisHasNowPassed(command_radio_apply_deadline)) {
+    cancelPendingRadioParamApply();
+    writeErrFrame(ERR_CODE_BAD_STATE);
+  }
 }
 
 const char *MyMesh::getNodeName() {
@@ -1408,6 +1486,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
     _iter_started = false; // stop any left-over ContactsIterator
+    cancelPendingRadioParamApply();
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
     out_frame[i++] = ADV_TYPE_CHAT; // what this node Advert identifies as (maybe node's pronouns too?? :-)
@@ -1809,29 +1888,34 @@ void MyMesh::handleCmdFrame(size_t len) {
         bw <= 500000) {
       float new_freq = (float)freq / 1000.0;
       float new_bw = (float)bw / 1000.0;
-#if RXPS_FIXED_ENABLED
-      bool applied = applyFixedRadioParams(new_freq, new_bw, sf, cr);
-#else
-      bool applied = radio_driver.setParams(new_freq, new_bw, sf, cr);
-#endif
-      if (!applied) {
-        // Persisted settings remain authoritative after a rejected change.
-        saved_radio_apply_pending = true;
-        radio_apply_retry_at = 0;
+      if (command_radio_apply_pending) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }
 
-      _prefs.sf = sf;
-      _prefs.cr = cr;
-      _prefs.freq = new_freq;
-      _prefs.bw = new_bw;
-      _prefs.client_repeat = repeat;
-      savePrefs();
-      MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
-                         (uint32_t)cr);
+      mesh::RadioParamApplyResult result = tryApplyRadioParams(new_freq, new_bw, sf, cr);
+      if (result == mesh::RadioParamApplyResult::BUSY) {
+        command_radio_apply_pending = true;
+        command_radio_freq = new_freq;
+        command_radio_bw = new_bw;
+        command_radio_sf = sf;
+        command_radio_cr = cr;
+        command_radio_repeat = repeat;
+        command_radio_apply_deadline = futureMillis(COMMAND_RADIO_APPLY_TIMEOUT_MS);
+        MESH_DEBUG_PRINTLN("Deferred CMD_SET_RADIO_PARAMS while radio is busy");
+        return;
+      }
+      if (result == mesh::RadioParamApplyResult::FAILED) {
+        // Persisted settings remain authoritative after a rejected change or
+        // a hardware apply that had to be rolled back.
+        saved_radio_apply_pending = true;
+        radio_apply_retry_at = 0;
+        radio_apply_failures = 0;
+        writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+        return;
+      }
 
-      writeOKFrame();
+      finishRadioParamApply(new_freq, new_bw, sf, cr, repeat);
     } else {
       MESH_DEBUG_PRINTLN("Error: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
@@ -1938,6 +2022,7 @@ void MyMesh::handleCmdFrame(size_t len) {
           self_id = identity;
           writeOKFrame();
           // re-load contacts, to invalidate ecdh shared_secrets
+          _iter_started = false;
           resetContacts();
           _store->loadContacts(this);
           updateGpsTelemetryPolicy();
@@ -2668,6 +2753,12 @@ void MyMesh::checkCLIRescueCmd() {
 
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
+  if (!_serial->isConnected()) {
+    _iter_started = false;
+    cancelPendingRadioParamApply();
+    return;
+  }
+
   if (len > 0) {
     handleCmdFrame(len);
   } else if (_iter_started              // check if our ContactsIterator is 'running'
@@ -2695,7 +2786,7 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
-  if (saved_radio_apply_pending && !hasOutbound()
+  if (!command_radio_apply_pending && saved_radio_apply_pending && !hasOutbound()
       && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at))) {
     // A power-saving wake can enter begin() with a complete packet already
     // waiting. Preserve that packet, then apply the persisted radio settings
@@ -2725,6 +2816,7 @@ void MyMesh::loop() {
   } else {
     checkSerialInterface();
   }
+  servicePendingRadioParamApply();
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
@@ -2755,7 +2847,10 @@ bool MyMesh::advert() {
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
   if (radio_driver.isWatchdogObserving() || radio_driver.isCalibratingNoiseFloor()) return true;
-  return hasQueuedWorkDue() || hasRetryWorkDue()
+  return (_serial != NULL && _serial->hasPendingIO())
+      || (_iter_started && _serial != NULL && _serial->isConnected())
+      || command_radio_apply_pending
+      || hasQueuedWorkDue() || hasRetryWorkDue()
       || (saved_radio_apply_pending
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
       || (dirty_contacts_expiry != 0 && millisHasNowPassed(dirty_contacts_expiry))

@@ -360,6 +360,11 @@ prompt_for_debug_build_settings() {
 }
 
 prompt_for_mqtt_bridge_build_setting() {
+  if [ -n "$SELECTED_TARGET" ] && [ "$(get_platform_for_env "$SELECTED_TARGET")" == "NRF52_PLATFORM" ]; then
+    MQTT_BRIDGE_OVERRIDE="off"
+    return 0
+  fi
+
   if [ -n "$SELECTED_TARGET" ] && is_mqtt_bridge_target "$SELECTED_TARGET"; then
     MQTT_BRIDGE_OVERRIDE="on"
     echo "MQTT bridge enabled by selected target: ${SELECTED_TARGET}"
@@ -1726,6 +1731,7 @@ build_firmware() {
   local env_platform
   local commit_hash
   local firmware_build_date
+  local firmware_build_epoch
   local firmware_version
   local firmware_version_string
   local firmware_filename
@@ -1742,7 +1748,8 @@ build_firmware() {
   fi
 
   commit_hash=$(git rev-parse --short HEAD)
-  firmware_build_date=$(date '+%d-%b-%Y')
+  firmware_build_date=$(date -u '+%d-%b-%Y')
+  firmware_build_epoch=$(date -u '+%s')
   firmware_version=${FIRMWARE_VERSION:-}
 
   if [ -z "$firmware_version" ]; then
@@ -1796,7 +1803,7 @@ build_firmware() {
     original_platformio_build_flags=""
   fi
 
-  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
+  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   disable_debug_flags
   apply_debug_overrides
   apply_mqtt_bridge_override

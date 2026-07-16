@@ -98,6 +98,9 @@ struct NeighbourInfo {
 #ifndef FIRMWARE_BUILD_DATE
   #define FIRMWARE_BUILD_DATE   "6 Jun 2026"
 #endif
+#ifndef FIRMWARE_BUILD_EPOCH
+  #define FIRMWARE_BUILD_EPOCH  0UL
+#endif
 
 #ifndef FIRMWARE_VERSION
   #define FIRMWARE_VERSION   "v1.17.0"
@@ -112,6 +115,40 @@ struct NeighbourInfo {
 #endif
 
 #define MAX_SCHEDULED_RADIO_SETTINGS (MAX_SCHEDULED_RADIO_SETTINGS_PER_TYPE * 2)
+
+#ifndef FLOOD_PACKET_FILTER_SLOTS
+  #define FLOOD_PACKET_FILTER_SLOTS 16
+#endif
+#define FLOOD_PACKET_FILTER_ANY_TYPE  0xFF
+#define FLOOD_PACKET_FILTER_MAX_HOPS  63
+
+#ifndef FLOOD_GROUP_MODERATION_SLOTS
+  #define FLOOD_GROUP_MODERATION_SLOTS 16
+#endif
+#define FLOOD_GROUP_MODERATION_NAME_LEN       32
+#define FLOOD_GROUP_MODERATION_PATH_HOPS_MAX  3
+#define FLOOD_GROUP_MODERATION_PATH_BYTES_MAX (FLOOD_GROUP_MODERATION_PATH_HOPS_MAX * 3)
+#define FLOOD_GROUP_MODERATION_HOPS_ALL       0xFF
+#define FLOOD_GROUP_MODERATION_RATE_UNLIMITED 0xFFFF
+
+#ifndef CLOCK_SYNC_SAMPLE_SLOTS
+  #define CLOCK_SYNC_SAMPLE_SLOTS 16
+#endif
+#define CLOCK_SYNC_REQUIRED_SAMPLES_MIN     3
+#define CLOCK_SYNC_REQUIRED_SAMPLES_MAX     CLOCK_SYNC_SAMPLE_SLOTS
+#define CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT 9
+#define CLOCK_SYNC_PATH_ID_SIZE             8
+#define CLOCK_SYNC_STARTUP_DELAY_MILLIS     (30ULL * 60ULL * 1000ULL)
+#define CLOCK_SYNC_RETRY_INTERVAL_MILLIS    (30ULL * 60ULL * 1000ULL)
+#define CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS    (2UL * 60UL * 60UL * 1000UL)
+#define CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS 600UL
+#define CLOCK_SYNC_DRIFT_MIN_SECONDS        30UL
+#define CLOCK_SYNC_DRIFT_MAX_SECONDS        86400UL
+#define CLOCK_SYNC_DRIFT_DEFAULT_SECONDS    3600UL
+#define CLOCK_SYNC_MESH_SUPPRESS_NONE       0
+#define CLOCK_SYNC_MESH_SUPPRESS_CLI        1
+#define CLOCK_SYNC_MESH_SUPPRESS_GPS        2
+#define CLOCK_SYNC_MESH_SUPPRESS_INTERNET   3
 
 #define RECENT_REPEATER_MAX_AGE_MILLIS        (24UL * 60UL * 60UL * 1000UL)
 #define RECENT_REPEATER_SWEEP_INTERVAL_MILLIS (3UL * 60UL * 60UL * 1000UL)
@@ -176,9 +213,58 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
     uint8_t secret[PUB_KEY_SIZE];
     char name[FLOOD_CHANNEL_BLOCK_NAME_LEN];
   };
+  struct FloodPacketFilterEntry {
+    bool active;
+    uint8_t payload_type;
+    uint8_t min_hops;
+    uint8_t max_hops;
+  };
+  struct FloodGroupModerationEntry {
+    bool active;
+    uint8_t key_len;
+    uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
+    uint8_t secret[PUB_KEY_SIZE];
+    char channel_name[FLOOD_GROUP_MODERATION_NAME_LEN];
+    char sender[FLOOD_GROUP_MODERATION_NAME_LEN];
+    uint8_t path_hash_size;
+    uint8_t path_hops;
+    uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX];
+    uint8_t max_hops;
+    uint16_t rate_per_minute;
+    uint32_t rate_window_started;
+    uint16_t rate_window_count;
+    bool rate_window_active;
+  };
+  struct ClockSyncSample {
+    bool active;
+    uint8_t source_kind;
+    uint8_t source_id[4];
+    uint8_t path_id[CLOCK_SYNC_PATH_ID_SIZE];
+    uint32_t epoch;
+    uint32_t received_millis;
+  };
   mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
   FloodChannelBlockEntry flood_channel_blocks[FLOOD_CHANNEL_BLOCK_SLOTS];
+  FloodPacketFilterEntry flood_packet_filters[FLOOD_PACKET_FILTER_SLOTS];
+  FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
+  ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
+  bool clock_sync_mesh_enabled;
+  bool clock_sync_internet_enabled;
+  bool clock_sync_complete;
+  bool clock_sync_internet_pending;
+  uint8_t clock_sync_mesh_suppressed_by;
+  uint8_t clock_sync_last_result;
+  uint8_t clock_sync_last_source;
+  uint8_t clock_sync_last_sample_count;
+  uint8_t clock_sync_last_fresh_count;
+  uint8_t clock_sync_last_required_count;
+  uint8_t clock_sync_required_samples;
+  uint32_t clock_sync_drift_seconds;
+  uint32_t clock_sync_last_estimate;
+  uint32_t clock_sync_last_abs_drift;
+  uint32_t clock_sync_internet_requested_millis;
+  uint64_t clock_sync_next_attempt_uptime;
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
   bool region_load_active;
@@ -294,6 +380,37 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool floodChannelDataHopApplies(const mesh::Packet* packet) const;
   bool floodChannelBlockMatches(const FloodChannelBlockEntry& entry, const mesh::Packet* packet) const;
   bool shouldBlockFloodChannelForward(const mesh::Packet* packet) const;
+  void loadFloodPacketFilters();
+  bool saveFloodPacketFilters();
+  bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
+  void formatFloodPacketFilters(const char* args, char* reply) const;
+  void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
+  void setFloodPacketFilter(const char* args, char* reply);
+  void deleteFloodPacketFilter(const char* args, char* reply);
+  void loadFloodGroupModeration();
+  bool saveFloodGroupModeration();
+  bool shouldBlockFloodGroupTextForward(const mesh::Packet* packet);
+  void formatFloodGroupModeration(const char* args, char* reply) const;
+  void formatFloodGroupModerationDetail(int index, char* reply, size_t reply_len) const;
+  void setFloodGroupModeration(const char* args, char* reply);
+  void deleteFloodGroupModeration(const char* args, char* reply);
+  bool decodeFloodGroupPlainText(const mesh::Packet* packet, const uint8_t* secret, uint8_t key_len,
+                                 uint32_t& timestamp, char* sender, size_t sender_len) const;
+  void loadClockSyncPrefs();
+  bool saveClockSyncPrefs();
+  void resetClockSyncAttempt();
+  void suppressMeshClockSyncForBoot(uint8_t source);
+  void checkGpsClockSyncOverride();
+  uint32_t estimateClockTransitMillis(const mesh::Packet* packet) const;
+  void recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[4], uint32_t epoch,
+                             const mesh::Packet* packet);
+  void recordAcceptedFloodClockSample(const mesh::Packet* packet);
+  void recordPublicChannelClockSample(const mesh::Packet* packet);
+  bool estimateMeshClock(uint32_t& estimate, uint8_t& fresh_count,
+                         uint8_t& agreeing_count, uint8_t& required_count) const;
+  bool applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sample_count);
+  void checkClockSync();
+  void formatClockSyncStatus(char* reply, size_t reply_len) const;
   int findFloodChannelBlockBySelector(const char* selector) const;
   int findFloodChannelBlockSlot(const uint8_t prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN], const char* name) const;
   void formatFloodChannelBlockDetail(char* reply, int idx) const;
@@ -409,6 +526,8 @@ public:
   void savePrefs() override {
     _cli.savePrefs(_fs);
   }
+
+  void onManualClockSet() override;
 
   bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
 

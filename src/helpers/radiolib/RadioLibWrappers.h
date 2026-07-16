@@ -128,6 +128,8 @@ public:
 
   // When rx_ps_timings is supplied, update and re-arm the RX duty cycle in the
   // same standby transition as the modulation change. Values are {rx, sleep}.
+  mesh::RadioParamApplyResult trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                                           const uint32_t* rx_ps_timings = NULL) override;
   bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
                  const uint32_t* rx_ps_timings = NULL);
   uint16_t getDefaultPreambleLength() const override { return preambleLengthForSF(_preamble_sf); }

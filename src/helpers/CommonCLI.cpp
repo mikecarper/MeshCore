@@ -1780,6 +1780,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       uint32_t curr = getRTCClock()->getCurrentTime();
       if (sender_timestamp > curr) {
         getRTCClock()->setCurrentTime(sender_timestamp + 1);
+        _callbacks->onManualClockSet();
         uint32_t now = getRTCClock()->getCurrentTime();
         DateTime dt = DateTime(now);
         sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC", dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
@@ -1825,6 +1826,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       uint32_t curr = getRTCClock()->getCurrentTime();
       if (secs > curr) {
         getRTCClock()->setCurrentTime(secs);
+        _callbacks->onManualClockSet();
         uint32_t now = getRTCClock()->getCurrentTime();
         DateTime dt = DateTime(now);
         sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC", dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());

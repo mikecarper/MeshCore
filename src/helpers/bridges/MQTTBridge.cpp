@@ -413,6 +413,8 @@ MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
       _ntp_client(_ntp_udp, effectiveNtpPrimary(obs), 0, 60000), _last_ntp_sync(0), _ntp_synced(false), _ntp_sync_pending(false), _slots_setup_done(false), _max_active_slots(RUNTIME_MQTT_SLOTS),
       _ntp_force_requested(false), _ntp_force_done(false), _ntp_force_result(false),
       _ntp_diag_requested(false), _ntp_diag_done(false), _ntp_diag_count(0),
+      _ntp_estimate_requested(false), _ntp_estimate_done(false),
+      _ntp_estimate_ok(false), _ntp_estimate_epoch(0),
       // Default to UTC; setRules() will be called from syncTimeWithNTP when a
       // non-UTC timezone string is configured. Timezone has no default ctor,
       // so we must pass rules here.
@@ -547,6 +549,12 @@ void MQTTBridge::begin() {
   }
   _cached_has_connected_slots = false;
   _slots_setup_done = false;
+  // A prior bridge session may have ended while a delayed clock estimate was
+  // queued or being consumed. Never carry that handshake into this session.
+  _ntp_estimate_requested = false;
+  _ntp_estimate_done = false;
+  _ntp_estimate_ok = false;
+  _ntp_estimate_epoch = 0;
 
   // PSRAM diagnostic - helps debug memory fragmentation on boards with external RAM
   #ifdef BOARD_HAS_PSRAM
@@ -838,6 +846,10 @@ void MQTTBridge::end() {
 
   _initialized = false;
   _slots_setup_done = false;  // Reset so deferred setup runs again on next begin()
+  _ntp_estimate_requested = false;
+  _ntp_estimate_done = false;
+  _ntp_estimate_ok = false;
+  _ntp_estimate_epoch = 0;
   MQTT_DEBUG_PRINTLN("MQTT Bridge stopped");
 }
 
@@ -988,6 +1000,17 @@ void MQTTBridge::mqttTaskLoop() {
       _ntp_diag_requested = false;
       runNtpDiagProbe();
       _ntp_diag_done = true;  // set last so the waiter sees populated results
+    }
+
+    // Delayed clock bootstrap uses a non-blocking request from the radio task.
+    // Query only; the requester applies its configured drift threshold before
+    // deciding whether to move the RTC forward or backward.
+    if (_ntp_estimate_requested) {
+      runNtpEstimateProbe();
+      _ntp_estimate_done = true;
+      // Keep requested asserted for the entire probe so another caller cannot
+      // queue work that shares and overwrites the result fields above.
+      _ntp_estimate_requested = false;
     }
 
     // Deferred slot setup: wait until NTP is synced so JWT tokens get valid timestamps.
@@ -2188,6 +2211,11 @@ void MQTTBridge::loop() {
     _ntp_sync_pending = false;
     syncTimeWithNTP();
   }
+  if (_ntp_estimate_requested) {
+    runNtpEstimateProbe();
+    _ntp_estimate_done = true;
+    _ntp_estimate_requested = false;
+  }
 
   // Deferred slot setup after NTP sync (non-ESP32 path)
   if (_ntp_synced && !_slots_setup_done) {
@@ -3163,6 +3191,45 @@ void MQTTBridge::runNtpDiagProbe() {
     r.epoch = ok ? (uint32_t)_ntp_client.getEpochTime() : 0;
   }
   _ntp_diag_count = count;
+  _ntp_client.end();
+}
+
+void MQTTBridge::runNtpEstimateProbe() {
+  const char* servers[kMaxNtpServers];
+  int count = 0;
+  fillNtpServerList(_obs, servers, count);
+
+  _ntp_estimate_ok = false;
+  _ntp_estimate_epoch = 0;
+  _ntp_client.begin();
+  for (int i = 0; i < count && !_ntp_estimate_ok; i++) {
+    _ntp_client.setPoolServerName(servers[i]);
+    if (!_ntp_client.forceUpdate()) continue;
+    uint32_t epoch = (uint32_t)_ntp_client.getEpochTime();
+    if (epoch >= 1704067200UL && epoch <= 4102444799UL) {
+      _ntp_estimate_epoch = epoch;
+      _ntp_estimate_ok = true;
+    }
+  }
+  _ntp_client.end();
+}
+
+bool MQTTBridge::requestNtpTimeEstimate() {
+  if (!isRunning() || WiFi.status() != WL_CONNECTED || _ntp_estimate_requested) return false;
+  _ntp_estimate_done = false;
+  _ntp_estimate_ok = false;
+  _ntp_estimate_epoch = 0;
+  _ntp_estimate_requested = true;
+  return true;
+}
+
+bool MQTTBridge::takeNtpTimeEstimate(uint32_t& epoch, bool& finished) {
+  finished = _ntp_estimate_done;
+  if (!finished) return false;
+  bool success = _ntp_estimate_ok;
+  epoch = success ? _ntp_estimate_epoch : 0;
+  _ntp_estimate_done = false;  // consume the result
+  return success;
 }
 
 bool MQTTBridge::ntpDiag(char* reply, size_t reply_size, bool verbose) {
