@@ -2142,7 +2142,7 @@ run_logging_matrix_build_targets() {
   fi
 
   if [ ${#constrained_logging_targets[@]} -gt 0 ]; then
-    echo "Building ${#constrained_logging_targets[@]} 224KB STM32 repeater target(s) with packet logging on and MESH_DEBUG off to fit flash: Tiny_Relay_repeater, RAK_3x72_repeater, wio-e5_repeater."
+    echo "Building ${#constrained_logging_targets[@]} size-constrained STM32 target(s) with packet logging on and MESH_DEBUG off to fit flash."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="on"
     MQTT_BRIDGE_OVERRIDE="off"
