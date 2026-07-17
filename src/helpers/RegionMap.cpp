@@ -93,14 +93,12 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
       success = success && file.read((uint8_t *) &loaded_wildcard_flags, sizeof(loaded_wildcard_flags)) == sizeof(loaded_wildcard_flags);
       success = success && file.read((uint8_t *) &loaded_next, sizeof(loaded_next)) == sizeof(loaded_next);
 
-      while (success && file.available() > 0) {
-        if (loaded_count >= MAX_REGION_ENTRIES) {
-          success = false;
-          break;
-        }
+      while (success && loaded_count < MAX_REGION_ENTRIES) {
         RegionEntry& r = loaded[loaded_count];
         memset(&r, 0, sizeof(r));
-        success = file.read((uint8_t *) &r.id, sizeof(r.id)) == sizeof(r.id);
+        int n = file.read((uint8_t *) &r.id, sizeof(r.id));
+        if (n == 0) break;  // clean EOF
+        success = n == sizeof(r.id);
         success = success && file.read((uint8_t *) &r.parent, sizeof(r.parent)) == sizeof(r.parent);
         success = success && file.read((uint8_t *) r.name, sizeof(r.name)) == sizeof(r.name);
         success = success && file.read((uint8_t *) &r.flags, sizeof(r.flags)) == sizeof(r.flags);
@@ -121,6 +119,9 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
         }
         if (!success) break;
         loaded_count++;
+      }
+      if (success && loaded_count == MAX_REGION_ENTRIES && file.read() >= 0) {
+        success = false;  // more data than the table can hold
       }
       file.close();
 

@@ -311,16 +311,29 @@ void NRF52Board::sleep(uint32_t secs) {
 
 // Temperature from NRF52 MCU
 float NRF52Board::getMCUTemperature() {
-  NRF_TEMP->TASKS_START = 1; // Start temperature measurement
-
-  long startTime = millis();  
-  while (NRF_TEMP->EVENTS_DATARDY == 0) { // Wait for completion. Should complete in 50us
-    if(millis() - startTime > 5) {  // To wait 5ms just in case
-      NRF_TEMP->TASKS_STOP = 1;
+  uint8_t sd_enabled = 0;
+  sd_softdevice_is_enabled(&sd_enabled);
+  if (sd_enabled) {
+    uint32_t err_code;
+    int32_t temp;
+    err_code = sd_temp_get(&temp);
+    if (err_code == NRF_SUCCESS) {
+      return (float)temp * 0.25f;
+    } else {
       return NAN;
     }
+  } else {
+    NRF_TEMP->TASKS_START = 1; // Start temperature measurement
+
+    long startTime = millis();
+    while (NRF_TEMP->EVENTS_DATARDY == 0) { // Wait for completion. Should complete in 50us
+      if(millis() - startTime > 5) {  // To wait 5ms just in case
+        NRF_TEMP->TASKS_STOP = 1;
+        return NAN;
+      }
+    }
   }
-  
+
   NRF_TEMP->EVENTS_DATARDY = 0; // Clear event flag
 
   int32_t temp = NRF_TEMP->TEMP; // In 0.25 *C units
@@ -329,7 +342,7 @@ float NRF52Board::getMCUTemperature() {
   return temp * 0.25f; // Convert to *C
 }
 
-void NRF52Board::powerOff() {
+void NRF52Board::shutdownPeripherals() {
   // Power off the display if any
 #ifdef DISPLAY_CLASS
   display.turnOff();
@@ -349,6 +362,10 @@ void NRF52Board::powerOff() {
   // Flush serial buffers
   Serial.flush();
   delay(100);
+}
+
+void NRF52Board::powerOff() {
+  shutdownPeripherals();
 
   // Enter SYSTEMOFF
   uint8_t sd_enabled = 0;
