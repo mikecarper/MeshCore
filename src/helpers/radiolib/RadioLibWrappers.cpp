@@ -54,7 +54,9 @@ void RadioLibWrapper::begin() {
   _nf_last_calib = 0;
   _nf_sample_from = 0;
   _nf_refresh_requested = true;  // establish one baseline after startup
-  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  // Arm the bounded sampling window only after the radio actually reaches RX.
+  // Companion initialization can take longer than the window itself.
+  _nf_calib_deadline = 0;
   _nf_next_sample_at = 0;
 }
 
@@ -170,8 +172,9 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
   // With interference detection disabled, Dispatcher polling is a free flag
   // update: passive retries request a refresh themselves only when the cached
-  // floor is stale. An enabled threshold keeps the floor periodically fresh.
-  if (threshold != 0) requestNoiseFloorRefresh();
+  // floor is stale. An enabled threshold keeps the floor periodically fresh;
+  // an invalid startup floor is retried even when interference detection is off.
+  if (threshold != 0 || !_noise_floor_valid) requestNoiseFloorRefresh();
 }
 
 void RadioLibWrapper::requestNoiseFloorRefresh() {
@@ -179,7 +182,7 @@ void RadioLibWrapper::requestNoiseFloorRefresh() {
   _nf_refresh_requested = true;
   _num_floor_samples = 0;
   _floor_sample_sum = 0;
-  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  _nf_calib_deadline = 0;  // starts when continuous RX is actually available
   _nf_next_sample_at = 0;
 }
 
@@ -207,7 +210,7 @@ void RadioLibWrapper::resetAGC() {
   _nf_sample_from = 0;
   _num_floor_samples = 0;
   _floor_sample_sum = 0;
-  _nf_calib_deadline = millis() + NF_CONTINUOUS_TIMEOUT_MS;
+  _nf_calib_deadline = 0;  // starts after reset recovery reaches RX
   _nf_next_sample_at = 0;
 }
 
@@ -320,6 +323,7 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   _nf_calib_active = false;
   _nf_refresh_requested = false;
   _nf_last_calib = now;
+  _nf_calib_deadline = 0;
   _nf_next_sample_at = 0;
   // force a receive re-arm back into duty-cycle mode, but don't clobber a
   // completed-but-unread packet or an in-flight TX (recvRaw()/onSendFinished()
@@ -337,6 +341,12 @@ void RadioLibWrapper::loop() {
   if (_nf_calib_active || _nf_refresh_requested) {
     noiseFloorCalibCheck(now);
   }
+  if (_nf_refresh_requested && !_rx_ps_enabled && _nf_calib_deadline == 0
+      && state == STATE_RX) {
+    // Measure the awake-time bound from actual continuous RX, not from begin()
+    // or a request made while the radio is idle, transmitting, or starting up.
+    _nf_calib_deadline = now + NF_CONTINUOUS_TIMEOUT_MS;
+  }
   if (_nf_refresh_requested && _num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES
       && _floor_sample_sum != 0) {
     _noise_floor = _floor_sample_sum / NUM_NOISE_FLOOR_SAMPLES;
@@ -347,6 +357,7 @@ void RadioLibWrapper::loop() {
     _noise_floor_valid = true;
     _nf_refresh_requested = false;
     _nf_last_calib = now;
+    _nf_calib_deadline = 0;
     _nf_next_sample_at = 0;
 
     MESH_DEBUG_PRINTLN("RadioLibWrapper: noise_floor = %d", (int)_noise_floor);
@@ -360,10 +371,11 @@ void RadioLibWrapper::loop() {
   if (_nf_refresh_requested && !_rx_ps_enabled && _nf_calib_deadline != 0
       && (long)(now - _nf_calib_deadline) >= 0) {
     // A continuously busy channel can reject every candidate sample. Do not
-    // keep the MCU awake indefinitely; retain the previous floor and wait for
-    // the normal stale-floor interval before another requested burst.
+    // keep the MCU awake indefinitely; retain the previous floor and let the
+    // next scheduled calibration request retry an invalid startup baseline.
     _nf_refresh_requested = false;
     _nf_last_calib = now;
+    _nf_calib_deadline = 0;
     _nf_next_sample_at = 0;
     _num_floor_samples = 0;
     _floor_sample_sum = 0;
