@@ -81,8 +81,8 @@ Do not continue if `motatool verify` reports a failure.
 
 This is a one-time prerequisite. Install the OTAFIX bootloader built for the destination's **exact board**
 from the
-[nRF52 OTAFIX in-place-delta repository](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/tree/feature/ota-delta-apply).
-Follow that repository's board-specific installation and erase instructions. If it does not contain the
+[OTAFIX 2.4 nRF52 bootloader release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.9.2-OTAFIX2.4).
+Follow the release's board-specific installation and erase instructions. If it does not contain the
 destination's exact board, this LoRa install path is not yet available for that board; never substitute a
 similar board's bootloader.
 
