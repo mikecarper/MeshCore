@@ -26,6 +26,10 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define RXPS_FIXED_PREAMBLE 16
 #endif
 
+#if RXPS_FIXED_ENABLED
+#error "RXPS must remain disabled for companion firmware"
+#endif
+
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
 #define CMD_SEND_CHANNEL_TXT_MSG      3
