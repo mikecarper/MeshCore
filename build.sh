@@ -31,7 +31,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_wifi_mqtt|companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -1095,16 +1095,16 @@ get_pio_envs_for_variant_role() {
 
     variant_name=$(get_variant_name_for_env "$env")
     case "$role:$variant_name" in
-      companion:companion_radio_*)
+      companion:companion_radio_*|companion:*_companion_radio_*)
         echo "$env"
         ;;
-      repeater:repeater*)
+      repeater:repeater*|repeater:*_repeater*)
         echo "$env"
         ;;
-      room_server:room_server)
+      room_server:room_server|room_server:*_room_server)
         echo "$env"
         ;;
-      sensor:sensor)
+      sensor:sensor|sensor:*_sensor)
         echo "$env"
         ;;
     esac
