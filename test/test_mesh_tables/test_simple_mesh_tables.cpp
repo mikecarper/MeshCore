@@ -78,6 +78,18 @@ TEST(SimpleMeshTables, MarkSeen_DoesNotAffectOtherPackets) {
     EXPECT_FALSE(t.wasSeen(&p2));
 }
 
+TEST(SimpleMeshTables, TransportScopeDoesNotChangeDuplicateIdentity) {
+    SimpleMeshTables t;
+    Packet unscoped = makeFloodPacket(0x35);
+    Packet scoped = unscoped;
+    scoped.header = (scoped.header & (uint8_t)~PH_ROUTE_MASK) | ROUTE_TYPE_TRANSPORT_FLOOD;
+    scoped.transport_codes[0] = 0x1234;
+    scoped.transport_codes[1] = 0x5678;
+
+    t.markSeen(&unscoped);
+    EXPECT_TRUE(t.wasSeen(&scoped));
+}
+
 // Canonical pattern used at every onRecvPacket call site:
 //   if (!wasSeen(pkt)) { markSeen(pkt); process(pkt); }
 TEST(SimpleMeshTables, QueryThenMark_WorksCorrectly) {

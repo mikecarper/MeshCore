@@ -87,8 +87,12 @@
 
 #define FLOOD_CHANNEL_BLOCK_FILE      "/flood_ch_block"
 #define FLOOD_PACKET_FILTER_FILE      "/flood_filter"
+#define FLOOD_CHANNEL_SCOPE_FILE      "/flood_ch_scope"
+#define FLOOD_CHANNEL_SCOPE_TEMP_FILE "/flood_ch_scope.tmp"
 #define FLOOD_GROUP_MODERATION_FILE   "/flood_grp_mod"
 #define CLOCK_SYNC_PREFS_FILE         "/clock_sync"
+#define FLOOD_PACKET_FILTER_LOGIN_PROTECTED_HOPS    7
+#define FLOOD_PACKET_FILTER_TXT_MSG_PROTECTED_HOPS  5
 #define DEFAULT_FLOOD_CHANNEL_BLOCK_NAME  "#wardriving"
 #ifndef DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS
   #define DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS 4
@@ -835,8 +839,10 @@ bool MyMesh::shouldBlockFloodChannelForward(const mesh::Packet* packet) const {
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood()) {
+    const bool trace = packet->getPayloadType() == PAYLOAD_TYPE_TRACE;
     if (packet->getPathHashCount() >= _prefs.flood_max) return false;
-    if (packet->getRouteType() == ROUTE_TYPE_FLOOD && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
+    if (!trace && packet->getRouteType() == ROUTE_TYPE_FLOOD
+        && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
     if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->getPathHashCount() >= _prefs.flood_max_advert) return false;
     if (!_prefs.flood_channel_data_enabled
         && packet->getPayloadType() == PAYLOAD_TYPE_GRP_DATA
@@ -848,7 +854,8 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     if (shouldBlockFloodPacketForward(packet)) return false;
     if (shouldBlockFloodChannelForward(packet)) return false;
   }
-  if (packet->isRouteFlood() && recv_pkt_region == NULL) {
+  if (packet->isRouteFlood() && packet->getPayloadType() != PAYLOAD_TYPE_TRACE
+      && recv_pkt_region == NULL) {
     MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
     return false;
   }
@@ -2096,6 +2103,9 @@ void MyMesh::expireRecentRepeatersIfDue() {
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
+  if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
+    applyFloodChannelScope(pkt);
+  }
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
   } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
@@ -2388,6 +2398,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       , bridge(&_prefs, _mgr, &rtc)
 #endif
 {
+  static_cast<StaticPoolPacketManager*>(_mgr)->setFloodScopePreference(
+      scoreFloodTransportScope, this);
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
@@ -2403,6 +2415,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   active_cr = 0;
   saved_radio_apply_pending = false;
   temp_radio_handoff_pending = false;
+  temp_radio_applied = false;
   scheduled_temp_radio_started = false;
   next_scheduled_radio_time = 0;
   next_scheduled_radio_check_at = 0;
@@ -2419,6 +2432,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   recv_pkt_region = NULL;
   memset(flood_channel_blocks, 0, sizeof(flood_channel_blocks));
   memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
   memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
   memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
   clock_sync_mesh_enabled = false;
@@ -2547,6 +2561,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   region_map.load(_fs);
   loadFloodChannelBlocks();
   loadFloodPacketFilters();
+  loadFloodChannelScopes();
   loadFloodGroupModeration();
   loadClockSyncPrefs();
 
@@ -2680,6 +2695,21 @@ bool MyMesh::resolveAlertScope(TransportKey& dest) {
   return false;
 }
 
+uint8_t MyMesh::getRegionDepth(const RegionEntry* region) {
+  if (region == NULL || region->isWildcard()) return 0;
+  uint8_t depth = 1;
+  uint16_t parent_id = region->parent;
+  const int region_count = region_map.getCount();
+  for (int hops = 0; parent_id != 0; hops++) {
+    if (hops >= region_count) return 0;
+    const RegionEntry* parent = region_map.findById(parent_id);
+    if (parent == NULL || parent->isWildcard()) return 0;
+    depth++;
+    parent_id = parent->parent;
+  }
+  return depth;
+}
+
 const RegionEntry* MyMesh::findNarrowestBatteryAlertRegion(bool& ambiguous) {
   ambiguous = false;
   const RegionEntry* narrowest = NULL;
@@ -2688,27 +2718,10 @@ const RegionEntry* MyMesh::findNarrowestBatteryAlertRegion(bool& ambiguous) {
 
   for (int i = 0; i < region_count; i++) {
     const RegionEntry* candidate = region_map.getByIdx(i);
-    uint8_t depth = 1;
-    uint16_t parent_id = candidate->parent;
-    bool valid = true;
-
-    // Region files are validated when loaded, but the live map can be edited
-    // before it is saved. Bound the walk so a temporary cycle cannot hang the
-    // repeater while selecting the default battery-alert scope.
-    for (int hops = 0; parent_id != 0; hops++) {
-      if (hops >= region_count) {
-        valid = false;
-        break;
-      }
-      const RegionEntry* parent = region_map.findById(parent_id);
-      if (parent == NULL || parent->isWildcard()) {
-        valid = false;
-        break;
-      }
-      depth++;
-      parent_id = parent->parent;
-    }
-    if (!valid) continue;
+    // Bound the shared hierarchy walk so an unsaved temporary cycle cannot
+    // hang either alert selection or rxdelay scope arbitration.
+    uint8_t depth = getRegionDepth(candidate);
+    if (depth == 0) continue;
 
     // A named region is not necessarily a usable transport scope. In
     // particular, private regions need a stored key; do not select one merely
@@ -2998,14 +3011,9 @@ bool MyMesh::hasStartedScheduledTempRadio() const {
   return scheduled_temp_radio_started;
 }
 
-#if defined(ENABLE_OTA)
 bool MyMesh::isTempRadioActive() const {
-  return scheduled_temp_radio_started
-      && (!scheduled_temp_radio_end_check_final
-          || scheduled_temp_radio_end_check_at == 0
-          || !millisHasNowPassed(scheduled_temp_radio_end_check_at));
+  return temp_radio_applied;
 }
-#endif
 
 int MyMesh::findFreeScheduledRadioSlot() const {
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
@@ -3409,6 +3417,7 @@ void MyMesh::processScheduledRadioSettings() {
           }
         } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr)) {
           setting.started = true;
+          temp_radio_applied = true;
           temp_radio_handoff_pending = false;
         } else {
           // setParams() can fail after changing only part of the modulation
@@ -3432,6 +3441,7 @@ void MyMesh::processScheduledRadioSettings() {
     if (applySavedRadioParams()) {
       radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
+      temp_radio_applied = false;
     } else {
       apply_failed = true;
     }
@@ -3886,6 +3896,20 @@ static bool parseFloodFilterPayloadType(const char* text, uint8_t& type) {
     type = numeric;
     return true;
   }
+  if (text != NULL && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') && text[2] != 0) {
+    uint8_t parsed = 0;
+    for (const char* p = text + 2; *p; p++) {
+      uint8_t digit;
+      if (*p >= '0' && *p <= '9') digit = (uint8_t)(*p - '0');
+      else if (*p >= 'a' && *p <= 'f') digit = (uint8_t)(*p - 'a' + 10);
+      else if (*p >= 'A' && *p <= 'F') digit = (uint8_t)(*p - 'A' + 10);
+      else return false;
+      if (parsed > (PH_TYPE_MASK - digit) / 16U) return false;
+      parsed = (uint8_t)(parsed * 16U + digit);
+    }
+    type = parsed;
+    return true;
+  }
   if (floodFilterAsciiStartsWith(text, "payload_type_")) text += strlen("payload_type_");
   if (floodFilterAsciiEqual(text, "any")) type = FLOOD_PACKET_FILTER_ANY_TYPE;
   else if (floodFilterAsciiEqual(text, "req")) type = PAYLOAD_TYPE_REQ;
@@ -3952,6 +3976,20 @@ static void formatFloodFilterHopSpec(char* dest, size_t dest_len, uint8_t min_ho
   }
 }
 
+static uint8_t floodPacketFilterProtectedHops(const mesh::Packet* packet) {
+  if (packet == NULL) return 0;
+  switch (packet->getPayloadType()) {
+    case PAYLOAD_TYPE_RESPONSE:
+    case PAYLOAD_TYPE_ANON_REQ:
+    case PAYLOAD_TYPE_PATH:
+      return FLOOD_PACKET_FILTER_LOGIN_PROTECTED_HOPS;
+    case PAYLOAD_TYPE_TXT_MSG:
+      return FLOOD_PACKET_FILTER_TXT_MSG_PROTECTED_HOPS;
+    default:
+      return 0;
+  }
+}
+
 void MyMesh::loadFloodPacketFilters() {
   memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
   if (_fs == NULL || !_fs->exists(FLOOD_PACKET_FILTER_FILE)) return;
@@ -3963,18 +4001,29 @@ void MyMesh::loadFloodPacketFilters() {
   memset(loaded, 0, sizeof(loaded));
   uint8_t magic[4];
   uint8_t count = 0;
-  bool success = file.read(magic, sizeof(magic)) == sizeof(magic)
-      && memcmp(magic, "FPF1", sizeof(magic)) == 0
+  bool success = file.read(magic, sizeof(magic)) == sizeof(magic);
+  bool version_1 = success && memcmp(magic, "FPF1", sizeof(magic)) == 0;
+  bool version_2 = success && memcmp(magic, "FPF2", sizeof(magic)) == 0;
+  success = (version_1 || version_2)
       && file.read(&count, sizeof(count)) == sizeof(count)
       && count <= FLOOD_PACKET_FILTER_SLOTS;
 
   for (int i = 0; success && i < count; i++) {
     uint8_t active = 0;
+    uint8_t suspend_on_temp_radio = 0;
     success = file.read(&active, sizeof(active)) == sizeof(active);
     success = success && file.read(&loaded[i].payload_type, sizeof(loaded[i].payload_type)) == sizeof(loaded[i].payload_type);
     success = success && file.read(&loaded[i].min_hops, sizeof(loaded[i].min_hops)) == sizeof(loaded[i].min_hops);
     success = success && file.read(&loaded[i].max_hops, sizeof(loaded[i].max_hops)) == sizeof(loaded[i].max_hops);
+    if (success && version_2) {
+      success = file.read(&suspend_on_temp_radio, sizeof(suspend_on_temp_radio)) == sizeof(suspend_on_temp_radio);
+    }
     loaded[i].active = active != 0;
+    loaded[i].suspend_on_temp_radio = suspend_on_temp_radio != 0;
+    if (success && (active > 1 || suspend_on_temp_radio > 1
+        || (loaded[i].suspend_on_temp_radio && !loaded[i].active))) {
+      success = false;
+    }
     if (success && loaded[i].active
         && !((loaded[i].payload_type <= PH_TYPE_MASK
                 || loaded[i].payload_type == FLOOD_PACKET_FILTER_ANY_TYPE)
@@ -3994,17 +4043,19 @@ bool MyMesh::saveFloodPacketFilters() {
   File file = openFloodChannelBlockWrite(_fs, FLOOD_PACKET_FILTER_FILE);
   if (!file) return false;
 
-  const uint8_t magic[4] = {'F', 'P', 'F', '1'};
+  const uint8_t magic[4] = {'F', 'P', 'F', '2'};
   uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&count, sizeof(count)) == sizeof(count);
   for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
+    uint8_t suspend_on_temp_radio = entry.suspend_on_temp_radio ? 1 : 0;
     success = file.write(&active, sizeof(active)) == sizeof(active);
     success = success && file.write(&entry.payload_type, sizeof(entry.payload_type)) == sizeof(entry.payload_type);
     success = success && file.write(&entry.min_hops, sizeof(entry.min_hops)) == sizeof(entry.min_hops);
     success = success && file.write(&entry.max_hops, sizeof(entry.max_hops)) == sizeof(entry.max_hops);
+    success = success && file.write(&suspend_on_temp_radio, sizeof(suspend_on_temp_radio)) == sizeof(suspend_on_temp_radio);
   }
   file.close();
   return success;
@@ -4014,10 +4065,31 @@ bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
   if (packet == NULL || !packet->isRouteFlood()) return false;
   uint8_t type = packet->getPayloadType();
   uint8_t hops = packet->getPathHashCount();
+
+  // A transit repeater cannot decrypt enough to distinguish remote-login/CLI
+  // packets from ordinary peer traffic of the same outer types.
+  // Keep the short-path management transport reachable despite `flood.filter`;
+  // the existing repeat, flood.max, region, and loop gates still apply.
+  uint8_t protected_hops = floodPacketFilterProtectedHops(packet);
+  if (hops < protected_hops) {
+    MESH_DEBUG_PRINTLN("allowPacketForward: flood.filter remote-admin protection type=%d hops=%d",
+                       type, hops);
+    return false;
+  }
+
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
-    if (entry.active
-        && (entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE || entry.payload_type == type)
+    if (!entry.active) continue;
+
+    // When the temporary radio is active, skip a row explicitly marked with
+    // `suspend=tempradio`. Other rows remain in force.
+    if (entry.suspend_on_temp_radio && isTempRadioActive()) continue;
+
+    // TRACE deliberately ignores catch-all rows so traceroute cannot be
+    // disabled accidentally. An explicit `trace` row remains available.
+    if (type == PAYLOAD_TYPE_TRACE && entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE) continue;
+
+    if ((entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE || entry.payload_type == type)
         && hops >= entry.min_hops && hops <= entry.max_hops) {
       MESH_DEBUG_PRINTLN("allowPacketForward: flood.filter matched slot=%d type=%d hops=%d range=%d-%d",
                          i + 1, type, hops, entry.min_hops, entry.max_hops);
@@ -4035,11 +4107,12 @@ void MyMesh::formatFloodPacketFilterDetail(int index, char* reply, size_t reply_
   const auto& entry = flood_packet_filters[index];
   char hops[12];
   formatFloodFilterHopSpec(hops, sizeof(hops), entry.min_hops, entry.max_hops);
+  const char* suspension = entry.suspend_on_temp_radio ? " suspend=tempradio" : "";
   if (entry.payload_type == FLOOD_PACKET_FILTER_ANY_TYPE) {
-    snprintf(reply, reply_len, "> %d type=any hops=%s route=flood", index + 1, hops);
+    snprintf(reply, reply_len, "> %d type=any hops=%s route=flood%s", index + 1, hops, suspension);
   } else {
-    snprintf(reply, reply_len, "> %d type=%s(%u) hops=%s route=flood", index + 1,
-             floodFilterPayloadTypeName(entry.payload_type), (uint32_t)entry.payload_type, hops);
+    snprintf(reply, reply_len, "> %d type=%s(%u) hops=%s route=flood%s", index + 1,
+             floodFilterPayloadTypeName(entry.payload_type), (uint32_t)entry.payload_type, hops, suspension);
   }
 }
 
@@ -4066,8 +4139,8 @@ void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
     char hops[12];
     char item[40];
     formatFloodFilterHopSpec(hops, sizeof(hops), entry.min_hops, entry.max_hops);
-    snprintf(item, sizeof(item), " %d=%s@%s", i + 1,
-             floodFilterPayloadTypeName(entry.payload_type), hops);
+    snprintf(item, sizeof(item), entry.suspend_on_temp_radio ? " %d=%s@%s~tempradio" : " %d=%s@%s",
+             i + 1, floodFilterPayloadTypeName(entry.payload_type), hops);
     size_t item_len = strlen(item);
     if (used + item_len >= 156) {
       truncated = true;
@@ -4105,7 +4178,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
     }
     requested_slot = slot - 1;
     if (*cursor != ' ') {
-      strcpy(reply, "Err - expected packet type and hops");
+      strcpy(reply, "Err - expected packet type");
       return;
     }
   }
@@ -4117,35 +4190,49 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
 
   char params[64];
   strcpy(params, cursor);
-  char* type_text = params;
-  char* separator = strchr(type_text, ' ');
-  if (separator == NULL) {
-    strcpy(reply, "Err - use: set flood.filter[.n] <type> <hops>");
-    return;
-  }
-  *separator++ = 0;
-  while (*separator == ' ') separator++;
-  char* hops_text = separator;
-  char* extra = strchr(hops_text, ' ');
-  if (extra != NULL) {
-    *extra++ = 0;
-    while (*extra == ' ') extra++;
-    if (*extra != 0) {
-      strcpy(reply, "Err - use one packet type and one hop expression");
+  char* tokens[4];
+  int token_count = 0;
+  char* token = params;
+  while (*token != 0) {
+    if (token_count >= 4) {
+      strcpy(reply, "Err - too many flood filter parameters");
       return;
     }
+    tokens[token_count++] = token;
+    char* separator = strchr(token, ' ');
+    if (separator == NULL) break;
+    *separator++ = 0;
+    while (*separator == ' ') separator++;
+    token = separator;
+  }
+  if (token_count == 0) {
+    strcpy(reply, "Err - use: set flood.filter[.n] <type> [hops] [suspend=tempradio]");
+    return;
   }
 
   uint8_t payload_type;
-  uint8_t min_hops;
-  uint8_t max_hops;
-  if (!parseFloodFilterPayloadType(type_text, payload_type)) {
-    strcpy(reply, "Err - packet type must be name, any, or 0-15");
+  if (!parseFloodFilterPayloadType(tokens[0], payload_type)) {
+    strcpy(reply, "Err - packet type must be name, any, 0-15, or 0x00-0x0F");
     return;
   }
-  if (!parseFloodFilterHopSpec(hops_text, min_hops, max_hops)) {
-    strcpy(reply, "Err - hops must be N, N+, N-M, or all (0-63)");
-    return;
+
+  uint8_t min_hops = 0;
+  uint8_t max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
+  bool hops_set = false;
+  bool suspend_on_temp_radio = false;
+  for (int i = 1; i < token_count; i++) {
+    if (floodFilterAsciiEqual(tokens[i], "suspend=tempradio")) {
+      if (suspend_on_temp_radio) {
+        strcpy(reply, "Err - duplicate suspend=tempradio");
+        return;
+      }
+      suspend_on_temp_radio = true;
+    } else if (!hops_set && parseFloodFilterHopSpec(tokens[i], min_hops, max_hops)) {
+      hops_set = true;
+    } else {
+      strcpy(reply, "Err - use one hop expression and optional suspend=tempradio");
+      return;
+    }
   }
 
   int slot = requested_slot;
@@ -4153,7 +4240,8 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
     for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
       const auto& entry = flood_packet_filters[i];
       if (entry.active && entry.payload_type == payload_type
-          && entry.min_hops == min_hops && entry.max_hops == max_hops) {
+          && entry.min_hops == min_hops && entry.max_hops == max_hops
+          && entry.suspend_on_temp_radio == suspend_on_temp_radio) {
         slot = i;
         break;
       }
@@ -4178,6 +4266,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
   entry.payload_type = payload_type;
   entry.min_hops = min_hops;
   entry.max_hops = max_hops;
+  entry.suspend_on_temp_radio = suspend_on_temp_radio;
   if (!saveFloodPacketFilters()) {
     entry = previous;
     strcpy(reply, "Err - unable to save flood filter");
@@ -4223,6 +4312,178 @@ void MyMesh::deleteFloodPacketFilter(const char* args, char* reply) {
   } else {
     strcpy(reply, "OK");
   }
+}
+
+static bool isExactFloodChannelScopeSelector(uint8_t selector) {
+  return selector == CIPHER_KEY_SIZE || selector == PUB_KEY_SIZE;
+}
+
+static bool isLoginFloodPayloadType(uint8_t type) {
+  switch (type) {
+    case PAYLOAD_TYPE_REQ:
+    case PAYLOAD_TYPE_RESPONSE:
+    case PAYLOAD_TYPE_TXT_MSG:
+    case PAYLOAD_TYPE_ANON_REQ:
+    case PAYLOAD_TYPE_PATH:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static uint8_t wildcardFloodChannelScopeSelector(uint8_t type) {
+  if (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_GRP_DATA) {
+    return FLOOD_CHANNEL_SCOPE_TXT_ANY;
+  }
+  if (isLoginFloodPayloadType(type)) return FLOOD_CHANNEL_SCOPE_LOGIN_ANY;
+  return FLOOD_CHANNEL_SCOPE_OTHER_ANY;
+}
+
+static const char* wildcardFloodChannelScopeName(uint8_t selector) {
+  if (selector == FLOOD_CHANNEL_SCOPE_TXT_ANY) return "txt:*";
+  if (selector == FLOOD_CHANNEL_SCOPE_LOGIN_ANY) return "login:*";
+  if (selector == FLOOD_CHANNEL_SCOPE_OTHER_ANY) return "other:*";
+  return NULL;
+}
+
+void MyMesh::loadFloodChannelScopes() {
+  memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
+  if (_fs == NULL || !_fs->exists(FLOOD_CHANNEL_SCOPE_FILE)) return;
+  File file = openFloodChannelBlockRead(_fs, FLOOD_CHANNEL_SCOPE_FILE);
+  if (!file) return;
+
+  uint8_t magic[4];
+  uint8_t count = 0;
+  bool success = file.read(magic, sizeof(magic)) == sizeof(magic)
+      && memcmp(magic, "FCS1", sizeof(magic)) == 0
+      && file.read(&count, sizeof(count)) == sizeof(count);
+  uint8_t retained = count < FLOOD_CHANNEL_SCOPE_SLOTS ? count : FLOOD_CHANNEL_SCOPE_SLOTS;
+  size_t retained_bytes = (size_t)retained * sizeof(FloodChannelScopeEntry);
+  success = success && file.read((uint8_t*)flood_channel_scopes, retained_bytes) == retained_bytes;
+  FloodChannelScopeEntry discarded;
+  for (int i = retained; success && i < count; i++) {
+    success = file.read((uint8_t*)&discarded, sizeof(discarded)) == sizeof(discarded);
+  }
+  for (int i = 0; success && i < retained; i++) {
+    auto& entry = flood_channel_scopes[i];
+    if (entry.region_id == 0) {
+      memset(&entry, 0, sizeof(entry));
+    } else if (entry.selector <= FLOOD_CHANNEL_SCOPE_OTHER_ANY) {
+      entry.channel_hash = 0;
+      memset(entry.secret, 0, sizeof(entry.secret));
+    } else if (isExactFloodChannelScopeSelector(entry.selector)) {
+      mesh::Utils::sha256(&entry.channel_hash, sizeof(entry.channel_hash), entry.secret, entry.selector);
+      if (entry.selector == CIPHER_KEY_SIZE) {
+        memset(&entry.secret[CIPHER_KEY_SIZE], 0, PUB_KEY_SIZE - CIPHER_KEY_SIZE);
+      }
+    } else {
+      success = false;
+    }
+  }
+  file.close();
+
+  // A malformed table is inert; corrupt storage must never assign a scope.
+  if (!success) memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
+}
+
+bool MyMesh::saveFloodChannelScopes(bool empty_table) {
+  if (_fs == NULL) return false;
+  File file = openFloodChannelBlockWrite(_fs, FLOOD_CHANNEL_SCOPE_TEMP_FILE);
+  if (!file) return false;
+
+  const uint8_t magic[4] = {'F', 'C', 'S', '1'};
+  uint8_t count = FLOOD_CHANNEL_SCOPE_SLOTS;
+  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
+      && file.write(&count, sizeof(count)) == sizeof(count);
+  if (success && empty_table) {
+    FloodChannelScopeEntry empty;
+    memset(&empty, 0, sizeof(empty));
+    for (int i = 0; success && i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+      success = file.write((const uint8_t*)&empty, sizeof(empty)) == sizeof(empty);
+    }
+  } else if (success) {
+    success = file.write((const uint8_t*)flood_channel_scopes,
+                         sizeof(flood_channel_scopes)) == sizeof(flood_channel_scopes);
+  }
+  file.close();
+  if (!success || !_fs->rename(FLOOD_CHANNEL_SCOPE_TEMP_FILE, FLOOD_CHANNEL_SCOPE_FILE)) {
+    _fs->remove(FLOOD_CHANNEL_SCOPE_TEMP_FILE);
+    return false;
+  }
+  return true;
+}
+
+bool MyMesh::applyFloodChannelScopeTarget(mesh::Packet* packet,
+                                          const FloodChannelScopeEntry& entry) {
+  RegionEntry* region = region_map.findById(entry.region_id);
+  TransportKey scope;
+  if (region == NULL || region->isWildcard() || (region->flags & REGION_DENY_FLOOD) != 0
+      || region_map.getTransportKeysFor(*region, &scope, 1) <= 0 || scope.isNull()) {
+    return false;
+  }
+
+  packet->header = (packet->header & (uint8_t)~PH_ROUTE_MASK) | ROUTE_TYPE_TRANSPORT_FLOOD;
+  packet->transport_codes[0] = scope.calcTransportCode(packet);
+  packet->transport_codes[1] = 0;
+  MESH_DEBUG_PRINTLN("force-scoped unscoped flood type=%u to region=%s",
+                     (unsigned int)packet->getPayloadType(), region->name);
+  return true;
+}
+
+bool MyMesh::applyFloodChannelScope(mesh::Packet* packet) {
+  if (packet == NULL || packet->getRouteType() != ROUTE_TYPE_FLOOD) return false;
+  uint8_t type = packet->getPayloadType();
+  // TRACE must cross region boundaries unchanged. Normal traceroute is direct,
+  // but preserve the same rule for any flood-form trace received over the air.
+  if (type == PAYLOAD_TYPE_TRACE) return false;
+  bool valid_channel_layout = (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_GRP_DATA)
+      && packet->payload_len >= PATH_HASH_SIZE + CIPHER_MAC_SIZE + CIPHER_BLOCK_SIZE
+      && ((packet->payload_len - PATH_HASH_SIZE - CIPHER_MAC_SIZE) % CIPHER_BLOCK_SIZE) == 0;
+
+  if (valid_channel_layout) {
+    uint8_t data[MAX_PACKET_PAYLOAD];
+    for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+      const auto& entry = flood_channel_scopes[i];
+      if (entry.region_id == 0 || !isExactFloodChannelScopeSelector(entry.selector)
+          || packet->payload[0] != entry.channel_hash) continue;
+      if (mesh::Utils::MACThenDecrypt(entry.secret, data, &packet->payload[PATH_HASH_SIZE],
+                                      packet->payload_len - PATH_HASH_SIZE) > 0
+          && applyFloodChannelScopeTarget(packet, entry)) return true;
+    }
+  }
+  uint8_t wildcard = wildcardFloodChannelScopeSelector(type);
+  for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+    const auto& entry = flood_channel_scopes[i];
+    if (entry.region_id != 0 && entry.selector == wildcard
+        && applyFloodChannelScopeTarget(packet, entry)) return true;
+  }
+  return false;
+}
+
+uint8_t MyMesh::scoreFloodTransportScope(const mesh::Packet* packet, void* context) {
+  return static_cast<MyMesh*>(context)->getFloodTransportScopeDepth(packet);
+}
+
+uint8_t MyMesh::getFloodTransportScopeDepth(const mesh::Packet* packet) {
+  if (packet == NULL || packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD) return 0;
+  uint8_t best_depth = 0;
+  const int region_count = region_map.getCount();
+  for (int i = 0; i < region_count; i++) {
+    const RegionEntry* region = region_map.getByIdx(i);
+    if ((region->flags & REGION_DENY_FLOOD) != 0) continue;
+    uint8_t depth = getRegionDepth(region);
+    if (depth <= best_depth) continue;
+
+    TransportKey keys[4];
+    int key_count = region_map.getTransportKeysFor(*region, keys, 4);
+    for (int key_idx = 0; key_idx < key_count; key_idx++) {
+      if (keys[key_idx].calcTransportCode(packet) == packet->transport_codes[0]) {
+        best_depth = depth;
+        break;
+      }
+    }
+  }
+  return best_depth;
 }
 
 static bool parseFloodModerationUnsigned(const char* text, uint32_t maximum, uint32_t& value) {
@@ -4290,6 +4551,195 @@ static bool parseFloodModerationChannel(const char* text, uint8_t secret[PUB_KEY
   }
   mesh::Utils::sha256(hash_prefix, FLOOD_CHANNEL_BLOCK_PREFIX_LEN, secret, key_len);
   return true;
+}
+
+static bool parseFloodChannelScopeIndex(const char*& cursor, int& index) {
+  cursor = skipFloodFilterSpaces(cursor);
+  index = -1;
+  if (*cursor != '.') return true;
+  cursor++;
+  const char* start = cursor;
+  while (*cursor >= '0' && *cursor <= '9') cursor++;
+  size_t len = (size_t)(cursor - start);
+  char text[4];
+  if (len == 0 || len >= sizeof(text)) return false;
+  memcpy(text, start, len);
+  text[len] = 0;
+  uint8_t slot = 0;
+  if (!parseFloodFilterUnsigned(text, FLOOD_CHANNEL_SCOPE_SLOTS, slot) || slot == 0) return false;
+  if (*cursor != 0 && *cursor != ' ') return false;
+  cursor = skipFloodFilterSpaces(cursor);
+  index = slot - 1;
+  return true;
+}
+
+void MyMesh::formatFloodChannelScopeDetail(int index, char* reply, size_t reply_len) {
+  if (index < 0 || index >= FLOOD_CHANNEL_SCOPE_SLOTS) {
+    snprintf(reply, reply_len, "Err - scope slot must be 1-%d", FLOOD_CHANNEL_SCOPE_SLOTS);
+    return;
+  }
+  const auto& entry = flood_channel_scopes[index];
+  if (entry.region_id == 0) {
+    snprintf(reply, reply_len, "> %d empty", index + 1);
+    return;
+  }
+
+  char channel[12];
+  const char* wildcard = wildcardFloodChannelScopeName(entry.selector);
+  if (wildcard != NULL) {
+    strcpy(channel, wildcard);
+  } else {
+    uint8_t prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
+    mesh::Utils::sha256(prefix, sizeof(prefix), entry.secret, entry.selector);
+    mesh::Utils::toHex(channel, prefix, sizeof(prefix));
+  }
+  RegionEntry* region = region_map.findById(entry.region_id);
+  if (region != NULL) {
+    snprintf(reply, reply_len, "> %d match=%s scope=%s", index + 1, channel, region->name);
+  } else {
+    snprintf(reply, reply_len, "> %d match=%s scope=id:%u?", index + 1, channel,
+             (unsigned int)entry.region_id);
+  }
+}
+
+void MyMesh::formatFloodChannelScopes(const char* args, char* reply) {
+  const char* cursor = args;
+  int index = -1;
+  if (!parseFloodChannelScopeIndex(cursor, index)) {
+    snprintf(reply, 160, "Err - scope slot must be 1-%d", FLOOD_CHANNEL_SCOPE_SLOTS);
+    return;
+  }
+  if (*cursor != 0) {
+    strcpy(reply, "Err - use get flood.channel.scope[.n]");
+    return;
+  }
+  if (index >= 0) {
+    formatFloodChannelScopeDetail(index, reply, 160);
+    return;
+  }
+
+  int active = 0;
+  for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+    if (flood_channel_scopes[i].region_id != 0) active++;
+  }
+  snprintf(reply, 160, "> %d/%d active; use get flood.channel.scope.<n>",
+           active, FLOOD_CHANNEL_SCOPE_SLOTS);
+}
+
+void MyMesh::setFloodChannelScope(const char* args, char* reply) {
+  const char* cursor = args;
+  int requested_slot = -1;
+  if (!parseFloodChannelScopeIndex(cursor, requested_slot)) {
+    strcpy(reply, "Err - bad scope slot");
+    return;
+  }
+
+  char channel_text[80];
+  char region_text[32];
+  char extra[2];
+  if (takeFloodModerationToken(cursor, channel_text, sizeof(channel_text)) != 1
+      || takeFloodModerationToken(cursor, region_text, sizeof(region_text)) != 1
+      || takeFloodModerationToken(cursor, extra, sizeof(extra)) != 0) {
+    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region>");
+    return;
+  }
+
+  RegionEntry* region = region_map.findByNamePrefix(region_text);
+  TransportKey scope;
+  if (region == NULL || region->isWildcard() || (region->flags & REGION_DENY_FLOOD) != 0
+      || region_map.getTransportKeysFor(*region, &scope, 1) <= 0 || scope.isNull()) {
+    strcpy(reply, "Err - bad scope region");
+    return;
+  }
+
+  uint8_t secret[PUB_KEY_SIZE];
+  memset(secret, 0, sizeof(secret));
+  uint8_t selector = FLOOD_CHANNEL_SCOPE_TXT_ANY;
+  uint8_t key_len = 0;
+  uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
+  memset(hash_prefix, 0, sizeof(hash_prefix));
+  if (strcmp(channel_text, "*") == 0 || floodFilterAsciiEqual(channel_text, "txt:*")) {
+    selector = FLOOD_CHANNEL_SCOPE_TXT_ANY;
+  } else if (floodFilterAsciiEqual(channel_text, "login:*")) {
+    selector = FLOOD_CHANNEL_SCOPE_LOGIN_ANY;
+  } else if (floodFilterAsciiEqual(channel_text, "other:*")) {
+    selector = FLOOD_CHANNEL_SCOPE_OTHER_ANY;
+  } else {
+    char ignored_name[FLOOD_GROUP_MODERATION_NAME_LEN];
+    if (!parseFloodModerationChannel(channel_text, secret, key_len, hash_prefix,
+                                     ignored_name, sizeof(ignored_name))) {
+      strcpy(reply, "Err - bad scope matcher");
+      return;
+    }
+    selector = key_len;
+  }
+
+  int matching_slot = -1;
+  int free_slot = -1;
+  for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+    const auto& entry = flood_channel_scopes[i];
+    if (entry.region_id == 0) {
+      if (free_slot < 0) free_slot = i;
+    } else if (entry.selector == selector
+        && (!isExactFloodChannelScopeSelector(selector)
+            || memcmp(entry.secret, secret, PUB_KEY_SIZE) == 0)) {
+      matching_slot = i;
+      break;
+    }
+  }
+  int slot = requested_slot >= 0 ? requested_slot : (matching_slot >= 0 ? matching_slot : free_slot);
+  if (slot < 0) {
+    strcpy(reply, "Err - scope table full");
+    return;
+  }
+
+  FloodChannelScopeEntry previous = flood_channel_scopes[slot];
+  auto& entry = flood_channel_scopes[slot];
+  memset(&entry, 0, sizeof(entry));
+  entry.region_id = region->id;
+  entry.selector = selector;
+  if (isExactFloodChannelScopeSelector(selector)) {
+    entry.channel_hash = hash_prefix[0];
+    memcpy(entry.secret, secret, sizeof(entry.secret));
+  }
+  if (!saveFloodChannelScopes()) {
+    entry = previous;
+    strcpy(reply, "Err - save failed");
+    return;
+  }
+  formatFloodChannelScopeDetail(slot, reply, 160);
+}
+
+void MyMesh::deleteFloodChannelScope(const char* args, char* reply) {
+  const char* cursor = skipFloodFilterSpaces(args);
+  if (floodFilterAsciiEqual(cursor, "all")) {
+    if (!saveFloodChannelScopes(true)) {
+      strcpy(reply, "Err - save failed");
+    } else {
+      memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+
+  int index = -1;
+  if (!parseFloodChannelScopeIndex(cursor, index)) index = -1;
+  if (index < 0 || *cursor != 0) {
+    strcpy(reply, "Err - use: del flood.channel.scope.<n>|all");
+    return;
+  }
+  if (flood_channel_scopes[index].region_id == 0) {
+    strcpy(reply, "Err - empty scope slot");
+    return;
+  }
+  FloodChannelScopeEntry previous = flood_channel_scopes[index];
+  memset(&flood_channel_scopes[index], 0, sizeof(flood_channel_scopes[index]));
+  if (!saveFloodChannelScopes()) {
+    flood_channel_scopes[index] = previous;
+    strcpy(reply, "Err - save failed");
+  } else {
+    strcpy(reply, "OK");
+  }
 }
 
 static bool parseFloodModerationPath(const char* text, uint8_t& hash_size, uint8_t& path_hops,
@@ -5676,7 +6126,11 @@ static bool isCommonManagerReadOnlyAllowed(const char* cmd) {
 // Whitelist helpers for delegated manager roles. Admins bypass both lists.
 static bool isRegionMgrAllowed(const char* cmd) {
   while (*cmd == ' ') cmd++;
-  return commandFamilyMatches(cmd, "region") || isCommonManagerReadOnlyAllowed(cmd);
+  return commandFamilyMatches(cmd, "region")
+      || commandFamilyMatches(cmd, "get flood.channel.scope")
+      || commandFamilyMatches(cmd, "set flood.channel.scope")
+      || commandFamilyMatches(cmd, "del flood.channel.scope")
+      || isCommonManagerReadOnlyAllowed(cmd);
 }
 
 static bool isFilterMgrAllowed(const char* cmd) {
@@ -5783,7 +6237,13 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   }
 
   // handle ACL related commands
-  if (commandFamilyMatches(command, "get flood.filter")) {
+  if (commandFamilyMatches(command, "get flood.channel.scope")) {
+    formatFloodChannelScopes(command + strlen("get flood.channel.scope"), reply);
+  } else if (commandFamilyMatches(command, "set flood.channel.scope")) {
+    setFloodChannelScope(command + strlen("set flood.channel.scope"), reply);
+  } else if (commandFamilyMatches(command, "del flood.channel.scope")) {
+    deleteFloodChannelScope(command + strlen("del flood.channel.scope"), reply);
+  } else if (commandFamilyMatches(command, "get flood.filter")) {
     formatFloodPacketFilters(command + strlen("get flood.filter"), reply);
   } else if (commandFamilyMatches(command, "set flood.filter")) {
     setFloodPacketFilter(command + strlen("set flood.filter"), reply);

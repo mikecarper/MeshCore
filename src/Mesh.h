@@ -380,10 +380,10 @@ protected:
   */
   virtual void onRawDataRecv(Packet* packet) { }
 
-#if defined(ENABLE_OTA)
-  /** OTA transport is dormant unless the role has actually switched into a temporary-radio window. */
+  /** True only while the role has actually switched into a temporary-radio window. */
   virtual bool isTempRadioActive() const { return false; }
 
+#if defined(ENABLE_OTA)
   /**
    * \brief  An OTA-over-LoRa packet (PAYLOAD_TYPE_OTA) has been received. Subclasses forward the
    *         payload bytes to their OtaManager. See docs/ota_protocol.md.

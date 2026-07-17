@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-
 #include <helpers/RxReservePacketManager.h>
 
 class TestClock : public mesh::MillisecondClock {
@@ -160,6 +159,197 @@ TEST(StaticPoolPacketManager, EarliestQueueTimeIsCorrectAcrossMillisRollover) {
   EXPECT_EQ(0x00000004UL, scheduled_for);
   EXPECT_EQ(after_wrap, manager.getNextOutbound(0x00000004UL));
   manager.free(after_wrap);
+}
+
+static void setFloodIdentity(mesh::Packet* packet, uint8_t route, uint8_t seed) {
+  packet->header = route | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
+  packet->path_len = 0;
+  packet->payload[0] = seed;
+  packet->payload_len = 1;
+}
+
+static uint8_t acceptFloodScope(const mesh::Packet*, void*) {
+  return 1;
+}
+
+TEST(StaticPoolPacketManager, ScopedRxDelayCopyRequiresLocalValidator) {
+  StaticPoolPacketManager manager(4);
+  mesh::Packet* unscoped = manager.allocNew();
+  mesh::Packet* scoped = manager.allocNew();
+  ASSERT_NE(unscoped, nullptr);
+  ASSERT_NE(scoped, nullptr);
+  setFloodIdentity(unscoped, ROUTE_TYPE_FLOOD, 0x41);
+  setFloodIdentity(scoped, ROUTE_TYPE_TRANSPORT_FLOOD, 0x41);
+  scoped->transport_codes[0] = 0x1234;
+
+  manager.queueInbound(unscoped, 100);
+  manager.queueInbound(scoped, 200);
+
+  EXPECT_EQ(unscoped, manager.getNextInbound(100));
+  EXPECT_EQ(ROUTE_TYPE_FLOOD, unscoped->getRouteType());
+  manager.free(unscoped);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, ScopedRxDelayCopyUpgradesQueuedUnscopedCopy) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(acceptFloodScope, NULL);
+  mesh::Packet* unscoped = manager.allocNew();
+  mesh::Packet* scoped = manager.allocNew();
+  ASSERT_NE(unscoped, nullptr);
+  ASSERT_NE(scoped, nullptr);
+  setFloodIdentity(unscoped, ROUTE_TYPE_FLOOD, 0x42);
+  setFloodIdentity(scoped, ROUTE_TYPE_TRANSPORT_FLOOD, 0x42);
+  scoped->transport_codes[0] = 0x1234;
+  scoped->transport_codes[1] = 0x5678;
+
+  manager.queueInbound(unscoped, 100);
+  manager.queueInbound(scoped, 200);
+
+  EXPECT_EQ(ROUTE_TYPE_FLOOD, unscoped->getRouteType());
+  EXPECT_EQ(unscoped, manager.getNextInbound(100));
+  EXPECT_EQ(ROUTE_TYPE_TRANSPORT_FLOOD, unscoped->getRouteType());
+  EXPECT_EQ(0x1234, unscoped->transport_codes[0]);
+  EXPECT_EQ(0x5678, unscoped->transport_codes[1]);
+  manager.free(unscoped);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, QueuedScopedCopyUpgradesNewEarlierUnscopedCopy) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(acceptFloodScope, NULL);
+  mesh::Packet* scoped = manager.allocNew();
+  mesh::Packet* unscoped = manager.allocNew();
+  ASSERT_NE(scoped, nullptr);
+  ASSERT_NE(unscoped, nullptr);
+  setFloodIdentity(scoped, ROUTE_TYPE_TRANSPORT_FLOOD, 0x24);
+  setFloodIdentity(unscoped, ROUTE_TYPE_FLOOD, 0x24);
+  scoped->transport_codes[0] = 0xABCD;
+  scoped->transport_codes[1] = 0;
+
+  manager.queueInbound(scoped, 200);
+  manager.queueInbound(unscoped, 100);
+
+  EXPECT_EQ(ROUTE_TYPE_FLOOD, unscoped->getRouteType());
+  EXPECT_EQ(unscoped, manager.getNextInbound(100));
+  EXPECT_EQ(ROUTE_TYPE_TRANSPORT_FLOOD, unscoped->getRouteType());
+  EXPECT_EQ(0xABCD, unscoped->transport_codes[0]);
+  manager.free(unscoped);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, RxDelayScopeDoesNotCrossPacketIdentity) {
+  StaticPoolPacketManager manager(4);
+  mesh::Packet* scoped = manager.allocNew();
+  mesh::Packet* different = manager.allocNew();
+  ASSERT_NE(scoped, nullptr);
+  ASSERT_NE(different, nullptr);
+  setFloodIdentity(scoped, ROUTE_TYPE_TRANSPORT_FLOOD, 0x11);
+  setFloodIdentity(different, ROUTE_TYPE_FLOOD, 0x12);
+  scoped->transport_codes[0] = 0xCAFE;
+
+  manager.queueInbound(scoped, 200);
+  manager.queueInbound(different, 100);
+
+  EXPECT_EQ(ROUTE_TYPE_FLOOD, different->getRouteType());
+  EXPECT_EQ(different, manager.getNextInbound(100));
+  manager.free(different);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, RxDelayNeverAddsScopeToFloodTrace) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(acceptFloodScope, NULL);
+  mesh::Packet* unscoped = manager.allocNew();
+  mesh::Packet* scoped = manager.allocNew();
+  ASSERT_NE(unscoped, nullptr);
+  ASSERT_NE(scoped, nullptr);
+  setFloodIdentity(unscoped, ROUTE_TYPE_FLOOD, 0x13);
+  setFloodIdentity(scoped, ROUTE_TYPE_TRANSPORT_FLOOD, 0x13);
+  unscoped->header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_TRACE << PH_TYPE_SHIFT);
+  scoped->header = ROUTE_TYPE_TRANSPORT_FLOOD | (PAYLOAD_TYPE_TRACE << PH_TYPE_SHIFT);
+  scoped->transport_codes[0] = 0xCAFE;
+
+  manager.queueInbound(unscoped, 100);
+  manager.queueInbound(scoped, 200);
+
+  EXPECT_EQ(unscoped, manager.getNextInbound(100));
+  EXPECT_EQ(ROUTE_TYPE_FLOOD, unscoped->getRouteType());
+  manager.free(unscoped);
+  manager.free(manager.getNextInbound(200));
+}
+
+static uint8_t testFloodScopePreference(const mesh::Packet* packet, void*) {
+  return (uint8_t)(packet->transport_codes[0] & 0xFF);
+}
+
+TEST(StaticPoolPacketManager, RxDelayRejectsUnknownShorterScope) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(testFloodScopePreference, NULL);
+  mesh::Packet* known = manager.allocNew();
+  mesh::Packet* unknown = manager.allocNew();
+  ASSERT_NE(known, nullptr);
+  ASSERT_NE(unknown, nullptr);
+  setFloodIdentity(known, ROUTE_TYPE_TRANSPORT_FLOOD, 0x30);
+  setFloodIdentity(unknown, ROUTE_TYPE_TRANSPORT_FLOOD, 0x30);
+  known->setPathHashSizeAndCount(1, 4);
+  unknown->setPathHashSizeAndCount(1, 1);
+  known->transport_codes[0] = 3;
+  unknown->transport_codes[0] = 0;  // rejected by the local validator
+
+  manager.queueInbound(known, 100);
+  manager.queueInbound(unknown, 200);
+
+  EXPECT_EQ(known, manager.getNextInbound(100));
+  EXPECT_EQ(3, known->transport_codes[0]);
+  manager.free(known);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, RxDelayShorterScopedPathBeatsNarrowerScope) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(testFloodScopePreference, NULL);
+  mesh::Packet* narrower = manager.allocNew();
+  mesh::Packet* shorter = manager.allocNew();
+  ASSERT_NE(narrower, nullptr);
+  ASSERT_NE(shorter, nullptr);
+  setFloodIdentity(narrower, ROUTE_TYPE_TRANSPORT_FLOOD, 0x31);
+  setFloodIdentity(shorter, ROUTE_TYPE_TRANSPORT_FLOOD, 0x31);
+  narrower->setPathHashSizeAndCount(1, 4);
+  shorter->setPathHashSizeAndCount(1, 2);
+  narrower->transport_codes[0] = 9;  // higher local preference
+  shorter->transport_codes[0] = 1;
+
+  manager.queueInbound(narrower, 100);
+  manager.queueInbound(shorter, 200);
+
+  EXPECT_EQ(narrower, manager.getNextInbound(100));
+  EXPECT_EQ(1, narrower->transport_codes[0]);
+  manager.free(narrower);
+  manager.free(manager.getNextInbound(200));
+}
+
+TEST(StaticPoolPacketManager, RxDelayEqualPathsPreferNarrowerLocalScope) {
+  StaticPoolPacketManager manager(4);
+  manager.setFloodScopePreference(testFloodScopePreference, NULL);
+  mesh::Packet* shallow = manager.allocNew();
+  mesh::Packet* narrower = manager.allocNew();
+  ASSERT_NE(shallow, nullptr);
+  ASSERT_NE(narrower, nullptr);
+  setFloodIdentity(shallow, ROUTE_TYPE_TRANSPORT_FLOOD, 0x32);
+  setFloodIdentity(narrower, ROUTE_TYPE_TRANSPORT_FLOOD, 0x32);
+  shallow->setPathHashSizeAndCount(1, 3);
+  narrower->setPathHashSizeAndCount(1, 3);
+  shallow->transport_codes[0] = 1;
+  narrower->transport_codes[0] = 9;  // higher local preference
+
+  manager.queueInbound(shallow, 100);
+  manager.queueInbound(narrower, 200);
+
+  EXPECT_EQ(shallow, manager.getNextInbound(100));
+  EXPECT_EQ(9, shallow->transport_codes[0]);
+  manager.free(shallow);
+  manager.free(manager.getNextInbound(200));
 }
 
 TEST(Dispatcher, QueueWakeDelayIncludesSchedulesAndChannelBackoff) {

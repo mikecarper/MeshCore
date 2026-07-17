@@ -272,7 +272,7 @@ int RegionMap::getTransportKeysFor(const RegionEntry& src, TransportKey dest[], 
   return num;
 }
 
-RegionEntry* RegionMap::findMatch(mesh::Packet* packet, uint8_t mask) {
+RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
   for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
     if ((region->flags & mask) == 0) {   // does region allow this? (per 'mask' param)

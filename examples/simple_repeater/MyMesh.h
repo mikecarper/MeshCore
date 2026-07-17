@@ -122,6 +122,19 @@ struct NeighbourInfo {
 #define FLOOD_PACKET_FILTER_ANY_TYPE  0xFF
 #define FLOOD_PACKET_FILTER_MAX_HOPS  63
 
+#ifndef FLOOD_CHANNEL_SCOPE_SLOTS
+  #if defined(ESP32)
+    #define FLOOD_CHANNEL_SCOPE_SLOTS 255
+  #elif defined(STM32_PLATFORM)
+    #define FLOOD_CHANNEL_SCOPE_SLOTS 15
+  #else
+    #define FLOOD_CHANNEL_SCOPE_SLOTS 31
+  #endif
+#endif
+#define FLOOD_CHANNEL_SCOPE_TXT_ANY    0
+#define FLOOD_CHANNEL_SCOPE_LOGIN_ANY  1
+#define FLOOD_CHANNEL_SCOPE_OTHER_ANY  2
+
 #ifndef FLOOD_GROUP_MODERATION_SLOTS
   #define FLOOD_GROUP_MODERATION_SLOTS 16
 #endif
@@ -218,6 +231,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
     uint8_t payload_type;
     uint8_t min_hops;
     uint8_t max_hops;
+    bool suspend_on_temp_radio;
+  };
+  struct FloodChannelScopeEntry {
+    uint16_t region_id;  // zero means unused
+    // 0/1/2 are txt:*/login:*/other:*; 16/32 are exact channel-key lengths.
+    uint8_t selector;
+    uint8_t channel_hash;
+    uint8_t secret[PUB_KEY_SIZE];
   };
   struct FloodGroupModerationEntry {
     bool active;
@@ -247,6 +268,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
   FloodChannelBlockEntry flood_channel_blocks[FLOOD_CHANNEL_BLOCK_SLOTS];
   FloodPacketFilterEntry flood_packet_filters[FLOOD_PACKET_FILTER_SLOTS];
+  FloodChannelScopeEntry flood_channel_scopes[FLOOD_CHANNEL_SCOPE_SLOTS];
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
   bool clock_sync_mesh_enabled;
@@ -279,6 +301,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t active_cr;   // live CR, including temporary radio overrides
   bool saved_radio_apply_pending;
   bool temp_radio_handoff_pending;
+  bool temp_radio_applied;
   bool scheduled_temp_radio_started;
   uint32_t next_scheduled_radio_time;
   unsigned long next_scheduled_radio_check_at;
@@ -353,6 +376,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   mesh::Packet* createSelfAdvert();
   bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,
                               mesh::Packet** queued_packet = nullptr);
+  uint8_t getRegionDepth(const RegionEntry* region);
   const RegionEntry* findNarrowestBatteryAlertRegion(bool& ambiguous);
   bool getBatteryAlertScopeForRegion(const RegionEntry& region, TransportKey& scope);
   bool resolveBatteryAlertScope(TransportKey& scope);
@@ -387,6 +411,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
   void setFloodPacketFilter(const char* args, char* reply);
   void deleteFloodPacketFilter(const char* args, char* reply);
+  void loadFloodChannelScopes();
+  bool saveFloodChannelScopes(bool empty_table = false);
+  bool applyFloodChannelScopeTarget(mesh::Packet* packet, const FloodChannelScopeEntry& entry);
+  bool applyFloodChannelScope(mesh::Packet* packet);
+  static uint8_t scoreFloodTransportScope(const mesh::Packet* packet, void* context);
+  uint8_t getFloodTransportScopeDepth(const mesh::Packet* packet);
+  void formatFloodChannelScopes(const char* args, char* reply);
+  void formatFloodChannelScopeDetail(int index, char* reply, size_t reply_len);
+  void setFloodChannelScope(const char* args, char* reply);
+  void deleteFloodChannelScope(const char* args, char* reply);
   void loadFloodGroupModeration();
   bool saveFloodGroupModeration();
   bool shouldBlockFloodGroupTextForward(const mesh::Packet* packet);
@@ -429,9 +463,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   void formatScheduledRadioSetting(char* reply, int setting_idx, int display_idx) const;
 
 protected:
-#if defined(ENABLE_OTA)
   bool isTempRadioActive() const override;
-#endif
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }

@@ -39,7 +39,7 @@ public:
   bool save(FILESYSTEM* _fs, const char* path=NULL);
 
   RegionEntry* putRegion(const char* name, uint16_t parent_id, uint16_t id = 0);
-  RegionEntry* findMatch(mesh::Packet* packet, uint8_t mask);
+  RegionEntry* findMatch(const mesh::Packet* packet, uint8_t mask);
   RegionEntry& getWildcard() { return wildcard; }
   RegionEntry* findByName(const char* name);
   RegionEntry* findByNamePrefix(const char* prefix);

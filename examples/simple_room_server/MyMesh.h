@@ -145,11 +145,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
 
 protected:
-#if defined(ENABLE_OTA)
   bool isTempRadioActive() const override {
     return temp_radio_applied && revert_radio_at != 0 && !millisHasNowPassed(revert_radio_at);
   }
-#endif
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }
