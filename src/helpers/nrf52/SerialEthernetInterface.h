@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef ETHERNET_ENABLED
+
 #include "helpers/BaseSerialInterface.h"
 #include <SPI.h>
 #include <RAK13800_W5100S.h>
@@ -7,6 +9,7 @@
 #ifndef ETHERNET_TCP_PORT
   #define ETHERNET_TCP_PORT 5000
 #endif
+
 // define ETHERNET_RAW_LINE=1 to use raw line-based CLI instead of framed packets
 
 class SerialEthernetInterface : public BaseSerialInterface {
@@ -57,7 +60,9 @@ class SerialEthernetInterface : public BaseSerialInterface {
     bool isEnabled() const override { return _isEnabled; }
 
     bool isConnected() const override;
+    bool isReadBusy() const override;
     bool isWriteBusy() const override;
+    bool hasPendingIO() const override;
 
     size_t writeFrame(const uint8_t src[], size_t len) override;
     size_t checkRecvFrame(uint8_t dest[]) override;
@@ -76,3 +81,5 @@ class SerialEthernetInterface : public BaseSerialInterface {
   #define ETHERNET_DEBUG_PRINTLN(...) {}
   #define ETHERNET_DEBUG_PRINT_IP(...) {}
 #endif
+
+#endif // ETHERNET_ENABLED

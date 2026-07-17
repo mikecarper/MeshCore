@@ -25,6 +25,7 @@ protected:
 
   #if ENV_INCLUDE_GPS
   LocationProvider* _location;
+  void armGpsPowerSavingCycle();
   void start_gps();
   void stop_gps();
   bool telemetryGpsDetected() const override { return gps_detected; }
@@ -55,4 +56,5 @@ public:
   const char* getSettingName(int i) const override;
   const char* getSettingValue(int i) const override;
   bool setSettingValue(const char* name, const char* value) override;
+  void setPowerSavingEnabled(bool enabled) override;
 };

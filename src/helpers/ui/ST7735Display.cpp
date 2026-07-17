@@ -1,4 +1,5 @@
 #include "ST7735Display.h"
+#include <TFT_eSPI.h>
 
 //#include <Fonts/GFXFF/FreeSans9pt7b.h>
 

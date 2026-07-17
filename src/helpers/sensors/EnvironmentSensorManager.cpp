@@ -628,6 +628,18 @@ static const SensorDef SENSOR_TABLE[] = {
 static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TABLE[0])) - 1;
 
 // ============================================================
+// Power Saving GPS
+// ============================================================
+#if ENV_INCLUDE_GPS
+#ifndef GPS_POWERSAVING_ON_DURATION_SECS
+#define GPS_POWERSAVING_ON_DURATION_SECS (10UL * 60UL)
+#endif
+#ifndef GPS_POWERSAVING_OFF_DURATION_SECS
+#define GPS_POWERSAVING_OFF_DURATION_SECS (24UL * 60UL * 60UL)
+#endif
+#endif
+
+// ============================================================
 // begin() — scan the I2C bus, then initialize only what was
 // found. A sensor whose address does not ACK during the scan
 // is never touched by a library call, preventing hangs or
@@ -735,7 +747,13 @@ const char* EnvironmentSensorManager::getSettingValue(int i) const {
 bool EnvironmentSensorManager::setSettingValue(const char* name, const char* value) {
   #if ENV_INCLUDE_GPS
   if (gps_detected && strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
   if (strcmp(name, "gps_interval") == 0) {
@@ -745,6 +763,29 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
   }
   #endif
   return false;  // not supported
+}
+
+void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  #if ENV_INCLUDE_GPS
+  if (!gps_detected) return;
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) {
+      armGpsPowerSavingCycle();
+    } else {
+      start_gps();
+    }
+  } else if (!gps_active) {
+    // Manual GPS-on means continuous operation when node power saving is off.
+    start_gps();
+  }
+  #endif
 }
 
 #if ENV_INCLUDE_GPS
@@ -879,26 +920,42 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin){
 }
 #endif
 
+void EnvironmentSensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextGPSOff(millis() + GPS_POWERSAVING_ON_DURATION_SECS * 1000UL);
+}
+
 void EnvironmentSensorManager::start_gps() {
   if (gps_active) return;
   gps_active = true;
   #ifdef RAK_WISBLOCK_GPS
-    pinMode(gpsResetPin, OUTPUT);
-    digitalWrite(gpsResetPin, HIGH);
-    return;
-  #endif
-
+  pinMode(gpsResetPin, OUTPUT);
+  digitalWrite(gpsResetPin, HIGH);
+  #else
   _location->begin();
   _location->reset();
 
 #ifndef PIN_GPS_EN
   MESH_DEBUG_PRINTLN("Start GPS is N/A on this board. Actual GPS state unchanged");
 #endif
+  #endif
+
+  armGpsPowerSavingCycle();
 }
 
 void EnvironmentSensorManager::stop_gps() {
+  if (!gps_active) return;
   gps_active = false;
-  #ifdef RAK_WISBLOCK_GPS
+
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextGPSOn(millis() + GPS_POWERSAVING_OFF_DURATION_SECS * 1000UL);
+  }
+
+#ifdef RAK_WISBLOCK_GPS
     pinMode(gpsResetPin, OUTPUT);
     digitalWrite(gpsResetPin, LOW);
     return;
@@ -920,11 +977,22 @@ void EnvironmentSensorManager::loop() {
   unsigned long now = millis();
   loopGpsTelemetry(now);
 
+  if (powersaving_enabled && gps_detected && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
+                       || !_location->waitingTimeSync())) {
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      start_gps();
+    }
+  }
+
   if (gps_active) {
     _location->loop();
   }
   if ((long)(now - next_gps_update) >= 0) {
-
     if(gps_active){
     #ifdef RAK_WISBLOCK_GPS
     if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
@@ -951,6 +1019,7 @@ void EnvironmentSensorManager::loop() {
       processGpsTelemetryFix(gps_lat, gps_lon, gps_altitude, now);
     }
     #endif
+
     }
     next_gps_update = now + (gps_update_interval_sec * 1000);
   }

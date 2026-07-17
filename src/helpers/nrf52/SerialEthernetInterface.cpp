@@ -1,3 +1,5 @@
+#ifdef ETHERNET_ENABLED
+
 #include "SerialEthernetInterface.h"
 #include "EthernetMac.h"
 #include <SPI.h>
@@ -116,7 +118,17 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 bool SerialEthernetInterface::isWriteBusy() const {
-  return false;
+  return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
+}
+
+bool SerialEthernetInterface::isReadBusy() const {
+  return _state != RECV_STATE_IDLE;
+}
+
+bool SerialEthernetInterface::hasPendingIO() const {
+  // The W5100S path is polled and has no wake interrupt. Keep servicing it
+  // while a client is connected or either direction has queued frame state.
+  return deviceConnected || send_queue_len > 0 || _state != RECV_STATE_IDLE;
 }
 
 size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
@@ -262,3 +274,5 @@ bool SerialEthernetInterface::isConnected() const {
 void SerialEthernetInterface::loop() {
   Ethernet.maintain();
 }
+
+#endif // ETHERNET_ENABLED

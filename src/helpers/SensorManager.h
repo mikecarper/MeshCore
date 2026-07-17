@@ -55,8 +55,9 @@ protected:
 public:
   double node_lat, node_lon;  // modify these, if you want to affect Advert location
   double node_altitude;       // altitude in meters
+  bool powersaving_enabled;   // powersaving mode
 
-  SensorManager() { node_lat = 0; node_lon = 0; node_altitude = 0; }
+  SensorManager() { node_lat = 0; node_lon = 0; node_altitude = 0; powersaving_enabled = false; }
   virtual bool i2c_probe(TwoWire& wire, uint8_t addr) { return false; }
   virtual bool begin() { return false; }
   virtual bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { return false; }
@@ -67,6 +68,7 @@ public:
   virtual const char* getSettingValue(int i) const { return NULL; }
   virtual bool setSettingValue(const char* name, const char* value) { return false; }
   virtual LocationProvider* getLocationProvider() { return NULL; }
+  virtual void setPowerSavingEnabled(bool enabled) { powersaving_enabled = enabled; }
 
   // Helper functions to manage setting by keys (useful in many places ...)
   const char* getSettingByKey(const char* key) {

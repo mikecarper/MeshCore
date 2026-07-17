@@ -153,9 +153,10 @@ public :
                     markTimeSyncApplied();
                     _time_sync_needed = false;
                     _last_time_sync = millis();
+                    _last_valid_time_sync = _clock->getCurrentTime();
                 }
             }
-            if (isValid()) {
+            if (isValid() && satellitesCount() >= 5) {
                 time_valid ++;
             }
         }

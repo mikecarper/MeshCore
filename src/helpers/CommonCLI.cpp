@@ -1958,7 +1958,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       if (_sensors->setSettingValue("gps", "1")) {
         _prefs->gps_enabled = 1;
         savePrefs();
-        strcpy(reply, "ok");
+
+        if (_prefs->powersaving_enabled) { // Power Saving
+          strcpy(reply, "on (powersaving)");
+        } else { // Normal mode
+          strcpy(reply, "ok");
+        }
       } else {
         strcpy(reply, "gps toggle not found");
       }
@@ -1974,7 +1979,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       LocationProvider * l = _sensors->getLocationProvider();
       if (l != NULL) {
         l->syncTime();
-        strcpy(reply, "ok");
+        strcpy(reply, "scheduled");
       } else {
         strcpy(reply, "gps provider not found");
       }
@@ -2019,14 +2024,42 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         bool enabled = l->isEnabled(); // is EN pin on ?
         bool fix = l->isValid();       // has fix ?
         int sats = l->satellitesCount();
-        bool active = !strcmp(_sensors->getSettingByKey("gps"), "1");
-        if (enabled) {
-          sprintf(reply, "on, %s, %s, %d sats",
-            active?"active":"deactivated",
-            fix?"fix":"no fix",
-            sats);
-        } else {
-          strcpy(reply, "off");
+        const char* gps_setting = _sensors->getSettingByKey("gps");
+        bool active = gps_setting != NULL && strcmp(gps_setting, "1") == 0;
+
+        if (_prefs->powersaving_enabled && l->getGPSPowerSaving()) { // GPS Power Saving
+          unsigned long now = millis();
+          unsigned long next_off = l->getNextGPSOff();
+          unsigned long deadline = next_off != 0 ? next_off : l->getNextGPSOn();
+          long remaining_ms = deadline == 0 ? 0 : (long)(deadline - now);
+          unsigned long mins = remaining_ms > 0 ? (unsigned long)remaining_ms / 60000UL : 0;
+          if (next_off != 0) {
+            snprintf(reply, 160, "on (powersaving, sleep in %luh %lum), %s, %s, %d sats",
+                     mins / 60UL, mins % 60UL, active ? "active" : "deactivated",
+                     fix ? "fix" : "no fix", sats);
+          } else {
+            snprintf(reply, 160, "off (powersaving, wake in %luh %lum)", mins / 60UL, mins % 60UL);
+          }
+
+          // "last sync" from GPS
+          unsigned long last_sync = l->getLastValidTimeSync();
+          size_t used = strlen(reply);
+          if (last_sync == 0) {
+            snprintf(reply + used, 160 - used, ", last sync: none");
+          } else {
+            DateTime dt = DateTime(last_sync);
+            snprintf(reply + used, 160 - used, ", last sync: %02d:%02d - %d/%d/%d UTC",
+                     dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+          }
+        } else { // Normal mode
+          if (enabled) {
+            sprintf(reply, "on, %s, %s, %d sats",
+              active?"active":"deactivated",
+              fix?"fix":"no fix",
+              sats);
+          } else {
+            strcpy(reply, "off");
+          }
         }
       } else {
         strcpy(reply, "Can't find GPS");
@@ -2038,6 +2071,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "Error: USB serial connected");
       } else {
         _prefs->powersaving_enabled = 1;
+        _sensors->setPowerSavingEnabled(true);
         savePrefs();
         strcpy(reply, "on - Immediate effect");
       }
@@ -2046,6 +2080,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "Error: USB serial connected");
       } else {
         _prefs->powersaving_enabled = 1;
+        _sensors->setPowerSavingEnabled(true);
         savePrefs();
         strcpy(reply, "on - After 2 minutes");
       }
@@ -2056,6 +2091,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
     } else if (memcmp(command, "powersaving off", 15) == 0) {
       _prefs->powersaving_enabled = 0;
+      _sensors->setPowerSavingEnabled(false);
       savePrefs();
       strcpy(reply, "off");
     } else if (memcmp(command, "powersaving", 11) == 0) {

@@ -3,7 +3,6 @@
 #include "DisplayDriver.h"
 #include <Wire.h>
 #include <SPI.h>
-#include "TFT_eSPI.h"
 #include <helpers/RefCountedDigitalPin.h>
 
 class ST7735Display : public DisplayDriver {
