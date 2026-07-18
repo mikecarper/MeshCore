@@ -4,7 +4,64 @@ This document describes the MQTT bridge implementation that allows MeshCore repe
 
 ## Quick Start Guide
 
-### Essential Commands to Get MQTT Observer Running
+### Browser setup (recommended)
+
+Normal ESP32 MQTT repeater-, room-server-, and WiFi-companion builds include an
+all-in-one WebConfig portal. The same page is used by non-MQTT ESP32 builds,
+where the MQTT tab and wizard step are removed at runtime.
+
+1. Flash an observer build such as `heltec_v4_repeater_observer_mqtt`.
+2. On a fresh node with no saved WiFi SSID, join the open
+   `MeshCore-Setup-XXXX` access point. The captive page should open
+   automatically; otherwise browse to <http://192.168.4.1/>.
+3. Complete the wizard, review the settings, and choose **Save & Reboot**. The
+   MQTT bridge remains stopped while the setup AP owns WiFi and starts normally
+   after the reboot.
+4. Verify the connections on the portal's status page or with
+   `get mqtt.status` from the CLI.
+
+The setup AP stops after 10 minutes with no connected client. WiFi companion
+builds enable the WebUI by default. Repeater and room-server builds default it
+off; use `set webui on` for a persistent start or `start webconfig` for only the
+current boot. `get webui` reports the active URL.
+
+To change an already-configured repeater/room-server observer temporarily, log
+in through its CLI and run:
+
+```text
+start webconfig
+```
+
+Open the reported LAN URL and sign in with the node's admin password. The LAN
+portal runs until `stop webconfig` or a reboot. To force the captive setup AP,
+first stop the MQTT bridge, then start the portal in AP mode:
+
+```text
+set bridge off
+start webconfig ap
+```
+
+`start webconfig ap` intentionally refuses to take WiFi away from a running
+bridge. The forced AP is open, so stop it when finished and re-enable the bridge
+if you did not reboot:
+
+```text
+stop webconfig
+set bridge on
+```
+
+The classic 4 MB ESP32
+`LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt` and
+`LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt` targets omit the browser
+portal because the async web-server code does not fit while retaining two app
+slots for LoRa OTA. Configure those two builds with the CLI below.
+
+MQTT WiFi companions use this same wizard instead of the former two-page setup.
+The portal remains on the companion's station IP, alongside the companion
+protocol on TCP port 5000. Because companions have no admin CLI password, their
+LAN page is intentionally unauthenticated; use a trusted WiFi network.
+
+### CLI setup and fallback
 
 **1. Flash the observer firmware to your device**
 
@@ -153,7 +210,7 @@ pio run -e LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt
 pio run -e LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt
 ```
 
-**TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo’s **T-LoRa V2.1–1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so the image fits `min_spiffs`; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
+**TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo’s **T-LoRa V2.1–1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so they retain dual-app OTA on the 4 MB flash; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The repeater observer also keeps 256 recent-repeater entries instead of the normal ESP32 default of 2,048. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
 
 **T-LoRa V2.1–1.6 MQTT observer — one WSS broker:** This hardware is **classic ESP32 without PSRAM**. Each WSS preset uses a full TLS stack and large contiguous heap allocations; **two active broker presets at once** typically fails the second connection (`mbedtls_ssl_setup` / `esp-tls` `0x8017`, low `IntMax` in `memory`). **Treat these observer builds as supporting one active cloud preset:** configure the broker you need in `mqtt1` or `mqtt2`, and set the other slot to `none` (e.g. `set mqtt2.preset none`). Use PSRAM-capable boards if you need multiple simultaneous MQTT uplinks.
 
@@ -165,8 +222,8 @@ Some MQTT observer builds use a non-default partition table to accommodate the l
 |-------------|----------------|------------|---------------|-------|
 | `LilyGo_T3S3_sx1262_repeater_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | Changed from default (1.25 MB) |
 | `LilyGo_T3S3_sx1262_room_server_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | Changed from default (1.25 MB) |
-| `LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | TTGO LoRa32 V1.0; observer omits `sensor_base`. **One active WSS broker** recommended (no PSRAM; dual TLS usually fails on the second slot). |
-| `LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | same |
+| `LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt` | `dual_ota_1984k.csv` | 4 MB | 1.9375 MB | 64 KB SPIFFS; no coredump partition. **One active WSS broker** recommended (no PSRAM; dual TLS usually fails on the second slot). |
+| `LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | TTGO LoRa32 V1.0; observer omits `sensor_base`; one active WSS broker recommended. |
 | `Station_G2_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
 | `Station_G2_room_server_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
 | `LilyGo_TBeam_1W_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | Set in `boards/t_beam_1w.json`; required vs implicit `default.csv` |
@@ -176,7 +233,8 @@ Some MQTT observer builds use a non-default partition table to accommodate the l
 
 Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new bootloader **and** partition table. If that layout **differs** from what is already on the device, **NVS is typically wiped or invalidated** — expect to lose stored configuration (admin preferences, WiFi, MQTT slots, name, etc.) and reconfigure from scratch.
 
-- **`LilyGo_TLora_V2_1_1_6_*_observer_mqtt`:** These use the **same** `min_spiffs.csv` layout as other MeshCore TLora builds, so moving between repeater / room server / MQTT observer does **not** require a different partition table for normal upgrades. **If you previously installed an older TLora MQTT observer that used `huge_app.csv`,** flashing this firmware switches back to `min_spiffs` — treat that as a **partition layout change** (merged flash; NVS may be reset). **If you install MeshCore on a device that used a non-MeshCore partition map,** the first merged flash can still **wipe** settings.
+- **`LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt`:** This uses the custom `dual_ota_1984k.csv` layout. Install its merged image when coming from a standard TLora build, the room-server observer, or any older `huge_app.csv` build; expect to reconfigure after that partition change.
+- **`LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt`:** This retains the normal `min_spiffs.csv` layout. Moving from another `min_spiffs` TLora build does not itself require a partition change, but coming from the repeater observer's custom layout, `huge_app.csv`, or a non-MeshCore layout does.
 - **`Station_G2_*_observer_mqtt`** and **`LilyGo_TBeam_1W_*_observer_mqtt`**: These use `default_16MB.csv` to accomodate the larger size of the MQTT observer firmware. Installing MQTT observer firmware on these devices requires a **merged** flash the first time. The same applies if you move **from** firmware that was built with a **different** partition table—the first merged flash that installs this layout will **wipe** stored settings. 
 
 **How to flash the merged firmware:**

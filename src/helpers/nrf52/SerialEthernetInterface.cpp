@@ -94,6 +94,9 @@ void SerialEthernetInterface::enable() {
 
 void SerialEthernetInterface::disable() {
   _isEnabled = false;
+  deviceConnected = false;
+  if (client) client.stop();
+  clearBuffers();
 }
 
 size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
@@ -153,9 +156,8 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
       ETHERNET_DEBUG_PRINTLN("Closing previous client");
       client.stop();
     }
-    _state = RECV_STATE_IDLE;
-    _frame_len = 0;
-    _rx_len = 0;
+    // Queued replies and partial input belong to the previous TCP session.
+    clearBuffers();
     client = newClient;
     ETHERNET_DEBUG_PRINTLN("Switched to new client");
   }
@@ -172,9 +174,13 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
       deviceConnected = true;
     }
   } else {
-    if (deviceConnected) {
+    bool wasConnected = deviceConnected;
+    if (wasConnected || send_queue_len > 0 || _state != RECV_STATE_IDLE) {
       deviceConnected = false;
-      ETHERNET_DEBUG_PRINTLN("Disconnected");
+      clearBuffers();
+      if (wasConnected) {
+        ETHERNET_DEBUG_PRINTLN("Disconnected");
+      }
     }
   }
 

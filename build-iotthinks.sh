@@ -92,8 +92,8 @@ Heltec_t096_companion_radio_ble_femoff
 # ESP32 - 20 builds
 ./build.sh build-firmware \
 Heltec_v3_companion_radio_ble_ps \
-heltec_v4_companion_radio_ble_ps_femon \
-heltec_v4_3_companion_radio_ble_ps_femoff \
+heltec_v4_companion_radio_ble_femon \
+heltec_v4_3_companion_radio_ble_femoff \
 Xiao_C3_companion_radio_ble_ps \
 Xiao_S3_companion_radio_ble_ps \
 Xiao_S3_WIO_companion_radio_ble_ps \
@@ -101,15 +101,15 @@ Heltec_v2_companion_radio_ble_ps \
 LilyGo_TBeam_1W_companion_radio_ble_ps \
 Heltec_WSL3_companion_radio_ble_ps \
 Heltec_Wireless_Tracker_companion_radio_ble_ps \
-heltec_tracker_v2_companion_radio_ble_ps_femon \
-heltec_tracker_v2_companion_radio_ble_ps_femoff \
+heltec_tracker_v2_companion_radio_ble_femon \
+heltec_tracker_v2_companion_radio_ble_femoff \
 Heltec_Wireless_Paper_companion_radio_ble_ps \
 LilyGo_TLora_V2_1_1_6_companion_radio_ble_ps \
 Heltec_ct62_companion_radio_ble_ps \
 T_Beam_S3_Supreme_SX1262_companion_radio_ble_ps \
 Tbeam_SX1262_companion_radio_ble_ps \
-heltec_v4_expansionkit_tft_companion_radio_ble_ps_femon \
-heltec_v4_3_expansionkit_tft_companion_radio_ble_ps_femoff \
+heltec_v4_expansionkit_tft_companion_radio_ble_femon \
+heltec_v4_3_expansionkit_tft_companion_radio_ble_femoff \
 LilyGo_T3S3_sx1262_companion_radio_ble_ps
 
 # Not working
@@ -130,8 +130,8 @@ Xiao_C6_repeater_ \
 RAK_4631_repeater \
 Heltec_t096_repeater \
 Heltec_v3_companion_radio_ble_ps \
-heltec_v4_companion_radio_ble_ps_femon \
-heltec_v4_3_companion_radio_ble_ps_femoff \
+heltec_v4_companion_radio_ble_femon \
+heltec_v4_3_companion_radio_ble_femoff \
 Xiao_C3_companion_radio_ble_ps \
 Xiao_C6_companion_radio_ble_ \
 RAK_4631_companion_radio_ble \

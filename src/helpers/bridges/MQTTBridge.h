@@ -502,6 +502,17 @@ public:
   /** True after this bridge has successfully set the RTC from NTP this boot. */
   bool hasNtpTime() const { return _ntp_synced; }
   static void formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPrefs* obs);
+  // Structured status used by the browser configuration page. Publish
+  // counters are optional because not every supported PsychicMqttClient
+  // version exposes them.
+  struct SlotStatusSnapshot {
+    const char* name;
+    const char* state;
+    bool has_publish_counts;
+    unsigned long publish_ok;
+    unsigned long publish_err;
+  };
+  static bool getSlotStatusSnapshot(int slot_index, SlotStatusSnapshot* out);
   /** True when WiFi is set and at least one MQTT slot can run (preset + custom host if needed). */
   static bool isConfigValid(const MQTTPrefs* obs);
   static void formatSlotDiagReply(char* buf, size_t bufsize, int slot_index);

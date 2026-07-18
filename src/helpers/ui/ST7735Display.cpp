@@ -405,6 +405,10 @@ static void setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 
 static TFT_eSprite *sprite = NULL;
 
+static bool spriteReady() {
+  return sprite != NULL && sprite->getPointer() != NULL;
+}
+
 bool ST7735Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   return true;
 /*
@@ -422,17 +426,21 @@ bool ST7735Display::begin() {
   if (!sprite) {
     // alloc offscreen canvas
     sprite = new TFT_eSprite(&lcd);
-    if (sprite) {
-      if (sprite->createSprite(160, 80)) {
-        sprite->fillScreen(ST77XX_BLACK);
-        sprite->setTextColor(curr_color = ST77XX_WHITE);
-      } else {
-        Serial.printf("ST7735Display: failed to alloc canvas pixels");
-      }
-    } else {
-      Serial.printf("ST7735Display: failed to alloc canvas");
+    if (!sprite) {
+      Serial.println("ST7735Display: failed to alloc canvas");
+      return false;
     }
+    if (!sprite->createSprite(160, 80)) {
+      Serial.println("ST7735Display: failed to alloc canvas pixels");
+      delete sprite;
+      sprite = NULL;
+      return false;
+    }
+    sprite->fillScreen(ST77XX_BLACK);
+    sprite->setTextColor(curr_color = ST77XX_WHITE);
   }
+
+  if (!spriteReady()) return false;
 
   if (!_isOn) {
     if (_peripher_power) _peripher_power->claim();
@@ -470,6 +478,8 @@ bool ST7735Display::begin() {
 }
 
 void ST7735Display::_resetAndInit() {
+    if (!spriteReady()) return;
+
     // Pulse Reset low for 10ms
     digitalWrite(PIN_TFT_RST, HIGH);
     delay(2);
@@ -528,10 +538,12 @@ void ST7735Display::turnOff() {
 }
 
 void ST7735Display::clear() {
+  if (!spriteReady()) return;
   sprite->fillScreen(ST77XX_BLACK);
 }
 
 void ST7735Display::startFrame(Color bkg) {
+  if (!spriteReady()) return;
   sprite->fillScreen(ST77XX_BLACK);
   sprite->setTextColor(curr_color = ST77XX_WHITE);
   sprite->setFreeFont();
@@ -540,6 +552,7 @@ void ST7735Display::startFrame(Color bkg) {
 }
 
 void ST7735Display::setTextSize(int sz) {
+  if (!spriteReady()) return;
   sprite->setTextSize(sz);
 }
 
@@ -570,34 +583,41 @@ void ST7735Display::setColor(Color c) {
       curr_color = ST77XX_WHITE;
       break;
   }
-  sprite->setTextColor(curr_color);
+  if (spriteReady()) sprite->setTextColor(curr_color);
 }
 
 void ST7735Display::setCursor(int x, int y) {
+  if (!spriteReady()) return;
   sprite->setCursor(x*SCALE_X, y*SCALE_Y);
 }
 
 void ST7735Display::print(const char* str) {
+  if (!spriteReady()) return;
   sprite->print(str);
 }
 
 void ST7735Display::fillRect(int x, int y, int w, int h) {
+  if (!spriteReady()) return;
   sprite->fillRect(x*SCALE_X, y*SCALE_Y, w*SCALE_X, h*SCALE_Y, curr_color);
 }
 
 void ST7735Display::drawRect(int x, int y, int w, int h) {
+  if (!spriteReady()) return;
   sprite->drawRect(x*SCALE_X, y*SCALE_Y, w*SCALE_X, h*SCALE_Y, curr_color);
 }
 
 void ST7735Display::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
+  if (!spriteReady()) return;
   sprite->drawBitmap(x*SCALE_X, y*SCALE_Y, bits, w, h, curr_color);
 }
 
 uint16_t ST7735Display::getTextWidth(const char* str) {
+  if (!spriteReady()) return 0;
   return sprite->textWidth(str) / SCALE_X;
 }
 
 void ST7735Display::endFrame() {
+  if (!spriteReady()) return;
   // blit the canvas buffer to LCD
   set_CS(LOW);
   _spi->beginTransaction(_spiSettings);

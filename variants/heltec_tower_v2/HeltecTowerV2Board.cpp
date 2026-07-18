@@ -89,6 +89,10 @@ const char* HeltecTowerV2Board::getManufacturerName() const {
 }
 
 void HeltecTowerV2Board::powerOff() {
+  shutdownPeripherals();
+#ifdef NRF52_POWER_MANAGEMENT
+  initiateShutdown(SHUTDOWN_REASON_USER);
+#else
   pinMode(PIN_GPS_EN, OUTPUT);
   digitalWrite(PIN_GPS_EN, !PIN_GPS_EN_ACTIVE);
   pinMode(PIN_GPS_STANDBY, OUTPUT);
@@ -100,4 +104,5 @@ void HeltecTowerV2Board::powerOff() {
   digitalWrite(PIN_BAT_CTL, LOW);
   variant_shutdown();
   sd_power_system_off();
+#endif
 }

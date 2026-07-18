@@ -30,6 +30,11 @@
 #define WITH_BRIDGE
 #endif
 
+
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+#include "helpers/esp32/WebConfigServer.h"
+#endif
+
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef FIRMWARE_BUILD_DATE
@@ -94,7 +99,11 @@ struct PostInfo {
   char text[MAX_POST_TEXT_LEN+1];
 };
 
-class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
+class MyMesh : public mesh::Mesh, public CommonCLICallbacks
+#ifdef WITH_WEBCONFIG
+    , public WebConfigServer::Callbacks
+#endif
+{
   FILESYSTEM* _fs;
   uint32_t last_millis;
   uint64_t uptime_millis;
@@ -133,6 +142,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #endif
 #ifdef WITH_MQTT_BRIDGE
   AlertReporter _alerter;
+#endif
+#ifdef WITH_WEBCONFIG
+  WebConfigServer* _webconfig = nullptr;
+  bool _wc_batch_active = false;
+  bool _wc_restart_pending = false;
+  uint8_t _wc_slot_restart_mask = 0;
 #endif
 
   void addPost(ClientInfo* client, const char* postData);
@@ -317,6 +332,12 @@ public:
 
   void restartBridge() override {
     if (!bridge || !bridge->isRunning()) return;
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active) {
+      _wc_restart_pending = true;
+      return;
+    }
+#endif
     bridge->end();
     char device_id[65];
     mesh::LocalIdentity self_id = getSelfId();
@@ -334,6 +355,12 @@ public:
   void restartBridgeSlot(int slot) override {
 #ifdef WITH_MQTT_BRIDGE
     if (!bridge || !bridge->isRunning()) return;
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active && slot >= 0 && slot < MAX_MQTT_SLOTS) {
+      _wc_slot_restart_mask |= static_cast<uint8_t>(1U << slot);
+      return;
+    }
+#endif
     bridge->setSlotPreset(slot, _cli.getObserverPrefs()->mqtt_slot_preset[slot]);
 #else
     (void)slot;
@@ -358,6 +385,26 @@ public:
     if (!bridge || !bridge->isRunning()) return false;
     return bridge->ntpDiag(reply, reply_size, verbose);
   }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  bool startWebConfig(bool force_ap, char* reply) override;
+  bool stopWebConfig(char* reply) override;
+  bool setWebUIEnabled(bool enabled, char* reply) override;
+  bool getWebUIStatus(char* reply) const override;
+  bool isWebConfigActive() const override {
+    return _webconfig && (_webconfig->isRunning() || _webconfig->isStopping());
+  }
+  void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
+  void execCommand(char* cmd, char* reply) override { handleCommand(0, cmd, reply); }
+  void rebootNow() override { _cli.getBoard()->reboot(); }
+  void onConfigBatchStart() override {
+    _wc_batch_active = true;
+    _wc_restart_pending = false;
+    _wc_slot_restart_mask = 0;
+  }
+  void onConfigBatchEnd() override;
+  void buildStatsJson(char* buf, size_t buf_size) override;
 #endif
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 

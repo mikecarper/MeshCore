@@ -2,6 +2,9 @@
 #include <Mesh.h>
 
 #include "MyMesh.h"
+#if defined(ESP32) && MAX_RECENT_REPEATERS > 0
+  #include <new>
+#endif
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
@@ -15,8 +18,20 @@
 
 StdRNG fast_rng;
 #if MAX_RECENT_REPEATERS > 0
+  #if defined(ESP32)
+// Classic ESP32 has a much smaller link-time DRAM window than its runtime heap
+// map. Allocate this large, fixed-capacity history at startup so enabling WiFi
+// features (including WebConfig) does not overflow that static DRAM window.
+// Global constructors run before setup(), while the heap is still
+// unfragmented; a failed allocation safely falls back to no history table.
+SimpleMeshTables::RecentRepeaterInfo* recent_repeater_storage =
+    new (std::nothrow) SimpleMeshTables::RecentRepeaterInfo[MAX_RECENT_REPEATERS];
+SimpleMeshTables tables(recent_repeater_storage,
+                        recent_repeater_storage ? MAX_RECENT_REPEATERS : 0);
+  #else
 SimpleMeshTables::RecentRepeaterInfo recent_repeater_storage[MAX_RECENT_REPEATERS];
 SimpleMeshTables tables(recent_repeater_storage, MAX_RECENT_REPEATERS);
+  #endif
 #else
 SimpleMeshTables tables;
 #endif

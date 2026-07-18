@@ -32,6 +32,7 @@ public:
     virtual void setNextGPSOn(unsigned long _millis) { _next_gps_on = _millis; }
     virtual unsigned long getNextGPSOn() { return _next_gps_on; }
     virtual unsigned long getLastValidTimeSync() { return _last_valid_time_sync; }
+    virtual mesh::RTCClock* getRTCClock() { return NULL; }
     virtual long getLatitude() = 0;
     virtual long getLongitude() = 0;
     virtual long getAltitude() = 0;

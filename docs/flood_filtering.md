@@ -32,11 +32,12 @@ get flood.filter
 get flood.moderation
 ```
 
-The `flood.filter` and `flood.moderation` tables each have 16 persistent slots
-and start empty. A row can opt into `suspend=tempradio`; temporary radio is not
-synonymous with OTA and can carry normal packet types too. A corrupt or
-truncated table fails open, so corrupt storage does not silently enable
-blocking.
+The `flood.filter` and `flood.moderation` tables each have 16 persistent slots.
+A new `flood.filter` table starts with `ota all suspend=tempradio` in slot 1;
+`flood.moderation` starts empty. A row can opt into `suspend=tempradio`;
+temporary radio is not synonymous with OTA and can carry normal packet types
+too. A corrupt or truncated table fails open, so corrupt storage does not
+silently enable blocking.
 
 ## Force unscoped floods into a transport scope
 
@@ -90,8 +91,12 @@ type forwardable.
 LoRa OTA (`0x0C`) falls under `other:*`. A matching row adds the selected
 transport code, but OTA still operates normally during the temporary-radio
 window because the OTA handler accepts both unscoped and transport-scoped flood
-routes. The target region must allow flooding. The OTA core is already dormant
-outside the temporary-radio window, so no default OTA filter row is installed.
+routes. The target region must allow flooding. A new repeater also seeds
+`ota all suspend=tempradio` in flood-filter slot 1. That visible rule blocks OTA
+forwarding at every received hop outside temporary-radio operation and is
+skipped while temporary radio is active. Independently, the OTA core refuses
+OTA receive, relay, and transmit outside an actually active temporary-radio
+window, even if the seeded row is deleted or replaced.
 
 Capacity is selected at build time:
 
@@ -149,9 +154,18 @@ Without a slot number, `set` reuses an identical rule, including its suspension
 setting, or selects the first empty slot. With a slot number, it replaces that
 slot. Omitting the hop expression means `all` (`0-63`).
 
-No flood-filter row is created automatically. Operators may add
-`suspend=tempradio` to any row that should be skipped while the radio is on a
-temporary channel.
+On first initialization, flood-filter slot 1 is seeded with:
+
+```text
+set flood.filter.1 0x0C all suspend=tempradio
+```
+
+This is a normal editable row. After the table has been saved, deleting it
+remains persistent across reboot; the firmware does not recreate it. Run the
+same command to restore the exact seeded row, or omit `.1` to preserve existing
+slot assignments and use the first empty slot. Operators may add
+`suspend=tempradio` to any other row that should be skipped while the radio is
+on a temporary channel.
 
 Suspension does not approve a packet or bypass the rest of the filter table. It
 skips that row, then evaluation continues with the next row and the remaining
@@ -358,17 +372,18 @@ Use username and path rules as traffic moderation, not as an authorization
 boundary. For a strict network boundary, combine these tools with region ACLs,
 private transport/channel keys, and controlled device access.
 
-## Restore the factory-seeded channel block
+## Restore the factory-seeded rows
 
-The repeater's factory-seeded forwarding row can be restored through the CLI:
+The repeater's factory-seeded forwarding rows can be restored through the CLI:
 
 ```text
 set flood.channel.block.1 #wardriving h=4
+set flood.filter.1 0x0C all suspend=tempradio
 ```
 
-This explicitly replaces slot 1. Inspect the slot first if it may now contain
-another rule. To preserve existing slot assignments, omit `.1`; the command
-then updates an identical channel row or uses the first empty slot.
+Each command explicitly replaces slot 1 in its own table. Inspect the slot first
+if it may now contain another rule. To preserve existing slot assignments, omit
+`.1`; the command then reuses an identical row or uses the first empty slot.
 
 ## Remove the custom rules
 

@@ -52,6 +52,7 @@ public:
 #endif
 
 #ifdef NRF52_POWER_MANAGEMENT
+    shutdownPeripherals();
     initiateShutdown(SHUTDOWN_REASON_USER);
 #else
     NRF52Board::powerOff();

@@ -1,8 +1,12 @@
 #include "MyMesh.h"
 #include <algorithm>
 #include <stdlib.h>  // for qsort()
+#include <helpers/CLICommandUtils.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/RxReservePacketManager.h>
+#ifdef WITH_WEBCONFIG
+#include <WiFi.h>
+#endif
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -2644,6 +2648,23 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _alerter.setBridge(mqtt_bridge);
 #endif
 
+#if defined(WITH_WEBCONFIG) && !defined(WEBCONFIG_NO_AUTO_AP)
+  bool start_webui = WebConfigServer::loadEnabled(false);
+#ifdef WITH_MQTT_BRIDGE
+  // Preserve the MQTT observer's first-boot setup experience even though the
+  // persistent WebUI master switch defaults off on infrastructure roles.
+  start_webui = start_webui || _cli.getObserverPrefs()->wifi_ssid[0] == 0;
+  if (start_webui && _cli.getObserverPrefs()->wifi_ssid[0] == 0) {
+    if (mqtt_bridge && mqtt_bridge->isRunning()) mqtt_bridge->end();
+  }
+#endif
+  if (start_webui) {
+    char wc_reply[160];
+    startWebConfig(false, wc_reply);
+    Serial.println(wc_reply);
+  }
+#endif
+
   saved_radio_apply_pending = !applySavedRadioParams();
   if (!saved_radio_apply_pending) {
     radio_driver.setTxPower(_prefs.tx_power_dbm);
@@ -3990,9 +4011,27 @@ static uint8_t floodPacketFilterProtectedHops(const mesh::Packet* packet) {
   }
 }
 
+void MyMesh::seedDefaultFloodPacketFilters() {
+  auto& entry = flood_packet_filters[0];
+  memset(&entry, 0, sizeof(entry));
+  entry.active = true;
+  entry.payload_type = PAYLOAD_TYPE_OTA;
+  entry.min_hops = 0;
+  entry.max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
+  entry.suspend_on_temp_radio = true;
+}
+
 void MyMesh::loadFloodPacketFilters() {
   memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
-  if (_fs == NULL || !_fs->exists(FLOOD_PACKET_FILTER_FILE)) return;
+  if (_fs == NULL) {
+    seedDefaultFloodPacketFilters();
+    return;
+  }
+  if (!_fs->exists(FLOOD_PACKET_FILTER_FILE)) {
+    seedDefaultFloodPacketFilters();
+    saveFloodPacketFilters();
+    return;
+  }
 
   File file = openFloodChannelBlockRead(_fs, FLOOD_PACKET_FILTER_FILE);
   if (!file) return;
@@ -5995,6 +6034,210 @@ void MyMesh::clearStats() {
   ((SimpleMeshTables *)getTables())->resetStats();
 }
 
+#ifdef WITH_WEBCONFIG
+void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
+  memset(&s, 0, sizeof(s));
+  StrHelper::strncpy(s.name, _prefs.node_name, sizeof(s.name));
+  StrHelper::strncpy(s.admin_password, _prefs.password, sizeof(s.admin_password));
+  s.lat = _prefs.node_lat;
+  s.lon = _prefs.node_lon;
+  s.freq = _prefs.freq;
+  s.bw = _prefs.bw;
+  s.sf = _prefs.sf;
+  s.cr = _prefs.cr;
+  s.tx_power = _prefs.tx_power_dbm;
+  s.airtime_factor = _prefs.airtime_factor;
+  s.rx_delay = _prefs.rx_delay_base;
+  s.tx_delay = _prefs.tx_delay_factor;
+  s.cad = _prefs.cad_enabled;
+  s.rx_gain = _prefs.rx_boosted_gain;
+  s.repeat = !_prefs.disable_fwd;
+  s.advert_interval = _prefs.advert_interval * 2;
+  s.flood_advert_interval = _prefs.flood_advert_interval;
+  s.flood_max = _prefs.flood_max;
+  s.flood_max_advert = _prefs.flood_max_advert;
+  s.flood_max_unscoped = _prefs.flood_max_unscoped;
+  s.loop_detect = _prefs.loop_detect;
+  s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
+      | WebConfigServer::CAP_DELAYS | WebConfigServer::CAP_CAD
+      | WebConfigServer::CAP_RX_GAIN | WebConfigServer::CAP_REPEAT
+      | WebConfigServer::CAP_ADVERT | WebConfigServer::CAP_FLOOD
+      | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE;
+}
+
+bool MyMesh::startWebConfig(bool force_ap, char* reply) {
+  if (_cli.getBoard()->isOTAUpdateRunning()) {
+    strcpy(reply, "Err: OTA server is running - 'stop ota' first");
+    return true;
+  }
+  if (_webconfig && (_webconfig->isRunning() || _webconfig->isStopping())) {
+    strcpy(reply, _webconfig->isStopping() ? "Err: webconfig still stopping, retry shortly"
+                                           : "Err: webconfig already running");
+    return true;
+  }
+  if (!_webconfig) {
+    void* mqtt_prefs = nullptr;
+    bool owns_wifi = true;
+#ifdef WITH_MQTT_BRIDGE
+    mqtt_prefs = _cli.getObserverPrefs();
+    owns_wifi = false;
+#endif
+    _webconfig = new WebConfigServer(this, mqtt_prefs, owns_wifi,
+                                     self_id.pub_key, getFirmwareVer(), getRole(),
+                                     _cli.getBoard()->getManufacturerName());
+    if (!_webconfig) {
+      strcpy(reply, "Err: not enough memory for webconfig");
+      return true;
+    }
+  }
+
+  if (force_ap) {
+#ifdef WITH_MQTT_BRIDGE
+    if (mqtt_bridge && mqtt_bridge->isRunning()) {
+      strcpy(reply, "Err: MQTT bridge is running - 'set bridge off' first");
+      return true;
+    }
+#endif
+    _webconfig->startSetupMode(reply);
+  } else {
+    _webconfig->startAutoMode(reply);
+  }
+  return true;
+}
+
+bool MyMesh::stopWebConfig(char* reply) {
+  if (!_webconfig || !_webconfig->isRunning()) {
+    strcpy(reply, "Err: webconfig not running");
+    return true;
+  }
+  _webconfig->requestStop();
+  strcpy(reply, "OK - webconfig stopping");
+  return true;
+}
+
+bool MyMesh::setWebUIEnabled(bool enabled, char* reply) {
+  if (!WebConfigServer::saveEnabled(enabled)) {
+    strcpy(reply, "Error: failed to save webui setting");
+    return true;
+  }
+  if (enabled) {
+    if (_webconfig && (_webconfig->isRunning() || _webconfig->isStopping())) {
+      strcpy(reply, "OK - webui on (already active)");
+    } else {
+      startWebConfig(false, reply);
+      if (strncmp(reply, "WebConfig", 9) == 0) {
+        char tmp[160];
+        StrHelper::strncpy(tmp, reply, sizeof(tmp));
+        snprintf(reply, 160, "OK - webui on; %s", tmp);
+      }
+    }
+  } else {
+    if (_webconfig && _webconfig->isRunning()) _webconfig->requestStop();
+    strcpy(reply, "OK - webui off");
+  }
+  return true;
+}
+
+bool MyMesh::getWebUIStatus(char* reply) const {
+  const bool enabled = WebConfigServer::loadEnabled(false);
+  if (!_webconfig || (!_webconfig->isRunning() && !_webconfig->isStopping())) {
+    snprintf(reply, 160, "> %s, inactive", enabled ? "on" : "off");
+  } else if (_webconfig->mode() == WebConfigServer::MODE_SETUP) {
+    char ssid[33], ip[16];
+    WebConfigServer::getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
+    snprintf(reply, 160, "> %s, setup AP %s http://%s/", enabled ? "on" : "off", ssid, ip);
+  } else if (_webconfig->mode() == WebConfigServer::MODE_CONNECTING) {
+    snprintf(reply, 160, "> %s, connecting to WiFi", enabled ? "on" : "off");
+  } else {
+    snprintf(reply, 160, "> %s, http://%s/", enabled ? "on" : "off",
+             WiFi.localIP().toString().c_str());
+  }
+  return true;
+}
+
+void MyMesh::onConfigBatchEnd() {
+  _wc_batch_active = false;
+#ifdef WITH_MQTT_BRIDGE
+  if (_wc_restart_pending) {
+    _wc_restart_pending = false;
+    _wc_slot_restart_mask = 0;
+    restartBridge();
+    return;
+  }
+
+  const uint8_t mask = _wc_slot_restart_mask;
+  _wc_slot_restart_mask = 0;
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
+    if (mask & (1U << i)) restartBridgeSlot(i);
+  }
+#else
+  _wc_restart_pending = false;
+  _wc_slot_restart_mask = 0;
+#endif
+}
+
+void MyMesh::buildStatsJson(char* buf, size_t buf_size) {
+  char ip[20] = "";
+  int wifi_rssi = 0;
+  if (WiFi.status() == WL_CONNECTED) {
+    strncpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip) - 1);
+    wifi_rssi = WiFi.RSSI();
+  } else if (_webconfig && _webconfig->mode() == WebConfigServer::MODE_SETUP) {
+    strncpy(ip, WiFi.softAPIP().toString().c_str(), sizeof(ip) - 1);
+  }
+  int pos = snprintf(buf, buf_size,
+      "{\"uptime_s\":%lu,\"batt_mv\":%u,"
+      "\"heap_free\":%lu,\"heap_min\":%lu,\"heap_max_alloc\":%lu,"
+      "\"noise\":%d,\"rssi\":%d,\"snr\":%.1f,"
+      "\"airtime_s\":%lu,\"rx_airtime_s\":%lu,"
+      "\"recv\":%lu,\"sent\":%lu,\"rx_err\":%lu,"
+      "\"sent_flood\":%lu,\"sent_direct\":%lu,\"recv_flood\":%lu,\"recv_direct\":%lu,"
+      "\"tx_queue\":%d,\"wifi_rssi\":%d,\"ip\":\"%s\",\"mqtt_queue\":%d,\"slots\":[",
+      (unsigned long)(uptime_millis / 1000), (unsigned)board.getBattMilliVolts(),
+      (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
+      (unsigned long)ESP.getMaxAllocHeap(),
+      (int)_radio->getNoiseFloor(), (int)radio_driver.getLastRSSI(),
+      radio_driver.getLastSNR(),
+      (unsigned long)(getTotalAirTime() / 1000), (unsigned long)(getReceiveAirTime() / 1000),
+      (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsSent(),
+      (unsigned long)radio_driver.getPacketsRecvErrors(),
+      (unsigned long)getNumSentFlood(), (unsigned long)getNumSentDirect(),
+      (unsigned long)getNumRecvFlood(), (unsigned long)getNumRecvDirect(),
+      (int)_mgr->getOutboundCount(0xFFFFFFFF), wifi_rssi, ip,
+#ifdef WITH_MQTT_BRIDGE
+      mqtt_bridge ? mqtt_bridge->getQueueSize() : 0);
+#else
+      0);
+#endif
+  if (pos < 0 || pos >= static_cast<int>(buf_size) - 3) return;
+
+  bool first = true;
+#ifdef WITH_MQTT_BRIDGE
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
+    MQTTBridge::SlotStatusSnapshot status;
+    if (!MQTTBridge::getSlotStatusSnapshot(i, &status)) continue;
+    int written;
+    if (status.has_publish_counts) {
+      written = snprintf(buf + pos, buf_size - pos,
+          "%s{\"n\":%d,\"name\":\"%s\",\"state\":\"%s\",\"ok\":%lu,\"err\":%lu}",
+          first ? "" : ",", i + 1, status.name, status.state,
+          status.publish_ok, status.publish_err);
+    } else {
+      written = snprintf(buf + pos, buf_size - pos,
+          "%s{\"n\":%d,\"name\":\"%s\",\"state\":\"%s\"}",
+          first ? "" : ",", i + 1, status.name, status.state);
+    }
+    if (written < 0 || written >= static_cast<int>(buf_size - pos)) break;
+    pos += written;
+    first = false;
+  }
+#else
+  (void)first;
+#endif
+  snprintf(buf + pos, buf_size - pos, "]}");
+}
+#endif
+
 static char* trimSpaces(char* s) {
   while (*s == ' ') s++;
   char* end = s + strlen(s);
@@ -6090,10 +6333,27 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
 
   uint8_t hash_size = (path_len >> 6) + 1;
   uint8_t hop_count = path_len & 63;
-  uint8_t byte_len = hop_count * hash_size;
-  char hex[(MAX_PATH_SIZE * 2) + 1];
-  mesh::Utils::toHex(hex, path, byte_len);
-  snprintf(out, out_len, "> hs=%u hops=%u hex=%s", (uint32_t)hash_size, (uint32_t)hop_count, hex);
+  size_t path_text_len = (size_t)hop_count * hash_size * 2 + (hop_count - 1);
+
+  // Every path that fits in the 160-byte CLI command buffer also fits this
+  // shorter reply form. Retain a compact, complete fallback for a path learned
+  // from an unusually long over-the-air route rather than truncating it.
+  if (path_text_len + 3 > out_len) {
+    out[0] = '>';
+    out[1] = ' ';
+    mesh::Utils::toHex(out + 2, path, (size_t)hop_count * hash_size);
+    return;
+  }
+
+  size_t pos = 0;
+  out[pos++] = '>';
+  out[pos++] = ' ';
+  for (uint8_t hop = 0; hop < hop_count; hop++) {
+    mesh::Utils::toHex(out + pos, path + ((size_t)hop * hash_size), hash_size);
+    pos += hash_size * 2;
+    if (hop + 1 < hop_count) out[pos++] = ',';
+  }
+  out[pos] = 0;
 }
 
 static bool commandFamilyMatches(const char* command, const char* family) {
@@ -6226,6 +6486,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     reply += 3;
     command += 3;
   }
+
+  mesh::cli::normalizeCommandVerb(command);
 
   if (sender && !sender->isAdmin()) {
     bool allowed = (sender->isRegionMgr() && isRegionMgrAllowed(command))
@@ -6596,6 +6858,21 @@ void MyMesh::loop() {
     if (!_cli.getBoard()->otaFromManifest(getFirmwareVer(), false, ota_reply)) {
       Serial.print("OTA: aborted, resuming bridge - "); Serial.println(ota_reply);
       setBridgeState(true);
+    }
+  }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  if (WebConfigServer::takeButtonToggleRequest()) {
+    char wc_reply[160];
+    setWebUIEnabled(!WebConfigServer::loadEnabled(false), wc_reply);
+    Serial.println(wc_reply);
+  }
+  if (_webconfig) {
+    _webconfig->tick(millis());
+    if (!_webconfig->isRunning() && !_webconfig->isStopping()) {
+      delete _webconfig;
+      _webconfig = nullptr;
     }
   }
 #endif

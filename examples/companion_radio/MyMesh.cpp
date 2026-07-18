@@ -7,6 +7,12 @@
 #include <helpers/MQTTDefaults.h>
 #endif
 
+#ifdef WITH_WEBCONFIG
+#include <helpers/WiFiSetupPortal.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+#endif
+
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
   if (failure_count < 6) failure_count++;
@@ -1180,6 +1186,10 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _mqtt_configured = false;
   _mqtt_started = false;
 #endif
+#ifdef WITH_WEBCONFIG
+  _webconfig = nullptr;
+  _wc_mqtt_dirty = false;
+#endif
 }
 
 void MyMesh::begin(bool has_display) {
@@ -1297,6 +1307,16 @@ void MyMesh::begin(bool has_display) {
     _mqtt_bridge->setStatsSources(this, _radio, &board, _ms);
   }
 #endif
+
+#ifdef WITH_WEBCONFIG
+  void* web_mqtt_prefs = nullptr;
+#ifdef WITH_MQTT_BRIDGE
+  web_mqtt_prefs = &_mqtt_prefs;
+#endif
+  _webconfig = new WebConfigServer(this, web_mqtt_prefs, false,
+                                   self_id.pub_key, FIRMWARE_VERSION,
+                                   "companion", board.getManufacturerName());
+#endif
 }
 
 mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
@@ -1389,9 +1409,8 @@ static void copyMqttString(char* dest, size_t dest_size, const char* src) {
   dest[dest_size - 1] = 0;
 }
 
-void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password,
-                         bool allow_setup_page) {
-  if (!_mqtt_started && !_mqtt_setup.isActive()) {
+void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password) {
+  if (!_mqtt_started) {
     if (strcmp(_mqtt_prefs.wifi_ssid, wifi_ssid ? wifi_ssid : "") != 0) {
       copyMqttString(_mqtt_prefs.wifi_ssid, sizeof(_mqtt_prefs.wifi_ssid), wifi_ssid);
     }
@@ -1400,25 +1419,11 @@ void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password,
     }
   }
 
-  if (WiFi.status() != WL_CONNECTED || !allow_setup_page) {
-    _mqtt_setup.stop();
-    return;
-  }
-
-  if (_mqtt_setup.loop()) {
-    if (_mqtt_started && _mqtt_bridge) {
-      _mqtt_bridge->end();
-    }
-    _mqtt_started = false;
-    _mqtt_configured = true;
-    Serial.println("MQTT companion: applying settings saved from the web page");
-  }
-
-  if (!_mqtt_setup.isActive()) {
-    _mqtt_setup.begin(&_mqtt_prefs);
-  }
-
-  if (_mqtt_configured && !_mqtt_started && _mqtt_bridge) {
+  if (WiFi.status() == WL_CONNECTED && _mqtt_configured && !_mqtt_started && _mqtt_bridge
+#ifdef WITH_WEBCONFIG
+      && !isWebConfigSetupActive()
+#endif
+  ) {
     _mqtt_started = true;  // begin is one-shot; avoid retrying partial allocations
     _mqtt_bridge->begin();
     if (_mqtt_bridge->isRunning()) {
@@ -1428,9 +1433,429 @@ void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password,
     }
   }
 }
+#endif
 
-void MyMesh::stopMQTTSetupPage() {
-  _mqtt_setup.stop();
+#ifdef WITH_WEBCONFIG
+static bool wcParseBool(const char* value, bool& out) {
+  if (strcmp(value, "on") == 0) { out = true; return true; }
+  if (strcmp(value, "off") == 0) { out = false; return true; }
+  return false;
+}
+
+static bool wcParseLong(const char* value, long min_value, long max_value, long& out) {
+  if (!value || !value[0]) return false;
+  char* end = nullptr;
+  long parsed = strtol(value, &end, 10);
+  if (!end || *end != 0 || parsed < min_value || parsed > max_value) return false;
+  out = parsed;
+  return true;
+}
+
+static bool wcParseDouble(const char* value, double min_value, double max_value, double& out) {
+  if (!value || !value[0]) return false;
+  char* end = nullptr;
+  double parsed = strtod(value, &end);
+  if (!end || *end != 0 || !isfinite(parsed) || parsed < min_value || parsed > max_value) return false;
+  out = parsed;
+  return true;
+}
+
+static bool wcValidNtpHost(const char* value) {
+  if (!value || !value[0] || strlen(value) > 63 || value[0] == '.') return false;
+  size_t len = strlen(value);
+  if (value[len - 1] == '.') return false;
+  for (size_t i = 0; i < len; i++) {
+    char c = value[i];
+    if (!isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '-') return false;
+  }
+  return true;
+}
+
+static bool wcValidHexKey(const char* value) {
+  if (!value || strlen(value) != 64) return false;
+  for (int i = 0; i < 64; i++) {
+    if (!isxdigit(static_cast<unsigned char>(value[i]))) return false;
+  }
+  return true;
+}
+
+static bool wcCopyValue(char* dest, size_t dest_size, const char* value) {
+  if (!dest || dest_size == 0 || !value || strlen(value) >= dest_size) return false;
+  strncpy(dest, value, dest_size - 1);
+  dest[dest_size - 1] = 0;
+  return true;
+}
+
+void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
+  memset(&s, 0, sizeof(s));
+  wcCopyValue(s.name, sizeof(s.name), _prefs.node_name);
+  s.lat = sensors.node_lat;
+  s.lon = sensors.node_lon;
+  s.freq = _prefs.freq;
+  s.bw = _prefs.bw;
+  s.sf = _prefs.sf;
+  s.cr = _prefs.cr;
+  s.tx_power = _prefs.tx_power_dbm;
+  s.airtime_factor = _prefs.airtime_factor;
+  s.rx_delay = _prefs.rx_delay_base;
+  s.rx_gain = _prefs.rx_boosted_gain;
+  s.repeat = _prefs.client_repeat != 0;
+  s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
+      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN
+      | WebConfigServer::CAP_REPEAT;
+}
+
+bool MyMesh::startWebConfig(bool force_ap, char* reply) {
+  if (!_webconfig) {
+    strcpy(reply, "Err: WebUI unavailable (not enough memory)");
+    return false;
+  }
+  if (_webconfig->isRunning() || _webconfig->isStopping()) {
+    if (force_ap && !_webconfig->isStopping()
+        && _webconfig->mode() == WebConfigServer::MODE_LAN) {
+#ifdef WITH_MQTT_BRIDGE
+      if (_mqtt_started && _mqtt_bridge) {
+        _mqtt_bridge->end();
+        _mqtt_started = false;
+      }
+#endif
+      return _webconfig->startSetupMode(reply);
+    }
+    strcpy(reply, _webconfig->isStopping() ? "Err: WebUI still stopping"
+                                           : "Err: WebUI already running");
+    return false;
+  }
+  if (force_ap) {
+#ifdef WITH_MQTT_BRIDGE
+    if (_mqtt_started && _mqtt_bridge) {
+      _mqtt_bridge->end();
+      _mqtt_started = false;
+    }
+#endif
+    return _webconfig->startSetupMode(reply);
+  }
+  return _webconfig->startAutoMode(reply);
+}
+
+void MyMesh::stopWebConfig() {
+  if (_webconfig && _webconfig->isRunning()) _webconfig->requestStop();
+}
+
+void MyMesh::serviceWebConfig() {
+  if (_webconfig) _webconfig->tick(millis());
+}
+
+bool MyMesh::isWebConfigSetupActive() const {
+  return _webconfig && _webconfig->mode() == WebConfigServer::MODE_SETUP
+      && !_webconfig->isStopping();
+}
+
+void MyMesh::rebootNow() {
+  board.reboot();
+}
+
+void MyMesh::onConfigBatchStart() {
+  _wc_mqtt_dirty = false;
+}
+
+void MyMesh::onConfigBatchEnd() {
+#ifdef WITH_MQTT_BRIDGE
+  if (_wc_mqtt_dirty) {
+    CompanionMqttSetupPortal::saveStoredConfig(_mqtt_prefs);
+    if (_mqtt_started && _mqtt_bridge) _mqtt_bridge->end();
+    _mqtt_started = false;
+    MQTTPrefs verified;
+    _mqtt_configured = CompanionMqttSetupPortal::loadStoredConfig(verified);
+    if (_mqtt_configured) _mqtt_prefs = verified;
+  }
+#endif
+  _wc_mqtt_dirty = false;
+}
+
+void MyMesh::execCommand(char* cmd, char* reply) {
+  reply[0] = 0;
+  if (!cmd || strncmp(cmd, "set ", 4) != 0) {
+    strcpy(reply, "Error: unsupported command");
+    return;
+  }
+  char* key = cmd + 4;
+  char* split = strchr(key, ' ');
+  if (!split) {
+    strcpy(reply, "Error: missing value");
+    return;
+  }
+  *split = 0;
+  const char* value = split + 1;
+
+  if (strcmp(key, "name") == 0) {
+    if (!value[0] || !wcCopyValue(_prefs.node_name, sizeof(_prefs.node_name), value)) {
+      strcpy(reply, "Error: name must be 1-31 characters");
+    } else {
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "lat") == 0 || strcmp(key, "lon") == 0) {
+    double parsed;
+    const bool latitude = key[1] == 'a';
+    if (!wcParseDouble(value, latitude ? -90.0 : -180.0,
+                       latitude ? 90.0 : 180.0, parsed)) {
+      strcpy(reply, latitude ? "Error: latitude must be -90 to 90"
+                             : "Error: longitude must be -180 to 180");
+    } else {
+      if (latitude) sensors.node_lat = parsed; else sensors.node_lon = parsed;
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "radio") == 0) {
+    float freq, bw;
+    int sf, cr;
+    char extra;
+    if (sscanf(value, "%f,%f,%d,%d%c", &freq, &bw, &sf, &cr, &extra) != 4
+        || !isfinite(freq) || !isfinite(bw) || freq < 150.0f || freq > 2500.0f
+        || bw < 7.0f || bw > 500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8) {
+      strcpy(reply, "Error: radio must be freq,bw,sf,cr");
+    } else {
+      _prefs.freq = freq;
+      _prefs.bw = bw;
+      _prefs.sf = static_cast<uint8_t>(sf);
+      _prefs.cr = static_cast<uint8_t>(cr);
+      savePrefs();
+      strcpy(reply, "OK - reboot required");
+    }
+    return;
+  }
+  if (strcmp(key, "tx") == 0) {
+    long parsed;
+    if (!wcParseLong(value, -9, MAX_LORA_TX_POWER, parsed)) {
+      snprintf(reply, 160, "Error: TX power must be -9 to %d", MAX_LORA_TX_POWER);
+    } else {
+      _prefs.tx_power_dbm = static_cast<int8_t>(parsed);
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "af") == 0 || strcmp(key, "rxdelay") == 0) {
+    double parsed;
+    const bool is_af = strcmp(key, "af") == 0;
+    if (!wcParseDouble(value, 0.0, is_af ? 9.0 : 20.0, parsed)) {
+      strcpy(reply, is_af ? "Error: airtime factor must be 0-9"
+                          : "Error: RX delay must be 0-20");
+    } else {
+      if (is_af) _prefs.airtime_factor = parsed; else _prefs.rx_delay_base = parsed;
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "radio.rxgain") == 0 || strcmp(key, "repeat") == 0) {
+    bool enabled;
+    if (!wcParseBool(value, enabled)) {
+      strcpy(reply, "Error: must be on or off");
+    } else {
+      if (strcmp(key, "radio.rxgain") == 0) {
+        _prefs.rx_boosted_gain = enabled;
+        radio_driver.setRxBoostedGainMode(enabled);
+      } else {
+        _prefs.client_repeat = enabled;
+      }
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+
+#ifdef WITH_MQTT_BRIDGE
+  bool changed = false;
+  if (strcmp(key, "mqtt.origin") == 0) {
+    changed = wcCopyValue(_mqtt_prefs.mqtt_origin, sizeof(_mqtt_prefs.mqtt_origin), value);
+  } else if (strcmp(key, "mqtt.iata") == 0) {
+    changed = wcCopyValue(_mqtt_prefs.mqtt_iata, sizeof(_mqtt_prefs.mqtt_iata), value);
+    if (changed) {
+      for (char* p = _mqtt_prefs.mqtt_iata; *p; p++) *p = toupper(static_cast<unsigned char>(*p));
+    }
+  } else if (strcmp(key, "mqtt.status") == 0 || strcmp(key, "mqtt.packets") == 0
+             || strcmp(key, "mqtt.raw") == 0 || strcmp(key, "mqtt.rx") == 0
+             || strcmp(key, "snmp") == 0) {
+    bool enabled;
+    if (!wcParseBool(value, enabled)) {
+      strcpy(reply, "Error: must be on or off");
+      return;
+    }
+    if (strcmp(key, "mqtt.status") == 0) _mqtt_prefs.mqtt_status_enabled = enabled;
+    else if (strcmp(key, "mqtt.packets") == 0) _mqtt_prefs.mqtt_packets_enabled = enabled;
+    else if (strcmp(key, "mqtt.raw") == 0) _mqtt_prefs.mqtt_raw_enabled = enabled;
+    else if (strcmp(key, "mqtt.rx") == 0) _mqtt_prefs.mqtt_rx_enabled = enabled;
+    else _mqtt_prefs.snmp_enabled = enabled;
+    changed = true;
+  } else if (strcmp(key, "mqtt.tx") == 0) {
+    if (strcmp(value, "off") == 0) _mqtt_prefs.mqtt_tx_enabled = 0;
+    else if (strcmp(value, "on") == 0) _mqtt_prefs.mqtt_tx_enabled = 1;
+    else if (strcmp(value, "advert") == 0) _mqtt_prefs.mqtt_tx_enabled = 2;
+    else {
+      strcpy(reply, "Error: MQTT TX must be off, on, or advert");
+      return;
+    }
+    changed = true;
+  } else if (strcmp(key, "mqtt.interval") == 0) {
+    long minutes;
+    if (!wcParseLong(value, 1, 60, minutes)) {
+      strcpy(reply, "Error: interval must be 1-60 minutes");
+      return;
+    }
+    _mqtt_prefs.mqtt_status_interval = static_cast<uint32_t>(minutes) * 60000UL;
+    changed = true;
+  } else if (strcmp(key, "mqtt.ntp") == 0) {
+    if (strcmp(value, "none") == 0) {
+      _mqtt_prefs.mqtt_ntp_server[0] = 0;
+      changed = true;
+    } else if (wcValidNtpHost(value)) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_ntp_server,
+                            sizeof(_mqtt_prefs.mqtt_ntp_server), value);
+    }
+  } else if (strcmp(key, "mqtt.owner") == 0) {
+    if (!value[0]) {
+      _mqtt_prefs.mqtt_owner_public_key[0] = 0;
+      changed = true;
+    } else if (wcValidHexKey(value)) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_owner_public_key,
+                            sizeof(_mqtt_prefs.mqtt_owner_public_key), value);
+    }
+  } else if (strcmp(key, "mqtt.email") == 0) {
+    changed = wcCopyValue(_mqtt_prefs.mqtt_email, sizeof(_mqtt_prefs.mqtt_email), value);
+  } else if (strcmp(key, "timezone") == 0) {
+    changed = wcCopyValue(_mqtt_prefs.timezone_string, sizeof(_mqtt_prefs.timezone_string), value);
+  } else if (strcmp(key, "timezone.offset") == 0) {
+    long offset;
+    if (!wcParseLong(value, -12, 14, offset)) {
+      strcpy(reply, "Error: timezone offset must be -12 to 14");
+      return;
+    }
+    _mqtt_prefs.timezone_offset = static_cast<int8_t>(offset);
+    changed = true;
+  } else if (strcmp(key, "snmp.community") == 0) {
+    changed = wcCopyValue(_mqtt_prefs.snmp_community,
+                          sizeof(_mqtt_prefs.snmp_community), value);
+  } else if (strncmp(key, "mqtt", 4) == 0 && key[4] >= '1'
+             && key[4] <= ('0' + MAX_MQTT_SLOTS) && key[5] == '.') {
+    int slot = key[4] - '1';
+    const char* field = key + 6;
+    if (strcmp(field, "preset") == 0) {
+      const bool valid = findMQTTPreset(value) != nullptr
+                      || strcmp(value, MQTT_PRESET_CUSTOM) == 0
+                      || strcmp(value, MQTT_PRESET_NONE) == 0;
+      if (!valid) {
+        strcpy(reply, "Error: unknown MQTT preset");
+        return;
+      }
+      if (findMQTTPreset(value)) {
+        for (int i = 0; i < MAX_MQTT_SLOTS; i++) {
+          if (i != slot && strcmp(_mqtt_prefs.mqtt_slot_preset[i], value) == 0) {
+            snprintf(reply, 160, "Error: preset already assigned to slot %d", i + 1);
+            return;
+          }
+        }
+      }
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_preset[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_preset[slot]), value);
+    } else if (strcmp(field, "server") == 0) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_host[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_host[slot]), value);
+    } else if (strcmp(field, "port") == 0) {
+      long port;
+      if (!wcParseLong(value, 1, 65535, port)) {
+        strcpy(reply, "Error: port must be 1-65535");
+        return;
+      }
+      _mqtt_prefs.mqtt_slot_port[slot] = static_cast<uint16_t>(port);
+      changed = true;
+    } else if (strcmp(field, "username") == 0) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_username[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_username[slot]), value);
+    } else if (strcmp(field, "password") == 0) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_password[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_password[slot]), value);
+    } else if (strcmp(field, "token") == 0) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_token[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_token[slot]), value);
+    } else if (strcmp(field, "topic") == 0) {
+      if (strcmp(_mqtt_prefs.mqtt_slot_preset[slot], MQTT_PRESET_CUSTOM) != 0) {
+        strcpy(reply, "Error: topic only applies to custom slots");
+        return;
+      }
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_topic[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_topic[slot]), value);
+    } else if (strcmp(field, "audience") == 0) {
+      changed = wcCopyValue(_mqtt_prefs.mqtt_slot_audience[slot],
+                            sizeof(_mqtt_prefs.mqtt_slot_audience[slot]), value);
+    }
+  }
+
+  if (changed) {
+    _wc_mqtt_dirty = true;
+    strcpy(reply, "OK");
+  } else if (reply[0] == 0) {
+    strcpy(reply, "Error: invalid or unsupported value");
+  }
+#else
+  strcpy(reply, "Error: unsupported setting for this companion");
+#endif
+}
+
+void MyMesh::buildStatsJson(char* buf, size_t buf_size) {
+  char ip[20] = "";
+  int wifi_rssi = 0;
+  if (WiFi.status() == WL_CONNECTED) {
+    strncpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip) - 1);
+    wifi_rssi = WiFi.RSSI();
+  } else if (_webconfig && _webconfig->mode() == WebConfigServer::MODE_SETUP) {
+    strncpy(ip, WiFi.softAPIP().toString().c_str(), sizeof(ip) - 1);
+  }
+  int pos = snprintf(buf, buf_size,
+      "{\"uptime_s\":%lu,\"batt_mv\":%u,"
+      "\"heap_free\":%lu,\"heap_min\":%lu,\"heap_max_alloc\":%lu,"
+      "\"noise\":%d,\"rssi\":%d,\"snr\":%.1f,"
+      "\"airtime_s\":%lu,\"rx_airtime_s\":%lu,"
+      "\"recv\":%lu,\"sent\":%lu,\"rx_err\":%lu,"
+      "\"sent_flood\":%lu,\"sent_direct\":%lu,\"recv_flood\":%lu,\"recv_direct\":%lu,"
+      "\"tx_queue\":%d,\"wifi_rssi\":%d,\"ip\":\"%s\",\"mqtt_queue\":%d,\"slots\":[",
+      (unsigned long)(millis() / 1000), (unsigned)board.getBattMilliVolts(),
+      (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
+      (unsigned long)ESP.getMaxAllocHeap(),
+      (int)_radio->getNoiseFloor(), (int)radio_driver.getLastRSSI(),
+      radio_driver.getLastSNR(),
+      (unsigned long)(getTotalAirTime() / 1000), (unsigned long)(getReceiveAirTime() / 1000),
+      (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsSent(),
+      (unsigned long)radio_driver.getPacketsRecvErrors(),
+      (unsigned long)getNumSentFlood(), (unsigned long)getNumSentDirect(),
+      (unsigned long)getNumRecvFlood(), (unsigned long)getNumRecvDirect(),
+      (int)_mgr->getOutboundCount(0xFFFFFFFF), wifi_rssi, ip,
+#ifdef WITH_MQTT_BRIDGE
+      _mqtt_bridge ? _mqtt_bridge->getQueueSize() : 0);
+#else
+      0);
+#endif
+  if (pos < 0 || pos >= static_cast<int>(buf_size) - 3) return;
+
+#ifdef WITH_MQTT_BRIDGE
+  bool first = true;
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
+    MQTTBridge::SlotStatusSnapshot status;
+    if (!MQTTBridge::getSlotStatusSnapshot(i, &status)) continue;
+    int written = snprintf(buf + pos, buf_size - pos,
+        "%s{\"n\":%d,\"name\":\"%s\",\"state\":\"%s\"}",
+        first ? "" : ",", i + 1, status.name, status.state);
+    if (written < 0 || written >= static_cast<int>(buf_size - pos)) break;
+    pos += written;
+    first = false;
+  }
+#endif
+  snprintf(buf + pos, buf_size - pos, "]}");
 }
 #endif
 

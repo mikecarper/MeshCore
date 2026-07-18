@@ -11,10 +11,12 @@
 #include <helpers/sensors/EnvironmentSensorManager.h>
 #ifdef DISPLAY_CLASS
   #include "NullDisplayDriver.h"
+  #include <helpers/ui/MomentaryButton.h>
 #endif
 
 #ifdef DISPLAY_CLASS
   extern NullDisplayDriver display;
+  extern MomentaryButton user_btn;
 #endif
 
 extern MinewsemiME25LS01Board board;

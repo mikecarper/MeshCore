@@ -466,6 +466,32 @@ public:
     return false;
   };
 
+  // Browser-based configuration portal. ESP32 infrastructure roles override
+  // these; force_ap=true asks for the captive SoftAP even when WiFi is set.
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  virtual bool startWebConfig(bool force_ap, char* reply) {
+    (void)force_ap;
+    (void)reply;
+    return false;
+  };
+  virtual bool stopWebConfig(char* reply) {
+    (void)reply;
+    return false;
+  };
+  virtual bool isWebConfigActive() const {
+    return false;
+  };
+  virtual bool setWebUIEnabled(bool enabled, char* reply) {
+    (void)enabled;
+    (void)reply;
+    return false;
+  };
+  virtual bool getWebUIStatus(char* reply) const {
+    (void)reply;
+    return false;
+  };
+#endif
+
   virtual int getQueueSize() {
     return 0; // no op by default
   };

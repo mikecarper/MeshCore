@@ -385,12 +385,14 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     } else if (memcmp(subcmd, "server ", 7) == 0) {
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_host[slot], &subcmd[7], sizeof(_mqtt_prefs.mqtt_slot_host[slot]));
       savePrefs();
+      _callbacks->restartBridgeSlot(slot);
       strcpy(reply, "OK");
     } else if (memcmp(subcmd, "port ", 5) == 0) {
       int port = atoi(&subcmd[5]);
       if (port > 0 && port <= 65535) {
         _mqtt_prefs.mqtt_slot_port[slot] = port;
         savePrefs();
+        _callbacks->restartBridgeSlot(slot);
         strcpy(reply, "OK");
       } else {
         strcpy(reply, "Error: port must be between 1 and 65535");
@@ -457,6 +459,10 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     savePrefs();
     _callbacks->restartBridgeSlot(slot);
     strcpy(reply, "OK");
+  } else if (strcmp(config, "mqtt.owner") == 0 || strcmp(config, "mqtt.owner ") == 0) {
+    _mqtt_prefs.mqtt_owner_public_key[0] = '\0';
+    savePrefs();
+    strcpy(reply, "OK - owner cleared");
   } else if (memcmp(config, "mqtt.owner ", 11) == 0) {
     const char* owner_key = &config[11];
     int key_len = strlen(owner_key);

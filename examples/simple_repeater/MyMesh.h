@@ -48,6 +48,10 @@
 #define WITH_BRIDGE
 #endif
 
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+#include "helpers/esp32/WebConfigServer.h"
+#endif
+
 #ifdef WITH_SNMP
 #include "helpers/SNMPAgent.h"
 #endif
@@ -168,7 +172,11 @@ struct NeighbourInfo {
 #define RADIO_APPLY_RETRY_INTERVAL_MILLIS     1000UL
 #define SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS 60UL
 
-class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
+class MyMesh : public mesh::Mesh, public CommonCLICallbacks
+#ifdef WITH_WEBCONFIG
+    , public WebConfigServer::Callbacks
+#endif
+{
   struct ScheduledRadioSetting {
     bool active;
     bool temporary;
@@ -341,6 +349,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #ifdef WITH_MQTT_BRIDGE
   AlertReporter _alerter;
 #endif
+#ifdef WITH_WEBCONFIG
+  WebConfigServer* _webconfig = nullptr;
+  bool _wc_batch_active = false;
+  bool _wc_restart_pending = false;
+  uint8_t _wc_slot_restart_mask = 0;
+#endif
 
   bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
   int8_t getDirectRetryMinSNRX4() const;
@@ -406,6 +420,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   bool shouldBlockFloodChannelForward(const mesh::Packet* packet) const;
   void loadFloodPacketFilters();
   bool saveFloodPacketFilters();
+  void seedDefaultFloodPacketFilters();
   bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
   void formatFloodPacketFilters(const char* args, char* reply) const;
   void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
@@ -669,6 +684,12 @@ public:
   void restartBridge() override {
     AbstractBridge* active_bridge = activeBridge();
     if (!active_bridge || !active_bridge->isRunning()) return;
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active) {
+      _wc_restart_pending = true;
+      return;
+    }
+#endif
     active_bridge->end();
 #ifdef WITH_MQTT_BRIDGE
     // Set device metadata before restarting bridge (same as in begin())
@@ -687,6 +708,12 @@ public:
   void restartBridgeSlot(int slot) override {
 #ifdef WITH_MQTT_BRIDGE
     if (!mqtt_bridge || !mqtt_bridge->isRunning()) return;
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active && slot >= 0 && slot < MAX_MQTT_SLOTS) {
+      _wc_slot_restart_mask |= static_cast<uint8_t>(1U << slot);
+      return;
+    }
+#endif
     mqtt_bridge->setSlotPreset(slot, _cli.getObserverPrefs()->mqtt_slot_preset[slot]);
 #else
     (void)slot;
@@ -739,6 +766,26 @@ public:
     return false;
 #endif
   }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  bool startWebConfig(bool force_ap, char* reply) override;
+  bool stopWebConfig(char* reply) override;
+  bool setWebUIEnabled(bool enabled, char* reply) override;
+  bool getWebUIStatus(char* reply) const override;
+  bool isWebConfigActive() const override {
+    return _webconfig && (_webconfig->isRunning() || _webconfig->isStopping());
+  }
+  void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
+  void execCommand(char* cmd, char* reply) override { handleCommand(0, cmd, reply); }
+  void rebootNow() override { _cli.getBoard()->reboot(); }
+  void onConfigBatchStart() override {
+    _wc_batch_active = true;
+    _wc_restart_pending = false;
+    _wc_slot_restart_mask = 0;
+  }
+  void onConfigBatchEnd() override;
+  void buildStatsJson(char* buf, size_t buf_size) override;
 #endif
 
   // To check if there is pending work

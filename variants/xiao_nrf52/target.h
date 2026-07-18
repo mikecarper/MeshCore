@@ -14,7 +14,9 @@
 
 #ifdef DISPLAY_CLASS
   #include <helpers/ui/NullDisplayDriver.h>
+  #include <helpers/ui/MomentaryButton.h>
   extern DISPLAY_CLASS display;
+  extern MomentaryButton user_btn;
 #endif
 
 extern XiaoNrf52Board board;
@@ -28,4 +30,3 @@ extern EnvironmentSensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

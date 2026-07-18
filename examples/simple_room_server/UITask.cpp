@@ -6,8 +6,9 @@
 #define USER_BTN_PRESSED LOW
 #endif
 
-#ifdef WITH_MQTT_BRIDGE
+#ifdef ESP_PLATFORM
 #include <WiFi.h>
+#include <helpers/esp32/WebConfigServer.h>
 #endif
 
 #define AUTO_OFF_MILLIS      20000  // 20 seconds
@@ -78,6 +79,38 @@ void UITask::renderCurrScreen() {
     _display->setCursor((_display->width() - typeWidth) / 2, 48);
     _display->print(node_type);
   } else {  // home screen
+#ifdef WITH_WEBCONFIG
+    if (WebConfigServer::isRebootPending()) {
+      _display->setTextSize(1);
+      _display->setColor(DisplayDriver::GREEN);
+      _display->setCursor(0, 14);
+      _display->print("Config saved!");
+      _display->setColor(DisplayDriver::LIGHT);
+      _display->setCursor(0, 30);
+      _display->print("Rebooting...");
+      return;
+    }
+    char wc_ssid[33], wc_ip[16];
+    if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+      _display->setTextSize(1);
+      _display->setColor(DisplayDriver::GREEN);
+      _display->setCursor(0, 0);
+      _display->print("WebUI WiFi Setup");
+      _display->setColor(DisplayDriver::LIGHT);
+      _display->setCursor(0, 14);
+      _display->print("Join WiFi:");
+      _display->setColor(DisplayDriver::YELLOW);
+      _display->setCursor(6, 24);
+      _display->print(wc_ssid);
+      _display->setColor(DisplayDriver::LIGHT);
+      _display->setCursor(0, 40);
+      _display->print("Then browse to:");
+      _display->setColor(DisplayDriver::YELLOW);
+      _display->setCursor(6, 50);
+      _display->print(wc_ip);
+      return;
+    }
+#endif
     // node name
     _display->setCursor(0, 0);
     _display->setTextSize(1);
@@ -124,6 +157,13 @@ void UITask::loop() {
       _prevBtnState = btnState;
     }
     _next_read = millis() + 200;  // 5 reads per second
+  }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  if (WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
+    if (!_display->isOn()) _display->turnOn();
+    _auto_off = millis() + AUTO_OFF_MILLIS;
   }
 #endif
 

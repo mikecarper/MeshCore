@@ -765,6 +765,9 @@ After this bootloader is flashed onto the device, you can trigger an over-the-ai
 6. From your phone or computer, connect to the `MeshCore-OTA` hotspot when one was started.
 7. Open the URL reported by `start ota` and upload the non-merged bin from the flasher. When the device started `MeshCore-OTA`, the URL is <http://192.168.4.1/update>.
 
+On an MQTT observer, stop WebConfig before running `start ota`; both servers use
+HTTP port 80. Likewise, stop the OTA uploader before running `start webconfig`.
+
 
 ### 7.3. Q: Is there a way to lower the chance of a failed OTA device firmware update (DFU)?
 **A:** Yes, developer `che aporeps` has an enhanced OTA DFU bootloader for nRF52 based devices. With this bootloader, if it detects that the application firmware is invalid, it falls back to OTA DFU mode so you can attempt to flash again to recover. This bootloader has other changes to make the OTA DFU process more fault tolerant.
@@ -801,13 +804,31 @@ Where `&type` is:
 
 ### 7.6. Q: How do I connect to the companion via Wi-Fi, e.g. using a Heltec V3?
 **A:**
-Flash a companion Wi-Fi build. If it has no saved Wi-Fi configuration, it starts an open `MeshCore-Setup` access point. Join it, browse to <http://192.168.4.1/>, and submit the network SSID and password. The device saves the credentials only after a successful connection. The page and device screen then show the station IP assigned by your router.
+Flash an ESP32 companion Wi-Fi build. Its shared WebUI is enabled by default. If
+it has no saved Wi-Fi configuration, it starts an open `MeshCore-Setup-XXXX`
+access point. Join it and browse to <http://192.168.4.1/>. The wizard configures
+WiFi, node identity, and radio settings; MQTT companion builds add an MQTT step
+and MQTT tab, while non-MQTT companions remove those controls. After saving,
+the page and device screen show the station IP assigned by your router.
 
-If a saved network remains unreachable for two minutes, `MeshCore-Setup` starts as a fallback. The node retries the saved SSID and password every two minutes while the setup AP is open. If the original network returns, the node reconnects and closes `MeshCore-Setup` automatically.
+If a saved network remains unreachable for two minutes, the setup AP starts as
+a fallback. If the original network returns, the companion closes that recovery
+portal and resumes normal LAN operation.
 
 The setup AP always uses `192.168.4.1`; the companion's station IP is assigned by DHCP and can be different. A real `WIFI_SSID` and `WIFI_PWD` can still be supplied at compile time as initial defaults, but they are no longer required.
 
-The `Heltec_v3_companion_radio_wifi_mqtt` and `heltec_v4_companion_radio_wifi_mqtt` builds use a two-stage first-run setup. The open `MeshCore-Setup` AP serves only the SSID/password form at <http://192.168.4.1/>. After the companion joins that network, reconnect your phone or computer to the same network and open the station IP shown on the setup page or device screen. That second, station-only page asks for the MQTT preset or broker, routing identity, credentials, and publish options. It remains available at the node's station IP so MQTT settings can be changed later; the companion interface remains available on TCP port `5000`.
+On the LAN, the WebUI remains available at the companion's station IP and the
+companion protocol remains available on TCP port `5000`. Companion builds do not
+have an admin CLI password, so this configuration page trusts the local LAN; do
+not put the companion on an untrusted WiFi network.
+
+ESP32 repeater and room-server builds use the same page, but keep it off by
+default. Run `set webui on` from the admin CLI, open the reported LAN URL, and
+sign in with the admin password; `get webui` reports its current address. Their
+MQTT observer variants expose the MQTT controls, while ordinary builds do not.
+The two 4 MB
+`LilyGo_TLora_V2_1_1_6_*_observer_mqtt` builds retain CLI-only configuration so
+their flash can keep two app slots for LoRa OTA.
 
 ### 7.7. Q: I have a Station G2, or a Heltec V4, or an Ikoka Stick, or a radio with an EByte E22-900M30S or an EByte E22-900M33S module, what should their transmit power be set to?
 **A:**

@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>MeshCore Config</title>
+<style>
+:root{
+  --bg:#f4f6f8; --card:#fff; --ink:#1a2330; --mut:#66738a; --line:#e2e7ee;
+  --acc:#2b7de9; --acc-ink:#fff; --ok:#1d9d5f; --err:#d64545; --warn:#c8871a;
+  --chip:#eef2f7; --in-bg:#fff; --in-line:#c8d2de; --shadow:0 1px 3px rgba(16,28,45,.08);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#10151c; --card:#1a212b; --ink:#e6ebf2; --mut:#8b98ab; --line:#2a3442;
+  --acc:#4a94f0; --chip:#232d3a; --in-bg:#141a22; --in-line:#3a4656; --shadow:0 1px 3px rgba(0,0,0,.4);
+}}
+*{box-sizing:border-box;margin:0}
+html{-webkit-text-size-adjust:100%}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:90px;overflow-x:hidden}
+h1{font-size:17px;font-weight:650}
+h2{font-size:14px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:22px 0 10px}
+h2:first-child{margin-top:0}
+a{color:var(--acc)}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+header svg{flex:none}
+.hmeta{min-width:0}
+.hmeta div{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{margin-left:auto;flex:none;font-size:11px;font-weight:650;padding:3px 9px;border-radius:99px;background:var(--chip);color:var(--mut)}
+.badge.setup{background:#f3e8d3;color:#8a5c00}
+@media (prefers-color-scheme:dark){.badge.setup{background:#3a2f14;color:#e0b45c}}
+main{max-width:640px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.tabs{display:flex;gap:4px;background:var(--chip);padding:4px;border-radius:10px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:none;color:var(--mut);font:inherit;font-size:13.5px;font-weight:600;padding:7px 4px;border-radius:7px;cursor:pointer}
+.tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.f{margin-bottom:13px}
+.f label{display:block;font-size:12.5px;font-weight:600;margin-bottom:4px}
+.f .hint{font-size:11.5px;color:var(--mut);margin-top:3px}
+input[type=text],input[type=password],input[type=number],input[type=email],select{
+  width:100%;padding:8px 10px;font:inherit;font-size:16px;color:var(--ink);background:var(--in-bg);
+  border:1px solid var(--in-line);border-radius:8px;outline:none}  /* >=16px: stops iOS zoom-on-focus (sideways-scroll in captive sheet) */
+input:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 25%,transparent)}
+input.dirty,select.dirty{border-color:var(--warn)}
+.row{display:flex;gap:10px}.row>.f{flex:1;min-width:0}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0}
+.sw span b{display:block;font-size:13.5px;font-weight:600}
+.sw span i{font-style:normal;font-size:11.5px;color:var(--mut)}
+.tgl{position:relative;width:42px;height:24px;flex:none}
+.tgl input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.tgl u{position:absolute;inset:0;background:var(--in-line);border-radius:99px;transition:.15s;pointer-events:none}
+.tgl u:before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.15s}
+.tgl input:checked+u{background:var(--acc)}
+.tgl input:checked+u:before{left:21px}
+button.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;font:inherit;font-size:14px;font-weight:650;
+  padding:9px 16px;border-radius:9px;cursor:pointer;background:var(--acc);color:var(--acc-ink)}
+button.btn.sec{background:var(--chip);color:var(--ink)}
+button.btn:disabled{opacity:.5;cursor:default}
+button.btn.sm{font-size:12.5px;padding:6px 10px}
+.chip{display:inline-block;font-size:11px;font-weight:650;padding:2px 8px;border-radius:99px;margin-left:6px;vertical-align:1px}
+.chip.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.chip.err{background:color-mix(in srgb,var(--err) 15%,transparent);color:var(--err)}
+.savebar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);border-top:1px solid var(--line);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:none;align-items:center;gap:12px}
+.savebar.show{display:flex}
+.savebar b{font-size:13.5px}
+.savebar .sp{flex:1}
+.slot{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.slot .st{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.slot .st b{font-size:13.5px}
+.pill{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--chip);color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.pill.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.pill.fail,.pill.disc{background:color-mix(in srgb,var(--err) 15%,transparent);color:var(--err)}
+.pill.wait{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.tile{background:var(--chip);border-radius:10px;padding:10px 12px}
+.tile i{font-style:normal;display:block;font-size:11px;font-weight:650;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.tile b{font-size:18px;font-weight:650}
+.tile s{text-decoration:none;font-size:11.5px;color:var(--mut)}
+canvas{width:100%;height:56px;display:block}
+.net{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;color:var(--ink);font:inherit;
+  padding:10px 6px;border-bottom:1px solid var(--line);cursor:pointer;text-align:left}
+.net:last-child{border-bottom:0}
+.net .ss{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.net small{color:var(--mut)}
+/* Inline scan panel (NOT an overlay): the iOS CNA sheet ignores programmatic
+   blur(), and when the keyboard is up iOS scrolls fixed overlays offscreen to
+   keep the focused field visible. A panel in normal flow directly under the
+   SSID field sits in that guaranteed-visible zone instead. */
+.scanpanel{border:1px solid var(--line);border-radius:10px;background:var(--card);box-shadow:var(--shadow);margin:-2px 0 13px}
+.scanpanel .sp-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);padding:10px 12px 4px}
+.scanpanel #scan-list{max-height:45vh;overflow:auto;padding:0 8px 6px}
+.steps{display:flex;gap:6px;margin-bottom:16px}
+.steps i{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.steps i.on{background:var(--acc)}
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:40;background:var(--ink);color:var(--bg);
+  font-size:13.5px;font-weight:600;padding:9px 16px;border-radius:9px;opacity:0;transition:.25s;pointer-events:none;max-width:90vw}
+.toast.show{opacity:1}
+.overlay{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;align-items:center;justify-content:center;text-align:center;padding:24px}
+.overlay.show{display:flex}
+.spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:r 1s linear infinite;display:inline-block}
+@keyframes r{to{transform:rotate(360deg)}}
+.err-text{color:var(--err);font-size:13px;margin-top:8px;min-height:18px}
+.kv{font-size:13.5px;display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:0}
+.kv i{font-style:normal;color:var(--mut)}
+.kv b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis}
+.hide{display:none!important}
+.note{font-size:12.5px;color:var(--mut);background:var(--chip);border-radius:8px;padding:9px 11px;margin-bottom:13px}
+</style>
+</head>
+<body>
+<header>
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="2.2" fill="var(--acc)" stroke="none"/>
+    <path d="M7.7 7.7a6 6 0 0 0 0 8.6M16.3 7.7a6 6 0 0 1 0 8.6M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>
+  </svg>
+  <div class="hmeta">
+    <h1 id="h-name">MeshCore</h1>
+    <div id="h-sub">connecting&hellip;</div>
+  </div>
+  <span class="badge hide" id="h-badge"></span>
+</header>
+<main>
+
+<!-- ============ LOGIN ============ -->
+<section id="v-login" class="hide">
+  <div class="card">
+    <h2>Admin login</h2>
+    <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">Enter this node's admin password (the same one used for remote CLI admin).</p>
+    <form id="login-form">
+      <div class="f"><label for="login-pwd">Password</label>
+        <input type="password" id="login-pwd" autocomplete="current-password" autofocus></div>
+      <button class="btn" type="submit" id="login-btn">Sign in</button>
+      <div class="err-text" id="login-err"></div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ SETUP WIZARD ============ -->
+<section id="v-wizard" class="hide">
+  <div class="note" id="cna-note">In the WiFi sign-in popup? It closes if your phone sleeps.
+    <a href="#" onclick="popOut();return false" style="white-space:nowrap">Open in your browser</a> to keep your progress.</div>
+  <div class="steps"><i id="stp1" class="on"></i><i id="stp2"></i><i id="stp3"></i><i id="stp4"></i></div>
+
+  <div id="wz1">
+    <div class="card">
+      <h2>Step 1 &middot; WiFi</h2>
+      <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px" id="wz-wifi-copy">Connect this node to your WiFi network so it can reach the MQTT servers.</p>
+      <div class="f"><label>Network name (SSID)</label>
+        <div class="row" style="gap:8px">
+          <input type="text" data-k="wifi.ssid" id="wz-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
+          <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('wz-ssid')">Scan</button>
+        </div></div>
+      <div class="f"><label>Password</label>
+        <input type="password" data-k="wifi.pwd" autocomplete="off">
+        <div class="hint">Leave blank for an open network. 2.4&thinsp;GHz networks only.</div></div>
+      <div class="f"><label>Node name</label>
+        <input type="text" data-k="name" maxlength="31">
+        <div class="hint" id="wz-name-hint">Shown on the mesh and in MQTT status messages.</div></div>
+    </div>
+    <button class="btn" onclick="wzGo(2)">Next: Radio</button>
+  </div>
+
+  <div id="wz2" class="hide">
+    <div class="card">
+      <h2>Step 2 &middot; Radio</h2>
+      <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">Nodes only hear each other on identical radio settings. Pick the preset your local mesh uses.</p>
+      <div class="f"><label>Region preset</label>
+        <select id="wz-rp" onchange="wzRadioSel(this)"></select>
+        <div class="hint" id="wz-rp-cur"></div></div>
+      <div class="f"><label>TX power (dBm)</label>
+        <input type="number" data-k="tx" min="-9" max="30" style="max-width:120px">
+        <div class="hint">Maximum legal power varies by region &mdash; check local rules.</div></div>
+      <div class="note">Need settings that aren't listed? Choose <b>Keep current settings</b>, finish setup, then fine-tune in the <a href="#" onclick="enterApp();return false">Advanced editor</a>.</div>
+    </div>
+    <div class="row">
+      <button class="btn sec" onclick="wzGo(1)">Back</button>
+      <button class="btn" style="flex:1" id="wz-radio-next" onclick="wzGo(3)">Next: MQTT</button>
+    </div>
+  </div>
+
+  <div id="wz3" class="hide">
+    <div class="card">
+      <h2>Step 3 &middot; MQTT</h2>
+      <div class="f"><label>Observer name (origin)</label>
+        <input type="text" data-k="mqtt.origin" autocapitalize="off">
+        <div class="hint">How this observer identifies itself in published status/packet messages. Informational only &mdash; not used for topics or authentication. Prefilled with the node name.</div></div>
+      <div class="f"><label>IATA region code</label>
+        <input type="text" data-k="mqtt.iata" maxlength="3" autocapitalize="characters" style="text-transform:uppercase;max-width:120px">
+        <div class="hint">Nearest airport code, e.g. <b>DEN</b>. Used in topic paths.</div></div>
+      <div class="f"><label>Owner public key</label>
+        <input type="text" data-k="mqtt.owner" maxlength="64" autocapitalize="off" autocorrect="off" autocomplete="off">
+        <div class="hint">Optional &mdash; 64-char hex public key of your companion node. Included in auth JWTs so services that support it can let you claim this node.</div></div>
+      <div class="f"><label>Owner email</label>
+        <input type="email" data-k="mqtt.email" autocapitalize="off">
+        <div class="hint">Optional &mdash; also included in auth JWTs for claiming this node on some services.</div></div>
+      <h2>Servers</h2>
+      <div id="wz-slots"></div>
+    </div>
+    <div class="row">
+      <button class="btn sec" onclick="wzGo(2)">Back</button>
+      <button class="btn" style="flex:1" onclick="wzGo(4)">Review</button>
+    </div>
+  </div>
+
+  <div id="wz4" class="hide">
+    <div class="card">
+      <h2 id="wz-review-title">Step 4 &middot; Review &amp; save</h2>
+      <div id="wz-review"></div>
+    </div>
+    <div class="note">Saving reboots the node into normal operation. To keep the page available later, run <b>set webui on</b>; use <b>get webui</b> to see its address.</div>
+    <div class="row">
+      <button class="btn sec" id="wz-review-back" onclick="wzGo(3)">Back</button>
+      <button class="btn" style="flex:1" id="wz-save" onclick="wizardSave()">Save &amp; reboot</button>
+    </div>
+    <div class="err-text" id="wz-err"></div>
+  </div>
+
+  <p style="text-align:center;margin-top:16px"><a href="#" onclick="enterApp();return false" style="font-size:13px">Advanced editor</a></p>
+</section>
+
+<!-- ============ MAIN APP ============ -->
+<section id="v-app" class="hide">
+  <div class="tabs" id="tabs">
+    <button data-t="radio" class="on">Radio</button>
+    <button data-t="mqtt">MQTT</button>
+    <button data-t="wifi">WiFi</button>
+    <button data-t="stats">Stats</button>
+  </div>
+
+  <div id="t-radio">
+    <div class="card">
+      <h2>Node</h2>
+      <div class="f"><label>Name</label><input type="text" data-k="name" maxlength="31"></div>
+      <div class="row" data-cap="1">
+        <div class="f"><label>Latitude</label><input type="number" data-k="lat" step="any"></div>
+        <div class="f"><label>Longitude</label><input type="number" data-k="lon" step="any"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>LoRa radio <span class="chip err hide" id="radio-warn">reboot to apply</span></h2>
+      <div class="note">Frequency, bandwidth, SF and CR must match your mesh exactly &mdash; a wrong value takes this node off the air until fixed over serial.</div>
+      <div class="row">
+        <div class="f"><label>Frequency (MHz)</label><input type="number" data-rg="freq" step="0.001" min="150" max="2500"></div>
+        <div class="f"><label>Bandwidth (kHz)</label><input type="number" data-rg="bw" step="0.01" min="7" max="500"></div>
+      </div>
+      <div class="row">
+        <div class="f"><label>Spreading factor</label>
+          <select data-rg="sf"><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
+        <div class="f"><label>Coding rate</label>
+          <select data-rg="cr"><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
+      </div>
+      <div class="f"><label>TX power (dBm)</label><input type="number" data-k="tx" min="-9" max="30" style="max-width:120px"></div>
+    </div>
+    <div class="card">
+      <h2>Advanced</h2>
+      <div class="row">
+        <div class="f" data-cap="2"><label>Airtime factor</label><input type="number" data-k="af" step="0.1" min="0">
+          <div class="hint" id="af-dc"></div></div>
+        <div class="f" data-cap="4"><label>RX delay base</label><input type="number" data-k="rxdelay" step="0.1" min="0" max="20"></div>
+      </div>
+      <div class="f" data-cap="512"><label>TX delay factor</label><input type="number" data-k="txdelay" step="0.1" min="0" max="2" style="max-width:120px"></div>
+      <div class="sw" data-cap="8"><span><b>CAD (listen before transmit)</b><i>Channel activity detection</i></span>
+        <span class="tgl"><input type="checkbox" data-k="cad"><u></u></span></div>
+      <div class="sw" data-cap="16"><span><b>RX boosted gain</b><i>SX126x receivers only</i></span>
+        <span class="tgl"><input type="checkbox" data-k="radio.rxgain"><u></u></span></div>
+      <div class="sw" data-cap="32"><span><b>Repeat</b><i>Forward mesh traffic. Off = listen-only (still observes and publishes).</i></span>
+        <span class="tgl"><input type="checkbox" data-k="repeat"><u></u></span></div>
+      <div class="row" style="margin-top:6px" data-cap="64">
+        <div class="f"><label>Local advert (min)</label><input type="number" data-k="advert.interval" min="0" max="240">
+          <div class="hint">0 = off</div></div>
+        <div class="f"><label>Flood advert (hrs)</label><input type="number" data-k="flood.advert.interval" min="0" max="168">
+          <div class="hint">0 = off, else 3&ndash;168</div></div>
+      </div>
+    </div>
+    <div class="card" id="radio-flood-card">
+      <h2>Flooding &amp; loops</h2>
+      <div class="note">Hop limits for flood traffic this node forwards. Lower values contain noisy neighbours; too low takes parts of the mesh out of reach.</div>
+      <div class="row" data-cap="128">
+        <div class="f"><label>Max flood hops</label><input type="number" data-k="flood.max" min="0" max="64">
+          <div class="hint">0&ndash;64. Default 64.</div></div>
+        <div class="f"><label>Max advert hops</label><input type="number" data-k="flood.max.advert" min="0" max="64">
+          <div class="hint">0&ndash;64. Default 8.</div></div>
+      </div>
+      <div class="f" data-cap="128"><label>Max unscoped flood hops</label><input type="number" data-k="flood.max.unscoped" min="0" max="64" style="max-width:120px">
+        <div class="hint">Applies to packets with no region scope. 0&ndash;64.</div></div>
+      <div class="f" style="margin-top:6px" data-cap="256"><label>Loop detection</label>
+        <select data-k="loop.detect"><option value="off">Off</option><option value="minimal">Minimal</option><option value="moderate">Moderate</option><option value="strict">Strict</option></select>
+        <div class="hint">Drops flood packets that already carry this node's hash. Stricter = fewer repeats tolerated before dropping.</div></div>
+    </div>
+  </div>
+
+  <div id="t-mqtt" class="hide">
+    <div class="card">
+      <h2>Identity</h2>
+      <div class="f"><label>Observer name (origin)</label><input type="text" data-k="mqtt.origin" autocapitalize="off">
+        <div class="hint">How this observer identifies itself in published messages; informational only. Blank = node name.</div></div>
+      <div class="f"><label>IATA region code</label><input type="text" data-k="mqtt.iata" maxlength="3" autocapitalize="characters" style="text-transform:uppercase;max-width:120px"></div>
+      <div class="f"><label>Owner public key</label><input type="text" data-k="mqtt.owner" maxlength="64" autocapitalize="off" autocorrect="off">
+        <div class="hint">64-char hex public key of the owner's companion node (optional).</div></div>
+      <div class="f"><label>Owner email</label><input type="email" data-k="mqtt.email"></div>
+    </div>
+    <div class="card">
+      <h2>Publishing</h2>
+      <div class="note">This node only ever <b>uploads</b> to MQTT — nothing from a broker is injected into the mesh.</div>
+      <div class="sw"><span><b>Node status</b><i>Periodic health/stats to the status topic</i></span>
+        <span class="tgl"><input type="checkbox" data-k="mqtt.status"><u></u></span></div>
+      <div class="sw"><span><b>Publish packets</b><i>Master switch for all packet traffic below</i></span>
+        <span class="tgl"><input type="checkbox" data-k="mqtt.packets"><u></u></span></div>
+      <div class="sw"><span><b>Add raw frames</b><i>Also send the full hex frame to the raw topic</i></span>
+        <span class="tgl"><input type="checkbox" data-k="mqtt.raw"><u></u></span></div>
+      <div class="sw"><span><b>Received packets</b><i>Report packets heard over the air</i></span>
+        <span class="tgl"><input type="checkbox" data-k="mqtt.rx"><u></u></span></div>
+      <div class="row" style="margin-top:6px">
+        <div class="f"><label>Transmitted packets</label>
+          <select data-k="mqtt.tx"><option value="off">Off</option><option value="on">All TX</option><option value="advert">Own adverts only</option></select>
+          <div class="hint">Report packets this node sends.</div></div>
+        <div class="f"><label>Status interval (min)</label><input type="number" data-k="mqtt.interval" min="1" max="60"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Servers</h2>
+      <div id="app-slots"></div>
+    </div>
+    <div class="card">
+      <h2>Time &amp; SNMP</h2>
+      <div class="f"><label>NTP server</label><input type="text" data-k="mqtt.ntp" autocapitalize="off" placeholder="pool.ntp.org">
+        <div class="hint">Enter <b>none</b> to clear.</div></div>
+      <div class="row">
+        <div class="f"><label>Timezone (POSIX)</label><input type="text" data-k="timezone" autocapitalize="off" placeholder="MST7MDT,M3.2.0,M11.1.0"></div>
+        <div class="f" style="max-width:110px"><label>UTC offset</label><input type="number" data-k="timezone.offset" min="-12" max="14"></div>
+      </div>
+      <div class="sw"><span><b>SNMP agent</b><i>Restart required</i></span>
+        <span class="tgl"><input type="checkbox" data-k="snmp"><u></u></span></div>
+      <div class="f"><label>SNMP community</label><input type="text" data-k="snmp.community" autocapitalize="off"></div>
+    </div>
+  </div>
+
+  <div id="t-wifi" class="hide">
+    <div class="card">
+      <h2>WiFi connection</h2>
+      <div class="note">Changing WiFi restarts the connection &mdash; this page will drop and the node reappears on the new network. Find its new IP from your router or the serial console.</div>
+      <div class="f"><label>Network name (SSID)</label>
+        <div class="row" style="gap:8px">
+          <input type="text" data-k="wifi.ssid" id="app-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
+          <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('app-ssid')">Scan</button>
+        </div></div>
+      <div class="f"><label>Password</label><input type="password" data-k="wifi.pwd" autocomplete="off"></div>
+      <div class="f" data-cap="1024"><label>Power save</label>
+        <select data-k="wifi.powersave"><option value="min">Minimum</option><option value="none">None (default; lowest latency)</option><option value="max">Maximum (battery)</option></select></div>
+    </div>
+    <div class="card">
+      <h2>Maintenance</h2>
+      <div class="row">
+        <button class="btn sec" style="flex:1" onclick="doReboot()">Reboot node</button>
+        <button class="btn sec" style="flex:1" id="logout-btn" onclick="doLogout()">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="t-stats" class="hide">
+    <div class="card">
+      <h2>Device <span id="stats-age" style="float:right;font-weight:500;text-transform:none;letter-spacing:0"></span></h2>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="card">
+      <h2>Free heap (KB)</h2><canvas id="spark-heap" height="56"></canvas>
+      <h2>Noise floor (dBm)</h2><canvas id="spark-noise" height="56"></canvas>
+    </div>
+    <div class="card" id="mqtt-stats-card">
+      <h2>MQTT servers</h2>
+      <div id="stat-slots" style="font-size:13.5px;color:var(--mut)">No data yet.</div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- save bar -->
+<div class="savebar" id="savebar">
+  <b id="save-n"></b><span class="sp"></span>
+  <button class="btn sec sm" onclick="revertAll()">Revert</button>
+  <button class="btn sm" id="save-btn" onclick="saveChanges()">Save changes</button>
+</div>
+
+<!-- inline scan panel: moved under whichever SSID field requested it -->
+<div class="scanpanel hide" id="scan-panel">
+  <div class="sp-head">Nearby networks<span style="flex:1"></span>
+    <button class="btn sec sm" type="button" onmousedown="event.preventDefault()" onclick="startScan(true)">Rescan</button>
+    <button class="btn sec sm" type="button" onmousedown="event.preventDefault()" onclick="closeScan()">Close</button></div>
+  <div id="scan-list"><div style="text-align:center;padding:18px"><span class="spin"></span></div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- captive pop-out overlay -->
+<div class="overlay" id="exit-ov">
+  <div style="max-width:420px;text-align:left">
+    <h1 style="margin-bottom:12px;text-align:center">Continue in your browser</h1>
+    <ol style="font-size:15px;line-height:1.9;padding-left:22px;color:var(--fg)">
+      <li>Tap <b>Done</b> (or <b>Cancel</b>) in the corner of this window.<br>
+        <span style="font-size:13px;color:var(--mut)">If asked, choose <b>Use Without Internet</b> / <b>Stay connected</b>.</span></li>
+      <li>Open Safari or Chrome on this device.</li>
+      <li>Go to <b style="font-size:17px" id="exit-url">http://192.168.4.1</b></li>
+    </ol>
+    <div class="note" style="margin-top:14px">Stay connected to the <b>MeshCore-Setup</b> WiFi network. Your progress here isn't carried over &mdash; the setup restarts in the browser, where it survives the screen locking.</div>
+    <p style="text-align:center;margin-top:10px"><a href="#" onclick="document.getElementById('exit-ov').classList.remove('show');return false" style="font-size:13px">Go back</a></p>
+  </div>
+</div>
+
+<!-- reboot overlay -->
+<div class="overlay" id="reboot-ov">
+  <div>
+    <span class="spin" style="width:34px;height:34px"></span>
+    <h1 style="margin:16px 0 8px" id="reboot-title">Rebooting&hellip;</h1>
+    <p id="reboot-msg" style="color:var(--mut);max-width:420px"></p>
+    <p style="margin-top:14px;font-size:26px;font-weight:650" id="reboot-count"></p>
+  </div>
+</div>
+
+<script>
+"use strict";
+var SENTINEL="********";
+var st={mode:"",authed:false,hasMqtt:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+
+function $(s){return document.querySelector(s)}
+function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
+function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove("show")},2600)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
+function api(path,opts){
+  opts=opts||{};
+  if(!opts.cache)opts.cache="no-store"; // iOS caches plain-HTTP API GETs across sessions
+  if(opts.timeout&&window.AbortController){
+    // The CNA sheet can leave a fetch hanging forever on a dead connection;
+    // abort so the caller's retry loop keeps moving.
+    var ctl=new AbortController();opts.signal=ctl.signal;
+    setTimeout(function(){ctl.abort()},opts.timeout);
+  }
+  return fetch(path,opts).then(function(r){
+    if(r.status===401){showLogin();throw new Error("auth")}
+    return r.json().then(function(j){if(!r.ok&&r.status!==202)throw new Error(j.error||("HTTP "+r.status));return j});
+  });
+}
+function post(path,body){return api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
+
+function applyFeatures(){
+  $$('[data-cap]').forEach(function(el){
+    el.classList.toggle("hide",!(st.caps&Number(el.dataset.cap)));
+  });
+  var floodCard=$("#radio-flood-card");
+  if(floodCard)floodCard.classList.toggle("hide",!(st.caps&(128|256)));
+  if(st.hasMqtt)return;
+
+  // One HTML asset serves every ESP32 role. The firmware reports whether it
+  // actually has an MQTT bridge; on ordinary builds remove MQTT rather than
+  // showing controls that the backend cannot apply.
+  var mqttTab=$('#tabs button[data-t="mqtt"]');if(mqttTab)mqttTab.remove();
+  $("#t-mqtt").classList.add("hide");
+  $("#wz3").classList.add("hide");
+  $("#stp3").classList.add("hide");
+  $("#mqtt-stats-card").classList.add("hide");
+  $("#wz-wifi-copy").textContent="Connect this node to your WiFi network so its configuration page is available on your LAN.";
+  $("#wz-name-hint").textContent="Shown to other nodes on the mesh.";
+  $("#wz-radio-next").textContent="Review";
+  $("#wz-review-title").innerHTML="Step 3 &middot; Review &amp; save";
+  $("#wz-review-back").onclick=function(){wzGo(2)};
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  api("/api/status").then(function(s){
+    st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.caps=s.capabilities||0;st.nslots=s.runtime_slots||0;
+    $("#h-name").textContent=s.name||"MeshCore";
+    $("#h-sub").textContent=s.role+" · "+s.fw+" · "+s.board;
+    var b=$("#h-badge");b.classList.remove("hide");
+    if(s.mode==="setup"){b.textContent="SETUP";b.classList.add("setup")}else{b.textContent="LAN"}
+    applyFeatures();
+    return st.hasMqtt?api("/api/presets").catch(function(){return{presets:[]}}):{presets:[]};
+  }).then(function(p){
+    st.presets=p.presets||[];
+    if(st.mode==="setup"){showWizard()}
+    else if(!st.authed){showLogin()}
+    else{enterApp()}
+  }).catch(function(e){
+    if(e.message!=="auth"){$("#h-sub").textContent="connection failed — retrying";setTimeout(boot,2000)}
+  });
+}
+
+function show(v){["#v-login","#v-wizard","#v-app"].forEach(function(id){$(id).classList.add("hide")});$(v).classList.remove("hide");updateSaveBar()}
+function showLogin(){show("#v-login")}
+
+/* ---------- login ---------- */
+$("#login-form").addEventListener("submit",function(ev){
+  ev.preventDefault();
+  var btn=$("#login-btn");btn.disabled=true;$("#login-err").textContent="";
+  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({password:$("#login-pwd").value})})
+  .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+  .then(function(x){
+    btn.disabled=false;
+    if(x.s===200){st.authed=true;$("#login-pwd").value="";enterApp()}
+    else $("#login-err").textContent=x.j.error||"login failed";
+  }).catch(function(){btn.disabled=false;$("#login-err").textContent="connection error"});
+});
+function doLogout(){post("/api/logout",{}).then(function(){st.authed=false;showLogin()}).catch(function(){})}
+
+/* ---------- config load / bind ---------- */
+function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
+  var c=st.cfg,m,r=c.radio,q=c.mqtt||{slots:[]},w=c.wifi;
+  if((m=k.match(/^mqtt([1-9])\.(\w+)$/))){var s=(q.slots||[])[+m[1]-1]||{};var v=s[m[2]];return v==null?"":String(v)}
+  switch(k){
+    case"name":return r.name;case"lat":return String(r.lat);case"lon":return String(r.lon);
+    case"tx":return String(r.tx);case"af":return String(r.af);
+    case"rxdelay":return String(r.rxdelay);case"txdelay":return String(r.txdelay);
+    case"cad":return r.cad?"on":"off";case"radio.rxgain":return r.rxgain?"on":"off";
+    case"repeat":return r.repeat?"on":"off";
+    case"flood.max":return String(r.flood_max);
+    case"flood.max.advert":return String(r.flood_max_advert);
+    case"flood.max.unscoped":return String(r.flood_max_unscoped);
+    case"loop.detect":return r.loop_detect;
+    case"advert.interval":return String(r.advert_interval);
+    case"flood.advert.interval":return String(r.flood_advert_interval);
+    case"wifi.ssid":return w.ssid;case"wifi.pwd":return w.pwd;case"wifi.powersave":return w.powersave;
+    case"mqtt.origin":return q.origin;case"mqtt.iata":return q.iata;
+    case"mqtt.status":return q.status?"on":"off";case"mqtt.packets":return q.packets?"on":"off";
+    case"mqtt.raw":return q.raw?"on":"off";case"mqtt.tx":return q.tx;case"mqtt.rx":return q.rx?"on":"off";
+    case"mqtt.interval":return String(q.interval);case"mqtt.ntp":return q.ntp;
+    case"mqtt.owner":return q.owner;case"mqtt.email":return q.email;
+    case"timezone":return q.timezone;case"timezone.offset":return String(q.timezone_offset);
+    case"snmp":return q.snmp?"on":"off";case"snmp.community":return q.snmp_community;
+  }
+  return"";
+}
+function elVal(el){
+  if(el.type==="checkbox")return el.checked?"on":"off";
+  return el.value;
+}
+function setEl(el,v){
+  if(el.type==="checkbox")el.checked=(v==="on");
+  else el.value=v;
+}
+function radioCombo(){
+  var p={};$$("[data-rg]").forEach(function(el){p[el.dataset.rg]=el.value});
+  return p.freq+","+p.bw+","+p.sf+","+p.cr;
+}
+function loadConfig(){
+  return api("/api/config").then(function(c){
+    st.cfg=c;st.orig={};st.dirty={};
+    if(st.hasMqtt){buildSlots("#app-slots");buildSlots("#wz-slots")}
+    $$("[data-k]").forEach(function(el){
+      var k=el.dataset.k,v=cfgVal(k);
+      st.orig[k]=v;setEl(el,v);el.classList.remove("dirty");
+      var lab=el.closest(".f");var ch=lab&&lab.querySelector(".chip");if(ch)ch.remove();
+    });
+    $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg]);el.classList.remove("dirty")});
+    st.orig.radio=radioCombo();afHint();
+    if(st.hasMqtt)for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
+    updateSaveBar();
+  });
+}
+function markDirty(k,v,el){
+  if(v===st.orig[k]){delete st.dirty[k]}else{st.dirty[k]=v}
+  if(el)el.classList.toggle("dirty",k in st.dirty);
+  if(k==="af")afHint();
+  updateSaveBar();
+}
+// The CLI's `dutycycle` is not its own pref — it just writes airtime_factor as
+// 100/(dc)-1. Showing the equivalent duty cycle beside `af` gives the number
+// operators actually reason about without a second field fighting over one pref.
+function afHint(){
+  var e=$("#af-dc");if(!e)return;
+  var af=parseFloat($('[data-k="af"]').value);
+  e.textContent=isFinite(af)&&af>=0?"≈ "+(Math.round(1000/(af+1))/10)+"% duty cycle":"";
+}
+document.addEventListener("input",function(ev){
+  var el=ev.target;
+  if(el.dataset.k){
+    // keep duplicate fields (wizard vs app share keys) in sync
+    $$('[data-k="'+el.dataset.k+'"]').forEach(function(o){if(o!==el)setEl(o,elVal(el))});
+    markDirty(el.dataset.k,elVal(el),el);
+  }else if(el.dataset.rg){
+    var v=radioCombo();
+    $$("[data-rg]").forEach(function(o){o.classList.toggle("dirty",v!==st.orig.radio)});
+    markDirty("radio",v);
+    var s=$("#wz-rp"); // keep the wizard preset dropdown honest
+    if(s&&s.options.length){
+      var m=-1;RADIO_PRESETS.forEach(function(p,i){if(comboEq(presetCombo(p),v))m=i});
+      s.value=m>=0?String(m):(("radio" in st.dirty)?"keep":s.value);
+    }
+  }
+});
+function updateSaveBar(){
+  var n=Object.keys(st.dirty).length;
+  var appVisible=!$("#v-app").classList.contains("hide");
+  $("#savebar").classList.toggle("show",n>0&&appVisible);
+  $("#save-n").textContent=n+(n===1?" change":" changes");
+}
+function revertAll(){loadConfig().then(function(){toast("Reverted")})}
+
+/* ---------- slots ---------- */
+function slotFieldHtml(i,f,type,label,hint){
+  return'<div class="f sf-'+f+'"><label>'+label+'</label><input type="'+type+'" data-k="mqtt'+i+'.'+f+'" autocapitalize="off" autocorrect="off" autocomplete="off">'+(hint?'<div class="hint">'+hint+'</div>':'')+'</div>';
+}
+function buildSlots(sel){
+  var host=$(sel);if(!host)return;
+  var html="";
+  for(var i=1;i<=st.nslots;i++){
+    var opts='<option value="none">— none —</option>';
+    st.presets.forEach(function(p){opts+='<option value="'+esc(p.name)+'">'+esc(p.name)+'</option>'});
+    opts+='<option value="custom">custom…</option>';
+    html+='<div class="slot" data-slot="'+i+'">'
+      +'<div class="st"><b>Slot '+i+'</b></div>'
+      +'<div class="f"><label>Preset</label><select data-k="mqtt'+i+'.preset">'+opts+'</select></div>'
+      +slotFieldHtml(i,"token","password","Access token","")
+      +slotFieldHtml(i,"username","text","Username","")
+      +slotFieldHtml(i,"password","password","Password","")
+      +slotFieldHtml(i,"server","text","Server host","")
+      +slotFieldHtml(i,"port","number","Port","")
+      +slotFieldHtml(i,"topic","text","Topic template","Placeholders: {iata} {device} {type} {token}")
+      +slotFieldHtml(i,"audience","text","JWT audience","Optional — blank for user/pass auth")
+      +'</div>';
+  }
+  host.innerHTML=html;
+}
+function refreshSlotFields(host,i){
+  if(!host)return;
+  var card=host.querySelector('[data-slot="'+i+'"]');if(!card)return;
+  var presetEl=card.querySelector('[data-k="mqtt'+i+'.preset"]');
+  var name=presetEl.value;
+  var def=null;st.presets.forEach(function(p){if(p.name===name)def=p});
+  var needs=name==="custom"?"custom":(def?def.needs:"none");
+  var showMap={token:needs==="token",username:needs==="userpass"||needs==="custom",
+    password:needs==="userpass"||needs==="custom",server:needs==="custom",
+    port:needs==="custom",topic:needs==="custom",audience:needs==="custom"};
+  Object.keys(showMap).forEach(function(f){
+    var w=card.querySelector(".sf-"+f);if(w)w.classList.toggle("hide",!showMap[f]);
+  });
+}
+document.addEventListener("change",function(ev){
+  var el=ev.target,m;
+  if(el.dataset.k&&(m=el.dataset.k.match(/^mqtt([1-9])\.preset$/))){
+    ["#app-slots","#wz-slots"].forEach(function(sel){refreshSlotFields($(sel),+m[1])});
+  }
+});
+
+/* ---------- save / results ---------- */
+function chipFor(el,ok,msg){
+  var lab=el.closest(".f");if(!lab)return;
+  var old=lab.querySelector(".chip");if(old)old.remove();
+  var c=document.createElement("span");
+  c.className="chip "+(ok?"ok":"err");c.textContent=msg;
+  lab.querySelector("label").appendChild(c);
+}
+function saveChanges(extra,cb){
+  var setmap={};
+  // Clear old presets first, then assign new presets, then apply their fields.
+  // This lets an operator move a unique preset to an empty slot in one save.
+  Object.keys(st.dirty).sort(function(a,b){
+    var pa=/\.preset$/.test(a)?(st.dirty[a]==="none"?0:1):2;
+    var pb=/\.preset$/.test(b)?(st.dirty[b]==="none"?0:1):2;
+    return pa-pb||a.localeCompare(b);
+  }).forEach(function(k){setmap[k]=st.dirty[k]});
+  var body={set:setmap};
+  // Applying new station credentials necessarily drops this page. Reboot
+  // after a successful batch so the bridge joins with the complete SSID and
+  // password together instead of reconnecting between the two writes.
+  if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap))body.reboot=true;
+  if(Object.keys(setmap).length===0&&!body.reboot){toast("Nothing to save");return}
+  $("#save-btn").disabled=true;
+  post("/api/config",body).then(function(){pollResult(cb,0,0,true)})
+  .catch(function(e){
+    if(e.message==="auth"){$("#save-btn").disabled=false;if(cb)cb(null,false);return}
+    // The POST may have landed even though its response was lost (the save
+    // itself briefly stalls the AP's WiFi) — poll for the result regardless.
+    pollResult(cb,0,0,false);
+  });
+}
+// acked: the node returned 202 for the POST, so the batch will be processed.
+// A requested reboot happens only if every command succeeds. This still lets
+// callers distinguish "confirmation lost" from "save never sent".
+function pollResult(cb,errs,idles,acked){
+  errs=errs||0;idles=idles||0;
+  function fail(){$("#save-btn").disabled=false;
+    if(cb)cb(null,acked);else toast(acked?"Saved, but confirmation was lost — reload to verify":"Save failed — check connection and retry")}
+  api("/api/config/result",{timeout:4000}).then(function(r){
+    if(r.state==="pending"){setTimeout(function(){pollResult(cb,0,idles,true)},400);return}
+    if(r.state!=="done"){
+      // idle: the POST likely never arrived — but give it a moment in case
+      // it's still in flight after a connection blip
+      if(idles<4){setTimeout(function(){pollResult(cb,errs,idles+1,acked)},700);return}
+      fail();return;
+    }
+    $("#save-btn").disabled=false;
+    var fails=0,radioReboot=false;
+    (r.results||[]).forEach(function(it){
+      var ok=/^OK/i.test(it.reply);
+      if(!ok)fails++;
+      if(it.key==="radio"){
+        if(/reboot/i.test(it.reply))radioReboot=true;
+        $$("#v-app [data-rg]").forEach(function(o){o.classList.remove("dirty")});
+      }
+      var el=document.querySelector('#v-app [data-k="'+it.key+'"]');
+      if(el)chipFor(el,ok,ok?"OK":it.reply.replace(/^Err(or)?[:,]?\s*/i,""));
+    });
+    $("#radio-warn").classList.toggle("hide",!radioReboot);
+    if(cb){cb(r);return}
+    if(fails)toast(fails+" setting(s) rejected — see fields");
+    else if(r.reboot){
+      st.dirty={};
+      showReboot("The node is restarting with the saved WiFi settings. Reconnect to that network and open the node at its router-assigned address.",false,"Settings saved ✓ — rebooting");
+      return;
+    }else toast("Saved ✓");
+    st.dirty={};
+    loadConfigSoft();
+  }).catch(function(e){
+    if(e.message==="auth"){fail();return}
+    // Transient network error: the save itself can knock the phone off the
+    // AP for a moment (flash writes stall WiFi). Keep polling — the device
+    // holds the result until we manage to read it.
+    if(errs<20){setTimeout(function(){pollResult(cb,errs+1,idles,acked)},700);return}
+    fail();
+  });
+}
+function loadConfigSoft(){ // re-sync origin values without clobbering result chips
+  api("/api/config").then(function(c){
+    st.cfg=c;
+    $$("[data-k]").forEach(function(el){var k=el.dataset.k;st.orig[k]=cfgVal(k);setEl(el,st.orig[k]);el.classList.remove("dirty")});
+    $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg])});
+    st.orig.radio=radioCombo();
+    updateSaveBar();
+  }).catch(function(){});
+}
+
+/* ---------- tabs / app ---------- */
+function enterApp(){
+  show("#v-app");
+  loadConfig().catch(function(e){if(e.message!=="auth")toast("Failed to load config")});
+}
+$("#tabs").addEventListener("click",function(ev){
+  var b=ev.target.closest("button");if(!b)return;
+  $$("#tabs button").forEach(function(x){x.classList.toggle("on",x===b)});
+  ["radio","mqtt","wifi","stats"].forEach(function(t){$("#t-"+t).classList.toggle("hide",t!==b.dataset.t)});
+  if(b.dataset.t==="stats")startStats();else stopStats();
+});
+
+/* ---------- stats ---------- */
+function fmtUp(s){var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d>0?d+"d "+h+"h":(h>0?h+"h "+m+"m":m+"m")}
+function tile(i,b,s){return'<div class="tile"><i>'+i+'</i><b>'+b+'</b>'+(s?' <s>'+s+'</s>':'')+'</div>'}
+function startStats(){stopStats();pollStats();st.statsTimer=setInterval(pollStats,3000)}
+function stopStats(){if(st.statsTimer){clearInterval(st.statsTimer);st.statsTimer=0}}
+function pollStats(){
+  api("/api/stats").then(function(s){
+    if(s.state==="pending"){$("#stats-age").textContent="collecting…";return}
+    $("#stats-age").textContent="";
+    var kb=Math.round(s.heap_free/1024);
+    $("#tiles").innerHTML=
+      tile("Uptime",fmtUp(s.uptime_s))+
+      tile("Battery",(s.batt_mv/1000).toFixed(2),"V")+
+      tile("Free heap",kb,"KB · min "+Math.round(s.heap_min/1024))+
+      tile("Max alloc",Math.round(s.heap_max_alloc/1024),"KB")+
+      tile("Noise floor",s.noise,"dBm")+
+      tile("Last RSSI",s.rssi,"dBm · SNR "+s.snr)+
+      tile("Airtime TX",fmtUp(s.airtime_s))+
+      tile("Airtime RX",fmtUp(s.rx_airtime_s))+
+      tile("Packets RX",s.recv,"err "+s.rx_err)+
+      tile("Packets TX",s.sent)+
+      tile("Flood RX/TX",s.recv_flood+" / "+s.sent_flood)+
+      tile("Direct RX/TX",s.recv_direct+" / "+s.sent_direct)+
+      tile("TX queue",s.tx_queue)+
+      (st.hasMqtt?tile("MQTT queue",s.mqtt_queue):"")+
+      tile("WiFi RSSI",s.wifi_rssi,"dBm")+
+      tile("IP",s.ip||"—");
+    push(st.hist.heap,kb);push(st.hist.noise,s.noise);
+    spark($("#spark-heap"),st.hist.heap);spark($("#spark-noise"),st.hist.noise);
+    if(st.hasMqtt){
+    var sl=s.slots||[];
+    $("#stat-slots").innerHTML=sl.length?sl.map(function(x){
+      var counts=(x.ok==null||x.err==null)?"":" "+x.ok+" ok / "+x.err+" err";
+      return'<div class="kv"><i>Slot '+x.n+" · "+esc(x.name)+'</i><b><span class="pill '+esc(x.state)+'">'+esc(x.state)+'</span>'+counts+'</b></div>';
+    }).join(""):"No servers configured.";
+    }
+  }).catch(function(){});
+}
+function push(a,v){a.push(v);if(a.length>60)a.shift()}
+function spark(cv,data){
+  var dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=56;
+  cv.width=w*dpr;cv.height=h*dpr;
+  var g=cv.getContext("2d");g.scale(dpr,dpr);g.clearRect(0,0,w,h);
+  if(data.length<2)return;
+  var mn=Math.min.apply(null,data),mx=Math.max.apply(null,data);
+  if(mx===mn){mx+=1;mn-=1}
+  g.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue("--acc").trim()||"#2b7de9";
+  g.lineWidth=2;g.lineJoin="round";g.beginPath();
+  data.forEach(function(v,i){
+    var x=i/(data.length-1)*(w-4)+2,y=h-4-(v-mn)/(mx-mn)*(h-10);
+    i?g.lineTo(x,y):g.moveTo(x,y);
+  });
+  g.stroke();
+  g.fillStyle=g.strokeStyle;g.font="10px system-ui";g.textAlign="right";
+  g.fillText(data[data.length-1],w-2,10);
+}
+
+/* ---------- wifi scan ---------- */
+function dropKeyboard(target){
+  var el=target&&document.getElementById(target);if(el)el.blur();
+  var ae=document.activeElement;
+  if(ae&&ae!==document.body&&ae.blur)ae.blur();
+}
+function openScan(target){
+  st.scanTarget=target;
+  // Move the panel into the flow right below the target SSID field: iOS
+  // keeps the focused field visible above the keyboard, so the panel under
+  // it stays visible even when the CNA sheet refuses to drop the keyboard.
+  var el=document.getElementById(target),panel=$("#scan-panel");
+  var f=el&&el.closest(".f");
+  if(f&&f.parentNode)f.parentNode.insertBefore(panel,f.nextSibling);
+  panel.classList.remove("hide");
+  // best-effort keyboard drop (works in real Safari; the CNA sheet ignores it)
+  dropKeyboard(target);
+  setTimeout(function(){dropKeyboard(target)},150);
+  startScan(false)}
+function closeScan(){$("#scan-panel").classList.add("hide");clearTimeout(st.scanTimer)}
+function startScan(force){
+  $("#scan-list").innerHTML='<div style="text-align:center;padding:18px"><span class="spin"></span></div>';
+  pollScan(force?"/api/scan?rescan=1":"/api/scan");
+}
+function bars(rssi){var n=rssi>-55?4:rssi>-67?3:rssi>-78?2:1;var o="";
+  for(var i=1;i<=4;i++)o+='<span style="display:inline-block;width:3px;margin-right:1px;border-radius:1px;height:'+(3+i*3)+'px;background:'+(i<=n?"var(--acc)":"var(--line)")+'"></span>';
+  return'<span style="display:inline-flex;align-items:flex-end;height:15px">'+o+"</span>"}
+function pollScan(url){
+  api(url).then(function(r){
+    if(r.state==="scanning"){st.scanTimer=setTimeout(function(){pollScan("/api/scan")},1500);return}
+    var nets=(r.networks||[]).filter(function(n){return n.ssid});
+    nets.sort(function(a,b){return b.rssi-a.rssi});
+    var seen={};nets=nets.filter(function(n){if(seen[n.ssid])return false;seen[n.ssid]=1;return true});
+    $("#scan-list").innerHTML=nets.length?nets.map(function(n){
+      return'<button type="button" class="net" data-ssid="'+esc(n.ssid)+'">'+bars(n.rssi)
+        +'<span class="ss">'+esc(n.ssid)+"</span>"+(n.enc?"&#128274;":"")+"<small>"+n.rssi+"</small></button>";
+    }).join(""):'<p style="color:var(--mut);padding:12px">No networks found.</p>';
+  }).catch(function(){$("#scan-list").innerHTML='<p style="color:var(--mut);padding:12px">Scan failed.</p>'});
+}
+$("#scan-list").addEventListener("click",function(ev){
+  var b=ev.target.closest(".net");if(!b)return;
+  var el=document.getElementById(st.scanTarget);
+  el.value=b.dataset.ssid;
+  el.dispatchEvent(new Event("input",{bubbles:true}));
+  closeScan();
+});
+
+/* ---------- wizard ---------- */
+// Regional radio presets, baked in because the setup AP has no internet.
+// Source: https://api.meshcore.nz/api/v1/config (config.meshcore.io), Jul 2026.
+// f=MHz, bw=kHz — submitted as `set radio f,bw,sf,cr`.
+var RADIO_PRESETS=[
+  {t:"USA/Canada (Recommended)",f:"910.525",bw:"62.5",sf:"7",cr:"5"},
+  {t:"Australia",f:"915.800",bw:"250",sf:"10",cr:"5"},
+  {t:"Australia (Narrow)",f:"916.575",bw:"62.5",sf:"7",cr:"8"},
+  {t:"Australia (Mid)",f:"915.075",bw:"125",sf:"9",cr:"5"},
+  {t:"Australia: SA, WA",f:"923.125",bw:"62.5",sf:"8",cr:"8"},
+  {t:"Australia: QLD",f:"923.125",bw:"62.5",sf:"8",cr:"5"},
+  {t:"Brazil",f:"923.125",bw:"62.5",sf:"8",cr:"8"},
+  {t:"EU/UK (Narrow)",f:"869.618",bw:"62.5",sf:"8",cr:"8"},
+  {t:"EU/UK (Deprecated)",f:"869.525",bw:"250",sf:"11",cr:"5"},
+  {t:"Czech Republic (Narrow)",f:"869.432",bw:"62.5",sf:"7",cr:"5"},
+  {t:"EU 433MHz (Long Range)",f:"433.650",bw:"250",sf:"11",cr:"5"},
+  {t:"EU 433MHz (Narrow)",f:"433.650",bw:"62.5",sf:"8",cr:"8"},
+  {t:"Netherlands",f:"869.618",bw:"62.5",sf:"7",cr:"5"},
+  {t:"New Zealand",f:"917.375",bw:"250",sf:"11",cr:"5"},
+  {t:"New Zealand (Narrow)",f:"917.375",bw:"62.5",sf:"7",cr:"5"},
+  {t:"Portugal 433",f:"433.375",bw:"62.5",sf:"9",cr:"6"},
+  {t:"Portugal 868",f:"869.618",bw:"62.5",sf:"7",cr:"6"},
+  {t:"Switzerland",f:"869.618",bw:"62.5",sf:"8",cr:"8"},
+  {t:"Vietnam (Narrow)",f:"920.250",bw:"62.5",sf:"8",cr:"5"},
+  {t:"Vietnam (Deprecated)",f:"920.250",bw:"250",sf:"11",cr:"5"}
+];
+function presetCombo(p){return p.f+","+p.bw+","+p.sf+","+p.cr}
+function comboEq(a,b){ // numeric compare: "62.5"=="62.50", "250"=="250.0"
+  if(!a||!b)return false;
+  var x=a.split(","),y=b.split(",");
+  for(var i=0;i<4;i++)if(Number(x[i])!==Number(y[i]))return false;
+  return true;
+}
+function presetDesc(p){return p.f+" MHz &middot; BW"+p.bw+" &middot; SF"+p.sf+" &middot; CR"+p.cr}
+function wzRadioFill(){
+  var sel=$("#wz-rp"),cur=st.orig.radio||"";
+  var html='<option value="">Select your region&hellip;</option>';
+  var match=-1;
+  RADIO_PRESETS.forEach(function(p,i){
+    if(comboEq(presetCombo(p),cur))match=i;
+    html+='<option value="'+i+'">'+esc(p.t)+' &mdash; '+presetDesc(p)+'</option>';
+  });
+  html+='<option value="keep">Keep current settings</option>';
+  sel.innerHTML=html;
+  // preselect when the node already matches a known preset; otherwise force a choice
+  if(match>=0)sel.value=String(match);
+  var c=(st.cfg&&st.cfg.radio)||{};
+  $("#wz-rp-cur").innerHTML="Currently: <b>"+esc(c.freq)+" MHz &middot; BW"+esc(c.bw)+" &middot; SF"+esc(c.sf)+" &middot; CR"+esc(c.cr)+"</b>"
+    +(match<0?" (doesn't match a regional preset)":"");
+  sel.classList.remove("dirty");
+}
+function wzRadioSel(sel){
+  var v=sel.value,combo;
+  if(v===""||v==="keep"){combo=st.orig.radio}
+  else{var p=RADIO_PRESETS[+v];combo=presetCombo(p)}
+  // drive the shared `radio` key through the same path as the advanced editor
+  $$("[data-rg]").forEach(function(el){
+    var parts=combo.split(","),idx={freq:0,bw:1,sf:2,cr:3}[el.dataset.rg];
+    el.value=parts[idx];
+    el.classList.toggle("dirty",combo!==st.orig.radio);
+  });
+  sel.classList.toggle("dirty",combo!==st.orig.radio);
+  markDirty("radio",combo);
+}
+function showWizard(){
+  show("#v-wizard");
+  loadConfig().then(wzRadioFill).catch(function(){});
+}
+function wzGo(n){
+  if(!st.hasMqtt&&n===3)n=4;
+  [1,2,3,4].forEach(function(i){
+    $("#wz"+i).classList.toggle("hide",i!==n);
+    $("#stp"+i).classList.toggle("on",i<=n);
+  });
+  if(n===3){
+    // Prefill observer name with the node name — only while still blank, so
+    // an existing config or a manual edit is never clobbered.
+    var o=$('#wz3 [data-k="mqtt.origin"]');
+    var nm=st.dirty.name||st.orig.name||"";
+    if(o&&!o.value&&nm){o.value=nm;o.dispatchEvent(new Event("input",{bubbles:true}))}
+  }
+  if(n===4)buildReview();
+  window.scrollTo(0,0);
+}
+function popOut(){
+  // Tell the node to start answering OS captive probes with "success" so the
+  // sign-in sheet can be dismissed without dropping the WiFi, then walk the
+  // user through reopening the portal in their real browser.
+  api("/api/portal/exit",{method:"POST"}).then(function(r){
+    if(r&&r.url)$("#exit-url").textContent=r.url;
+    $("#exit-ov").classList.add("show");
+  }).catch(function(){toast("Couldn't reach the node — try again")});
+}
+function buildReview(){
+  var rows=[],d=st.dirty;
+  function row(l,v){rows.push('<div class="kv"><i>'+l+"</i><b>"+esc(v)+"</b></div>")}
+  row("WiFi network",d["wifi.ssid"]||st.orig["wifi.ssid"]||"(not set)");
+  row("WiFi password",d["wifi.pwd"]?"••••••":(st.orig["wifi.pwd"]?"(unchanged)":"(open network)"));
+  if(d.name||st.orig.name)row("Node name",d.name||st.orig.name);
+  var rc=d.radio||st.orig.radio||"",rp=null;
+  RADIO_PRESETS.forEach(function(p){if(comboEq(presetCombo(p),rc))rp=p});
+  row("Radio",(rp?rp.t+" — ":"")+rc.split(",").join(" / ")+(d.radio?"":" (unchanged)"));
+  if(d.tx)row("TX power",d.tx+" dBm");
+  if(st.hasMqtt){
+    row("Observer name",d["mqtt.origin"]||st.orig["mqtt.origin"]||"(not set)");
+    row("IATA",(d["mqtt.iata"]||st.orig["mqtt.iata"]||"(not set)").toUpperCase());
+    var own=d["mqtt.owner"]||st.orig["mqtt.owner"];
+    if(own)row("Owner key",own.length>12?own.slice(0,12)+"…":own);
+    var em=d["mqtt.email"]||st.orig["mqtt.email"];
+    if(em)row("Owner email",em);
+    for(var i=1;i<=st.nslots;i++){
+      var p=d["mqtt"+i+".preset"]||st.orig["mqtt"+i+".preset"];
+      if(p&&p!=="none")row("Slot "+i,p);
+    }
+  }
+  var extra=Object.keys(d).filter(function(k){return!/^(wifi\.|name$|radio$|tx$|mqtt\.origin|mqtt\.iata|mqtt\.owner|mqtt\.email|mqtt[1-9]\.)/.test(k)}).length;
+  if(extra)row("Other changes",extra+" setting(s)");
+  $("#wz-review").innerHTML=rows.join("");
+}
+function wizardSave(){
+  if(!st.dirty["wifi.ssid"]&&!st.orig["wifi.ssid"]){$("#wz-err").textContent="Please set a WiFi network (step 1).";return}
+  if($("#wz-rp").value===""){$("#wz-err").textContent="Please choose a radio preset (step 2) — nodes ship with non-US defaults.";return}
+  if(st.hasMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
+    $("#wz-err").textContent="Please enter a 3-letter IATA region code (MQTT step).";return}
+  $("#wz-err").textContent="";
+  var b=$("#wz-save");b.disabled=true;
+  saveChanges({reboot:true},function(r,acked){
+    b.disabled=false;
+    if(!r){
+      if(acked){
+        // The node accepted the batch (202), but without its result we cannot
+        // know whether every field passed CLI validation.
+        showReboot("The node accepted the settings for processing, but the confirmation reply was lost. If every setting passed, its screen shows “Config saved!” and it reboots within 30 seconds. If it stays in setup mode, reconnect to MeshCore-Setup and correct the rejected field.",
+          false,"Settings sent — verify the node");
+        st.dirty={};
+        return;
+      }
+      $("#wz-err").textContent="Couldn't reach the node to save. Check this device is still on the MeshCore-Setup WiFi, then retry.";
+      return;
+    }
+    var fails=(r.results||[]).filter(function(x){return!/^OK/i.test(x.reply)});
+    if(fails.length){
+      $("#wz-err").textContent=fails.map(function(x){return x.key+": "+x.reply}).join(" · ");
+      return;
+    }
+    showReboot("The node is joining “"+(st.dirty["wifi.ssid"]||st.orig["wifi.ssid"])
+      +"”. Reconnect your phone or laptop to your normal WiFi. Find the node's IP on your router, or run “get webui” over its CLI to see the address.",
+      false,"Settings saved ✓ — rebooting in a moment");
+    st.dirty={};
+  });
+}
+
+/* ---------- reboot ---------- */
+function doReboot(){
+  if(!confirm("Reboot this node now?"))return;
+  post("/api/reboot",{}).then(function(){
+    showReboot("The node is restarting. This page will try to reconnect automatically.",true);
+  }).catch(function(e){if(e.message!=="auth")toast("Reboot failed: "+e.message)});
+}
+function showReboot(msg,reconnect,title){
+  $("#reboot-title").textContent=title||"Rebooting…";
+  $("#reboot-msg").textContent=msg;
+  $("#reboot-ov").classList.add("show");
+  var n=30;$("#reboot-count").textContent=n;
+  var t=setInterval(function(){
+    n--;$("#reboot-count").textContent=n>0?n:"";
+    if(n<=5&&reconnect){
+      fetch("/api/status",{cache:"no-store"}).then(function(r){if(r.ok){clearInterval(t);location.reload()}}).catch(function(){});
+    }
+    if(n<=0){clearInterval(t);
+      $("#reboot-count").innerHTML=reconnect?'<a href="/">Reload</a>':"You can close this page.";
+    }
+  },1000);
+}
+
+boot();
+</script>
+</body>
+</html>

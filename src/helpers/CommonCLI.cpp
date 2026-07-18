@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "CLICommandUtils.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
@@ -1751,6 +1752,8 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 }
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
+    mesh::cli::normalizeCommandVerb(command);
+
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.
     if (handleObserverCommand(sender_timestamp, command, reply)) return;
@@ -1787,6 +1790,20 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         strcpy(reply, "ERR: clock cannot go backwards");
       }
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+    } else if (memcmp(command, "start webconfig", 15) == 0
+               && (command[15] == 0 || command[15] == ' ')) {
+      const bool force_ap = command[15] == ' ' && strcmp(&command[16], "ap") == 0;
+      if (command[15] == ' ' && !force_ap) {
+        strcpy(reply, "ERR: usage start webconfig [ap]");
+      } else if (!_callbacks->startWebConfig(force_ap, reply)) {
+        strcpy(reply, "ERR: webconfig not supported on this build");
+      }
+    } else if (strcmp(command, "stop webconfig") == 0) {
+      if (!_callbacks->stopWebConfig(reply)) {
+        strcpy(reply, "ERR: webconfig not supported on this build");
+      }
+#endif
 #ifdef ESP_PLATFORM
     } else if (memcmp(command, "memory", 6) == 0) {
       sprintf(reply, "Free: %d, Min: %d, Max: %d, Queue: %d, IntFree: %d, IntMax: %d, PSRAM: %d/%d",
@@ -1799,6 +1816,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
     } else if (memcmp(command, "start ota", 9) == 0 && (command[9] == 0 || command[9] == ' ')) {
       // Manual OTA: bring up the board's browser server for a hand-uploaded binary.
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+      if (_callbacks->isWebConfigActive()) {
+        strcpy(reply, "ERR: stop webconfig first");
+      } else
+#endif
       if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
         strcpy(reply, "Error");
       }
@@ -1977,7 +1999,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       }
     } else if (memcmp(command, "gps sync", 8) == 0) {
       LocationProvider * l = _sensors->getLocationProvider();
-      if (l != NULL) {
+      if (!_prefs->gps_enabled) {
+        strcpy(reply, "gps is off");
+      } else if (l != NULL) {
         l->syncTime();
         strcpy(reply, "scheduled");
       } else {
@@ -2157,6 +2181,22 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  if (memcmp(config, "webui ", 6) == 0) {
+    const char* value = &config[6];
+    bool enabled;
+    if (strcmp(value, "on") == 0) enabled = true;
+    else if (strcmp(value, "off") == 0) enabled = false;
+    else {
+      strcpy(reply, "Error: usage set webui on|off");
+      return;
+    }
+    if (!_callbacks->setWebUIEnabled(enabled, reply)) {
+      strcpy(reply, "Error: webui not supported on this build");
+    }
+    return;
+  }
+#endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
@@ -2967,6 +3007,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  if (strcmp(config, "webui") == 0) {
+    if (!_callbacks->getWebUIStatus(reply)) {
+      strcpy(reply, "Error: webui not supported on this build");
+    }
+    return;
+  }
+#endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {

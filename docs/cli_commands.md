@@ -2,6 +2,10 @@
 
 This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.
 
+The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
+are equivalent, as are `get`, `Get`, and the other command verbs. The case of
+arguments such as node names, passwords, and keys is left unchanged.
+
 ## Navigation
 
 - [Operational](#operational)
@@ -99,6 +103,48 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:**
 - `start ota`
 - `stop ota`
+
+On an ESP32 build with WebConfig, the manual OTA uploader and WebConfig both use HTTP
+port 80 and cannot run together. Stop WebConfig before `start ota`, or stop OTA
+before `start webconfig`.
+
+---
+
+### Browser configuration portal (ESP32 repeater and room server)
+
+**Usage:**
+
+- `start webconfig`
+- `start webconfig ap`
+- `stop webconfig`
+- `set webui on`
+- `set webui off`
+- `get webui`
+
+`set webui on` is the persistent master switch. It starts the portal now and
+again after future reboots; `set webui off` closes it and disables that boot
+start. `get webui` reports the saved on/off state plus whether the portal is
+inactive, joining WiFi, serving a setup AP, or serving a LAN URL. The default is
+`off` on repeater and room-server builds. On display-equipped repeaters, an
+otherwise-unused triple click toggles the same saved setting.
+
+`start webconfig` is a temporary start that does not change the saved switch.
+It serves the shared WiFi, radio, flood, loop, and status page and reports its
+URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
+them entirely. Sign in with the node's admin password. If the node has no saved
+WiFi SSID, the command starts the open `MeshCore-Setup-XXXX` captive AP at
+<http://192.168.4.1/> instead.
+
+`start webconfig ap` forces captive-AP mode. It will not interrupt an active
+MQTT bridge, so run `set bridge off` first. Use `stop webconfig` to close either
+mode for the current boot. (`stop webconfig` does not change a saved `webui on`.)
+LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
+with no connected client.
+
+The browser portal is not compiled into the two 4 MB
+`LilyGo_TLora_V2_1_1_6_*_observer_mqtt` targets because it does not fit while
+retaining the two app slots required for LoRa OTA. Their normal CLI settings
+remain available.
 
 ---
 
@@ -1221,12 +1267,25 @@ The payload names follow the [MeshCore packet-format allocation](https://docs.me
 are never affected.
 
 **Behavior:** A match prevents retransmission by this repeater. The packet is
-still received and can still be logged. Rules are persistent and the table is
-empty by default. While the temporary radio is active, only rows explicitly
-marked `suspend=tempradio` are skipped. `tempradio` is a radio state, not an OTA
-mode; normal payload types can also use the temporary channel. Other rows
-remain in force. A malformed persisted table fails open (no general rules are
-applied).
+still received and can still be logged. Rules are persistent. While the
+temporary radio is active, only rows explicitly marked `suspend=tempradio` are
+skipped. `tempradio` is a radio state, not an OTA mode; normal payload types can
+also use the temporary channel. Other rows remain in force. A malformed
+persisted table fails open (no general rules are applied).
+
+**Default row:** Repeater firmware seeds a new flood-filter table with
+`ota all suspend=tempradio` in slot 1. This blocks repeated LoRa OTA (`0x0C`)
+floods at every received hop unless temporary radio is actually active. The OTA
+core independently refuses OTA receive, relay, and transmit outside temporary
+radio. The row is editable and deletable; once the table is saved, deletion is
+persistent. Restore the exact seeded row with:
+
+```text
+set flood.filter.1 0x0C all suspend=tempradio
+```
+
+Omitting `all` is equivalent. Omit `.1` as well to reuse an identical rule or
+the first empty slot instead of replacing slot 1.
 
 **Remote-admin protection:** `flood.filter` cannot block `anon_req`, `path`, or
 `response` at received hop counts `0-6`; those login-capable types become
@@ -1253,6 +1312,7 @@ match it.
 set flood.filter grp_data 4+
 set flood.filter.2 PAYLOAD_TYPE_ADVERT 6+
 set flood.filter ota 2-4
+set flood.filter.1 0x0C all suspend=tempradio
 set flood.filter grp_data all suspend=tempradio
 set flood.filter any 12+
 get flood.filter
@@ -2119,6 +2179,10 @@ clear recent.repeater
 #### Sync this node's clock with GPS time
 **Usage:** 
 - `gps sync`
+
+The GPS must be enabled. When GPS power saving has put an enabled receiver to
+sleep, this command schedules a sync and wakes it; after `gps off`, it reports
+`gps is off` without scheduling work.
 
 ---
 

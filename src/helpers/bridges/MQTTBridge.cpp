@@ -260,6 +260,36 @@ void MQTTBridge::formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPref
   snprintf(buf + pos, bufsize - pos, ", q:%d", q);
 }
 
+bool MQTTBridge::getSlotStatusSnapshot(int slot_index, SlotStatusSnapshot* out) {
+  if (!out || slot_index < 0 || slot_index >= RUNTIME_MQTT_SLOTS) return false;
+  if (!s_mqtt_bridge_instance || !s_mqtt_bridge_instance->_initialized) return false;
+
+  MQTTBridge* bridge = s_mqtt_bridge_instance;
+  const MQTTSlot& slot = bridge->_slots[slot_index];
+  if (!slot.enabled && slot.preset) {
+    out->name = slot.preset->name;
+    out->state = "inactive";
+  } else if (!slot.enabled) {
+    return false;
+  } else {
+    out->name = slot.preset ? slot.preset->name : MQTT_PRESET_CUSTOM;
+    if (!bridge->isSlotReady(slot_index)) {
+      out->state = "wait";
+    } else if (slot.connected) {
+      out->state = "ok";
+    } else if (slot.circuit_breaker_tripped) {
+      out->state = "fail";
+    } else {
+      out->state = "disc";
+    }
+  }
+
+  out->has_publish_counts = false;
+  out->publish_ok = 0;
+  out->publish_err = 0;
+  return true;
+}
+
 uint8_t MQTTBridge::getLastWifiDisconnectReason() { return s_wifi_disconnect_reason; }
 unsigned long MQTTBridge::getLastWifiDisconnectTime() { return s_wifi_disconnect_time; }
 
@@ -2097,7 +2127,7 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       } else if (ps_pref == 2) {
         ps_mode = WIFI_PS_MAX_MODEM;
       } else {
-        ps_mode = WIFI_PS_NONE;  // default: no power save; eliminates DTIM wake latency on mains-powered bridges
+        ps_mode = WIFI_PS_MIN_MODEM;
       }
       esp_wifi_set_ps(ps_mode);
       #ifdef MQTT_WIFI_TX_POWER

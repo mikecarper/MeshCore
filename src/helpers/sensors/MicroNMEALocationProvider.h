@@ -110,6 +110,7 @@ public :
     }
 
     void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }
+    mesh::RTCClock* getRTCClock() override { return _clock; }
     long getLatitude() override { return nmea.getLatitude(); }
     long getLongitude() override { return nmea.getLongitude(); }
     long getAltitude() override { 

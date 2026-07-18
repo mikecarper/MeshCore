@@ -1,4 +1,5 @@
 #include "SensorMesh.h"
+#include <helpers/CLICommandUtils.h>
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
@@ -502,6 +503,8 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
     reply += 3;
     command += 3;
   }
+
+  mesh::cli::normalizeCommandVerb(command);
 
   // first, see if this is a custom-handled CLI command (ie. in main.cpp)
   if (handleCustomCommand(sender_timestamp, command, reply)) {

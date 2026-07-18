@@ -191,7 +191,18 @@ class RAK12500LocationProvider : public LocationProvider {
   int _sats = 0;
   long _epoch = 0;
   bool _fix = false;
+  mesh::RTCClock* _clock = NULL;
+  unsigned long _next_time_check = 0;
+  unsigned long _last_time_sync = 0;
+  uint8_t _valid_time_samples = 0;
+  static const unsigned long TIME_SYNC_INTERVAL = 1800000;
 public:
+  void setRTCClock(mesh::RTCClock* clock) { _clock = clock; }
+  mesh::RTCClock* getRTCClock() override { return _clock; }
+  void syncTime() override {
+    _valid_time_samples = 0;
+    LocationProvider::syncTime();
+  }
   long getLatitude() override { return _lat; }
   long getLongitude() override { return _lng; }
   long getAltitude() override { return _alt; }
@@ -212,7 +223,32 @@ public:
     } else {
       _fix = false;
     }
+    bool date_valid = ublox_GNSS.getDateValid(2);
+    bool time_valid = ublox_GNSS.getTimeValid(2);
     _epoch = ublox_GNSS.getUnixEpoch(2);
+
+    unsigned long now = millis();
+    if ((long)(now - _next_time_check) >= 0) {
+      _next_time_check = now + 1000;
+
+      if (_fix && _sats >= 5 && date_valid && time_valid && _epoch > 0) {
+        if (_valid_time_samples < 0xFF) _valid_time_samples++;
+      } else {
+        _valid_time_samples = 0;
+      }
+
+      if (!_time_sync_needed && _clock != NULL
+          && (unsigned long)(now - _last_time_sync) > TIME_SYNC_INTERVAL) {
+        _time_sync_needed = true;
+      }
+      if (_time_sync_needed && _clock != NULL && _valid_time_samples > 2) {
+        _clock->setCurrentTime((uint32_t)_epoch);
+        markTimeSyncApplied();
+        _time_sync_needed = false;
+        _last_time_sync = now;
+        _last_valid_time_sync = _clock->getCurrentTime();
+      }
+    }
   }
   bool isEnabled() override { return true; }
 };
@@ -899,6 +935,7 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin){
     gps_active = true;
     gps_detected = true;
 
+    RAK12500_provider.setRTCClock(_location->getRTCClock());
     _location = &RAK12500_provider;
     return true;
   } else if (Serial1.available()) {

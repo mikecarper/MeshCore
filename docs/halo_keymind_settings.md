@@ -84,7 +84,7 @@ set flood.retry.ignore none
 | `flood.channel.block` | Blocks selected flood `GRP_TXT`/`GRP_DATA` channels when the key validates the packet. New repeater block lists start with editable/deletable `#wardriving h=4`. Add `h=<all|1-7|default>` for a per-channel hop override. | `get flood.channel.block`, `set flood.channel.block[.n] <key|#channel> [name] [h=...]`, `del flood.channel.block[.n]` | `set flood.channel.block #wardriving h=4` |
 | `flood.channel.block.hops` | Limits keyed channel-block matches to short flood paths. `all` blocks matching packets at any hop count; `1`-`7` repeats packets at that hop count or lower and blocks longer matches. This does not restrict unkeyed `GRP_DATA`; use `flood.channel.data.hops` for that. | `get flood.channel.block.hops`, `set flood.channel.block.hops <all|1-7>` | `set flood.channel.block.hops 3` |
 | `flood.channel.scope` | Assigns a transport-region scope to received unscoped floods. Exact channel keys beat `txt:*`; `login:*` covers the remote-login family, and `other:*` covers every remaining flood type except TRACE, including OTA. TRACE remains unchanged across scope boundaries. ACL permission `4` can manage the table. | `get flood.channel.scope[.n]`, `set flood.channel.scope[.n] <channel|txt:*|login:*|other:*> <region>`, `del flood.channel.scope.<n>|all` | `set flood.channel.scope login:* west` |
-| `flood.filter` | Persistent repeater-only forwarding rules for flood routes `0x00`/`0x01`, selected by payload type and optional received hop count/range (omitted means `all`). The table starts empty; only rows marked `suspend=tempradio` are skipped during temporary-radio operation. Login-capable `anon_req`/`path`/`response` types become filterable at hop `7`; flood `txt_msg` becomes filterable at hop `5`. Standard direct traceroute, other direct routing, and local receive/logging are unchanged. | `get flood.filter[.n]`, `set flood.filter[.n] <type> [N|N+|N-M|all] [suspend=tempradio]`, `del flood.filter.<n>|all` | `set flood.filter grp_data 4+` |
+| `flood.filter` | Persistent repeater-only forwarding rules for flood routes `0x00`/`0x01`, selected by payload type and optional received hop count/range (omitted means `all`). New tables seed slot 1 with `ota all suspend=tempradio`; only rows marked `suspend=tempradio` are skipped during temporary-radio operation. Login-capable `anon_req`/`path`/`response` types become filterable at hop `7`; flood `txt_msg` becomes filterable at hop `5`. Standard direct traceroute, other direct routing, and local receive/logging are unchanged. | `get flood.filter[.n]`, `set flood.filter[.n] <type> [N|N+|N-M|all] [suspend=tempradio]`, `del flood.filter.<n>|all` | `set flood.filter.1 0x0C all suspend=tempradio` |
 | `flood.moderation` | Decrypts keyed `GRP_TXT` channels and applies drop, per-username messages/minute, and maximum-hop controls, optionally matched against the first 1-3 path hashes. Supports `public`, `#channel`, and 128/256-bit channel keys. Sender names and truncated path hashes are moderation hints, not authenticated identities. | `get flood.moderation[.n]`, `set flood.moderation[.n] <channel> <sender> <drop|rate=X/min|hops=N> [path=...]`, `del flood.moderation.<n>|all` | `set flood.moderation public "Noisy User" rate=5/min hops=4` |
 | `clock.sync.mesh` | After 30 minutes of uptime, estimates UTC from a configurable consensus of fresh signed-advert or valid Public-channel sources. Only timestamps from firmware build time through build time plus ten years are recorded. Successful CLI, GPS, or WiFi/NTP clock updates suppress LoRa time collection until reboot; after reboot LoRa is the fallback if NTP cannot sync. | `get clock.sync.mesh`, `set clock.sync.mesh <on|off>`, `get clock.sync.status` | `set clock.sync.mesh on` |
 | `clock.sync.internet` | Adds a read-only internet/NTP estimate at the same delayed check on WiFi MQTT repeater-observer builds. Other builds retain the setting but report internet unavailable. | `get clock.sync.internet`, `set clock.sync.internet <on|off>` | `set clock.sync.internet on` |
@@ -183,7 +183,9 @@ Serial CLI pages contain up to `128` rows. Remote LoRa CLI pages contain up to
 remote client context, so they are not useful from the local serial CLI.
 
 Set paths with comma-separated hop hashes. Each hop must be `2`, `4`, or `6`
-hex characters, and all hops in one path must use the same width.
+hex characters, and all hops in one path must use the same width. Hex input is
+case-insensitive. Replies use uppercase hex and retain the commas, so the value
+can be copied directly into another `set outpath` or `set altpath` command.
 
 ```text
 get outpath
@@ -195,6 +197,16 @@ get altpath
 set altpath 71CE82,BA09F0
 set altpath clear
 ```
+
+For example, both `set altpath 600000,0d2784,f8dada` and
+`Set altpath 600000,0d2784,f8dada` store the same path and reply with:
+
+```text
+> 600000,0D2784,F8DADA
+```
+
+The first CLI word is case-insensitive (`set`, `Set`, and `SET` are the same,
+as are `get`, `Get`, and the other command verbs). Argument case is preserved.
 
 `set outpath direct` sets a zero-hop direct route for a client reachable without
 repeaters. `set outpath clear` forgets the override and lets normal path

@@ -26,6 +26,10 @@
 #include "DataStore.h"
 #include "NodePrefs.h"
 
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID) && !defined(WEBCONFIG_DISABLED)
+#include <helpers/esp32/WebConfigServer.h>
+#endif
+
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
 #include <helpers/CompanionMqttSetupPortal.h>
 #include <helpers/MQTTPrefs.h>
@@ -90,7 +94,11 @@ struct AdvertPath {
   uint8_t path[MAX_PATH_SIZE];
 };
 
-class MyMesh : public BaseChatMesh, public DataStoreHost {
+class MyMesh : public BaseChatMesh, public DataStoreHost
+#ifdef WITH_WEBCONFIG
+             , public WebConfigServer::Callbacks
+#endif
+{
 public:
   MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store, AbstractUITask* ui=NULL);
 
@@ -102,10 +110,22 @@ public:
   uint32_t getBLEPin();
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
-  void serviceMQTT(const char* wifi_ssid, const char* wifi_password,
-                   bool allow_setup_page);
-  void stopMQTTSetupPage();
+  void serviceMQTT(const char* wifi_ssid, const char* wifi_password);
   bool isMQTTConfigured() const { return _mqtt_configured; }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  bool startWebConfig(bool force_ap, char* reply);
+  void stopWebConfig();
+  void serviceWebConfig();
+  bool isWebConfigSetupActive() const;
+
+  void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
+  void execCommand(char* cmd, char* reply) override;
+  void rebootNow() override;
+  void onConfigBatchStart() override;
+  void onConfigBatchEnd() override;
+  void buildStatsJson(char* buf, size_t buf_size) override;
 #endif
 
   void loop();
@@ -237,9 +257,12 @@ private:
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   MQTTPrefs _mqtt_prefs;
   MQTTBridge* _mqtt_bridge;
-  CompanionMqttSetupPortal _mqtt_setup;
   bool _mqtt_configured;
   bool _mqtt_started;
+#endif
+#ifdef WITH_WEBCONFIG
+  WebConfigServer* _webconfig;
+  bool _wc_mqtt_dirty;
 #endif
   uint32_t pending_login;
   uint32_t pending_status;

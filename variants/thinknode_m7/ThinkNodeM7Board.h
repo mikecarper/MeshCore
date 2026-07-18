@@ -11,8 +11,6 @@ class ThinkNodeM7Board : public ESP32Board {
 
 public:
   void begin();
-  void enterDeepSleep(uint32_t secs, int pin_wake_btn = -1);
-  void powerOff() override;
   const char* getManufacturerName() const override;
   void onBeforeTransmit() override {
     digitalWrite(P_LORA_TX_LED, LOW);

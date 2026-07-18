@@ -1602,6 +1602,9 @@ collect_esp32_artifacts() {
   local env_name=$1
   local firmware_filename=$2
 
+  python3 scripts/check_esp32_app_size.py \
+    ".pio/build/${env_name}/firmware.bin" \
+    ".pio/build/${env_name}/partitions.bin" || return $?
   pio run -t mergebin -e "$env_name" || return $?
   copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
   copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
