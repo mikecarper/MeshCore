@@ -31,7 +31,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -41,6 +41,7 @@ BOARD_LABEL_WITHOUT_DISPLAY="without_display"
 BOARD_LABEL_LOGGING="logging"
 BOARD_LABEL_TFT="tft"
 BOARD_LABEL_EINK="eink"
+IKOKA_HANDHELD_NRF_BOARD_FAMILY="ikoka_handheld_nrf_e22_30dbm"
 DEFAULT_VARIANT_LABEL="default"
 TAG_PREFIX_ROOM_SERVER="room-server"
 TAG_PREFIX_COMPANION="companion"
@@ -733,6 +734,18 @@ get_env_metadata() {
   # Fold display and form-factor suffixes into the variant label so related
   # boards share one first-level menu entry.
   case "$board_part" in
+    ikoka_handheld_nrf_e22_30dbm_096_rotated)
+      board_family="$IKOKA_HANDHELD_NRF_BOARD_FAMILY"
+      board_modifier="096_rotated"
+      ;;
+    ikoka_handheld_nrf_e22_30dbm_096)
+      board_family="$IKOKA_HANDHELD_NRF_BOARD_FAMILY"
+      board_modifier="096"
+      ;;
+    ikoka_handheld_nrf)
+      board_family="$IKOKA_HANDHELD_NRF_BOARD_FAMILY"
+      board_modifier=""
+      ;;
     *"$BOARD_MODIFIER_WITHOUT_DISPLAY")
       board_family=${board_part%"$BOARD_MODIFIER_WITHOUT_DISPLAY"}
       board_modifier="$BOARD_LABEL_WITHOUT_DISPLAY"
@@ -774,7 +787,7 @@ get_env_metadata() {
   fi
 
   case "$variant_part" in
-    room_server)
+    room_server*)
       tag_prefix="$TAG_PREFIX_ROOM_SERVER"
       ;;
     companion_radio_*)
@@ -1101,7 +1114,7 @@ get_pio_envs_for_variant_role() {
       repeater:repeater*|repeater:*_repeater*)
         echo "$env"
         ;;
-      room_server:room_server|room_server:*_room_server)
+      room_server:room_server*|room_server:*_room_server*)
         echo "$env"
         ;;
       sensor:sensor|sensor:*_sensor)

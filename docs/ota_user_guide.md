@@ -22,7 +22,7 @@ their normal external-sensor support:
 - Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110
 
 The full-sensor `RAK_4631_repeater` image is too large for the safe nRF52 in-place update limit. Use
-`RAK_4631_repeater_no_external_sensors_lora_ota` when LoRa OTA is required. That target removes optional
+`RAK_4631_repeater_lora_ota_no_external_sensors` when LoRa OTA is required. That target removes optional
 external environmental/GPS sensor packages, but retains the RAK4631's built-in battery-voltage reading,
 battery telemetry, and `battery.alert` behavior.
 

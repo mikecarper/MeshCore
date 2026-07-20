@@ -124,7 +124,7 @@ Keeping a file with the same version label is not enough: the base must be byte-
 running application. The hash check in the next step proves that it is the right file.
 
 On RAK4631 repeaters, use the
-`RAK_4631_repeater_no_external_sensors_lora_ota` environment. It retains built-in battery monitoring but
+`RAK_4631_repeater_lora_ota_no_external_sensors` environment. It retains built-in battery monitoring but
 omits optional external environmental/GPS sensor packages so the delta fits the safe in-place workspace.
 
 ### 3. Build and check the in-place delta
