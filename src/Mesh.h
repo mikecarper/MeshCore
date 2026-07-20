@@ -25,6 +25,13 @@ namespace mesh {
   #define MAX_FLOOD_RETRY_SLOTS   6
 #endif
 
+#ifndef MAX_RECENT_ADVERT_ECHOS
+  #define MAX_RECENT_ADVERT_ECHOS  8
+#endif
+#if MAX_RECENT_ADVERT_ECHOS < 1
+  #error "MAX_RECENT_ADVERT_ECHOS must be at least 1"
+#endif
+
 #ifndef FLOOD_RETRY_PATH_GATE_DISABLED
   #define FLOOD_RETRY_PATH_GATE_DISABLED  0xFF
 #endif
@@ -83,9 +90,19 @@ class Mesh : public Dispatcher {
     uint8_t retry_key[MAX_HASH_SIZE];
     uint8_t priority;
     uint8_t progress_marker;
+    bool self_advert;
     bool waiting_final_echo;
     bool queued;
     bool active;
+  };
+
+  struct RecentAdvertEchoEntry {
+    uint8_t packet_hash[MAX_HASH_SIZE];
+    uint32_t advert_timestamp;
+    uint32_t watch_started_at;
+    uint8_t progress_marker;
+    bool confirmed;
+    bool valid;
   };
 
   RTCClock* _rtc;
@@ -93,10 +110,12 @@ class Mesh : public Dispatcher {
   MeshTables* _tables;
   DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
   FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
+  RecentAdvertEchoEntry _recent_advert_echoes[MAX_RECENT_ADVERT_ECHOS];
   uint8_t _active_direct_retry_count;
   uint8_t _active_flood_retry_count;
   uint8_t _waiting_direct_retry_count;
   uint8_t _waiting_flood_retry_count;
+  uint8_t _next_recent_advert_echo;
   unsigned long _next_direct_retry_timeout;
   unsigned long _next_flood_retry_timeout;
 
@@ -117,7 +136,16 @@ class Mesh : public Dispatcher {
   bool canDecodeDirectPayloadForSelf(const Packet* packet);
   void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool final_hop_retry = false);
   void clearFloodRetrySlot(int idx);
+  void retireFloodRetrySlot(int idx);
+  void replaceQueuedSelfAdvertRetries(const Packet* packet);
   bool cancelFloodRetryOnEcho(const Packet* packet);
+  bool getRecentAdvertTimestamp(const Packet* packet, uint32_t& timestamp) const;
+  bool isRecentAdvertTimestamp(uint32_t timestamp) const;
+  void watchForwardedAdvertEcho(const Packet* packet);
+  void observeForwardedAdvertEcho(const Packet* packet);
+  bool shouldSuppressEchoedAdvertForward(const Packet* packet) const;
+  uint8_t getEffectiveFloodRetryMaxAttempts(const Packet* packet) const;
+  uint8_t getEligibleFloodRetryMaxAttempts(const Packet* packet) const;
   void armFloodRetryOnSendComplete(const Packet* packet);
   void clearPendingFloodRetryOnSendFail(const Packet* packet);
   void maybeScheduleFloodRetry(const Packet* packet, uint8_t priority);
@@ -232,6 +260,20 @@ protected:
   virtual bool allowFloodRetry(const Packet* packet) const;
 
   /**
+   * \brief  Reserve any role-specific state after a free flood retry slot is found.
+   * \returns false if role-specific state could not be reserved.
+   */
+  virtual bool prepareFloodRetry(const Packet* packet) const {
+    (void)packet;
+    return true;
+  }
+
+  /**
+   * \returns true only for a zero-hop advert carrying this node's public key.
+   */
+  bool isSelfOriginAdvert(const Packet* packet) const;
+
+  /**
    * \brief  Return true when this FLOOD packet already carries an application-defined target prefix.
    */
   virtual bool hasFloodRetryTargetPrefix(const Packet* packet) const;
@@ -247,6 +289,12 @@ protected:
   static uint8_t applyGroupDataFloodRetryPathGate(const Packet* packet,
                                                   uint8_t general_gate,
                                                   uint8_t group_data_gate);
+
+  /**
+   * \returns  the shared payload/path cap applied after a role chooses its flood retry count.
+   */
+  static uint8_t applyFloodRetryAttemptPolicy(const Packet* packet,
+                                               uint8_t role_max_attempts);
 
   /**
    * \returns  maximum number of FLOOD retry transmissions after the initial TX.

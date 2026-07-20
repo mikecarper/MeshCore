@@ -32,6 +32,9 @@ class UITask : public AbstractUITask {
   GenericVibration vibration;
 #endif
   unsigned long _next_refresh, _auto_off;
+  unsigned long _msg_preview_until;
+  unsigned long _pairing_screen_until;
+  bool _deferred_msg_preview;
   NodePrefs* _node_prefs;
   char _alert[80];
   unsigned long _alert_expiry;
@@ -62,11 +65,17 @@ class UITask : public AbstractUITask {
   char handleTripleClick(char c);
 
   void setCurrScreen(UIScreen* c);
+  bool isPairingScreenActive() const;
+  void showPairingPin();
+  void finishPairingScreen(bool timed_out);
 
 public:
 
   UITask(mesh::MainBoard* board, BaseSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL) {
     next_batt_chck = _next_refresh = 0;
+    _msg_preview_until = 0;
+    _pairing_screen_until = 0;
+    _deferred_msg_preview = false;
     ui_started_at = 0;
     curr = NULL;
   }

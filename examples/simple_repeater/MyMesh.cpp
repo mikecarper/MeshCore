@@ -1578,6 +1578,25 @@ uint8_t MyMesh::floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t so
   return mask;
 }
 
+bool MyMesh::floodRetryBridgeEligible(const mesh::Packet* packet) const {
+  FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, false);
+  if (state != NULL) {
+    return (state->heard_mask & state->target_mask) != state->target_mask;
+  }
+
+  uint8_t source_mask = floodRetrySourceMask(packet);
+  if (source_mask == 0) {
+    return false;
+  }
+  uint8_t target_mask = floodRetryBridgeTargetMask(source_mask);
+  if (target_mask == 0) {
+    return false;
+  }
+  uint8_t progress_marker = packet->getPathHashCount();
+  uint8_t heard_mask = floodRetryBridgeHeardMask(packet, source_mask, progress_marker) & target_mask;
+  return (heard_mask & target_mask) != target_mask;
+}
+
 MyMesh::FloodRetryBridgeState* MyMesh::floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const {
   if (packet == NULL) {
     return NULL;
@@ -1635,15 +1654,14 @@ bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
   if (!_prefs.flood_retry_bridge_enabled) {
     return true;
   }
-  FloodRetryBridgeState* state = floodRetryBridgeStateFor(packet, true);
-  if (state == NULL) {
-    return false;
+  return floodRetryBridgeEligible(packet);
+}
+
+bool MyMesh::prepareFloodRetry(const mesh::Packet* packet) const {
+  if (!_prefs.flood_retry_bridge_enabled) {
+    return true;
   }
-  if ((state->heard_mask & state->target_mask) == state->target_mask) {
-    state->active = false;
-    return false;
-  }
-  return true;
+  return floodRetryBridgeStateFor(packet, true) != NULL;
 }
 
 void MyMesh::clearFloodRetryBridgeStateByKey(const uint8_t* retry_key) {

@@ -1775,7 +1775,11 @@ ignore, bridge, and bucket controls are repeater-only.
 **Parameters:**
 - `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
 
-**Note:** Actual attempts are capped at `15`. Path count 0 flood retries use `count * 2`; path count 1 retries use `count * 1.5`, rounded up; path count 2 and higher use the configured base count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
+**Note:** The role first calculates its retry count: path count 0 uses `count * 2`, path count 1 uses `count * 1.5` rounded up, and path count 2 and higher uses the configured base count, with a hard cap of `15`. A shared payload policy then applies to every build: `REQ` never retries; `GRP_TXT` keeps the role-calculated count; remote-login-critical `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` packets keep up to `15` at the originating node (path count 0) and cap at `2` after entering the path; all other flood payload types cap at `1`. These caps never raise a lower role-calculated count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
+
+Forwarded neighbor adverts have an additional loop guard independent of the advert retry setting. After this node completes an advert transmission and hears a downstream copy with a longer path, it does not forward that same advert again while the advert's signed timestamp is less than six hours old. Self-originated adverts, adverts without a heard echo, and adverts six hours old or older are unaffected.
+
+An enabled self-originated advert retry waits at least one additional minute beyond the normal airtime-aware retry delay. Once a newer self advert has successfully entered the outbound queue, its retry sequence replaces queued or future retries for older self adverts; an older advert already transmitting is allowed to finish. Companion firmware permits this single slow retry for its own adverts while continuing to block retry attempts for neighbor adverts it forwards.
 
 **Defaults:**
 - `infra`: `1`

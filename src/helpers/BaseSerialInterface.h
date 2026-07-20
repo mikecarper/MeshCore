@@ -21,6 +21,9 @@ public:
   // Backends whose busy methods are throttling/high-water signals should
   // override this with their actual queue state.
   virtual bool hasPendingIO() const { return isReadBusy() || isWriteBusy(); }
+  // Returns true once for each pending Bluetooth pairing prompt. Non-BLE
+  // transports keep the default implementation so UI code can poll safely.
+  virtual bool takePairingRequest() { return false; }
   virtual size_t writeFrame(const uint8_t src[], size_t len) = 0;
   virtual size_t checkRecvFrame(uint8_t dest[]) = 0;
 };

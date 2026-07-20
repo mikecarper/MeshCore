@@ -26,7 +26,9 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   // Create the BLE Device
   BLEDevice::init(dev_name);
   BLEDevice::setSecurityCallbacks(this);
-  BLEDevice::setMTU(MAX_FRAME_SIZE);
+  // ATT notifications consume three bytes of the negotiated MTU. Reserve
+  // that overhead so a MAX_FRAME_SIZE protocol frame fits without truncation.
+  BLEDevice::setMTU(MAX_FRAME_SIZE + 3);
 
   BLESecurity  sec;
   sec.setStaticPIN(pin_code);
@@ -44,7 +46,15 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   // Create a BLE Characteristic
   pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pTxCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM);
-  pTxCharacteristic->addDescriptor(new BLE2902());
+  pTxCharacteristic->setCallbacks(this);
+  pTxDescriptor = new BLE2902();
+  // Make notification setup start/finish pairing before the client begins its
+  // short device-info request timeout. The RX and TX characteristics already
+  // require the same MITM-encrypted link, so this does not add a new pairing
+  // requirement; it only moves it earlier in the connection handshake.
+  pTxDescriptor->setAccessPermissions(
+      (esp_gatt_perm_t)(ESP_GATT_PERM_READ_ENC_MITM | ESP_GATT_PERM_WRITE_ENC_MITM));
+  pTxCharacteristic->addDescriptor(pTxDescriptor);
 
   BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
   pRxCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENC_MITM);
@@ -57,15 +67,18 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
 
 uint32_t SerialBLEInterface::onPassKeyRequest() {
   BLE_DEBUG_PRINTLN("onPassKeyRequest()");
+  _pairingRequestPending.store(true, std::memory_order_release);
   return _pin_code;
 }
 
 void SerialBLEInterface::onPassKeyNotify(uint32_t pass_key) {
   BLE_DEBUG_PRINTLN("onPassKeyNotify(%u)", pass_key);
+  _pairingRequestPending.store(true, std::memory_order_release);
 }
 
 bool SerialBLEInterface::onConfirmPIN(uint32_t pass_key) {
   BLE_DEBUG_PRINTLN("onConfirmPIN(%u)", pass_key);
+  _pairingRequestPending.store(true, std::memory_order_release);
   return true;
 }
 
@@ -95,6 +108,9 @@ void SerialBLEInterface::onConnect(BLEServer* pServer) {
 void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
+  deviceConnected = false;  // becomes usable only after authentication completes
+  notifySucceeded = false;
+  if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
 }
 
 void SerialBLEInterface::onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
@@ -103,6 +119,9 @@ void SerialBLEInterface::onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param
 
 void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   BLE_DEBUG_PRINTLN("onDisconnect()");
+  deviceConnected = false;
+  notifySucceeded = false;
+  if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
   if (_isEnabled) {
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;
 
@@ -124,6 +143,15 @@ void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gat
     recv_queue[recv_queue_len].len = len;
     memcpy(recv_queue[recv_queue_len].buf, rxValue, len);
     recv_queue_len++;
+  }
+}
+
+void SerialBLEInterface::onStatus(BLECharacteristic* pCharacteristic, Status status, uint32_t code) {
+  (void)pCharacteristic;
+  notifySucceeded = status == SUCCESS_NOTIFY;
+  if (!notifySucceeded) {
+    BLE_DEBUG_PRINTLN("notify failed, status=%d, code=%u; retaining frame",
+                      (int)status, (unsigned)code);
   }
 }
 
@@ -194,19 +222,31 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   if (send_queue_len > 0   // first, check send queue
     && millis() >= _last_write + BLE_WRITE_MIN_INTERVAL    // space the writes apart
   ) {
-    _last_write = millis();
-    pTxCharacteristic->setValue(send_queue[0].buf, send_queue[0].len);
-    pTxCharacteristic->notify();
+    const uint16_t peer_mtu = pServer->getPeerMTU(last_conn_id);
+    const bool notifications_ready = pTxDescriptor != NULL && pTxDescriptor->getNotifications();
+    const bool frame_fits = peer_mtu > 3 && send_queue[0].len <= peer_mtu - 3;
 
-    BLE_DEBUG_PRINTLN("writeBytes: sz=%d, hdr=%d", (uint32_t)send_queue[0].len, (uint32_t) send_queue[0].buf[0]);
+    // A fresh pairing can deliver the app's first command before its CCCD
+    // subscription or MTU exchange completes. Keep the response queued until
+    // both are ready instead of silently dropping/truncating device info.
+    if (notifications_ready && frame_fits) {
+      _last_write = millis();
+      notifySucceeded = false;
+      pTxCharacteristic->setValue(send_queue[0].buf, send_queue[0].len);
+      pTxCharacteristic->notify();
 
-    send_queue_len--;
-    for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
-      send_queue[i] = send_queue[i + 1];
+      if (notifySucceeded) {
+        BLE_DEBUG_PRINTLN("writeBytes: sz=%d, hdr=%d", (uint32_t)send_queue[0].len, (uint32_t) send_queue[0].buf[0]);
+
+        send_queue_len--;
+        for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
+          send_queue[i] = send_queue[i + 1];
+        }
+      }
     }
   }
 
-  if (recv_queue_len > 0) {   // check recv queue
+  if (deviceConnected && recv_queue_len > 0) {   // check recv queue after authentication
     size_t len = recv_queue[0].len;   // take from top of queue
     memcpy(dest, recv_queue[0].buf, len);
 
@@ -218,8 +258,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     }
     return len;
   }
-
-  if (pServer->getConnectedCount() == 0)  deviceConnected = false;
 
   if (deviceConnected != oldDeviceConnected) {
     if (!deviceConnected) {    // disconnecting

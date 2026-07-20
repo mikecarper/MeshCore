@@ -90,15 +90,29 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   ui_started_at = millis();
 }
 
+bool UITask::shouldPlayMessageTone() const {
+#ifdef BLE_PIN_CODE
+  return !hasConnection();
+#else
+  // A USB or Ethernet companion connection is not a Bluetooth connection and
+  // should not silence the standalone new-message alert.
+  return true;
+#endif
+}
+
 void UITask::notify(UIEventType t) {
 #if defined(PIN_BUZZER)
 switch(t){
   case UIEventType::contactMessage:
     // gemini's pick
-    buzzer.play("MsgRcv3:d=4,o=6,b=200:32e,32g,32b,16c7");
+    if (shouldPlayMessageTone()) {
+      buzzer.play("MsgRcv3:d=4,o=6,b=200:32e,32g,32b,16c7");
+    }
     break;
   case UIEventType::channelMessage:
-    buzzer.play("kerplop:d=16,o=6,b=120:32g#,32c#");
+    if (shouldPlayMessageTone()) {
+      buzzer.play("kerplop:d=16,o=6,b=120:32g#,32c#");
+    }
     break;
   case UIEventType::ack:
     buzzer.play("ack:d=32,o=8,b=120:c");

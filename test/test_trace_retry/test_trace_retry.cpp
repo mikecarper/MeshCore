@@ -53,6 +53,9 @@ public:
 
 class TraceTestMesh : public mesh::Mesh {
 public:
+  bool forwardFloods = false;
+  bool floodRetriesAllowed = true;
+
   TraceTestMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng,
                 mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
     : mesh::Mesh(radio, ms, rng, rtc, mgr, tables) { }
@@ -64,6 +67,34 @@ public:
   uint8_t floodPathGate(const mesh::Packet* packet, uint8_t general_gate,
                         uint8_t group_data_gate) const {
     return applyGroupDataFloodRetryPathGate(packet, general_gate, group_data_gate);
+  }
+
+  uint8_t floodAttemptLimit(const mesh::Packet* packet, uint8_t role_max_attempts) const {
+    return applyFloodRetryAttemptPolicy(packet, role_max_attempts);
+  }
+
+  uint32_t floodAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx = 0) {
+    return getFloodRetryAttemptDelay(packet, attempt_idx);
+  }
+
+  void completePacketSend(mesh::Packet* packet) {
+    onSendComplete(packet);
+  }
+
+  void receivePacket(mesh::Packet* packet) {
+    onRecvPacket(packet);
+  }
+
+  mesh::DispatcherAction routePacket(mesh::Packet* packet) {
+    return routeRecvPacket(packet);
+  }
+
+  bool allowPacketForward(const mesh::Packet*) override {
+    return forwardFloods;
+  }
+
+  bool allowFloodRetry(const mesh::Packet*) const override {
+    return floodRetriesAllowed;
   }
 };
 
@@ -124,6 +155,16 @@ static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,
   return packet;
 }
 
+static void initSelfAdvert(TraceTestMesh& node, mesh::Packet* packet, uint8_t marker) {
+  ASSERT_NE(packet, nullptr);
+  if (packet == nullptr) return;
+  packet->header = PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT;
+  packet->payload_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  memset(packet->payload, 0, packet->payload_len);
+  memcpy(packet->payload, node.self_id.pub_key, PUB_KEY_SIZE);
+  packet->payload[packet->payload_len - 1] = marker;
+}
+
 TEST(TraceRetry, TraceAndAnonymousRequestsUseThreeAirtimes) {
   TraceTestClock clock;
   TraceTestRTC rtc;
@@ -168,6 +209,294 @@ TEST(FloodRetry, GroupDataUsesTheStricterPathGate) {
   EXPECT_EQ(2, node.floodPathGate(&group_data, 2, FLOOD_RETRY_PATH_GATE_DISABLED));
   EXPECT_EQ(0, node.floodPathGate(&group_data, 0, FLOOD_RETRY_PATH_GATE_DISABLED));
   EXPECT_EQ(2, node.floodPathGate(&group_text, 2, 1));
+}
+
+TEST(FloodRetry, PayloadAndPathPolicyCapsEveryFloodType) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+
+  for (uint8_t type = 0; type <= PH_TYPE_MASK; type++) {
+    SCOPED_TRACE(static_cast<int>(type));
+    mesh::Packet packet;
+    packet.header = ROUTE_TYPE_FLOOD | (type << PH_TYPE_SHIFT);
+    packet.setPathHashSizeAndCount(1, 0);
+
+    uint8_t origin_limit;
+    if (type == PAYLOAD_TYPE_REQ) {
+      origin_limit = 0;
+    } else if (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_RESPONSE
+               || type == PAYLOAD_TYPE_TXT_MSG || type == PAYLOAD_TYPE_ANON_REQ
+               || type == PAYLOAD_TYPE_PATH) {
+      origin_limit = 15;
+    } else {
+      origin_limit = 1;
+    }
+    EXPECT_EQ(origin_limit, node.floodAttemptLimit(&packet, 15));
+    EXPECT_EQ(0, node.floodAttemptLimit(&packet, 0));
+
+    packet.setPathHashSizeAndCount(1, 1);
+    uint8_t transit_limit;
+    if (type == PAYLOAD_TYPE_REQ) {
+      transit_limit = 0;
+    } else if (type == PAYLOAD_TYPE_GRP_TXT) {
+      transit_limit = 15;
+    } else if (type == PAYLOAD_TYPE_RESPONSE || type == PAYLOAD_TYPE_TXT_MSG
+               || type == PAYLOAD_TYPE_ANON_REQ || type == PAYLOAD_TYPE_PATH) {
+      transit_limit = 2;
+    } else {
+      transit_limit = 1;
+    }
+    EXPECT_EQ(transit_limit, node.floodAttemptLimit(&packet, 15));
+  }
+}
+
+TEST(FloodRetry, PayloadPolicyOnlyCapsAndNeverRaisesRoleCount) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+
+  mesh::Packet login_response;
+  login_response.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_RESPONSE << PH_TYPE_SHIFT);
+  login_response.setPathHashSizeAndCount(1, 0);
+  EXPECT_EQ(7, node.floodAttemptLimit(&login_response, 7));
+  EXPECT_EQ(15, node.floodAttemptLimit(&login_response, 255));
+
+  login_response.setPathHashSizeAndCount(1, 3);
+  EXPECT_EQ(1, node.floodAttemptLimit(&login_response, 1));
+  EXPECT_EQ(2, node.floodAttemptLimit(&login_response, 7));
+
+  mesh::Packet group_text;
+  group_text.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
+  group_text.setPathHashSizeAndCount(1, 3);
+  EXPECT_EQ(7, node.floodAttemptLimit(&group_text, 7));
+  EXPECT_EQ(15, node.floodAttemptLimit(&group_text, 255));
+}
+
+TEST(FloodRetry, OriginAdvertRetryHasAnExtraOneMinuteDelay) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+
+  mesh::Packet origin_advert;
+  initSelfAdvert(node, &origin_advert, 0x10);
+  origin_advert.header |= ROUTE_TYPE_FLOOD;
+  origin_advert.setPathHashSizeAndCount(1, 0);
+  mesh::Packet forwarded_advert = origin_advert;
+  forwarded_advert.setPathHashSizeAndCount(1, 1);
+  mesh::Packet foreign_origin_advert = origin_advert;
+  foreign_origin_advert.payload[0] ^= 0xFF;
+  mesh::Packet origin_group_text;
+  origin_group_text.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
+  origin_group_text.setPathHashSizeAndCount(1, 0);
+
+  uint32_t ordinary_delay = node.floodAttemptDelay(&origin_group_text);
+  EXPECT_EQ(ordinary_delay, node.floodAttemptDelay(&forwarded_advert));
+  EXPECT_EQ(ordinary_delay, node.floodAttemptDelay(&foreign_origin_advert));
+  EXPECT_EQ(ordinary_delay + 60000UL, node.floodAttemptDelay(&origin_advert));
+}
+
+TEST(FloodRetry, NewSelfAdvertReplacesTheOlderQueuedRetry) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+
+  mesh::Packet* old_advert = manager.allocNew();
+  ASSERT_NE(old_advert, nullptr);
+  initSelfAdvert(node, old_advert, 0x11);
+  ASSERT_TRUE(node.sendFlood(old_advert));
+  ASSERT_EQ(1, manager.getOutboundTotal());
+
+  clock.now = 1;
+  node.loop();
+  ASSERT_TRUE(radio.sending);
+  radio.complete = true;
+  clock.now = 2;
+  node.loop();
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  mesh::Packet* old_retry = manager.getOutboundByIdx(0);
+  ASSERT_NE(old_retry, nullptr);
+  EXPECT_NE(old_advert, old_retry);
+
+  mesh::Packet* group_data = manager.allocNew();
+  ASSERT_NE(group_data, nullptr);
+  group_data->header = PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT;
+  group_data->payload_len = 1;
+  group_data->payload[0] = 0x33;
+  ASSERT_TRUE(node.sendFlood(group_data));
+  clock.now = 3;
+  node.loop();
+  ASSERT_TRUE(radio.sending);
+  radio.complete = true;
+  clock.now = 4;
+  node.loop();
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  mesh::Packet* group_retry = NULL;
+  for (int i = 0; i < manager.getOutboundTotal(); i++) {
+    mesh::Packet* queued = manager.getOutboundByIdx(i);
+    if (queued != old_retry) group_retry = queued;
+  }
+  ASSERT_NE(group_retry, nullptr);
+
+  mesh::Packet* new_advert = manager.allocNew();
+  ASSERT_NE(new_advert, nullptr);
+  initSelfAdvert(node, new_advert, 0x22);
+  ASSERT_TRUE(node.sendFlood(new_advert));
+
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  bool found_new_advert = false;
+  bool found_group_retry = false;
+  for (int i = 0; i < manager.getOutboundTotal(); i++) {
+    mesh::Packet* queued = manager.getOutboundByIdx(i);
+    found_new_advert |= queued == new_advert;
+    found_group_retry |= queued == group_retry;
+    EXPECT_NE(old_retry, queued);
+  }
+  EXPECT_TRUE(found_new_advert);
+  EXPECT_TRUE(found_group_retry);
+}
+
+TEST(FloodRetry, DisabledRetryIsRecheckedAfterInitialTxAndBeforeDelayedTx) {
+  {
+    TraceTestClock clock;
+    TraceTestRTC rtc;
+    TraceTestRNG rng;
+    TraceTestRadio radio;
+    TraceTestTables tables;
+    StaticPoolPacketManager manager(12);
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+    node.begin();
+
+    mesh::Packet* packet = manager.allocNew();
+    ASSERT_NE(packet, nullptr);
+    packet->header = PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT;
+    packet->payload_len = 1;
+    packet->payload[0] = 0x44;
+    ASSERT_TRUE(node.sendFlood(packet));
+    node.floodRetriesAllowed = false;
+
+    clock.now = 1;
+    node.loop();
+    ASSERT_TRUE(radio.sending);
+    radio.complete = true;
+    clock.now = 2;
+    node.loop();
+    EXPECT_EQ(0, manager.getOutboundTotal());
+  }
+
+  {
+    TraceTestClock clock;
+    TraceTestRTC rtc;
+    TraceTestRNG rng;
+    TraceTestRadio radio;
+    TraceTestTables tables;
+    StaticPoolPacketManager manager(12);
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+    node.begin();
+
+    mesh::Packet* packet = manager.allocNew();
+    ASSERT_NE(packet, nullptr);
+    packet->header = PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT;
+    packet->payload_len = 1;
+    packet->payload[0] = 0x55;
+    ASSERT_TRUE(node.sendFlood(packet));
+    clock.now = 1;
+    node.loop();
+    ASSERT_TRUE(radio.sending);
+    radio.complete = true;
+    clock.now = 2;
+    node.loop();
+    ASSERT_EQ(1, manager.getOutboundTotal());
+
+    node.floodRetriesAllowed = false;
+    clock.now = 1000;
+    node.loop();
+    EXPECT_FALSE(radio.sending);
+    EXPECT_EQ(0, manager.getOutboundTotal());
+  }
+}
+
+TEST(FloodRetry, RecentForwardedAdvertWithHeardEchoIsNotForwardedAgain) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+  node.forwardFloods = true;
+  rtc.now = 100000;
+  clock.now = 1000;
+
+  mesh::Packet forwarded;
+  forwarded.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+  forwarded.setPathHashSizeAndCount(1, 1);
+  forwarded.path[0] = 0x42;
+  forwarded.payload_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  memset(forwarded.payload, 0x5A, forwarded.payload_len);
+  uint32_t emitted_timestamp = rtc.now - 60;
+  memcpy(&forwarded.payload[PUB_KEY_SIZE], &emitted_timestamp, sizeof(emitted_timestamp));
+  node.completePacketSend(&forwarded);
+
+  mesh::Packet echo = forwarded;
+  echo.setPathHashSizeAndCount(1, 2);
+  node.receivePacket(&echo);
+
+  mesh::Packet repeated = forwarded;
+  EXPECT_EQ(ACTION_RELEASE, node.routePacket(&repeated));
+
+  rtc.now = emitted_timestamp + (6UL * 60UL * 60UL);
+  repeated = forwarded;
+  EXPECT_NE(ACTION_RELEASE, node.routePacket(&repeated));
+}
+
+TEST(FloodRetry, ForwardedAdvertEchoMayReturnThroughAnotherBranch) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+  node.forwardFloods = true;
+  rtc.now = 100000;
+
+  mesh::Packet forwarded;
+  forwarded.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+  forwarded.setPathHashSizeAndCount(1, 1);
+  forwarded.path[0] = 0x24;
+  forwarded.payload_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  memset(forwarded.payload, 0xA5, forwarded.payload_len);
+  uint32_t emitted_timestamp = rtc.now - 60;
+  memcpy(&forwarded.payload[PUB_KEY_SIZE], &emitted_timestamp, sizeof(emitted_timestamp));
+  node.completePacketSend(&forwarded);
+
+  mesh::Packet other_branch = forwarded;
+  other_branch.setPathHashSizeAndCount(1, 2);
+  other_branch.path[0] ^= 0xFF;
+  node.receivePacket(&other_branch);
+
+  mesh::Packet repeated = forwarded;
+  EXPECT_EQ(ACTION_RELEASE, node.routePacket(&repeated));
 }
 
 TEST(TraceRetry, NewTraceReplacesQueuedRetryButAdvancedOldTraceStillQueues) {

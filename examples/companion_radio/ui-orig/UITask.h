@@ -50,6 +50,7 @@ class UITask : public AbstractUITask {
   void handleButtonTriplePress();
   void handleButtonQuadruplePress();
   void handleButtonLongPress();
+  bool shouldPlayMessageTone() const;
 
  
 public:

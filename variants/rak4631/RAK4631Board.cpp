@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "nrf_gpio.h"
+#include "nrf_sdm.h"
+#include "nrf_soc.h"
 
 #include "RAK4631Board.h"
 
@@ -39,7 +41,21 @@ void RAK4631Board::initiateShutdown(uint8_t reason) {
 #endif // NRF52_POWER_MANAGEMENT
 
 void RAK4631Board::begin() {
+#ifdef RAK4631_COMPANION_FORCE_LDO
+  // Some RAK4631 battery/board combinations have proved unstable with the
+  // nRF52 DC/DC enabled. Explicitly select the LDO for companion firmware;
+  // merely skipping NRF52BoardDCDC::begin() would inherit any prior state.
+  NRF52Board::begin();
+  uint8_t sd_enabled = 0;
+  sd_softdevice_is_enabled(&sd_enabled);
+  if (sd_enabled) {
+    sd_power_dcdc_mode_set(NRF_POWER_DCDC_DISABLE);
+  } else {
+    NRF_POWER->DCDCEN = 0;
+  }
+#else
   NRF52BoardDCDC::begin();
+#endif
   pinMode(PIN_VBAT_READ, INPUT);
 #ifdef PIN_USER_BTN
   pinMode(PIN_USER_BTN, INPUT_PULLUP);

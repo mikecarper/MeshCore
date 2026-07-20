@@ -376,6 +376,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint8_t floodRetryBridgeTargetMask(uint8_t source_mask) const;
   uint8_t floodRetryBridgeHeardMask(const mesh::Packet* packet, uint8_t source_mask,
                                     uint8_t progress_marker) const;
+  bool floodRetryBridgeEligible(const mesh::Packet* packet) const;
   FloodRetryBridgeState* floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const;
   void clearFloodRetryBridgeStateByKey(const uint8_t* retry_key);
   void refreshFloodRetryReachability(const mesh::Packet* packet);
@@ -510,6 +511,7 @@ protected:
   void onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) override;
   void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) override;
   bool allowFloodRetry(const mesh::Packet* packet) const override;
+  bool prepareFloodRetry(const mesh::Packet* packet) const override;
   void onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
   void onFloodRetrySlotReleased(const uint8_t* retry_key) override;
   bool hasFloodRetryTargetPrefix(const mesh::Packet* packet) const override;

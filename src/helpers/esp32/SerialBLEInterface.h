@@ -5,18 +5,22 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <atomic>
 
 class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLEServerCallbacks, BLECharacteristicCallbacks {
   BLEServer *pServer;
   BLEService *pService;
   BLECharacteristic * pTxCharacteristic;
+  BLE2902 *pTxDescriptor;
   bool deviceConnected;
   bool oldDeviceConnected;
+  bool notifySucceeded;
   bool _isEnabled;
   uint16_t last_conn_id;
   uint32_t _pin_code;
   unsigned long _last_write;
   unsigned long adv_restart_time;
+  std::atomic<bool> _pairingRequestPending{false};
 
   struct Frame {
     uint8_t len;
@@ -47,13 +51,17 @@ protected:
 
   // BLECharacteristicCallbacks methods
   void onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) override;
+  void onStatus(BLECharacteristic* pCharacteristic, Status status, uint32_t code) override;
 
 public:
   SerialBLEInterface() {
     pServer = NULL;
     pService = NULL;
+    pTxCharacteristic = NULL;
+    pTxDescriptor = NULL;
     deviceConnected = false;
     oldDeviceConnected = false;
+    notifySucceeded = false;
     adv_restart_time = 0;
     _isEnabled = false;
     _last_write = 0;
@@ -79,6 +87,9 @@ public:
   bool isReadBusy() const override;
   bool isWriteBusy() const override;
   bool hasPendingIO() const override { return recv_queue_len > 0 || send_queue_len > 0; }
+  bool takePairingRequest() override {
+    return _pairingRequestPending.exchange(false, std::memory_order_acq_rel);
+  }
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
 };

@@ -61,7 +61,6 @@ protected:
   unsigned long _nf_last_calib;       // millis of last completed/attempted window
   unsigned long _nf_calib_deadline;   // abort window if the batch can't complete
   unsigned long _nf_sample_from;      // no samples before this (RX entry settle)
-  unsigned long _nf_next_sample_at;   // pace SPI RSSI reads during a sample batch
 
   void idle() override;
   void startRecv() override;
@@ -99,8 +98,7 @@ public:
         _wd_stuck_thresh(0), _wd_observe_until(0), _wd_observe_ms(0),
         _cur_freq(0), _cur_bw(0), _cur_sf(0), _cur_cr(0), _cur_dbm(0),
         _cur_rx_boosted_gain(false), _params_valid(false), _dbm_valid(false), _rx_boosted_gain_valid(false),
-        _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0),
-        _nf_next_sample_at(0)
+        _nf_calib_active(false), _nf_last_calib(0), _nf_calib_deadline(0), _nf_sample_from(0)
         {
           n_recv = n_sent = n_recv_errors = n_wd_soft = n_wd_hard = 0;
           last_recv_millis = 0;

@@ -154,6 +154,9 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #ifndef DEFAULT_AUTOADD_CONFIG
 #define DEFAULT_AUTOADD_CONFIG 0
 #endif
+#ifndef DEFAULT_BUZZER_QUIET
+#define DEFAULT_BUZZER_QUIET 0
+#endif
 
 #ifndef EMERGENCY_CLIENT_REPEAT_HOLD_MS
 #define EMERGENCY_CLIENT_REPEAT_HOLD_MS 120000UL
@@ -728,6 +731,15 @@ bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
   return _prefs.client_repeat != 0;
 }
 
+bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
+  if (packet == NULL) return false;
+  // A companion may retry its own advert once, using the core's deliberately
+  // slow origin-advert delay. Do not add retries while relaying a neighbour's
+  // advert; the ordinary forwarding and recent-echo guard still apply.
+  return packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
+      || isSelfOriginAdvert(packet);
+}
+
 bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
   if (scope.isNull()) {
     return sendFlood(pkt, delay_millis, _prefs.path_hash_mode + 1);
@@ -1166,6 +1178,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.multi_acks = DEFAULT_MULTI_ACKS;
   _prefs.manual_add_contacts = DEFAULT_MANUAL_ADD_CONTACTS;
   _prefs.tx_power_dbm = LORA_TX_POWER;
+  _prefs.buzzer_quiet = DEFAULT_BUZZER_QUIET ? 1 : 0;
   _prefs.gps_enabled = 0;       // GPS disabled by default
   _prefs.gps_interval = 0;      // No automatic GPS updates by default
   _prefs.autoadd_config = DEFAULT_AUTOADD_CONFIG;

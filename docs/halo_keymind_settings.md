@@ -276,7 +276,7 @@ the bucket rules below instead.
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
-| `flood.retry.count` | Base flood retry attempts after initial TX. Path count 0 doubles it, path count 1 uses 1.5x rounded up, path count 2+ uses the base, and actual attempts cap at `15`; `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
+| `flood.retry.count` | Base flood retry attempts after initial TX. Role path scaling happens first, then all builds apply payload caps: `REQ` is `0`; `GRP_TXT` keeps up to `15`; remote-login `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` keep up to `15` at path count 0 and cap at `2` in transit; every other flood type caps at `1`. A lower calculated value is preserved, and `0` disables flood retry. | `get flood.retry.count`, `set flood.retry.count <0-15>` | `set flood.retry.count 7` |
 | `flood.retry.path` | Maximum path hash count eligible for flood retry, or `off` to disable the gate. | `get flood.retry.path`, `set flood.retry.path <0-63/off>` | `set flood.retry.path 1` |
 | `flood.retry.group.path` | Additional path gate for group data (`type=6`) flood retries. The stricter of this and `flood.retry.path` applies; `off` disables only this additional gate. Setting the general path gate to `0` forces this setting to `off`; a named preset restores the default of `1`. | `get flood.retry.group.path`, `set flood.retry.group.path <0-63/off>` | `set flood.retry.group.path 1` |
 | `flood.retry.advert` | Allows or blocks retry for node advert packets (`type=4`). Default is `off`. | `get flood.retry.advert`, `set flood.retry.advert on/off` | `set flood.retry.advert off` |
@@ -285,6 +285,10 @@ the bucket rules below instead.
 | `flood.retry.bridge` | Enables bucket-based bridge retry logic. | `get flood.retry.bridge`, `set flood.retry.bridge on/off` | `set flood.retry.bridge on` |
 | `flood.retry.bucket.<n>` | Shows one bridge bucket. Buckets are numbered `1`-`6`. | `get flood.retry.bucket.<n>` | `get flood.retry.bucket.1` |
 | `flood.retry.bucket` | Sets bridge bucket prefixes. | `set flood.retry.bucket <1-6> <prefixes/none/off>` | `set flood.retry.bucket 1 71CE82,C7618C` |
+
+Forwarded neighbor adverts also use an automatic echo guard in every build. If this node hears a downstream, longer-path echo after transmitting an advert whose signed timestamp is less than six hours old, it will not forward that exact advert again during the six-hour age window. This guard works even when `flood.retry.advert` is off and does not affect self-originated adverts.
+
+Self-originated advert retries are deliberately slow: the first retry waits at least one extra minute beyond the normal airtime-aware delay. Queueing a newer self advert retires queued and future retry attempts for older self adverts without disturbing other flood retry sequences. Companion firmware allows the one slow retry for its own adverts but not for neighbor adverts it relays.
 
 The shared retry preset sets these flood defaults:
 

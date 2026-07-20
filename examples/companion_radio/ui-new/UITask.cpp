@@ -9,6 +9,12 @@
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #endif
+#ifndef USB_MESSAGE_PREVIEW_MILLIS
+  #define USB_MESSAGE_PREVIEW_MILLIS 15000UL
+#endif
+#ifndef BLE_PAIRING_DISPLAY_MILLIS
+  #define BLE_PAIRING_DISPLAY_MILLIS 120000UL
+#endif
 #define BOOT_SCREEN_MILLIS   3000   // 3 seconds
 
 #ifdef PIN_STATUS_LED
@@ -180,6 +186,8 @@ public:
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
        _shutdown_init(false), sensors_lpp(200) {  }
+
+  void showFirstPage() { _page = HomePage::FIRST; }
 
   void poll() override {
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
@@ -629,7 +637,10 @@ switch(t){
 void UITask::msgRead(int msgcount) {
   _msgcount = msgcount;
   if (msgcount == 0) {
-    gotoHomeScreen();
+    _deferred_msg_preview = false;
+    const bool holding_usb_preview = curr == msg_preview && _msg_preview_until != 0
+        && static_cast<int32_t>(millis() - _msg_preview_until) < 0;
+    if (!holding_usb_preview) gotoHomeScreen();
   }
 }
 
@@ -637,7 +648,20 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   _msgcount = msgcount;
 
   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
-  setCurrScreen(msg_preview);
+  if (isPairingScreenActive()) {
+    // Keep the PIN visible, but retain the preview so it can be shown after
+    // pairing completes or the pairing display window expires.
+    _deferred_msg_preview = true;
+  } else {
+    setCurrScreen(msg_preview);
+  }
+
+  // A connected app drains the offline queue almost immediately, which calls
+  // msgRead(0). While attached to a computer, retain the actual message screen
+  // for 15 seconds even though the app has already consumed the message.
+  _msg_preview_until = _board->isUsbHostConnected()
+      ? millis() + USB_MESSAGE_PREVIEW_MILLIS
+      : 0;
 
   if (_display != NULL) {
     if (!_display->isOn() && shouldWakeDisplayForMessage()) {
@@ -676,6 +700,47 @@ void UITask::setCurrScreen(UIScreen* c) {
   _next_refresh = 100;
 }
 
+bool UITask::isPairingScreenActive() const {
+  return _pairing_screen_until != 0
+      && !hasConnection()
+      && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
+}
+
+void UITask::showPairingPin() {
+  const unsigned long now = millis();
+  _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
+  if (curr == msg_preview && _msgcount > 0) {
+    _deferred_msg_preview = true;
+  }
+  static_cast<HomeScreen*>(home)->showFirstPage();
+  setCurrScreen(home);
+
+  if (_display != NULL) {
+    if (!_display->isOn()) _display->turnOn();
+    _auto_off = now + AUTO_OFF_MILLIS;
+    _next_refresh = 0;
+  }
+}
+
+void UITask::finishPairingScreen(bool timed_out) {
+  _pairing_screen_until = 0;
+
+  if (_deferred_msg_preview && _msgcount > 0) {
+    _deferred_msg_preview = false;
+    setCurrScreen(msg_preview);
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+  } else {
+    _deferred_msg_preview = false;
+    gotoHomeScreen();
+    if (timed_out && _display != NULL) {
+      _display->turnOff();
+    } else {
+      _auto_off = millis() + AUTO_OFF_MILLIS;
+      _next_refresh = 0;
+    }
+  }
+}
+
 /*
   hardware-agnostic pre-shutdown activity should be done here
 */
@@ -711,6 +776,17 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
+  if (_serial->takePairingRequest()) {
+    showPairingPin();
+  }
+
+  if (_pairing_screen_until != 0) {
+    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    if (hasConnection() || timed_out) {
+      finishPairingScreen(timed_out);
+    }
+  }
+
   char c = 0;
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
@@ -784,6 +860,13 @@ void UITask::loop() {
   }
 #endif
 
+  if (isPairingScreenActive()) {
+    // Pairing has visual priority over navigation and asynchronous screens.
+    static_cast<HomeScreen*>(home)->showFirstPage();
+    if (curr != home) setCurrScreen(home);
+    c = 0;
+  }
+
   if (c != 0 && curr) {
     curr->handleInput(c);
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
@@ -797,6 +880,12 @@ void UITask::loop() {
 #endif
 
   if (curr) curr->poll();
+
+  if (curr == msg_preview && _msgcount == 0 && _msg_preview_until != 0
+      && static_cast<int32_t>(millis() - _msg_preview_until) >= 0) {
+    _msg_preview_until = 0;
+    gotoHomeScreen();
+  }
 
   if (_display != NULL && _display->isOn()) {
     if (millis() >= _next_refresh && curr) {
@@ -827,7 +916,7 @@ void UITask::loop() {
       _auto_off = millis() + AUTO_OFF_MILLIS;
     }
 #endif
-    if (isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
+    if (!isPairingScreenActive() && isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
       _display->turnOff();
     }
 #endif
