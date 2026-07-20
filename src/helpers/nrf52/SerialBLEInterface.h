@@ -15,6 +15,9 @@ class SerialBLEInterface : public BaseSerialInterface {
   uint16_t _conn_handle;
   unsigned long _last_health_check;
   unsigned long _last_retry_attempt;
+  ble_gap_addr_t _peer_address = {};
+  bool _peer_address_valid;
+  bool _bond_removed_for_connection;
 
   struct Frame {
     uint8_t len;
@@ -32,6 +35,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   void clearBuffers();
   void shiftSendQueueLeft();
   void shiftRecvQueueLeft();
+  bool removeStoredBondForPeer(const char* cause);
   bool isValidConnection(uint16_t handle, bool requireWaitingForSecurity = false) const;
   bool isAdvertising() const;
   static void onConnect(uint16_t connection_handle);
@@ -49,6 +53,8 @@ public:
     _conn_handle = BLE_CONN_HANDLE_INVALID;
     _last_health_check = 0;
     _last_retry_attempt = 0;
+    _peer_address_valid = false;
+    _bond_removed_for_connection = false;
     send_queue_len = 0;
     recv_queue_len = 0;
   }

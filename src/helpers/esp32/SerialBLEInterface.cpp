@@ -1,5 +1,6 @@
 #include "SerialBLEInterface.h"
 #include "esp_mac.h"
+#include "esp_gap_ble_api.h"
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -92,9 +93,20 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
     deviceConnected = true;
   } else {
-    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure*");
+    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure, reason=%u", (unsigned)cmpl.fail_reason);
 
-    //pServer->removePeerDevice(pServer->getConnId(), true);
+    // Firmware flashing normally preserves the Bluetooth bond database. If
+    // either side has forgotten or replaced its key, retaining the local key
+    // makes every reconnect fail until the device is fully erased. Remove only
+    // the peer whose authentication just failed; successful bonds are kept.
+    esp_err_t remove_result = esp_ble_remove_bond_device(cmpl.bd_addr);
+    if (remove_result == ESP_OK) {
+      BLE_DEBUG_PRINTLN(" - SecurityCallback - Cleared failed peer bond");
+    } else {
+      BLE_DEBUG_PRINTLN(" - SecurityCallback - No peer bond cleared, err=%d", (int)remove_result);
+    }
+
+    deviceConnected = false;
     pServer->disconnect(pServer->getConnId());
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;
   }
