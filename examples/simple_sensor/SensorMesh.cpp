@@ -905,7 +905,11 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   if (!saved_radio_apply_pending) {
     radio_driver.setTxPower(_prefs.tx_power_dbm);
   }
-  board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);   // LoRa FEM LNA (FEM boards only)
+  const bool fem_gain_changed = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
+  if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
+    _radio->recalibrateNoiseFloor();
+  }
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();

@@ -151,10 +151,12 @@ bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
   uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return false;
 
+  const bool gain_changed = !_rx_boosted_gain_valid || _cur_rx_boosted_gain != enabled;
   bool success = applyRxBoostedGainMode(enabled);
   if (success) {
     _cur_rx_boosted_gain = enabled;
     _rx_boosted_gain_valid = true;
+    if (gain_changed) recalibrateNoiseFloor();
   }
 
   endReconfigure(resume_rx);
@@ -172,6 +174,29 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   // Dispatcher and KISS modem use a zero threshold but still expect a fresh
   // floor measurement on every scheduled request.
   requestNoiseFloorRefresh();
+}
+
+void RadioLibWrapper::recalibrateNoiseFloor() {
+  // A receive-gain change can move the real floor above the old floor's
+  // sampling gate. Invalidate that reference so the next batch is seeded from
+  // scratch instead of rejecting the new baseline as interference.
+  _noise_floor_valid = false;
+  _nf_refresh_requested = true;
+  _nf_last_calib = 0;
+  _num_floor_samples = 0;
+  _floor_sample_sum = 0;
+
+  const unsigned long now = millis();
+  _nf_sample_from = now + NF_CALIB_SETTLE_MS;
+  if (_nf_calib_active) {
+    // Keep an already-open continuous-RX calibration window active, but restart
+    // its sample and timeout bounds around the newly selected gain path.
+    _nf_calib_deadline = now + NF_CALIB_TIMEOUT_MS;
+  } else {
+    // Continuous RX starts its deadline in loop(); RX power saving opens a
+    // bounded continuous-RX window in noiseFloorCalibCheck().
+    _nf_calib_deadline = 0;
+  }
 }
 
 void RadioLibWrapper::requestNoiseFloorRefresh() {
@@ -386,13 +411,17 @@ void RadioLibWrapper::loop() {
       && _num_floor_samples < NUM_NOISE_FLOOR_SAMPLES) {
     // Noise floor is only sampled outside RX duty-cycle mode: continuously in
     // plain RX (powersaving off), or inside an on-demand calibration window
-    // (powersaving on), skipping the first moments after RX entry there while
-    // the frontend/AGC settles (unsettled GetRssiInst reads ~-127 dBm garbage).
+    // (powersaving on). Skip the first moments after entering RX or changing
+    // gain while the frontend/AGC settles (unsettled GetRssiInst reads
+    // ~-127 dBm garbage).
     if (!_rx_ps_armed
-        && !(_nf_calib_active && (long)(now - _nf_sample_from) < 0)
+        && !(_nf_sample_from != 0 && (long)(now - _nf_sample_from) < 0)
         && !isReceivingPacket()) {
       int rssi = getCurrentRSSI();
-      if (rssi < _noise_floor + SAMPLING_THRESHOLD) {  // only consider samples below current floor + sampling THRESHOLD
+      if (!_noise_floor_valid || rssi < _noise_floor + SAMPLING_THRESHOLD) {
+        // With no valid baseline (startup, AGC reset, or gain change), seed
+        // unconditionally. Otherwise reject likely traffic above the current
+        // floor plus the sampling margin.
         _num_floor_samples++;
         _floor_sample_sum += rssi;
       }

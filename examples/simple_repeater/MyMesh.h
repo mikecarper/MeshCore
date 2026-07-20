@@ -794,5 +794,6 @@ public:
   bool hasPendingWork() const;
 
   bool setRxBoostedGain(bool enable) override;
+  void recalibrateNoiseFloor() override { _radio->recalibrateNoiseFloor(); }
 
 };

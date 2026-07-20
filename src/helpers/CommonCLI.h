@@ -514,6 +514,10 @@ public:
     return false; // CommonCLI reports unsupported if not overridden by wrapper
   };
 
+  virtual void recalibrateNoiseFloor() {
+    // no op by default for radios without a noise-floor estimator
+  };
+
   // Fault-alert channel hooks (see NodePrefs::alert_*). The default no-op
   // implementations keep CLI commands harmless on builds that don't wire up
   // an AlertReporter.

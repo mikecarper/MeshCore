@@ -2322,7 +2322,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (!_board->canControlLoRaFemLna()) {
       strcpy(reply, "Error: unsupported");
     } else if (memcmp(&config[17], "on", 2) == 0) {
+      bool changed = !_board->isLoRaFemLnaEnabled();
       if (_board->setLoRaFemLnaEnabled(true)) {
+        if (changed) _callbacks->recalibrateNoiseFloor();
         _prefs->radio_fem_rxgain = 1;
         savePrefs();
         strcpy(reply, "OK - LoRa FEM RX gain on");
@@ -2330,7 +2332,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
       }
     } else if (memcmp(&config[17], "off", 3) == 0) {
+      bool changed = _board->isLoRaFemLnaEnabled();
       if (_board->setLoRaFemLnaEnabled(false)) {
+        if (changed) _callbacks->recalibrateNoiseFloor();
         _prefs->radio_fem_rxgain = 0;
         savePrefs();
         strcpy(reply, "OK - LoRa FEM RX gain off");

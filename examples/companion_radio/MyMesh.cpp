@@ -98,6 +98,12 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_GET_RADIO_FEM_RXGAIN      66
 #define CMD_SET_RADIO_FEM_RXGAIN      67
 
+#if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
+static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
+#else
+static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 1;
+#endif
+
 // Stats sub-types for CMD_GET_STATS
 #define STATS_TYPE_CORE               0
 #define STATS_TYPE_RADIO              1
@@ -1191,7 +1197,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.rx_boosted_gain = 1; // enabled by default
 #endif
 #endif
-  _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_rxgain = DEFAULT_FEM_RX_GAIN;
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   memset(&_mqtt_prefs, 0, sizeof(_mqtt_prefs));
@@ -1256,6 +1262,10 @@ void MyMesh::begin(bool has_display) {
   _prefs.gps_interval = constrain(_prefs.gps_interval, 0, 86400);  // Max 24 hours
   _prefs.autoadd_config &= AUTO_ADD_OVERWRITE_OLDEST | AUTO_ADD_CHAT | AUTO_ADD_REPEATER | AUTO_ADD_ROOM_SERVER | AUTO_ADD_SENSOR;
   _prefs.path_hash_mode = constrain(_prefs.path_hash_mode, 0, 2);
+  _prefs.radio_fem_rxgain_override = constrain(_prefs.radio_fem_rxgain_override, 0, 1);
+  if (!_prefs.radio_fem_rxgain_override) {
+    _prefs.radio_fem_rxgain = DEFAULT_FEM_RX_GAIN;
+  }
   _prefs.radio_fem_rxgain = constrain(_prefs.radio_fem_rxgain, 0, 1);
 
 #ifdef BLE_PIN_CODE // 123456 by default
@@ -1289,11 +1299,13 @@ void MyMesh::begin(bool has_display) {
     radio_driver.setTxPower(_prefs.tx_power_dbm);
     radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
   }
-  board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);
+  const bool fem_gain_changed = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
+  if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
+    _radio->recalibrateNoiseFloor();
+  }
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
-  // NOTE: no FEM LNA wiring here — companion has its own NodePrefs without
-  // radio_fem_rxgain, matching upstream (which also doesn't wire companion).
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   applyMQTTDefaults(&_mqtt_prefs);
@@ -1512,10 +1524,13 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.airtime_factor = _prefs.airtime_factor;
   s.rx_delay = _prefs.rx_delay_base;
   s.rx_gain = _prefs.rx_boosted_gain;
+  s.fem_rx_gain = board.isLoRaFemLnaEnabled();
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
-      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN
-      | WebConfigServer::CAP_REPEAT;
+      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN;
+  if (board.canControlLoRaFemLna()) {
+    s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
+  }
 }
 
 bool MyMesh::startWebConfig(bool force_ap, char* reply) {
@@ -1679,6 +1694,26 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       }
       savePrefs();
       strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "radio.fem.rxgain") == 0) {
+    bool enabled;
+    if (!wcParseBool(value, enabled)) {
+      strcpy(reply, "Error: must be on or off");
+    } else if (!board.canControlLoRaFemLna()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      bool changed = board.isLoRaFemLnaEnabled() != enabled;
+      if (!board.setLoRaFemLnaEnabled(enabled)) {
+        strcpy(reply, "Error: failed to apply FEM RX gain");
+      } else {
+        if (changed) _radio->recalibrateNoiseFloor();
+        _prefs.radio_fem_rxgain = enabled;
+        _prefs.radio_fem_rxgain_override = 1;
+        savePrefs();
+        strcpy(reply, "OK");
+      }
     }
     return;
   }
@@ -2829,8 +2864,11 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (!board.canControlLoRaFemLna()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else if (value <= 1) {
-      _prefs.radio_fem_rxgain = value;
+      bool changed = board.isLoRaFemLnaEnabled() != (value != 0);
       if (board.setLoRaFemLnaEnabled(value != 0)) {
+        if (changed) _radio->recalibrateNoiseFloor();
+        _prefs.radio_fem_rxgain = value;
+        _prefs.radio_fem_rxgain_override = 1;
         savePrefs();
         writeOKFrame();
       } else {

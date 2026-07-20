@@ -2690,7 +2690,11 @@ void MyMesh::begin(FILESYSTEM *fs) {
   }
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
-  board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);   // LoRa FEM LNA (FEM boards only)
+  const bool fem_gain_changed = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
+  if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
+    _radio->recalibrateNoiseFloor();
+  }
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();
@@ -6069,6 +6073,7 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.tx_delay = _prefs.tx_delay_factor;
   s.cad = _prefs.cad_enabled;
   s.rx_gain = _prefs.rx_boosted_gain;
+  s.fem_rx_gain = board.isLoRaFemLnaEnabled();
   s.repeat = !_prefs.disable_fwd;
   s.advert_interval = _prefs.advert_interval * 2;
   s.flood_advert_interval = _prefs.flood_advert_interval;
@@ -6081,6 +6086,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
       | WebConfigServer::CAP_RX_GAIN | WebConfigServer::CAP_REPEAT
       | WebConfigServer::CAP_ADVERT | WebConfigServer::CAP_FLOOD
       | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE;
+  if (board.canControlLoRaFemLna()) {
+    s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
+  }
 }
 
 bool MyMesh::startWebConfig(bool force_ap, char* reply) {

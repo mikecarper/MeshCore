@@ -63,10 +63,6 @@ void HeltecTrackerV2Board::begin() {
   }
 
   bool HeltecTrackerV2Board::setLoRaFemLnaEnabled(bool enable) {
-#if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
-    enable = false;
-#endif
-
     if (!loRaFEMControl.isLnaCanControl()) {
       return false;
     }

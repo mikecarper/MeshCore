@@ -147,6 +147,7 @@ public:
 
   int getNoiseFloor() const override { return _noise_floor; }
   void triggerNoiseFloorCalibrate(int threshold) override;
+  void recalibrateNoiseFloor() override;
   void setCADEnabled(bool enable) override { _cad_enabled = enable; }
   void resetAGC() override;
 

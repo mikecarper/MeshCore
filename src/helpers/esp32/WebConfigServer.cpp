@@ -30,7 +30,8 @@ static const char SECRET_SENTINEL[] = "********";
 static const char* const ALLOWED_SET_KEYS[] = {
   // NodePrefs (radio / node)
   "name", "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
-  "cad", "radio.rxgain", "repeat", "advert.interval", "flood.advert.interval",
+  "cad", "radio.rxgain", "radio.fem.rxgain", "repeat", "advert.interval",
+  "flood.advert.interval",
   "flood.max", "flood.max.advert", "flood.max.unscoped", "loop.detect",
   // MQTTPrefs (WiFi / MQTT / misc observer)
   "wifi.ssid", "wifi.pwd", "wifi.powersave",
@@ -729,6 +730,7 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     radio["txdelay"] = node.tx_delay;
     radio["cad"] = (bool)node.cad;
     radio["rxgain"] = (bool)node.rx_gain;
+    radio["fem_rxgain"] = (bool)node.fem_rx_gain;
     radio["repeat"] = (bool)node.repeat;
     radio["flood_max"] = node.flood_max;
     radio["flood_max_advert"] = node.flood_max_advert;

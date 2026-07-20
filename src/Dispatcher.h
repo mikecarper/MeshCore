@@ -82,6 +82,11 @@ public:
 
   virtual void triggerNoiseFloorCalibrate(int threshold) { }
 
+  // Discard the current estimate and establish a new baseline. Use this after
+  // changing receive-path gain, where the old floor is no longer a valid
+  // filter reference for normal periodic calibration.
+  virtual void recalibrateNoiseFloor() { }
+
   virtual void setCADEnabled(bool enable) { }
 
   virtual void resetAGC() { }
