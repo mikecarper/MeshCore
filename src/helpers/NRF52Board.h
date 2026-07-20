@@ -58,6 +58,7 @@ public:
   virtual void sleep(uint32_t secs) override;
   bool isExternalPowered() override;
   bool isUsbDataConnected() override;
+  bool isUsbHostConnected() override;
 
 #ifdef NRF52_POWER_MANAGEMENT
   uint16_t getBootVoltage() override { return boot_voltage_mv; }

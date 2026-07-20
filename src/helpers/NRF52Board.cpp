@@ -282,6 +282,14 @@ bool NRF52Board::isUsbDataConnected() {
 #endif
 }
 
+bool NRF52Board::isUsbHostConnected() {
+#if defined(USE_TINYUSB)
+  return tud_mounted();
+#else
+  return false;
+#endif
+}
+
 void NRF52Board::sleep(uint32_t secs) {
   // Clear FPU interrupt flags to avoid insomnia
   // see errata 87 for details https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_87.html

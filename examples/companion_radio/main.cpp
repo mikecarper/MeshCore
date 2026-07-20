@@ -529,7 +529,9 @@ void loop() {
   serial_interface.loop();
 #endif
 
-  if (!the_mesh.hasPendingWork()) {
+  // USB power alone (for example, a wall charger) must not disable power
+  // saving. Stay awake only while a computer has an active USB data session.
+  if (!board.isUsbHostConnected() && !the_mesh.hasPendingWork()) {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)

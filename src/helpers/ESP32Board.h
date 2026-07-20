@@ -16,6 +16,11 @@
 #include "esp_system.h"
 #include <driver/rtc_io.h>
 
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT && \
+    (!defined(ARDUINO_USB_MODE) || !ARDUINO_USB_MODE)
+#include <USB.h>
+#endif
+
 #if !defined(LIGHTWEIGHT_WIFI_OTA)
 class AsyncWebServer;
 #endif
@@ -187,6 +192,20 @@ public:
   bool isUsbDataConnected() override {
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
     return (bool)Serial;
+#else
+    return false;
+#endif
+  }
+
+  bool isUsbHostConnected() override {
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE
+    return Serial.isPlugged();
+#elif defined(CONFIG_TINYUSB_ENABLED) && CONFIG_TINYUSB_ENABLED
+    return (bool)USB;
+#else
+    return (bool)Serial;
+#endif
 #else
     return false;
 #endif

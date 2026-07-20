@@ -640,7 +640,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   setCurrScreen(msg_preview);
 
   if (_display != NULL) {
-    if (!_display->isOn() && !hasConnection()) {
+    if (!_display->isOn() && shouldWakeDisplayForMessage()) {
       _display->turnOn();
     }
     if (_display->isOn()) {
@@ -827,7 +827,7 @@ void UITask::loop() {
       _auto_off = millis() + AUTO_OFF_MILLIS;
     }
 #endif
-    if (millis() > _auto_off) {
+    if (isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
       _display->turnOff();
     }
 #endif

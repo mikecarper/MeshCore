@@ -32,6 +32,24 @@ protected:
     _connected = false;
   }
 
+  bool isDisplayAutoOffDue(unsigned long configured_deadline,
+                           unsigned long configured_timeout_millis) const {
+    unsigned long deadline = configured_deadline;
+    if (_board->isUsbHostConnected()) {
+      // The configured deadline already includes the first timeout period.
+      // Add four more periods for a total of 5x while attached to a computer.
+      deadline += configured_timeout_millis * 4UL;
+    }
+    return static_cast<int32_t>(millis() - deadline) > 0;
+  }
+
+  bool shouldWakeDisplayForMessage() const {
+    // Keep the existing BLE-only behavior, where the connected companion is
+    // expected to surface the notification. A computer attached over USB is
+    // the exception: show the message on the device even if BLE is connected.
+    return !hasConnection() || _board->isUsbHostConnected();
+  }
+
 public:
   void setHasConnection(bool connected) { _connected = connected; }
   bool hasConnection() const { return _connected; }

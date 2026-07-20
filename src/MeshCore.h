@@ -101,6 +101,10 @@ public:
   // Power management interface (boards with power management override these)
   virtual bool isExternalPowered() { return false; }
   virtual bool isUsbDataConnected() { return false; }
+  // True when the device is enumerated by a USB host, even if its serial port
+  // is not open. Defaults to the stricter data-connection signal on boards
+  // that cannot distinguish a computer from USB power.
+  virtual bool isUsbHostConnected() { return isUsbDataConnected(); }
   virtual uint16_t getBootVoltage() { return 0; }
   virtual uint32_t getResetReason() const { return 0; }
   virtual const char* getResetReasonString(uint32_t reason) { return "Not available"; }
