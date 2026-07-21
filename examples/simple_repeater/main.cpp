@@ -148,6 +148,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
+#endif
   // Handle Serial CLI
   int len = strlen(command);
   while (Serial.available() && len < sizeof(command)-1) {

@@ -5,6 +5,7 @@
 #include <bluefruit.h>
 #include "ble_gap.h"
 #include "ble_hci.h"
+#include <nrf.h>
 #include <nrf_soc.h>
 #ifdef USE_TINYUSB
 #include <Adafruit_TinyUSB.h>
@@ -14,6 +15,19 @@ static BLEDfu bledfu;
 static uint16_t ota_conn_handle = BLE_CONN_HANDLE_INVALID;
 static bool ota_active = false;
 static bool ota_ble_started = false;
+
+// A normal internal-flash operation completes in milliseconds. One minute is
+// deliberately generous for other legitimate application work while still
+// recovering an indefinitely blocked SoftDevice flash wait without requiring
+// a physical power cycle. Builds can override this, or set it to 0 to disable
+// the watchdog for diagnostics.
+#ifndef NRF52_WATCHDOG_TIMEOUT_SECONDS
+#define NRF52_WATCHDOG_TIMEOUT_SECONDS 60UL
+#endif
+
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 131071UL
+#error "NRF52_WATCHDOG_TIMEOUT_SECONDS exceeds the nRF52 WDT counter range"
+#endif
 
 static void format_ota_reply(char reply[]) {
   uint8_t mac_addr[6];
@@ -41,9 +55,42 @@ void NRF52Board::begin() {
   startup_reason = BD_STARTUP_NORMAL;
 }
 
-#ifdef NRF52_POWER_MANAGEMENT
-#include "nrf.h"
+void NRF52Board::feedWatchdog(bool enabled) {
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+  // The nRF52 watchdog cannot be stopped after it starts. When the persisted
+  // setting is turned off, deliberately stop reloading it; the resulting
+  // watchdog reset is the only software-only way to return it to the stopped
+  // state. On that next boot the disabled preference prevents it starting.
+  if (!enabled) return;
 
+  const bool running = NRF_WDT->RUNSTATUS != 0;
+  if (!running) {
+    // Keep running during CPU sleep: the flash-driver failure this protects
+    // against sleeps in sd_app_evt_wait(). Pause while halted so breakpoints
+    // do not reset a board being debugged.
+    NRF_WDT->CONFIG =
+        (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos) |
+        (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos);
+    NRF_WDT->CRV = (uint32_t)(NRF52_WATCHDOG_TIMEOUT_SECONDS * 32768UL);
+    NRF_WDT->RREN = WDT_RREN_RR0_Msk;
+    NRF_WDT->TASKS_START = 1;
+  }
+
+  // Ordinarily only RR0 is enabled. If a bootloader left the watchdog running
+  // with a different reload channel, service every enabled channel rather
+  // than assuming ownership of RR0 and immediately entering a reset loop.
+  const uint32_t enabled_channels = NRF_WDT->RREN & 0xFFUL;
+  for (uint8_t channel = 0; channel < 8; channel++) {
+    if (enabled_channels & (1UL << channel)) {
+      NRF_WDT->RR[channel] = WDT_RR_RR_Reload;
+    }
+  }
+#else
+  (void)enabled;
+#endif
+}
+
+#ifdef NRF52_POWER_MANAGEMENT
 // Power Management global variables
 uint32_t g_nrf52_reset_reason = 0;     // Reset/Startup reason
 uint8_t g_nrf52_shutdown_reason = 0;   // Shutdown reason

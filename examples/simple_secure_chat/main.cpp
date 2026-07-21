@@ -597,6 +597,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.feedWatchdog();
+#endif
   the_mesh.loop();
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG

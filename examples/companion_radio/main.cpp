@@ -503,6 +503,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.feedWatchdog();
+#endif
   the_mesh.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS

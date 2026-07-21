@@ -1,9 +1,13 @@
 #include "ClientACL.h"
+#if defined(NRF52_PLATFORM)
+#include "AtomicFileWriter.h"
+#endif
 
 static const uint8_t CONTACT_RECORD_VERSION_ALT_PATH = 1;
 
+#if !defined(NRF52_PLATFORM)
 static File openWrite(FILESYSTEM* _fs, const char* filename) {
-  #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+  #if defined(STM32_PLATFORM)
     _fs->remove(filename);
     return _fs->open(filename, FILE_O_WRITE);
   #elif defined(RP2040_PLATFORM)
@@ -12,6 +16,7 @@ static File openWrite(FILESYSTEM* _fs, const char* filename) {
     return _fs->open(filename, "w", true);
   #endif
 }
+#endif
 
 void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
@@ -61,17 +66,22 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
 
 void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   _fs = fs;
+#if defined(NRF52_PLATFORM)
+  mesh::AtomicFileWriter file(_fs, "/s_contacts");
+#else
   File file = openWrite(_fs, "/s_contacts");
+#endif
   if (file) {
     uint8_t unused[2];
     unused[0] = CONTACT_RECORD_VERSION_ALT_PATH;
     unused[1] = 0;
 
-    for (int i = 0; i < num_clients; i++) {
+    bool success = true;
+    for (int i = 0; success && i < num_clients; i++) {
       auto c = &clients[i];
       if (c->permissions == 0 || (filter && !filter(c))) continue;    // skip deleted entries, or by filter function
 
-      bool success = (file.write(c->id.pub_key, 32) == 32);
+      success = (file.write(c->id.pub_key, 32) == 32);
       success = success && (file.write((uint8_t *) &c->permissions, 1) == 1);
       success = success && (file.write((uint8_t *) &c->extra.room.sync_since, 4) == 4);
       success = success && (file.write(unused, 2) == 2);
@@ -83,7 +93,13 @@ void ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
 
       if (!success) break; // write failed
     }
+#if defined(NRF52_PLATFORM)
+    if (!file.commit(success)) {
+      MESH_DEBUG_PRINTLN("ERROR: ClientACL::save atomic commit failed");
+    }
+#else
     file.close();
+#endif
   }
 }
 
@@ -92,6 +108,11 @@ bool ClientACL::clear() {
   if (_fs->exists("/s_contacts")) {
     _fs->remove("/s_contacts");
   }
+#if defined(NRF52_PLATFORM)
+  if (_fs->exists("/s_contacts.tmp")) {
+    _fs->remove("/s_contacts.tmp");
+  }
+#endif
   memset(clients, 0, sizeof(clients));
   num_clients = 0;
   return true;

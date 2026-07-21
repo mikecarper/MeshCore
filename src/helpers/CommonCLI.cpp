@@ -4,6 +4,9 @@
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
+#if defined(NRF52_PLATFORM)
+#include "AtomicFileWriter.h"
+#endif
 #include <RTClib.h>
 #include <Utils.h>
 #include <stddef.h>
@@ -804,6 +807,10 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   bool is_upgrade = false;
   bool loaded = false;
 
+  // The hardware main-loop watchdog is opt-out. Older preference files do not
+  // contain its appended byte, so they safely inherit the enabled default.
+  _prefs->system_watchdog_enabled = 1;
+
   if (fs->exists("/com_prefs")) {
     loadPrefsInt(fs, "/com_prefs"); loaded = true;   // new filename
   } else if (fs->exists("/node_prefs")) {
@@ -943,6 +950,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
     _prefs->flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
     _prefs->rx_watchdog_enabled = 0;
+    _prefs->system_watchdog_enabled = 1;
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
     // (upstream/flex 5-byte tails, or the ~384-byte keymind retry tail) takes the
@@ -1198,6 +1206,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       file.read((uint8_t *)&_prefs->rx_watchdog_enabled,
                 sizeof(_prefs->rx_watchdog_enabled));
     }
+    if (file.available() >= (int)sizeof(_prefs->system_watchdog_enabled)) {
+      file.read((uint8_t *)&_prefs->system_watchdog_enabled,
+                sizeof(_prefs->system_watchdog_enabled));
+    }
     }
 
     // sanitise bad pref values
@@ -1290,6 +1302,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 #endif
     _prefs->rx_powersaving_enabled = constrain(_prefs->rx_powersaving_enabled, 0, 1);
     _prefs->rx_watchdog_enabled = constrain(_prefs->rx_watchdog_enabled, 0, 1);
+    _prefs->system_watchdog_enabled = constrain(_prefs->system_watchdog_enabled, 0, 1);
     _prefs->rx_ps_level = constrain(_prefs->rx_ps_level, 0, 10);
     if (_prefs->rx_ps_preamble != 16 && _prefs->rx_ps_preamble != 32) {
       _prefs->rx_ps_preamble = 0;   // 0 = auto (derive from SF)
@@ -1302,7 +1315,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 }
 
 void CommonCLI::savePrefs(FILESYSTEM* fs) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  mesh::AtomicFileWriter file(fs, "/com_prefs");
+#elif defined(STM32_PLATFORM)
   fs->remove("/com_prefs");
   File file = fs->open("/com_prefs", FILE_O_WRITE);
 #elif defined(RP2040_PLATFORM)
@@ -1428,9 +1443,17 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
                sizeof(_prefs->flood_retry_group_max_path));                                        // 853
     file.write((uint8_t *)&_prefs->rx_watchdog_enabled,
                sizeof(_prefs->rx_watchdog_enabled));                                               // 854
-    // next: 855
+    file.write((uint8_t *)&_prefs->system_watchdog_enabled,
+               sizeof(_prefs->system_watchdog_enabled));                                           // 855
+    // next: 856
 
+#if defined(NRF52_PLATFORM)
+    if (!file.commit()) {
+      MESH_DEBUG_PRINTLN("ERROR: savePrefs atomic commit failed");
+    }
+#else
     file.close();
+#endif
   }
 #ifdef WITH_MQTT_BRIDGE
   // Observer config (MQTT/WiFi/timezone/SNMP/alert) is persisted separately. The
@@ -1702,7 +1725,9 @@ void CommonCLI::saveMQTTPrefs(FILESYSTEM* fs) {
     MESH_DEBUG_PRINTLN("MQTT: /mqtt_prefs from newer firmware, not overwriting");
     return;
   }
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  mesh::AtomicFileWriter file(fs, "/mqtt_prefs");
+#elif defined(STM32_PLATFORM)
   fs->remove("/mqtt_prefs");
   File file = fs->open("/mqtt_prefs", FILE_O_WRITE);
 #elif defined(RP2040_PLATFORM)
@@ -1718,7 +1743,13 @@ void CommonCLI::saveMQTTPrefs(FILESYSTEM* fs) {
     hdr.payload_len = (uint16_t)sizeof(_mqtt_prefs);
     file.write((uint8_t *)&hdr, sizeof(hdr));
     file.write((uint8_t *)&_mqtt_prefs, sizeof(_mqtt_prefs));
+#if defined(NRF52_PLATFORM)
+    if (!file.commit()) {
+      MESH_DEBUG_PRINTLN("ERROR: saveMQTTPrefs atomic commit failed");
+    }
+#else
     file.close();
+#endif
   }
 }
 
@@ -2219,6 +2250,23 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       int a_frac = (int)((actual - a_int) * 10.0f + 0.5f);
       sprintf(reply, "OK - %d.%d%%", a_int, a_frac);
     }
+  } else if (memcmp(config, "system.watchdog ", 16) == 0) {
+#if defined(NRF52_PLATFORM)
+    const char* value = &config[16];
+    if (strcmp(value, "on") == 0) {
+      _prefs->system_watchdog_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK - system watchdog enabled");
+    } else if (strcmp(value, "off") == 0) {
+      _prefs->system_watchdog_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK - disabled; restarting within 60s");
+    } else {
+      strcpy(reply, "Error: use set system.watchdog on|off");
+    }
+#else
+    strcpy(reply, "Error: unsupported on this platform");
+#endif
   } else if (memcmp(config, "af ", 3) == 0) {
     _prefs->airtime_factor = atof(&config[3]);
     savePrefs();
@@ -3035,6 +3083,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     int dc_int = (int)dc;
     int dc_frac = (int)((dc - dc_int) * 10.0f + 0.5f);
     sprintf(reply, "> %d.%d%%", dc_int, dc_frac);
+  } else if (strcmp(config, "system.watchdog") == 0) {
+#if defined(NRF52_PLATFORM)
+    sprintf(reply, "> %s", _prefs->system_watchdog_enabled ? "on" : "off");
+#else
+    strcpy(reply, "Error: unsupported on this platform");
+#endif
   } else if (memcmp(config, "af", 2) == 0) {
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->airtime_factor));
   } else if (memcmp(config, "int.thresh", 10) == 0) {

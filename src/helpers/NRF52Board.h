@@ -47,6 +47,11 @@ protected:
 public:
   NRF52Board(char *otaname) : ota_name(otaname) {}
   virtual void begin();
+  // Feed the hardware main-loop watchdog. The first call starts it, so normal
+  // setup (including filesystem mount and radio initialization) is not timed.
+  // A loop blocked forever in SoftDevice-backed flash I/O will stop feeding it
+  // and be reset automatically.
+  void feedWatchdog(bool enabled = true);
   virtual uint8_t getStartupReason() const override { return startup_reason; }
   virtual float getMCUTemperature() override;
   virtual void reboot() override { NVIC_SystemReset(); }

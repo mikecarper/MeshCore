@@ -567,6 +567,22 @@ send text.flood checking ridge link
 
 ---
 
+#### Enable or disable the nRF52 system watchdog
+**Usage:**
+- `get system.watchdog`
+- `set system.watchdog on`
+- `set system.watchdog off`
+
+**Default:** `on`
+
+**Notes:**
+- This nRF52-only hardware watchdog resets the device if the application loop stops for 60 seconds, including an indefinite SoftDevice flash-write wait.
+- Enabling takes effect without a reboot.
+- The nRF52 hardware cannot stop a watchdog after it has started. Disabling is persisted immediately, then the current firmware stops feeding it so the board performs one watchdog restart within 60 seconds. It remains off after that restart.
+- This setting is nRF52-only. The SoftDevice flash deadlock does not apply to ESP32, whose existing watchdog behavior is unchanged.
+
+---
+
 #### Estimate and correct repeater time after startup
 
 **Usage:**

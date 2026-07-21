@@ -124,6 +124,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.feedWatchdog();
+#endif
   modem->loop();
 
   if (!modem->isActuallyTransmitting()) {

@@ -1,6 +1,9 @@
 #include "RegionMap.h"
 #include <helpers/RegionNameUtils.h>
 #include <helpers/TxtDataHelpers.h>
+#if defined(NRF52_PLATFORM)
+#include <helpers/AtomicFileWriter.h>
+#endif
 #include <SHA256.h>
 
 // helper class for region map exporter, we emulate Stream with a safe buffer writer.
@@ -59,8 +62,9 @@ static const char* skip_hash(const char* name) {
   return RegionNameUtils::canonical(name);
 }
 
+#if !defined(NRF52_PLATFORM)
 static File openWrite(FILESYSTEM* _fs, const char* filename) {
-  #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+  #if defined(STM32_PLATFORM)
     _fs->remove(filename);
     return _fs->open(filename, FILE_O_WRITE);
   #elif defined(RP2040_PLATFORM)
@@ -69,6 +73,7 @@ static File openWrite(FILESYSTEM* _fs, const char* filename) {
     return _fs->open(filename, "w", true);
   #endif
 }
+#endif
 
 bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
   if (_fs->exists(path ? path : "/regions2")) {
@@ -185,7 +190,12 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
 }
 
 bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
-  File file = openWrite(_fs, path ? path : "/regions2");
+  const char* target_path = path ? path : "/regions2";
+#if defined(NRF52_PLATFORM)
+  mesh::AtomicFileWriter file(_fs, target_path);
+#else
+  File file = openWrite(_fs, target_path);
+#endif
   if (file) {
     uint8_t pad[128];
     memset(pad, 0, sizeof(pad));
@@ -208,7 +218,11 @@ bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
         if (!success) break; // write failed
       }
     }
+#if defined(NRF52_PLATFORM)
+    success = file.commit(success);
+#else
     file.close();
+#endif
     return success;
   }
   return false;  // failed
