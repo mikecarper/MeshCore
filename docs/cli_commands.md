@@ -590,6 +590,7 @@ send text.flood checking ridge link
 - `get clock.sync.status`
 - `get clock.sync.mesh`
 - `set clock.sync.mesh <on|off>`
+- `clock.sync.mesh now`
 - `get clock.sync.internet`
 - `set clock.sync.internet <on|off>`
 - `get clock.sync.drift`
@@ -598,7 +599,7 @@ send text.flood checking ridge link
 - `set clock.sync.samples <3-16>`
 
 **Defaults:**
-- `clock.sync.mesh`: `off`
+- `clock.sync.mesh`: `on` for nRF52 repeaters; `off` for other builds
 - `clock.sync.internet`: `off`
 - `clock.sync.drift`: `3600` seconds
 - `clock.sync.samples`: `9`
@@ -607,8 +608,22 @@ When either source is enabled, the repeater makes its first clock-bootstrap
 attempt after 30 minutes of uptime. A successful estimate changes the RTC only
 when the absolute difference is **greater than** `clock.sync.drift`; correction
 can move the clock forward or backward. A valid estimate within the threshold
-completes the one-time check without changing the clock. If no source is
-available yet, the repeater retries every 30 minutes.
+counts as a successful sync without changing the clock. Seven days after each
+successful estimate, the repeater evaluates time again; the seven-day deadline
+therefore starts from the last successful estimate rather than from boot. This
+is a lazy uptime deadline: the check runs on the first normal loop/wake after it
+becomes due and does not wake the device by itself. If no source or consensus is
+available, the repeater retries every 30 minutes until one succeeds, then starts
+a new seven-day interval. Every reboot starts with the initial 30-minute attempt.
+An existing saved setting always overrides the platform default.
+
+`clock.sync.mesh now` bypasses the startup/seven-day deadline and queues a
+LoRa-only consensus evaluation on the next normal loop, even when the internet
+source is also enabled. It uses any currently fresh samples without clearing the
+16-slot table. If there is not yet enough evidence, mesh collection remains open
+and the next attempt follows the normal 30-minute retry. The command requires
+`clock.sync.mesh` to be on and does not bypass CLI, GPS, or NTP suppression; it
+also retains the normal quorum, timestamp-validity, and drift checks.
 
 `clock.sync.mesh` collects signature-verified advert timestamps and MAC-valid,
 decrypted Public-channel plain-text timestamps, but only after the packet passes
@@ -626,6 +641,9 @@ succeed but an 8-vs-8 split cannot. The median is used. `clock.sync.samples`
 accepts `3` through `16`; samples older than two hours are ignored. Status
 reports `collecting` when fewer than the configured number of paths exist, and
 `no consensus` when enough paths exist but the effective quorum does not agree.
+Mesh collection begins immediately after boot. Following a successful estimate,
+it resumes two hours before the next seven-day deadline so only evidence that
+can still be fresh at evaluation time is processed.
 
 A timestamp is eligible for a clock-sync sample only when it falls between the
 UTC build epoch embedded by `build.sh` and that time plus ten calendar years.
@@ -664,15 +682,16 @@ prove that the advertising node's own clock is correct. Mesh time is therefore
 a consensus estimate, not an authoritative time service.
 
 `clock.sync.internet` is available on WiFi MQTT repeater-observer builds. Its
-30-minute query runs on the MQTT/WiFi task and is read-only until the repeater
-applies the configured drift test. On other repeater builds, the preference can
-be stored but status reports that internet time is unavailable. MQTT builds
-retain their existing startup NTP behavior required for MQTT/TLS/JWT operation;
-this setting controls the additional delayed drift check. Startup NTP is always
-preferred when it succeeds, regardless of this setting.
+initial and seven-day queries run on the MQTT/WiFi task and are read-only until
+the repeater applies the configured drift test. Failed queries retry after 30
+minutes. On other repeater builds, the preference can be stored but status
+reports that internet time is unavailable. MQTT builds retain their existing
+startup NTP behavior required for MQTT/TLS/JWT operation; this setting controls
+the additional delayed drift checks. Startup NTP is always preferred when it
+succeeds, regardless of this setting.
 
 Changing any `clock.sync.*` setting starts a new attempt for the current boot.
-Settings are persistent in `/clock_sync`.
+Settings are persistent in `/clock_sync`; samples and schedule state are not.
 
 A backward correction is intentionally allowed, but peers that already recorded
 a later timestamp from this node may temporarily reject its lower timestamps as

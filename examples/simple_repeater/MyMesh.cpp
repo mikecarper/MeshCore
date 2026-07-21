@@ -2457,10 +2457,11 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
   memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
   memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
-  clock_sync_mesh_enabled = false;
+  clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
   clock_sync_internet_enabled = false;
   clock_sync_complete = false;
   clock_sync_internet_pending = false;
+  clock_sync_force_mesh_pending = false;
   clock_sync_mesh_suppressed_by = CLOCK_SYNC_MESH_SUPPRESS_NONE;
   clock_sync_last_result = CLOCK_SYNC_RESULT_WAITING;
   clock_sync_last_source = CLOCK_SYNC_SOURCE_NONE;
@@ -5326,7 +5327,7 @@ void MyMesh::deleteFloodGroupModeration(const char* args, char* reply) {
 }
 
 void MyMesh::loadClockSyncPrefs() {
-  clock_sync_mesh_enabled = false;
+  clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
   clock_sync_internet_enabled = false;
   clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
@@ -5383,6 +5384,7 @@ bool MyMesh::saveClockSyncPrefs() {
 void MyMesh::resetClockSyncAttempt() {
   clock_sync_complete = false;
   clock_sync_internet_pending = false;
+  clock_sync_force_mesh_pending = false;
   clock_sync_last_result = CLOCK_SYNC_RESULT_WAITING;
   clock_sync_last_source = CLOCK_SYNC_SOURCE_NONE;
   clock_sync_last_sample_count = 0;
@@ -5409,6 +5411,7 @@ void MyMesh::suppressMeshClockSyncForBoot(uint8_t source) {
       || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return;
 
   clock_sync_mesh_suppressed_by = source;
+  clock_sync_force_mesh_pending = false;
   memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
   MESH_DEBUG_PRINTLN("Clock sync: LoRa estimate suppressed by %s until reboot",
                      clockSyncMeshSuppressionName(source));
@@ -5423,6 +5426,20 @@ void MyMesh::checkGpsClockSyncOverride() {
   if (location != NULL && location->consumeTimeSyncApplied()) {
     suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_GPS);
   }
+}
+
+bool MyMesh::isClockSyncCollectionActive() const {
+  if (!clock_sync_mesh_enabled
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return false;
+  if (!clock_sync_complete) return true;
+  if (clock_sync_next_attempt_uptime == 0) return false;
+  if (uptime_millis >= clock_sync_next_attempt_uptime) return true;
+
+  // Keep only the evidence that could still be fresh at the next scheduled
+  // evaluation. This opens a two-hour rolling collection window before each
+  // seven-day re-sync without decrypting Public traffic for the entire week.
+  return clock_sync_next_attempt_uptime - uptime_millis
+      <= (uint64_t)CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS;
 }
 
 static void deriveClockSyncPathId(const mesh::Packet* packet,
@@ -5466,8 +5483,7 @@ uint32_t MyMesh::estimateClockTransitMillis(const mesh::Packet* packet) const {
 
 void MyMesh::recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[4], uint32_t epoch,
                                    const mesh::Packet* packet) {
-  if (!clock_sync_mesh_enabled || clock_sync_complete
-      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE || source_id == NULL
+  if (!isClockSyncCollectionActive() || source_id == NULL
       || packet == NULL || !packet->isRouteFlood() || !clockSyncEpochIsValid(epoch)) return;
 
   uint32_t transit_millis = estimateClockTransitMillis(packet);
@@ -5536,8 +5552,7 @@ void MyMesh::recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[
 }
 
 void MyMesh::recordAcceptedFloodClockSample(const mesh::Packet* packet) {
-  if (!clock_sync_mesh_enabled || clock_sync_complete
-      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE || packet == NULL) return;
+  if (!isClockSyncCollectionActive() || packet == NULL) return;
 
   if (packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) {
     recordPublicChannelClockSample(packet);
@@ -5555,8 +5570,7 @@ void MyMesh::recordAcceptedFloodClockSample(const mesh::Packet* packet) {
 }
 
 void MyMesh::recordPublicChannelClockSample(const mesh::Packet* packet) {
-  if (!clock_sync_mesh_enabled || clock_sync_complete
-      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return;
+  if (!isClockSyncCollectionActive()) return;
   uint32_t timestamp = 0;
   char sender[FLOOD_GROUP_MODERATION_NAME_LEN];
   if (!decodeFloodGroupPlainText(packet, FLOOD_PUBLIC_CHANNEL_SECRET, CIPHER_KEY_SIZE,
@@ -5620,7 +5634,7 @@ bool MyMesh::applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sampl
   clock_sync_last_estimate = estimate;
   clock_sync_last_abs_drift = magnitude > UINT32_MAX ? UINT32_MAX : (uint32_t)magnitude;
   clock_sync_complete = true;
-  clock_sync_next_attempt_uptime = 0;
+  clock_sync_next_attempt_uptime = uptime_millis + CLOCK_SYNC_RESYNC_INTERVAL_MILLIS;
 
   if (magnitude <= clock_sync_drift_seconds) {
     clock_sync_last_result = CLOCK_SYNC_RESULT_WITHIN_DRIFT;
@@ -5667,37 +5681,49 @@ void MyMesh::checkClockSync() {
 
   bool mesh_available = clock_sync_mesh_enabled
       && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
-  if (clock_sync_complete || (!mesh_available && !clock_sync_internet_enabled)
-      || uptime_millis < clock_sync_next_attempt_uptime) return;
+  bool force_mesh = clock_sync_force_mesh_pending && mesh_available;
+  if ((!mesh_available && !clock_sync_internet_enabled)
+      || (!force_mesh && uptime_millis < clock_sync_next_attempt_uptime)) return;
 
+  // A manual mesh request bypasses both the normal deadline and the optional
+  // internet-first probe once. It never bypasses the source safety latch.
+  if (force_mesh) clock_sync_force_mesh_pending = false;
+
+  // A successful estimate closes the current attempt but leaves a seven-day
+  // deadline behind. Reopen the attempt when that deadline arrives; failures
+  // below retain the existing 30-minute retry cadence until the next success.
+  if (clock_sync_complete) clock_sync_complete = false;
+
+  if (!force_mesh) {
 #ifdef WITH_MQTT_BRIDGE
-  if (clock_sync_internet_enabled && mqtt_bridge != NULL && mqtt_bridge->isRunning()) {
-    if (clock_sync_internet_pending) {
-      uint32_t estimate = 0;
-      bool finished = false;
-      bool success = mqtt_bridge->takeNtpTimeEstimate(estimate, finished);
-      if (!finished && _ms->getMillis() - clock_sync_internet_requested_millis < 30000UL) return;
+    if (clock_sync_internet_enabled && mqtt_bridge != NULL && mqtt_bridge->isRunning()) {
+      if (clock_sync_internet_pending) {
+        uint32_t estimate = 0;
+        bool finished = false;
+        bool success = mqtt_bridge->takeNtpTimeEstimate(estimate, finished);
+        if (!finished && _ms->getMillis() - clock_sync_internet_requested_millis < 30000UL) return;
+        clock_sync_internet_pending = false;
+        if (success && applyClockEstimate(estimate, CLOCK_SYNC_SOURCE_INTERNET, 1)) return;
+        clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+      } else if (mqtt_bridge->requestNtpTimeEstimate()) {
+        clock_sync_internet_pending = true;
+        clock_sync_internet_requested_millis = _ms->getMillis();
+        clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_PENDING;
+        return;
+      } else {
+        clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+      }
+    } else if (clock_sync_internet_enabled) {
       clock_sync_internet_pending = false;
-      if (success && applyClockEstimate(estimate, CLOCK_SYNC_SOURCE_INTERNET, 1)) return;
-      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
-    } else if (mqtt_bridge->requestNtpTimeEstimate()) {
-      clock_sync_internet_pending = true;
-      clock_sync_internet_requested_millis = _ms->getMillis();
-      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_PENDING;
-      return;
-    } else {
       clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
     }
-  } else if (clock_sync_internet_enabled) {
-    clock_sync_internet_pending = false;
-    clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
-  }
 #else
-  if (clock_sync_internet_enabled) {
-    clock_sync_internet_pending = false;
-    clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
-  }
+    if (clock_sync_internet_enabled) {
+      clock_sync_internet_pending = false;
+      clock_sync_last_result = CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE;
+    }
 #endif
+  }
 
   if (mesh_available) {
     uint32_t estimate = 0;
@@ -5755,23 +5781,24 @@ void MyMesh::formatClockSyncStatus(char* reply, size_t reply_len) const {
   }
   const char* source = clock_sync_last_source == CLOCK_SYNC_SOURCE_INTERNET ? "internet"
       : (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH ? "mesh" : "none");
+  uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
+      ? clock_sync_next_attempt_uptime - uptime_millis : 0;
+  unsigned long next_seconds = (unsigned long)((remaining_ms + 999ULL) / 1000ULL);
   if (clock_sync_complete) {
     if (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH) {
-      snprintf(reply, reply_len, "> %s %lus via %s epoch=%lu agree=%u/%u paths=%u mesh=%s",
+      snprintf(reply, reply_len, "> %s %lus via %s epoch=%lu agree=%u/%u paths=%u mesh=%s next=%lus",
                result, (unsigned long)clock_sync_last_abs_drift, source,
                (unsigned long)clock_sync_last_estimate,
                (unsigned int)clock_sync_last_sample_count,
                (unsigned int)clock_sync_last_required_count,
-               (unsigned int)clock_sync_last_fresh_count, mesh_state);
+               (unsigned int)clock_sync_last_fresh_count, mesh_state, next_seconds);
     } else {
-      snprintf(reply, reply_len, "> %s %lus via %s, epoch=%lu drift=%lus mesh=%s",
+      snprintf(reply, reply_len, "> %s %lus via %s, epoch=%lu drift=%lus mesh=%s next=%lus",
                result, (unsigned long)clock_sync_last_abs_drift, source,
                (unsigned long)clock_sync_last_estimate,
-               (unsigned long)clock_sync_drift_seconds, mesh_state);
+               (unsigned long)clock_sync_drift_seconds, mesh_state, next_seconds);
     }
   } else {
-    uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
-        ? clock_sync_next_attempt_uptime - uptime_millis : 0;
     if (clock_sync_last_result == CLOCK_SYNC_RESULT_NO_CONSENSUS) {
       snprintf(reply, reply_len,
                "> no consensus, mesh=%s internet=%s agree=%u/%u paths=%u next=%lus",
@@ -5779,14 +5806,14 @@ void MyMesh::formatClockSyncStatus(char* reply, size_t reply_len) const {
                (unsigned int)clock_sync_last_sample_count,
                (unsigned int)clock_sync_last_required_count,
                (unsigned int)clock_sync_last_fresh_count,
-               (unsigned long)((remaining_ms + 999ULL) / 1000ULL));
+               next_seconds);
     } else {
       snprintf(reply, reply_len, "> %s, mesh=%s internet=%s drift=%lus paths=%u/%u next=%lus",
                result, mesh_state,
                clock_sync_internet_enabled ? "on" : "off",
                (unsigned long)clock_sync_drift_seconds, (unsigned int)fresh,
                (unsigned int)clock_sync_required_samples,
-               (unsigned long)((remaining_ms + 999ULL) / 1000ULL));
+               next_seconds);
     }
   }
 }
@@ -6564,6 +6591,18 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     sprintf(reply, "> %lu", (unsigned long)clock_sync_drift_seconds);
   } else if (strcmp(command, "get clock.sync.samples") == 0) {
     sprintf(reply, "> %u", (unsigned int)clock_sync_required_samples);
+  } else if (strcmp(command, "clock.sync.mesh now") == 0) {
+    if (!clock_sync_mesh_enabled) {
+      strcpy(reply, "Err - mesh clock sync is off");
+    } else if (clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) {
+      sprintf(reply, "Err - mesh sync suppressed by %s until reboot",
+              clockSyncMeshSuppressionName(clock_sync_mesh_suppressed_by));
+    } else {
+      resetClockSyncAttempt();
+      clock_sync_force_mesh_pending = true;
+      clock_sync_next_attempt_uptime = uptime_millis;
+      strcpy(reply, "OK - mesh clock sync queued");
+    }
   } else if (strncmp(command, "set clock.sync.mesh ", 20) == 0) {
     const char* value = command + 20;
     bool enabled;

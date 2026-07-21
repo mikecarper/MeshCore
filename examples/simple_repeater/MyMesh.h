@@ -151,12 +151,20 @@ struct NeighbourInfo {
 #ifndef CLOCK_SYNC_SAMPLE_SLOTS
   #define CLOCK_SYNC_SAMPLE_SLOTS 16
 #endif
+#ifndef CLOCK_SYNC_MESH_DEFAULT_ENABLED
+  #if defined(NRF52_PLATFORM)
+    #define CLOCK_SYNC_MESH_DEFAULT_ENABLED 1
+  #else
+    #define CLOCK_SYNC_MESH_DEFAULT_ENABLED 0
+  #endif
+#endif
 #define CLOCK_SYNC_REQUIRED_SAMPLES_MIN     3
 #define CLOCK_SYNC_REQUIRED_SAMPLES_MAX     CLOCK_SYNC_SAMPLE_SLOTS
 #define CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT 9
 #define CLOCK_SYNC_PATH_ID_SIZE             8
 #define CLOCK_SYNC_STARTUP_DELAY_MILLIS     (30ULL * 60ULL * 1000ULL)
 #define CLOCK_SYNC_RETRY_INTERVAL_MILLIS    (30ULL * 60ULL * 1000ULL)
+#define CLOCK_SYNC_RESYNC_INTERVAL_MILLIS   (7ULL * 24ULL * 60ULL * 60ULL * 1000ULL)
 #define CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS    (2UL * 60UL * 60UL * 1000UL)
 #define CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS 600UL
 #define CLOCK_SYNC_DRIFT_MIN_SECONDS        30UL
@@ -283,6 +291,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool clock_sync_internet_enabled;
   bool clock_sync_complete;
   bool clock_sync_internet_pending;
+  bool clock_sync_force_mesh_pending;
   uint8_t clock_sync_mesh_suppressed_by;
   uint8_t clock_sync_last_result;
   uint8_t clock_sync_last_source;
@@ -451,6 +460,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void resetClockSyncAttempt();
   void suppressMeshClockSyncForBoot(uint8_t source);
   void checkGpsClockSyncOverride();
+  bool isClockSyncCollectionActive() const;
   uint32_t estimateClockTransitMillis(const mesh::Packet* packet) const;
   void recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[4], uint32_t epoch,
                              const mesh::Packet* packet);
