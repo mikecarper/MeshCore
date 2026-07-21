@@ -11,8 +11,10 @@
   #include "NullDisplayDriver.h"
 #endif
 
-#include <BME280I2C.h>
-#include <Wire.h>
+#ifndef WIO_E5_MINI_NO_EXTERNAL_SENSORS
+  #include <BME280I2C.h>
+  #include <Wire.h>
+#endif
 
 #ifdef DISPLAY_CLASS
   extern NullDisplayDriver display;
@@ -38,24 +40,33 @@ public:
         for (int i=0; i<8;i++) {
             raw += analogRead(PIN_A3);
         }
-        return ((double)raw) * 1.73 * 5 * 1000 / 8 / 4096;
+        // 1.73 * 5 V over eight 12-bit samples is raw * 8650 / 32768.
+        // Fixed-point math avoids pulling double-precision helpers into this
+        // flash-constrained STM32WL build; the half-divisor rounds to nearest.
+        return (uint16_t)((raw * 8650UL + 16384UL) >> 15);
     }
 };
 
-class WIOE5SensorManager : public SensorManager {
-    BME280I2C bme;
-    bool has_bme = false;
+#ifndef WIO_E5_MINI_NO_EXTERNAL_SENSORS
+  class WIOE5SensorManager : public SensorManager {
+      BME280I2C bme;
+      bool has_bme = false;
 
-public:
-    WIOE5SensorManager() {}
-    bool begin() override;
-    bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
-};
+  public:
+      WIOE5SensorManager() {}
+      bool begin() override;
+      bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
+  };
+#endif
 
 extern WIOE5Board board;
 extern WRAPPER_CLASS radio_driver;
 extern VolatileRTCClock rtc_clock;
-extern WIOE5SensorManager sensors;
+#ifdef WIO_E5_MINI_NO_EXTERNAL_SENSORS
+  extern SensorManager sensors;
+#else
+  extern WIOE5SensorManager sensors;
+#endif
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();

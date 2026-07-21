@@ -18,7 +18,11 @@ static const Module::RfSwitchMode_t rfswitch_table[] = {
 };
 
 VolatileRTCClock rtc_clock;
-WIOE5SensorManager sensors;
+#ifdef WIO_E5_MINI_NO_EXTERNAL_SENSORS
+  SensorManager sensors;
+#else
+  WIOE5SensorManager sensors;
+#endif
 
 #ifdef DISPLAY_CLASS
   NullDisplayDriver display;
@@ -29,7 +33,9 @@ WIOE5SensorManager sensors;
 #endif
 
 bool radio_init() {
+#ifndef WIO_E5_MINI_NO_EXTERNAL_SENSORS
   Wire.begin();
+#endif
 
   radio.setRfSwitchTable(rfswitch_pins, rfswitch_table);
 
@@ -55,7 +61,8 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
-bool WIOE5SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { 
+#ifndef WIO_E5_MINI_NO_EXTERNAL_SENSORS
+bool WIOE5SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
   if (!has_bme) return false;
 
   float temp(NAN), hum(NAN), pres(NAN);
@@ -77,3 +84,4 @@ bool WIOE5SensorManager::begin() {
 
   return has_bme;
 }
+#endif

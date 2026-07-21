@@ -4,7 +4,9 @@
 #include <Identity.h>
 #include <Packet.h>
 #include <Utils.h>
-#include <helpers/RadioLivenessTracker.h>
+#ifndef RADIO_LIVENESS_SOFT_ONLY
+  #include <helpers/RadioLivenessTracker.h>
+#endif
 #include <string.h>
 
 namespace mesh {
@@ -220,10 +222,12 @@ typedef uint32_t  DispatcherAction;
 class Dispatcher {
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
-  unsigned long last_watchdog_recovery;
-  unsigned long last_radio_active_ms;   // updated on any TX or RX event; used by watchdog
   unsigned long last_observed_radio_irq;
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+  unsigned long last_radio_activity_ms;
+#else
   RadioLivenessTracker radio_liveness;
+#endif
   uint16_t outbound_restore_preamble_len;
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
@@ -231,7 +235,9 @@ class Dispatcher {
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
   bool  prev_isrecv_mode;
+#ifndef RADIO_LIVENESS_SOFT_ONLY
   bool  nonrx_soft_recovery_attempted;
+#endif
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
   unsigned long tx_budget_ms;
@@ -265,10 +271,12 @@ protected:
     tx_budget_ms = 0;
     last_budget_update = 0;
     duty_cycle_window_ms = 3600000;
-    last_watchdog_recovery = 0;
-    last_radio_active_ms = 0;
     last_observed_radio_irq = 0;
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+    last_radio_activity_ms = 0;
+#else
     nonrx_soft_recovery_attempted = false;
+#endif
   }
 
   virtual DispatcherAction onRecvPacket(Packet* pkt) = 0;

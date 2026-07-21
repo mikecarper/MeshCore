@@ -1,7 +1,10 @@
 #include <Arduino.h>
 #include "target.h"
 #include <helpers/ArduinoHelpers.h>
-#include <helpers/sensors/MicroNMEALocationProvider.h>
+
+#ifdef ENV_INCLUDE_GPS
+  #include <helpers/sensors/MicroNMEALocationProvider.h>
+#endif
 
 WioTrackerL1Board board;
 
@@ -37,4 +40,3 @@ mesh::LocalIdentity radio_new_identity() {
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
-

@@ -36,11 +36,14 @@ void Dispatcher::begin() {
 
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
-  last_radio_active_ms = _ms->getMillis();
-  last_watchdog_recovery = last_radio_active_ms;
+  const unsigned long now = _ms->getMillis();
   last_observed_radio_irq = _radio->getLastRadioInterruptMillis();
-  radio_liveness.begin(last_radio_active_ms);
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+  last_radio_activity_ms = now;
+#else
+  radio_liveness.begin(now);
   nonrx_soft_recovery_attempted = false;
+#endif
 }
 
 float Dispatcher::getAirtimeBudgetFactor() const {
@@ -140,8 +143,11 @@ void Dispatcher::loop() {
   const unsigned long latest_irq = _radio->getLastRadioInterruptMillis();
   if (latest_irq != 0 && latest_irq != last_observed_radio_irq) {
     last_observed_radio_irq = latest_irq;
-    last_radio_active_ms = now;
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+    last_radio_activity_ms = now;
+#else
     radio_liveness.noteActivity(now);
+#endif
   }
 
   // check for radio 'stuck' in mode other than Rx
@@ -150,21 +156,30 @@ void Dispatcher::loop() {
     prev_isrecv_mode = is_recv;
     if (!is_recv) {
       radio_nonrx_start = now;
-    } else {
+    }
+#ifndef RADIO_LIVENESS_SOFT_ONLY
+    else {
       nonrx_soft_recovery_attempted = false;
     }
+#endif
   }
   bool recovered_this_loop = false;
   if (!is_recv && outbound == NULL && now - radio_nonrx_start > 8000) {
     _err_flags |= ERR_EVENT_STARTRX_TIMEOUT;
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+    MESH_DEBUG_PRINTLN("Radio watchdog: radio outside RX for %lu ms; soft recovery",
+                       now - radio_nonrx_start);
+    if (_radio->recoverRadio(false)) {
+      last_radio_activity_ms = now;
+      recovered_this_loop = true;
+    }
+#else
     const bool hard = nonrx_soft_recovery_attempted;
     MESH_DEBUG_PRINTLN("Radio watchdog: radio outside RX for %lu ms; %s recovery",
                        now - radio_nonrx_start, hard ? "hard" : "soft");
-    if (_radio->recoverRadio(hard)) {
-      last_watchdog_recovery = now;
-      recovered_this_loop = true;
-    }
+    if (_radio->recoverRadio(hard)) recovered_this_loop = true;
     nonrx_soft_recovery_attempted = true;
+#endif
     radio_nonrx_start = now; // bounded retry cadence if recovery is unsupported
   }
 
@@ -178,24 +193,35 @@ void Dispatcher::loop() {
   const uint32_t configured_watchdog_ms = getRadioWatchdogMillis();
   if (configured_watchdog_ms > 0) soft_liveness_ms = configured_watchdog_ms;
 #endif
-  uint32_t hard_liveness_ms = RADIO_LIVENESS_HARD_MS;
-  if (soft_liveness_ms > hard_liveness_ms / 2) {
-    hard_liveness_ms = soft_liveness_ms <= 0x7FFFFFFFUL
-        ? soft_liveness_ms * 2 : 0xFFFFFFFFUL;
-  }
   if (is_recv && outbound == NULL && !recovered_this_loop) {
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+    if (soft_liveness_ms > 0 && now - last_radio_activity_ms >= soft_liveness_ms) {
+      _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
+      MESH_DEBUG_PRINTLN("Radio watchdog: no hardware activity for %lu ms, state=%d, soft recovery",
+                         now - last_radio_activity_ms, _radio->getRadioState());
+      _radio->recoverRadio(false);
+      // This radio has no independently resettable RF peripheral. Retry its
+      // only safe recovery at the soft interval until IRQ/TX/RX proves life.
+      last_radio_activity_ms = now;
+    }
+#else
+    uint32_t hard_liveness_ms = RADIO_LIVENESS_HARD_MS;
+    if (soft_liveness_ms > hard_liveness_ms / 2) {
+      hard_liveness_ms = soft_liveness_ms <= 0x7FFFFFFFUL
+          ? soft_liveness_ms * 2 : 0xFFFFFFFFUL;
+    }
     const RadioRecoveryAction action = radio_liveness.poll(
         now, soft_liveness_ms, hard_liveness_ms);
     if (action != RadioRecoveryAction::NONE) {
       const bool hard = action == RadioRecoveryAction::HARD;
       _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
       MESH_DEBUG_PRINTLN("Radio watchdog: no hardware activity for %lu ms, state=%d, %s recovery",
-                         now - last_radio_active_ms, _radio->getRadioState(),
+                         now - radio_liveness.lastActivity(), _radio->getRadioState(),
                          hard ? "hard" : "soft");
       const bool recovered = _radio->recoverRadio(hard);
-      if (recovered) last_watchdog_recovery = now;
       if (hard) radio_liveness.noteHardRecoveryResult(now, recovered);
     }
+#endif
   }
 
   if (outbound) {  // waiting for outbound send to be completed
@@ -221,8 +247,11 @@ void Dispatcher::loop() {
       }
 
       _radio->onSendFinished();
-      last_radio_active_ms = _ms->getMillis();  // TX success → radio is alive
-      radio_liveness.noteActivity(last_radio_active_ms);
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+      last_radio_activity_ms = _ms->getMillis();  // TX success -> radio is alive
+#else
+      radio_liveness.noteActivity(_ms->getMillis());  // TX success -> radio is alive
+#endif
       restoreOutboundTxOverrides();
       logTx(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
       onSendComplete(outbound);
@@ -348,8 +377,11 @@ void Dispatcher::checkRecv() {
     uint8_t raw[MAX_TRANS_UNIT+1];
     int len = _radio->recvRaw(raw, MAX_TRANS_UNIT);
     if (len > 0) {
-      last_radio_active_ms = _ms->getMillis();
-      radio_liveness.noteActivity(last_radio_active_ms);
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+      last_radio_activity_ms = _ms->getMillis();
+#else
+      radio_liveness.noteActivity(_ms->getMillis());
+#endif
       logRxRaw(_radio->getLastSNR(), _radio->getLastRSSI(), raw, len);
 
       pkt = _mgr->allocNew();

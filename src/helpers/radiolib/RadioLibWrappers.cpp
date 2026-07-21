@@ -251,6 +251,17 @@ bool RadioLibWrapper::recoverRadio(bool hard) {
   const uint8_t base_state = state & ~STATE_INT_READY;
   if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT) return false;
 
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+  // STM32WL integrates the radio into the MCU and has no independent reset.
+  // Keep its useful recovery path without linking unreachable deep-reset and
+  // escalation machinery into flash-constrained builds.
+  (void)hard;
+  if (isReceivingPacket()) return false;
+  n_wd_soft++;
+  MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: soft AGC/RX re-arm");
+  resetAGC();
+  return true;
+#else
   const bool busy = isChipBusy();
   if (!busy && isReceivingPacket()) return false;
 
@@ -276,6 +287,7 @@ bool RadioLibWrapper::recoverRadio(bool hard) {
   MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: soft AGC/RX re-arm");
   resetAGC();
   return true;
+#endif
 }
 
 void RadioLibWrapper::rxPsWatchdogCheck() {
