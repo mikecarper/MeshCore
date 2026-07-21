@@ -229,6 +229,35 @@ set flood.filter.3 ota 2-4
 set flood.filter any 12+
 ```
 
+### High-traffic mesh example
+
+This preset limits request and group-data propagation early while allowing the
+login-capable response, anonymous-request, and path types to travel farther:
+
+```text
+set flood.filter req 3+
+set flood.filter response 9+
+set flood.filter 0x06 3+
+set flood.filter 0x07 9+
+set flood.filter path 9+
+get flood.filter
+```
+
+| Rule | Stops retransmission when received with |
+| --- | --- |
+| `req 3+` | 3 or more path entries |
+| `response 9+` | 9 or more path entries |
+| `0x06 3+` (`grp_data`) | 3 or more path entries |
+| `0x07 9+` (`anon_req`) | 9 or more path entries |
+| `path 9+` | 9 or more path entries |
+
+On a new table, the factory OTA rule occupies slot 1, so these unnumbered
+commands normally fill slots 2 through 6. Existing tables may choose different
+free slots. The `response`, `anon_req`, and `path` thresholds are above their
+protected `0-6` range, so all five rules take effect at the thresholds shown.
+These rules affect only retransmission by the repeater; local reception and
+logging remain unchanged.
+
 Accepted payload names are:
 
 | Value | Short name | Full name |
