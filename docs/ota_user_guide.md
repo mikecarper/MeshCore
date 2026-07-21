@@ -4,15 +4,26 @@ This guide is for **node operators**: how to update your MeshCore device's firmw
 plain language. No cables, no programmer — your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
 
-LoRa OTA is present only in standard, non-logging Keymind repeater, room-server, and sensor firmware. MQTT
-bridge, logging, and roles without `tempradio` support exclude it.
+LoRa OTA is present only in supported Keymind repeater build artifacts whose filename contains `-ota-`.
+Use an `-ota-` build on the source, receiver, and every intermediate repeater. MQTT bridge, logging,
+untagged, companion, room-server, sensor, and roles without `tempradio` support exclude LoRa OTA.
 OTA radio traffic is accepted, generated, and relayed only while `tempradio` is actually running on that node.
 Every source, receiver, and intermediate repeater must therefore have an overlapping temporary-radio window.
 
-> **Is my node supported?** LoRa OTA firmware is available for supported **ESP32** boards and nRF52
-> repeater targets. Every nRF52 installation requires the OTAFIX bootloader built for that exact board;
-> having an OTA-capable application image alone is not enough. Check the bootloader release for an exact
-> board match before attempting an update.
+The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
+North American node currently configured for 909.950 MHz, run this on every participating node:
+
+```text
+tempradio 909.950,250,5,5,120
+```
+
+Use the node's current permitted regional frequency in place of `909.950` when necessary.
+
+> **Is my node supported?** Choose a supported repeater artifact carrying the `-ota-` filename stamp.
+> LoRa OTA firmware is available for supported **ESP32** boards and nRF52 repeater targets. Every nRF52
+> installation also requires the OTAFIX bootloader built for that exact board; having an OTA-capable
+> application image alone is not enough. Check the bootloader release for an exact board match before
+> attempting an update.
 
 The following nRF52 repeater targets gained firmware-side LoRa OTA support in this release without losing
 their normal external-sensor support:

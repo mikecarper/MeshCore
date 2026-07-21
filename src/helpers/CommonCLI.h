@@ -397,6 +397,9 @@ public:
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
+#if defined(ENABLE_OTA)
+  virtual bool isTempRadioActive() const { return false; }
+#endif
   virtual void addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
                                        uint32_t start_time, uint32_t end_time, char* reply) {
     (void)temporary;

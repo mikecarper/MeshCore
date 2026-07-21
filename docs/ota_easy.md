@@ -16,7 +16,7 @@ delta built against its exact running firmware.
 | Setting | Value |
 | --- | --- |
 | Center frequency | 909.950 MHz |
-| Bandwidth | 125 kHz |
+| Bandwidth | 250 kHz |
 | Spreading factor | SF5 |
 | Coding rate used in this guide | CR5 |
 | Example window | 120 minutes |
@@ -24,7 +24,7 @@ delta built against its exact running firmware.
 The copy/paste command is:
 
 ```text
-tempradio 909.950,125,5,5,120
+tempradio 909.950,250,5,5,120
 ```
 
 The fourth value is the transmit coding rate. This guide uses CR5, but the participating nodes' coding rates
@@ -38,8 +38,9 @@ location and change it when necessary.
 
 Both paths require:
 
-- Standard, non-logging Keymind OTA firmware on the source, destination, and intermediate nodes. Logging
-  and MQTT builds do not include LoRa OTA; use WiFi or USB to update those.
+- An OTA-enabled repeater build whose artifact filename contains `-ota-` on the source, destination, and
+  every intermediate node. The `-ota-` stamp confirms that LoRa OTA is compiled into the build. Logging,
+  MQTT, and untagged builds cannot perform LoRa OTA; use WiFi or USB to replace them first.
 - A source node connected to the computer by USB serial.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
 
@@ -65,7 +66,7 @@ Put the application firmware in a working directory, then build a full `.mota` c
 
 ```bash
 mkdir -p ./motas
-motatool build --fw ./Heltec_v3_repeater-v1.16.05.bin --out-dir ./motas
+motatool build --fw ./Heltec_v3_repeater-ota-v1.16.05.bin --out-dir ./motas
 motatool verify ./motas/*.mota
 ```
 
@@ -164,7 +165,7 @@ check fails.
 On the source node, destination node, and every intermediate repeater, run:
 
 ```text
-tempradio 909.950,125,5,5,120
+tempradio 909.950,250,5,5,120
 ```
 
 All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
@@ -241,7 +242,9 @@ ota status
 ## Quick troubleshooting
 
 - **Nothing appears in `ota ls`:** confirm that `motatool serve` is still running and every required node
-  has an active `tempradio 909.950,125,5,5,120` window.
+  has an active `tempradio 909.950,250,5,5,120` window.
+- **The CLI says LoRa OTA is not included:** that firmware does not contain the LoRa OTA feature.
+  `tempradio` cannot enable it; install a supported `-ota-` repeater build over WiFi or USB first.
 - **The update is marked `[other hw]`:** it is for a different board or firmware role. Do not install it.
 - **An nRF52 node does not list a full update:** this is intentional. nRF52 accepts only an in-place delta.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader

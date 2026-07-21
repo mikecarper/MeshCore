@@ -1738,6 +1738,12 @@ get_firmware_filename() {
     filename_infix="logging"
   fi
 
+  # Make LoRa-OTA artifacts as obvious as logging artifacts without changing
+  # the PlatformIO environment name or the stable MOTA target identity.
+  if [ -z "$filename_infix" ] && is_lora_ota_build "$env_name"; then
+    filename_infix="ota"
+  fi
+
   if [ -n "$filename_infix" ]; then
     echo "${env_name}-${filename_infix}-${firmware_version_string}"
   else

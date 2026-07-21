@@ -67,6 +67,34 @@ static uint32_t _atoi(const char* sp) {
   return n;
 }
 
+#if defined(ENABLE_OTA)
+static bool commandTokenMatches(const char* command, const char* token) {
+  const size_t len = strlen(token);
+  return strncmp(command, token, len) == 0 && (command[len] == 0 || command[len] == ' ');
+}
+
+static bool otaCommandNeedsTempRadio(const char* command) {
+  const char* action = command + 3;
+  while (*action == ' ') action++;
+
+  return commandTokenMatches(action, "neighbors")
+      || commandTokenMatches(action, "nbrs")
+      || commandTokenMatches(action, "updates")
+      || commandTokenMatches(action, "ls")
+      || commandTokenMatches(action, "n")
+      || commandTokenMatches(action, "pull")
+      || commandTokenMatches(action, "get")
+      || commandTokenMatches(action, "download")
+      || commandTokenMatches(action, "announce")
+      || commandTokenMatches(action, "adv")
+      || commandTokenMatches(action, "folder on")
+      || commandTokenMatches(action, "folder off")
+      || commandTokenMatches(action, "fold on")
+      || commandTokenMatches(action, "fold off")
+      || commandTokenMatches(action, "dev announce");
+}
+#endif
+
 static bool parseRecentRepeaterGet(const char* config, int& page) {
   if (strncmp(config, "recent.repeater", 15) != 0) {
     return false;
@@ -1945,20 +1973,27 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       sprintf(reply, "%s", _board->getManufacturerName());
 #if defined(ENABLE_OTA)
     } else if (memcmp(command, "ota", 3) == 0 && (command[3] == 0 || command[3] == ' ')) {
-      mesh::ota::handle_ota_command(command, reply, *_board);
-      if (mesh::ota::ota_ctx().config_dirty) {        // a policy/key changed via the CLI -> persist it
-        mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
-        _prefs->ota_autofetch = c.manager.autofetch();
-        _prefs->ota_checkpoint_blocks = c.manager.checkpoint_blocks();
-        _prefs->ota_advert_interval = c.manager.advert_mins();
-        _prefs->ota_max_hops = c.manager.max_hops();
-        _prefs->ota_autoinstall = c.autoinstall;
-        _prefs->ota_signer_count = c.allow.count();
-        for (uint8_t i = 0; i < c.allow.count() && i < MAX_OTA_SIGNERS; i++)
-          memcpy(_prefs->ota_signers[i], c.allow.get(i), 32);
-        _callbacks->savePrefs();
-        c.config_dirty = false;
+      if (!_callbacks->isTempRadioActive() && otaCommandNeedsTempRadio(command)) {
+        strcpy(reply, "LoRa OTA needs temp radio on every node. Run: tempradio 909.950,250,5,5,120");
+      } else {
+        mesh::ota::handle_ota_command(command, reply, *_board);
+        if (mesh::ota::ota_ctx().config_dirty) {        // a policy/key changed via the CLI -> persist it
+          mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
+          _prefs->ota_autofetch = c.manager.autofetch();
+          _prefs->ota_checkpoint_blocks = c.manager.checkpoint_blocks();
+          _prefs->ota_advert_interval = c.manager.advert_mins();
+          _prefs->ota_max_hops = c.manager.max_hops();
+          _prefs->ota_autoinstall = c.autoinstall;
+          _prefs->ota_signer_count = c.allow.count();
+          for (uint8_t i = 0; i < c.allow.count() && i < MAX_OTA_SIGNERS; i++)
+            memcpy(_prefs->ota_signers[i], c.allow.get(i), 32);
+          _callbacks->savePrefs();
+          c.config_dirty = false;
+        }
       }
+#else
+    } else if (memcmp(command, "ota", 3) == 0 && (command[3] == 0 || command[3] == ' ')) {
+      strcpy(reply, "LoRa OTA is not included in this build; tempradio cannot enable it. Use an OTA-enabled repeater firmware");
 #endif
     } else if (memcmp(command, "sensor get ", 11) == 0) {
       const char* key = command + 11;
