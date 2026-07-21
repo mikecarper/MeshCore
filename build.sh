@@ -90,7 +90,7 @@ $ bash build.sh
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
 
-Build all firmwares in three profiles, adding MQTT observer firmware with logging off after the logging-off and logging-on passes:
+Build all firmwares in three mutually exclusive profiles: standard, USB logging, and MQTT observer (USB logging off):
 $ bash build.sh build-firmwares-logging-matrix
 
 Build all companion firmwares
@@ -1509,6 +1509,16 @@ apply_debug_overrides() {
   esac
 }
 
+disable_usb_logging_for_mqtt() {
+  local env_name=$1
+
+  if is_mqtt_bridge_target "$env_name" || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+    # MQTT observers already export packet traffic through the bridge. Keep the
+    # serial console available for the CLI without compiling a second logging path.
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
+  fi
+}
+
 is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
@@ -1526,10 +1536,11 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # PlatformIO environment names are not consistently cased (for example, several ESP32 targets use
-  # `_Repeater`). Match roles case-insensitively while keeping OTA limited to unattended deployments.
+  # LoRa firmware distribution is a repeater-only feature. MQTT observers use
+  # their WiFi manifest updater; companion, room-server, and sensor roles do not
+  # advertise or accept firmware over the mesh.
   case "$env_name_lc" in
-    *repeater*|*repeatr*|*room_server*|*room_svr*|*sensor*) return 0 ;;
+    *repeater*|*repeatr*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -1720,7 +1731,10 @@ get_firmware_filename() {
   local firmware_version_string=$2
   local filename_infix=$FIRMWARE_FILENAME_INFIX
 
-  if [ -z "$filename_infix" ] && [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ]; then
+  if [ -z "$filename_infix" ] \
+      && [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
+      && [ "${MQTT_BRIDGE_OVERRIDE,,}" != "on" ] \
+      && ! is_mqtt_bridge_target "$env_name"; then
     filename_infix="logging"
   fi
 
@@ -1823,6 +1837,7 @@ build_firmware() {
   disable_debug_flags
   apply_debug_overrides
   apply_mqtt_bridge_override
+  disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
@@ -2282,8 +2297,15 @@ main() {
     if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
       echo "Skipping debug and MQTT prompts; this action builds all three profiles automatically."
     else
-      prompt_for_debug_build_settings
       prompt_for_mqtt_bridge_build_setting
+      if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+        MESHDEBUG_OVERRIDE="off"
+        PACKET_LOGGING_OVERRIDE="off"
+        MQTT_DEBUG_OVERRIDE="off"
+        echo "MQTT bridge selected; USB debug and packet logging are disabled."
+      else
+        prompt_for_debug_build_settings
+      fi
     fi
     prompt_for_radio_build_settings
     prompt_for_firmware_profile_settings
