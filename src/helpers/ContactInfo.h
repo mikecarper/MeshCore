@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 #include <Mesh.h>
+#if defined(NRF52_PLATFORM)
+#include "PersistentStoreFormat.h"
+#endif
 
 #define OUT_PATH_UNKNOWN   0xFF
 
@@ -17,6 +20,13 @@ struct ContactInfo {
   uint32_t lastmod;  // by OUR clock
   int32_t gps_lat, gps_lon;    // 6 dec places
   uint32_t sync_since;
+
+  // Runtime-only position in the paged companion contact store.  It is not
+  // part of the on-disk record; the record's page/slot supplies it on load.
+  // Mutable keeps persistence bookkeeping out of contact protocol semantics.
+#if defined(NRF52_PLATFORM)
+  mutable uint16_t storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
 
   const uint8_t* getSharedSecret(const mesh::LocalIdentity& self_id) const {
     if (!shared_secret_valid) {

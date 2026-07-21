@@ -92,6 +92,31 @@ void RadioLibWrapper::endReconfigure(bool resume_rx) {
   if (resume_rx) startRecv();
 }
 
+bool RadioLibWrapper::restoreAfterDeepInit() {
+  if (!radioDeepInit()) return false;
+
+  _rx_ps_armed = false;
+  state = STATE_IDLE;
+  _radio->setPacketReceivedAction(setFlag);
+
+  bool restored;
+  if (_params_valid) {
+    restored = applyParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr);
+  } else {
+    _preamble_sf = getSpreadingFactor();
+    restored = _radio->setPreambleLength(preambleLengthForSF(_preamble_sf))
+        == RADIOLIB_ERR_NONE;
+  }
+  if (_dbm_valid) {
+    restored = _radio->setOutputPower(_cur_dbm) == RADIOLIB_ERR_NONE && restored;
+  }
+  if (_rx_boosted_gain_valid) {
+    restored = applyRxBoostedGainMode(_cur_rx_boosted_gain) && restored;
+  }
+  recalibrateNoiseFloor();
+  return restored;
+}
+
 mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
                                                           const uint32_t* rx_ps_timings) {
   if (rx_ps_timings != NULL && !supportsRxPowerSaving()) {
@@ -119,19 +144,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     bool restored = had_previous_params
       && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
 
-    if (!restored && radioDeepInit()) {
-      _rx_ps_armed = false;
-      state = STATE_IDLE;
-      _radio->setPacketReceivedAction(setFlag);
-      if (had_previous_params) {
-        restored = applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
-      } else {
-        _preamble_sf = getSpreadingFactor();
-        restored = _radio->setPreambleLength(preambleLengthForSF(_preamble_sf)) == RADIOLIB_ERR_NONE;
-      }
-      if (_dbm_valid) _radio->setOutputPower(_cur_dbm);
-      if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
-    }
+    if (!restored) restored = restoreAfterDeepInit();
 
     if (!restored) {
       MESH_DEBUG_PRINTLN("RadioLibWrapper: failed to restore radio parameters after apply failure");
@@ -234,6 +247,37 @@ void RadioLibWrapper::resetAGC() {
   _nf_calib_deadline = 0;  // starts after reset recovery reaches RX
 }
 
+bool RadioLibWrapper::recoverRadio(bool hard) {
+  const uint8_t base_state = state & ~STATE_INT_READY;
+  if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT) return false;
+
+  const bool busy = isChipBusy();
+  if (!busy && isReceivingPacket()) return false;
+
+  if (hard) {
+    n_wd_hard++;
+    if (supportsRadioDeepInit()) {
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: hard radio reset");
+      return restoreAfterDeepInit();
+    }
+    // LR11xx and integrated radios do not all expose a safe board-level reset
+    // here. Fall back to their proven AGC/RX re-arm instead of reporting a
+    // successful no-op. A stuck BUSY pin still reports failure and is retried.
+    if (busy) return false;
+    MESH_DEBUG_PRINTLN("RadioLibWrapper: hard reset unavailable; using RX re-arm");
+    resetAGC();
+    return true;
+  }
+
+  // Never issue a warm-sleep/standby command while BUSY is stuck high.  The
+  // hard stage can still escape that condition through the hardware reset pin.
+  if (busy) return false;
+  n_wd_soft++;
+  MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: soft AGC/RX re-arm");
+  resetAGC();
+  return true;
+}
+
 void RadioLibWrapper::rxPsWatchdogCheck() {
   // don't interfere mid-transmit or with a completed-but-unread packet
   // (a pending DIO1 event is itself proof the radio is alive; recvRaw() will
@@ -296,14 +340,7 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
     _wd_stage = 2;
     n_wd_hard++;
     MESH_DEBUG_PRINTLN("RadioLibWrapper: watchdog: still stuck, hard radio reset");
-    if (radioDeepInit()) {
-      _rx_ps_armed = false;   // chip is factory-fresh after NRST
-      state = STATE_IDLE;
-      _radio->setPacketReceivedAction(setFlag);
-      if (_params_valid) setParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr);
-      if (_dbm_valid) _radio->setOutputPower(_cur_dbm);
-      if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
-    }
+    restoreAfterDeepInit();
     state = STATE_IDLE;   // re-arm (rx powersaving settings are kept in members)
   }
 }

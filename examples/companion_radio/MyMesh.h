@@ -199,6 +199,7 @@ protected:
   // DataStoreHost methods
   bool onContactLoaded(const ContactInfo& contact) override { return addContact(contact); }
   bool getContactForSave(uint32_t idx, ContactInfo& contact) override { return getContactByIdx(idx, contact); }
+  ContactInfo* getContactForStore(uint32_t idx) override { return getContactPtrByIdx(idx); }
   bool onChannelLoaded(uint8_t channel_idx, const ChannelDetails& ch) override { return setChannel(channel_idx, ch); }
   bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) override { return getChannel(channel_idx, ch); }
 
@@ -252,6 +253,8 @@ private:
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
   void saveContacts();
+  void scheduleContactWrite(const ContactInfo& contact);
+  void scheduleContactWriteAfterRelease(const ContactInfo& contact);
 
   DataStore* _store;
   NodePrefs _prefs;

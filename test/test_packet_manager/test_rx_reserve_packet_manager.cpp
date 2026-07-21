@@ -11,6 +11,11 @@ class TestRadio : public mesh::Radio {
 public:
   int send_starts = 0;
   bool receiving = false;
+  bool in_recv_mode = true;
+  int soft_recoveries = 0;
+  int hard_recoveries = 0;
+  unsigned long last_irq = 0;
+  bool recovery_result = true;
 
   int recvRaw(uint8_t*, int) override { return 0; }
   uint32_t getEstAirtimeFor(int) override { return 1; }
@@ -18,8 +23,17 @@ public:
   bool startSendRaw(const uint8_t*, int) override { send_starts++; return true; }
   bool isSendComplete() override { return false; }
   void onSendFinished() override { }
-  bool isInRecvMode() const override { return true; }
+  bool isInRecvMode() const override { return in_recv_mode; }
   bool isReceiving() override { return receiving; }
+  unsigned long getLastRadioInterruptMillis() const override { return last_irq; }
+  bool recoverRadio(bool hard) override {
+    if (hard) {
+      hard_recoveries++;
+    } else {
+      soft_recoveries++;
+    }
+    return recovery_result;
+  }
 };
 
 class TestDispatcher : public mesh::Dispatcher {
@@ -382,6 +396,43 @@ TEST(Dispatcher, QueueWakeDelayIncludesSchedulesAndChannelBackoff) {
   clock.now = 800;
   radio.receiving = false;
   EXPECT_TRUE(dispatcher.queuedWorkDue());
+}
+
+TEST(Dispatcher, SilentRadioEscalatesFromSoftToHardRecovery) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  clock.now = 30UL * 60UL * 1000UL;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.soft_recoveries);
+  EXPECT_EQ(0, radio.hard_recoveries);
+
+  clock.now = 12UL * 60UL * 60UL * 1000UL;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.soft_recoveries);
+  EXPECT_EQ(1, radio.hard_recoveries);
+}
+
+TEST(Dispatcher, RadioOutsideReceiveModeEscalatesOnSecondAttempt) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  TestRadio radio;
+  radio.in_recv_mode = false;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  clock.now = 8001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.soft_recoveries);
+  EXPECT_EQ(0, radio.hard_recoveries);
+
+  clock.now = 16002;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.soft_recoveries);
+  EXPECT_EQ(1, radio.hard_recoveries);
 }
 
 TEST(RxReservePacketManager, RejectedOutboundRemainsOwnedByCaller) {

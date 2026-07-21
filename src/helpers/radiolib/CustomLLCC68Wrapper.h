@@ -40,6 +40,12 @@ public:
   void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
 
 protected:
+  bool radioDeepInit() override {
+    return ((CustomLLCC68 *)_radio)->std_init();
+  }
+  bool supportsRadioDeepInit() const override { return true; }
+
+protected:
   bool applyRxBoostedGainMode(bool en) override {
     return ((CustomLLCC68 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }

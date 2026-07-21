@@ -105,6 +105,9 @@ ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
 
 void BaseChatMesh::populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp) {
   memset(&ci, 0, sizeof(ci));
+#if defined(NRF52_PLATFORM)
+  ci.storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
   ci.id = id;
   ci.out_path_len = OUT_PATH_UNKNOWN;
   StrHelper::strncpy(ci.name, parser.getName(), sizeof(ci.name));
@@ -148,6 +151,9 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
 
   if (from && from->type == ADV_TYPE_NONE) {   // already in contacts, but from a temporary ANON_REQ ?
     memset(from, 0, sizeof(*from));  // clear the anon/temp slot
+#if defined(NRF52_PLATFORM)
+    from->storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
     from = NULL;  // do normal 'add' flow
   }
 
@@ -182,6 +188,7 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     populateContactFromAdvert(*from, id, parser, timestamp);
     from->sync_since = 0;
     from->shared_secret_valid = false;
+    is_new = true;
   }
 
   // update

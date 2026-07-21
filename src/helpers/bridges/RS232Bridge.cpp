@@ -1,4 +1,5 @@
 #include "RS232Bridge.h"
+#include "RS232UartUtils.h"
 
 #include <HardwareSerial.h>
 
@@ -17,7 +18,11 @@ void RS232Bridge::begin() {
   ((HardwareSerial *)_serial)->setPins(WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX);
 #elif defined(NRF52_PLATFORM)
   // Tested with RAK_4631 and T114
-  ((Uart *)_serial)->setPins(WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX);
+  // The Adafruit Uart object may already be active on its variant defaults.
+  // Stop it before changing pins or the EasyDMA instance can retain the old
+  // pin selection and silently receive nothing.
+  mesh::bridge::prepareNrfUart(*((Uart *)_serial),
+                               WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX);
 #elif defined(RP2040_PLATFORM)
   ((SerialUART *)_serial)->setRX(WITH_RS232_BRIDGE_RX);
   ((SerialUART *)_serial)->setTX(WITH_RS232_BRIDGE_TX);

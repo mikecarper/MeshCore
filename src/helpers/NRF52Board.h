@@ -27,6 +27,8 @@ struct PowerMgtConfig {
 class NRF52Board : public mesh::MainBoard {
 #ifdef NRF52_POWER_MANAGEMENT
   void initPowerMgr();
+  void armVbusWake();
+  bool power_mgr_initialized;
 #endif
 
 protected:
@@ -45,7 +47,11 @@ protected:
 #endif
 
 public:
-  NRF52Board(char *otaname) : ota_name(otaname) {}
+  NRF52Board(char *otaname) : ota_name(otaname)
+#ifdef NRF52_POWER_MANAGEMENT
+      , power_mgr_initialized(false)
+#endif
+      {}
   virtual void begin();
   // Feed the hardware main-loop watchdog. The first call starts it, so normal
   // setup (including filesystem mount and radio initialization) is not timed.
@@ -71,6 +77,8 @@ public:
   uint8_t getShutdownReason() const override { return shutdown_reason; }
   const char* getResetReasonString(uint32_t reason) override;
   const char* getShutdownReasonString(uint8_t reason) override;
+  bool isPowerManagementInitialized() const override { return power_mgr_initialized; }
+  bool supportsVoltageWake() const override { return true; }
 #endif
 };
 

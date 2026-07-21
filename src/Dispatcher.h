@@ -4,6 +4,7 @@
 #include <Identity.h>
 #include <Packet.h>
 #include <Utils.h>
+#include <helpers/RadioLivenessTracker.h>
 #include <string.h>
 
 namespace mesh {
@@ -77,6 +78,17 @@ public:
 
   virtual void idle() { }
   virtual void startRecv() { }
+
+  // Recover a radio whose MCU driver is still running but whose RF state has
+  // stopped making progress.  hard=false is a safe receive/AGC re-arm;
+  // hard=true may reset only the radio peripheral.  The default remains useful
+  // for simple radios that do not expose a dedicated reset.
+  virtual bool recoverRadio(bool hard) {
+    (void)hard;
+    idle();
+    startRecv();
+    return true;
+  }
 
   virtual int getNoiseFloor() const { return 0; }
 
@@ -210,6 +222,8 @@ class Dispatcher {
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long last_watchdog_recovery;
   unsigned long last_radio_active_ms;   // updated on any TX or RX event; used by watchdog
+  unsigned long last_observed_radio_irq;
+  RadioLivenessTracker radio_liveness;
   uint16_t outbound_restore_preamble_len;
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
@@ -217,6 +231,7 @@ class Dispatcher {
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
   bool  prev_isrecv_mode;
+  bool  nonrx_soft_recovery_attempted;
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
   unsigned long tx_budget_ms;
@@ -252,6 +267,8 @@ protected:
     duty_cycle_window_ms = 3600000;
     last_watchdog_recovery = 0;
     last_radio_active_ms = 0;
+    last_observed_radio_irq = 0;
+    nonrx_soft_recovery_attempted = false;
   }
 
   virtual DispatcherAction onRecvPacket(Packet* pkt) = 0;

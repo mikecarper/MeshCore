@@ -310,6 +310,16 @@ void setup() {
     if (!QSPIFlash.begin()) {
       // debug output might not be available at this point, might be too early. maybe should fall back to InternalFS here?
       MESH_DEBUG_PRINTLN("CustomLFS_QSPIFlash: failed to initialize");
+#if defined(NRF52_PLATFORM)
+      // A failed nrfx QSPI init can leave its IRQ pending/enabled.  That IRQ
+      // storm starves BLE and the main loop even though this build can fall
+      // back to internal storage.  Fully release the peripheral on failure.
+      NVIC_DisableIRQ(QSPI_IRQn);
+      NVIC_ClearPendingIRQ(QSPI_IRQn);
+      NRF_QSPI->TASKS_DEACTIVATE = 1;
+      NRF_QSPI->ENABLE = QSPI_ENABLE_ENABLE_Disabled;
+#endif
+      store.disableSecondaryFS();
     } else {
       MESH_DEBUG_PRINTLN("CustomLFS_QSPIFlash: initialized successfully");
     }

@@ -36,6 +36,7 @@ void SerialBLEInterface::onConnect(uint16_t connection_handle) {
   if (instance) {
     instance->_conn_handle = connection_handle;
     instance->_isDeviceConnected = false;
+    instance->_security_timer.start(millis());
     instance->clearBuffers();
   }
 }
@@ -46,6 +47,7 @@ void SerialBLEInterface::onDisconnect(uint16_t connection_handle, uint8_t reason
     if (instance->_conn_handle == connection_handle) {
       instance->_conn_handle = BLE_CONN_HANDLE_INVALID;
       instance->_isDeviceConnected = false;
+      instance->_security_timer.cancel();
       instance->clearBuffers();
     }
   }
@@ -59,6 +61,7 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
       if (conn == nullptr || !conn->secured()) {
         BLE_DEBUG_PRINTLN("SerialBLEInterface: security update did not secure the link");
         instance->_isDeviceConnected = false;
+        instance->_security_timer.cancel();
         if (conn != nullptr && conn->bonded()) {
           instance->removeStoredBondForPeer("unsecured link");
         }
@@ -67,6 +70,7 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
       }
 
       instance->_isDeviceConnected = true;
+      instance->_security_timer.cancel();
       
       // Connection interval units: 1.25ms, supervision timeout units: 10ms
       // Apple: "The product will not read or use the parameters in the Peripheral Preferred Connection Parameters characteristic."
@@ -113,6 +117,7 @@ void SerialBLEInterface::onPairingComplete(uint16_t connection_handle, uint8_t a
           instance->removeStoredBondForPeer("pairing failure");
         }
         instance->_isDeviceConnected = false;
+        instance->_security_timer.cancel();
         instance->disconnect();
       }
     } else {
@@ -140,6 +145,7 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
         instance->removeStoredBondForPeer("failed bond encryption");
       }
       instance->_isDeviceConnected = false;
+      instance->_security_timer.cancel();
       sd_ble_gap_disconnect(conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     }
   } else if (evt->header.evt_id == BLE_GAP_EVT_DISCONNECTED) {
@@ -335,6 +341,7 @@ void SerialBLEInterface::disable() {
   Bluefruit.Advertising.restartOnDisconnect(false);
   Bluefruit.Advertising.stop();
   disconnect();
+  _security_timer.cancel();
   _last_health_check = 0;
 }
 
@@ -408,6 +415,17 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   // Advertising watchdog: periodically check if advertising is running, restart if not
   // Only run when truly disconnected (no connection handle), not during connection establishment
   unsigned long now = millis();
+  if (_isEnabled && _conn_handle != BLE_CONN_HANDLE_INVALID
+      && _security_timer.expired(now)) {
+    // A client may open a link and never finish PIN/bond negotiation.  That
+    // otherwise suppresses advertising forever because a connection handle
+    // remains live.  Disconnect only: inactivity is not evidence of a stale
+    // bond, so do not erase anything here.
+    BLE_DEBUG_PRINTLN("SerialBLEInterface: security setup timed out after %lu ms",
+                      (unsigned long)BLE_SECURITY_SESSION_TIMEOUT_MS);
+    _security_timer.cancel();
+    disconnect();
+  }
   if (_isEnabled && !isConnected() && _conn_handle == BLE_CONN_HANDLE_INVALID) {
     if (now - _last_health_check >= BLE_HEALTH_CHECK_INTERVAL) {
       _last_health_check = now;

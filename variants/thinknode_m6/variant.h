@@ -102,7 +102,9 @@
 #define PIN_GPS_RX              (2)
 #define PIN_GPS_TX              (3)
 #define PIN_GPS_EN              (6)    // EN
-#define PIN_GPS_RESET           (29)
+// The L76K REINIT pad must float during normal operation.  Driving GPIO29 as
+// a reset line leaves some M6 units unable to acquire or retain a fix.
+#define GPS_RESET               (-1)
 #define PIN_GPS_STANDBY         (30)   // STANDBY
 #define PIN_GPS_PPS             (31)
 #define GPS_BAUD_RATE           9600

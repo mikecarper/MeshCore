@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "SecuritySessionTimer.h"
 #include <bluefruit.h>
 
 #ifndef BLE_TX_POWER
@@ -18,6 +19,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   ble_gap_addr_t _peer_address = {};
   bool _peer_address_valid;
   bool _bond_removed_for_connection;
+  SecuritySessionTimer _security_timer;
 
   struct Frame {
     uint8_t len;

@@ -146,7 +146,10 @@ static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 1;
 #define DIRECT_SEND_PERHOP_FACTOR       6.0f
 #define DIRECT_SEND_PERHOP_EXTRA_MILLIS 250
 #define LAZY_CONTACTS_WRITE_DELAY       5000
+#define CONTACT_PAGE_WRITE_GAP          100
 #define EXPECTED_ACK_RETRY_RECHECK_MILLIS 1000
+
+static bool save_filter(const ContactInfo& c);
 
 #ifndef DEFAULT_MULTI_ACKS
 #define DEFAULT_MULTI_ACKS 0
@@ -507,6 +510,8 @@ uint8_t MyMesh::getAutoAddMaxHops() const {
 }
 
 void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
+  ContactInfo* contact = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
+  if (contact) scheduleContactWriteAfterRelease(*contact);
   _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
   if (_serial->isConnected()) {
     out_frame[0] = PUSH_CODE_CONTACT_DELETED;
@@ -558,7 +563,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
     p->path_len = mesh::Packet::copyPath(p->path, path, path_len);
   }
 
-  if (!is_new) dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY); // only schedule lazy write for contacts that are in contacts[]
+  ContactInfo* stored = lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE);
+  if (stored == &contact) scheduleContactWrite(contact);
   updateGpsTelemetryPolicy();
 }
 
@@ -581,7 +587,7 @@ void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
   _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE); // NOTE: app may not be connected
 
-  dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  scheduleContactWrite(contact);
 }
 
 void MyMesh::clearExpectedAck(AckTableEntry& entry, bool cancel_retries) {
@@ -785,6 +791,8 @@ bool MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pk
 void MyMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                            const char *text) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
+  // BaseChatMesh updates lastmod immediately before this callback.
+  scheduleContactWrite(from);
   queueMessage(from, TXT_TYPE_PLAIN, pkt, sender_timestamp, NULL, 0, text);
 }
 
@@ -798,7 +806,7 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
                                  const uint8_t *sender_prefix, const char *text) {
   markConnectionActive(from);
   // from.sync_since change needs to be persisted
-  dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  scheduleContactWrite(from);
   queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text);
 }
 
@@ -1289,6 +1297,9 @@ void MyMesh::begin(bool has_display) {
 
   resetContacts();
   _store->loadContacts(this);
+  if (_store->hasPendingContactWrites()) {
+    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  }
   updateGpsTelemetryPolicy();
   bootstrapRTCfromContacts();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
@@ -2238,7 +2249,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (recipient) {
       recipient->out_path_len = OUT_PATH_UNKNOWN;
       // recipient->lastmod = ??   shouldn't be needed, app already has this version of contact
-      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      scheduleContactWrite(*recipient);
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
@@ -2250,7 +2261,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (recipient) {
       updateContactFromFrame(*recipient, last_mod, cmd_frame, len);
       recipient->lastmod = last_mod;
-      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+      scheduleContactWrite(*recipient);
       updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
@@ -2259,7 +2270,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       contact.lastmod = last_mod;
       contact.sync_since = 0;
       if (addContact(contact)) {
-        dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+        ContactInfo* added = lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE);
+        if (added) scheduleContactWrite(*added);
         updateGpsTelemetryPolicy();
         writeOKFrame();
       } else {
@@ -2269,9 +2281,11 @@ void MyMesh::handleCmdFrame(size_t len) {
   } else if (cmd_frame[0] == CMD_REMOVE_CONTACT && len >= 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
+    ContactInfo removed;
+    if (recipient) removed = *recipient;
     if (recipient && removeContact(*recipient)) {
+      scheduleContactWriteAfterRelease(removed);
       _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE);
-      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
       updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
@@ -2469,8 +2483,14 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_REBOOT && len >= 7 && memcmp(&cmd_frame[1], "reboot", 6) == 0) {
-    if (dirty_contacts_expiry) { // is there are pending dirty contacts write needed?
-      saveContacts();
+    // Non-nRF stores use the legacy monolithic file and therefore do not
+    // report dirty pages.  The lazy-write timer is still proof that RAM holds
+    // newer contact data which must be persisted before rebooting.
+    if (dirty_contacts_expiry || _store->hasPendingContactWrites()) {
+      if (!_store->flushContactWrites(this, save_filter)) {
+        writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+        return;
+      }
     }
     board.reboot();
   } else if (cmd_frame[0] == CMD_GET_BATT_AND_STORAGE) {
@@ -2559,6 +2579,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     ContactInfo anon;
     if (recipient == NULL) { // FIRMWARE_VER_CODE 13+,  allow non-contact requests
       memset(&anon, 0, sizeof(anon));
+#if defined(NRF52_PLATFORM)
+      anon.storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
       memcpy(anon.id.pub_key, pub_key, PUB_KEY_SIZE);
       anon.out_path_len = 0;   // default to zero-hop direct
       anon.type = ADV_TYPE_NONE;  // unknown
@@ -3060,7 +3083,21 @@ static bool save_filter(const ContactInfo& c) {
 }
 
 void MyMesh::saveContacts() {
-  _store->saveContacts(this, save_filter);
+  const bool success = _store->saveContacts(this, save_filter);
+  dirty_contacts_expiry = (!success || _store->hasPendingContactWrites())
+      ? futureMillis(1000) : 0;
+}
+
+void MyMesh::scheduleContactWrite(const ContactInfo& contact) {
+  if (_store->markContactDirty(contact)) {
+    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  }
+}
+
+void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
+  if (_store->releaseContact(contact)) {
+    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  }
 }
 
 void MyMesh::enterCLIRescue() {
@@ -3310,8 +3347,12 @@ void MyMesh::loop() {
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
-    saveContacts();
-    dirty_contacts_expiry = 0;
+    const bool success = _store->serviceContactWrites(this, save_filter);
+    if (!success || _store->hasPendingContactWrites()) {
+      dirty_contacts_expiry = futureMillis(success ? CONTACT_PAGE_WRITE_GAP : 1000);
+    } else {
+      dirty_contacts_expiry = 0;
+    }
   }
 
 #ifdef DISPLAY_CLASS

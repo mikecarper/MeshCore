@@ -96,6 +96,11 @@ protected:
 
   void resetContacts() {
     memset(contacts, 0, sizeof(contacts[0])*MAX_ANON_CONTACTS);   // set all to have type = ADV_TYPE_NONE(0)
+#if defined(NRF52_PLATFORM)
+    for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+      contacts[i].storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+    }
+#endif
     num_contacts = MAX_ANON_CONTACTS;  // seed the first contacts for anon requests
   }
   void populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp);
@@ -177,6 +182,9 @@ public:
   int getTotalContactSlots() const { return num_contacts; }
   int getNumContacts() const { return num_contacts - MAX_ANON_CONTACTS; }  // don't include the reserved slots at start
   bool getContactByIdx(uint32_t idx, ContactInfo& contact);
+  ContactInfo* getContactPtrByIdx(uint32_t idx) {
+    return idx < (uint32_t)num_contacts ? &contacts[idx] : NULL;
+  }
   ContactsIterator startContactsIterator();
   ChannelDetails* addChannel(const char* name, const char* psk_base64);
   bool getChannel(int idx, ChannelDetails& dest);

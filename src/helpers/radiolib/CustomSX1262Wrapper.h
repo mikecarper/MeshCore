@@ -91,6 +91,7 @@ protected:
     // via NRST - the only way out of a hard-locked chip (BUSY stuck high).
     return ((CustomSX1262 *)_radio)->std_init();
   }
+  bool supportsRadioDeepInit() const override { return true; }
 
   void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
 

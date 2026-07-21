@@ -1,5 +1,6 @@
 #if defined(NRF52_PLATFORM)
 #include "NRF52Board.h"
+#include "PowerManagementUtils.h"
 #include <target.h>
 
 #include <bluefruit.h>
@@ -104,6 +105,8 @@ static void __attribute__((constructor(101))) nrf52_early_reset_capture() {
 }
 
 void NRF52Board::initPowerMgr() {
+  if (power_mgr_initialized) return;
+
   // Copy early-captured register values
   reset_reason = g_nrf52_reset_reason;
   shutdown_reason = g_nrf52_shutdown_reason;
@@ -130,6 +133,7 @@ void NRF52Board::initPowerMgr() {
     MESH_DEBUG_PRINTLN("PWRMGT: Reset = %s (0x%lX)",
       getResetReasonString(reset_reason), (unsigned long)reset_reason);
   }
+  power_mgr_initialized = true;
 }
 
 const char* NRF52Board::getResetReasonString(uint32_t reason) {
@@ -154,6 +158,7 @@ const char* NRF52Board::getResetReasonString(uint32_t reason) {
 
 const char* NRF52Board::getShutdownReasonString(uint8_t reason) {
   switch (reason) {
+    case SHUTDOWN_REASON_NONE:         return "None";
     case SHUTDOWN_REASON_LOW_VOLTAGE:  return "Low Voltage";
     case SHUTDOWN_REASON_USER:         return "User Request";
     case SHUTDOWN_REASON_BOOT_PROTECT: return "Boot Protection";
@@ -164,15 +169,22 @@ const char* NRF52Board::getShutdownReasonString(uint8_t reason) {
 bool NRF52Board::checkBootVoltage(const PowerMgtConfig* config) {
   initPowerMgr();
 
-  // Read boot voltage
-  boot_voltage_mv = getBattMilliVolts();
+  if (config == nullptr) return true;
+
+  // Use the median of three readings.  A single unsettled ADC sample during a
+  // brownout must not put the device into a persistent SYSTEMOFF boot lock.
+  uint16_t samples[3];
+  for (uint8_t i = 0; i < 3; i++) {
+    samples[i] = getBattMilliVolts();
+    if (i != 2) delay(5);
+  }
+  boot_voltage_mv = mesh::power::medianVoltage(samples[0], samples[1], samples[2]);
   
   if (config->voltage_bootlock == 0) return true;  // Protection disabled
 
   // Skip check if externally powered
   if (isExternalPowered()) {
     MESH_DEBUG_PRINTLN("PWRMGT: Boot check skipped (external power)");
-    boot_voltage_mv = getBattMilliVolts();
     return true;
   }
 
@@ -181,7 +193,7 @@ bool NRF52Board::checkBootVoltage(const PowerMgtConfig* config) {
 
   // Only trigger shutdown if reading is valid (>1000mV) AND below threshold
   // This prevents spurious shutdowns on ADC glitches or uninitialized reads
-  if (boot_voltage_mv > 1000 && boot_voltage_mv < config->voltage_bootlock) {
+  if (mesh::power::shouldBootLock(boot_voltage_mv, config->voltage_bootlock, false)) {
     MESH_DEBUG_PRINTLN("PWRMGT: Boot voltage too low - entering protective shutdown");
 
     initiateShutdown(SHUTDOWN_REASON_BOOT_PROTECT);
@@ -230,6 +242,18 @@ void NRF52Board::enterSystemOff(uint8_t reason) {
 }
 
 void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t refsel) {
+  // USB power should always be able to recover a device from SYSTEMOFF, even
+  // if voltage comparator setup is unavailable or invalid.
+  armVbusWake();
+  if (!power_mgr_initialized || !supportsVoltageWake()) {
+    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake skipped (power manager not ready/unsupported)");
+    return;
+  }
+  if (ain_channel > 7 || refsel > 15) {
+    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake skipped (invalid AIN/ref)");
+    return;
+  }
+
   // LPCOMP is not managed by SoftDevice - direct register access required
   // Halt and disable before reconfiguration
   NRF_LPCOMP->TASKS_STOP = 1;
@@ -244,8 +268,9 @@ void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t refsel) {
   // Detect UP events (voltage rises above threshold for battery recovery)
   NRF_LPCOMP->ANADETECT = LPCOMP_ANADETECT_ANADETECT_Up;
 
-  // Enable 50mV hysteresis for noise immunity
-  NRF_LPCOMP->HYST = LPCOMP_HYST_HYST_Hyst50mV;
+  // Do not add comparator hysteresis here.  On divided battery inputs it can
+  // shift the effective wake point enough to strand a valid low-voltage cell.
+  NRF_LPCOMP->HYST = LPCOMP_HYST_HYST_NoHyst;
 
   // Clear stale events/interrupts before enabling wake
   NRF_LPCOMP->EVENTS_READY = 0;
@@ -276,7 +301,10 @@ void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t refsel) {
       ain_channel, ref_num);
   }
 
-  // Configure VBUS (USB power) wake alongside LPCOMP
+}
+
+void NRF52Board::armVbusWake() {
+  // Configure VBUS (USB power) wake alongside (or instead of) LPCOMP.
   uint8_t sd_enabled = 0;
   sd_softdevice_is_enabled(&sd_enabled);
   if (sd_enabled) {

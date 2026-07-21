@@ -39,4 +39,10 @@ public:
     return packetScoreInt(snr, sf, packet_len);
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1276 *)_radio)->spreadingFactor; }
+
+protected:
+  bool radioDeepInit() override {
+    return ((CustomSX1276 *)_radio)->std_init();
+  }
+  bool supportsRadioDeepInit() const override { return true; }
 };

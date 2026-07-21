@@ -80,11 +80,13 @@ protected:
   // full radio recovery: hardware reset (NRST) + re-init to boot defaults;
   // returns false if unsupported. Caller reapplies cached runtime params.
   virtual bool radioDeepInit() { return false; }
+  virtual bool supportsRadioDeepInit() const { return false; }
   virtual bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
   virtual bool applyRxBoostedGainMode(bool) { return false; }
   // 0 = reconfigure from idle, 1 = resume RX afterwards, 2 = currently busy.
   uint8_t beginReconfigure();
   void endReconfigure(bool resume_rx);
+  bool restoreAfterDeepInit();
   float packetScoreInt(float snr, int sf, int packet_len);
   virtual bool isReceivingPacket() =0;
   virtual void doResetAGC();
@@ -152,6 +154,7 @@ public:
   void resetAGC() override;
 
   void loop() override;
+  bool recoverRadio(bool hard) override;
 
   uint32_t getPacketsRecv() const { return n_recv; }
   uint32_t getPacketsRecvErrors() const override { return n_recv_errors; }

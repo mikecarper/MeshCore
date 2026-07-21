@@ -137,7 +137,8 @@ extern const int SCK;
 #define PIN_GPS_RX              (40)
 #define PIN_GPS_TX              (41)
 #define GPS_EN                  (34)
-#define PIN_GPS_RESET           (37)
+// GPIO37 powers the SX1262 on the M1; it is not connected to GPS reset.
+#define GPS_RESET               (-1)
 #define PIN_GPS_PPS             (36)
 #define PIN_GPS_STANDBY         (34)
 #define PIN_GPS_SWITCH          (33)
