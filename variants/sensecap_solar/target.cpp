@@ -2,6 +2,10 @@
 #include "target.h"
 #include <helpers/ArduinoHelpers.h>
 
+#if ENV_INCLUDE_GPS
+  #include <helpers/sensors/MicroNMEALocationProvider.h>
+#endif
+
 SenseCapSolarBoard board;
 
 RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, SPI);
@@ -10,7 +14,13 @@ WRAPPER_CLASS radio_driver(radio, board);
 
 VolatileRTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
+
+#if ENV_INCLUDE_GPS
+MicroNMEALocationProvider nmea(Serial1, &rtc_clock);
+EnvironmentSensorManager sensors(nmea);
+#else
 EnvironmentSensorManager sensors;
+#endif
 
 bool radio_init() {
     rtc_clock.begin(Wire);
@@ -22,4 +32,3 @@ mesh::LocalIdentity radio_new_identity() {
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
-
