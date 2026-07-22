@@ -5,6 +5,7 @@ SUPPORTED_PIO_ENVS=()
 declare -A PIO_ENV_PLATFORM_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
 declare -A PIO_ENV_OTA_BY_NAME=()
+declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
 PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
@@ -31,7 +32,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|room_server_lora_ota_no_external_sensors|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -49,6 +50,7 @@ TAG_PREFIX_REPEATER="repeater"
 TAG_PREFIX_SENSOR="sensor"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
 OUTPUT_DIR="out"
+ESP32_LORA_OTA_APP_LIMIT=$((0x150000 - 0x10000))
 FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
@@ -183,6 +185,35 @@ for section, options in data:
         print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}\t{1 if ota_enabled and not ota_disabled else 0}")
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
+
+    # Keep each ordinary repeater environment feature-rich (including external
+    # sensors), and expose a separately named no-external-sensors OTA build for
+    # every ESP32/nRF52 repeater role. These two platforms have a complete apply
+    # path; RP2040 and STM32 do not yet have the required bootloader/apply path.
+    local env_name ota_env
+    local -a base_envs=("${SUPPORTED_PIO_ENVS[@]}")
+    for env_name in "${base_envs[@]}"; do
+      case "${PIO_ENV_PLATFORM_BY_NAME[$env_name]}" in
+        ESP32_PLATFORM|NRF52_PLATFORM) ;;
+        *) continue ;;
+      esac
+      # Generate one lean LoRa-OTA image for each board's standalone repeater
+      # role. Observer, Ethernet, and bridge profiles are separate roles; any
+      # purpose-built OTA versions of those remain explicit PlatformIO targets.
+      case "${env_name,,}" in
+        *_repeater|*_repeater_|*_repeatr|*_repeatr_) ;;
+        *) continue ;;
+      esac
+      ota_env="${env_name%_}_lora_ota_no_external_sensors"
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$ota_env]+x}" ]; then
+        continue
+      fi
+      SUPPORTED_PIO_ENVS+=("$ota_env")
+      PIO_ENV_PLATFORM_BY_NAME["$ota_env"]="${PIO_ENV_PLATFORM_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$ota_env"]=0
+      PIO_ENV_OTA_BY_NAME["$ota_env"]=1
+      PIO_ENV_BUILD_BASE_BY_NAME["$ota_env"]="$env_name"
+    done
   fi
 }
 
@@ -1371,6 +1402,13 @@ is_known_pio_env() {
   local env_name=$1
   local env
 
+  # Synthetic LoRa-OTA environments build their recorded base PlatformIO
+  # environment with a constrained flag profile, so they intentionally do not
+  # appear in `pio project config`.
+  if [ -n "${PIO_ENV_BUILD_BASE_BY_NAME[$env_name]+x}" ]; then
+    return 0
+  fi
+
   for env in "${ALL_PIO_ENVS[@]}"; do
     if [ "$env" == "$env_name" ]; then
       return 0
@@ -1384,6 +1422,11 @@ is_supported_build_env() {
   local env_name=$1
 
   [ -n "${PIO_ENV_PLATFORM_BY_NAME[$env_name]+x}" ]
+}
+
+get_pio_build_env() {
+  local env_name=$1
+  echo "${PIO_ENV_BUILD_BASE_BY_NAME[$env_name]:-$env_name}"
 }
 
 is_mqtt_bridge_target() {
@@ -1527,8 +1570,14 @@ is_lora_ota_build() {
     return 1
   fi
 
-  if [[ "$env_name_lc" == *mqtt* ]] \
-      || is_mqtt_bridge_target "$env_name" \
+  # OTA is deliberately opt-in. The standard repeater remains a normal,
+  # sensor-enabled build; its explicit _lora_ota_no_external_sensors sibling
+  # is the constrained image distributed over LoRa.
+  if [[ "$env_name_lc" != *lora_ota_no_external_sensors ]]; then
+    return 1
+  fi
+
+  if is_mqtt_bridge_target "$env_name" \
       || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ] \
       || [ "${MESHDEBUG_OVERRIDE,,}" == "on" ] \
       || [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
@@ -1545,12 +1594,81 @@ is_lora_ota_build() {
   esac
 }
 
+is_esp32_companion_build() {
+  case "${1,,}" in
+    *companion*|*comp_radio*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+requires_esp32_portable_app_slot() {
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] \
+    && ! is_esp32_companion_build "$1"
+}
+
+apply_esp32_lora_ota_size_profile() {
+  local env_name=$1
+
+  if ! requires_esp32_portable_app_slot "$env_name"; then
+    return 0
+  fi
+
+  # All non-companion ESP32 artifacts must remain installable into the legacy
+  # 0x10000..0x150000 app slot. The WebConfig portal is deliberately omitted.
+  # WiFi/MQTT observers retain their small WiFi updater, while radio-only roles
+  # avoid linking WiFi solely for that updater. Companions retain their target
+  # defaults because they are installed over USB.
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWEBCONFIG_DISABLED=1"
+  if is_mqtt_bridge_target "$env_name"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLIGHTWEIGHT_WIFI_OTA=1"
+  else
+    append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -ULIGHTWEIGHT_WIFI_OTA -DDISABLE_WIFI_OTA=1"
+  fi
+
+}
+
+apply_lora_ota_no_external_sensors_profile() {
+  local env_name=$1
+
+  if ! is_lora_ota_build "$env_name"; then
+    return 0
+  fi
+
+  # The explicit LoRa-OTA sibling additionally drops optional external sensors.
+  # Its ordinary sibling remains sensor-enabled.
+  # Keep board-integrated GPS support. Several target implementations require
+  # their location provider even when optional external I2C sensors are absent.
+  append_platformio_build_unflags "-DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENV_INCLUDE_AHTX0 -UENV_INCLUDE_BME280 -UENV_INCLUDE_BMP280 -UENV_INCLUDE_SHTC3 -UENV_INCLUDE_SHT4X -UENV_INCLUDE_LPS22HB -UENV_INCLUDE_INA3221 -UENV_INCLUDE_INA219 -UENV_INCLUDE_INA226 -UENV_INCLUDE_INA260 -UENV_INCLUDE_MLX90614 -UENV_INCLUDE_VL53L0X -UENV_INCLUDE_BME680 -UENV_INCLUDE_BMP085 -UENV_INCLUDE_RAK12035 -UENV_INCLUDE_BME680_BSEC"
+}
+
+append_platformio_build_unflags() {
+  local flags=$1
+  local flag
+  local entry
+
+  for flag in $flags; do
+    case "$flag" in
+      -D*) entry="-D ${flag#-D}" ;;
+      *) entry="$flag" ;;
+    esac
+    if [ -n "${PLATFORMIO_BUILD_UNFLAGS:-}" ]; then
+      PLATFORMIO_BUILD_UNFLAGS+=$'\n'
+    fi
+    PLATFORMIO_BUILD_UNFLAGS+="$entry"
+  done
+  export PLATFORMIO_BUILD_UNFLAGS
+}
+
 apply_lora_ota_override() {
   local env_name=$1
 
   if is_lora_ota_build "$env_name"; then
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DENABLE_OTA=1"
+    append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_FOLDER_SERIAL"
   else
+    append_platformio_build_unflags "-DENABLE_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"
   fi
 }
@@ -1596,6 +1714,7 @@ for section, options in data:
     break
 
 env_flags = shlex.split(os.environ.get("PLATFORMIO_BUILD_FLAGS", ""))
+env_unflags = os.environ.get("PLATFORMIO_BUILD_UNFLAGS", "").splitlines()
 
 def print_flags(title, flags):
     print(f"  {title}:")
@@ -1607,6 +1726,7 @@ def print_flags(title, flags):
 
 print_flags("platformio.ini build_flags", config_flags)
 print_flags("PLATFORMIO_BUILD_FLAGS", env_flags)
+print_flags("PLATFORMIO_BUILD_UNFLAGS", env_unflags)
 ' "$env_name" <<<"$PIO_CONFIG_JSON"
 }
 
@@ -1624,32 +1744,40 @@ copy_build_output() {
 
 collect_esp32_artifacts() {
   local env_name=$1
-  local firmware_filename=$2
+  local pio_env_name=$2
+  local firmware_filename=$3
+  local -a size_check_args=(
+    ".pio/build/${pio_env_name}/firmware.bin"
+    ".pio/build/${pio_env_name}/partitions.bin"
+  )
 
-  python3 scripts/check_esp32_app_size.py \
-    ".pio/build/${env_name}/firmware.bin" \
-    ".pio/build/${env_name}/partitions.bin" || return $?
-  pio run -t mergebin -e "$env_name" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
+  if requires_esp32_portable_app_slot "$env_name"; then
+    size_check_args+=("$ESP32_LORA_OTA_APP_LIMIT")
+  fi
+
+  python3 scripts/check_esp32_app_size.py "${size_check_args[@]}" || return $?
+  pio run -t mergebin -e "$pio_env_name" || return $?
+  copy_build_output ".pio/build/${pio_env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output ".pio/build/${pio_env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
 
   # Emit the partition-table signature for OTA partition-compatibility checks.
   # Keyed by env name so the slim-manifest generator can find it; the firmware
   # computes the same signature at runtime from its flashed table. Best-effort:
   # local builds without the script's deps just skip it.
-  if [ -f ".pio/build/${env_name}/partitions.bin" ]; then
-    python3 scripts/partition_signature.py ".pio/build/${env_name}/partitions.bin" > "${OUTPUT_DIR}/${env_name}.partsig" 2>/dev/null || true
+  if [ -f ".pio/build/${pio_env_name}/partitions.bin" ]; then
+    python3 scripts/partition_signature.py ".pio/build/${pio_env_name}/partitions.bin" > "${OUTPUT_DIR}/${env_name}.partsig" 2>/dev/null || true
   fi
 }
 
 collect_nrf52_artifacts() {
   local env_name=$1
-  local firmware_filename=$2
+  local pio_env_name=$2
+  local firmware_filename=$3
 
-  python3 bin/uf2conv/uf2conv.py ".pio/build/${env_name}/firmware.hex" -c -o ".pio/build/${env_name}/firmware.uf2" -f 0xADA52840 || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
-  if [ -f ".pio/build/${env_name}/firmware.zip" ]; then
-    copy_build_output ".pio/build/${env_name}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
+  python3 bin/uf2conv/uf2conv.py ".pio/build/${pio_env_name}/firmware.hex" -c -o ".pio/build/${pio_env_name}/firmware.uf2" -f 0xADA52840 || return $?
+  copy_build_output ".pio/build/${pio_env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
+  if [ -f ".pio/build/${pio_env_name}/firmware.zip" ]; then
+    copy_build_output ".pio/build/${pio_env_name}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
   fi
 }
 
@@ -1702,16 +1830,17 @@ build_artifacts_exist() {
 collect_build_artifacts() {
   local env_name=$1
   local env_platform=$2
-  local firmware_filename=$3
+  local pio_env_name=$3
+  local firmware_filename=$4
 
   # Post-build outputs differ by platform, so dispatch to the matching
   # collector after the main firmware build succeeds.
   case "$env_platform" in
     ESP32_PLATFORM)
-      collect_esp32_artifacts "$env_name" "$firmware_filename"
+      collect_esp32_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
       ;;
     NRF52_PLATFORM)
-      collect_nrf52_artifacts "$env_name" "$firmware_filename"
+      collect_nrf52_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
       ;;
     STM32_PLATFORM)
       collect_stm32_artifacts "$env_name" "$firmware_filename"
@@ -1764,6 +1893,7 @@ restore_platformio_build_flags() {
 
 build_firmware() {
   local env_name=$1
+  local pio_env_name
   local env_platform
   local commit_hash
   local firmware_build_date
@@ -1774,7 +1904,9 @@ build_firmware() {
   local mota_target_id
   local mota_target_flag=""
   local original_platformio_build_flags
+  local original_platformio_build_unflags
   local had_platformio_build_flags=0
+  local had_platformio_build_unflags=0
   local build_status
 
   env_platform=$(get_platform_for_env "$env_name")
@@ -1782,6 +1914,7 @@ build_firmware() {
     echo "Unsupported or unknown platform for env: $env_name"
     return 1
   fi
+  pio_env_name=$(get_pio_build_env "$env_name")
 
   commit_hash=$(git rev-parse --short HEAD)
   firmware_build_date=$(date -u '+%d-%b-%Y')
@@ -1815,7 +1948,7 @@ build_firmware() {
   # per-base published-build counter (FIRMWARE_BUILD_NUMBER) as a 4th version
   # component so `ota check` can show how many builds behind a node is. The
   # *filename* stays untagged/un-numbered so assets remain <env>-v<base>-<hash>.
-  # OTA_VARIANT is the env name — it selects the slim per-variant manifest
+  # OTA_VARIANT is the env name - it selects the slim per-variant manifest
   # (<OTA_MANIFEST_BASE>/<OTA_VARIANT>.json) that the observer pull-OTA fetches.
   local embedded_variant_tag=""
   case "$env_name" in
@@ -1838,6 +1971,12 @@ build_firmware() {
   else
     original_platformio_build_flags=""
   fi
+  if [ "${PLATFORMIO_BUILD_UNFLAGS+x}" ]; then
+    had_platformio_build_unflags=1
+    original_platformio_build_unflags=$PLATFORMIO_BUILD_UNFLAGS
+  else
+    original_platformio_build_unflags=""
+  fi
 
   export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   disable_debug_flags
@@ -1845,18 +1984,25 @@ build_firmware() {
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
+  apply_esp32_lora_ota_size_profile "$env_name"
+  apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
 
   print_build_flags "$env_name"
-  pio run -e "$env_name"
+  pio run -e "$pio_env_name"
   build_status=$?
   if [ "$build_status" -eq 0 ]; then
-    collect_build_artifacts "$env_name" "$env_platform" "$firmware_filename"
+    collect_build_artifacts "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
     build_status=$?
   fi
 
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
+  if [ "$had_platformio_build_unflags" -eq 1 ]; then
+    export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
+  else
+    unset PLATFORMIO_BUILD_UNFLAGS
+  fi
   return "$build_status"
 }
 

@@ -90,8 +90,9 @@ EndF trailer (fixed 56 bytes):
   off 24  32  hw_id         NUL-padded ASCII hardware tag (brick-safety), e.g. "RAK4631" ("" = unknown)
 ```
 
-- **Self-describing identity.** `pio_endf.py` computes `target_id` from the PlatformIO env name itself (so
-  it's correct even without `build.sh`'s `-D MOTA_TARGET_ID`), `hw_id` from `MOTA_HW_ID`, and `fw_version`
+- **Self-describing identity.** `pio_endf.py` uses `build.sh`'s `MOTA_TARGET_ID` when present (required for
+  virtual LoRa-OTA build names), otherwise it computes `target_id` from the PlatformIO env name. It reads
+  `hw_id` from `MOTA_HW_ID` and `fw_version`
   from `FIRMWARE_VERSION`. The device reads them back (`ota_self_firmware()`), so a node's advertised
   identity is correct regardless of how it was built - and the packaging tool reads them straight from a raw
   `.bin` (no `--target-env`/`--fw-version` flags, no reliance on filenames; Section 9, Section 13). A dev build with no
@@ -109,9 +110,11 @@ The "reconstructed image" referenced by the manifest is the full `BODY || EndF` 
 ESP32 companion firmware is installed over USB and is exempt from the portable-slot limit. Every other
 ESP32 artifact, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
 `0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
-limit and the target's actual app partition. For every ESP32 repeater, `build.sh` also exposes an explicit
-`*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled, while that sibling
-also disables optional external-sensor drivers for LoRa distribution.
+limit and the target's actual app partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also
+exposes an explicit `*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled,
+while that sibling disables optional external environmental-sensor drivers for LoRa distribution. Integrated
+GPS and other board-native telemetry remain enabled. RP2040 and STM32 targets are not offered because those
+platforms do not yet have a safe bootloader/apply path.
 
 > **Implementer note:** the bootloader (and any non-Arduino consumer) MUST locate the body extent by
 > scanning for `EndF`, never by trusting a stored size - see the bootloader contract in Section 12.

@@ -106,7 +106,11 @@ def _firmware_ident():
     PlatformIO env name (so it's correct even without build.sh's -D MOTA_TARGET_ID), hw_id from MOTA_HW_ID,
     fw_version from FIRMWARE_VERSION (a -D if set, else the example's header #define)."""
     import re
-    target_id = ml.target_id_for_env(env["PIOENV"])           # noqa: F821
+    target_define = (_cppdef("MOTA_TARGET_ID") or "").strip()
+    try:
+        target_id = int(target_define, 0) if target_define else ml.target_id_for_env(env["PIOENV"])  # noqa: F821
+    except ValueError:
+        target_id = ml.target_id_for_env(env["PIOENV"])       # noqa: F821
     hw_id = (_cppdef("MOTA_HW_ID") or "").replace("\\", "").strip().strip('"').strip("'")
     if not hw_id:
         hw_id = ml.hardware_id_for_env(env["PIOENV"])          # noqa: F821

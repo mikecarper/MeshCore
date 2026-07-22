@@ -38,14 +38,20 @@ location and change it when necessary.
 
 Both paths require:
 
-- An OTA-enabled repeater build whose artifact filename contains `-ota-` on the source, destination, and
-  every intermediate node. The `-ota-` stamp confirms that LoRa OTA is compiled into the build. Logging,
+- An OTA-enabled repeater build whose artifact filename contains `-ota-` on the destination and every
+  intermediate repeater. The `-ota-` stamp confirms that LoRa OTA is compiled into the build. Logging,
   MQTT, and untagged builds cannot perform LoRa OTA; use WiFi or USB to replace them first.
-- A source node connected to the computer by USB serial.
+- An ESP32 MeshCore companion connected to the computer by USB serial or WiFi as described below.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
 
 LoRa OTA packets are generated, received, and relayed only while `tempradio` is active. If any required
 window closes, the transfer stops making progress and can resume during a later overlapping window.
+
+`build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for every standalone ESP32 and nRF52
+repeater target. The normal repeater build keeps its external-sensor support. The `-ota-` sibling omits
+optional external I2C environmental sensors to preserve the update workspace, while retaining board-native
+features such as its display, buttons, battery monitoring, and integrated GPS. RP2040 and STM32 repeaters do
+not currently have a safe self-apply path and therefore cannot install LoRa firmware updates.
 
 ### Choose the source radio
 
@@ -148,7 +154,7 @@ running application. The hash check in the next step proves that it is the right
 
 On RAK4631 repeaters, use the
 `RAK_4631_repeater_lora_ota_no_external_sensors` environment. It retains built-in battery monitoring but
-omits optional external environmental/GPS sensor packages so the delta fits the safe in-place workspace.
+omits optional external environmental sensor packages so the delta fits the safe in-place workspace.
 
 ### 3. Build and check the in-place delta
 
