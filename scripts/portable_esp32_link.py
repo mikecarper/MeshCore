@@ -16,11 +16,12 @@ def has_define(name):
 
 build_flags = str(env.get("BUILD_FLAGS", "")) + " " + os.environ.get("PLATFORMIO_BUILD_FLAGS", "")
 pio_env = env.subst("$PIOENV").lower()
+full_build = os.environ.get("MESHCORE_ESP32_FULL_BUILD") == "1"
 
 if (has_define("PORTABLE_ESP32_NANO_LIBC") or
         "PORTABLE_ESP32_NANO_LIBC" in build_flags or
         os.environ.get("MESHCORE_PORTABLE_NANO_LIBC") == "1" or
-        "observer_mqtt" in pio_env or "bridge_espnow" in pio_env):
+        (not full_build and ("observer_mqtt" in pio_env or "bridge_espnow" in pio_env))):
     # newlib-nano provides the same C ABI with a substantially smaller printf
     # implementation. These profiles omit display, GPS, external sensors, and
     # the general CLI paths that require floating-point printf.

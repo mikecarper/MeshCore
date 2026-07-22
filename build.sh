@@ -6,6 +6,8 @@ declare -A PIO_ENV_PLATFORM_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
 declare -A PIO_ENV_OTA_BY_NAME=()
 declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
+declare -A PIO_ENV_FULL_BUILD_BY_NAME=()
+declare -A PIO_ENV_FULL_WIFI_OTA_BY_NAME=()
 PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
@@ -15,6 +17,7 @@ PACKET_LOGGING_OVERRIDE=""
 MQTT_BRIDGE_OVERRIDE=""
 MQTT_DEBUG_OVERRIDE=""
 FIRMWARE_FILENAME_INFIX=""
+ESP32_FULL_BUILD=0
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 RADIO_SETTING_TITLE=""
 RADIO_FREQ_OVERRIDE=""
@@ -68,7 +71,8 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares in three profiles, logging each target under out/build-logs/ and continuing after failures.
+  build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, and feature-complete ESP32 profiles, logging each target under out/build-logs/ and continuing after failures.
+  build-full-esp32-firmwares: Build only feature-complete ESP32 profiles with LoRa OTA and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -80,7 +84,7 @@ Options:
   --radio-preset <number>: Use the numbered radio choice from the interactive menu (1 keeps target defaults).
   --profile <default|cascade>: Select the firmware settings profile.
   --skip-kiss|--include-kiss: Exclude or include KISS modem targets in bulk builds.
-  --clean|--resume: Clean output or resume existing option 3 artifacts.
+  --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
 
 Examples:
 Build firmware for the "RAK_4631_repeater" device target
@@ -92,8 +96,11 @@ $ bash build.sh
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
 
-Build all firmwares in three mutually exclusive profiles: standard, USB logging, and MQTT observer (USB logging off):
+Build all firmwares in standard, USB logging, MQTT observer, and feature-complete ESP32 profiles:
 $ bash build.sh build-firmwares-logging-matrix
+
+Build only feature-complete ESP32 firmware:
+$ bash build.sh build-full-esp32-firmwares
 
 Build all companion firmwares
 $ bash build.sh build-companion-firmwares
@@ -142,7 +149,7 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_full env_full_wifi; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
@@ -150,6 +157,8 @@ init_project_context() {
       PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
       PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
       PIO_ENV_OTA_BY_NAME["$env_name"]=$env_ota
+      PIO_ENV_FULL_BUILD_BY_NAME["$env_name"]=$env_full
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$env_name"]=$env_full_wifi
     done < <(
       python3 -c '
 import json
@@ -165,9 +174,15 @@ for section, options in data:
     mqtt_enabled = False
     ota_enabled = False
     ota_disabled = False
+    admin_enabled = False
+    espnow_enabled = "bridge_espnow" in env_name.lower()
+    full_wifi_ota = False
     platform = None
     for key, value in options:
         values = value if isinstance(value, list) else str(value).split()
+        if key == "lib_deps":
+            full_wifi_ota = any("AsyncElegantOTA" in str(item) for item in values)
+            continue
         if key == "build_src_filter":
             ota_enabled = any("helpers/ota/" in str(item) for item in values)
             continue
@@ -176,13 +191,22 @@ for section, options in data:
         for flag in values:
             if "WITH_MQTT_BRIDGE" in str(flag):
                 mqtt_enabled = True
+            if "ADMIN_PASSWORD" in str(flag):
+                admin_enabled = True
             if "DISABLE_LORA_OTA" in str(flag):
                 ota_disabled = True
             match = pattern.search(str(flag))
             if match and platform is None:
                 platform = match.group(0)
     if platform:
-        print(f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}\t{1 if ota_enabled and not ota_disabled else 0}")
+        full_enabled = platform == "ESP32_PLATFORM" and (
+            mqtt_enabled or espnow_enabled or admin_enabled
+        )
+        print(
+            f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}"
+            f"\t{1 if ota_enabled and not ota_disabled else 0}"
+            f"\t{1 if full_enabled else 0}\t{1 if full_wifi_ota else 0}"
+        )
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
 
@@ -212,6 +236,8 @@ for section, options in data:
       PIO_ENV_PLATFORM_BY_NAME["$ota_env"]="${PIO_ENV_PLATFORM_BY_NAME[$env_name]}"
       PIO_ENV_MQTT_BY_NAME["$ota_env"]=0
       PIO_ENV_OTA_BY_NAME["$ota_env"]=1
+      PIO_ENV_FULL_BUILD_BY_NAME["$ota_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$ota_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$ota_env"]="$env_name"
     done
   fi
@@ -330,11 +356,12 @@ prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
     "Build all firmwares"
-    "Build all firmwares in 3 profiles (logging off, logging on, MQTT bridge with logging off)"
+    "Build all firmwares in 4 profiles (standard, logging, MQTT, full ESP32)"
     "Build all repeater firmwares"
     "Build all companion firmwares"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
+    "Build only FULL ESP32 firmwares (all features and LoRa OTA)"
   )
 
   echo "No command provided. Select a build action:"
@@ -376,6 +403,10 @@ prompt_for_build_mode() {
         SELECTED_COMMAND_ARGS=(build-sensor-firmwares)
         return 0
         ;;
+      8)
+        SELECTED_COMMAND_ARGS=(build-full-esp32-firmwares)
+        return 0
+        ;;
     esac
   done
 }
@@ -411,6 +442,14 @@ prompt_for_mqtt_bridge_build_setting() {
 
 is_logging_matrix_command() {
   [ "$1" == "build-firmwares-logging-matrix" ]
+}
+
+is_full_esp32_command() {
+  [ "$1" == "build-full-esp32-firmwares" ]
+}
+
+is_automatic_profile_command() {
+  is_logging_matrix_command "$1" || is_full_esp32_command "$1"
 }
 
 clear_radio_overrides() {
@@ -1319,9 +1358,9 @@ prompt_for_logging_matrix_output_policy() {
 
   if [ "$OUTPUT_POLICY_EXPLICIT" -eq 1 ]; then
     if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
-      echo "Using --resume for existing option 3 output."
+      echo "Using --resume for existing profile-build output."
     else
-      echo "Using --clean for option 3 output."
+      echo "Using --clean for profile-build output."
     fi
     return 0
   fi
@@ -1341,13 +1380,13 @@ prompt_for_logging_matrix_output_policy() {
 
   if ! [ -t 0 ]; then
     if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
-      echo "Resuming previous logging matrix output in ${OUTPUT_DIR} (${file_count} ${file_label})."
+      echo "Resuming previous profile-build output in ${OUTPUT_DIR} (${file_count} ${file_label})."
     fi
     return 0
   fi
 
   while true; do
-    read -r -p "Output directory '${OUTPUT_DIR}' exists with ${file_count} ${file_label}. Resume previous option 3 progress or clean it? [resume/clean] (default: clean): " choice
+    read -r -p "Output directory '${OUTPUT_DIR}' exists with ${file_count} ${file_label}. Resume previous profile-build progress or clean it? [resume/clean] (default: clean): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
       choice="clean"
@@ -1565,9 +1604,32 @@ disable_usb_logging_for_mqtt() {
   fi
 }
 
+is_esp32_usb_wifi_companion_ota_build() {
+  local env_name=$1
+  local env_name_lc=${env_name,,}
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] || return 1
+  case "$env_name_lc" in
+    *companion_radio_usb*|*companion_radio_wifi*|*comp_radio_usb*|*companion_usb*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
+
+  # ESP32 USB and WiFi companions keep OTA so they can seed a host folder over
+  # serial or TCP and can participate in LoRa OTA without using the FULL profile.
+  if is_esp32_usb_wifi_companion_ota_build "$env_name"; then
+    return 0
+  fi
+
+  # FULL ESP32 artifacts use expanded A/B slots and retain every compiled
+  # feature, including LoRa OTA, for every supported non-companion role.
+  if [ "$ESP32_FULL_BUILD" = "1" ] && supports_esp32_full_build "$env_name"; then
+    return 0
+  fi
 
   if [ "${PIO_ENV_OTA_BY_NAME[$env_name]:-0}" != "1" ]; then
     return 1
@@ -1588,9 +1650,10 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # LoRa firmware distribution is a repeater-only feature. MQTT observers use
-  # their WiFi manifest updater; companion, room-server, and sensor roles do not
-  # advertise or accept firmware over the mesh.
+  # The constrained portable OTA profile is only emitted for repeaters. FULL
+  # ESP32 builds returned above also enable LoRa OTA for room-server, sensor,
+  # observer, and bridge roles because their expanded slots have room for every
+  # feature.
   case "$env_name_lc" in
     *repeater*|*repeatr*) return 0 ;;
     *) return 1 ;;
@@ -1609,10 +1672,18 @@ requires_esp32_portable_app_slot() {
     && ! is_esp32_companion_build "$1"
 }
 
+supports_esp32_full_build() {
+  local env_name=$1
+
+  [ "${PIO_ENV_FULL_BUILD_BY_NAME[$env_name]:-0}" = "1" ] \
+    && ! is_esp32_companion_build "$env_name" \
+    && ! is_lora_ota_only_target "$env_name"
+}
+
 apply_esp32_lora_ota_size_profile() {
   local env_name=$1
 
-  if ! requires_esp32_portable_app_slot "$env_name"; then
+  if [ "$ESP32_FULL_BUILD" = "1" ] || ! requires_esp32_portable_app_slot "$env_name"; then
     return 0
   fi
 
@@ -1638,10 +1709,31 @@ apply_esp32_lora_ota_size_profile() {
 
 }
 
+apply_esp32_full_size_profile() {
+  local env_name=$1
+
+  if [ "$ESP32_FULL_BUILD" != "1" ] || ! supports_esp32_full_build "$env_name"; then
+    return 0
+  fi
+
+  # The FULL artifact uses expanded dual-OTA slots, so restore features that
+  # target or portable profiles disabled only to save application space.
+  append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED"
+
+  # Restore the full ElegantOTA implementation only when the target already
+  # declares its dependency. Some ESP32-C6 targets intentionally have no
+  # compatible ElegantOTA library and retain their target WiFi-OTA setting.
+  if [ "${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
+    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DLIGHTWEIGHT_WIFI_OTA=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -ULIGHTWEIGHT_WIFI_OTA"
+  fi
+}
+
 apply_lora_ota_no_external_sensors_profile() {
   local env_name=$1
 
-  if ! is_lora_ota_build "$env_name"; then
+  if ! is_lora_ota_build "$env_name" || ! is_lora_ota_only_target "$env_name"; then
     return 0
   fi
 
@@ -1760,8 +1852,9 @@ collect_esp32_artifacts() {
     ".pio/build/${pio_env_name}/firmware.bin"
     ".pio/build/${pio_env_name}/partitions.bin"
   )
+  local partsig_name=$env_name
 
-  if requires_esp32_portable_app_slot "$env_name"; then
+  if [ "$ESP32_FULL_BUILD" != "1" ] && requires_esp32_portable_app_slot "$env_name"; then
     size_check_args+=("$ESP32_LORA_OTA_APP_LIMIT")
   fi
 
@@ -1771,11 +1864,15 @@ collect_esp32_artifacts() {
   copy_build_output ".pio/build/${pio_env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
 
   # Emit the partition-table signature for OTA partition-compatibility checks.
-  # Keyed by env name so the slim-manifest generator can find it; the firmware
-  # computes the same signature at runtime from its flashed table. Best-effort:
-  # local builds without the script's deps just skip it.
+  # Standard builds keep the env-name key used by the slim-manifest generator;
+  # FULL builds use a suffix so their expanded table does not overwrite the
+  # portable signature. The firmware computes the same signature at runtime.
+  # Best-effort: local builds without the script's deps just skip it.
   if [ -f ".pio/build/${pio_env_name}/partitions.bin" ]; then
-    python3 scripts/partition_signature.py ".pio/build/${pio_env_name}/partitions.bin" > "${OUTPUT_DIR}/${env_name}.partsig" 2>/dev/null || true
+    if [ "$ESP32_FULL_BUILD" = "1" ]; then
+      partsig_name="${env_name}-full"
+    fi
+    python3 scripts/partition_signature.py ".pio/build/${pio_env_name}/partitions.bin" > "${OUTPUT_DIR}/${partsig_name}.partsig" 2>/dev/null || true
   fi
 }
 
@@ -1878,8 +1975,11 @@ get_firmware_filename() {
   fi
 
   # Make LoRa-OTA artifacts as obvious as logging artifacts without changing
-  # the PlatformIO environment name or the stable MOTA target identity.
-  if [ -z "$filename_infix" ] && is_lora_ota_build "$env_name"; then
+  # the PlatformIO environment name or the stable MOTA target identity. FULL
+  # artifacts retain their profile marker as well as the required OTA marker.
+  if [ "$ESP32_FULL_BUILD" = "1" ] && is_lora_ota_build "$env_name"; then
+    filename_infix="full-ota"
+  elif [ -z "$filename_infix" ] && is_lora_ota_build "$env_name"; then
     filename_infix="ota"
   fi
 
@@ -1915,8 +2015,11 @@ build_firmware() {
   local mota_target_flag=""
   local original_platformio_build_flags
   local original_platformio_build_unflags
+  local original_platformio_extra_scripts
+  local target_extra_scripts
   local had_platformio_build_flags=0
   local had_platformio_build_unflags=0
+  local had_platformio_extra_scripts=0
   local build_status
 
   env_platform=$(get_platform_for_env "$env_name")
@@ -1987,6 +2090,12 @@ build_firmware() {
   else
     original_platformio_build_unflags=""
   fi
+  if [ "${PLATFORMIO_EXTRA_SCRIPTS+x}" ]; then
+    had_platformio_extra_scripts=1
+    original_platformio_extra_scripts=$PLATFORMIO_EXTRA_SCRIPTS
+  else
+    original_platformio_extra_scripts=""
+  fi
 
   export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   unset MESHCORE_PORTABLE_NANO_LIBC
@@ -1996,9 +2105,24 @@ build_firmware() {
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
+  apply_esp32_full_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
+
+  if [ "$ESP32_FULL_BUILD" = "1" ]; then
+    export MESHCORE_ESP32_FULL_BUILD=1
+    target_extra_scripts=$original_platformio_extra_scripts
+    if [[ "$target_extra_scripts" != *"scripts/esp32_full_partition.py"* ]]; then
+      if [ -n "$target_extra_scripts" ]; then
+        target_extra_scripts+=$'\n'
+      fi
+      target_extra_scripts+="pre:scripts/esp32_full_partition.py"
+    fi
+    export PLATFORMIO_EXTRA_SCRIPTS="$target_extra_scripts"
+  else
+    unset MESHCORE_ESP32_FULL_BUILD
+  fi
 
   print_build_flags "$env_name"
   pio run -e "$pio_env_name"
@@ -2010,10 +2134,16 @@ build_firmware() {
 
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
   unset MESHCORE_PORTABLE_NANO_LIBC
+  unset MESHCORE_ESP32_FULL_BUILD
   if [ "$had_platformio_build_unflags" -eq 1 ]; then
     export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
   else
     unset PLATFORMIO_BUILD_UNFLAGS
+  fi
+  if [ "$had_platformio_extra_scripts" -eq 1 ]; then
+    export PLATFORMIO_EXTRA_SCRIPTS="$original_platformio_extra_scripts"
+  else
+    unset PLATFORMIO_EXTRA_SCRIPTS
   fi
   return "$build_status"
 }
@@ -2047,6 +2177,16 @@ resolve_sensor_firmwares() {
   get_pio_envs_for_variant_role sensor
 }
 
+resolve_full_esp32_firmwares() {
+  local env_name
+
+  for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+    if supports_esp32_full_build "$env_name"; then
+      printf '%s\n' "$env_name"
+    fi
+  done
+}
+
 # Keep bulk build command names mapped to their target resolvers in one place.
 get_bulk_build_resolver_name() {
   case "$1" in
@@ -2055,6 +2195,9 @@ get_bulk_build_resolver_name() {
       ;;
     build-firmwares-logging-matrix)
       echo "resolve_all_firmwares"
+      ;;
+    build-full-esp32-firmwares)
+      echo "resolve_full_esp32_firmwares"
       ;;
     build-companion-firmwares)
       echo "resolve_companion_firmwares"
@@ -2249,6 +2392,76 @@ run_logged_build_targets() {
   return "$overall_status"
 }
 
+run_full_esp32_build_targets() {
+  local targets=("$@")
+  local target
+  local full_standard_targets=()
+  local full_mqtt_targets=()
+  local original_meshdebug_override=$MESHDEBUG_OVERRIDE
+  local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
+  local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
+  local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
+  local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local original_esp32_full_build=$ESP32_FULL_BUILD
+  local build_status=0
+  local pass_status=0
+
+  LOGGING_MATRIX_FAILURES=()
+  for target in "${targets[@]}"; do
+    if ! supports_esp32_full_build "$target"; then
+      continue
+    fi
+    if is_mqtt_bridge_target "$target"; then
+      full_mqtt_targets+=("$target")
+    else
+      full_standard_targets+=("$target")
+    fi
+  done
+
+  if [ ${#full_standard_targets[@]} -eq 0 ] && [ ${#full_mqtt_targets[@]} -eq 0 ]; then
+    echo "No feature-different ESP32 FULL targets resolved."
+    return 1
+  fi
+
+  echo "FULL-only build: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with expanded dual-OTA partitions."
+  echo "FULL artifacts include LoRa OTA and use filename form: name-full-ota-version; flash the merged image once to install its partition table."
+  MESHDEBUG_OVERRIDE="off"
+  PACKET_LOGGING_OVERRIDE="off"
+  MQTT_DEBUG_OVERRIDE="off"
+  FIRMWARE_FILENAME_INFIX="full"
+  ESP32_FULL_BUILD=1
+
+  if [ ${#full_standard_targets[@]} -gt 0 ]; then
+    MQTT_BRIDGE_OVERRIDE="off"
+    run_logged_build_targets "${full_standard_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  fi
+
+  if [ ${#full_mqtt_targets[@]} -gt 0 ]; then
+    MQTT_BRIDGE_OVERRIDE="on"
+    run_logged_build_targets "${full_mqtt_targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  fi
+
+  MESHDEBUG_OVERRIDE=$original_meshdebug_override
+  PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
+  MQTT_BRIDGE_OVERRIDE=$original_mqtt_bridge_override
+  MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
+  FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
+  ESP32_FULL_BUILD=$original_esp32_full_build
+
+  if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
+    echo "FULL-only build completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
+    printf '  %s\n' "${LOGGING_MATRIX_FAILURES[@]}"
+  else
+    echo "FULL-only build completed successfully. Per-target logs are in ${OUTPUT_DIR}/build-logs/."
+  fi
+
+  return "$build_status"
+}
+
 run_logging_matrix_build_targets() {
   local targets=("$@")
   local target
@@ -2256,11 +2469,14 @@ run_logging_matrix_build_targets() {
   local logging_targets=()
   local constrained_logging_targets=()
   local mqtt_targets=()
+  local full_standard_targets=()
+  local full_mqtt_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
   local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local original_esp32_full_build=$ESP32_FULL_BUILD
   local bluetooth_skip_count=0
   local lora_ota_only_skip_count=0
   local logging_target_count=0
@@ -2276,12 +2492,19 @@ run_logging_matrix_build_targets() {
   for target in "${targets[@]}"; do
     if is_mqtt_bridge_target "$target"; then
       mqtt_targets+=("$target")
+      if supports_esp32_full_build "$target"; then
+        full_mqtt_targets+=("$target")
+      fi
     else
       standard_targets+=("$target")
+      if supports_esp32_full_build "$target"; then
+        full_standard_targets+=("$target")
+      fi
     fi
   done
 
-  echo "Profile 1/3: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  echo "Profile 1/4: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  ESP32_FULL_BUILD=0
   MESHDEBUG_OVERRIDE="off"
   PACKET_LOGGING_OVERRIDE="off"
   MQTT_BRIDGE_OVERRIDE="off"
@@ -2320,7 +2543,7 @@ run_logging_matrix_build_targets() {
   logging_target_count=$((${#logging_targets[@]} + ${#constrained_logging_targets[@]}))
 
   if [ "$logging_target_count" -gt 0 ]; then
-    echo "Profile 2/3: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
+    echo "Profile 2/4: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
     echo "Logging-on artifacts use filename form: name-logging-version"
   else
     echo "No non-Bluetooth targets remain for logging-on pass."
@@ -2348,7 +2571,7 @@ run_logging_matrix_build_targets() {
   fi
 
   if [ ${#mqtt_targets[@]} -gt 0 ]; then
-    echo "Profile 3/3: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
+    echo "Profile 3/4: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="off"
     MQTT_BRIDGE_OVERRIDE="on"
@@ -2358,7 +2581,33 @@ run_logging_matrix_build_targets() {
     pass_status=$?
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   else
-    echo "No MQTT bridge targets are configured; skipping profile 3/3."
+    echo "No MQTT bridge targets are configured; skipping profile 3/4."
+  fi
+
+  if [ ${#full_standard_targets[@]} -gt 0 ] || [ ${#full_mqtt_targets[@]} -gt 0 ]; then
+    echo "Profile 4/4: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with expanded dual-OTA partitions."
+    echo "FULL artifacts include LoRa OTA and use filename form: name-full-ota-version; flash the merged image once to install its partition table."
+    MESHDEBUG_OVERRIDE="off"
+    PACKET_LOGGING_OVERRIDE="off"
+    MQTT_DEBUG_OVERRIDE="off"
+    FIRMWARE_FILENAME_INFIX="full"
+    ESP32_FULL_BUILD=1
+
+    if [ ${#full_standard_targets[@]} -gt 0 ]; then
+      MQTT_BRIDGE_OVERRIDE="off"
+      run_logged_build_targets "${full_standard_targets[@]}"
+      pass_status=$?
+      if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+    fi
+
+    if [ ${#full_mqtt_targets[@]} -gt 0 ]; then
+      MQTT_BRIDGE_OVERRIDE="on"
+      run_logged_build_targets "${full_mqtt_targets[@]}"
+      pass_status=$?
+      if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+    fi
+  else
+    echo "No ESP32 targets lose features in the portable profile; skipping profile 4/4."
   fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
@@ -2366,6 +2615,7 @@ run_logging_matrix_build_targets() {
   MQTT_BRIDGE_OVERRIDE=$original_mqtt_bridge_override
   MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
   FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
+  ESP32_FULL_BUILD=$original_esp32_full_build
 
   if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
     echo "Logging matrix completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
@@ -2408,6 +2658,11 @@ run_command() {
   # All build commands share execution after validation resolves their target list.
   if is_logging_matrix_command "$1"; then
     run_logging_matrix_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
+    return $?
+  fi
+
+  if is_full_esp32_command "$1"; then
+    run_full_esp32_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
   fi
 
@@ -2458,8 +2713,12 @@ main() {
     fi
 
     prompt_for_build_mode
-    if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
-      echo "Skipping debug and MQTT prompts; this action builds all three profiles automatically."
+    if is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
+      if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
+        echo "Skipping debug and MQTT prompts; this action builds all four profiles automatically."
+      else
+        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 profile."
+      fi
     else
       prompt_for_mqtt_bridge_build_setting
       if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
@@ -2481,14 +2740,14 @@ main() {
     exit 1
   fi
 
-  if ! is_logging_matrix_command "$1" && [ -n "$MQTT_BRIDGE_OVERRIDE" ]; then
+  if ! is_automatic_profile_command "$1" && [ -n "$MQTT_BRIDGE_OVERRIDE" ]; then
     if ! normalize_resolved_targets_for_mqtt "$1"; then
       exit 1
     fi
   fi
 
   prompt_for_resolved_firmware_version
-  if is_logging_matrix_command "$1"; then
+  if is_automatic_profile_command "$1"; then
     prompt_for_logging_matrix_output_policy
   else
     RESUME_BUILD_OUTPUT=0

@@ -38,9 +38,9 @@ location and change it when necessary.
 
 Both paths require:
 
-- An OTA-enabled repeater build whose artifact filename contains `-ota-` on the destination and every
-  intermediate repeater. The `-ota-` stamp confirms that LoRa OTA is compiled into the build. Logging,
-  MQTT, and untagged builds cannot perform LoRa OTA; use WiFi or USB to replace them first.
+- An OTA-enabled build whose artifact filename contains `-ota-` on the destination, plus an OTA-enabled
+  repeater on every intermediate hop. The `-ota-` stamp confirms that LoRa OTA is compiled into the build.
+  Logging, portable MQTT, and untagged builds cannot perform LoRa OTA; use WiFi or USB to replace them first.
 - An ESP32 MeshCore companion connected to the computer by USB serial or WiFi as described below.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
 
@@ -53,19 +53,24 @@ optional external I2C environmental sensors to preserve the update workspace, wh
 features such as its display, buttons, battery monitoring, and integrated GPS. RP2040 and STM32 repeaters do
 not currently have a safe self-apply path and therefore cannot install LoRa firmware updates.
 
+ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
+including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
+install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
+
 ### Choose the source radio
 
 Use an ESP32 **MeshCore companion** as the source node. It receives the update folder from the computer,
-then advertises it over LoRa. Connect to that companion either by USB serial or by WiFi. For USB serial, the
-companion firmware must include `OTA_FOLDER_SERIAL`; before starting the transfer, its USB CLI must accept:
+then advertises it over LoRa. Current ESP32 USB and WiFi companion artifacts include `-ota-` in their
+filenames and compile in the required OTA transport. Connect to that companion either by USB serial or by
+WiFi. For USB serial, confirm that its USB CLI accepts:
 
 ```text
 ota folder on
 ```
 
-If that command reports that `OTA_FOLDER_SERIAL` is not built in, use the WiFi method below. Do **not** use
-a KISS modem: KISS firmware is a TNC/KISS frame interface and does not provide the MeshCore CLI or the
-OTA-folder transport that `motatool serve` requires.
+If an older build reports that `OTA_FOLDER_SERIAL` is not compiled in, install a current `-ota-` companion
+build first. Do **not** use a KISS modem: KISS firmware is a TNC/KISS frame interface and does not provide
+the MeshCore CLI or the OTA-folder transport that `motatool serve` requires.
 
 For a companion connected by WiFi, use its dedicated OTA seeder connection instead:
 

@@ -107,8 +107,10 @@ The "reconstructed image" referenced by the manifest is the full `BODY || EndF` 
 
 ### ESP32 portable app-slot profile
 
-ESP32 companion firmware is installed over USB and is exempt from the portable-slot limit. Every other
-ESP32 artifact, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
+ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
+LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
+their target partition table rather than using the FULL profile. Every other ESP32 artifact, including room,
+sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
 `0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
 limit and the target's actual app partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also
 exposes an explicit `*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled,
@@ -128,6 +130,18 @@ the ESP-NOW bridge but likewise omit SSD1306 display support, GPS, optional exte
 configuration parser. These reductions do
 not apply to companion builds. Ordinary repeater builds remain sensor-enabled; only explicitly named
 `*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution.
+
+Option 3 in `build.sh` also emits `*-full-ota-*` ESP32 artifacts for non-companion roles where the portable
+profile removes a compiled feature. Menu option 8, or `build-full-esp32-firmwares`, builds only those FULL
+artifacts. FULL builds restore WebConfig, the full CLI and observer feature set,
+full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
+including room servers, sensors, observers, and bridges. They use expanded A/B partition
+tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB
+and 16 MiB boards. Explicit `*_lora_ota_no_external_sensors` targets are not duplicated; their ordinary
+repeater build is the FULL, sensor-enabled counterpart. Install a `*-full-ota-*-merged.bin` over USB once to
+write the expanded partition table. After that, its matching non-merged FULL application image can be
+installed through USB, WiFi OTA, or LoRa OTA. Do not install a non-merged FULL image onto a node that still
+has its old partition table.
 
 > **Implementer note:** the bootloader (and any non-Arduino consumer) MUST locate the body extent by
 > scanning for `EndF`, never by trusting a stored size - see the bootloader contract in Section 12.
