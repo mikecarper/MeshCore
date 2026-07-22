@@ -55,8 +55,16 @@ static inline bool mqttPresetNeedsSlotCredentials(const MQTTPresetDef* preset) {
          (!preset->userpass_username || !preset->userpass_password);
 }
 
+// Number of built-in presets
+static const int MQTT_PRESET_COUNT = 25;
+
+// Keep the certificate and preset tables in one translation unit. Defining
+// these as header-local constants created a complete flash copy in every MQTT
+// source file that referenced a preset.
+#ifdef MQTT_PRESETS_IMPLEMENTATION
+
 // Google Trust Services - GTS Root R4 (used by LetsMesh Analyzer)
-static const char GTS_ROOT_R4[] PROGMEM =
+extern const char GTS_ROOT_R4[] PROGMEM =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIDejCCAmKgAwIBAgIQf+UwvzMTQ77dghYQST2KGzANBgkqhkiG9w0BAQsFADBX\n"
     "MQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xvYmFsU2lnbiBudi1zYTEQMA4GA1UE\n"
@@ -80,7 +88,7 @@ static const char GTS_ROOT_R4[] PROGMEM =
     "-----END CERTIFICATE-----\n";
 
 // ISRG Root X1 (used by MeshMapper - Let's Encrypt root CA)
-static const char ISRG_ROOT_X1[] PROGMEM =
+extern const char ISRG_ROOT_X1[] PROGMEM =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw\n"
     "TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh\n"
@@ -113,11 +121,8 @@ static const char ISRG_ROOT_X1[] PROGMEM =
     "emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=\n"
     "-----END CERTIFICATE-----\n";
 
-// Number of built-in presets
-static const int MQTT_PRESET_COUNT = 25;
-
 // Built-in preset definitions (stored in flash)
-static const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
+extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     //   name           url                                      server                             rootCA         auth                 topic                 keepalive tls enabled interval user         pass
     { "analyzer-us",   "wss://mqtt-us-v1.letsmesh.net:443/mqtt",  "mqtt-us-v1.letsmesh.net",         GTS_ROOT_R4,   MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "analyzer-eu",   "wss://mqtt-eu-v1.letsmesh.net:443/mqtt",  "mqtt-eu-v1.letsmesh.net",         GTS_ROOT_R4,   MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
@@ -145,6 +150,14 @@ static const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     { "ipnt.uk",         "wss://mqtt.ipnt.uk:443",                    "mqtt.ipnt.uk",                    ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "flmesh",       "wss://mcmqtt.jntconnections.com:443",       "mcmqtt.jntconnections.com",       GTS_ROOT_R4,   MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
 };
+
+#else
+
+extern const char GTS_ROOT_R4[] PROGMEM;
+extern const char ISRG_ROOT_X1[] PROGMEM;
+extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT];
+
+#endif
 
 // Find a preset by name, returns nullptr if not found
 static const MQTTPresetDef* findMQTTPreset(const char* name) {

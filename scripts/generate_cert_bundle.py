@@ -179,6 +179,17 @@ class InputError(RuntimeError):
 
 def main():
 
+    # Portable observer presets pin their required roots directly in
+    # MQTTPresets.h. Keep the embedded bundle structurally valid but empty so
+    # custom TLS trust stores do not consume 66 KB of the legacy app slot.
+    if "observer_mqtt" in env.subst("$PIOENV").lower():
+        os.makedirs(binary_dir, exist_ok=True)
+        output_file = os.path.join(binary_dir, ca_bundle_bin_file)
+        with open(output_file, 'wb') as f:
+            f.write(struct.pack('>H', 0))
+        status('Created empty portable-observer certificate bundle')
+        return
+
     bundle = CertificateBundle()
 
     try:

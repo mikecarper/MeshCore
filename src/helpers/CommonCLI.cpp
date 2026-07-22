@@ -2265,6 +2265,13 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
+#if defined(PORTABLE_ESP32_MINIMAL_CLI)
+  // Size-constrained ESP32 images keep role-specific controls but omit the
+  // large general configuration parser. Radio and mesh defaults remain fixed
+  // by the selected build profile.
+  sprintf(reply, "unknown portable config: %s", config);
+  return;
+#else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
     strcpy(reply, "Error, unsupported on this role");
     return;
@@ -3090,6 +3097,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else {
     sprintf(reply, "unknown config: %s", config);
   }
+#endif
 }
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
@@ -3104,6 +3112,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
+#if defined(PORTABLE_ESP32_MINIMAL_CLI)
+  sprintf(reply, "unknown portable config: %s", config);
+  return;
+#else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
     strcpy(reply, "Error, unsupported on this role");
     return;
@@ -3393,6 +3405,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else {
     sprintf(reply, "??: %s", config);
   }
+#endif
 }
 
 void CommonCLI::handleDelCmd(char* command, char* reply) {

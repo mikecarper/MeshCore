@@ -116,6 +116,19 @@ while that sibling disables optional external environmental-sensor drivers for L
 GPS and other board-native telemetry remain enabled. RP2040 and STM32 targets are not offered because those
 platforms do not yet have a safe bootloader/apply path.
 
+Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
+keep MQTT/TLS and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, SSD1306 display support,
+GPS, and optional external sensor drivers. Their compact CLI keeps observer controls and uses UTC or fixed UTC/GMT
+offsets instead of the full named-timezone table. Built-in TLS presets keep their pinned CA roots; the 66 KB
+general CA bundle for custom TLS brokers is omitted, so portable observers use a built-in preset or a custom
+non-TLS broker. Portable observers also use compact C-library formatting and generic ESP-IDF/mbedTLS error
+text; error codes and MQTT status remain available. Classic T-Beam observers retain AXP192/AXP2101 radio
+and GPS rail setup plus battery-voltage readings, but omit unrelated PMU policy. ESP-NOW bridge builds keep
+the ESP-NOW bridge but likewise omit SSD1306 display support, GPS, optional external sensors, and the general
+configuration parser. These reductions do
+not apply to companion builds. Ordinary repeater builds remain sensor-enabled; only explicitly named
+`*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution.
+
 > **Implementer note:** the bootloader (and any non-Arduino consumer) MUST locate the body extent by
 > scanning for `EndF`, never by trusting a stored size - see the bootloader contract in Section 12.
 

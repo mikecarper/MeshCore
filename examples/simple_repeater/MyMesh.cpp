@@ -848,6 +848,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     if (!trace && packet->getRouteType() == ROUTE_TYPE_FLOOD
         && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
     if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->getPathHashCount() >= _prefs.flood_max_advert) return false;
+#if !defined(PORTABLE_MQTT_OBSERVER)
     if (!_prefs.flood_channel_data_enabled
         && packet->getPayloadType() == PAYLOAD_TYPE_GRP_DATA
         && floodChannelDataHopApplies(packet)) {
@@ -857,6 +858,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     }
     if (shouldBlockFloodPacketForward(packet)) return false;
     if (shouldBlockFloodChannelForward(packet)) return false;
+#endif
   }
   if (packet->isRouteFlood() && packet->getPayloadType() != PAYLOAD_TYPE_TRACE
       && recv_pkt_region == NULL) {
@@ -880,11 +882,13 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   // Moderation has rate-counter side effects, so evaluate it only after every
   // other forwarding gate has accepted the packet. Quota is then spent only
   // for a message this repeater will actually retransmit.
+#if !defined(PORTABLE_MQTT_OBSERVER)
   if (packet->isRouteFlood() && shouldBlockFloodGroupTextForward(packet)) return false;
   // Clock evidence is collected only after every forwarding filter accepts the
   // packet. Blocked regions, moderated users, hop/type rules, and looped packets
   // therefore cannot influence the estimate.
   recordAcceptedFloodClockSample(packet);
+#endif
   return true;
 }
 
@@ -1242,6 +1246,11 @@ static uint16_t getRetryLogPreambleLength(const mesh::Packet* packet, uint16_t d
 
 void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt,
                                 const uint8_t* target_hash, uint8_t target_hash_len, int16_t payload_type) {
+#if defined(PORTABLE_MQTT_OBSERVER)
+  (void)event; (void)packet; (void)delay_millis; (void)retry_attempt;
+  (void)target_hash; (void)target_hash_len; (void)payload_type;
+  return;
+#endif
   char type_label[8];
   char target_label[(MAX_HASH_SIZE * 2) + 1];
   const char* route_label = packet != NULL ? (packet->isRouteDirect() ? "D" : "F") : "D";
@@ -1832,6 +1841,10 @@ bool MyMesh::formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Pack
 }
 
 void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) {
+#if defined(PORTABLE_MQTT_OBSERVER)
+  (void)event; (void)packet; (void)delay_millis; (void)retry_attempt;
+  return;
+#endif
   if (event == NULL) {
     return;
   }
@@ -2125,9 +2138,11 @@ void MyMesh::expireRecentRepeatersIfDue() {
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
+#if !defined(PORTABLE_MQTT_OBSERVER)
   if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
     applyFloodChannelScope(pkt);
   }
+#endif
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
   } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
@@ -2582,11 +2597,13 @@ void MyMesh::begin(FILESYSTEM *fs) {
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
   region_map.load(_fs);
+#if !defined(PORTABLE_MQTT_OBSERVER)
   loadFloodChannelBlocks();
   loadFloodPacketFilters();
   loadFloodChannelScopes();
   loadFloodGroupModeration();
   loadClockSyncPrefs();
+#endif
 
   // establish default-scope
   {
@@ -6542,6 +6559,14 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 
   mesh::cli::normalizeCommandVerb(command);
 
+#if defined(PORTABLE_MQTT_OBSERVER)
+  // The portable observer exposes its MQTT/WiFi/update controls through
+  // CommonCLI. Omit the repeater's large remote-administration command tree;
+  // its mesh behavior remains fixed by the selected build profile.
+  _cli.handleCommand(sender_timestamp, command, reply);
+  return;
+#endif
+
   if (sender && !sender->isAdmin()) {
     bool allowed = (sender->isRegionMgr() && isRegionMgrAllowed(command))
         || (sender->isFilterMgr() && isFilterMgrAllowed(command));
@@ -6885,8 +6910,10 @@ void MyMesh::loop() {
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
   checkRxInactivityWatchdog();
+#if !defined(PORTABLE_MQTT_OBSERVER)
   checkBatteryAlert();
   expireRecentRepeatersIfDue();
+#endif
 
 #if defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
   // MQTT runs its own task; serial and ESP-NOW bridges remain cooperative.
@@ -6908,7 +6935,9 @@ void MyMesh::loop() {
     updateAdvertTimer(); // schedule next local advert
   }
 
+#if !defined(PORTABLE_MQTT_OBSERVER)
   processScheduledRadioSettings();
+#endif
 
 #if defined(WITH_MQTT_BRIDGE) && defined(OTA_MANIFEST_BASE)
   if (_ota_update_at && millisHasNowPassed(_ota_update_at)) { // deferred `ota update`
@@ -6952,8 +6981,10 @@ void MyMesh::loop() {
   uint32_t now = millis();
   uptime_millis += now - last_millis;
   last_millis = now;
+#if !defined(PORTABLE_MQTT_OBSERVER)
   checkGpsClockSyncOverride();
   checkClockSync();
+#endif
 
 #ifdef WITH_MQTT_BRIDGE
   _alerter.onLoop(now);

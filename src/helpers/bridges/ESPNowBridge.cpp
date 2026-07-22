@@ -1,6 +1,5 @@
 #include "ESPNowBridge.h"
 
-#include <WiFi.h>
 #include <esp_wifi.h>
 
 #ifdef WITH_ESPNOW_BRIDGE
@@ -40,20 +39,32 @@ void ESPNowBridge::begin() {
 
   if (_initialized) return;
 
-  // Initialize WiFi in station mode
-  WiFi.mode(WIFI_STA);
+  // ESP-NOW only needs the ESP-IDF station interface. Avoid Arduino's WiFi
+  // facade here: it pulls DHCP, DNS, scanning, AP, and event plumbing that an
+  // ESP-NOW-only bridge never uses.
+  wifi_init_config_t wifi_config = WIFI_INIT_CONFIG_DEFAULT();
+  if (esp_wifi_init(&wifi_config) != ESP_OK ||
+      esp_wifi_set_storage(WIFI_STORAGE_RAM) != ESP_OK ||
+      esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK ||
+      esp_wifi_start() != ESP_OK) {
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    return;
+  }
   
   // Set Wi-Fi channel
   if (esp_wifi_set_channel(_prefs->bridge_channel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error setting WIFI channel to %d\n", _prefs->bridge_channel);
-    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
+    esp_wifi_deinit();
     return;
   }
 
   // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error initializing ESP-NOW\n");
-    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
+    esp_wifi_deinit();
     return;
   }
 
@@ -63,7 +74,8 @@ void ESPNowBridge::begin() {
     esp_now_register_recv_cb(nullptr);
     esp_now_register_send_cb(nullptr);
     esp_now_deinit();
-    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
+    esp_wifi_deinit();
     return;
   }
 
@@ -79,7 +91,8 @@ void ESPNowBridge::begin() {
     esp_now_register_recv_cb(nullptr);
     esp_now_register_send_cb(nullptr);
     esp_now_deinit();
-    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
+    esp_wifi_deinit();
     return;
   }
 
@@ -105,8 +118,9 @@ void ESPNowBridge::end() {
     BRIDGE_DEBUG_PRINTLN("Error deinitializing ESP-NOW\n");
   }
 
-  // Turn off WiFi
-  WiFi.mode(WIFI_OFF);
+  // Turn off the ESP-IDF WiFi interface.
+  esp_wifi_stop();
+  esp_wifi_deinit();
 
   // Update bridge state
   _initialized = false;

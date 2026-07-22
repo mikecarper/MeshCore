@@ -123,6 +123,43 @@ void TBeamBoard::printPMU()
 }
 #endif
 
+#if defined(PORTABLE_MQTT_OBSERVER) && !defined(TBEAM_SUPREME_SX1262)
+static bool pmuRead(uint8_t reg, uint8_t& value) {
+  PMU_WIRE_PORT.beginTransmission(I2C_PMU_ADD);
+  PMU_WIRE_PORT.write(reg);
+  if (PMU_WIRE_PORT.endTransmission(false) != 0 ||
+      PMU_WIRE_PORT.requestFrom(I2C_PMU_ADD, 1) != 1) return false;
+  value = PMU_WIRE_PORT.read();
+  return true;
+}
+
+static bool pmuWrite(uint8_t reg, uint8_t value) {
+  PMU_WIRE_PORT.beginTransmission(I2C_PMU_ADD);
+  PMU_WIRE_PORT.write(reg);
+  PMU_WIRE_PORT.write(value);
+  return PMU_WIRE_PORT.endTransmission() == 0;
+}
+
+static bool pmuUpdate(uint8_t reg, uint8_t clear_mask, uint8_t set_mask) {
+  uint8_t value;
+  return pmuRead(reg, value) && pmuWrite(reg, (value & ~clear_mask) | set_mask);
+}
+
+bool TBeamBoard::power_init() {
+  PMU_WIRE_PORT.begin(PIN_BOARD_SDA, PIN_BOARD_SCL);
+  if (!pmuRead(0x03, pmu_model)) return false;
+
+  if (pmu_model == 0x4A) {
+    // AXP2101: ALDO2 and ALDO3 at 3.3 V, plus battery voltage ADC.
+    return pmuUpdate(0x93, 0x1F, 28) && pmuUpdate(0x94, 0x1F, 28) &&
+           pmuUpdate(0x90, 0, 0x06) && pmuUpdate(0x30, 0, 0x01);
+  }
+
+  // AXP192: LDO2 and LDO3 at 3.3 V, plus battery voltage ADC.
+  return pmuWrite(0x28, 0xFF) && pmuUpdate(0x12, 0, 0x0C) &&
+         pmuUpdate(0x82, 0, 0x80);
+}
+#else
 bool TBeamBoard::power_init()
 {
   if (!PMU) {
@@ -284,6 +321,7 @@ bool TBeamBoard::power_init()
   PMU->setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
   return true;
 }
+#endif
 
 #pragma region "Debug code"
 // void TBeamBoard::radiotype_detect(){

@@ -84,11 +84,18 @@
 // Include headers AFTER pin definitions so ESP32Board::sleep() can use P_LORA_DIO_1
 #include <Wire.h>
 #include <Arduino.h>
-#include "XPowersLib.h"
 #include "helpers/ESP32Board.h"
 
+#if !defined(PORTABLE_MQTT_OBSERVER) || defined(TBEAM_SUPREME_SX1262)
+#include "XPowersLib.h"
+#endif
+
 class TBeamBoard : public ESP32Board {
+#if defined(PORTABLE_MQTT_OBSERVER) && !defined(TBEAM_SUPREME_SX1262)
+uint8_t pmu_model = 0;
+#else
 XPowersLibInterface *PMU = NULL;
+#endif
 //PhysicalLayer * pl;
 //RadioType * radio = NULL;
 // int radioVersions = 2;
@@ -131,7 +138,20 @@ public:
   #endif
 
   uint16_t getBattMilliVolts(){
+#if defined(PORTABLE_MQTT_OBSERVER) && !defined(TBEAM_SUPREME_SX1262)
+    uint8_t high_reg = pmu_model == 0x4A ? 0x34 : 0x78;
+    uint8_t low_reg = high_reg + 1;
+    PMU_WIRE_PORT.beginTransmission(I2C_PMU_ADD);
+    PMU_WIRE_PORT.write(high_reg);
+    if (PMU_WIRE_PORT.endTransmission(false) != 0 ||
+        PMU_WIRE_PORT.requestFrom(I2C_PMU_ADD, 2) != 2) return 0;
+    uint16_t high = PMU_WIRE_PORT.read();
+    uint16_t low = PMU_WIRE_PORT.read();
+    if (pmu_model == 0x4A) return ((high & 0x1F) << 8) | low;
+    return (uint16_t)((((high << 4) | (low & 0x0F)) * 11) / 10);
+#else
     return PMU->getBattVoltage();
+#endif
   }
 
   const char* getManufacturerName() const{

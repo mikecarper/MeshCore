@@ -22,8 +22,11 @@ void MQTTMessageBuilder::formatIsoTimestampForMqtt(time_t now, long usec, Timezo
   else if (usec > 999999) usec = 999999;
   struct tm* tm_info = gmtime(&now);
   if (tm_info) {
-    size_t n = strftime(buffer, buffer_size, "%Y-%m-%dT%H:%M:%S", tm_info);
-    if (n > 0 && snprintf(buffer + n, buffer_size - n, ".%06ld+00:00", usec) > 0) {
+    int n = snprintf(buffer, buffer_size, "%04d-%02d-%02dT%02d:%02d:%02d",
+                     tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
+                     tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+    if (n > 0 && static_cast<size_t>(n) < buffer_size &&
+        snprintf(buffer + n, buffer_size - n, ".%06ld+00:00", usec) > 0) {
       return;
     }
   }
@@ -257,8 +260,10 @@ int MQTTMessageBuilder::buildPacketJSON(
   char time_str[16];
   char date_str[16];
   if (utc_timeinfo) {
-    strftime(time_str, sizeof(time_str), "%H:%M:%S", utc_timeinfo);
-    strftime(date_str, sizeof(date_str), "%d/%m/%Y", utc_timeinfo);
+    snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d",
+             utc_timeinfo->tm_hour, utc_timeinfo->tm_min, utc_timeinfo->tm_sec);
+    snprintf(date_str, sizeof(date_str), "%02d/%02d/%04d",
+             utc_timeinfo->tm_mday, utc_timeinfo->tm_mon + 1, utc_timeinfo->tm_year + 1900);
   } else {
     strcpy(time_str, "12:00:00");
     strcpy(date_str, "01/01/2024");
@@ -334,8 +339,10 @@ int MQTTMessageBuilder::buildPacketJSONFromRaw(
   char time_str[16];
   char date_str[16];
   if (utc_timeinfo) {
-    strftime(time_str, sizeof(time_str), "%H:%M:%S", utc_timeinfo);
-    strftime(date_str, sizeof(date_str), "%d/%m/%Y", utc_timeinfo);
+    snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d",
+             utc_timeinfo->tm_hour, utc_timeinfo->tm_min, utc_timeinfo->tm_sec);
+    snprintf(date_str, sizeof(date_str), "%02d/%02d/%04d",
+             utc_timeinfo->tm_mday, utc_timeinfo->tm_mon + 1, utc_timeinfo->tm_year + 1900);
   } else {
     strcpy(time_str, "12:00:00");
     strcpy(date_str, "01/01/2024");

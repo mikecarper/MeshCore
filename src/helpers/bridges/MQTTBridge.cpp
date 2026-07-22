@@ -1,3 +1,4 @@
+#define MQTT_PRESETS_IMPLEMENTATION
 #include "MQTTBridge.h"
 #include "../MQTTMessageBuilder.h"
 #include "../TxtDataHelpers.h"
@@ -1024,6 +1025,7 @@ void MQTTBridge::mqttTaskLoop() {
       _ntp_force_done = true;  // set last so the waiter sees a consistent result
     }
 
+#if !defined(PORTABLE_MQTT_OBSERVER)
     // Process a CLI-requested NTP connectivity diagnostic (queued from Core 1).
     // Probe-only - never touches the system clock.
     if (_ntp_diag_requested) {
@@ -1042,6 +1044,7 @@ void MQTTBridge::mqttTaskLoop() {
       // queue work that shares and overwrites the result fields above.
       _ntp_estimate_requested = false;
     }
+#endif
 
     // Deferred slot setup: wait until NTP is synced so JWT tokens get valid timestamps.
     // This avoids wasted TLS handshakes that get rejected due to bad token times.
@@ -1427,6 +1430,11 @@ void MQTTBridge::setupSlot(int index) {
     // crts array while a prior slot's TLS handshake may still be reading it.
     bool needs_tls = (strncmp(slot.broker_uri, "mqtts://", 8) == 0 ||
                       strncmp(slot.broker_uri, "wss://", 6) == 0);
+#if defined(PORTABLE_MQTT_OBSERVER)
+    // Portable images keep pinned roots for built-in presets. The general CA
+    // bundle is intentionally left unreferenced so the linker can discard it.
+    (void)needs_tls;
+#else
     if (needs_tls) {
       if (!s_ca_bundle_loaded) {
         size_t bundle_len = 0;
@@ -1455,6 +1463,7 @@ void MQTTBridge::setupSlot(int index) {
     } else {
       MQTT_DEBUG_PRINTLN("MQTT%d custom broker uses non-TLS transport", index + 1);
     }
+#endif
 
     // Custom slot authentication: JWT if audience is set, else username/password
     if (slot.audience[0] != '\0') {
@@ -3327,6 +3336,24 @@ bool MQTTBridge::ntpDiag(char* reply, size_t reply_size, bool verbose) {
 // heap allocation - the caller then passes these into Timezone::setRules() on
 // an existing Timezone object.
 bool MQTTBridge::timezoneRulesFromString(const char* tz_string, TimeChangeRule& dst_out, TimeChangeRule& std_out) {
+#if defined(PORTABLE_MQTT_OBSERVER)
+  // Portable observers publish UTC timestamps, so retain UTC and fixed UTC/GMT
+  // offsets without carrying the full named-zone/DST lookup table.
+  int offset = 0;
+  if (strcmp(tz_string, "UTC") == 0 || strcmp(tz_string, "GMT") == 0) {
+    offset = 0;
+  } else if (strncmp(tz_string, "UTC", 3) == 0 || strncmp(tz_string, "GMT", 3) == 0) {
+    offset = atoi(tz_string + 3);
+  } else if (tz_string[0] == '+' || tz_string[0] == '-') {
+    offset = atoi(tz_string);
+  } else {
+    return false;
+  }
+  TimeChangeRule fixed = {"UTC", Last, Sun, Mar, 0, offset * 60};
+  dst_out = fixed;
+  std_out = fixed;
+  return true;
+#else
   // GCC refuses to implicitly build a TimeChangeRule temporary from a bare
   // braced-init-list on the right-hand side of operator= (the aggregate has a
   // char[6] member). Name the type explicitly so a proper temporary is formed.
@@ -3448,6 +3475,7 @@ bool MQTTBridge::timezoneRulesFromString(const char* tz_string, TimeChangeRule& 
     MQTT_DEBUG_PRINTLN("Unknown timezone: %s", tz_string);
     return false;
   }
+#endif
 }
 
 // ---------------------------------------------------------------------------

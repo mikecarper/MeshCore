@@ -79,12 +79,15 @@ bool JWTHelper::createAuthToken(
   
   ed25519_sign(signature, (const unsigned char*)signingInput, signingInputLen, public_key, private_key);
   
-  // Verify the signature locally
+  // The ordinary profile verifies locally as a diagnostic. Portable observers
+  // omit this redundant second curve operation; the broker verifies every JWT.
+#if !defined(PORTABLE_MQTT_OBSERVER)
   int verify_result = ed25519_verify(signature, (const unsigned char*)signingInput, signingInputLen, public_key);
   if (verify_result != 1) {
     if (Serial.availableForWrite() > 0) Serial.println("JWTHelper: Signature verification failed!");
     return false;
   }
+#endif
   
   // Convert signature to hex
   char signatureHex[129];
