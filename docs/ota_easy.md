@@ -47,6 +47,28 @@ Both paths require:
 LoRa OTA packets are generated, received, and relayed only while `tempradio` is active. If any required
 window closes, the transfer stops making progress and can resume during a later overlapping window.
 
+### Choose the source radio
+
+Use an ESP32 **MeshCore companion** as the source node. It receives the update folder from the computer,
+then advertises it over LoRa. Connect to that companion either by USB serial or by WiFi. For USB serial, the
+companion firmware must include `OTA_FOLDER_SERIAL`; before starting the transfer, its USB CLI must accept:
+
+```text
+ota folder on
+```
+
+If that command reports that `OTA_FOLDER_SERIAL` is not built in, use the WiFi method below. Do **not** use
+a KISS modem: KISS firmware is a TNC/KISS frame interface and does not provide the MeshCore CLI or the
+OTA-folder transport that `motatool serve` requires.
+
+For a companion connected by WiFi, use its dedicated OTA seeder connection instead:
+
+```bash
+motatool serve --dir ./motas --tcp <companion-host>:5001 -v
+```
+
+Port `5001` is the OTA seeder port; it is separate from the companion application port (`5000`).
+
 ## Install `motatool`
 
 Install Rust if necessary, then install the standalone packaging and serving tool:
@@ -183,8 +205,9 @@ Close any serial terminal using the source node's USB port, find its device name
 motatool serve --dir ./motas --serial /dev/ttyACM0 -v
 ```
 
-Replace `/dev/ttyACM0` with the source node's serial device. `motatool` attaches the folder to the source,
-which advertises the update over LoRa while its temporary-radio window is active.
+Replace `/dev/ttyACM0` with the USB serial device of the source companion selected above.
+`motatool` attaches the folder to the source, which advertises the update over LoRa while its temporary-radio
+window is active. KISS modem serial ports cannot be used here.
 
 Leave this command running until the destination finishes downloading.
 

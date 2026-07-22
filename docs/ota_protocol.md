@@ -104,6 +104,15 @@ EndF trailer (fixed 56 bytes):
 
 The "reconstructed image" referenced by the manifest is the full `BODY || EndF` (what gets flashed).
 
+### ESP32 portable app-slot profile
+
+ESP32 companion firmware is installed over USB and is exempt from the portable-slot limit. Every other
+ESP32 artifact, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
+`0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
+limit and the target's actual app partition. For every ESP32 repeater, `build.sh` also exposes an explicit
+`*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled, while that sibling
+also disables optional external-sensor drivers for LoRa distribution.
+
 > **Implementer note:** the bootloader (and any non-Arduino consumer) MUST locate the body extent by
 > scanning for `EndF`, never by trusting a stored size — see the bootloader contract in §12.
 
@@ -537,6 +546,13 @@ MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
                       total_size(4) leaves_off(4) block_count(4) payload_off(4) payload_size(4)
 status: 0 = OK, non-zero = error (out of range / past EOF).
 ```
+
+**What to plug into `--serial`.** Use the USB serial console of an ESP32 MeshCore **companion** built with
+`OTA_FOLDER_SERIAL`. The companion is the required source node and must have a working LoRa radio plus an
+`ota folder on` command; that command confirms it can host and advertise the folder. A **KISS modem will not
+work**: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI and `mota-seeder`
+request/response transport. A companion connected over WiFi is the alternative source connection: use its
+dedicated seeder port with `motatool serve --tcp <host>:5001`.
 
 Device CLI: `ota folder on` (attach + announce), `ota folder` (list), `ota folder off`. Build flag
 `OTA_FOLDER_SERIAL` (default stream = console `Serial`; override `OTA_FOLDER_SERIAL_STREAM` + define
