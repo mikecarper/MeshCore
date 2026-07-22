@@ -1113,8 +1113,11 @@ get_pio_envs_containing_string() {
   local env
 
   shopt -s nocasematch
-  for env in "${ALL_PIO_ENVS[@]}"; do
-    if [[ "$env" == *${1}* ]] && is_supported_build_env "$env"; then
+  # Search the complete supported target set, including generated aliases such
+  # as each board's constrained LoRa-OTA repeater build. ALL_PIO_ENVS only
+  # contains concrete PlatformIO environments and would silently omit aliases.
+  for env in "${SUPPORTED_PIO_ENVS[@]}"; do
+    if [[ "$env" == *${1}* ]]; then
       echo "$env"
     fi
   done
