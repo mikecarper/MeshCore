@@ -273,14 +273,14 @@ static void scanI2CBus(TwoWire* wire, bool found[128]) {
 // ============================================================
 // Per-sensor init and query functions
 //
-// init(wire, address) — called only when the address was seen
+// init(wire, address) - called only when the address was seen
 //   on the bus. Returns 0 on failure, or the number of
 //   telemetry channels the sensor will consume (1 for all
 //   single-output sensors; INA3221 returns one per enabled
 //   hardware channel; MLX90614 and RAK12035+calibration
 //   return 2).
 //
-// query(channel, sub_channel, lpp) — called once per active
+// query(channel, sub_channel, lpp) - called once per active
 //   sensor entry during querySensors(). sub_channel is always
 //   0 for single-output sensors.
 // ============================================================
@@ -658,7 +658,7 @@ static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_RAK12035
   { TELEM_RAK12035_ADDRESS,"RAK12035",     init_rak12035, query_rak12035 },
 #endif
-  { 0, nullptr, nullptr, nullptr }  // sentinel — keeps the array non-empty
+  { 0, nullptr, nullptr, nullptr }  // sentinel - keeps the array non-empty
 };
 
 static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TABLE[0])) - 1;
@@ -676,7 +676,7 @@ static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TA
 #endif
 
 // ============================================================
-// begin() — scan the I2C bus, then initialize only what was
+// begin() - scan the I2C bus, then initialize only what was
 // found. A sensor whose address does not ACK during the scan
 // is never touched by a library call, preventing hangs or
 // crashes caused by absent or misbehaving hardware.
@@ -729,7 +729,7 @@ bool EnvironmentSensorManager::begin() {
 }
 
 // ============================================================
-// querySensors() — GPS stays on channel 1; each active sensor
+// querySensors() - GPS stays on channel 1; each active sensor
 // gets the next available channel in the order it was
 // initialized.
 // ============================================================

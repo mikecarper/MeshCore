@@ -1,7 +1,7 @@
 name: Build MQTT Observer+ Firmwares (keymind channel)
 
 # ============================================================================
-# STATUS: STAGED BUT NOT ENABLED — manual dispatch only.
+# STATUS: STAGED BUT NOT ENABLED - manual dispatch only.
 #
 # This is the experimental "plus" channel (mqtt-observer-plus = flex +
 # mcarper/keymindCascade). It mirrors build-observer-firmwares.yml with the
@@ -14,13 +14,13 @@ name: Build MQTT Observer+ Firmwares (keymind channel)
 #   - device pull-OTA:       OTA_MANIFEST_BASE overridden to .../v-plus so
 #     `ota update` on a plus node can never "update" it back onto the stable
 #     channel (the per-env platformio.ini bakes .../v; the env-injected flag
-#     below wins because PLATFORMIO_BUILD_FLAGS append after ini flags —
+#     below wins because PLATFORMIO_BUILD_FLAGS append after ini flags -
 #     verified by building and checking the embedded URL string)
 #
 # NOTE ON DISPATCH: GitHub does not index a workflow_dispatch-only workflow
 # that exists only on a non-default branch and has never run, so this workflow
 # will not appear in the Actions UI / `gh workflow list` (and cannot be
-# dispatched) until its push trigger fires once. That is intentional here —
+# dispatched) until its push trigger fires once. That is intentional here -
 # "staged, not enabled" means nothing can fire it yet. Uncommenting the push
 # trigger below and pushing both registers it and runs the first build; from
 # then on `gh workflow run build-observer-plus-firmwares.yml --ref
@@ -28,7 +28,7 @@ name: Build MQTT Observer+ Firmwares (keymind channel)
 #
 # TO ENABLE THE CHANNEL:
 #   1. Uncomment the `push:` trigger below.
-#   2. Flip SYNC_FLASHER to "true" — but FIRST the flasher repo
+#   2. Flip SYNC_FLASHER to "true" - but FIRST the flasher repo
 #      (agessaman/flasher.meshcore.io) needs channel support; until it does,
 #      the sync step below fails closed on purpose so the stable config.json
 #      cannot be clobbered. Flasher-side prerequisites:
@@ -37,11 +37,11 @@ name: Build MQTT Observer+ Firmwares (keymind channel)
 #        - SPA: a channel picker (Observer / Observer+ experimental)
 #        - gen-slim-manifests.py output dir flasher/v-plus (arg already
 #          parameterized; wired below)
-#        - a plus changelog target (CHANGELOG-plus.md) — the stable
+#        - a plus changelog target (CHANGELOG-plus.md) - the stable
 #          CHANGELOG.md tracks the flex branch only
 #
 # Until SYNC_FLASHER is enabled, the per-base build counter has no writer, so
-# every manual dispatch publishes as build .1 — fine for hand-flashed testing
+# every manual dispatch publishes as build .1 - fine for hand-flashed testing
 # off the release page.
 # ============================================================================
 
@@ -78,7 +78,7 @@ env:
   # Channel-tagged version: embedded in firmware filenames and (with the
   # -observer tag + build number appended by build.sh) in `ver`/MQTT/SNMP.
   FIRMWARE_VERSION: v1.16.0-plus
-  # Rolling release tag for this channel — distinct from observer-mqtt-latest.
+  # Rolling release tag for this channel - distinct from observer-mqtt-latest.
   RELEASE_TAG: observer-mqtt-plus-latest
   # Channel-isolated pull-OTA manifest base baked into these binaries
   # (overrides the .../v default from the per-env platformio.ini flags).
@@ -88,7 +88,7 @@ env:
 
 jobs:
 
-  # Discover the *_observer_mqtt envs and shard them across runners — same
+  # Discover the *_observer_mqtt envs and shard them across runners - same
   # env set as the stable channel; only version/flags/tag differ.
   enumerate:
     runs-on: ubuntu-latest
@@ -179,7 +179,7 @@ jobs:
     steps:
       - name: Clone Repo
         uses: actions/checkout@v4
-        # Shallow on purpose — see the stable workflow's note: build.sh named
+        # Shallow on purpose - see the stable workflow's note: build.sh named
         # the assets from a shallow clone's 7-char short hash.
 
       - name: Download All Shard Artifacts

@@ -26,7 +26,7 @@ bool SerialEthernetInterface::begin() {
 
   // WB_IO2 (power enable) is already driven HIGH by early constructor
   // in RAK4631Board.cpp to support POE boot.
-  // Skip hardware reset — the W5100S comes out of power-on reset cleanly,
+  // Skip hardware reset - the W5100S comes out of power-on reset cleanly,
   // and toggling reset kills the PHY link which breaks POE power.
 #ifdef PIN_ETHERNET_RESET
         pinMode(PIN_ETHERNET_RESET, OUTPUT);
@@ -138,7 +138,7 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
   // Use accept() (not available()) so we only see newly-accepted sockets.
   // available() also returns existing connected sockets that have data,
   // which would cause us to treat each inbound packet as a "new client"
-  // and stop() the underlying socket — disconnecting the companion.
+  // and stop() the underlying socket - disconnecting the companion.
   auto newClient = server.accept();
   if (newClient) {
     IPAddress new_ip = newClient.remoteIP();

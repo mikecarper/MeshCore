@@ -20,7 +20,7 @@ bool find_self_firmware(const uint8_t* region, uint32_t region_len,
     if (verify_body) {
       uint8_t h[8];
       mh8(h, region, body_len);
-      if (memcmp(h, region + off + 8, 8) != 0) continue;       // coincidental marker — keep scanning
+      if (memcmp(h, region + off + 8, 8) != 0) continue;       // coincidental marker - keep scanning
     }
     out.valid = true;
     out.endf_offset = off;

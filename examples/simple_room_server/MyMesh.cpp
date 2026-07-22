@@ -231,7 +231,7 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #ifdef WITH_MQTT_BRIDGE
-  // MQTT bridge: always feed RX packets — bridge decides based on mqtt.rx setting
+  // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (_prefs.bridge_enabled && bridge) bridge->onPacketReceived(pkt);
 #endif
 
@@ -255,7 +255,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 }
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_MQTT_BRIDGE
-  // MQTT bridge: always feed TX packets — bridge decides based on mqtt.tx setting
+  // MQTT bridge: always feed TX packets - bridge decides based on mqtt.tx setting
   if (_prefs.bridge_enabled && bridge) bridge->sendPacket(pkt);
 #endif
 
@@ -776,7 +776,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
   _prefs.radio_fem_rxgain = 1;
 
-  // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() — they live
+  // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() - they live
   // in /mqtt_prefs now, not NodePrefs.
 
   // bridge defaults (same as repeater)

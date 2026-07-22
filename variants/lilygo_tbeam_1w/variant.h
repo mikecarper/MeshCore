@@ -8,8 +8,8 @@
 #define I2C_SCL 9
 
 // GPS - Quectel L76K
-// GNSS_TXD (IO5) = GPS transmits → MCU RX (setPins rxPin)
-// GNSS_RXD (IO6) = GPS receives → MCU TX (setPins txPin)
+// GNSS_TXD (IO5) = GPS transmits -> MCU RX (setPins rxPin)
+// GNSS_RXD (IO6) = GPS receives -> MCU TX (setPins txPin)
 #define PIN_GPS_TX 5       // MCU receives from GPS TX
 #define PIN_GPS_RX 6       // MCU transmits to GPS RX
 #define PIN_GPS_PPS 7      // GPS PPS output

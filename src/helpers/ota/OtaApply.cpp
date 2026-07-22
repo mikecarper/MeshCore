@@ -147,7 +147,7 @@ static int dt_to_write(void* arg, const uint8_t* buf, size_t size) {
 // staged container's payload (which lives at/below write_start, disjoint from the working region). The
 // decoded image is hashed against the signed image_hash BEFORE arming, so a bad decode never boots; the
 // callbacks are bounded to [0, write_start) so they fail gracefully instead of touching the patch.
-// (Sequential is still preferred on ESP32 — it streams straight to the slot with no base-copy; in-place
+// (Sequential is still preferred on ESP32 - it streams straight to the slot with no base-copy; in-place
 // exists only for single-artifact distribution. Requires the patch built with --inplace-segment 4096.)
 struct InPlaceCtx {
   const esp_partition_t* slot;    // in-place working memory = slot[0, mem_max)
@@ -182,7 +182,7 @@ static int ip_mem_erase(void* a, uintptr_t addr, size_t n) {
   // esp_partition_erase_range requires a SECTOR-aligned size; detools' final in-place segment is partial
   // (the image tail past the last full sector). addr is sector-aligned (== --inplace-segment), so round
   // the length UP to a full sector. The over-erased bytes are scratch beyond image_size (never hashed),
-  // and — since detools processes high→low and erases-before-writing — they are never live patch data.
+  // and - since detools processes high->low and erases-before-writing - they are never live patch data.
   const uint32_t SEC = 4096;
   if ((uint32_t)addr % SEC != 0) return ip_fail(c, "er!align", (uint32_t)addr, n, 0);
   uint32_t len = ((uint32_t)n + SEC - 1) & ~(SEC - 1);
@@ -254,7 +254,7 @@ static bool esp32_inplace_apply(OtaStoreFlashEsp32& store, const MotaManifest& m
   st.slot_ok = (memcmp(hh, m.image_hash, 32) == 0);
   if (!st.slot_ok) { strcpy(msg, "image_hash MISMATCH after in-place decode"); return false; }
   if (esp_ota_set_boot_partition(slot) != ESP_OK) { strcpy(msg, "set_boot failed"); return false; }
-  sprintf(msg, "verified%s; in-place decoded %u B, image hash OK — armed, rebooting to apply",
+  sprintf(msg, "verified%s; in-place decoded %u B, image hash OK - armed, rebooting to apply",
           m.is_signed() ? " (signer trusted)" : " (unsigned)", (unsigned)m.image_size);
   return true;
 }
@@ -310,7 +310,7 @@ bool ota_apply_detools_mota(OtaStoreFlashEsp32& store, const SignerAllowlist& al
     st.slot_ok = (memcmp(hh, m.image_hash, 32) == 0);
     if (!st.slot_ok) { strcpy(msg, "image_hash MISMATCH (slot)"); return false; }
     if (esp_ota_set_boot_partition(slot) != ESP_OK) { strcpy(msg, "set_boot failed"); return false; }
-    sprintf(msg, "verified%s full image %u B in slot — armed, rebooting to apply",
+    sprintf(msg, "verified%s full image %u B in slot - armed, rebooting to apply",
             m.is_signed() ? " (trusted)" : " (unsigned)", (unsigned)m.image_size);
     return true;
   }
@@ -348,7 +348,7 @@ bool ota_apply_detools_mota(OtaStoreFlashEsp32& store, const SignerAllowlist& al
   if (!st.slot_ok) { esp_ota_abort(h); strcpy(msg, "image_hash MISMATCH after decode"); return false; }
   if (esp_ota_end(h) != ESP_OK) { strcpy(msg, "ota_end failed"); return false; }
   if (esp_ota_set_boot_partition(slot) != ESP_OK) { strcpy(msg, "set_boot failed"); return false; }
-  sprintf(msg, "verified%s; decoded %u B, image hash OK — armed, rebooting to apply",
+  sprintf(msg, "verified%s; decoded %u B, image hash OK - armed, rebooting to apply",
           m.is_signed() ? " (signer trusted)" : " (unsigned)", (unsigned)m.image_size);
   return true;
 }
@@ -394,7 +394,7 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len, const SignerAllowl
   if (!st.slot_ok) { esp_ota_abort(h); strcpy(msg, "image_hash MISMATCH after decode"); return false; }
   if (esp_ota_end(h) != ESP_OK) { strcpy(msg, "ota_end failed"); return false; }
   if (esp_ota_set_boot_partition(out) != ESP_OK) { strcpy(msg, "set_boot failed"); return false; }
-  sprintf(msg, "verified%s; decoded %u B, image hash OK — armed, rebooting to apply",
+  sprintf(msg, "verified%s; decoded %u B, image hash OK - armed, rebooting to apply",
           m.is_signed() ? " (signer trusted)" : " (unsigned)", (unsigned)m.image_size);
   return true;
 }
@@ -444,13 +444,13 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
   memcpy(st.image_hash, m.image_hash, 32);
   st.manifest_ok = true;
 
-  // 0) THIS device's bootloader must be able to apply this .mota — otherwise staging + approving + rebooting
+  // 0) THIS device's bootloader must be able to apply this .mota - otherwise staging + approving + rebooting
   //    just bounces back unchanged (a legacy/stock/older-OTAFIX bootloader). Refuse here, before any reboot.
   {
     OtaBlCaps bl = ota_bootloader_caps();
-    if (!bl.present) { strcpy(msg, "this bootloader has no OTA-apply support — update the bootloader first"); return false; }
+    if (!bl.present) { strcpy(msg, "this bootloader has no OTA-apply support - update the bootloader first"); return false; }
     if (bl.apply_abi < m.format_ver || !(bl.codec_mask & (1u << m.codec_id))) {
-      snprintf(msg, 159, "bootloader too old to apply this update (bl abi=%u codecs=0x%x; need fmt>=%u codec=%u) — update the bootloader",
+      snprintf(msg, 159, "bootloader too old to apply this update (bl abi=%u codecs=0x%x; need fmt>=%u codec=%u) - update the bootloader",
                bl.apply_abi, bl.codec_mask, m.format_ver, m.codec_id);
       return false;
     }
@@ -487,9 +487,9 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
   flash_nrf5x_flush();
   if (memcmp((const void*)(uintptr_t)approval_addr, APPROVAL_YES, 4) != 0) { strcpy(msg, "approval not set"); return false; }
 
-  // Approved. Do NOT reset here — return so the caller can deliver `msg` to the operator first; the
+  // Approved. Do NOT reset here - return so the caller can deliver `msg` to the operator first; the
   // deferred ota_reboot_to_apply() (after the reply is sent) does the actual handoff to the bootloader.
-  sprintf(msg, "verified%s; applying — rebooting into bootloader once this reply is sent",
+  sprintf(msg, "verified%s; applying - rebooting into bootloader once this reply is sent",
           vr.is_signed ? " (signer trusted)" : " (unsigned)");
   return true;
 }

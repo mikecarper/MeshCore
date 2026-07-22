@@ -5,10 +5,10 @@
 #include <string.h>
 #include "OtaFormat.h"   // MOTA_MAGIC (resume: detect a persisted partial container)
 
-// Staging backend for an in-transit `.mota` (docs/ota_protocol.md §7). Blocks may arrive out of order
+// Staging backend for an in-transit `.mota` (docs/ota_protocol.md Section 7). Blocks may arrive out of order
 // and progress must survive reboots, so the store is random-access. The transfer/verify logic is
 // written against this interface; concrete impls are per-platform (RAM for tests/bring-up; persistent
-// flash — ESP32 OTA slot / nRF52 raw region — for production, dropped in behind the same interface).
+// flash - ESP32 OTA slot / nRF52 raw region - for production, dropped in behind the same interface).
 
 namespace mesh {
 namespace ota {
@@ -25,8 +25,8 @@ public:
   virtual void clear() = 0;
 
   // Optional: declare the size of the leading metadata (header + manifest + merkle leaves, i.e.
-  // everything before the payload). A flash-backed store keeps that region — which is updated
-  // throughout the transfer (a leaf is committed per block) — pinned in one RAM page, so it can
+  // everything before the payload). A flash-backed store keeps that region - which is updated
+  // throughout the transfer (a leaf is committed per block) - pinned in one RAM page, so it can
   // flush the bulk payload page-by-page without re-erasing the leaves' page on every block.
   // Returns false if the metadata won't fit the store's pinned region (transfer is then refused).
   virtual bool set_meta_size(uint32_t meta_bytes) { (void)meta_bytes; return true; }
@@ -62,8 +62,8 @@ public:
   }
 };
 
-// Fixed-capacity RAM store — for native tests and device bring-up of the transfer/verify path.
-// (Does NOT survive reboot; a persistent flash store replaces it for production — see D1.)
+// Fixed-capacity RAM store - for native tests and device bring-up of the transfer/verify path.
+// (Does NOT survive reboot; a persistent flash store replaces it for production - see D1.)
 template <uint32_t CAP>
 class OtaStoreRam : public OtaStore {
   uint8_t _buf[CAP] = {};   // zero-init so a never-written store's reopen() finds no MOTA_MAGIC
@@ -88,7 +88,7 @@ public:
   uint32_t capacity() const override { return CAP; }
   uint32_t staged_size() const override { return _total; }
   void clear() override { _total = 0; }
-  // RAM doesn't survive a real reboot, but the buffer persists within a process — enough to exercise the
+  // RAM doesn't survive a real reboot, but the buffer persists within a process - enough to exercise the
   // manager's resume path in native tests. Recover `total` from the stored header so read() bounds work.
   bool reopen() override {
     if (memcmp(_buf, MOTA_MAGIC, 4) != 0) return false;

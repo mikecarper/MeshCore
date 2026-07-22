@@ -68,10 +68,10 @@ inline uint32_t mota_nrf52_stage_capacity(uint32_t app_base) {
 // Plan where to stage a received `.mota` of `total_size` bytes. It is placed bottom-aligned within the
 // highest flash page below FS_START (the bootloader scans downward from there), and it must sit
 // ENTIRELY above both the running image and the in-place decoder workspace, and below the filesystem
-// region (ExtraFS/InternalFS — where user prefs live, assumed immutable). Reserving the full workspace
+// region (ExtraFS/InternalFS - where user prefs live, assumed immutable). Reserving the full workspace
 // here prevents accepting a large container that the bootloader would later reject as overlapping it.
 // Returns false (and leaves out_start untouched) if it does not fit. This is the SINGLE place the FS
-// ceiling + app-collision bounds are enforced; begin()/reopen() both go through it. Pure — no flash I/O —
+// ceiling + app-collision bounds are enforced; begin()/reopen() both go through it. Pure - no flash I/O -
 // so it is unit-tested natively in test/test_ota/test_ota_flashplan.cpp.
 inline bool mota_nrf52_stage_plan(uint32_t total_size, uint32_t app_base, uint32_t app_end,
                                   uint32_t& out_start) {

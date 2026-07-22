@@ -79,7 +79,7 @@ bool SerialMotaSource::describe(uint8_t idx, MotaDesc& out) {
   out.block_count  = rd_u32le(w + 22);
   out.payload_off  = rd_u32le(w + 26);
   out.payload_size = rd_u32le(w + 30);
-  // bytes [34,38) reserved (zero) — kept for forward compat without changing MOTA_DESC_WIRE
+  // bytes [34,38) reserved (zero) - kept for forward compat without changing MOTA_DESC_WIRE
   return true;
 }
 

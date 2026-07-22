@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 
-// Runtime-managed allowlist of trusted Ed25519 firmware-signer public keys (docs/ota_protocol.md §9,
+// Runtime-managed allowlist of trusted Ed25519 firmware-signer public keys (docs/ota_protocol.md Section 9,
 // decision D2 + Q1: no key embedded in firmware; only allowlist-signed firmware may auto-apply).
 // Portable + fixed-capacity (no dynamic allocation). Persistence (load/save) is layered on per-platform.
 

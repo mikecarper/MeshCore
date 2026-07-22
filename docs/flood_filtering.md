@@ -6,8 +6,8 @@ packet logging, or MQTT observation.
 
 Only flood routes are filtered:
 
-- `0x00` / `ROUTE_TYPE_TRANSPORT_FLOOD` — flood routing with transport codes
-- `0x01` / `ROUTE_TYPE_FLOOD` — unscoped flood routing
+- `0x00` / `ROUTE_TYPE_TRANSPORT_FLOOD` - flood routing with transport codes
+- `0x01` / `ROUTE_TYPE_FLOOD` - unscoped flood routing
 
 Direct routes `0x02` and `0x03` are never affected by these rules.
 The route and payload values follow the upstream
@@ -310,11 +310,11 @@ not included in `get flood.moderation` output.
 
 Available actions are:
 
-- `drop` — do not retransmit any matching message
-- `rate=X/min` — retransmit at most `X` messages per local 60-second window
-- `hops=N` — do not retransmit when the received path count is `N` or higher
-- `path=H1[,H2,H3]` — require the first one to three path hashes to match
-- `path=*` — match every path; this is the default
+- `drop` - do not retransmit any matching message
+- `rate=X/min` - retransmit at most `X` messages per local 60-second window
+- `hops=N` - do not retransmit when the received path count is `N` or higher
+- `path=H1[,H2,H3]` - require the first one to three path hashes to match
+- `path=*` - match every path; this is the default
 
 At least one of `drop`, `rate=X/min`, or `hops=N` is required. Rate and hop
 limits can be combined. `rate=0/min` is equivalent to `drop`.
@@ -324,8 +324,8 @@ limits can be combined. `rate=0/min` is equivalent to `drop`.
 Rate limits require an exact username; `*` is not accepted for a rate rule.
 Username comparison is ASCII case-insensitive, and names containing spaces must
 be quoted. A rule's counter is independent from rules for the same name on
-other channels, so this directly supports “X messages per minute from user X
-on channel Y.” Counters are local to this repeater and reset on reboot.
+other channels, so this directly supports "X messages per minute from user X
+on channel Y." Counters are local to this repeater and reset on reboot.
 
 ```text
 # At most five Public-channel messages per minute from this display name.

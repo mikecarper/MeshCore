@@ -5,7 +5,7 @@
 
 // A MotaSource backed by a host "mota-seeder" daemon over a dedicated Stream (a spare UART / USB-UART).
 // The device pulls catalog + bytes on demand (MotaSeederProto.h); the folder image is never held on the
-// device — it streams through. Use a stream that is NOT the text-CLI console so the binary framing never
+// device - it streams through. Use a stream that is NOT the text-CLI console so the binary framing never
 // collides with command/log text. Reads block on the Stream up to `timeout_ms` (OTA is lowest priority,
 // so a serial round-trip's latency is acceptable; keep the daemon on a fast link).
 

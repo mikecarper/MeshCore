@@ -5,7 +5,7 @@
 
 // An OtaStore that captures an in-transit `.mota` onto a HOST folder over the mota-seeder link (the WRITE
 // half of MotaSeederProto: OP_STAT/BEGIN/WRITE/SREAD/FIN). This is the destination for `ota pull <#> folder`:
-// blocks stream straight to the host `<mid>.mota` — the device holds NO RAM/flash staging for it.
+// blocks stream straight to the host `<mid>.mota` - the device holds NO RAM/flash staging for it.
 //
 //   begin(total)      -> OP_BEGIN  (host creates a 0xFF-filled <midhex>.mota.part)
 //   write(off,data)   -> OP_WRITE  (split into <= MOTA_SEEDER_WRITE_MAX chunks)
@@ -24,13 +24,13 @@ class FolderMotaStore : public OtaStore {
 public:
   explicit FolderMotaStore(Stream& io, uint32_t timeout_ms = 3000) : _io(io), _to(timeout_ms) {}
 
-  // The container being pulled — set from the chosen `ota pull` mid before begin()/reopen().
+  // The container being pulled - set from the chosen `ota pull` mid before begin()/reopen().
   void set_mid(const uint8_t mid[4]) { memcpy(_mid, mid, 4); }
 
   bool begin(uint32_t total_size) override;
   bool write(uint32_t off, const uint8_t* data, uint32_t len) override;
   bool read(uint32_t off, uint8_t* buf, uint32_t len) const override;
-  uint32_t capacity() const override { return 0xF0000000u; }   // host disk — effectively unbounded
+  uint32_t capacity() const override { return 0xF0000000u; }   // host disk - effectively unbounded
   uint32_t staged_size() const override { return _total; }
   void clear() override { _total = 0; }
   bool finalize() override;

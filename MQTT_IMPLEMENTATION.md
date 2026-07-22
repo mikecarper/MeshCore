@@ -90,7 +90,7 @@ If migrating from an existing node (e.g., a Raspberry Pi gateway), restore the p
 set prv.key <your_64_hex_char_private_key>
 ```
 
-**4. Configure WiFi credentials** (value is the rest of the line; do not use quotes — see [WiFi Commands](#wifi-commands))
+**4. Configure WiFi credentials** (value is the rest of the line; do not use quotes - see [WiFi Commands](#wifi-commands))
 ```bash
 set wifi.ssid YourWiFiNetwork
 set wifi.pwd YourWiFiPassword
@@ -178,7 +178,7 @@ The MQTT bridge uses a slot-based architecture with up to 6 concurrent connectio
 | `inwmesh` | scope.inwmesh.org:8883 | Username/password (per slot via `mqttN.username` / `mqttN.password`) | MQTT over TLS |
 | `rflab` | mqtt.rflab.io:443 | JWT (Ed25519) | WSS |
 | `custom` | User-configured | Username/Password | MQTT or WSS |
-| `none` | (disabled) | — | — |
+| `none` | (disabled) | - | - |
 
 **Default Configuration:**
 - Slot 1: `analyzer-us`
@@ -189,7 +189,7 @@ The MQTT bridge uses a slot-based architecture with up to 6 concurrent connectio
 - With PSRAM: All slots can be active simultaneously
 - Without PSRAM: Maximum 2 active TLS/WSS slots (each WSS/TLS connection requires ~40KB internal heap)
 - If more slots are configured than the device supports, excess slots show as `(inactive)` in `get mqtt.status`
-- Slot configurations are preserved in preferences — moving firmware to a PSRAM device activates all slots
+- Slot configurations are preserved in preferences - moving firmware to a PSRAM device activates all slots
 
 ## Build Configuration
 
@@ -210,11 +210,11 @@ pio run -e LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt
 pio run -e LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt
 ```
 
-**TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo’s **T-LoRa V2.1–1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so they retain dual-app OTA on the 4 MB flash; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The repeater observer also keeps 256 recent-repeater entries instead of the normal ESP32 default of 2,048. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
+**TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo's **T-LoRa V2.1-1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so they retain dual-app OTA on the 4 MB flash; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The repeater observer also keeps 256 recent-repeater entries instead of the normal ESP32 default of 2,048. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
 
-**T-LoRa V2.1–1.6 MQTT observer — one WSS broker:** This hardware is **classic ESP32 without PSRAM**. Each WSS preset uses a full TLS stack and large contiguous heap allocations; **two active broker presets at once** typically fails the second connection (`mbedtls_ssl_setup` / `esp-tls` `0x8017`, low `IntMax` in `memory`). **Treat these observer builds as supporting one active cloud preset:** configure the broker you need in `mqtt1` or `mqtt2`, and set the other slot to `none` (e.g. `set mqtt2.preset none`). Use PSRAM-capable boards if you need multiple simultaneous MQTT uplinks.
+**T-LoRa V2.1-1.6 MQTT observer - one WSS broker:** This hardware is **classic ESP32 without PSRAM**. Each WSS preset uses a full TLS stack and large contiguous heap allocations; **two active broker presets at once** typically fails the second connection (`mbedtls_ssl_setup` / `esp-tls` `0x8017`, low `IntMax` in `memory`). **Treat these observer builds as supporting one active cloud preset:** configure the broker you need in `mqtt1` or `mqtt2`, and set the other slot to `none` (e.g. `set mqtt2.preset none`). Use PSRAM-capable boards if you need multiple simultaneous MQTT uplinks.
 
-### Partition Table Changes — Merged Firmware Required
+### Partition Table Changes - Merged Firmware Required
 
 Some MQTT observer builds use a non-default partition table to accommodate the larger firmware size (MQTT libraries, TLS, cert bundle, etc.). **When a board's partition table changes, you must flash the merged firmware (`*-merged.bin`) the first time** so the new partition layout and bootloader are written together. After that initial flash, standard OTA or non-merged updates will work normally.
 
@@ -231,17 +231,17 @@ Some MQTT observer builds use a non-default partition table to accommodate the l
 
 **NVS / settings when the partition layout changes**
 
-Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new bootloader **and** partition table. If that layout **differs** from what is already on the device, **NVS is typically wiped or invalidated** — expect to lose stored configuration (admin preferences, WiFi, MQTT slots, name, etc.) and reconfigure from scratch.
+Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new bootloader **and** partition table. If that layout **differs** from what is already on the device, **NVS is typically wiped or invalidated** - expect to lose stored configuration (admin preferences, WiFi, MQTT slots, name, etc.) and reconfigure from scratch.
 
 - **`LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt`:** This uses the custom `dual_ota_1984k.csv` layout. Install its merged image when coming from a standard TLora build, the room-server observer, or any older `huge_app.csv` build; expect to reconfigure after that partition change.
 - **`LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt`:** This retains the normal `min_spiffs.csv` layout. Moving from another `min_spiffs` TLora build does not itself require a partition change, but coming from the repeater observer's custom layout, `huge_app.csv`, or a non-MeshCore layout does.
-- **`Station_G2_*_observer_mqtt`** and **`LilyGo_TBeam_1W_*_observer_mqtt`**: These use `default_16MB.csv` to accomodate the larger size of the MQTT observer firmware. Installing MQTT observer firmware on these devices requires a **merged** flash the first time. The same applies if you move **from** firmware that was built with a **different** partition table—the first merged flash that installs this layout will **wipe** stored settings. 
+- **`Station_G2_*_observer_mqtt`** and **`LilyGo_TBeam_1W_*_observer_mqtt`**: These use `default_16MB.csv` to accomodate the larger size of the MQTT observer firmware. Installing MQTT observer firmware on these devices requires a **merged** flash the first time. The same applies if you move **from** firmware that was built with a **different** partition table-the first merged flash that installs this layout will **wipe** stored settings.
 
 **How to flash the merged firmware:**
 
 You can flash the merged firmware using either the web flasher or the command line:
 
-- **Web flasher (recommended):** Use the [MeshCore Web Flasher](https://meshcore.io/flasher) to flash the `*-merged.bin` file directly from your browser — no tools to install.
+- **Web flasher (recommended):** Use the [MeshCore Web Flasher](https://meshcore.io/flasher) to flash the `*-merged.bin` file directly from your browser - no tools to install.
 - **Command line:**
   ```bash
   # Build the merged binary
@@ -251,7 +251,7 @@ You can flash the merged firmware using either the web flasher or the command li
   esptool.py write_flash 0x0 .pio/build/LilyGo_T3S3_sx1262_repeater_observer_mqtt/firmware-merged.bin
   ```
 
-> **Note:** If the **partition layout is unchanged** (e.g. updating the MQTT observer build in place), device configuration in NVS is usually retained; Bluetooth pairings may still be cleared on some upgrade paths. If the **partition table is new to the device**, see **NVS / settings when the partition layout changes** above — stored settings are typically lost. After the first merged flash **for a given layout**, subsequent updates on that board can use OTA or the standard non-merged binary when applicable.
+> **Note:** If the **partition layout is unchanged** (e.g. updating the MQTT observer build in place), device configuration in NVS is usually retained; Bluetooth pairings may still be cleared on some upgrade paths. If the **partition table is new to the device**, see **NVS / settings when the partition layout changes** above - stored settings are typically lost. After the first merged flash **for a given layout**, subsequent updates on that board can use OTA or the standard non-merged binary when applicable.
 
 ### Build Flags
 - `WITH_MQTT_BRIDGE=1` - Enable MQTT bridge (required)
@@ -266,7 +266,7 @@ Optional PlatformIO `build_flags` override defaults written when `/mqtt_prefs` i
 
 | Macro | Default | Notes |
 |-------|---------|-------|
-| `MQTT_DEFAULT_SLOT1_PRESET` … `MQTT_DEFAULT_SLOT6_PRESET` | slots 1–2: `analyzer-us` / `analyzer-eu`; slots 3–6: `none` | Must be a built-in preset name, `none`, or `custom` |
+| `MQTT_DEFAULT_SLOT1_PRESET` ... `MQTT_DEFAULT_SLOT6_PRESET` | slots 1-2: `analyzer-us` / `analyzer-eu`; slots 3-6: `none` | Must be a built-in preset name, `none`, or `custom` |
 | `MQTT_DEFAULT_IATA` | (empty) | e.g. `'"YYZ"'` |
 | `MQTT_DEFAULT_TIMEZONE` | (empty) | e.g. `'"America/Toronto"'` |
 | `MQTT_DEFAULT_TIMEZONE_OFFSET` | `0` | Fallback hours when TZ string is empty |
@@ -284,13 +284,13 @@ build_flags =
 
 WiFi SSID/password are not compile-time configurable (operators set them per device via CLI).
 
-Legacy `get mqtt.analyzer_us` / `set mqtt.analyzer_us` still refer to the preset name `analyzer-us`, not “whatever slot 1 default is”.
+Legacy `get mqtt.analyzer_us` / `set mqtt.analyzer_us` still refer to the preset name `analyzer-us`, not "whatever slot 1 default is".
 
 ## Default Configuration
 
 The MQTT bridge comes with the following defaults for fresh installs (unless overridden by the macros above):
 - **Origin**: Device name (set automatically from `set name`)
-- **IATA**: (blank — must be configured for MeshCore-style topic presets such as Analyzer and TennMesh, unless `MQTT_DEFAULT_IATA` is set at build time)
+- **IATA**: (blank - must be configured for MeshCore-style topic presets such as Analyzer and TennMesh, unless `MQTT_DEFAULT_IATA` is set at build time)
 - **Status Messages**: Enabled
 - **Packet Messages**: Enabled
 - **Raw Messages**: Disabled
@@ -300,10 +300,10 @@ The MQTT bridge comes with the following defaults for fresh installs (unless ove
 - **Slot 1**: `analyzer-us`
 - **Slot 2**: `analyzer-eu`
 - **Slots 3-6**: `none` (disabled)
-- **WiFi SSID**: (blank — must be configured)
-- **WiFi Password**: (blank — optional for open networks)
+- **WiFi SSID**: (blank - must be configured)
+- **WiFi Password**: (blank - optional for open networks)
 - **WiFi Power Save**: `none` (no power save)
-- **Timezone**: (blank — uses UTC until configured, unless `MQTT_DEFAULT_TIMEZONE` is set at build time)
+- **Timezone**: (blank - uses UTC until configured, unless `MQTT_DEFAULT_TIMEZONE` is set at build time)
 - **Timezone Offset**: 0 (fallback, no offset, unless `MQTT_DEFAULT_TIMEZONE_OFFSET` is set)
 - **Repeat (forwarding)**: On (set `repeat off` for receive-only observers)
 
@@ -373,7 +373,7 @@ set mqtt3.server wss://my-broker.example.com:443/mqtt
 set mqtt3.audience my-broker.example.com
 ```
 
-When the server is given as a full URL with a scheme (`mqtt://`, `mqtts://`, `ws://`, `wss://`), `set mqttN.port` is optional — an explicit port in the URL is used as-is, and without one the scheme's default port applies.
+When the server is given as a full URL with a scheme (`mqtt://`, `mqtts://`, `ws://`, `wss://`), `set mqttN.port` is optional - an explicit port in the URL is used as-is, and without one the scheme's default port applies.
 
 When `audience` is set, the device will:
 - Connect with username `v1_{PUBLIC_KEY}` and an Ed25519-signed JWT as the password
@@ -394,7 +394,7 @@ set mqtt3.server ws://192.168.1.50:9001/mqtt
 set mqtt3.audience my-local-broker
 ```
 
-The `audience` line is optional — set it if your local broker uses the same JWT auth as the production presets, or use `set mqtt3.username` / `set mqtt3.password` instead.
+The `audience` line is optional - set it if your local broker uses the same JWT auth as the production presets, or use `set mqtt3.username` / `set mqtt3.password` instead.
 
 #### Example: Custom Broker with Custom Topic Template
 ```bash
@@ -468,7 +468,7 @@ These settings apply across all MQTT slots:
 - `set wifi.pwd <password>` - Set WiFi password
 - `set wifi.powersave none|min|max` - Set WiFi power save mode
 
-> **Note:** The value is everything after the first space (spaces in SSID/password are fine). Do not wrap in quotes — they are stored literally. Max length: 31 characters (SSID), 63 (password). For open networks, use `set wifi.pwd ` with nothing after the space.
+> **Note:** The value is everything after the first space (spaces in SSID/password are fine). Do not wrap in quotes - they are stored literally. Max length: 31 characters (SSID), 63 (password). For open networks, use `set wifi.pwd ` with nothing after the space.
   - `none` - No power saving (best performance, highest power consumption)
   - `min` - Minimum power saving (balanced performance and power)
   - `max` - Maximum power saving (lowest power consumption, may affect performance)
@@ -620,8 +620,8 @@ Minimal raw packet data for map integration.
 - All numeric fields (`len`, `packet_type`, `payload_len`, `SNR`, `RSSI`, `score`) are formatted as JSON strings.
 - `time` and `date` are always UTC (`HH:MM:SS` and `DD/MM/YYYY`); `timestamp` is UTC with an explicit `+00:00` offset.
 - `SNR`, `RSSI`, and `score` are only present for RX packets (received from radio). TX packets omit these fields since the packet originates from this node.
-- `score` is the firmware's rebroadcast score for the received packet (the same value used to compute flood-rebroadcast delay), scaled ×1000 to match the integer printed in the serial RX log — e.g. a score of `0.234` is emitted as `"234"` (range `0`–`1000`). It is recomputed at publish time from the packet's SNR and length via the radio's `packetScore()`, so it matches what the firmware used on receive. Omitted when unavailable (e.g. the non-PSRAM reconstruction-less fallback path).
-- `path` is only present for direct-route packets that carry path data. It is a JSON array of lowercase hex hop tokens, one element per hop — e.g. `["aa","bb","cc"]` for single-byte hashes, or `["aaaa","bbbb"]` for multi-byte hashes. This matches the `path` representation emitted by [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture).
+- `score` is the firmware's rebroadcast score for the received packet (the same value used to compute flood-rebroadcast delay), scaled x1000 to match the integer printed in the serial RX log - e.g. a score of `0.234` is emitted as `"234"` (range `0`-`1000`). It is recomputed at publish time from the packet's SNR and length via the radio's `packetScore()`, so it matches what the firmware used on receive. Omitted when unavailable (e.g. the non-PSRAM reconstruction-less fallback path).
+- `path` is only present for direct-route packets that carry path data. It is a JSON array of lowercase hex hop tokens, one element per hop - e.g. `["aa","bb","cc"]` for single-byte hashes, or `["aaaa","bbbb"]` for multi-byte hashes. This matches the `path` representation emitted by [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture).
 
 ### Raw Message
 ```json
@@ -651,7 +651,7 @@ Minimal raw packet data for map integration.
 - Captures actual raw radio transmission data (including radio headers)
 - Uses proper MeshCore packet hashing (SHA256-based)
 - Provides accurate SNR/RSSI values from actual radio reception (RX packets only)
-- Independent RX and TX packet uplinking — both can be active simultaneously
+- Independent RX and TX packet uplinking - both can be active simultaneously
 - TX advert mode: selectively uplink only this node's own advert packets
 
 ### Timezone Support
@@ -671,14 +671,14 @@ Minimal raw packet data for map integration.
 - Custom primary via `set mqtt.ntp <hostname>`; `set mqtt.ntp none` reverts to default
 - `set mqtt.ntp` runs an immediate sync (primary only, so a typo fails fast) when WiFi is connected and the bridge is running
 - `get mqtt.ntp` returns the effective primary hostname
-- `get mqtt.ntp.diag` probes every configured server (primary + fallbacks) for connectivity and reports each server's time without changing the system clock — a pure diagnostic
+- `get mqtt.ntp.diag` probes every configured server (primary + fallbacks) for connectivity and reports each server's time without changing the system clock - a pure diagnostic
 - Periodic time updates (every hour) on the effective primary only
 - Proper UTC system time handling
 
 ### Authentication
 The auth mode is fixed per preset (see the [preset table](#slot-based-preset-system)). Three modes are used:
 - **JWT Authentication**: Ed25519-signed tokens for brokers that expect JWT (most WSS presets). For `custom` slots, JWT is used when `audience` is set.
-- **Username/Password**: Some presets ship fixed credentials embedded in firmware (`tennmesh`, `nashmesh`, `ctmesh` — plain MQTT, no TLS); others (`inwmesh`, `custom`) take per-slot credentials via `mqttN.username` / `mqttN.password`.
+- **Username/Password**: Some presets ship fixed credentials embedded in firmware (`tennmesh`, `nashmesh`, `ctmesh` - plain MQTT, no TLS); others (`inwmesh`, `custom`) take per-slot credentials via `mqttN.username` / `mqttN.password`.
 - **None**: `meshrank` (account token carried in the topic) and `eastidahomesh` connect without broker auth.
 - **Username Format** (JWT): `v1_{UPPERCASE_PUBLIC_KEY}`
 - **Automatic Token Renewal**: Tokens are renewed before expiration
@@ -687,9 +687,9 @@ The auth mode is fixed per preset (see the [preset table](#slot-based-preset-sys
 
 When upgrading from a firmware version that used the old MQTT configuration format (`mqtt.analyzer.us`, `mqtt.analyzer.eu`, `mqtt.server`, `mqtt.port`, `mqtt.username`, `mqtt.password`), the device automatically migrates settings:
 
-- `mqtt.analyzer.us = on` → Slot 1 preset: `analyzer-us`
-- `mqtt.analyzer.eu = on` → Slot 2 preset: `analyzer-eu`
-- Custom server configured → Slot 3 preset: `custom` with host/port/username/password preserved
+- `mqtt.analyzer.us = on` -> Slot 1 preset: `analyzer-us`
+- `mqtt.analyzer.eu = on` -> Slot 2 preset: `analyzer-eu`
+- Custom server configured -> Slot 3 preset: `custom` with host/port/username/password preserved
 - All other settings (origin, IATA, message types, WiFi, timezone) are preserved as-is
 
 The migration happens automatically on first boot after firmware update. No manual intervention is needed.

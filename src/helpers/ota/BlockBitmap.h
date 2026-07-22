@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 
-// Block-availability helpers (docs/ota_protocol.md §7).
+// Block-availability helpers (docs/ota_protocol.md Section 7).
 //
 // Availability is *derived* from the staged manifest's leaves[]: block i is present iff its 4-byte
 // leaf slot is non-erased (!= FF FF FF FF). No separate persistent structure. A compact bitmap

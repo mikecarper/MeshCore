@@ -5,7 +5,7 @@
 #include "OtaFormat.h"
 
 // Parse/validate a `.mota` container that is fully present in a RAM buffer (docs/ota_protocol.md
-// §3-§4). Variable-length parts are referenced by pointer into the caller's buffer — no copies, no
+// Section 3-Section 4). Variable-length parts are referenced by pointer into the caller's buffer - no copies, no
 // allocation. (Device flash-backed staging gets a streaming variant in a later milestone; the field
 // layout here is the single source of truth.)
 
@@ -24,7 +24,7 @@ struct MotaManifest {
   uint8_t  codec_id = 0;
   uint32_t block_count = 0;
 
-  // Fixed layout (docs/ota_protocol.md §4): every field below sits at a constant offset and is ALWAYS
+  // Fixed layout (docs/ota_protocol.md Section 4): every field below sits at a constant offset and is ALWAYS
   // present; base_hash/signer_pubkey/signature are zero-filled when not applicable (full / unsigned).
   const uint8_t* merkle_root = nullptr;   // 4  @20
   const uint8_t* image_hash = nullptr;    // 32 @24

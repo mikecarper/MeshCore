@@ -47,8 +47,8 @@ All secrets, hashes, and cryptographic values shown in this guide are example va
 MeshCore Companion devices expose a BLE service with the following UUIDs:
 
 - **Service UUID**: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-- **RX Characteristic** (App → Firmware): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
-- **TX Characteristic** (Firmware → App): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+- **RX Characteristic** (App -> Firmware): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
+- **TX Characteristic** (Firmware -> App): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
 
 ### Connection Steps
 
@@ -121,7 +121,7 @@ The default BLE MTU is 23 bytes (20 bytes payload). For larger commands like `SE
     - Send one command at a time
     - Wait for a response before sending another command
     - Use a timeout (typically 5 seconds)
-    - Match response to command by type (e.g: `CMD_GET_CHANNEL` → `RESP_CODE_CHANNEL_INFO`)
+    - Match response to command by type (e.g: `CMD_GET_CHANNEL` -> `RESP_CODE_CHANNEL_INFO`)
 
 ### Command Queue Management
 
@@ -283,7 +283,7 @@ Bytes 7+: Message Text (UTF-8, variable length)
 
 ### 6. Send Channel Data Datagram
 
-**Purpose**: Send a binary datagram to a channel. Unlike channel text messages, datagrams carry no built-in sender identity and no timestamp — applications needing either must encode them inside the binary payload.
+**Purpose**: Send a binary datagram to a channel. Unlike channel text messages, datagrams carry no built-in sender identity and no timestamp - applications needing either must encode them inside the binary payload.
 
 **Command Format**:
 ```
@@ -303,29 +303,29 @@ Remaining bytes:                Binary payload (variable length)
 **Data Type / Transport Mapping**:
 - `0x0000` (`DATA_TYPE_RESERVED`) is invalid and rejected with `PACKET_ERROR`.
 - `0xFFFF` (`DATA_TYPE_DEV`) is the developer namespace for experimenting and developing apps.
-- Values `0x0001`–`0xFFFE` are available for registered application/community namespaces. See the [Registered data_type values](#registered-data_type-values) table below.
+- Values `0x0001`-`0xFFFE` are available for registered application/community namespaces. See the [Registered data_type values](#registered-data_type-values) table below.
 
 **Limits**:
 - Maximum payload length is `MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 163` bytes.
 - Larger payloads are rejected with `PACKET_ERROR` (`ERR_CODE_ILLEGAL_ARG`).
 
 **Response**: `PACKET_OK` (0x00) on success, or `PACKET_ERROR` (0x01) with one of:
-- `ERR_CODE_NOT_FOUND` (2) — unknown `channel_idx`
-- `ERR_CODE_ILLEGAL_ARG` (6) — invalid `path_len`, reserved `data_type` (`0x0000`), or payload larger than `MAX_CHANNEL_DATA_LENGTH`
-- `ERR_CODE_TABLE_FULL` (3) — outbound send queue is full; retry later
+- `ERR_CODE_NOT_FOUND` (2) - unknown `channel_idx`
+- `ERR_CODE_ILLEGAL_ARG` (6) - invalid `path_len`, reserved `data_type` (`0x0000`), or payload larger than `MAX_CHANNEL_DATA_LENGTH`
+- `ERR_CODE_TABLE_FULL` (3) - outbound send queue is full; retry later
 
 **Inbound datagrams** are delivered to the host via `RESP_CODE_CHANNEL_DATA_RECV` (0x1B); see [Receive Channel Data Datagram](#receive-channel-data-datagram).
 
 #### Registered `data_type` values
 
-`data_type` is an **application identifier**, not a payload-format identifier. Each registered value identifies an application that owns its own internal payload schemas. The firmware does not inspect payload contents — `data_type` is transported opaquely.
+`data_type` is an **application identifier**, not a payload-format identifier. Each registered value identifies an application that owns its own internal payload schemas. The firmware does not inspect payload contents - `data_type` is transported opaquely.
 
 | Value           | Constant             | Purpose                                                                                |
 |-----------------|----------------------|----------------------------------------------------------------------------------------|
 | 0x0000          | `DATA_TYPE_RESERVED` | Reserved; invalid on send                                                              |
-| 0x0001 – 0x00FF | —                    | Reserved for internal use                                                              |
-| 0x0100 – 0xFEFF | —                    | Registered application namespaces (see [number_allocations.md](number_allocations.md)) |
-| 0xFF00 – 0xFFFE | —                    | Testing/development; no registration required                                          |
+| 0x0001 - 0x00FF | -                    | Reserved for internal use                                                              |
+| 0x0100 - 0xFEFF | -                    | Registered application namespaces (see [number_allocations.md](number_allocations.md)) |
+| 0xFF00 - 0xFFFE | -                    | Testing/development; no registration required                                          |
 | 0xFFFF          | `DATA_TYPE_DEV`      | Developer/experimental namespace                                                       |
 
 To register a new application, submit a PR adding a row to the table in [docs/number_allocations.md](number_allocations.md). Internal sub-formats within an allocated application ID are owned by that application and are not tracked in MeshCore firmware or this document.
@@ -339,7 +339,7 @@ Inbound group datagrams (radio-level `PAYLOAD_TYPE_GRP_DATA`, 0x06) are forwarde
 **Frame Format** (`RESP_CODE_CHANNEL_DATA_RECV`, 0x1B):
 ```
 Byte 0:                 0x1B (packet type)
-Byte 1:                 SNR (signed int8, scaled ×4 — divide by 4.0 to recover dB)
+Byte 1:                 SNR (signed int8, scaled x4 - divide by 4.0 to recover dB)
 Bytes 2-3:              Reserved (clients MUST ignore)
 Byte 4:                 Channel Index (0-7)
 Byte 5:                 Path Length (actual path length when flooded, otherwise 0xFF for direct)
@@ -348,16 +348,16 @@ Byte 8:                 Data Length
 Bytes 9 .. 8+data_len:  Payload
 ```
 
-**Path bytes are not forwarded**: Only `path_len` is reported in the receive frame — the path itself is not copied to the host. There are no path bytes between byte 5 and the data_type field at bytes 6–7, regardless of `path_len`.
+**Path bytes are not forwarded**: Only `path_len` is reported in the receive frame - the path itself is not copied to the host. There are no path bytes between byte 5 and the data_type field at bytes 6-7, regardless of `path_len`.
 
 **Path Length semantics differ between send and receive**:
 
-| Direction | `path_len = 0xFF`               | `path_len ≠ 0xFF`                                                                                                                           |
+| Direction | `path_len = 0xFF`               | `path_len != 0xFF`                                                                                                                           |
 |-----------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| Send      | Flood the network               | Direct route; the encoded path follows (low 6 bits = hash count, top 2 bits + 1 = hash size; on-wire byte count = `hash_count × hash_size`) |
+| Send      | Flood the network               | Direct route; the encoded path follows (low 6 bits = hash count, top 2 bits + 1 = hash size; on-wire byte count = `hash_count x hash_size`) |
 | Receive   | Packet arrived via direct route | Packet was flooded; this is the encoded `pkt->path_len` field as observed (no path bytes follow)                                            |
 
-In other words, the meaning of `0xFF` is inverted between the two directions, and on receive the field carries metadata only — never a routable path. `path_len` is an encoded byte (see `Packet::isValidPathLen` / `Packet::writePath` in `src/Packet.cpp`), not a raw byte count.
+In other words, the meaning of `0xFF` is inverted between the two directions, and on receive the field carries metadata only - never a routable path. `path_len` is an encoded byte (see `Packet::isValidPathLen` / `Packet::writePath` in `src/Packet.cpp`), not a raw byte count.
 
 **Note**: The device may also emit `PACKET_MESSAGES_WAITING` (0x83) to notify the host that datagrams are queued; poll with `CMD_SYNC_NEXT_MESSAGE` (0x0A) to retrieve them.
 
@@ -610,8 +610,8 @@ Use the `SEND_CHANNEL_MESSAGE` command (see [Commands](#commands)).
 
 This document uses a spec-level naming convention (`PACKET_*`) for bytes the firmware sends back to the host. In the firmware source these same values are split across two `#define` families by purpose:
 
-- `RESP_CODE_*` — direct replies to a command (e.g. `RESP_CODE_CHANNEL_DATA_RECV` = `PACKET_CHANNEL_DATA_RECV` = 0x1B).
-- `PUSH_CODE_*` — asynchronous notifications not tied to a specific command (e.g. `PUSH_CODE_MSG_WAITING` = `PACKET_MESSAGES_WAITING` = 0x83).
+- `RESP_CODE_*` - direct replies to a command (e.g. `RESP_CODE_CHANNEL_DATA_RECV` = `PACKET_CHANNEL_DATA_RECV` = 0x1B).
+- `PUSH_CODE_*` - asynchronous notifications not tied to a specific command (e.g. `PUSH_CODE_MSG_WAITING` = `PACKET_MESSAGES_WAITING` = 0x83).
 
 Byte values are authoritative; names are aliases. When reading firmware source, `RESP_CODE_X` / `PUSH_CODE_X` correspond to this doc's `PACKET_X` of the same numeric value.
 
@@ -813,7 +813,7 @@ Bytes 1-6: ACK Code (6 bytes, hex)
 |------|----------------------------|------------------------------------------------------------------------------|
 | 1    | `ERR_CODE_UNSUPPORTED_CMD` | Unknown or unsupported command byte / sub-command                            |
 | 2    | `ERR_CODE_NOT_FOUND`       | Target not found (channel, contact, message, etc.)                           |
-| 3    | `ERR_CODE_TABLE_FULL`      | Internal queue or table is full — retry later                                |
+| 3    | `ERR_CODE_TABLE_FULL`      | Internal queue or table is full - retry later                                |
 | 4    | `ERR_CODE_BAD_STATE`       | Operation not valid in current device state (e.g. iterator already running)  |
 | 5    | `ERR_CODE_FILE_IO_ERROR`   | Filesystem or storage I/O failure                                            |
 | 6    | `ERR_CODE_ILLEGAL_ARG`     | Invalid argument (bad length, out-of-range value, reserved field, etc.)      |
@@ -845,14 +845,14 @@ BLE implementations enqueue and deliver one protocol frame per BLE write/notific
 
 3. **Response Matching**:
    - Match responses to commands by expected packet type:
-     - `APP_START` → `PACKET_SELF_INFO`
-     - `DEVICE_QUERY` → `PACKET_DEVICE_INFO`
-     - `GET_CHANNEL` → `PACKET_CHANNEL_INFO`
-     - `SET_CHANNEL` → `PACKET_OK` or `PACKET_ERROR`
-     - `SEND_CHANNEL_MESSAGE` → `PACKET_MSG_SENT`
-     - `GET_MESSAGE` → `PACKET_CHANNEL_MSG_RECV`, `PACKET_CONTACT_MSG_RECV`, `PACKET_CHANNEL_DATA_RECV`, or `PACKET_NO_MORE_MSGS`
-     - `SEND_CHANNEL_DATA` → `PACKET_OK` or `PACKET_ERROR`
-     - `GET_BATTERY` → `PACKET_BATTERY`
+     - `APP_START` -> `PACKET_SELF_INFO`
+     - `DEVICE_QUERY` -> `PACKET_DEVICE_INFO`
+     - `GET_CHANNEL` -> `PACKET_CHANNEL_INFO`
+     - `SET_CHANNEL` -> `PACKET_OK` or `PACKET_ERROR`
+     - `SEND_CHANNEL_MESSAGE` -> `PACKET_MSG_SENT`
+     - `GET_MESSAGE` -> `PACKET_CHANNEL_MSG_RECV`, `PACKET_CONTACT_MSG_RECV`, `PACKET_CHANNEL_DATA_RECV`, or `PACKET_NO_MORE_MSGS`
+     - `SEND_CHANNEL_DATA` -> `PACKET_OK` or `PACKET_ERROR`
+     - `GET_BATTERY` -> `PACKET_BATTERY`
 
 4. **Timeout Handling**:
    - Default timeout: 5 seconds per command

@@ -4,7 +4,7 @@
 Used to decide OTA partition compatibility: the observer firmware computes the
 same signature at runtime from its *flashed* partition table (via esp_partition),
 and `ota update` refuses only when the target build's signature differs from the
-running device's — i.e. a real partition-table change, not a blanket flag.
+running device's - i.e. a real partition-table change, not a blanket flag.
 
 The signature MUST be computed identically here and in firmware
 (src/helpers/ESP32Board.cpp). Definition:

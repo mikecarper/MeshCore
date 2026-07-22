@@ -872,11 +872,11 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       // to the seen table: a copy heard on the normal channel must not suppress one received after temp radio starts.
       if (!isTempRadioActive()) break;
       uint8_t n = pkt->getPathHashCount();   // hops travelled to reach us (flood path-hash count)
-      // Accept-gate (duty-cycle horizon): ignore OTA from further than our hop limit — neither process nor
+      // Accept-gate (duty-cycle horizon): ignore OTA from further than our hop limit - neither process nor
       // relay it. 0 = only directly-received OTA. Runtime-tunable via `ota config hops`.
       if (n > getOtaHopLimit()) break;
       // ALWAYS process every accepted copy: OTA handlers are idempotent, and "eventually reliable" retries
-      // deliberately re-send IDENTICAL requests — if we gated processing on hasSeen(), the dedup would
+      // deliberately re-send IDENTICAL requests - if we gated processing on hasSeen(), the dedup would
       // suppress those retries and the transfer could never recover from a lost reply. hasSeen() is used
       // ONLY to avoid re-flooding the same packet more than once.
       bool seen = _tables->wasSeen(pkt);
@@ -887,7 +887,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook
       // Re-flood at the LOWEST priority and only while still under the hop limit, so OTA never competes with
-      // mesh traffic. The free-pool guard keeps heavy OTA from monopolising the shared packet pool — dropping
+      // mesh traffic. The free-pool guard keeps heavy OTA from monopolising the shared packet pool - dropping
       // a relay is safe (OTA is best-effort; the source retries).
       if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
           && n < getOtaHopLimit()

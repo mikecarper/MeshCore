@@ -13,14 +13,14 @@
  * the channels in the BANNED_ALERT_CHANNELS table (e.g. "PUBLIC", "#test",
  * "#bot"), or nullptr otherwise. Centralized here so both AlertReporter and
  * the CommonCLI `set alert.psk` / `set alert.hashtag` handlers can share one
- * source of truth — adding a new banned channel is a one-line table edit.
+ * source of truth - adding a new banned channel is a one-line table edit.
  */
 const char* alertReporterBannedChannelMatch(const uint8_t* secret16);
 
 /**
  * Convenience: hex-decodes \a psk_hex (32 lowercase/uppercase hex chars) and
  * forwards to alertReporterBannedChannelMatch. Returns nullptr if not banned
- * (or if the input isn't a valid 32-char hex string — only 16-byte secrets
+ * (or if the input isn't a valid 32-char hex string - only 16-byte secrets
  * are present in the banned table).
  */
 const char* alertReporterBannedChannelMatchHex(const char* psk_hex);
@@ -31,13 +31,13 @@ const char* alertReporterBannedChannelMatchHex(const char* psk_hex);
  *
  * Polls WiFi and per-MQTT-slot outage timers from MQTTBridge. When any timer
  * exceeds its configured threshold, floods a single PAYLOAD_TYPE_GRP_TXT
- * message on the configured alert channel ("WiFi down 47m — MyObserver"),
+ * message on the configured alert channel ("WiFi down 47m - MyObserver"),
  * then arms a "recovered" message for the next state transition.
  *
  * The alert channel must be explicitly configured to either a private hex
  * PSK (`set alert.psk`) or a hashtag name (`set alert.hashtag`); the
  * well-known PUBLIC group key (and a small list of other auto-responder
- * channels — see BANNED_ALERT_CHANNELS in AlertReporter.cpp) are rejected on
+ * channels - see BANNED_ALERT_CHANNELS in AlertReporter.cpp) are rejected on
  * purpose so fault alerts never spam community channels.
  *
  * Edge-triggered + rate-limited via NodePrefs::alert_min_interval_min so a
@@ -56,7 +56,7 @@ public:
 
   /**
    * Wire up the reporter. Must be called from MyMesh::begin() after prefs
-   * are loaded. \a callbacks is optional — when non-null the reporter uses
+   * are loaded. \a callbacks is optional - when non-null the reporter uses
    * it to resolve a TransportKey scope for outgoing alert floods (so the
    * packet rides the repeater's default scope or an `alert.region` override).
    */

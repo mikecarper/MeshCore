@@ -15,7 +15,7 @@ namespace ota {
 static const uint8_t  MOTA_MAGIC[4]    = { 'm', 'O', 'T', 'A' };   // 6D 4F 54 41
 static const uint8_t  MOTA_TRAILER[5]  = { 'v', 'k', '4', '9', '6' }; // 76 6B 34 39 36
 static const uint8_t  ENDF_MAGIC[4]    = { 'E', 'n', 'd', 'F' };   // 45 6E 64 46
-// Fixed 56-byte trailer (docs/ota_protocol.md §2): marker(4) body_len(4) body_hash8(8) + a self-describing
+// Fixed 56-byte trailer (docs/ota_protocol.md Section 2): marker(4) body_len(4) body_hash8(8) + a self-describing
 // identity block fw_version(4) target_id(4) hw_id(32). No optional/variable parts.
 static const uint32_t ENDF_LEN         = 56;
 
@@ -23,12 +23,12 @@ static const uint32_t ENDF_LEN         = 56;
 static const uint8_t  MOTA_FORMAT_VER  = 2;      // fixed-layout manifest (see offsets below)
 static const uint8_t  HASH_ALGO_SHA256 = 0x12;   // multihash code
 
-// Fixed manifest layout (manifest-minus-leaves) — every field is present at a constant offset, so the
-// parser is plain offset reads (docs/ota_protocol.md §4). base_hash/signer_pubkey/signature are always
+// Fixed manifest layout (manifest-minus-leaves) - every field is present at a constant offset, so the
+// parser is plain offset reads (docs/ota_protocol.md Section 4). base_hash/signer_pubkey/signature are always
 // present (zero-filled when not applicable); only leaves[] (after `approval`) is variable.
 static const uint32_t MOTA_OFF_BASE_HASH = 89;   // 8  (zero for a full image)
 static const uint32_t MOTA_OFF_SIGNER    = 97;   // 32 (zero when unsigned)
-static const uint32_t MOTA_OFF_SIGNATURE = 129;  // 64 (zero when unsigned) — covers manifest[0,129)
+static const uint32_t MOTA_OFF_SIGNATURE = 129;  // 64 (zero when unsigned) - covers manifest[0,129)
 static const uint32_t MOTA_OFF_APPROVAL  = 193;  // 4
 static const uint32_t MOTA_MFL           = 197;  // manifest-minus-leaves length (constant)
 static const uint32_t MOTA_SIGNED_LEN    = 129;  // bytes the signature covers (manifest[0, signer_end))

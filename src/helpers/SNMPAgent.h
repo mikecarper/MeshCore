@@ -6,7 +6,7 @@
 #include <WiFiUdp.h>
 #include <SNMP_Agent.h>
 
-// Temporary private enterprise OID base — replace with registered PEN when available.
+// Temporary private enterprise OID base - replace with registered PEN when available.
 // All MeshCore OIDs live under this subtree.
 #define MESHCORE_OID_BASE ".1.3.6.1.4.1.99999"
 

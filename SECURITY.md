@@ -7,8 +7,8 @@ fixes to older versions.
 
 | Version | Supported |
 |---------|-----------|
-| 1.15+ | ✅ |
-| <1.15 | ❌ |
+| 1.15+ | [OK] |
+| <1.15 | [X] |
 
 ## Reporting a Vulnerability
 
@@ -52,6 +52,6 @@ Out of scope:
 - Physical access attacks (e.g., JTAG, UART extraction of keys)
 - Regulatory compliance (duty cycle, frequency restrictions)
 - Jamming or other physical-layer radio interference
-- Issues in third-party libraries (RadioLib, Crypto, etc.) — report those
+- Issues in third-party libraries (RadioLib, Crypto, etc.) - report those
   upstream
 - "Best practice" suggestions without a demonstrated attack path

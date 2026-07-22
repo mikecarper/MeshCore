@@ -846,10 +846,10 @@ get clock.sync.status
 **Default:** `50%` (equivalent to airtime factor 1.0)
 
 **Examples:**
-- `set dutycycle 100` — no duty cycle limit
-- `set dutycycle 50` — 50% duty cycle (default)
-- `set dutycycle 10` — 10% duty cycle
-- `set dutycycle 1` — 1% duty cycle (strictest EU requirement)
+- `set dutycycle 100` - no duty cycle limit
+- `set dutycycle 50` - 50% duty cycle (default)
+- `set dutycycle 10` - 10% duty cycle
+- `set dutycycle 1` - 1% duty cycle (strictest EU requirement)
 
 > **Note:** Added in firmware v1.15.0
 
@@ -864,10 +864,10 @@ get clock.sync.status
 
 **Parameters:**
 - `value`: Airtime factor (0-9). After each transmission, the repeater enforces a silent period of approximately the on-air transmission time multiplied by the value. This results in a long-term duty cycle of roughly 1 divided by (1 plus the value). For example:
-  - `af = 1` → ~50% duty
-  - `af = 2` → ~33% duty
-  - `af = 3` → ~25% duty
-  - `af = 9` → ~10% duty
+  - `af = 1` -> ~50% duty
+  - `af = 2` -> ~33% duty
+  - `af = 3` -> ~25% duty
+  - `af = 9` -> ~10% duty
   You are responsible for choosing a value that is appropriate for your jurisdiction and channel plan (for example EU 868 Mhz 10% duty cycle regulation).
 
 **Default:** `1.0`
@@ -891,7 +891,7 @@ get clock.sync.status
 - `get cad`
 - `set cad <on|off>`
 
-**Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` — either, both, or none may be active.
+**Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
 
 **Parameters:**
 - `on|off`: Enable or disable hardware CAD
@@ -1550,7 +1550,7 @@ eviction like administrators.
 - `name`: Region name
 - `parent_name`: Parent region name (optional, defaults to wildcard)
 
-**Note:** In firmware **v1.15.0** and later, `region put` enables flooding for that region by default (you do not need a separate `region allowf <name>` after each `put`). On **v1.14.0** and earlier, new regions may still require `region allowf` for flooding—see [`region allowf`](#allow-a-region).
+**Note:** In firmware **v1.15.0** and later, `region put` enables flooding for that region by default (you do not need a separate `region allowf <name>` after each `put`). On **v1.14.0** and earlier, new regions may still require `region allowf` for flooding-see [`region allowf`](#allow-a-region).
 
 ---
 
@@ -1560,34 +1560,34 @@ eviction like administrators.
 
 **Parameters (tokens):** Space-separated. A logical **cursor** starts at the wildcard `*`.
 
-- **`name`** — Create `name` as a child of the current cursor (equivalent to `region put name` with the cursor as parent). Cursor moves to `name`.
-- **`name|jump`** *(or `name,jump`)* — Create `name` as a child of the current cursor, then move the cursor to `jump` (must already exist on the node, or have been created earlier in this command). `jump` is **not** the parent of `name`; use this form to pop back up and start another branch.
+- **`name`** - Create `name` as a child of the current cursor (equivalent to `region put name` with the cursor as parent). Cursor moves to `name`.
+- **`name|jump`** *(or `name,jump`)* - Create `name` as a child of the current cursor, then move the cursor to `jump` (must already exist on the node, or have been created earlier in this command). `jump` is **not** the parent of `name`; use this form to pop back up and start another branch.
 
 **Behavior:** Each created region defaults to flood-allowed (same as `region put`). The reply is the resulting region tree (same format as bare `region`); review it before running `region save` to persist. The command is transactional: invalid names, unknown or ambiguous jumps, table overflow, and hierarchy cycles return `Err - ...` without changing the existing tree.
 
-**Existing regions:** `region def` does not clear the existing tree — if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, `region remove` the unwanted regions first.
+**Existing regions:** `region def` does not clear the existing tree - if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, `region remove` the unwanted regions first.
 
-**Limits:** Repeater serial accepts one line up to **160 characters**. For larger trees, split across multiple `region def` commands; the cursor resets to `*` between commands, so lead the next command with `child|ancestor` to reposition. Each token splits at most once on `|` — `region def a|b|c|d` is not a flat-list shorthand; see the flat-list example below.
+**Limits:** Repeater serial accepts one line up to **160 characters**. For larger trees, split across multiple `region def` commands; the cursor resets to `*` between commands, so lead the next command with `child|ancestor` to reposition. Each token splits at most once on `|` - `region def a|b|c|d` is not a flat-list shorthand; see the flat-list example below.
 
-**Example — linear chain** (each token becomes a child of the previous):
+**Example - linear chain** (each token becomes a child of the previous):
 ```
 region def a b c d e
 region save
 ```
 
-**Example — branched tree** (equivalent to `region put a`, `region put b a`, `region put c b`, `region put d c`, `region put e b`, `region put f e`):
+**Example - branched tree** (equivalent to `region put a`, `region put b a`, `region put c b`, `region put d c`, `region put e b`, `region put f e`):
 ```
 region def a b c d|b e f
 region save
 ```
 
-**Example — transactional error:**
+**Example - transactional error:**
 ```
 region def a b c|nope d
 ```
 The reply is `Err - unknown or ambiguous jump: nope`. The existing tree is unchanged; re-run with a corrected jump.
 
-**Example — flat list** (each region a child of `*`). Use `|*` after each token to pop the cursor back to the root before the next token:
+**Example - flat list** (each region a child of `*`). Use `|*` after each token to pop the cursor back to the root before the next token:
 ```
 region def a|* b|* c|* d|* e|* f
 region save
@@ -2352,12 +2352,12 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 
 **Parameters:**
 - `on`: uplink all transmitted (TX) packets to MQTT brokers
-- `advert`: uplink only this node's own advert packets (self-originated advertisements only — forwarded adverts from other nodes are filtered out)
+- `advert`: uplink only this node's own advert packets (self-originated advertisements only - forwarded adverts from other nodes are filtered out)
 - `off`: disable TX packet uplinking
 
 **Default:** `advert`
 
-> **Note:** `mqtt.rx` and `mqtt.tx` take effect immediately — no restart required. Both can be enabled simultaneously.
+> **Note:** `mqtt.rx` and `mqtt.tx` take effect immediately - no restart required. Both can be enabled simultaneously.
 
 ---
 
@@ -2379,7 +2379,7 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 **Usage:**
 - `get mqtt.ntp.diag`
 
-**Description:** Probes every configured NTP server (the custom primary, if set, plus the built-in fallbacks) and reports whether each responds. This is a pure connectivity diagnostic — it does **not** change the system clock.
+**Description:** Probes every configured NTP server (the custom primary, if set, plus the built-in fallbacks) and reports whether each responds. This is a pure connectivity diagnostic - it does **not** change the system clock.
 
 - **Serial console:** prints a detailed table with each server's reported UTC time (or `FAIL`).
 - **Over LoRa:** returns a compact `<server> ok|fail` list, one per line.

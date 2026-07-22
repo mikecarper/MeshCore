@@ -1,7 +1,7 @@
-# `tools/mota/` — OTA Python reference library & build/test tooling
+# `tools/mota/` - OTA Python reference library & build/test tooling
 
 The Python side of MeshCore's `.mota` OTA system. It is the **reference implementation** of the wire
-spec ([`docs/ota_protocol.md`](../../docs/ota_protocol.md)) and the **build + test infrastructure** — it is
+spec ([`docs/ota_protocol.md`](../../docs/ota_protocol.md)) and the **build + test infrastructure** - it is
 no longer a user-facing CLI.
 
 > **Want to build / verify / inspect / serve `.mota` from the command line?** Use the standalone
@@ -24,8 +24,8 @@ Uses the repo's Python venv (`meshcore/`). Dependencies: `detools` (delta), `cry
 |---|---|
 | `motalib.py` | Core logic: multihash, EndF, merkle tree+proofs, manifest/container build/parse/verify. The **reference implementation** of the spec and the unit-test oracle. Imported by everything below. |
 | `pio_endf.py` | **PlatformIO post-build hook** (wired in `platformio.ini`) that injects the `EndF` self-identity trailer into the flashed firmware (`-D ENABLE_OTA`). |
-| `gen_vectors.py` | Generates `test/test_ota/mota_vectors.h` — the cross-check vectors the native C++ tests run against. |
-| `gen_targets.py` | Generates `src/helpers/ota/OtaTargets.h` — the `target_id → env-name` table (every `ENABLE_OTA` env, resolved from `pio project config`). Shared by the firmware and `motatool` so a node can name a target seen over the air without sending the string. Regenerate when the OTA env set changes. |
+| `gen_vectors.py` | Generates `test/test_ota/mota_vectors.h` - the cross-check vectors the native C++ tests run against. |
+| `gen_targets.py` | Generates `src/helpers/ota/OtaTargets.h` - the `target_id -> env-name` table (every `ENABLE_OTA` env, resolved from `pio project config`). Shared by the firmware and `motatool` so a node can name a target seen over the air without sending the string. Regenerate when the OTA env set changes. |
 | `test_mota.py` | Unit tests for `motalib` (run directly or via pytest). |
 
 ## Tests
@@ -45,7 +45,7 @@ firmware and matches a delta's `base_hash` against its own `EndF`. Wiring (handl
 - **ESP32 / RP2040** (emit `firmware.bin`): `post:tools/mota/pio_endf.py` in the env's `extra_scripts` plus
   `-D ENABLE_OTA=1`. The hook appends the 56-byte `EndF` (with `target_id`/`fw_version`/`hw_id`) to the app
   `.bin` before merge.
-- **nRF52 / STM32** (emit `.hex` → `.uf2`): the same hook rewrites the `.hex` with the trailer at the image
+- **nRF52 / STM32** (emit `.hex` -> `.uf2`): the same hook rewrites the `.hex` with the trailer at the image
   end. The byte logic is `motalib.ensure_endf`, used everywhere.
 
 `target_id` = `sha2-256:4(pio_env_name)`, `hw_id` = explicit `-D MOTA_HW_ID` or a role-stripped hardware

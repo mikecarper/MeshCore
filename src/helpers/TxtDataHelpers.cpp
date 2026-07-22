@@ -156,7 +156,7 @@ const char* StrHelper::ftoa(float f) {
 
 const char* StrHelper::ftoa3(float f) {
   static char s[16];
-  int v = (int)(f * 1000.0f + (f >= 0 ? 0.5f : -0.5f)); // rounded ×1000
+  int v = (int)(f * 1000.0f + (f >= 0 ? 0.5f : -0.5f)); // rounded x1000
   int w = v / 1000;                                     // whole
   int d = abs(v % 1000);                                // decimals
   snprintf(s, sizeof(s), "%d.%03d", w, d);

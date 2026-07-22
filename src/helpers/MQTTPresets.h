@@ -3,7 +3,7 @@
 #include <cstring>
 
 // Maximum number of configurable MQTT connection slots (available to all builds for struct layout).
-// Used in NodePrefs/MQTTPrefs for persistent storage — do NOT change without migration.
+// Used in NodePrefs/MQTTPrefs for persistent storage - do NOT change without migration.
 static const int MAX_MQTT_SLOTS = 6;
 
 // Runtime slot array size: fewer slots on non-PSRAM boards to save ~1.2KB of heap.

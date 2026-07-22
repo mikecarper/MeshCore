@@ -1,6 +1,6 @@
 """
 PlatformIO post-build extra-script: append the MeshCore ``EndF`` trailer to the
-firmware image so a running node can self-locate its size/identity (docs/ota_protocol.md §2).
+firmware image so a running node can self-locate its size/identity (docs/ota_protocol.md Section 2).
 
 Wire it (ONLY for OTA-enabled builds) from a variant/env, e.g.:
 
@@ -60,7 +60,7 @@ def _version_from_headers():
     """FIRMWARE_VERSION is a header ``#define`` in the example (upstream MeshCore convention), not a -D, so
     _cppdef() can't see it and the EndF version would otherwise default to 0. Read it from the source WITHOUT
     changing where MeshCore authors it: prefer the example this env actually builds (from build_src_filter),
-    else fall back to the repo-wide value when it's unambiguous. Purely additive — no MeshCore file changes,
+    else fall back to the repo-wide value when it's unambiguous. Purely additive - no MeshCore file changes,
     and a -D override (checked first in _firmware_ident) still wins for release builds."""
     import re, glob
     proj = env["PROJECT_DIR"]                                 # noqa: F821
@@ -102,7 +102,7 @@ def _version_from_headers():
 
 
 def _firmware_ident():
-    """Self-describing identity to embed in EndF (docs/ota_protocol.md §2): target_id is computed from the
+    """Self-describing identity to embed in EndF (docs/ota_protocol.md Section 2): target_id is computed from the
     PlatformIO env name (so it's correct even without build.sh's -D MOTA_TARGET_ID), hw_id from MOTA_HW_ID,
     fw_version from FIRMWARE_VERSION (a -D if set, else the example's header #define)."""
     import re

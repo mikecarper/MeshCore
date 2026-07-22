@@ -38,7 +38,7 @@ static void ethernet_task(void* param) {
   Serial.println("ETH: Initializing hardware");
   // WB_IO2 (power enable) is already driven HIGH by early constructor
   // in RAK4631Board.cpp to support POE boot.
-  // Skip hardware reset — the W5100S comes out of power-on reset cleanly,
+  // Skip hardware reset - the W5100S comes out of power-on reset cleanly,
   // and toggling reset kills the PHY link which breaks POE power.
   pinMode(PIN_ETHERNET_RESET, OUTPUT);
   digitalWrite(PIN_ETHERNET_RESET, HIGH);

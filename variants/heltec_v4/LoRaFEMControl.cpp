@@ -5,7 +5,7 @@
 
 void LoRaFEMControl::init(void)
 {
-    // Power on FEM LDO — set registers before releasing RTC hold for
+    // Power on FEM LDO - set registers before releasing RTC hold for
     // atomic transition (no glitch on deep sleep wake).
     pinMode(P_LORA_PA_POWER, OUTPUT);
     digitalWrite(P_LORA_PA_POWER, HIGH);
@@ -17,8 +17,8 @@ void LoRaFEMControl::init(void)
     }
 
     // Auto-detect FEM type via shared GPIO2 default pull level.
-    // GC1109 CSD: internal pull-down → reads LOW
-    // KCT8103L CSD: internal pull-up → reads HIGH
+    // GC1109 CSD: internal pull-down -> reads LOW
+    // KCT8103L CSD: internal pull-up -> reads HIGH
     rtc_gpio_hold_dis((gpio_num_t)P_LORA_KCT8103L_PA_CSD);
     pinMode(P_LORA_KCT8103L_PA_CSD, INPUT);
     delay(1);

@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// A tiny bounds-checked little-endian cursor for reading the `.mota` container (docs/ota_protocol.md §3-§4)
+// A tiny bounds-checked little-endian cursor for reading the `.mota` container (docs/ota_protocol.md Section 3-Section 4)
 // in a self-documenting way: each field is read by name in order, instead of hand-computed byte offsets
 // (`p[0]`, `rd_u32(p+3)`, `p += 89`, `NEED(n)` ...). Any over-read flips `ok` false and yields zero/null, so
 // callers parse the whole struct then check `r.ok` once. 32-bit offsets (a container can be >64 KB; the
@@ -25,7 +25,7 @@ inline void wr_u32le(uint8_t* p, uint32_t v) {
   p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
 }
 
-// Round to a multiple of `unit` (a power of two — a flash sector/page size). Names the `& ~(unit-1)`
+// Round to a multiple of `unit` (a power of two - a flash sector/page size). Names the `& ~(unit-1)`
 // idiom so flash-geometry math in the stores reads as intent (align down / align up).
 inline uint32_t align_down(uint32_t x, uint32_t unit) { return x & ~(unit - 1); }
 inline uint32_t align_up(uint32_t x, uint32_t unit)   { return (x + unit - 1) & ~(unit - 1); }

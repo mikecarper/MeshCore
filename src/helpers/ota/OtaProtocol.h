@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include "OtaFormat.h"
 
-// Encode/decode for the OTA LoRa messages (docs/ota_protocol.md §8). Each message is a packet payload:
+// Encode/decode for the OTA LoRa messages (docs/ota_protocol.md Section 8). Each message is a packet payload:
 // [0]=ota_msg_type, then a fixed body. Portable + allocation-free; unit-tested on the host.
 //
 // manifest_id == the manifest's merkle_root (4 bytes), a compact content id.
@@ -13,7 +13,7 @@ namespace mesh {
 namespace ota {
 
 // ---- OTA_ADV: tiny per-NODE beacon (flood, periodic). CONSTANT size regardless of how many mOTAs a
-// node serves — it just says "I'm a source, here's how many + a digest of my set". A peer that's
+// node serves - it just says "I'm a source, here's how many + a digest of my set". A peer that's
 // interested asks for the catalog via OTA_QUERY. (Replaces the old per-mOTA advert so a folder node with
 // N images costs one 10-byte beacon, not N adverts.) ----
 struct AdvMsg {
@@ -22,7 +22,7 @@ struct AdvMsg {
   uint8_t  set_digest[4];    // sha2-256:4 over the sorted set of served mids; "did my offering change?"
 };
 
-// ---- OTA_QUERY: "list what you serve" — addressed to a source by seeder_id, FLOODED so neighbours
+// ---- OTA_QUERY: "list what you serve" - addressed to a source by seeder_id, FLOODED so neighbours
 // overhear it (storm suppression). set_digest identifies the offering being asked about (so an overhearer
 // can suppress its own pending query for the same {source,digest}). filter_target=0 = everything. ----
 struct QueryMsg {
@@ -62,7 +62,7 @@ struct ManifestMsg {
 // ---- OTA_REQ: request specific fragments of ONE block (direct) ----
 // body: manifest_id(4) block_idx(2) want_mask(2). want_mask bit k = "send fragment k" (the slice at byte
 // offset k*OTA_FRAG_DATA). A fetcher requests the full mask ((1<<nf)-1) for a fresh block and only the
-// missing bits to recover holes, so a lost fragment costs one fragment to re-send — not the whole block
+// missing bits to recover holes, so a lost fragment costs one fragment to re-send - not the whole block
 // (saves airtime and avoids the re-REQ colliding with a multi-fragment burst on half-duplex radios).
 struct ReqMsg { uint8_t manifest_id[4]; uint16_t block_idx; uint16_t want_mask; };
 

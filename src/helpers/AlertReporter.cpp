@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 // Header layout for PAYLOAD_TYPE_GRP_TXT before encryption:
-//   [0..3] timestamp (uint32_t LE) — also helps make packet_hash unique
+//   [0..3] timestamp (uint32_t LE) - also helps make packet_hash unique
 //   [4]    TXT_TYPE_PLAIN
 //   [5..]  "<sender>: <text>"  (null-terminated by sender for legacy parsers)
 #ifndef MAX_ALERT_TEXT_LEN
@@ -74,9 +74,9 @@ struct BannedAlertChannel {
 static const BannedAlertChannel BANNED_ALERT_CHANNELS[] = {
   // Public group PSK ("izOH6cXN6mrJ5e26oRXNcg==")
   { "PUBLIC", "8b3387e9c5cdea6ac9e5edbaa115cd72" },
-  // sha256("#test")[0..15] — auto-responders in many regions
+  // sha256("#test")[0..15] - auto-responders in many regions
   { "#test",  "9cd8fcf22a47333b591d96a2b848b73f" },
-  // sha256("#bot")[0..15] — generic bot channel, frequent auto-responders
+  // sha256("#bot")[0..15] - generic bot channel, frequent auto-responders
   { "#bot",   "eb50a1bcb3e4e5d7bf69a57c9dada211" },
 };
 
@@ -102,7 +102,7 @@ const char* alertReporterBannedChannelMatchHex(const char* psk_hex) {
 bool AlertReporter::resolveChannel(mesh::GroupChannel& out) const {
   if (!_prefs) return false;
 
-  // alert_psk_hex is the single source of truth — `set alert.hashtag`
+  // alert_psk_hex is the single source of truth - `set alert.hashtag`
   // pre-derives the hex-encoded PSK from sha256("#name")[0..15] at CLI time.
   // Only 16-byte secrets (32 hex chars) are supported; 32-byte channel keys
   // are not used anywhere in MeshCore practice and not represented in the
@@ -163,7 +163,7 @@ bool AlertReporter::sendChannel(const char* text) {
   }
 
   // Ride the repeater's default scope (or `alert.region` override) when the
-  // host MyMesh provides one — same path MyMesh uses for adverts and
+  // host MyMesh provides one - same path MyMesh uses for adverts and
   // broadcast channel messages. Falls back to plain (unscoped) flood when
   // no callbacks are wired or no scope is configured, matching the
   // pre-scoped behavior on builds without RegionMap.

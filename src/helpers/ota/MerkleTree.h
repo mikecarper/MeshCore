@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Merkle tree over PAYLOAD blocks, sha2-256:4 (4-byte) leaves/nodes. See docs/ota_protocol.md §6.
+// Merkle tree over PAYLOAD blocks, sha2-256:4 (4-byte) leaves/nodes. See docs/ota_protocol.md Section 6.
 //
 // Scheme: leaf = H(block); node = H(left || right); on an odd level the last node is promoted
 // unchanged (no duplication). Root = single remaining node.

@@ -417,7 +417,7 @@ static void ota_parseVersion(const char* ver, char* base_out, size_t base_sz, in
   }
 }
 
-// Canonical signature of the FLASHED partition table — MUST match
+// Canonical signature of the FLASHED partition table - MUST match
 // scripts/partition_signature.py: each entry "type:subtype:offset:size" in
 // lowercase hex, sorted by offset, joined by ','. Lets `ota update` compare the
 // target build's partition layout (carried in the manifest as partSig) against
@@ -472,7 +472,7 @@ static void ota_task_entry(void* param) {
 
 bool ESP32Board::otaFromManifest(const char* current_ver, bool dry_run, char reply[]) {
   // The TLS handshake (cert-bundle verify) + JSON parse / HTTPUpdate use far more
-  // stack than the ~8 KB loop task offers — especially when reached via the deep
+  // stack than the ~8 KB loop task offers - especially when reached via the deep
   // mesh-receive call chain (it overflows the loopTask canary). Run the work in a
   // dedicated 24 KB-stack task and block here until it finishes. The big stack is
   // freed when the task exits; on a successful update the chip reboots inside it.
@@ -510,7 +510,7 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
   }
 
   // --- Fetch this variant's slim manifest ----------------------------------
-  // <OTA_MANIFEST_BASE>/<OTA_VARIANT>.json — a ~180 byte per-variant file, not the
+  // <OTA_MANIFEST_BASE>/<OTA_VARIANT>.json - a ~180 byte per-variant file, not the
   // full config.json.
   char murl[200];
   HTTPClient http;
@@ -519,7 +519,7 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
   if (dry_run) {
     // `ota check`: fetch over PLAIN HTTP. With no TLS handshake the fetch costs
     // negligible heap, so the check runs with the MQTT bridge UP even on no-PSRAM
-    // — where the cert-bundle TLS verify would otherwise exhaust internal heap
+    // - where the cert-bundle TLS verify would otherwise exhaust internal heap
     // alongside the two live MQTT TLS sessions (free heap collapses to a few KB
     // and the handshake + the bridge both fail). This only reads version info; the
     // firmware download below (ota update) is always TLS-verified. Requires the
@@ -591,7 +591,7 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
     return false;
   }
 
-  // Partition compatibility: prefer the precise per-build signature — compare the
+  // Partition compatibility: prefer the precise per-build signature - compare the
   // target build's partition layout (manifest partSig) to what's actually flashed
   // on THIS device. Refuse only on a real mismatch (OTA can't rewrite the table).
   // Fall back to the legacy bool for manifests that predate partSig.

@@ -111,7 +111,7 @@ private:
     unsigned long last_log_time;    // Throttle disconnect log messages
     unsigned long last_deferred_log_ms; // Throttle "connect deferred" log spam (Phase 1)
 
-    // Last error (stored for CLI diagnostics — serial-free debugging)
+    // Last error (stored for CLI diagnostics - serial-free debugging)
     int32_t last_tls_err;           // esp_tls_last_esp_err (0 = no error)
     int32_t last_tls_stack_err;     // mbedTLS stack error
     int last_sock_errno;            // socket errno
@@ -168,7 +168,7 @@ private:
   #if defined(BOARD_HAS_PSRAM)
   static const int MAX_QUEUE_SIZE = 50;
   #else
-  // Reduced from 10: raw_data[256] adds ~256 bytes/item; 6×543 ≈ 3.3 KB vs old 10×282 ≈ 2.8 KB.
+  // Reduced from 10: raw_data[256] adds ~256 bytes/item; 6x543 ~ 3.3 KB vs old 10x282 ~ 2.8 KB.
   // Net increase is <500 bytes; _last_raw_data (256 bytes) is eliminated to offset further.
   static const int MAX_QUEUE_SIZE = 6;
   #endif
@@ -252,7 +252,7 @@ private:
   Timezone* _timezone;
 
   // Core 1-only staging: written by storeRawRadioData(), consumed by queuePacket().
-  // No mutex needed — both call sites run on Core 1 in guaranteed sequence.
+  // No mutex needed - both call sites run on Core 1 in guaranteed sequence.
   static const size_t LAST_RAW_DATA_SIZE = 256;
   uint8_t _staged_raw[LAST_RAW_DATA_SIZE];
   int     _staged_raw_len   = 0;
@@ -260,7 +260,7 @@ private:
   float   _staged_rssi      = 0.0f;
   bool    _staged_raw_valid = false;
 
-  // Core 0-owned copy of the most recent raw data — written only by processPacketQueue()
+  // Core 0-owned copy of the most recent raw data - written only by processPacketQueue()
   // on Core 0, read only by publishStatus() on Core 0. No mutex required.
   // On PSRAM boards: heap pointer into PSRAM. On non-PSRAM: inline array in class object.
   static const size_t LAST_RAW_DATA_SIZE_MEMBER = 256;  // mirrors LAST_RAW_DATA_SIZE
@@ -274,7 +274,7 @@ private:
   float _last_rssi;
   unsigned long _last_raw_timestamp;
 
-  // JSON publish/status serialization buffers — reused for every publish (no alloc/free churn).
+  // JSON publish/status serialization buffers - reused for every publish (no alloc/free churn).
   // On PSRAM boards: heap pointer into PSRAM to save internal heap. On non-PSRAM: inline in
   // class object so these allocations don't interleave with large TLS buffers at startup.
   static const size_t PUBLISH_JSON_BUFFER_SIZE = 2048;
@@ -287,14 +287,14 @@ private:
   char _status_json_buffer[STATUS_JSON_BUFFER_SIZE];
   #endif
 
-  // JSON document scratch space — inline StaticJsonDocument keeps the pool off the MQTT
+  // JSON document scratch space - inline StaticJsonDocument keeps the pool off the MQTT
   // task stack and eliminates two separate heap allocations (fragmentation reduction).
   StaticJsonDocument<PUBLISH_JSON_BUFFER_SIZE> _packet_json_doc;
   StaticJsonDocument<STATUS_JSON_BUFFER_SIZE>  _status_json_doc;
 
   // Memory pressure monitoring (per-publish skip; see publishPacket()).
   // The broader fragmentation-recovery machinery was removed in Phase 4 of
-  // the MQTT memory-defrag work — persistent MQTT clients no longer churn
+  // the MQTT memory-defrag work - persistent MQTT clients no longer churn
   // the heap, so gray-zone / critical-restart trackers are unnecessary.
   unsigned long _last_memory_check;
   int _skipped_publishes;  // Exposed via SNMP; count of publishes skipped when max_alloc is too low
@@ -330,7 +330,7 @@ private:
   bool _wifi_status_initialized;
   unsigned long _wifi_disconnected_time;  // 0 when connected
   unsigned long _last_wifi_reconnect_attempt;
-  uint8_t _wifi_reconnect_backoff_attempt;  // 0..5 → 15s, 30s, 60s, 120s, 300s; reset on connect
+  uint8_t _wifi_reconnect_backoff_attempt;  // 0..5 -> 15s, 30s, 60s, 120s, 300s; reset on connect
   unsigned long _last_slot_reconnect_ms;   // guards against concurrent TLS handshakes (15 s inter-slot gap)
 
   // Optional pointers for collecting stats internally (set by mesh if available)
@@ -351,7 +351,7 @@ private:
   // - destroySlotClients() disconnects and deletes each client. Runs once in end().
   // - setupSlot() configures an already-allocated client (server, credentials,
   //   CA) and calls connect(). Safe to call multiple times to reconfigure.
-  // - teardownSlot() only disconnects — it never deletes the client. Leaves
+  // - teardownSlot() only disconnects - it never deletes the client. Leaves
   //   the mbedTLS/transport state ready for a subsequent setupSlot().
   // This avoids delete/new cycles that shed ~40 KB of mbedTLS buffers per
   // reconfigure and fragment the internal heap on non-PSRAM boards.
@@ -464,7 +464,7 @@ public:
    * - getSlotCurrentOutageStartMs(): millis() of the current outage start
    *   (0 when the slot is connected). Reset on each reconnect.
    * - isSlotEnabledAndAttempted(): true when the slot is enabled (preset
-   *   != "none") and has reached at least one connect attempt — i.e. it is
+   *   != "none") and has reached at least one connect attempt - i.e. it is
    *   meaningful to alarm on its connection state.
    * - getSlotPresetName(): preset name for friendly status text. Returns
    *   "custom"/"none"/preset->name; never null.

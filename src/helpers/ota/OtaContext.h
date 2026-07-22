@@ -7,7 +7,7 @@
 #include "SignerAllowlist.h"
 #include "OtaApply.h"
 #include "OtaFormat.h"
-#include "OtaSelf.h"          // ota_self_firmware() — prefer self-describing EndF identity at begin()
+#include "OtaSelf.h"          // ota_self_firmware() - prefer self-describing EndF identity at begin()
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   #include "OtaStoreFlashNrf52.h"
@@ -31,7 +31,7 @@
 // nRF52 stages into FLASH (OtaStoreFlashNrf52): a delta can be 100 KB+, too big to hold in RAM, and the
 // COMPLETE container must persist so the bootloader can apply it after reboot. A flash page-erase halts
 // the CPU (~85 ms) and starves the LoRa RX, so the store COALESCES writes to the 4 KB page (the erase
-// unit) and commits each page once, off the per-packet path (see OtaManager.h) — RAM stays O(one page).
+// unit) and commits each page once, off the per-packet path (see OtaManager.h) - RAM stays O(one page).
 // (v1 has no mid-transfer resume; an interrupted fetch simply restarts.) ESP32/native use the RAM store.
 
 namespace mesh {
@@ -67,7 +67,7 @@ struct OtaContext {
   bool     serving = false;      // manager.serve() succeeded
   // flash-backed self-serve: cached merkle leaves (heap, freed on re-serve) + assembled manifest of our
   // own running firmware. The payload is read from flash per block; only the metadata is held in RAM.
-  // serve_self_proof is the proof-gen working buffer (>= block_count*4) — sized to OUR image's block
+  // serve_self_proof is the proof-gen working buffer (>= block_count*4) - sized to OUR image's block
   // count (the manager's fixed 4 KB scratch only covers <=1024 blocks; a >1 MB image needs more).
   uint8_t* serve_self_leaves = nullptr;
   uint8_t* serve_self_proof  = nullptr;
@@ -82,7 +82,7 @@ struct OtaContext {
   char     hw_id[33] = {0};                 // this device's hardware tag (from board.getOtaHwId(), set in begin)
 
   // ---- Pull destinations (`ota pull <#> <dest>`): where a fetched .mota is staged. `flash` (fetch_store,
-  //      always present) or `folder` — an external host folder over the seeder link, registered by the app
+  //      always present) or `folder` - an external host folder over the seeder link, registered by the app
   //      while a motatool `serve` connection is attached (else no `folder` dest is offered). Captures the
   //      container to the host as <mid>.mota so an exact firmware copy can be pulled for delta-building. ----
   FolderMotaStore* folder_dest = nullptr;   // non-null == a folder destination is currently connected
@@ -107,7 +107,7 @@ struct OtaContext {
   // so the deferred-reboot path (mesh loop) takes over. Caller ensures the fetch is COMPLETE. Shared by
   // manual `ota applydelta` and the auto-install path.
   bool apply_fetched(char* msg) {
-    // hardware-compatibility gate (brick-safety) — refuse a .mota whose hw_id is for different hardware,
+    // hardware-compatibility gate (brick-safety) - refuse a .mota whose hw_id is for different hardware,
     // independent of signature; covers a manual cross-target `ota dev want` onto an incompatible board.
     {
       uint8_t hdr[8], mb[256];
@@ -170,7 +170,7 @@ struct OtaContext {
     manager.clear_sources();                                   // idempotent re-attach
     if (!manager.add_source(&src)) { strncpy(msg, "ERR no free source slot", cap); return false; }
     folder_active = true;
-    snprintf(msg, cap, "OK folder attached (serial) — serving %u mOTA total (own fw + folder)",
+    snprintf(msg, cap, "OK folder attached (serial) - serving %u mOTA total (own fw + folder)",
              (unsigned)manager.servedCount());
     return true;
   }
@@ -185,8 +185,8 @@ struct OtaContext {
   }
 
   void begin(uint32_t target_id, OtaSend send, void* ctx, const char* hw = nullptr) {
-    // Prefer the firmware's SELF-DESCRIBING EndF identity (docs §2) over the build-flag values the caller
-    // passed — it's correct on any build (build.sh injection, bare IDE build, ...), so `ota ls`/`status`
+    // Prefer the firmware's SELF-DESCRIBING EndF identity (docs Section 2) over the build-flag values the caller
+    // passed - it's correct on any build (build.sh injection, bare IDE build, ...), so `ota ls`/`status`
     // and fetch-routing show the right hardware/role instead of 0 / "".
     SelfFwInfo _fi;
     if (ota_self_firmware(_fi) && _fi.valid) {

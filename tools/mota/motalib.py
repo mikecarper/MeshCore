@@ -1,5 +1,5 @@
 """
-motalib — build/parse/verify MeshCore ``.mota`` firmware-update containers.
+motalib - build/parse/verify MeshCore ``.mota`` firmware-update containers.
 
 Pure logic, no CLI. Implements docs/ota_protocol.md (format_ver=2, fixed layout).
 
@@ -136,10 +136,10 @@ def hardware_id_for_env(env_name: str) -> str:
 
 @dataclass
 class FwIdent:
-    """Self-describing firmware identity carried in the EndF trailer (docs/ota_protocol.md §2) so a node /
+    """Self-describing firmware identity carried in the EndF trailer (docs/ota_protocol.md Section 2) so a node /
     the packaging tool reads it straight from the firmware instead of relying on build flags or filenames."""
     fw_version: int = 0      # packed MAJOR<<24 | MINOR<<16 | PATCH<<8 | pre
-    target_id: int = 0       # sha2-256:4(pio_env) as uint32 LE — hw + role + partition (fetch routing)
+    target_id: int = 0       # sha2-256:4(pio_env) as uint32 LE - hw + role + partition (fetch routing)
     hw_id: str = ""          # readable hardware tag (brick-safety), e.g. "RAK4631"
 
 

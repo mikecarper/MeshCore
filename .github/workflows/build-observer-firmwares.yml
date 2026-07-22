@@ -10,7 +10,7 @@ on:
       - mqtt-bridge-implementation-flex
     # Only rebuild firmware when something that affects the binaries changes.
     # Docs, the changelog, the changelog generator, CI files, and repo-meta
-    # files do not change firmware output — docs/changelog are handled by
+    # files do not change firmware output - docs/changelog are handled by
     # sync-flasher-content.yml instead. NOTE: a push is skipped only if EVERY
     # changed file matches a pattern below; one stray unlisted file (e.g. an
     # earlier .gitignore edit) triggers a full build, so keep meta files listed.
@@ -181,7 +181,7 @@ jobs:
           fi
 
           # Upload this build, overwriting same-named assets. Exclude the .partsig
-          # files — those are consumed locally by the slim-manifest generator below,
+          # files - those are consumed locally by the slim-manifest generator below,
           # not published as release assets (and they'd break the hash-based prune).
           gh release upload "$RELEASE_TAG" $(find out -maxdepth 1 -type f ! -name '*.partsig') --clobber
 
@@ -285,7 +285,7 @@ jobs:
         run: |
           # Stage everything: update-firmware.py edits config.json in place, but the
           # slim manifests (v/*.json) and the build counter can be NEW files, which
-          # `commit -am` would miss — so add -A and check the staged diff.
+          # `commit -am` would miss - so add -A and check the staged diff.
           git add -A
           if git diff --cached --quiet; then
             echo "No flasher changes to commit."

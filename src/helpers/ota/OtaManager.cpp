@@ -20,7 +20,7 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
 //
 // A node offers a SET of mOTAs: its own firmware (view0) plus any external "folder" sources (OtaSource).
 // Every fetch message carries the manifest_id, so a request dispatches to the matching ServeView via
-// resolve() — view0 is resident; an external mota is (re)loaded on demand into _srcv. The catalog (what
+// resolve() - view0 is resident; an external mota is (re)loaded on demand into _srcv. The catalog (what
 // we advertise / answer OTA_QUERY with) is the lightweight _serve[] registry.
 
 bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
@@ -112,7 +112,7 @@ OtaManager::ServeView* OtaManager::resolve(const uint8_t* mid) {
 
 // Load an external mota into the on-demand _srcv: read its manifest-minus-leaves + leaves[] from the
 // source into RAM, parse, and wire a payload reader that streams blocks from the source on REQ. (The
-// payload itself is NOT held in RAM — only the small head + the leaves, <=4 KB for <=1024 blocks.)
+// payload itself is NOT held in RAM - only the small head + the leaves, <=4 KB for <=1024 blocks.)
 bool OtaManager::loadSource(const ServeEntry& e) {
   const MotaDesc& d = e.desc;
   if (d.leaves_off < 8) return false;
@@ -145,7 +145,7 @@ bool OtaManager::srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len)
   return x->src->read(x->idx, x->payload_off + off, buf, len);
 }
 
-// sha2-256:4 over the SORTED set of mids we serve — peers use it to tell if our offering changed. Sorting
+// sha2-256:4 over the SORTED set of mids we serve - peers use it to tell if our offering changed. Sorting
 // makes it canonical across nodes regardless of insert order; for a single mota it is mh4(mid) (unchanged).
 void OtaManager::setDigest(uint8_t out[4]) const {
   if (_n_serve == 0) { memset(out, 0, 4); return; }
@@ -170,7 +170,7 @@ void OtaManager::announce() {       // tiny per-node beacon (constant size, inde
   emit(b, encode_adv(b, sizeof(b), a), true);
 }
 
-// OTA_QUERY: two roles. (1) OVERHEAR-SUPPRESSION — any node that has a pending query for the same
+// OTA_QUERY: two roles. (1) OVERHEAR-SUPPRESSION - any node that has a pending query for the same
 // {source,digest} cancels it (someone else already asked; the broadcast HAVE is coming). (2) If the query
 // is addressed to US, reply with our catalog (broadcast, tagged with our digest so every overhearer caches
 // it). All served mOTAs matching filter_target are returned, fragmented if they exceed one packet.
@@ -232,7 +232,7 @@ void OtaManager::handleGetManifest(const uint8_t* m, uint16_t n) {
 }
 
 // Serve the target's merkle leaves[] in fragments (for a motatool folder-capture warm-start). Only the
-// fragments set in want_mask are emitted, so a want_mask retry re-sends just the holes — never a full burst
+// fragments set in want_mask are emitted, so a want_mask retry re-sends just the holes - never a full burst
 // (same anti-deadlock rationale as OTA_MANIFEST). This is the only leaf-diff piece that runs on every node.
 void OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
   GetLeavesMsg gl;
@@ -255,7 +255,7 @@ void OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
 }
 
 // Smallest mask covering `nf` fragments: bit k set for k in [0, nf). Caps at 16 (matches _reasm_mask and
-// the manifest reassembly), which bounds a block at 16 fragments — our 1 KB blocks are 7.
+// the manifest reassembly), which bounds a block at 16 fragments - our 1 KB blocks are 7.
 static inline uint16_t frag_full_mask(uint32_t nf) {
   return (nf >= 16) ? 0xFFFFu : (uint16_t)((1u << nf) - 1);
 }
@@ -340,7 +340,7 @@ void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
   if (interested && !s.have_catalog) scheduleQuery(a.seeder_id, a.set_digest);  // jittered + suppressible
 }
 
-// Schedule a catalog query after a random jitter (id ⊕ digest, so neighbours pick different delays). The
+// Schedule a catalog query after a random jitter (id +/ digest, so neighbours pick different delays). The
 // node with the shortest jitter sends; the rest overhear that QUERY (or the broadcast HAVE) and suppress.
 void OtaManager::scheduleQuery(const uint8_t* seeder, const uint8_t* digest) {
   if (_pq_active && memcmp(_pq_seeder, seeder, 4) == 0 && memcmp(_pq_digest, digest, 4) == 0) return;  // already pending
@@ -356,7 +356,7 @@ void OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_
   emit(b, encode_query(b, sizeof(b), q), true);     // FLOODED so neighbours overhear it and suppress
 }
 
-// User-initiated browse (`ota neighbors`): ask every known source now (no jitter — infrequent + explicit).
+// User-initiated browse (`ota neighbors`): ask every known source now (no jitter - infrequent + explicit).
 void OtaManager::queryAll() { for (uint8_t i = 0; i < _n_src; i++) sendQuery(_sources[i].seeder, _sources[i].digest, 0); }
 
 // A catalog reply: record each mOTA (deduped by mid; distinct-source count for the UI), and if a row
@@ -367,7 +367,7 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
   bool have_sid = (_seeder_id[0] | _seeder_id[1] | _seeder_id[2] | _seeder_id[3]) != 0;
   if (have_sid && memcmp(hv.seeder_id, _seeder_id, 4) == 0) return;   // our own catalog
   // PASSIVE: any overheard HAVE marks its source catalogued + cancels a pending query for it (storm
-  // suppression) — every node caches the rows below, even one that never queried.
+  // suppression) - every node caches the rows below, even one that never queried.
   for (uint8_t i = 0; i < _n_src; i++)
     if (memcmp(_sources[i].seeder, hv.seeder_id, 4) == 0 && memcmp(_sources[i].digest, hv.set_digest, 4) == 0)
       _sources[i].have_catalog = true;
@@ -429,7 +429,7 @@ void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) 
   if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST || _fstate == WANT_LEAVES || _fstate == PAUSED) return;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
-  // real partial), so never adopt it via resumeStaged — always re-begin and run the manifest→leaves→diff.
+  // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
   if (!validate && resumeStaged(mid)) return;    // (non-validate) resume a partial container left in flash
   memcpy(_fid, mid, 4);
   _fstate = WANT_MANIFEST;
@@ -470,15 +470,15 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   const uint8_t* mf = _mf_buf;                   // fully reassembled manifest-minus-leaves
   uint32_t mfl = _mf_len;
   if (mfl != MOTA_MFL) { _fstate = FAILED; return; }   // manifest-minus-leaves is a fixed 197 bytes
-  if (!codecOk(mf[56])) { _fstate = IDLE; return; }   // codec we can't apply (lying/stale ADV) — abort
+  if (!codecOk(mf[56])) { _fstate = IDLE; return; }   // codec we can't apply (lying/stale ADV) - abort
   uint32_t payload_size = rd_u32le(mf + 15);
   uint8_t  bsl = mf[19];
   if (bsl >= 32) { _fstate = FAILED; return; }
   uint32_t bs = 1u << bsl;
-  // a block must fit our reassembly buffer (and be non-empty) — reject an oversized block_size up front
+  // a block must fit our reassembly buffer (and be non-empty) - reject an oversized block_size up front
   if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { _fstate = FAILED; return; }
   uint32_t bc = (payload_size + bs - 1) / bs;
-  if (bc > 0xFFFFu) { _fstate = FAILED; return; }   // block_idx is uint16 on the wire — can't address more
+  if (bc > 0xFFFFu) { _fstate = FAILED; return; }   // block_idx is uint16 on the wire - can't address more
   memcpy(_froot, mf + 20, 4);
 
   uint32_t leaves_off = 8 + mfl;
@@ -523,7 +523,7 @@ void OtaManager::freeLeaves() {
 }
 
 // Enter WANT_LEAVES: allocate the target-leaves buffer and request them (bitmap-fragmented). Returns false
-// — caller falls back to a normal full fetch — if the image is too big for the fixed uint16 leaves bitmap or
+// - caller falls back to a normal full fetch - if the image is too big for the fixed uint16 leaves bitmap or
 // the heap allocation fails. Called from handleManifest once geometry is known.
 bool OtaManager::beginLeafDiff() {
   freeLeaves();
@@ -714,7 +714,7 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
 void OtaManager::requestMissing() {
   if (_fstate != FETCHING) return;
   // Per-block serial flow (split data/proof). If the current block's data is fully reassembled and we
-  // are waiting on its proof, (re)send the proof request rather than re-fetching the data — this also
+  // are waiting on its proof, (re)send the proof request rather than re-fetching the data - this also
   // recovers from a lost PROOF reply.
   if (_awaiting_proof && _reasm_block != NO_BLOCK) {
     ReqProofMsg rp; memcpy(rp.manifest_id, _fid, 4); rp.block_idx = (uint16_t)_reasm_block;
@@ -724,14 +724,14 @@ void OtaManager::requestMissing() {
     return;
   }
   // Otherwise request the DATA fragments of the next missing block. One block at a time keeps the
-  // server's TX queue tiny so OTA never floods the mesh (docs/ota_protocol.md §8); a block's fragments
+  // server's TX queue tiny so OTA never floods the mesh (docs/ota_protocol.md Section 8); a block's fragments
   // are self-describing (frag_off) so missing slices can be retried without re-sending a full block.
   uint32_t start = pickMissingBlock();
   if (start >= _fbc) return;
   _req_start = start; _req_count = 1;
   // Ask only for fragments we still lack: the holes of the in-flight partial block (_reasm_need & ~mask),
   // or all fragments of a fresh block. A lost fragment then costs one fragment to re-fetch, not the whole
-  // block — and the re-REQ can't collide with a multi-fragment burst (half-duplex) as before.
+  // block - and the re-REQ can't collide with a multi-fragment burst (half-duplex) as before.
   uint32_t nf = (blockLen(start) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
   uint16_t need = frag_full_mask(nf);
   uint16_t have = (start == _reasm_block) ? _reasm_mask : 0;
@@ -760,7 +760,7 @@ void OtaManager::loop() {
     sendQuery(_pq_seeder, _pq_digest, 0);    // unfiltered: one broadcast HAVE serves everyone
   }
   if (_fstate == WANT_MANIFEST) {
-    // Retry GET_MANIFEST ONLY when a tick passed with no new fragment — re-bursting every tick would congest
+    // Retry GET_MANIFEST ONLY when a tick passed with no new fragment - re-bursting every tick would congest
     // the link and burn the retry cap while fragments are still arriving (mirrors FETCHING + WANT_LEAVES).
     // Give up after a cap of stalled retries so an unreachable mid doesn't pin the single fetch slot forever.
     if (_mf_mask == _loop_last_mfmask) {
@@ -776,8 +776,8 @@ void OtaManager::loop() {
     return;
   }
   if (_fstate == WANT_LEAVES) {
-    if (_diffing) { diffStep(); return; }   // leaves in — diff the seed a batch at a time (non-blocking)
-    // Re-request ONLY when a whole tick passed with no new fragment — otherwise re-bursting the holes every
+    if (_diffing) { diffStep(); return; }   // leaves in - diff the seed a batch at a time (non-blocking)
+    // Re-request ONLY when a whole tick passed with no new fragment - otherwise re-bursting the holes every
     // tick congests the link (and burns the retry cap) while fragments are still streaming in. On a stall,
     // ask for just the missing bitmap (anti-burst); give up (FAILED) after a cap of stalled retries.
     if (_lv_mask == _loop_last_lvmask) {
@@ -794,7 +794,7 @@ void OtaManager::loop() {
     return;
   }
   if (_fstate != FETCHING) return;
-  // retry only when a whole tick passed with NO progress — neither a committed block nor a new fragment
+  // retry only when a whole tick passed with NO progress - neither a committed block nor a new fragment
   // of the in-flight block. This avoids re-request spam while a block's fragments are still streaming in.
   if (_have == _loop_last_have && _reasm_mask == _loop_last_mask) requestMissing();
   _loop_last_have = _have;

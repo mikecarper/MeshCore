@@ -4,7 +4,7 @@
 
 #include <string.h>
 
-static const char *TAG = "🐙";
+static const char *TAG = "[OCTOPUS]";
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -742,7 +742,7 @@ void PsychicMqttClient::_onError(esp_mqtt_event_handle_t &event)
         // Broker accepted the socket but rejected the MQTT CONNECT. The return
         // code distinguishes auth failures (4=bad user/pass, 5=not authorized)
         // from server unavailable (3), protocol mismatch (1), and client-id
-        // rejection (2) — the key signal for diagnosing a server-side lockout.
+        // rejection (2) - the key signal for diagnosing a server-side lockout.
         ESP_LOGE(TAG, "Connection refused, return code 0x%x", err->connect_return_code);
     }
 
@@ -798,7 +798,7 @@ bool PsychicMqttClient::_isTopicMatch(const char *topic, const char *subscriptio
 
         if (s_done)
         {
-            // Subscription ended but topic has more levels → no match,
+            // Subscription ended but topic has more levels -> no match,
             // unless the subscription ended with '+' and topic also has no
             // more levels (already handled above).
             return false;

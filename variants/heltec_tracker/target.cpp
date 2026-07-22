@@ -16,7 +16,7 @@ WRAPPER_CLASS radio_driver(radio, board);
 
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
-// GPS_EN (GPIO35) drives N-ch MOSFET → P-ch high-side switch; GPS_RESET (GPIO36) active LOW
+// GPS_EN (GPIO35) drives N-ch MOSFET -> P-ch high-side switch; GPS_RESET (GPIO36) active LOW
 MicroNMEALocationProvider nmea = MicroNMEALocationProvider(Serial1, &rtc_clock, GPS_RESET, GPS_EN, &board.periph_power);
 HWTSensorManager sensors = HWTSensorManager(nmea);
 

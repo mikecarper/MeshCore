@@ -50,7 +50,7 @@ python3 monitor_memory.py /dev/ttyUSB0 2 --interval 60
 ```
 [  30.0m] Free: 102796, Min: 83544, Max: 75764, Queue: 0, Usage: 68.6%, Frag: 26.3%
 [  60.0m] Free: 101234, Min: 82345, Max: 74321, Queue: 2, Usage: 69.1%, Frag: 26.5%
-⚠️  WARNING: HIGH_FRAGMENTATION
+[WARN]  WARNING: HIGH_FRAGMENTATION
 ```
 
 ### CSV Log File

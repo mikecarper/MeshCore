@@ -4,7 +4,7 @@
 #include <helpers/StaticPoolPacketManager.h>
 
 // Fork-owned (not upstream-tracked). Observer builds capture every received packet
-// to MQTT, but RX processing needs a free pool packet first — Dispatcher::checkRecv()
+// to MQTT, but RX processing needs a free pool packet first - Dispatcher::checkRecv()
 // discards the received bytes before logRx() when allocNew() fails. Under duty-cycle
 // throttling the outbound queue can park the entire pool waiting on TX budget, which
 // starves RX allocation and silently caps MQTT capture at the TX rate (each completed
@@ -19,7 +19,7 @@
 //    own responses/ACKs (pri 0) and login/PATH replies (pri 1) still queue. Below the
 //    smaller emergency floor everything is shed to keep capture alive.
 // 2. Stale-packet expiry. A queued packet still untransmitted STALE_OUTBOUND_MS past
-//    its scheduled time is dropped at the next dequeue — a repeat delayed that long is
+//    its scheduled time is dropped at the next dequeue - a repeat delayed that long is
 //    noise (the flood has long since propagated), and a CLI response that old has
 //    already timed out at the client. Under normal load the queue drains in
 //    milliseconds and this never triggers; under throttle it frees the pool and lets

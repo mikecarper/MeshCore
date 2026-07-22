@@ -45,7 +45,7 @@ static Packet makeMultipartAckPacket(uint32_t crc, uint8_t remaining = 1, bool d
     return p;
 }
 
-// ── wasSeen: pure query ───────────────────────────────────────────────────────
+// -- wasSeen: pure query -------------------------------------------------------
 
 TEST(SimpleMeshTables, WasSeen_ReturnsFalseForUnseen) {
     SimpleMeshTables t;
@@ -61,7 +61,7 @@ TEST(SimpleMeshTables, WasSeen_IsPureQuery_DoesNotInsert) {
     EXPECT_FALSE(t.wasSeen(&p));
 }
 
-// ── markSeen + wasSeen ───────────────────────────────────────────────────────
+// -- markSeen + wasSeen -------------------------------------------------------
 
 TEST(SimpleMeshTables, MarkSeen_MakesWasSeenReturnTrue) {
     SimpleMeshTables t;
@@ -100,7 +100,7 @@ TEST(SimpleMeshTables, QueryThenMark_WorksCorrectly) {
     EXPECT_TRUE(t.wasSeen(&p));
 }
 
-// ── dup stats ────────────────────────────────────────────────────────────────
+// -- dup stats ----------------------------------------------------------------
 
 TEST(SimpleMeshTables, WasSeen_IncrementsFloodDupStat) {
     SimpleMeshTables t;
@@ -120,7 +120,7 @@ TEST(SimpleMeshTables, WasSeen_IncrementsDirectDupStat) {
     EXPECT_EQ(1u, t.getNumDirectDups());
 }
 
-// ── clear ────────────────────────────────────────────────────────────────────
+// -- clear --------------------------------------------------------------------
 
 TEST(SimpleMeshTables, Clear_RemovesSeenPacket) {
     SimpleMeshTables t;

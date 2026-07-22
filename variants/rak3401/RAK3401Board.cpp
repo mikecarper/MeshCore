@@ -47,7 +47,7 @@ void RAK3401Board::begin() {
 
   // PIN_3V3_EN (WB_IO2, P0.34) controls the 3V3_S switched peripheral rail
   // AND the 5V boost regulator (U5) on the RAK13302 that powers the SKY66122 PA.
-  // Must stay HIGH during radio operation — do not toggle for power saving.
+  // Must stay HIGH during radio operation - do not toggle for power saving.
   pinMode(PIN_3V3_EN, OUTPUT);
   digitalWrite(PIN_3V3_EN, HIGH);
 

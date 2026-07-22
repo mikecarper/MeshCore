@@ -77,7 +77,7 @@ public:
   virtual bool canControlLoRaFemLna() const { return false; }
   virtual bool isLoRaFemLnaEnabled() const { return false; }
 #if defined(ENABLE_OTA)
-  // 4-byte build-target discriminator for OTA-over-LoRa (docs/ota_protocol.md §9). Default is the
+  // 4-byte build-target discriminator for OTA-over-LoRa (docs/ota_protocol.md Section 9). Default is the
   // MOTA_TARGET_ID build flag injected by build.sh; 0 when unset (e.g. a bare IDE build).
   virtual uint32_t getOtaTargetId() const {
   #ifdef MOTA_TARGET_ID

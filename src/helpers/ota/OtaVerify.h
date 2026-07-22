@@ -4,7 +4,7 @@
 #include "SignerAllowlist.h"
 
 // Full verification of a staged `.mota` (device-side: uses Ed25519 via mesh::Identity, so NOT compiled
-// on the native host — the portable integrity checks live in MotaContainer and are unit-tested there).
+// on the native host - the portable integrity checks live in MotaContainer and are unit-tested there).
 
 namespace mesh {
 namespace ota {

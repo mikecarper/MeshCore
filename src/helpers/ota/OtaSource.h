@@ -4,16 +4,16 @@
 #include <stddef.h>
 #include "OtaFormat.h"
 
-// Transport-agnostic "folder of firmware" abstraction (docs/ota_protocol.md §9). A node can RELAY
-// `.mota` images it does not hold in flash — a user drops several `.mota` (different architectures) into
+// Transport-agnostic "folder of firmware" abstraction (docs/ota_protocol.md Section 9). A node can RELAY
+// `.mota` images it does not hold in flash - a user drops several `.mota` (different architectures) into
 // some external store and the node advertises + serves them as if it held them. Peers just see "this node
 // has N mOTAs"; the node knows they are external. The store is reached through a MotaSource, so the SAME
-// serve code drives a USB-serial host daemon, BLE, a WiFi URL list, an NFS/samba mount, ... — only the
+// serve code drives a USB-serial host daemon, BLE, a WiFi URL list, an NFS/samba mount, ... - only the
 // `read()` plumbing differs per transport.
 //
 // The relay is TRUSTLESS: the fetcher verifies every block against the signed merkle root, so a source is
 // never trusted. A wrong descriptor or wrong bytes simply makes the fetch fail its merkle/signature check
-// — a malicious or buggy source cannot forge firmware, only deny it.
+// - a malicious or buggy source cannot forge firmware, only deny it.
 
 namespace mesh {
 namespace ota {

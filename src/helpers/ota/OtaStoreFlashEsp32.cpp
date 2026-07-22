@@ -197,7 +197,7 @@ void OtaStoreFlashEsp32::checkpoint() {
 }
 
 // Re-attach to a container already staged in the slot (after a reboot), WITHOUT erasing. The header
-// (MOTA_MAGIC + total) sits at a sector boundary (meta_part for full, write_start for delta — both
+// (MOTA_MAGIC + total) sits at a sector boundary (meta_part for full, write_start for delta - both
 // sector-aligned), so scan sector starts from the bottom up. A candidate is accepted only if: magic +
 // plausible total, the manifest parses, the container geometry is self-consistent with the total, AND the
 // recomputed placement lands the meta exactly where we found the magic. Any miss -> false (fetch fresh),

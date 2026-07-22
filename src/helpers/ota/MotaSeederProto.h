@@ -4,12 +4,12 @@
 
 // Wire contract for the "mota-seeder" link: a device (CLIENT) pulls `.mota` bytes on demand from a host
 // daemon (SERVER) that owns a folder of `.mota` files. This is the FIRST concrete MotaSource transport
-// (docs/ota_protocol.md §9) — the device speaks it over a dedicated Stream (a spare UART / USB-UART), so
+// (docs/ota_protocol.md Section 9) - the device speaks it over a dedicated Stream (a spare UART / USB-UART), so
 // it never contends with the line-based text CLI on the main console.
 //
 // The device always initiates; every request gets exactly one response. Framing is resync-safe: the
 // reader scans for the 2-byte magic, so line noise / a half-read frame just times out and is retried
-// (OTA is lowest priority — eventually-upgradable). All multi-byte fields are little-endian.
+// (OTA is lowest priority - eventually-upgradable). All multi-byte fields are little-endian.
 //
 //   request  (device -> host):  'M' 'S'  op(1)  args...                     xsum(1 = XOR of op+args)
 //   response (host -> device):  'm' 's'  op(1)  status(1)  payload...       xsum(1 = XOR of all prior)
@@ -50,7 +50,7 @@ static const uint8_t  MS_OP_STAT     = 0x04;   // storage: does <mid>.mota exist
 static const uint8_t  MS_OP_BEGIN    = 0x05;   // storage: create/truncate <mid>.mota (0xFF-filled)
 static const uint8_t  MS_OP_WRITE    = 0x06;   // storage: write bytes at offset
 static const uint8_t  MS_OP_SREAD    = 0x07;   // storage: read bytes back (resume: recompute missing blocks)
-static const uint8_t  MS_OP_FIN      = 0x08;   // storage: transfer complete — validate + make servable
+static const uint8_t  MS_OP_FIN      = 0x08;   // storage: transfer complete - validate + make servable
 
 static const uint8_t  MS_STATUS_OK   = 0x00;
 static const uint8_t  MS_STATUS_ERR  = 0x01;

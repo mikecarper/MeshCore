@@ -457,7 +457,7 @@ size_t RegionMap::exportTo(char *dest, size_t max_len) const {
   if (!dest || max_len == 0) return 0;
 
   BufStream bs(dest, max_len);
-  exportTo(bs);              // ← reuse existing logic
+  exportTo(bs);              // <- reuse existing logic
   return bs.length();
 }
 

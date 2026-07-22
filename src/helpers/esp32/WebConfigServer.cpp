@@ -517,7 +517,7 @@ void WebConfigServer::drainBatch(uint32_t now) {
     // Fallback only: the real 3 s reboot timer is armed when the client reads
     // /api/config/result (handleConfigResult), so the browser gets its
     // confirmation before the AP/WiFi drops. This covers a client that
-    // disconnected and never polls — generous enough for a phone that got
+    // disconnected and never polls - generous enough for a phone that got
     // bounced off the AP mid-save to rejoin and fetch its confirmation.
     _reboot_at = now + 30000;
     if (_reboot_at == 0) _reboot_at = 1;
@@ -894,7 +894,7 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
   }
   // State stays DONE (re-readable) until the next POST claims the slot.
   if (_batch_reboot && !_batch_reboot_armed) {
-    // Confirmation delivered — reboot 3 s from now (replaces the 30 s
+    // Confirmation delivered - reboot 3 s from now (replaces the 30 s
     // drain-time fallback) so the UI can show its countdown first. Armed
     // once; re-reads must not keep pushing the deadline out.
     _batch_reboot_armed = true;

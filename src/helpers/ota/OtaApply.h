@@ -45,13 +45,13 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len,
 
 // nRF52 (RAK4631) single-slot apply. The running app can't rewrite itself, so it does NOT decode: it
 // runs the gated verification chain (payload hash -> built-for-this-firmware -> signature/trust) and,
-// only if all pass, marks the staged manifest APPROVED in flash. It does NOT reboot — so the caller can
-// first send the result back to the operator — the actual handoff is ota_reboot_to_apply() below.
+// only if all pass, marks the staged manifest APPROVED in flash. It does NOT reboot - so the caller can
+// first send the result back to the operator - the actual handoff is ota_reboot_to_apply() below.
 // Returns true (msg = "verified...") when approved, false (msg = the first failing gate) otherwise.
 bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
 
-// Commit the (already approved/armed) update and reboot into it — does NOT return. Call this only after
+// Commit the (already approved/armed) update and reboot into it - does NOT return. Call this only after
 // a successful ota_apply_* AND after the confirmation reply has been delivered, so the operator knows
 // the apply started (over LoRa the device then goes silent while the bootloader applies). nRF52: set
 // the GPREGRET apply magic + reset (the bootloader does the in-place decode + verify). ESP32: reboot

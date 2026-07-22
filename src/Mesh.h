@@ -438,7 +438,7 @@ protected:
    */
   virtual void onOtaRecv(Packet* packet) { }
 
-  /** \returns  max OTA flood reach in hops — accept up to N, relay while < N (0=direct). `ota config hops`. */
+  /** \returns  max OTA flood reach in hops - accept up to N, relay while < N (0=direct). `ota config hops`. */
   virtual uint8_t getOtaHopLimit() const;
 
   // OTA mesh-integration is centralized in Mesh::begin()/loop()/dispatch, so every role (repeater,

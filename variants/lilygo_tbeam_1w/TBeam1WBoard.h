@@ -8,16 +8,16 @@
 //
 // Power architecture (LDO is separate chip on T-Beam board, not inside XY16P35):
 //
-//   VCC (+4.0~+8.0V) ──┬──────────────────► XY16P35 VCC pin 5 (PA direct)
-//   (USB or Battery)   │
-//                      │   ┌───────────┐
-//                      └──►│ LDO Chip  │──► +3.3V ──► XY16P35 (SX1262 + LNA)
-//                          │ EN=GPIO40 │
-//                          └───────────┘
+//   VCC (+4.0~+8.0V) --+------------------> XY16P35 VCC pin 5 (PA direct)
+//   (USB or Battery)   |
+//                      |   +-----------+
+//                      +-->| LDO Chip  |--> +3.3V --> XY16P35 (SX1262 + LNA)
+//                          | EN=GPIO40 |
+//                          +-----------+
 //                      LDO_EN (GPIO 40): H @ +1.2V~VIN, active high, not floating
 //
 // Control signals:
-//   - LDO_EN (GPIO 40): HIGH enables LDO → powers SX1262 + LNA
+//   - LDO_EN (GPIO 40): HIGH enables LDO -> powers SX1262 + LNA
 //   - TCXO_EN (DIO3):   HIGH enables TCXO (set to 1.8V per Meshtastic)
 //   - CTL (GPIO 21):    HIGH=RX (LNA on), LOW=TX (LNA off)
 //   - DIO2:             AUTO via SX126X_DIO2_AS_RF_SWITCH (TX path)

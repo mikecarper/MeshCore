@@ -117,7 +117,7 @@ public:
   static bool getSetupInfo(char* ssid, size_t ssid_len, char* ip, size_t ip_len);
 
   // For the device display: true once a config save completed and the node is
-  // about to reboot — ground truth for the user even if the browser lost its
+  // about to reboot - ground truth for the user even if the browser lost its
   // connection before the confirmation arrived. Loop task only.
   static bool isRebootPending();
 

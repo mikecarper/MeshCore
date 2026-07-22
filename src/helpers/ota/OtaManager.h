@@ -8,7 +8,7 @@
 #include "MotaContainer.h"
 #include "OtaSource.h"
 
-// Transport-agnostic OTA session engine (docs/ota_protocol.md §5/§8). It SERVES a complete `.mota`
+// Transport-agnostic OTA session engine (docs/ota_protocol.md Section 5/Section 8). It SERVES a complete `.mota`
 // (answering GET_MANIFEST / REQ) and/or FETCHES one into an OtaStore (verifying every block against
 // the signed merkle root via proofs). It is portable (no Arduino / radio / Ed25519) so it can be
 // driven by a host simulation; a thin Mesh adapter wires it to PAYLOAD_TYPE_OTA on device.
@@ -50,7 +50,7 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_MF_MAXFRAG 4            // max manifest fragments (the fixed 197 B manifest is always 2)
 #endif
 #ifndef OTA_MANIFEST_MAX_RETRY
-#define OTA_MANIFEST_MAX_RETRY 20   // give up (FAILED) after this many GET_MANIFEST retries — frees the slot
+#define OTA_MANIFEST_MAX_RETRY 20   // give up (FAILED) after this many GET_MANIFEST retries - frees the slot
 #endif
 // Leaf-diff warm-start (motatool folder-capture only): bulk-fetch the target's leaves[], diff a seed build
 // locally, pull DATA only for mismatches. OTA_LEAVES is bitmap-fragmented like OTA_MANIFEST so a want_mask
@@ -95,7 +95,7 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_REQ_SPREAD_MS 3000      // initial random hold before a fetch's first REQ (de-sync N fetchers)
 #endif
 #ifndef OTA_REQ_SUPPRESS_MS
-#define OTA_REQ_SUPPRESS_MS 2500    // after overhearing a peer's REQ for a block, don't also request it —
+#define OTA_REQ_SUPPRESS_MS 2500    // after overhearing a peer's REQ for a block, don't also request it -
 #endif                              // its DATA is broadcast and will fill our hole too (swarm de-dup)
 #ifndef OTA_SERVE_SUPPRESS_MS
 #define OTA_SERVE_SUPPRESS_MS 1500  // don't re-serve a block whose DATA we just overheard another holder send
@@ -106,10 +106,10 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 // nRF52 note: a flash page-erase halts the CPU (~85 ms, code runs from flash) and starves the LoRa RX,
 // so writing to flash on every received packet drops in-flight DATA and the transfer stalls. The SD-safe
 // driver (Adafruit flash_nrf5x) always erases on flush, so there is no erase-free write; instead
-// OtaStoreFlashNrf52 COALESCES to the 4 KB page (the erase unit) and writes each page once — RAM stays
+// OtaStoreFlashNrf52 COALESCES to the 4 KB page (the erase unit) and writes each page once - RAM stays
 // O(one page), never O(mota). It pins flash page 0 (header+manifest+merkle leaves, which update all
 // transfer long) in RAM and streams the payload through one sliding page buffer, flushing page 0 and the
-// last page at finalize() (radio idle). Flash is then touched ~once per 4 KB (≈1 per 4 blocks), not per
+// last page at finalize() (radio idle). Flash is then touched ~once per 4 KB (~1 per 4 blocks), not per
 // packet; a small delta that fits page 0 does ZERO flash I/O until COMPLETE. (Pacing alone is not enough.)
 
 class OtaManager {
@@ -160,9 +160,9 @@ public:
   bool serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t* leaves, uint32_t block_count,
                   uint8_t* proof_scratch, uint32_t proof_scratch_sz, ServeReadFn read, void* ctx);
   // Attach an external "folder" of `.mota` images (USB-serial daemon, BLE, WiFi URLs, NFS/samba, ...).
-  // The node then advertises + RELAYS them transparently alongside its own fw — peers just see more mOTAs.
+  // The node then advertises + RELAYS them transparently alongside its own fw - peers just see more mOTAs.
   // Re-enumerates the source into the serve registry. Returns false if no slots remain. (Trustless: the
-  // fetcher verifies merkle+signature, so the source is never trusted — see OtaSource.h.)
+  // fetcher verifies merkle+signature, so the source is never trusted - see OtaSource.h.)
   bool add_source(MotaSource* src);
   // Re-read every attached source's catalog (call when the folder's contents change). Rebuilds entries
   // [1..] from the sources; entry 0 (our own fw) is preserved.
@@ -176,7 +176,7 @@ public:
   void servedDigest(uint8_t out[4]) const { setDigest(out); }
 
   // Broadcast the tiny per-node BEACON (OTA_ADV): seeder_id + count + set-digest of everything we serve.
-  // Constant size regardless of how many mOTAs — peers ask for the catalog via OTA_QUERY only on interest.
+  // Constant size regardless of how many mOTAs - peers ask for the catalog via OTA_QUERY only on interest.
   void announce();
 
   // --- fetch ---  Provide the staging store; fetching starts on a matching OTA_ADV.
@@ -212,7 +212,7 @@ public:
   void pull(const uint8_t* mid, uint32_t target, bool validate = false) {
     want(target); want_mid(mid); startFetch(mid, target, validate);
   }
-  // Ask every known source for its catalog (populates `ota neighbors`). Async — rows arrive via OTA_HAVE.
+  // Ask every known source for its catalog (populates `ota neighbors`). Async - rows arrive via OTA_HAVE.
   void queryAll();
   // Coarse clock for source/catalog ages + LRU (the Mesh adapter feeds millis; 0 in host tests is fine).
   void set_clock(uint32_t ms) { _now_ms = ms; }
@@ -280,7 +280,7 @@ public:
     uint32_t target_id, fw_version;
     uint8_t  codec, flags;
     uint8_t  seeders[OTA_CAT_SEEDERS][4];  // distinct sources advertising this mid (deduped; capped)
-    uint8_t  n_seeders;                    // count of the above (capped at OTA_CAT_SEEDERS) — "N+ nodes have it"
+    uint8_t  n_seeders;                    // count of the above (capped at OTA_CAT_SEEDERS) - "N+ nodes have it"
     uint32_t have_max;                     // best block-count any source reported (== total when a full copy exists)
     uint32_t last_ms;
   };
@@ -332,7 +332,7 @@ private:
   ServeView   _srcv;
   uint8_t     _srcv_mid[4] = {0};
   SrcReadCtx  _srcv_rdctx = {nullptr, 0, 0};
-  ServeEntry  _serve[OTA_MAX_SERVE];                 // catalog (what we advertise) — entry 0 is view0
+  ServeEntry  _serve[OTA_MAX_SERVE];                 // catalog (what we advertise) - entry 0 is view0
   uint8_t     _n_serve = 0;
   MotaSource* _src_list[OTA_MAX_SOURCE_OBJ] = {nullptr};
   uint8_t     _n_src_obj = 0;
@@ -393,7 +393,7 @@ private:
   CatRow     _catalog[OTA_MAX_CATALOG];
   uint8_t    _n_cat = 0;
   uint32_t   _now_ms = 0;                       // coarse clock (fed by set_clock; for ages/LRU/jitter)
-  // pending catalog query (jittered + suppressed on overhearing a matching QUERY/HAVE — anti-storm)
+  // pending catalog query (jittered + suppressed on overhearing a matching QUERY/HAVE - anti-storm)
   bool       _pq_active = false;
   uint8_t    _pq_seeder[4] = {0};
   uint8_t    _pq_digest[4] = {0};

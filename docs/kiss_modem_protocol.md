@@ -18,10 +18,10 @@ Standard KISS framing per the KA9Q/K3MC specification.
 | `0xDD` | TFESC | Escaped FESC (FESC + TFESC = 0xDB) |
 
 ```
-┌──────┬───────────┬──────────────┬──────┐
-│ FEND │ Type Byte │ Data (escaped)│ FEND │
-│ 0xC0 │  1 byte   │ 0-510 bytes  │ 0xC0 │
-└──────┴───────────┴──────────────┴──────┘
++------+-----------+--------------+------+
+| FEND | Type Byte | Data (escaped)| FEND |
+| 0xC0 |  1 byte   | 0-510 bytes  | 0xC0 |
++------+-----------+--------------+------+
 ```
 
 ### Type Byte
@@ -76,10 +76,10 @@ MeshCore-specific functionality uses the standard KISS SetHardware command. The 
 ### Frame Format
 
 ```
-┌──────┬──────┬─────────────┬──────────────┬──────┐
-│ FEND │ 0x06 │ Sub-command  │ Data (escaped)│ FEND │
-│ 0xC0 │      │   1 byte    │   variable   │ 0xC0 │
-└──────┴──────┴─────────────┴──────────────┴──────┘
++------+------+-------------+--------------+------+
+| FEND | 0x06 | Sub-command | Data (escaped)| FEND |
+| 0xC0 |      |   1 byte    |   variable   | 0xC0 |
++------+------+-------------+--------------+------+
 ```
 
 ### Request Sub-commands (Host to TNC)
@@ -235,7 +235,7 @@ All values little-endian.
 
 | Field       | Size    | Description                                |
 |-------------|---------|--------------------------------------------|
-| Temperature | 2 bytes | int16_t, tenths of °C (e.g., 253 = 25.3°C) |
+| Temperature | 2 bytes | int16_t, tenths of degC (e.g., 253 = 25.3degC) |
 
 Returns `NoCallback` error if the board does not support temperature readings.
 
@@ -274,7 +274,7 @@ Data returned in CayenneLPP format. See [CayenneLPP documentation](https://docs.
 
 ## Notes
 
-- Data payload limit (255 bytes) matches MeshCore MAX_TRANS_UNIT; no change needed for KISS “1024+ recommended” (that applies to general TNCs, not MeshCore)
+- Data payload limit (255 bytes) matches MeshCore MAX_TRANS_UNIT; no change needed for KISS "1024+ recommended" (that applies to general TNCs, not MeshCore)
 - Modem generates identity on first boot (stored in flash)
 - All multi-byte values are little-endian unless stated otherwise
 - SNR values in RxMeta are multiplied by 4 for 0.25 dB precision

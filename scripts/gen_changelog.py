@@ -50,7 +50,7 @@ UPSTREAM_MERGE = re.compile(r"[Mm]erge.*(?:upstream|origin)/dev")
 # rebase / merge artifacts that should never appear in the visible log
 NOISE = re.compile(r"conflict marker|duplicate (?:mqtt )?function|unnecessary comments"
                    r"|from rebase|^revert |whoops|^remove final|^remove remaining", re.I)
-HASH_TOKEN = re.compile(r"·\s*`([0-9a-f]{7,40})`")
+HASH_TOKEN = re.compile(r"*\s*`([0-9a-f]{7,40})`")
 MANIFEST_HASH = re.compile(r"\b[0-9a-f]{7,40}\b")
 
 
@@ -58,7 +58,7 @@ def clean(subj: str) -> str:
     s = subj.strip().lstrip("* ").strip()
     s = re.split(r"(?<=[.!?])\s+", s)[0].rstrip(". ")
     if len(s) > 140:
-        s = s[:137].rstrip() + "…"
+        s = s[:137].rstrip() + "..."
     return s[:1].upper() + s[1:] if s else s
 
 
@@ -89,7 +89,7 @@ def render(h, date, is_merge, subj):
         if UPSTREAM_MERGE.search(subj):
             ver = re.search(r"v\d+\.\d+\.\d+", subj)
             tail = f" ({ver.group()})" if ver else ""
-            return f"- ⬆ **Upstream sync** — Synced with upstream MeshCore dev{tail}  <sub>{date} · `{h}`</sub>"
+            return f"- [UP] **Upstream sync** - Synced with upstream MeshCore dev{tail}  <sub>{date} * `{h}`</sub>"
         return None
     if NOISE.search(subj):
         return None
@@ -100,8 +100,8 @@ def render(h, date, is_merge, subj):
     else:
         typ = scope = None
         summary = clean(subj)
-    sc = f" · `{scope}`" if scope else ""
-    return f"- **{label_for(typ, summary)}**{sc} — {summary}  <sub>{date} · `{h}`</sub>"
+    sc = f" * `{scope}`" if scope else ""
+    return f"- **{label_for(typ, summary)}**{sc} - {summary}  <sub>{date} * `{h}`</sub>"
 
 
 def insert_entry(lines, date, bullet):

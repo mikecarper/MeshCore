@@ -25,7 +25,7 @@ namespace ota {
 
 #if defined(ESP32_PLATFORM)
 // Scan the running app partition for the firmware's EndF trailer using esp_partition_read (stable
-// across IDF versions — no mmap). Same rule as find_self_firmware(): the marker's absolute offset
+// across IDF versions - no mmap). Same rule as find_self_firmware(): the marker's absolute offset
 // must equal its stored body_len, which uniquely identifies the running firmware's own trailer.
 bool ota_self_firmware(SelfFwInfo& out) {
   out = SelfFwInfo();
@@ -49,7 +49,7 @@ bool ota_self_firmware(SelfFwInfo& out) {
       out.image_len = body_len + ENDF_LEN;
       memcpy(out.body_hash, buf + i + 8, 8);
       // Fixed 56-byte trailer: re-read it whole at the marker (it may straddle the chunk window, so the
-      // identity fields aren't reliably in `buf`) and pull identity from constant offsets (docs §2).
+      // identity fields aren't reliably in `buf`) and pull identity from constant offsets (docs Section 2).
       uint8_t tr[ENDF_LEN];
       if (body_len + ENDF_LEN <= p->size &&
           esp_partition_read(p, body_len, tr, ENDF_LEN) == ESP_OK) {
@@ -118,7 +118,7 @@ static uint32_t parse_fw_version(const char* s) {
       else break;
     }
     if (dots >= 1) return FwVersion{ (uint8_t)a, (uint8_t)b, (uint8_t)d, 0 }.pack();
-    s = p - 1;                                        // a bare number, no dots — keep scanning
+    s = p - 1;                                        // a bare number, no dots - keep scanning
   }
   return 0;
 }
@@ -126,7 +126,7 @@ static uint32_t parse_fw_version(const char* s) {
 bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   // Derive our version from the build string when the caller didn't supply one, so the mOTA we advertise
   // carries a real version (was hard-coded 0 -> peers saw "v0.0.0"). A dev build with no dotted number
-  // still reads 0 — the self-describing EndF identity (docs) is the durable fix for that.
+  // still reads 0 - the self-describing EndF identity (docs) is the durable fix for that.
 #ifdef FIRMWARE_VERSION
   if (fw_version == 0) fw_version = parse_fw_version(FIRMWARE_VERSION);
 #endif
@@ -161,7 +161,7 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   uint8_t image_hash[32]; sha.finalize(image_hash, 32);
   uint8_t root[4]; merkle_root(root, c.serve_self_leaves, bc);
 
-  // Prefer the SELF-DESCRIBING identity embedded in our own EndF (docs §2) over build flags / the param —
+  // Prefer the SELF-DESCRIBING identity embedded in our own EndF (docs Section 2) over build flags / the param -
   // it's correct regardless of how the firmware was built (build.sh injection, IDE, etc.).
   uint32_t out_target = fi.target_id ? fi.target_id : c.manager.target();
   uint32_t out_ver    = fi.fw_version ? fi.fw_version : fw_version;

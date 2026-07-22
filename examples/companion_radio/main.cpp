@@ -192,7 +192,7 @@ void halt() {
   }
 #endif
 
-/* WIFI OTA SEEDER — relay a host folder of .mota over WiFi (motatool `serve --tcp`), on a DEDICATED port
+/* WIFI OTA SEEDER - relay a host folder of .mota over WiFi (motatool `serve --tcp`), on a DEDICATED port
    separate from the companion (TCP_PORT), so a phone app stays connected while motatool feeds updates. */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaContext.h>
@@ -230,7 +230,7 @@ void halt() {
         if (mesh::ota::ota_ctx().manager.fetchState() == mesh::ota::OtaManager::PAUSED)
           mesh::ota::ota_ctx().manager.resumeStaged(nullptr);
         mesh::ota::ota_ctx().manager.announce();   // new served set -> advertise the folder's fw to peers
-        WIFI_DEBUG_PRINTLN("OTA seeder: client connected (%s) — relay + folder pull-dest ready", di);
+        WIFI_DEBUG_PRINTLN("OTA seeder: client connected (%s) - relay + folder pull-dest ready", di);
       } else {
         ota_seeder_client.stop();                                      // no free source slot
       }
@@ -238,9 +238,9 @@ void halt() {
   }
 #endif
 
-/* WIFI OTA CONSOLE — a tiny text CLI for OTA over WiFi. A WiFi companion has no serial text console, so
+/* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. A WiFi companion has no serial text console, so
    without this its OTA is only reachable through the phone app. Connect with e.g. `nc <ip> 5002` and type
-   `ota status` / `ota ls` / `ota announce` / ... — one client at a time, on a DEDICATED port separate from
+   `ota status` / `ota ls` / `ota announce` / ... - one client at a time, on a DEDICATED port separate from
    the companion (5000) and the seeder (5001). */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaCli.h>          // mesh::ota::handle_ota_command(line, reply, board)
@@ -256,7 +256,7 @@ void halt() {
     if (!ota_console_client || !ota_console_client.connected()) {
       WiFiClient c = ota_console_server.available();
       if (c) { ota_console_client = c; ota_console_len = 0;
-               ota_console_client.print("OTA console — type `ota ...` (e.g. ota status / ota ls / ota announce)\r\n> "); }
+               ota_console_client.print("OTA console - type `ota ...` (e.g. ota status / ota ls / ota announce)\r\n> "); }
       return;
     }
     while (ota_console_client.available()) {

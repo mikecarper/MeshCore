@@ -550,7 +550,7 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
   int len = 0;
   if (state & STATE_INT_READY) {
-    last_radio_interrupt_millis = millis();   // ISR fired → radio hardware is alive
+    last_radio_interrupt_millis = millis();   // ISR fired -> radio hardware is alive
     if (isPacketReady()) {
       len = _radio->getPacketLength();
       if (len > 0) {

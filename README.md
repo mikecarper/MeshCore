@@ -2,25 +2,25 @@
 
 MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
 
-## 🔍 What is MeshCore?
+## [SEARCH] What is MeshCore?
 
 MeshCore now supports a range of LoRa devices, allowing for easy flashing without the need to compile firmware manually. Users can flash a pre-built binary using tools like Adafruit ESPTool and interact with the network through a serial console.
 MeshCore provides the ability to create wireless mesh networks, similar to Meshtastic and Reticulum but with a focus on lightweight multi-hop packet routing for embedded projects. Unlike Meshtastic, which is tailored for casual LoRa communication, or Reticulum, which offers advanced networking, MeshCore balances simplicity with scalability, making it ideal for custom embedded solutions, where devices (nodes) can communicate over long distances by relaying messages through intermediate nodes. This is especially useful in off-grid, emergency, or tactical situations where traditional communication infrastructure is unavailable.
 
-> **MQTT Observer Setup** — If you're deploying an observer node with MQTT, see the [MQTT Implementation Guide](./MQTT_IMPLEMENTATION.md) for configuration, CLI commands, and troubleshooting.
+> **MQTT Observer Setup** - If you're deploying an observer node with MQTT, see the [MQTT Implementation Guide](./MQTT_IMPLEMENTATION.md) for configuration, CLI commands, and troubleshooting.
 
-## ⚡ Key Features
+## [LIGHTNING] Key Features
 
 * Multi-Hop Packet Routing
   * Devices can forward messages across multiple nodes, extending range beyond a single radio's reach.
   * Supports up to a configurable number of hops to balance network efficiency and prevent excessive traffic.
   * Nodes use fixed roles where "Companion" nodes are not repeating messages at all to prevent adverse routing paths from being used.
-* Supports LoRa Radios – Works with Heltec, RAK Wireless, and other LoRa-based hardware.
-* Decentralized & Resilient – No central server or internet required; the network is self-healing.
-* Low Power Consumption – Ideal for battery-powered or solar-powered devices.
-* Simple to Deploy – Pre-built example applications make it easy to get started.
+* Supports LoRa Radios - Works with Heltec, RAK Wireless, and other LoRa-based hardware.
+* Decentralized & Resilient - No central server or internet required; the network is self-healing.
+* Low Power Consumption - Ideal for battery-powered or solar-powered devices.
+* Simple to Deploy - Pre-built example applications make it easy to get started.
 
-## 🎯 What Can You Use MeshCore For?
+## [TARGET] What Can You Use MeshCore For?
 
 * Off-Grid Communication: Stay connected even in remote areas.
 * Emergency Response & Disaster Recovery: Set up instant networks where infrastructure is down.
@@ -28,7 +28,7 @@ MeshCore provides the ability to create wireless mesh networks, similar to Mesht
 * Tactical & Security Applications: Military, law enforcement, and private security use cases.
 * IoT & Sensor Networks: Collect data from remote sensors and relay it back to a central location.
 
-## 🚀 How to Get Started
+## [ROCKET] How to Get Started
 
 - Watch the [MeshCore QuickStart Playlist](https://www.youtube.com/watch?v=iaFltojJrAc&list=PLshzThxhw4O4WU_iZo3NmNZOv6KMrUuF9) by The Comms Channel
 - Watch the [MeshCore Technical Presentation](https://www.youtube.com/watch?v=OwmkVkZQTf4) by Liam Cottle.
@@ -50,7 +50,7 @@ For developers:
 
 The Simple Secure Chat example can be interacted with through the Serial Monitor in Visual Studio Code, or with a Serial USB Terminal on Android.
 
-## ⚡️ MeshCore Flasher
+## [LIGHTNING] MeshCore Flasher
 
 We have prebuilt firmware ready to flash on supported devices.
 
@@ -60,7 +60,7 @@ We have prebuilt firmware ready to flash on supported devices.
   - Companion, Repeater or Room Server
 - Once flashing is complete, you can connect with one of the MeshCore clients below.
 
-## 📱 MeshCore Clients
+## [PHONE] MeshCore Clients
 
 **Companion Firmware**
 
@@ -80,11 +80,11 @@ The repeater and room server firmware can be set up via USB in the web config to
 
 They can also be managed via LoRa in the mobile app by using the Remote Management feature.
 
-## 🛠 Hardware Compatibility
+## [TOOLS] Hardware Compatibility
 
 MeshCore is designed for devices listed in the [MeshCore Flasher](https://meshcore.io/flasher)
 
-## 📜 License
+## [SCROLL] License
 
 MeshCore is open-source software released under the MIT License. You are free to use, modify, and distribute it for personal and commercial projects.
 
@@ -123,7 +123,7 @@ There are a number of fairly major features in the pipeline, with no particular 
 - [ ] Core: new framework for hosting multiple virtual nodes on one physical device
 - [ ] V2 protocol spec: discussion and consensus around V2 packet protocol, including path hashes, new encryption specs, etc
 
-## 📞 Get Support
+## [TELEPHONE] Get Support
 
 - Report bugs and request features on the [GitHub Issues](https://github.com/ripplebiz/MeshCore/issues) page.
 - Find additional guides and components on [my site](https://buymeacoffee.com/ripplebiz).

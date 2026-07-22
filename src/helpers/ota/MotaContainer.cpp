@@ -11,7 +11,7 @@ bool MotaManifest::is_approved() const {
   return approval && memcmp(approval, APPROVAL_YES, 4) == 0;
 }
 
-// Fixed-layout parse (docs/ota_protocol.md §4): every field sits at a constant offset — base_hash(8),
+// Fixed-layout parse (docs/ota_protocol.md Section 4): every field sits at a constant offset - base_hash(8),
 // signer_pubkey(32) and signature(64) are ALWAYS present (zero-filled when not applicable), so there are
 // no conditionals. Only leaves[]/payload (after `approval`) is variable, read by the caller. The signature
 // always covers manifest[0, MOTA_SIGNED_LEN). Returns false on any over-read or bad format_ver.

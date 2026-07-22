@@ -47,7 +47,7 @@ static const char* state_word(OtaManager::FetchState s) {
     case OtaManager::FETCHING:      return "downloading";
     case OtaManager::COMPLETE:      return "ready to install";
     case OtaManager::FAILED:        return "failed";
-    case OtaManager::PAUSED:        return "paused (folder link lost — reconnect to resume)";
+    case OtaManager::PAUSED:        return "paused (folder link lost - reconnect to resume)";
     default:                        return "?";
   }
 }
@@ -135,18 +135,18 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
              c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
              (unsigned)c.allow.count(), (unsigned)c.manager.target(), tenv ? tenv : "?");
 #if defined(NRF52_PLATFORM)
-    // nRF52 applies via the bootloader — show (cached) whether it can, so `ota get`/`install` won't surprise.
+    // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
     // blrc = the bootloader's last in-place-apply code (diagnostic; 0xB8=success, see ota_delta.c).
     if (n < 146) n += snprintf(reply + n, 160 - n, " | bl:%s blrc:%02X",
                                c.bootloaderCaps().present ? "apply" : "NONE", ota_bootloader_last_rc());
 #endif
 
   // ---- admin OTA stats: crypto identities (our fw's content-id + body_hash), serving set, live fetch,
-  //      policy — one dense line. The remote-admin CLI path is admin-gated, so this is admin-only over the
+  //      policy - one dense line. The remote-admin CLI path is admin-gated, so this is admin-only over the
   //      mesh (send it from the app's repeater command screen, or the WiFi/serial OTA console).
   } else if (is_cmd(a, "stats", &rest)) {
     // our running fw's merkle content-id (mid) comes from the self serve entry; the EndF body_hash (fw
-    // identity, matched against a delta base) is separate — surface BOTH (only body_hash showed before).
+    // identity, matched against a delta base) is separate - surface BOTH (only body_hash showed before).
     const OtaManager::ServeEntry* self = nullptr;
     for (uint8_t i = 0; i < c.manager.servedCount(); i++) {
       const OtaManager::ServeEntry* e = c.manager.servedEntry(i);
@@ -178,12 +178,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   // ---- what's available around me (catalogued from beacons + OTA_HAVE), best/most-recent first ----
   } else if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest)) {
-    // Kick a fresh round of catalog queries (async — rows arrive over the next seconds); render what we
+    // Kick a fresh round of catalog queries (async - rows arrive over the next seconds); render what we
     // have now in plain words. The reply buffer is 160 B (serial / one LoRa packet for remote-admin), so
     // writes are bounded and extra rows collapse to "+N more".
     c.manager.queryAll();
     const int CAP = 160;
-    int n = snprintf(reply, CAP, "Updates nearby (%u src) — `ota get <#>` to download:",
+    int n = snprintf(reply, CAP, "Updates nearby (%u src) - `ota get <#>` to download:",
                      (unsigned)c.manager.sourceCount());
     OtaManager::FetchState fs = c.manager.fetchState();
     const uint8_t* cur = (fs != OtaManager::IDLE) ? c.manager.fetchManifestId() : nullptr;
@@ -193,7 +193,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       const OtaManager::CatRow* h = c.manager.catalogRow(i);
       if (CAP - n < 48) { more++; continue; }
       bool on = cur && memcmp(cur, h->mid, 4) == 0;
-      // Tag the active session by real fetch state (not always "downloading" — COMPLETE is ready).
+      // Tag the active session by real fetch state (not always "downloading" - COMPLETE is ready).
       const char* tag = "";
       if (on) {
         if (fs == OtaManager::COMPLETE)      tag = " [ready]";
@@ -204,7 +204,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       uint32_t age = (now - h->last_ms) / 1000; if (age > 99999) age = 99999;
       char ver[20]; ver_str(ver, sizeof ver, h->fw_version);
       // What is this update for? "yours" if same target (hw+role) as us; else the target's env name when we
-      // know it (named locally from its 4-byte target_id — no string travels on the wire); else the raw
+      // know it (named locally from its 4-byte target_id - no string travels on the wire); else the raw
       // target_id hex (an env this build's OtaTargets.h table doesn't know) or '?' for an unset target.
       char hwbuf[16];
       const char* fit;
@@ -218,13 +218,13 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       shown++;
     }
     if (more && n < CAP) snprintf(reply + n, CAP - n, "\n +%d more", more);
-    if (shown == 0) strcpy(reply, "No updates seen yet — re-run `ota ls` in a few seconds (just asked around).");
+    if (shown == 0) strcpy(reply, "No updates seen yet - re-run `ota ls` in a few seconds (just asked around).");
 
   // ---- start fetching a specific catalogued mOTA (by list index or manifest_id) ----
   } else if (is_cmd(a, "pull|get|download", &rest)) {
     const char* p = rest; while (*p == ' ') p++;
     // split into "<selector> [destination]": selector = #N / N (catalogue index) or mid hex; destination =
-    // flash | folder (MANDATORY — `folder` captures the .mota onto the connected motatool folder as <mid>.mota).
+    // flash | folder (MANDATORY - `folder` captures the .mota onto the connected motatool folder as <mid>.mota).
     char selstr[24]; int i = 0;
     while (p[i] && p[i] != ' ' && i < (int)sizeof(selstr) - 1) { selstr[i] = p[i]; i++; }
     selstr[i] = 0;
@@ -248,7 +248,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         snprintf(reply, 160, "choose a destination: `ota pull %s flash` | `ota pull %s folder`  (folder: %s)",
                  selstr, selstr, c.folder_dest_info);
       else
-        snprintf(reply, 160, "choose a destination: `ota pull %s flash`  (folder: none connected — motatool serve)",
+        snprintf(reply, 160, "choose a destination: `ota pull %s flash`  (folder: none connected - motatool serve)",
                  selstr);
       return true;
     }
@@ -312,7 +312,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {
     // Apply the fetched update. Destructive (reflashes + reboots) and GATED, not interactive (no "type
-    // yes" round-trip — unreliable over LoRa): refuse unless the fetch is COMPLETE, then the apply path
+    // yes" round-trip - unreliable over LoRa): refuse unless the fetch is COMPLETE, then the apply path
     // validates in order (payload hash -> built-for-this-firmware -> signature/trust) and returns the
     // FIRST failing gate, so the operator knows exactly why it refused; it proceeds only if all pass.
     if (c.manager.fetchState() != OtaManager::COMPLETE || c.fetch_store.staged_size() == 0) {
@@ -321,7 +321,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
               (unsigned)c.manager.blocksTotal());
       return true;
     }
-    // On success the slot is armed but NOT yet rebooted — defer so this reply reaches the operator first;
+    // On success the slot is armed but NOT yet rebooted - defer so this reply reaches the operator first;
     // the mesh loop reboots once it has been transmitted (same path used by auto-install).
     char m2[100];
     bool ok = c.apply_fetched(m2);
@@ -373,17 +373,17 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       long n = atol(p + 11);
       if (n < 0 || n > 4096) { strcpy(reply, "ERR usage: ota config checkpoint <0..4096>  (blocks; 0=never)"); return true; }
       c.manager.set_checkpoint_blocks((uint16_t)n); c.config_dirty = true;
-      sprintf(reply, "OK checkpoint every %ld blocks (saved)%s", n, n == 0 ? " — periodic resume disabled" : "");
+      sprintf(reply, "OK checkpoint every %ld blocks (saved)%s", n, n == 0 ? " - periodic resume disabled" : "");
     } else if (strncmp(p, "advert ", 7) == 0) {         // beacon re-advertise cadence (minutes; 0=disable)
       long m = atol(p + 7);
       if (m < 0 || m > 10080) { strcpy(reply, "ERR usage: ota config advert <0..10080>  (minutes; 0=disable)"); return true; }
       c.manager.set_advert_mins((uint16_t)m); c.config_dirty = true;
-      sprintf(reply, "OK re-advertise every %ld min (saved)%s", m, m == 0 ? " — periodic advert disabled" : "");
+      sprintf(reply, "OK re-advertise every %ld min (saved)%s", m, m == 0 ? " - periodic advert disabled" : "");
     } else if (strncmp(p, "hops ", 5) == 0) {           // OTA flood reach in hops (0 = direct only)
       long h = atol(p + 5);
       if (h < 0 || h > 8) { strcpy(reply, "ERR usage: ota config hops <0..8>  (hops; 0 = direct only)"); return true; }
       c.manager.set_max_hops((uint8_t)h); c.config_dirty = true;
-      sprintf(reply, "OK OTA reach = %ld hop%s (saved)%s", h, h == 1 ? "" : "s", h == 0 ? " — direct only" : "");
+      sprintf(reply, "OK OTA reach = %ld hop%s (saved)%s", h, h == 1 ? "" : "s", h == 0 ? " - direct only" : "");
     } else {                                            // show current policy
       uint8_t af = c.manager.autofetch();
       sprintf(reply, "ota config: autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u  (persisted)",
@@ -444,7 +444,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       char midhx[9]; mesh::Utils::toHex(midhx, c.serve_self_manifest + 20, 4);
       uint32_t img = (uint32_t)c.serve_self_manifest[11] | ((uint32_t)c.serve_self_manifest[12] << 8)
                    | ((uint32_t)c.serve_self_manifest[13] << 16) | ((uint32_t)c.serve_self_manifest[14] << 24);
-      sprintf(reply, "OK serving self fw mid=%s (%u B, flash-backed) — peers can pull it", midhx, (unsigned)img);
+      sprintf(reply, "OK serving self fw mid=%s (%u B, flash-backed) - peers can pull it", midhx, (unsigned)img);
     } else strcpy(reply, "ERR serve self (no EndF / image too big / OOM)");
   } else if (strncmp(d, "serve", 5) == 0) {
     c.serving = c.manager.serve(c.serve_buf, c.serve_expected);

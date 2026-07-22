@@ -159,7 +159,7 @@ struct NodePrefs { // persisted to file
   float adc_multiplier;
   char owner_info[120];
   // NOTE: member order below matches mcarper/keymindCascade (upstream/dev order).
-  // It is in-memory only — /com_prefs is read/written field-by-field in loadPrefsInt/
+  // It is in-memory only - /com_prefs is read/written field-by-field in loadPrefsInt/
   // savePrefs, whose canonical file order (identical to the flex fleet's through
   // offset 294, keymind retry tail at 295+) is what devices actually persist.
   uint8_t rx_boosted_gain; // power settings
@@ -223,7 +223,7 @@ struct NodePrefs { // persisted to file
 };
 
 #ifdef WITH_MQTT_BRIDGE
-// Old MQTT preferences layout (pre-slot firmware) — used only for migration detection
+// Old MQTT preferences layout (pre-slot firmware) - used only for migration detection
 struct OldMQTTPrefs {
   char mqtt_origin[32];
   char mqtt_iata[8];
@@ -247,7 +247,7 @@ struct OldMQTTPrefs {
   char mqtt_email[64];
 };
 
-// 3-slot MQTTPrefs layout — used for migrating from 3-slot to 6-slot format.
+// 3-slot MQTTPrefs layout - used for migrating from 3-slot to 6-slot format.
 // Changing array sizes from [3] to [6] shifts all field offsets, so raw file.read()
 // into the new struct would corrupt data. This struct preserves the old binary layout.
 struct ThreeSlotMQTTPrefs {
@@ -319,7 +319,7 @@ struct Legacy6SlotMQTTPrefs {
 };
 
 // The legacy layouts above describe files already written to the deployed fleet's
-// flash, so their sizes are frozen forever — loadMQTTPrefs() tells the eras apart
+// flash, so their sizes are frozen forever - loadMQTTPrefs() tells the eras apart
 // by file size and reads each file as a raw struct dump. These asserts pin the
 // layouts on every target toolchain; if one fires, the compiler (or an edit to a
 // legacy struct or MAX_MQTT_SLOTS) has changed a layout and fleet files would be

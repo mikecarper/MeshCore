@@ -17,7 +17,7 @@
 #endif
 
 class U8g2Display : public DisplayDriver {
-  // U8g2 constructor for SSD1306/SSD1315 72×40 panel — handles all
+  // U8g2 constructor for SSD1306/SSD1315 72x40 panel - handles all
   // GDDRAM column/page offsets, SETMULTIPLEX, SETDISPLAYOFFSET internally
   U8G2_SSD1306_72X40_ER_F_HW_I2C _u8g2;
   bool _isOn;

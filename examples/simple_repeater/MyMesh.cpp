@@ -917,7 +917,7 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #ifdef WITH_MQTT_BRIDGE
-  // MQTT bridge: always feed RX packets — bridge decides based on mqtt.rx setting
+  // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (mqtt_bridge) mqtt_bridge->onPacketReceived(pkt);
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
@@ -947,7 +947,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_MQTT_BRIDGE
-  // MQTT bridge: always feed TX packets — bridge decides based on mqtt.tx setting
+  // MQTT bridge: always feed TX packets - bridge decides based on mqtt.tx setting
   if (mqtt_bridge) mqtt_bridge->sendPacket(pkt);
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
@@ -2531,10 +2531,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
   _prefs.battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
 #ifdef WITH_MQTT_BRIDGE
-  _prefs.agc_reset_interval = 7;    // 28 seconds (secs/4) — prevents AGC drift on long-running observers
+  _prefs.agc_reset_interval = 7;    // 28 seconds (secs/4) - prevents AGC drift on long-running observers
 #endif
   // Observer defaults (radio_watchdog, alert.*, snmp.*) moved to applyMQTTDefaults()
-  // in MQTTDefaults.h — they live in /mqtt_prefs now, not NodePrefs.
+  // in MQTTDefaults.h - they live in /mqtt_prefs now, not NodePrefs.
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
 
@@ -2571,7 +2571,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(default_scope.key, 0, sizeof(default_scope.key));
 }
 
-// OTA mesh-integration (receive/begin/loop) is centralized in mesh::Mesh — no per-example wiring.
+// OTA mesh-integration (receive/begin/loop) is centralized in mesh::Mesh - no per-example wiring.
 
 void MyMesh::begin(FILESYSTEM *fs) {
   mesh::Mesh::begin();   // also starts OTA (ota_ctx().begin) for all roles
@@ -2721,7 +2721,7 @@ bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
 bool MyMesh::resolveAlertScope(TransportKey& dest) {
   // Prefer an explicit alert.region override; look it up lazily via
   // RegionMap so the operator can name a region that doesn't exist yet
-  // without polluting region_map state — we just silently fall through
+  // without polluting region_map state - we just silently fall through
   // to default_scope on miss.
 #ifdef WITH_MQTT_BRIDGE
   const char* alert_region = _cli.getObserverPrefs()->alert_region;

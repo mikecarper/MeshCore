@@ -8,7 +8,7 @@
 // bootloader that silently can't apply (stock Adafruit, or an OLDER OTAFIX predating a `.mota` format
 // change) and the device would just come back up unchanged.
 //
-// Mirror of Adafruit_nRF52_Bootloader_OTAFIX/src/ota_bl_info.h — keep byte-identical.
+// Mirror of Adafruit_nRF52_Bootloader_OTAFIX/src/ota_bl_info.h - keep byte-identical.
 // nRF52 only (the bootloader flash is memory-mapped + readable by the app); a no-op elsewhere.
 
 #if defined(NRF52_PLATFORM)

@@ -27,7 +27,7 @@ public:
    * Always UTC with an explicit "+00:00" offset, ISO-8601
    * "%Y-%m-%dT%H:%M:%S.uuuuuu+00:00" (matches Python
    * datetime.now(timezone.utc).isoformat()). The `timezone` parameter is retained
-   * for API compatibility but ignored — the system clock is UTC.
+   * for API compatibility but ignored - the system clock is UTC.
    *
    * `usec` is the sub-second component in microseconds (0..999999), normally taken
    * from the same gettimeofday() read as `now` so the two don't tear at a second

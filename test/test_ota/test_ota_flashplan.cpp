@@ -5,8 +5,8 @@
 using namespace mesh::ota;
 
 // These lock down the nRF52 single-slot staging geometry that OtaStoreFlashNrf52::begin()/
-// reopen() rely on. A received `.mota` is placed bottom-aligned below the filesystem region — ExtraFS
-// (0xD4000) / InternalFS (0xED000), where the node's user preferences live — and above the running image.
+// reopen() rely on. A received `.mota` is placed bottom-aligned below the filesystem region - ExtraFS
+// (0xD4000) / InternalFS (0xED000), where the node's user preferences live - and above the running image.
 // The prefs region is assumed IMMUTABLE (its bytes are outside the served/hashed self-image), so staging
 // or an in-place apply must never reach into it. If a layout constant or the placement math is edited
 // inconsistently, these fail here instead of silently corrupting prefs / the app on real hardware.
@@ -62,7 +62,7 @@ TEST(OtaFlashPlan, RejectsUndersizedContainer) {
 }
 
 // The user-preferences filesystems (ExtraFS @ 0xD4000, InternalFS @ 0xED000) are entirely ABOVE any
-// staged container AND above the in-place apply workspace — the immutability the shared-firmware hashes
+// staged container AND above the in-place apply workspace - the immutability the shared-firmware hashes
 // depend on. Hard-code the FS addresses here (independent of the layout header) so a future edit to
 // FS_START that drifts into a filesystem is caught.
 TEST(OtaFlashPlan, PrefsRegionNeverStaged) {
@@ -89,7 +89,7 @@ TEST(OtaFlashPlan, SupportsS140V7RuntimeBase) {
   EXPECT_EQ(start + CAP_V7, MOTA_NRF52_FS_START);
 }
 
-// out_start is only written on success — a rejected plan must not clobber the caller's variable.
+// out_start is only written on success - a rejected plan must not clobber the caller's variable.
 TEST(OtaFlashPlan, LeavesOutputUntouchedOnReject) {
   uint32_t start = 0x1234ABCD;
   EXPECT_FALSE(mota_nrf52_stage_plan(CAP_V6 + 1, APP_V6, APP_V6, start));

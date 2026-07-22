@@ -1,4 +1,4 @@
-// CommonCLI_Observer.cpp — fork-owned observer/MQTT/WiFi/timezone/alert/SNMP CLI
+// CommonCLI_Observer.cpp - fork-owned observer/MQTT/WiFi/timezone/alert/SNMP CLI
 // command handling, split out of CommonCLI.cpp so the upstream-tracked file carries
 // only two small delegation hooks. These are CommonCLI member functions, so they
 // retain full access to _prefs/_callbacks/_board/savePrefs() with no re-plumbing.
@@ -431,7 +431,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         sprintf(reply, "OK - slot %d JWT audience cleared (using username/password auth)", slot + 1);
       }
     } else if (memcmp(subcmd, "audience", 8) == 0 && subcmd[8] == '\0') {
-      // "set mqttN.audience" with no value — clear the audience
+      // "set mqttN.audience" with no value - clear the audience
       _mqtt_prefs.mqtt_slot_audience[slot][0] = '\0';
       savePrefs();
       _callbacks->restartBridgeSlot(slot);
@@ -548,7 +548,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         } else {
           StrHelper::strncpy(_mqtt_prefs.alert_psk_hex, normalized, sizeof(_mqtt_prefs.alert_psk_hex));
           // The new PSK is operator-supplied, so any previously-derived
-          // hashtag name is no longer accurate provenance — drop it.
+          // hashtag name is no longer accurate provenance - drop it.
           _mqtt_prefs.alert_hashtag[0] = '\0';
           savePrefs();
           _callbacks->onAlertConfigChanged();
@@ -585,7 +585,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
 
         // Derive the channel key once: first 16 bytes of sha256("#name"),
         // store hex-encoded in alert_psk_hex. We don't re-derive on every
-        // send — operators can later override with `set alert.psk` without
+        // send - operators can later override with `set alert.psk` without
         // leaving stale hashtag text behind.
         uint8_t digest[32];
         mesh::Utils::sha256(digest, sizeof(digest),
@@ -650,7 +650,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
   } else if (memcmp(config, "alert.interval ", 15) == 0) {
     int mins = (int)_atoi(&config[15]);
     // Floor at 60 min: faster re-fires would let a flapping link spam the
-    // mesh with a fresh GRP_TXT flood every minute — terrible for airtime.
+    // mesh with a fresh GRP_TXT flood every minute - terrible for airtime.
     if (mins < 60 || mins > 10080) {
       strcpy(reply, "Error: alert.interval must be 60-10080 minutes");
     } else {
@@ -763,7 +763,7 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
       if (_mqtt_prefs.mqtt_slot_audience[slot][0] != '\0') {
         sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_audience[slot]);
       } else {
-        strcpy(reply, "> (not set — custom slots use username/password auth)");
+        strcpy(reply, "> (not set - custom slots use username/password auth)");
       }
     } else if (memcmp(subcmd, "diag", 4) == 0) {
       MQTTBridge::formatSlotDiagReply(reply, 160, slot);
@@ -936,13 +936,13 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
     } else if (memcmp(command, "ota check", 9) == 0) {
       // Check is synchronous so its result lands in this reply, and runs with the
       // MQTT bridge UP: the slim per-variant manifest is tiny, so the fetch only
-      // costs a single TLS handshake (no large JSON doc) — which fits alongside
+      // costs a single TLS handshake (no large JSON doc) - which fits alongside
       // the live MQTT sessions even on no-PSRAM boards. No bridge bounce needed.
       _board->otaFromManifest(_callbacks->getFirmwareVer(), true, reply);
     } else {
       // `ota update`: cheap pre-check first (plain HTTP, bridge stays up). Only
-      // schedule the real update — which tears the bridge down, flashes, and
-      // reboots — when an applicable build actually exists. otaFromManifest(dry)
+      // schedule the real update - which tears the bridge down, flashes, and
+      // reboots - when an applicable build actually exists. otaFromManifest(dry)
       // returns true iff so; otherwise it leaves the explanation (up to date /
       // cable flash / error) in reply, which we send without disturbing the
       // bridge or misleading the user with a "Beginning update..." that no-ops.

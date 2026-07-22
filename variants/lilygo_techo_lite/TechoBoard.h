@@ -5,7 +5,7 @@
 #include <helpers/NRF52Board.h>
 
 // ============================================================
-// T-Echo Lite battery pins — hardcoded from LilyGo t_echo_lite_config.h
+// T-Echo Lite battery pins - hardcoded from LilyGo t_echo_lite_config.h
 // NOT using any defines from variant.h for battery measurement
 // ============================================================
 #define PIN_VBAT_READ         _PINNUM(0, 2)   // BATTERY_ADC_DATA

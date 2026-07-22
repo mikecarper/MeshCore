@@ -7,12 +7,12 @@
 
 // Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` in the free flash
 // below the primary LittleFS (FS_START), bottom-aligned so its trailer ends at FS_START and the
-// bootloader can scan for it. Survives reboot — the whole point — so the bootloader can apply the
+// bootloader can scan for it. Survives reboot - the whole point - so the bootloader can apply the
 // staged delta on the next boot.
 //
 // RAM is bounded to O(one flash page), NEVER O(mota): a 100 KB+ delta must not live in RAM.
 //   - On nRF52 the flash *erase* unit is one 4 KB page and the only SoftDevice-safe writer
-//     (Adafruit `flash_nrf5x`) erases the whole page on every flush (~85 ms, CPU stalled → LoRa RX
+//     (Adafruit `flash_nrf5x`) erases the whole page on every flush (~85 ms, CPU stalled -> LoRa RX
 //     starved). Writing to flash per received packet therefore drops in-flight DATA and the transfer
 //     stalls. The fix: coalesce to the *page*, the hardware-natural unit, and write each page once.
 //   - `_meta_page` pins flash page 0 (header + manifest + the merkle-leaf progress markers, which are
@@ -23,9 +23,9 @@
 //     monotonically with the (mostly in-order) block stream and flushes the page it leaves behind.
 //     Rare out-of-order writes to an already-flushed page go straight to flash as a safe read-modify-
 //     write (flash_nrf5x erases before programming, so re-touching a page never violates the
-//     writes-per-word limit — it just costs one extra erase).
+//     writes-per-word limit - it just costs one extra erase).
 //   - The 5-byte trailer is buffered and written at finalize().
-// Net: flash is touched ~once per 4 KB page (≈ 1 per 4 blocks at 1 KB), off the per-packet path; page
+// Net: flash is touched ~once per 4 KB page (~ 1 per 4 blocks at 1 KB), off the per-packet path; page
 // 0 and the last page are written at finalize() with the radio idle. For a small delta (whole .mota
 // in page 0) there is ZERO flash I/O during the transfer.
 
@@ -47,7 +47,7 @@ class OtaStoreFlashNrf52 : public OtaStore {
 
   // Bytes from `pos` that stay in one store region (a single flash page, or the trailer tail).
   uint32_t run(uint32_t pos, uint32_t remain) const;
-  // RAM home of byte `pos`: read_slot always resolves (flushed pages → memory-mapped flash); write_slot
+  // RAM home of byte `pos`: read_slot always resolves (flushed pages -> memory-mapped flash); write_slot
   // opens/advances the sliding payload page and returns nullptr if `pos` is in an already-flushed page.
   const uint8_t* read_slot(uint32_t pos) const;
   uint8_t* write_slot(uint32_t pos);
@@ -66,7 +66,7 @@ public:
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in flash (scan for it)
 
-  // Contiguous view (flash is memory-mapped). VALID ONLY AFTER finalize() — before that, page 0 and the
+  // Contiguous view (flash is memory-mapped). VALID ONLY AFTER finalize() - before that, page 0 and the
   // tail are still in RAM. OtaManager/OtaCli/verify use this only once the transfer is COMPLETE.
   const uint8_t* data() const { return (_flushed && _io_ok) ? (const uint8_t*)(uintptr_t)_write_start : nullptr; }
   uint32_t write_start() const { return _write_start; }

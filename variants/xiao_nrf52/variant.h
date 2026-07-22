@@ -83,11 +83,11 @@ static const uint8_t D10 = 10;
 #define PWRMGT_LPCOMP_AIN           7     // AIN7 = P0.31 = PIN_VBAT
 // IMPORTANT: The XIAO exposes battery via a resistor divider (ADC_MULTIPLIER = 3.0).
 // LPCOMP measures the divided voltage, not the battery voltage directly.
-// Vpin = VDD * (REFSEL fraction), and VBAT ≈ Vpin * ADC_MULTIPLIER.
+// Vpin = VDD * (REFSEL fraction), and VBAT ~ Vpin * ADC_MULTIPLIER.
 //
 // Using 3/8 VDD gives a wake threshold above the boot protection point:
-// - If VDD ≈ 3.0V:  VBAT ≈ (3.0 * 3/8) * 3 ≈ 3375mV
-// - If VDD ≈ 3.3V:  VBAT ≈ (3.3 * 3/8) * 3 ≈ 3712mV
+// - If VDD ~ 3.0V:  VBAT ~ (3.0 * 3/8) * 3 ~ 3375mV
+// - If VDD ~ 3.3V:  VBAT ~ (3.3 * 3/8) * 3 ~ 3712mV
 #define PWRMGT_LPCOMP_REFSEL   2     // 3/8 VDD (~3.38-3.71V)
 
 static const uint8_t A0  = PIN_A0;

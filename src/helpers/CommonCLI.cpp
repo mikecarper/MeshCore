@@ -854,7 +854,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   }
 #ifdef WITH_MQTT_BRIDGE
   // Load observer preferences (MQTT/WiFi/timezone/SNMP/alert) from /mqtt_prefs.
-  // Readers (MQTTBridge, AlertReporter, observer CLI) use _mqtt_prefs directly —
+  // Readers (MQTTBridge, AlertReporter, observer CLI) use _mqtt_prefs directly -
   // these fields no longer exist in NodePrefs, so there is nothing to sync.
   loadMQTTPrefs(fs);
 
@@ -950,13 +950,13 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->discovery_mod_timestamp, sizeof(_prefs->discovery_mod_timestamp)); // 162
     file.read((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.read((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
-    // MQTT/observer settings are no longer stored in /com_prefs — they live in
+    // MQTT/observer settings are no longer stored in /com_prefs - they live in
     // /mqtt_prefs (loaded by loadMQTTPrefs). Old fork firmware wrote a zero-filled
     // MQTT gap here followed by a trailing observer block; detect that layout by the
     // extra length, skip the gap, and recover the tail so those settings survive
     // the upgrade (the file is rewritten in the new layout by loadPrefs afterwards).
     // Defaults for the trailing fields that older/shorter files may not contain.
-    // (upstream defaults: FEM RX gain on, CAD off) — overwritten below if present.
+    // (upstream defaults: FEM RX gain on, CAD off) - overwritten below if present.
     _prefs->radio_fem_rxgain = 1;
     _prefs->cad_enabled = 0;
     _prefs->rx_powersaving_enabled = 0;
@@ -1005,7 +1005,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
           remaining -= n;
         }
         file.read((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));
-        // Tail layout: flood_max_unscoped, flood_max_advert, then the snmp fields —
+        // Tail layout: flood_max_unscoped, flood_max_advert, then the snmp fields -
         // except legacy flex-branch files where snmp starts right after
         // rx_boosted_gain (no flood_max_*). Same heuristic the old firmware used:
         // snmp_enabled is 0/1 and the first community char is printable (> 64).
@@ -1026,7 +1026,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
         _legacy_tail.alert_min_interval_min = 60;
 #endif
         if (have_flood_bytes && b1 <= 1 && b2 > 64) {
-          // Legacy variant: no flood_max_* — b1/b2 are snmp_enabled + community[0]
+          // Legacy variant: no flood_max_* - b1/b2 are snmp_enabled + community[0]
 #ifdef WITH_MQTT_BRIDGE
           _legacy_tail.snmp_enabled = b1;
           _legacy_tail.snmp_community[0] = (char) b2;
@@ -1510,7 +1510,7 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
   _mqtt_prefs_hold = false;
 
   // Whether the loaded /mqtt_prefs already contained the observer fields (snmp/
-  // watchdog/alert) appended in Phase 2 — if not, they may be carried over from an
+  // watchdog/alert) appended in Phase 2 - if not, they may be carried over from an
   // old-format /com_prefs trailing block below.
   bool has_observer_fields = false;
 
@@ -1556,7 +1556,7 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
 
     if (!versioned) {
       // Headerless (legacy) file. Detect the historical on-disk layout by size,
-      // migrate it into the compact versioned struct, and re-save — which adds the
+      // migrate it into the compact versioned struct, and re-save - which adds the
       // header and drops the vestigial `_legacy_*` fields. Reopen because the peek
       // above advanced the read cursor past the (non-matching) leading bytes.
       File file = openMqttPrefsRead(fs);
@@ -1621,7 +1621,7 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
             saveMQTTPrefs(fs);
           }
         } else if (file_size > 0 && file_size <= sizeof(ThreeSlotMQTTPrefs)) {
-          // 3-slot format → compact 6-slot migration
+          // 3-slot format -> compact 6-slot migration
           // Array sizes changed from [3] to [6], shifting all field offsets.
           // Read into old layout struct and field-copy to new layout.
           ThreeSlotMQTTPrefs old3;
@@ -1669,7 +1669,7 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
         } else if (file_size > 0) {
           // Headerless 6-slot layout as shipped on mqtt-bridge-implementation-flex
           // (the deployed fleet). Same field order as the compact struct but with the
-          // vestigial `_legacy_*` block mid-struct and no observer tail — so read it
+          // vestigial `_legacy_*` block mid-struct and no observer tail - so read it
           // into Legacy6SlotMQTTPrefs and field-copy across, dropping `_legacy_*`.
           Legacy6SlotMQTTPrefs old6;
           memset(&old6, 0, sizeof(old6));
@@ -1718,8 +1718,8 @@ void CommonCLI::loadMQTTPrefs(FILESYSTEM* fs) {
       }
     }
   } else {
-    // No /mqtt_prefs file — defaults already set. (MQTT slot/WiFi settings from
-    // pre-/mqtt_prefs-split fork firmware are NOT recovered from /com_prefs — that
+    // No /mqtt_prefs file - defaults already set. (MQTT slot/WiFi settings from
+    // pre-/mqtt_prefs-split fork firmware are NOT recovered from /com_prefs - that
     // offset-based migration was fragile and was removed; those users re-enter
     // their MQTT config. The observer trailing block IS recovered, below.)
   }

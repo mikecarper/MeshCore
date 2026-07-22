@@ -113,7 +113,7 @@ struct StatsRadio {
 - Counters are cumulative from boot and may wrap.
 - `recv = flood_rx + direct_rx`
 - `sent = flood_tx + direct_tx`
-- Clients should accept frame length ≥ 26; if length ≥ 30, parse `recv_errors` at offset 26.
+- Clients should accept frame length >= 26; if length >= 30, parse `recv_errors` at offset 26.
 
 ### Example Structure (C/C++)
 

@@ -51,7 +51,7 @@ public:
       if (c >= 32 && c <= 126) {
         dest[j++] = c;  // ASCII printable
       } else if (c >= 0x80) {
-        dest[j++] = '\xDB';  // CP437 full block █
+        dest[j++] = '\xDB';  // CP437 full block #
         while (src[i+1] && (src[i+1] & 0xC0) == 0x80) 
           i++;  // skip UTF-8 continuation bytes
       }

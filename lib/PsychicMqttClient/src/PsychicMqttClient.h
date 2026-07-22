@@ -56,7 +56,7 @@ typedef std::function<void(int msgId)> OnPublishUserCallback;
 typedef std::function<void(esp_mqtt_error_codes_t error)> OnErrorUserCallback;
 
 // Fixed caps sized for MeshCore's usage patterns. All callback and subscription
-// storage is inline in the client object — zero dynamic allocation on register.
+// storage is inline in the client object - zero dynamic allocation on register.
 #ifndef PSYCHIC_MAX_CONNECT_CB
 #define PSYCHIC_MAX_CONNECT_CB 4
 #endif

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for motalib — run with the meshcore venv:
+Tests for motalib - run with the meshcore venv:
 
     ./meshcore/bin/python tools/mota/test_mota.py
 

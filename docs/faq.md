@@ -315,15 +315,15 @@ This CLI command `path.hash.mode` *only* controls the path hash size used in a r
 Usage: `set path.hash.mode {0|1|2}`:
 
 ```
-┌────────────────┬───────────────────────┐
-│ path.hash.mode │ Advert path hash size │
-├────────────────┼───────────────────────┤
-│ 0              │ 1 byte (default)      │
-├────────────────┼───────────────────────┤
-│ 1              │ 2 bytes               │
-├────────────────┼───────────────────────┤
-│ 2              │ 3 bytes               │
-└────────────────┴───────────────────────┘  
++----------------+-----------------------+
+| path.hash.mode | Advert path hash size |
++----------------+-----------------------+
+| 0              | 1 byte (default)      |
++----------------+-----------------------+
+| 1              | 2 bytes               |
++----------------+-----------------------+
+| 2              | 3 bytes               |
++----------------+-----------------------+
 ```
 
 It is safe to set your 1.14+ repeaters to mode 1 or 2.
@@ -468,7 +468,7 @@ For example, if the code rate is 5/7, for every 5 bits of useful information, th
 
 Making the bandwidth 2x wider (from BW125 to BW250) allows you to send 2x more bytes in the same time. Making the spreading factor 1 step lower (from SF10 to SF9) allows you to send 2x more bytes in the same time.
 
-Lowering the spreading factor makes it more difficult for the gateway to receive a transmission, as it will be more sensitive to noise. You could compare this to two people talking in a noisy place (a bar for example). If you’re far from each other, you have to talk slow (SF10), but if you’re close, you can talk faster (SF7)
+Lowering the spreading factor makes it more difficult for the gateway to receive a transmission, as it will be more sensitive to noise. You could compare this to two people talking in a noisy place (a bar for example). If you're far from each other, you have to talk slow (SF10), but if you're close, you can talk faster (SF7)
 
 So, it's a balancing act between speed of the transmission and resistance to noise.
 The Things Network is mainly focused on LoRaWAN, but the LoRa low-level stuff still checks out for any LoRa project
@@ -834,7 +834,7 @@ their flash can keep two app slots for LoRa OTA.
 **A:**
 For companion radios, you can set these radios' transmit power in the smartphone app. For repeater and room server radios, you can set their transmit power using the command line command `set tx`. You can get their current value using command line command `get tx`
 
-⚠️ **WARNING: Set these values at your own risk. Incorrect power settings can permanently damage your radio hardware.**
+[WARN] **WARNING: Set these values at your own risk. Incorrect power settings can permanently damage your radio hardware.**
 
 | Device / Model                                                                     | Region / Description                | In-App Setting (dBm) | Target Radio Output    | Notes                                                                                                                                          |
 |:-----------------------------------------------------------------------------------|:------------------------------------|:---------------------|:-----------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------|

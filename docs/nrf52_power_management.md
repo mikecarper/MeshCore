@@ -165,7 +165,7 @@ VBUS wake is enabled via the POWER peripheral USBDETECTED event whenever `config
 | 15     | 15/16    | 5.62-6.19 V                        | 7.03-7.73 V                          |
 
 **Important**: For boards with a voltage divider on the battery sense pin, LPCOMP measures the divided voltage. Use:
-`VBAT_threshold ≈ (VDD * fraction) * divider_scale`, where `divider_scale = (Rtop + Rbottom) / Rbottom` (e.g., 2.0 for 1M/1M, 2.5 for 1.5M/1M, 3.0 for XIAO).
+`VBAT_threshold ~ (VDD * fraction) * divider_scale`, where `divider_scale = (Rtop + Rbottom) / Rbottom` (e.g., 2.0 for 1M/1M, 2.5 for 1.5M/1M, 3.0 for XIAO).
 
 ### SoftDevice Compatibility
 

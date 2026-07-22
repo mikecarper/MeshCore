@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Replaced `mqtt.eclipseprojects.io` with `broker.hivemq.com`
-- Replaced debug tag with 🐙
+- Replaced debug tag with [OCTOPUS]
 
 ## [0.2.3] - Various Fixes and Certificate Validation
 
