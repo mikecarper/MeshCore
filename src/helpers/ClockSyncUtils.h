@@ -4,6 +4,13 @@
 
 namespace mesh {
 
+static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT = 1;
+static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL = 2;
+
+inline bool clockSyncRequiresUniquePath(bool edge_mode) {
+  return !edge_mode;
+}
+
 struct ClockSyncConsensusResult {
   bool consensus;
   uint8_t fresh_count;

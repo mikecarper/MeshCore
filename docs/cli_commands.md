@@ -588,8 +588,12 @@ send text.flood checking ridge link
 **Usage:**
 - `get clock.sync`
 - `get clock.sync.status`
+- `get clock.sync.status.table`
+- `get clock.sync.status.<1-16>`
 - `get clock.sync.mesh`
 - `set clock.sync.mesh <on|off>`
+- `get clock.sync.mesh.edge`
+- `set clock.sync.mesh.edge <on|off>`
 - `clock.sync.mesh now`
 - `get clock.sync.internet`
 - `set clock.sync.internet <on|off>`
@@ -600,6 +604,7 @@ send text.flood checking ridge link
 
 **Defaults:**
 - `clock.sync.mesh`: `on` for nRF52 repeaters; `off` for other builds
+- `clock.sync.mesh.edge`: `on`
 - `clock.sync.internet`: `off`
 - `clock.sync.drift`: `3600` seconds
 - `clock.sync.samples`: `9`
@@ -633,17 +638,44 @@ a different full received path; all direct, zero-hop receptions count as the
 same empty path. This prevents repeated packets or multiple names arriving over
 one route from increasing the vote count.
 
-At least the configured number of distinct fresh paths (nine by default) and a
-strict majority of all fresh samples must fall within ten minutes of the
-median. The effective quorum is therefore the larger of `clock.sync.samples`
-and half the fresh sample count plus one. For example, a 9-vs-7 split can
-succeed but an 8-vs-8 split cannot. The median is used. `clock.sync.samples`
-accepts `3` through `16`; samples older than two hours are ignored. Status
-reports `collecting` when fewer than the configured number of paths exist, and
-`no consensus` when enough paths exist but the effective quorum does not agree.
-Mesh collection begins immediately after boot. Following a successful estimate,
-it resumes two hours before the next seven-day deadline so only evidence that
-can still be fresh at evaluation time is processed.
+For a node at the edge of the network where every packet arrives through one
+relay path, `set clock.sync.mesh.edge on` changes the evidence requirement from
+distinct receive paths to distinct sources. Signature-verified adverts are
+deduplicated by public key, and Public-channel timestamps are deduplicated by
+case-insensitive display name. Repeated packets from one source still count
+once. Changing edge mode clears the in-memory sample table so evidence collected
+under the other policy is not reused. The setting is persistent and defaults on.
+
+At least the configured number of distinct fresh evidence sources (nine by
+default) and a strict majority of all fresh samples must fall within ten minutes
+of the median. In normal mode each source must use a distinct receive path. In
+edge mode signed adverts are distinct by public key and Public-channel messages
+are distinct by display name, but all may use the same receive path. The
+effective quorum is therefore the larger of
+`clock.sync.samples` and half the fresh sample count plus one. For example, a
+9-vs-7 split can succeed but an 8-vs-8 split cannot. The median is used.
+`clock.sync.samples` accepts `3` through `16`; samples older than two hours are
+ignored. Status reports `mode=paths` or `mode=edge` and labels the collected
+evidence as `paths` or `sources`. It reports `reason=need-more-paths` or
+`reason=need-more-sources` when fewer than the configured number exist, and
+`reason=no-consensus` when enough evidence exists but the effective quorum does
+not agree. Mesh collection begins immediately after boot. Following a
+successful estimate, it resumes two hours before the next seven-day deadline so
+only evidence that can still be fresh at evaluation time is processed.
+
+`get clock.sync.status` reports whether the clock was set and a `reason` when it
+was not. Common reasons include `waiting-deadline`, `need-more-sources`,
+`need-more-paths`, `no-consensus`, `within-drift`, `mesh-off`, and suppression
+by CLI, GPS, or internet time. It also reports whether collection is active, the
+fresh evidence count, the number of occupied table slots, and the next
+evaluation deadline.
+
+`get clock.sync.status.table` shows the active sample table in compact form.
+Each item is `slot:type:id-prefix:age`, where type `A` is a signed advert and
+type `P` is a Public-channel message. A trailing `!` marks a stale sample. If
+the compact reply is truncated, query any slot with
+`get clock.sync.status.<1-16>`. The detail view reports the full source and path
+hashes, age-adjusted epoch, difference from the local clock, and freshness.
 
 A timestamp is eligible for a clock-sync sample only when it falls between the
 UTC build epoch embedded by `build.sh` and that time plus ten calendar years.
@@ -679,7 +711,9 @@ path hashes are also truncated, unauthenticated routing hints; requiring unique
 paths prevents ordinary duplicate-route inflation but is not a cryptographic
 identity check. Signed adverts authenticate the advert contents but do not
 prove that the advertising node's own clock is correct. Mesh time is therefore
-a consensus estimate, not an authoritative time service.
+a consensus estimate, not an authoritative time service. Edge mode intentionally
+gives up receive-path diversity. Public-channel display names can be spoofed, so
+one sender can claim multiple names and inflate the edge-mode vote count.
 
 `clock.sync.internet` is available on WiFi MQTT repeater-observer builds. Its
 initial and seven-day queries run on the MQTT/WiFi task and are read-only until
@@ -700,9 +734,10 @@ replays until corrected time passes the previously observed value.
 **Example:**
 ```text
 set clock.sync.drift 1800
-set clock.sync.samples 9
+set clock.sync.samples 3
 set clock.sync.mesh on
-set clock.sync.internet on
+set clock.sync.mesh.edge on
+clock.sync.mesh now
 get clock.sync.status
 ```
 

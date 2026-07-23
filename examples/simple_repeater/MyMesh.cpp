@@ -2473,6 +2473,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
   memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
+  clock_sync_mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0;
   clock_sync_internet_enabled = false;
   clock_sync_complete = false;
   clock_sync_internet_pending = false;
@@ -5345,6 +5346,7 @@ void MyMesh::deleteFloodGroupModeration(const char* args, char* reply) {
 
 void MyMesh::loadClockSyncPrefs() {
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
+  clock_sync_mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0;
   clock_sync_internet_enabled = false;
   clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
@@ -5354,16 +5356,22 @@ void MyMesh::loadClockSyncPrefs() {
     if (file) {
       uint8_t magic[4];
       uint8_t mesh_enabled = 0;
+      uint8_t mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0 ? 1 : 0;
       uint8_t internet_enabled = 0;
       uint8_t required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
       uint32_t drift_seconds = 0;
       bool valid = file.read(magic, sizeof(magic)) == sizeof(magic);
-      valid = valid && memcmp(magic, "CTS3", sizeof(magic)) == 0
+      bool version3 = valid && memcmp(magic, "CTS3", sizeof(magic)) == 0;
+      bool version4 = valid && memcmp(magic, "CTS4", sizeof(magic)) == 0;
+      valid = valid && (version3 || version4)
           && file.read(&mesh_enabled, sizeof(mesh_enabled)) == sizeof(mesh_enabled)
           && file.read(&internet_enabled, sizeof(internet_enabled)) == sizeof(internet_enabled)
           && file.read((uint8_t*)&drift_seconds, sizeof(drift_seconds)) == sizeof(drift_seconds)
           && file.read(&required_samples, sizeof(required_samples)) == sizeof(required_samples);
-      valid = valid && mesh_enabled <= 1 && internet_enabled <= 1
+      if (valid && version4) {
+        valid = file.read(&mesh_edge_enabled, sizeof(mesh_edge_enabled)) == sizeof(mesh_edge_enabled);
+      }
+      valid = valid && mesh_enabled <= 1 && mesh_edge_enabled <= 1 && internet_enabled <= 1
           && drift_seconds >= CLOCK_SYNC_DRIFT_MIN_SECONDS
           && drift_seconds <= CLOCK_SYNC_DRIFT_MAX_SECONDS
           && required_samples >= CLOCK_SYNC_REQUIRED_SAMPLES_MIN
@@ -5371,6 +5379,7 @@ void MyMesh::loadClockSyncPrefs() {
       file.close();
       if (valid) {
         clock_sync_mesh_enabled = mesh_enabled != 0;
+        clock_sync_mesh_edge_enabled = mesh_edge_enabled != 0;
         clock_sync_internet_enabled = internet_enabled != 0;
         clock_sync_drift_seconds = drift_seconds;
         clock_sync_required_samples = required_samples;
@@ -5384,8 +5393,9 @@ bool MyMesh::saveClockSyncPrefs() {
   if (_fs == NULL) return false;
   File file = openFloodChannelBlockWrite(_fs, CLOCK_SYNC_PREFS_FILE);
   if (!file) return false;
-  const uint8_t magic[4] = {'C', 'T', 'S', '3'};
+  const uint8_t magic[4] = {'C', 'T', 'S', '4'};
   const uint8_t mesh_enabled = clock_sync_mesh_enabled ? 1 : 0;
+  const uint8_t mesh_edge_enabled = clock_sync_mesh_edge_enabled ? 1 : 0;
   const uint8_t internet_enabled = clock_sync_internet_enabled ? 1 : 0;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&mesh_enabled, sizeof(mesh_enabled)) == sizeof(mesh_enabled)
@@ -5393,7 +5403,8 @@ bool MyMesh::saveClockSyncPrefs() {
       && file.write((const uint8_t*)&clock_sync_drift_seconds,
                     sizeof(clock_sync_drift_seconds)) == sizeof(clock_sync_drift_seconds)
       && file.write(&clock_sync_required_samples,
-                    sizeof(clock_sync_required_samples)) == sizeof(clock_sync_required_samples);
+                    sizeof(clock_sync_required_samples)) == sizeof(clock_sync_required_samples)
+      && file.write(&mesh_edge_enabled, sizeof(mesh_edge_enabled)) == sizeof(mesh_edge_enabled);
   file.close();
   return success;
 }
@@ -5535,13 +5546,15 @@ void MyMesh::recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[
         && memcmp(prior.path_id, path_id, sizeof(prior.path_id)) == 0) return;
   }
 
-  // Every fresh vote must arrive through a distinct full received path. This
-  // also means only one zero-hop vote can be present at a time.
-  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
-    const ClockSyncSample& sample = clock_sync_samples[i];
-    if (i == source_slot || !sample.active
-        || now - sample.received_millis > CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) continue;
-    if (memcmp(sample.path_id, path_id, sizeof(sample.path_id)) == 0) return;
+  if (mesh::clockSyncRequiresUniquePath(clock_sync_mesh_edge_enabled)) {
+    // In normal mode every fresh vote must arrive through a distinct full
+    // received path. This also means only one zero-hop vote can be present.
+    for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+      const ClockSyncSample& sample = clock_sync_samples[i];
+      if (i == source_slot || !sample.active
+          || now - sample.received_millis > CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) continue;
+      if (memcmp(sample.path_id, path_id, sizeof(sample.path_id)) == 0) return;
+    }
   }
 
   int slot = source_slot;
@@ -5582,7 +5595,8 @@ void MyMesh::recordAcceptedFloodClockSample(const mesh::Packet* packet) {
     mesh::Utils::sha256(source_id, sizeof(source_id), packet->payload, PUB_KEY_SIZE);
     uint32_t timestamp = 0;
     memcpy(&timestamp, &packet->payload[PUB_KEY_SIZE], sizeof(timestamp));
-    recordClockSyncSample(1, source_id, timestamp, packet);
+    recordClockSyncSample(mesh::CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT,
+                          source_id, timestamp, packet);
   }
 }
 
@@ -5599,7 +5613,8 @@ void MyMesh::recordPublicChannelClockSample(const mesh::Packet* packet) {
   }
   uint8_t source_id[4];
   mesh::Utils::sha256(source_id, sizeof(source_id), (const uint8_t*)sender, strlen(sender));
-  recordClockSyncSample(2, source_id, timestamp, packet);
+  recordClockSyncSample(mesh::CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL,
+                        source_id, timestamp, packet);
 }
 
 bool MyMesh::estimateMeshClock(uint32_t& estimate, uint8_t& fresh_count,
@@ -5758,13 +5773,116 @@ void MyMesh::checkClockSync() {
   clock_sync_next_attempt_uptime = uptime_millis + CLOCK_SYNC_RETRY_INTERVAL_MILLIS;
 }
 
-void MyMesh::formatClockSyncStatus(char* reply, size_t reply_len) const {
-  if (reply == NULL || reply_len == 0) return;
+static const char* clockSyncSampleKindName(uint8_t source_kind) {
+  if (source_kind == mesh::CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT) return "advert";
+  if (source_kind == mesh::CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL) return "public";
+  return "unknown";
+}
+
+static char clockSyncSampleKindCode(uint8_t source_kind) {
+  if (source_kind == mesh::CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT) return 'A';
+  if (source_kind == mesh::CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL) return 'P';
+  return '?';
+}
+
+void MyMesh::formatClockSyncSampleDetail(int index, char* reply, size_t reply_len) const {
+  if (index < 0 || index >= CLOCK_SYNC_SAMPLE_SLOTS) {
+    snprintf(reply, reply_len, "Err - clock sample slot must be 1-%d", CLOCK_SYNC_SAMPLE_SLOTS);
+    return;
+  }
+  const ClockSyncSample& sample = clock_sync_samples[index];
+  if (!sample.active) {
+    snprintf(reply, reply_len, "> %d empty", index + 1);
+    return;
+  }
+
+  uint32_t age_seconds = (_ms->getMillis() - sample.received_millis) / 1000UL;
+  bool fresh = age_seconds <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS / 1000UL;
+  uint32_t current_epoch = sample.epoch;
+  if (age_seconds <= UINT32_MAX - current_epoch) current_epoch += age_seconds;
+  uint32_t local_epoch = getRTCClock()->getCurrentTime();
+  char delta_sign = current_epoch >= local_epoch ? '+' : '-';
+  uint32_t delta = current_epoch >= local_epoch
+      ? current_epoch - local_epoch : local_epoch - current_epoch;
+  char source_id[sizeof(sample.source_id) * 2 + 1];
+  char path_id[sizeof(sample.path_id) * 2 + 1];
+  mesh::Utils::toHex(source_id, sample.source_id, sizeof(sample.source_id));
+  mesh::Utils::toHex(path_id, sample.path_id, sizeof(sample.path_id));
+  snprintf(reply, reply_len,
+           "> %d %s id=%s path=%s age=%lus epoch=%lu delta=%c%lus fresh=%s",
+           index + 1, clockSyncSampleKindName(sample.source_kind), source_id, path_id,
+           (unsigned long)age_seconds, (unsigned long)current_epoch, delta_sign,
+           (unsigned long)delta, fresh ? "yes" : "no");
+}
+
+void MyMesh::formatClockSyncTable(char* reply, size_t reply_len) const {
+  uint32_t now = _ms->getMillis();
   uint8_t fresh = 0;
+  uint8_t active = 0;
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
+    if (!clock_sync_samples[i].active) continue;
+    active++;
+    if (now - clock_sync_samples[i].received_millis <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) fresh++;
+  }
+
+  const char* mode = clock_sync_mesh_edge_enabled ? "edge" : "paths";
+  size_t used = (size_t)snprintf(reply, reply_len, "> %s collect=%s fresh=%u/%u",
+                                 mode, isClockSyncCollectionActive() ? "active" : "inactive",
+                                 (unsigned int)fresh,
+                                 (unsigned int)clock_sync_required_samples);
+  if (active == 0 || used >= reply_len) {
+    if (active == 0 && used + 5 < reply_len) StrHelper::strncpy(&reply[used], " none", reply_len - used);
+    return;
+  }
+
+  for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS && used + 1 < reply_len; i++) {
+    const ClockSyncSample& sample = clock_sync_samples[i];
+    if (!sample.active) continue;
+    uint32_t age_seconds = (now - sample.received_millis) / 1000UL;
+    unsigned long age_value = age_seconds < 120UL
+        ? (unsigned long)age_seconds : (unsigned long)(age_seconds / 60UL);
+    char age_unit = age_seconds < 120UL ? 's' : 'm';
+    bool sample_fresh = age_seconds <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS / 1000UL;
+    char item[24];
+    snprintf(item, sizeof(item), " %d:%c:%02X%02X:%lu%c%s", i + 1,
+             clockSyncSampleKindCode(sample.source_kind), sample.source_id[0],
+             sample.source_id[1], age_value, age_unit, sample_fresh ? "" : "!");
+    size_t item_len = strlen(item);
+    if (used + item_len >= reply_len - 4) {
+      StrHelper::strncpy(&reply[used], " ...", reply_len - used);
+      return;
+    }
+    memcpy(&reply[used], item, item_len + 1);
+    used += item_len;
+  }
+}
+
+void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_len) const {
+  if (reply == NULL || reply_len == 0) return;
+  const char* selector = skipLocalSpaces(args);
+  if (selector != NULL && *selector == '.') selector = skipLocalSpaces(selector + 1);
+  if (selector != NULL && *selector != 0) {
+    if (strcmp(selector, "table") == 0) {
+      formatClockSyncTable(reply, reply_len);
+      return;
+    }
+    int slot = 0;
+    if (parsePositiveSelector(selector, slot) && slot <= CLOCK_SYNC_SAMPLE_SLOTS) {
+      formatClockSyncSampleDetail(slot - 1, reply, reply_len);
+      return;
+    }
+    snprintf(reply, reply_len, "Err - use get clock.sync.status[.table|.1-.%d]",
+             CLOCK_SYNC_SAMPLE_SLOTS);
+    return;
+  }
+
+  uint8_t fresh = 0;
+  uint8_t active = 0;
   uint32_t now = _ms->getMillis();
   for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
-    if (clock_sync_samples[i].active
-        && now - clock_sync_samples[i].received_millis <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) fresh++;
+    if (!clock_sync_samples[i].active) continue;
+    active++;
+    if (now - clock_sync_samples[i].received_millis <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) fresh++;
   }
   bool mesh_available = clock_sync_mesh_enabled
       && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
@@ -5774,63 +5892,64 @@ void MyMesh::formatClockSyncStatus(char* reply, size_t reply_len) const {
               ? "suppressed-cli"
               : (clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_GPS
                   ? "suppressed-gps" : "suppressed-internet")));
+  const char* mesh_mode = clock_sync_mesh_edge_enabled ? "edge" : "paths";
+  const char* evidence_name = clock_sync_mesh_edge_enabled ? "sources" : "paths";
+  bool collection_active = isClockSyncCollectionActive();
+  uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
+      ? clock_sync_next_attempt_uptime - uptime_millis : 0;
+  unsigned long next_seconds = (unsigned long)((remaining_ms + 999ULL) / 1000ULL);
   if (!mesh_available && !clock_sync_internet_enabled) {
-    if (clock_sync_mesh_enabled) {
-      snprintf(reply, reply_len, "> mesh=%s until reboot, internet=off drift=%lus samples=%u",
-               mesh_state, (unsigned long)clock_sync_drift_seconds,
-               (unsigned int)clock_sync_required_samples);
-      return;
-    }
-    snprintf(reply, reply_len, "> off, drift=%lus", (unsigned long)clock_sync_drift_seconds);
+    const char* reason = clock_sync_mesh_enabled ? mesh_state : "mesh-off";
+    snprintf(reply, reply_len,
+             "> not-set reason=%s collect=inactive mode=%s %s=%u/%u table=%u",
+             reason, mesh_mode, evidence_name, (unsigned int)fresh,
+             (unsigned int)clock_sync_required_samples, (unsigned int)active);
     return;
   }
 
   const char* result = "waiting";
   switch (clock_sync_last_result) {
     case CLOCK_SYNC_RESULT_COLLECTING: result = "collecting"; break;
-    case CLOCK_SYNC_RESULT_INTERNET_PENDING: result = "internet pending"; break;
-    case CLOCK_SYNC_RESULT_NO_CONSENSUS: result = "no consensus"; break;
-    case CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE: result = "internet unavailable"; break;
-    case CLOCK_SYNC_RESULT_WITHIN_DRIFT: result = "within drift"; break;
-    case CLOCK_SYNC_RESULT_CORRECTED_FORWARD: result = "corrected forward"; break;
-    case CLOCK_SYNC_RESULT_CORRECTED_BACKWARD: result = "corrected backward"; break;
+    case CLOCK_SYNC_RESULT_INTERNET_PENDING: result = "internet-pending"; break;
+    case CLOCK_SYNC_RESULT_NO_CONSENSUS: result = "no-consensus"; break;
+    case CLOCK_SYNC_RESULT_INTERNET_UNAVAILABLE: result = "internet-unavailable"; break;
+    case CLOCK_SYNC_RESULT_WITHIN_DRIFT: result = "within-drift"; break;
+    case CLOCK_SYNC_RESULT_CORRECTED_FORWARD: result = "corrected-forward"; break;
+    case CLOCK_SYNC_RESULT_CORRECTED_BACKWARD: result = "corrected-backward"; break;
     default: break;
   }
   const char* source = clock_sync_last_source == CLOCK_SYNC_SOURCE_INTERNET ? "internet"
       : (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH ? "mesh" : "none");
-  uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
-      ? clock_sync_next_attempt_uptime - uptime_millis : 0;
-  unsigned long next_seconds = (unsigned long)((remaining_ms + 999ULL) / 1000ULL);
   if (clock_sync_complete) {
-    if (clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH) {
-      snprintf(reply, reply_len, "> %s %lus via %s epoch=%lu agree=%u/%u paths=%u mesh=%s next=%lus",
-               result, (unsigned long)clock_sync_last_abs_drift, source,
-               (unsigned long)clock_sync_last_estimate,
-               (unsigned int)clock_sync_last_sample_count,
-               (unsigned int)clock_sync_last_required_count,
-               (unsigned int)clock_sync_last_fresh_count, mesh_state, next_seconds);
-    } else {
-      snprintf(reply, reply_len, "> %s %lus via %s, epoch=%lu drift=%lus mesh=%s next=%lus",
-               result, (unsigned long)clock_sync_last_abs_drift, source,
-               (unsigned long)clock_sync_last_estimate,
-               (unsigned long)clock_sync_drift_seconds, mesh_state, next_seconds);
-    }
+    bool clock_was_set = clock_sync_last_result == CLOCK_SYNC_RESULT_CORRECTED_FORWARD
+        || clock_sync_last_result == CLOCK_SYNC_RESULT_CORRECTED_BACKWARD;
+    snprintf(reply, reply_len,
+             "> %s reason=%s difference=%lus threshold=%lus via=%s collect=%s mode=%s table=%u next=%lus",
+             clock_was_set ? "set" : "not-set", result,
+             (unsigned long)clock_sync_last_abs_drift,
+             (unsigned long)clock_sync_drift_seconds, source,
+             collection_active ? "active" : "inactive", mesh_mode,
+             (unsigned int)active, next_seconds);
   } else {
     if (clock_sync_last_result == CLOCK_SYNC_RESULT_NO_CONSENSUS) {
       snprintf(reply, reply_len,
-               "> no consensus, mesh=%s internet=%s agree=%u/%u paths=%u next=%lus",
-               mesh_state, clock_sync_internet_enabled ? "on" : "off",
+               "> not-set reason=no-consensus collect=%s mode=%s %s=%u agree=%u/%u table=%u next=%lus",
+               collection_active ? "active" : "inactive", mesh_mode, evidence_name,
+               (unsigned int)fresh,
                (unsigned int)clock_sync_last_sample_count,
                (unsigned int)clock_sync_last_required_count,
-               (unsigned int)clock_sync_last_fresh_count,
-               next_seconds);
+               (unsigned int)active, next_seconds);
     } else {
-      snprintf(reply, reply_len, "> %s, mesh=%s internet=%s drift=%lus paths=%u/%u next=%lus",
-               result, mesh_state,
-               clock_sync_internet_enabled ? "on" : "off",
-               (unsigned long)clock_sync_drift_seconds, (unsigned int)fresh,
-               (unsigned int)clock_sync_required_samples,
-               next_seconds);
+      const char* reason = result;
+      if (clock_sync_last_result == CLOCK_SYNC_RESULT_WAITING) reason = "waiting-deadline";
+      else if (clock_sync_last_result == CLOCK_SYNC_RESULT_COLLECTING) {
+        reason = clock_sync_mesh_edge_enabled ? "need-more-sources" : "need-more-paths";
+      }
+      snprintf(reply, reply_len,
+               "> not-set reason=%s collect=%s mesh=%s mode=%s %s=%u/%u table=%u next=%lus",
+               reason, collection_active ? "active" : "inactive", mesh_state, mesh_mode,
+               evidence_name, (unsigned int)fresh,
+               (unsigned int)clock_sync_required_samples, (unsigned int)active, next_seconds);
     }
   }
 }
@@ -6595,9 +6714,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     setFloodGroupModeration(command + strlen("set flood.moderation"), reply);
   } else if (commandFamilyMatches(command, "del flood.moderation")) {
     deleteFloodGroupModeration(command + strlen("del flood.moderation"), reply);
-  } else if (strcmp(command, "get clock.sync") == 0
-          || strcmp(command, "get clock.sync.status") == 0) {
-    formatClockSyncStatus(reply, 160);
+  } else if (commandFamilyMatches(command, "get clock.sync.status")) {
+    formatClockSyncStatus(command + strlen("get clock.sync.status"), reply, 160);
+  } else if (strcmp(command, "get clock.sync") == 0) {
+    formatClockSyncStatus("", reply, 160);
   } else if (strcmp(command, "get clock.sync.mesh") == 0) {
     if (clock_sync_mesh_enabled
         && clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) {
@@ -6606,6 +6726,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     } else {
       sprintf(reply, "> %s", clock_sync_mesh_enabled ? "on" : "off");
     }
+  } else if (strcmp(command, "get clock.sync.mesh.edge") == 0) {
+    sprintf(reply, "> %s", clock_sync_mesh_edge_enabled ? "on" : "off");
   } else if (strcmp(command, "get clock.sync.internet") == 0) {
 #ifdef WITH_MQTT_BRIDGE
     sprintf(reply, "> %s", clock_sync_internet_enabled ? "on" : "off");
@@ -6651,6 +6773,25 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       } else {
         strcpy(reply, enabled ? "OK - mesh clock sync enabled" : "OK - mesh clock sync disabled");
       }
+    }
+  } else if (strncmp(command, "set clock.sync.mesh.edge ", 25) == 0) {
+    const char* value = command + 25;
+    bool enabled;
+    if (strcmp(value, "on") == 0) enabled = true;
+    else if (strcmp(value, "off") == 0) enabled = false;
+    else {
+      strcpy(reply, "Err - usage: set clock.sync.mesh.edge <on|off>");
+      return;
+    }
+    bool previous = clock_sync_mesh_edge_enabled;
+    clock_sync_mesh_edge_enabled = enabled;
+    if (!saveClockSyncPrefs()) {
+      clock_sync_mesh_edge_enabled = previous;
+      strcpy(reply, "Err - unable to save clock sync settings");
+    } else {
+      if (enabled != previous) memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
+      resetClockSyncAttempt();
+      strcpy(reply, enabled ? "OK - edge clock sync enabled" : "OK - edge clock sync disabled");
     }
   } else if (strncmp(command, "set clock.sync.internet ", 24) == 0) {
     const char* value = command + 24;

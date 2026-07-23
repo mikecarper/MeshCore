@@ -146,6 +146,14 @@ TEST(ClockSyncConsensus, ConfiguredEightStillCannotAcceptAnEightVsEightSplit) {
   EXPECT_EQ(9, result.required_count);
 }
 
+TEST(ClockSyncPathPolicy, NormalModeRequiresUniquePaths) {
+  EXPECT_TRUE(mesh::clockSyncRequiresUniquePath(false));
+}
+
+TEST(ClockSyncPathPolicy, EdgeModeAllowsOnePath) {
+  EXPECT_FALSE(mesh::clockSyncRequiresUniquePath(true));
+}
+
 static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,
                                const uint8_t* route, uint8_t route_len) {
   mesh::Packet* packet = node.createTrace(tag, auth, 0);

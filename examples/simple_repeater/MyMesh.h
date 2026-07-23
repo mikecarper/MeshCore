@@ -158,6 +158,9 @@ struct NeighbourInfo {
     #define CLOCK_SYNC_MESH_DEFAULT_ENABLED 0
   #endif
 #endif
+#ifndef CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED
+  #define CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED 1
+#endif
 #define CLOCK_SYNC_REQUIRED_SAMPLES_MIN     3
 #define CLOCK_SYNC_REQUIRED_SAMPLES_MAX     CLOCK_SYNC_SAMPLE_SLOTS
 #define CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT 9
@@ -288,6 +291,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
   bool clock_sync_mesh_enabled;
+  bool clock_sync_mesh_edge_enabled;
   bool clock_sync_internet_enabled;
   bool clock_sync_complete;
   bool clock_sync_internet_pending;
@@ -470,7 +474,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                          uint8_t& agreeing_count, uint8_t& required_count) const;
   bool applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sample_count);
   void checkClockSync();
-  void formatClockSyncStatus(char* reply, size_t reply_len) const;
+  void formatClockSyncStatus(const char* args, char* reply, size_t reply_len) const;
+  void formatClockSyncTable(char* reply, size_t reply_len) const;
+  void formatClockSyncSampleDetail(int index, char* reply, size_t reply_len) const;
   int findFloodChannelBlockBySelector(const char* selector) const;
   int findFloodChannelBlockSlot(const uint8_t prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN], const char* name) const;
   void formatFloodChannelBlockDetail(char* reply, int idx) const;
