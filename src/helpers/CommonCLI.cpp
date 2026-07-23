@@ -956,9 +956,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // extra length, skip the gap, and recover the tail so those settings survive
     // the upgrade (the file is rewritten in the new layout by loadPrefs afterwards).
     // Defaults for the trailing fields that older/shorter files may not contain.
-    // (upstream defaults: FEM RX gain on, CAD off) - overwritten below if present.
+    // Build-profile defaults - overwritten below when the saved field is present.
     _prefs->radio_fem_rxgain = 1;
-    _prefs->cad_enabled = 0;
+    _prefs->cad_enabled = DEFAULT_CAD_ENABLED;
     _prefs->rx_powersaving_enabled = 0;
     _prefs->rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
     _prefs->rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;

@@ -928,6 +928,8 @@ get clock.sync.status
 
 **Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
 
+The Cascade firmware profile defaults CAD to `on`; target-default builds continue to default it to `off`.
+
 **Parameters:**
 - `on|off`: Enable or disable hardware CAD
 

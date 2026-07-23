@@ -2516,7 +2516,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_max_unscoped = 64;
   _prefs.flood_max_advert = 8;
   _prefs.interference_threshold = 0; // disabled
-  _prefs.cad_enabled = 0;            // hardware CAD before TX (off by default; 'set cad on')
+  _prefs.cad_enabled = DEFAULT_CAD_ENABLED; // Cascade defaults CAD on; target default remains off
   _prefs.agc_reset_interval = DEFAULT_AGC_RESET_INTERVAL_SECONDS / 4;
   _prefs.multi_acks = DEFAULT_MULTI_ACKS;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;

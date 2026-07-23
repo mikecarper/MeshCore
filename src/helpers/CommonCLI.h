@@ -8,6 +8,10 @@
 #include <helpers/MQTTPrefs.h>
 #include <helpers/RegionMap.h>
 
+#ifndef DEFAULT_CAD_ENABLED
+  #define DEFAULT_CAD_ENABLED 0
+#endif
+
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) || defined(WITH_MQTT_BRIDGE)
 #define WITH_BRIDGE
 #endif

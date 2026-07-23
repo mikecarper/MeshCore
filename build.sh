@@ -751,7 +751,7 @@ prompt_for_radio_build_settings() {
 prompt_for_firmware_profile_settings() {
   local -a options=(
     "Keep target defaults"
-    "Cascade: path.hash.mode=2 / loop.detect=minimal / rxdelay=2 / agc.reset.interval=8 / advert.interval=0 / flood.advert.interval=83 / multi.acks=1 / companion.manual.add=1 / companion.autoadd=0"
+    "Cascade: path.hash.mode=2 / loop.detect=minimal / cad=on / rxdelay=2 / agc.reset.interval=8 / advert.interval=0 / flood.advert.interval=83 / multi.acks=1 / companion.manual.add=1 / companion.autoadd=0"
   )
 
   clear_firmware_profile_overrides
@@ -1807,7 +1807,7 @@ apply_radio_overrides() {
 apply_firmware_profile_overrides() {
   case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
     cascade)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=8 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_MANUAL_ADD_CONTACTS=1 -DDEFAULT_AUTOADD_CONFIG=0"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_CAD_ENABLED=1 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=8 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_MANUAL_ADD_CONTACTS=1 -DDEFAULT_AUTOADD_CONFIG=0"
       ;;
   esac
 }
