@@ -5600,6 +5600,23 @@ void MyMesh::recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[
   memcpy(sample.path_id, path_id, sizeof(sample.path_id));
   sample.epoch = epoch;
   sample.received_millis = received_millis;
+
+  // Do not leave a complete quorum waiting behind the startup or retry timer.
+  // Evaluate on the next normal loop once enough fresh evidence exists. This
+  // also refreshes a prior no-consensus result whenever a source changes.
+  if (!clock_sync_complete) {
+    uint32_t estimate = 0;
+    uint8_t fresh = 0;
+    uint8_t agreeing = 0;
+    uint8_t required = clock_sync_required_samples;
+    estimateMeshClock(estimate, fresh, agreeing, required);
+    if (fresh >= clock_sync_required_samples) {
+      clock_sync_last_fresh_count = fresh;
+      clock_sync_last_sample_count = agreeing;
+      clock_sync_last_required_count = required;
+      clock_sync_next_attempt_uptime = uptime_millis;
+    }
+  }
 }
 
 void MyMesh::recordAcceptedFloodClockSample(const mesh::Packet* packet) {
@@ -5897,14 +5914,16 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
     return;
   }
 
-  uint8_t fresh = 0;
   uint8_t active = 0;
-  uint32_t now = _ms->getMillis();
   for (int i = 0; i < CLOCK_SYNC_SAMPLE_SLOTS; i++) {
     if (!clock_sync_samples[i].active) continue;
     active++;
-    if (now - clock_sync_samples[i].received_millis <= CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS) fresh++;
   }
+  uint32_t live_estimate = 0;
+  uint8_t fresh = 0;
+  uint8_t live_agreeing = 0;
+  uint8_t live_required = clock_sync_required_samples;
+  bool live_consensus = estimateMeshClock(live_estimate, fresh, live_agreeing, live_required);
   bool mesh_available = clock_sync_mesh_enabled
       && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
   const char* mesh_state = !clock_sync_mesh_enabled ? "off"
@@ -5952,14 +5971,21 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
              collection_active ? "active" : "inactive", mesh_mode,
              (unsigned int)active, next_seconds);
   } else {
-    if (clock_sync_last_result == CLOCK_SYNC_RESULT_NO_CONSENSUS) {
+    if (clock_sync_last_result == CLOCK_SYNC_RESULT_NO_CONSENSUS
+        || (fresh >= clock_sync_required_samples && !live_consensus)) {
       snprintf(reply, reply_len,
                "> not-set reason=no-consensus collect=%s mode=%s %s=%u agree=%u/%u table=%u next=%lus",
                collection_active ? "active" : "inactive", mesh_mode, evidence_name,
                (unsigned int)fresh,
-               (unsigned int)clock_sync_last_sample_count,
-               (unsigned int)clock_sync_last_required_count,
+               (unsigned int)live_agreeing,
+               (unsigned int)live_required,
                (unsigned int)active, next_seconds);
+    } else if (live_consensus) {
+      snprintf(reply, reply_len,
+               "> not-set reason=ready collect=%s mode=%s %s=%u agree=%u/%u table=%u next=%lus",
+               collection_active ? "active" : "inactive", mesh_mode, evidence_name,
+               (unsigned int)fresh, (unsigned int)live_agreeing,
+               (unsigned int)live_required, (unsigned int)active, next_seconds);
     } else {
       const char* reason = result;
       if (clock_sync_last_result == CLOCK_SYNC_RESULT_WAITING) reason = "waiting-deadline";

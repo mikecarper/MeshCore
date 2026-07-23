@@ -610,17 +610,20 @@ send text.flood checking ridge link
 - `clock.sync.samples`: `9`
 
 When either source is enabled, the repeater makes its first clock-bootstrap
-attempt after 30 minutes of uptime. A successful estimate changes the RTC only
-when the absolute difference is **greater than** `clock.sync.drift`; correction
-can move the clock forward or backward. A valid estimate within the threshold
-counts as a successful sync without changing the clock. Seven days after each
-successful estimate, the repeater evaluates time again; the seven-day deadline
-therefore starts from the last successful estimate rather than from boot. This
-is a lazy uptime deadline: the check runs on the first normal loop/wake after it
-becomes due and does not wake the device by itself. If no source or consensus is
-available, the repeater retries every 30 minutes until one succeeds, then starts
-a new seven-day interval. Every reboot starts with the initial 30-minute attempt.
-An existing saved setting always overrides the platform default.
+attempt after 30 minutes of uptime, or immediately when the configured number
+of fresh evidence sources has been collected, whichever comes first. A
+successful estimate changes the RTC only when the absolute difference is
+**greater than** `clock.sync.drift`; correction can move the clock forward or
+backward. A valid estimate within the threshold counts as a successful sync
+without changing the clock. Seven days after each successful estimate, the
+repeater evaluates time again; the seven-day deadline therefore starts from the
+last successful estimate rather than from boot. This is a lazy uptime deadline:
+the check runs on the first normal loop/wake after it becomes due and does not
+wake the device by itself. If no source or consensus is available, the repeater
+retries every 30 minutes, and newly collected evidence triggers another
+immediate evaluation once the configured source count is present. Every reboot
+starts with the initial bootstrap attempt. An existing saved setting always
+overrides the platform default.
 
 `clock.sync.mesh now` bypasses the startup/seven-day deadline and queues a
 LoRa-only consensus evaluation on the next normal loop, even when the internet
@@ -629,6 +632,8 @@ source is also enabled. It uses any currently fresh samples without clearing the
 and the next attempt follows the normal 30-minute retry. The command requires
 `clock.sync.mesh` to be on and does not bypass CLI, GPS, or NTP suppression; it
 also retains the normal quorum, timestamp-validity, and drift checks.
+The separate `clock` command only displays the current RTC and does not request
+a synchronization attempt.
 
 `clock.sync.mesh` collects signature-verified advert timestamps and MAC-valid,
 decrypted Public-channel plain-text timestamps. In normal path mode, collection
