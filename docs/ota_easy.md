@@ -60,17 +60,19 @@ install the matching merged image over USB once before installing later non-merg
 ### Choose the source radio
 
 Use an ESP32 **MeshCore companion** as the source node. It receives the update folder from the computer,
-then advertises it over LoRa. Current ESP32 USB and WiFi companion artifacts include `-ota-` in their
-filenames and compile in the required OTA transport. Connect to that companion either by USB serial or by
-WiFi. For USB serial, confirm that its USB CLI accepts:
+then advertises it over LoRa. Current ESP32 USB and WiFi companion OTA artifacts include `-ota-` in their
+filenames and compile in the required OTA transport. A small set of high-capacity classic ESP32 companions
+keep their normal image and provide a separate `-full-ota-` image with 100 contacts, 8 group channels, and
+a 16-frame offline queue. Install that variant's merged image over USB once before using it. Connect the
+companion either by USB serial or by WiFi. For USB serial, confirm that its USB CLI accepts:
 
 ```text
 ota folder on
 ```
 
-If an older build reports that `OTA_FOLDER_SERIAL` is not compiled in, install a current `-ota-` companion
-build first. Do **not** use a KISS modem: KISS firmware is a TNC/KISS frame interface and does not provide
-the MeshCore CLI or the OTA-folder transport that `motatool serve` requires.
+If an older build reports that `OTA_FOLDER_SERIAL` is not compiled in, install a current `-ota-` or
+`-full-ota-` companion build first. Do **not** use a KISS modem: KISS firmware is a TNC/KISS frame interface
+and does not provide the MeshCore CLI or the OTA-folder transport that `motatool serve` requires.
 
 For a companion connected by WiFi, use its dedicated OTA seeder connection instead:
 

@@ -109,7 +109,10 @@ The "reconstructed image" referenced by the manifest is the full `BODY || EndF` 
 
 ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
 LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
-their target partition table rather than using the FULL profile. Every other ESP32 artifact, including room,
+their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
+companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
+OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits `-full-ota-` variants
+with 100 contacts, 8 group channels, and a 16-frame offline queue. Every other ESP32 artifact, including room,
 sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
 `0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
 limit and the target's actual app partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also
@@ -132,7 +135,8 @@ not apply to companion builds. Ordinary repeater builds remain sensor-enabled; o
 `*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution.
 
 Option 3 in `build.sh` also emits `*-full-ota-*` ESP32 artifacts for non-companion roles where the portable
-profile removes a compiled feature. Menu option 8, or `build-full-esp32-firmwares`, builds only those FULL
+profile removes a compiled feature and for the constrained companion fallbacks described above. Menu
+option 8, or `build-full-esp32-firmwares`, builds only those FULL
 artifacts. FULL builds restore WebConfig, the full CLI and observer feature set,
 full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
 including room servers, sensors, observers, and bridges. They use expanded A/B partition

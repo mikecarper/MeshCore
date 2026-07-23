@@ -1615,6 +1615,17 @@ is_esp32_usb_wifi_companion_ota_build() {
   esac
 }
 
+requires_esp32_companion_full_ota_fallback() {
+  # Some classic ESP32 companions cannot hold their configured high-capacity
+  # contact, channel, and offline-queue tables together with LoRa OTA in
+  # internal DRAM. Keep their ordinary high-capacity image unchanged and emit
+  # a separately named FULL OTA image with the companion default capacities.
+  case "${1,,}" in
+    heltec_v2_companion_radio_wifi|lilygo_tlora_v2_1_1_6_companion_radio_wifi|meshadventurer_sx1262_companion_radio_usb|meshadventurer_sx1268_companion_radio_usb) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
@@ -1622,6 +1633,9 @@ is_lora_ota_build() {
   # ESP32 USB and WiFi companions keep OTA so they can seed a host folder over
   # serial or TCP and can participate in LoRa OTA without using the FULL profile.
   if is_esp32_usb_wifi_companion_ota_build "$env_name"; then
+    if requires_esp32_companion_full_ota_fallback "$env_name" && [ "$ESP32_FULL_BUILD" != "1" ]; then
+      return 1
+    fi
     return 0
   fi
 
@@ -1675,6 +1689,10 @@ requires_esp32_portable_app_slot() {
 supports_esp32_full_build() {
   local env_name=$1
 
+  if requires_esp32_companion_full_ota_fallback "$env_name"; then
+    return 0
+  fi
+
   [ "${PIO_ENV_FULL_BUILD_BY_NAME[$env_name]:-0}" = "1" ] \
     && ! is_esp32_companion_build "$env_name" \
     && ! is_lora_ota_only_target "$env_name"
@@ -1727,6 +1745,11 @@ apply_esp32_full_size_profile() {
   if [ "${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
     append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DLIGHTWEIGHT_WIFI_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -ULIGHTWEIGHT_WIFI_OTA"
+  fi
+
+  if requires_esp32_companion_full_ota_fallback "$env_name"; then
+    append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
   fi
 }
 
