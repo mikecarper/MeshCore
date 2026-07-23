@@ -772,6 +772,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       uint8_t* macAndData = &pkt->payload[i];   // MAC + encrypted data 
       if (!_tables->wasSeen(pkt)) {
         _tables->markSeen(pkt);
+        onGroupPacketRecv(pkt);
         // scan channels DB, for all matching hashes of 'channel_hash' (max 4 matches supported ATM)
         GroupChannel channels[4];
         int num = searchChannelsByHash(&channel_hash, channels, 4);

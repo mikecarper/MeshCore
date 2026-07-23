@@ -884,10 +884,11 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   // for a message this repeater will actually retransmit.
 #if !defined(PORTABLE_MQTT_OBSERVER)
   if (packet->isRouteFlood() && shouldBlockFloodGroupTextForward(packet)) return false;
-  // Clock evidence is collected only after every forwarding filter accepts the
-  // packet. Blocked regions, moderated users, hop/type rules, and looped packets
-  // therefore cannot influence the estimate.
-  recordAcceptedFloodClockSample(packet);
+  // Normal path mode accepts clock evidence only from packets this node would
+  // forward. Edge mode observes verified evidence on the receive path instead,
+  // so repeat off and other forwarding filters do not hide a single upstream
+  // path from a node at the edge of the network.
+  if (!clock_sync_mesh_edge_enabled) recordAcceptedFloodClockSample(packet);
 #endif
   return true;
 }
@@ -2229,12 +2230,32 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
                           const uint8_t *app_data, size_t app_data_len) {
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
 
+  // Mesh calls this hook only after verifying the advert's Ed25519 signature.
+  // Edge mode observes it here rather than in allowPacketForward(), because
+  // forwarding can be disabled on a receive-only edge node.
+  if (clock_sync_mesh_edge_enabled && isClockSyncCollectionActive()) {
+    uint8_t source_id[4];
+    mesh::Utils::sha256(source_id, sizeof(source_id), id.pub_key, PUB_KEY_SIZE);
+    recordClockSyncSample(mesh::CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT,
+                          source_id, timestamp, packet);
+  }
+
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
   if (packet->getPathHashCount() == 0 && !isShare(packet)) {
     AdvertDataParser parser(app_data, app_data_len);
     if (parser.isValid() && parser.getType() == ADV_TYPE_REPEATER) { // just keep neigbouring Repeaters
       putNeighbour(id, timestamp, packet->getSNR());
     }
+  }
+}
+
+void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+  // The base Mesh calls this for every unseen, structurally valid group packet
+  // before the forwarding decision. Public-channel decryption below also
+  // verifies its MAC, so unrelated or forged channel packets are ignored.
+  if (clock_sync_mesh_edge_enabled && packet != NULL
+      && packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) {
+    recordPublicChannelClockSample(packet);
   }
 }
 

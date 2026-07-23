@@ -631,20 +631,25 @@ and the next attempt follows the normal 30-minute retry. The command requires
 also retains the normal quorum, timestamp-validity, and drift checks.
 
 `clock.sync.mesh` collects signature-verified advert timestamps and MAC-valid,
-decrypted Public-channel plain-text timestamps, but only after the packet passes
-every forwarding filter. Sources are deduplicated by advert public key or
-case-insensitive Public-channel display name. Every fresh sample must also have
-a different full received path; all direct, zero-hop receptions count as the
-same empty path. This prevents repeated packets or multiple names arriving over
-one route from increasing the vote count.
+decrypted Public-channel plain-text timestamps. In normal path mode, collection
+occurs only after the packet passes every forwarding filter. Sources are
+deduplicated by advert public key or case-insensitive Public-channel display
+name. Every fresh sample must also have a different full received path; all
+direct, zero-hop receptions count as the same empty path. This prevents repeated
+packets or multiple names arriving over one route from increasing the vote
+count.
 
 For a node at the edge of the network where every packet arrives through one
 relay path, `set clock.sync.mesh.edge on` changes the evidence requirement from
 distinct receive paths to distinct sources. Signature-verified adverts are
 deduplicated by public key, and Public-channel timestamps are deduplicated by
 case-insensitive display name. Repeated packets from one source still count
-once. Changing edge mode clears the in-memory sample table so evidence collected
-under the other policy is not reused. The setting is persistent and defaults on.
+once. Edge mode observes this verified evidence on the receive path, independently
+of the forwarding decision, so `repeat off` and forwarding filters do not prevent
+clock collection. Other packet types are observed normally but cannot be clock
+evidence because they do not provide a suitable authenticated Unix timestamp.
+Changing edge mode clears the in-memory sample table so evidence collected under
+the other policy is not reused. The setting is persistent and defaults on.
 
 At least the configured number of distinct fresh evidence sources (nine by
 default) and a strict majority of all fresh samples must fall within ten minutes

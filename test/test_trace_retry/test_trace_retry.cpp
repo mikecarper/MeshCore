@@ -55,6 +55,7 @@ class TraceTestMesh : public mesh::Mesh {
 public:
   bool forwardFloods = false;
   bool floodRetriesAllowed = true;
+  bool groupPacketObserved = false;
 
   TraceTestMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng,
                 mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
@@ -95,6 +96,10 @@ public:
 
   bool allowFloodRetry(const mesh::Packet*) const override {
     return floodRetriesAllowed;
+  }
+
+  void onGroupPacketRecv(mesh::Packet*) override {
+    groupPacketObserved = true;
   }
 };
 
@@ -152,6 +157,25 @@ TEST(ClockSyncPathPolicy, NormalModeRequiresUniquePaths) {
 
 TEST(ClockSyncPathPolicy, EdgeModeAllowsOnePath) {
   EXPECT_FALSE(mesh::clockSyncRequiresUniquePath(true));
+}
+
+TEST(MeshReceiveHooks, GroupPacketIsObservedWhenForwardingIsDisabled) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
+  packet.payload_len = 1 + CIPHER_MAC_SIZE + CIPHER_BLOCK_SIZE;
+  memset(packet.payload, 0, packet.payload_len);
+
+  ASSERT_FALSE(node.forwardFloods);
+  node.receivePacket(&packet);
+  EXPECT_TRUE(node.groupPacketObserved);
 }
 
 static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,

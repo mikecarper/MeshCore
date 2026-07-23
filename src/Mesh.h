@@ -460,6 +460,13 @@ protected:
   virtual int searchChannelsByHash(const uint8_t* hash, GroupChannel channels[], int max_matches);
 
   /**
+   * \brief  A structurally valid encrypted group packet has been observed.
+   *         Called once for each unseen packet before local channel matching and
+   *         independently of whether the packet will be forwarded.
+   */
+  virtual void onGroupPacketRecv(Packet* packet) { }
+
+  /**
    * \brief  An encrypted group data packet has been received.
    *         NOTE: the same payload can be received multiple times, via different routes
    * \param  type  one of: PAYLOAD_TYPE_GRP_TXT, PAYLOAD_TYPE_GRP_DATA
