@@ -2461,6 +2461,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
+  pending_self_advert_delay = 0;
+  pending_self_advert = false;
+  pending_self_advert_flood = false;
   next_battery_alert_check = 0;
   next_rx_watchdog_check = 0;
   next_recent_repeater_sweep = 0;
@@ -3652,6 +3655,17 @@ bool MyMesh::formatFileSystem() {
 }
 
 void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
+  // CommonCLI can invoke this while handling an encrypted remote-admin packet.
+  // Creating the advert signs it with Ed25519, whose large stack frame would
+  // otherwise sit on top of the entire RX/decrypt/command call chain and
+  // overflow the nRF52 Arduino loop task's 4 KiB stack. Defer the work until
+  // Mesh::loop() has returned and that inbound call chain has unwound.
+  pending_self_advert_delay = delay_millis > 0 ? (uint32_t)delay_millis : 0;
+  pending_self_advert_flood = flood;
+  pending_self_advert = true;
+}
+
+void MyMesh::sendSelfAdvertisementNow(uint32_t delay_millis, bool flood) {
   mesh::Packet *pkt = createSelfAdvert();
   if (pkt) {
     if (flood) {
@@ -7097,6 +7111,12 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+  if (pending_self_advert) {
+    const uint32_t delay_millis = pending_self_advert_delay;
+    const bool flood = pending_self_advert_flood;
+    pending_self_advert = false;
+    sendSelfAdvertisementNow(delay_millis, flood);
+  }
   checkRxInactivityWatchdog();
 #if !defined(PORTABLE_MQTT_OBSERVER)
   checkBatteryAlert();

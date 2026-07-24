@@ -204,6 +204,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
+  uint32_t pending_self_advert_delay;
+  bool pending_self_advert;
+  bool pending_self_advert_flood;
   unsigned long next_battery_alert_check;
   unsigned long next_rx_watchdog_check;
   unsigned long next_recent_repeater_sweep;
@@ -402,6 +405,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
+  void sendSelfAdvertisementNow(uint32_t delay_millis, bool flood);
   bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,
                               mesh::Packet** queued_packet = nullptr);
   uint8_t getRegionDepth(const RegionEntry* region);
