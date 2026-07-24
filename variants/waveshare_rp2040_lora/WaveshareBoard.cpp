@@ -25,6 +25,9 @@ void WaveshareBoard::begin() {
   delay(10); // give sx1262 some time to power up
 }
 
-bool WaveshareBoard::startOTAUpdate(const char *id, char reply[]) {
+bool WaveshareBoard::startOTAUpdate(const char *id, char reply[], bool force_ap) {
+  (void)id;
+  (void)reply;
+  (void)force_ap;
   return false;
 }

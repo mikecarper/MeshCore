@@ -2,6 +2,7 @@
 
 #ifdef WITH_MQTT_BRIDGE
 
+#include "MQTTPayloadBuilder.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <math.h>
@@ -59,66 +60,11 @@ int MQTTMessageBuilder::buildStatusMessage(
   int packets_received,
   const char* repeat
 ) {
-  // doc is provided by the caller (heap-allocated DynamicJsonDocument in MQTTBridge),
-  // keeping this 768-byte scratch space off the MQTT task stack.
-  doc.clear();
-  JsonObject root = doc.to<JsonObject>();
-  
-  root["status"] = status;
-  root["timestamp"] = timestamp;
-  root["origin"] = origin;
-  root["origin_id"] = origin_id;
-  root["model"] = model;
-  root["firmware_version"] = firmware_version;
-  root["radio"] = radio;
-  root["client_version"] = client_version;
-  if (repeat != nullptr) {
-    root["repeat"] = repeat;
-  }
-
-  // Add stats object if any stats are provided
-  if (battery_mv >= 0 || uptime_secs >= 0 || errors >= 0 || queue_len >= 0 ||
-      noise_floor > -999 || tx_air_secs >= 0 || rx_air_secs >= 0 || recv_errors >= 0 ||
-      internal_heap >= 0 || packets_sent >= 0 || packets_received >= 0) {
-    JsonObject stats = root.createNestedObject("stats");
-    
-    if (battery_mv >= 0) {
-      stats["battery_mv"] = battery_mv;
-    }
-    if (uptime_secs >= 0) {
-      stats["uptime_secs"] = uptime_secs;
-    }
-    if (packets_sent >= 0) {
-      stats["packets_sent"] = packets_sent;
-    }
-    if (packets_received >= 0) {
-      stats["packets_received"] = packets_received;
-    }
-    if (errors >= 0) {
-      stats["errors"] = errors;
-    }
-    if (queue_len >= 0) {
-      stats["queue_len"] = queue_len;
-    }
-    if (noise_floor > -999) {
-      stats["noise_floor"] = noise_floor;
-    }
-    if (tx_air_secs >= 0) {
-      stats["tx_air_secs"] = tx_air_secs;
-    }
-    if (rx_air_secs >= 0) {
-      stats["rx_air_secs"] = rx_air_secs;
-    }
-    if (recv_errors >= 0) {
-      stats["recv_errors"] = recv_errors;
-    }
-    if (internal_heap >= 0) {
-      stats["internal_heap"] = internal_heap;
-    }
-  }
-  
-  size_t len = serializeJson(root, buffer, buffer_size);
-  return (len > 0 && len < buffer_size) ? len : 0;
+  return MQTTPayloadBuilder::buildStatusMessage(
+      doc, origin, origin_id, model, firmware_version, radio, client_version,
+      status, timestamp, buffer, buffer_size, battery_mv, uptime_secs, errors,
+      queue_len, noise_floor, tx_air_secs, rx_air_secs, recv_errors, internal_heap,
+      packets_sent, packets_received, repeat);
 }
 
 int MQTTMessageBuilder::buildPacketMessage(
@@ -144,71 +90,10 @@ int MQTTMessageBuilder::buildPacketMessage(
   char* buffer,
   size_t buffer_size
 ) {
-  // doc is provided by the caller (heap-allocated DynamicJsonDocument in MQTTBridge),
-  // keeping this 2048-byte scratch space off the MQTT task stack.
-  doc.clear();
-  JsonObject root = doc.to<JsonObject>();
-  
-  // Format numeric values as strings to avoid String object allocations
-  char len_str[16];
-  char packet_type_str[16];
-  char payload_len_str[16];
-  char snr_str[16];
-  char rssi_str[16];
-  char score_str[16];
-
-  snprintf(len_str, sizeof(len_str), "%d", len);
-  snprintf(packet_type_str, sizeof(packet_type_str), "%d", packet_type);
-  snprintf(payload_len_str, sizeof(payload_len_str), "%d", payload_len);
-  snprintf(snr_str, sizeof(snr_str), "%.1f", snr);
-  snprintf(rssi_str, sizeof(rssi_str), "%d", rssi);
-  
-  root["timestamp"] = timestamp;
-  root["hash"] = hash;
-  root["origin"] = origin;
-  root["type"] = "PACKET";
-  root["direction"] = direction;
-  root["time"] = time;
-  root["date"] = date;
-  root["len"] = len_str;
-  root["packet_type"] = packet_type_str;
-  root["route"] = route;
-  root["payload_len"] = payload_len_str;
-  root["raw"] = raw;
-  root["origin_id"] = origin_id;
-  // SNR and RSSI are only meaningful for RX packets (received from radio)
-  if (strcmp(direction, "rx") == 0) {
-    root["SNR"] = snr_str;
-    root["RSSI"] = rssi_str;
-    // Firmware's rebroadcast "score" for this RX packet, scaled x1000 to match the
-    // integer form printed in the serial RX log (see Dispatcher::checkRecv()).
-    if (!isnan(score)) {
-      snprintf(score_str, sizeof(score_str), "%d", (int)(score * 1000));
-      root["score"] = score_str;
-    }
-  }
-  
-  // Routing path as an array of lowercase hex hop tokens, one element per hop
-  // (e.g. ["aa","bb","cc"], or ["aaaa","bbbb"] for multi-byte hashes). This matches
-  // meshcore-packet-capture's _split_path_hops() representation.
-  if (path_bytes && path_hop_count > 0 && path_hash_size > 0) {
-    JsonArray path_arr = root.createNestedArray("path");
-    char hop_hex[2 * 4 + 1]; // hop hash is 1-4 bytes -> up to 8 hex chars + null
-    for (int i = 0; i < path_hop_count; i++) {
-      size_t pos = 0;
-      for (int b = 0; b < path_hash_size && b < 4; b++) {
-        size_t idx = (size_t)i * path_hash_size + b;
-        if (idx >= MAX_PATH_SIZE) break;
-        snprintf(hop_hex + pos, 3, "%02x", path_bytes[idx]);
-        pos += 2;
-      }
-      hop_hex[pos] = '\0';
-      path_arr.add(hop_hex); // char[] (non-const) -> ArduinoJson copies the string
-    }
-  }
-
-  size_t json_len = serializeJson(root, buffer, buffer_size);
-  return (json_len > 0 && json_len < buffer_size) ? json_len : 0;
+  return MQTTPayloadBuilder::buildPacketMessage(
+      doc, origin, origin_id, timestamp, direction, time, date, len, packet_type,
+      route, payload_len, raw, snr, rssi, score, hash, path_bytes, path_hop_count,
+      path_hash_size, MAX_PATH_SIZE, buffer, buffer_size);
 }
 
 int MQTTMessageBuilder::buildRawMessage(
@@ -219,18 +104,24 @@ int MQTTMessageBuilder::buildRawMessage(
   char* buffer,
   size_t buffer_size
 ) {
-  // Use StaticJsonDocument to avoid heap fragmentation (fixed-size stack allocation)
-  StaticJsonDocument<512> doc;
-  JsonObject root = doc.to<JsonObject>();
-  
-  root["origin"] = origin;
-  root["origin_id"] = origin_id;
-  root["timestamp"] = timestamp;
-  root["type"] = "RAW";
-  root["data"] = raw;
-  
-  size_t len = serializeJson(root, buffer, buffer_size);
-  return (len > 0 && len < buffer_size) ? len : 0;
+  return MQTTPayloadBuilder::buildRawMessage(
+      origin, origin_id, timestamp, raw, buffer, buffer_size);
+}
+
+int MQTTMessageBuilder::buildNeighborsMessage(
+  JsonDocument& doc,
+  const char* origin,
+  const char* origin_id,
+  const char* timestamp,
+  const char* self_scopes,
+  const NeighborsMessageEntry* neighbors,
+  int neighbor_count,
+  char* buffer,
+  size_t buffer_size
+) {
+  return MQTTPayloadBuilder::buildNeighborsMessage(
+      doc, origin, origin_id, timestamp, self_scopes, neighbors, neighbor_count,
+      buffer, buffer_size);
 }
 
 int MQTTMessageBuilder::buildPacketJSON(
@@ -421,6 +312,11 @@ const char* MQTTMessageBuilder::getRouteTypeString(int route_type) {
 }
 
 void MQTTMessageBuilder::bytesToHex(const uint8_t* data, size_t len, char* hex, size_t hex_size) {
+  if (hex == nullptr || hex_size == 0) return;
+  // Guarantee a valid (empty) string even if we bail out below, so a caller's
+  // uninitialized stack buffer is never serialized into the JSON raw/hash fields
+  // when the buffer is too small (A6).
+  hex[0] = '\0';
   if (hex_size < len * 2 + 1) return;
 
   // Nibble lookup instead of a per-byte snprintf("%02X"): same uppercase hex
@@ -434,6 +330,11 @@ void MQTTMessageBuilder::bytesToHex(const uint8_t* data, size_t len, char* hex, 
 }
 
 void MQTTMessageBuilder::packetToHex(mesh::Packet* packet, char* hex, size_t hex_size) {
+  if (hex == nullptr || hex_size == 0) return;
+  // Empty string on any early-out below (serialization returned nothing, or the
+  // hex buffer is too small) so an uninitialized raw_hex[] never reaches the
+  // published JSON (A6).
+  hex[0] = '\0';
   // Serialize full on-air/wire format using Packet::writeTo()
   // This includes header, transport codes (if present), path_len, path, and payload
   uint8_t raw_buf[512];

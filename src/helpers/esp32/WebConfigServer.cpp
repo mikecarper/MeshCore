@@ -19,62 +19,23 @@
 #endif
 
 #include "WebConfigHtml.h"
+#include "helpers/WebConfigKeys.h"
 
 // Placeholder sent instead of stored secrets; POSTs carrying it are dropped
 // so an untouched password field never overwrites the stored value.
 static const char SECRET_SENTINEL[] = "********";
 
-// Keys the web UI may drive through the CLI `set` handlers. Everything else
-// is rejected, so a crafted request can't reach arbitrary commands (`erase`,
-// `password`, ...) through the batch.
-static const char* const ALLOWED_SET_KEYS[] = {
-  // NodePrefs (radio / node)
-  "name", "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
-  "cad", "radio.rxgain", "radio.fem.rxgain", "repeat", "advert.interval",
-  "flood.advert.interval",
-  "flood.max", "flood.max.advert", "flood.max.unscoped", "loop.detect",
-  // MQTTPrefs (WiFi / MQTT / misc observer)
-  "wifi.ssid", "wifi.pwd", "wifi.powersave",
-  "mqtt.origin", "mqtt.iata", "mqtt.status", "mqtt.packets", "mqtt.raw",
-  "mqtt.tx", "mqtt.rx", "mqtt.interval", "mqtt.ntp", "mqtt.owner", "mqtt.email",
-  "timezone", "timezone.offset", "snmp", "snmp.community",
-};
-static const char* const ALLOWED_SLOT_KEYS[] = {
-  "preset", "server", "port", "username", "password", "token", "topic", "audience",
-};
-
 static bool isAllowedSetKey(const char* key, bool has_mqtt) {
-  if (!key) return false;
-  for (size_t i = 0; i < sizeof(ALLOWED_SET_KEYS) / sizeof(ALLOWED_SET_KEYS[0]); i++) {
-    if (strcmp(key, ALLOWED_SET_KEYS[i]) == 0) {
-      const bool mqtt_only = strncmp(key, "mqtt.", 5) == 0
-                          || strncmp(key, "timezone", 8) == 0
-                          || strncmp(key, "snmp", 4) == 0;
-      return has_mqtt || !mqtt_only;
-    }
-  }
-  // mqtt<1-6>.<field>
-#ifdef WITH_MQTT_BRIDGE
-  if (!has_mqtt) return false;
-  if (strlen(key) > 6 && strncmp(key, "mqtt", 4) == 0
-      && key[4] >= '1' && key[4] <= ('0' + MAX_MQTT_SLOTS)
-      && key[5] == '.') {
-    for (size_t i = 0; i < sizeof(ALLOWED_SLOT_KEYS) / sizeof(ALLOWED_SLOT_KEYS[0]); i++) {
-      if (strcmp(&key[6], ALLOWED_SLOT_KEYS[i]) == 0) return true;
-    }
-  }
-#else
-  (void)has_mqtt;
-#endif
-  return false;
+  if (!key || !wcIsAllowedSetKey(key)) return false;
+  const bool mqtt_only = strncmp(key, "mqtt.", 5) == 0
+                      || strncmp(key, "mqtt", 4) == 0
+                      || strncmp(key, "timezone", 8) == 0
+                      || strncmp(key, "snmp", 4) == 0;
+  return has_mqtt || !mqtt_only;
 }
 
 static bool isSecretKey(const char* key) {
-  if (!key) return false;
-  if (strcmp(key, "wifi.pwd") == 0) return true;
-  if (strlen(key) > 6 && strncmp(key, "mqtt", 4) == 0 && key[5] == '.'
-      && (strcmp(&key[6], "password") == 0 || strcmp(&key[6], "token") == 0)) return true;
-  return false;
+  return key && wcIsSecretKey(key);
 }
 
 // Constant-time-ish comparison so login timing doesn't leak a prefix match.
@@ -97,7 +58,9 @@ struct WCLock {
 };
 
 WebConfigServer* WebConfigServer::_active = NULL;
+AsyncWebServer* WebConfigServer::_host = NULL;
 static volatile bool webconfig_button_toggle_requested = false;
+static portMUX_TYPE s_wc_route_mux = portMUX_INITIALIZER_UNLOCKED;
 
 WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool owns_wifi,
                                  const uint8_t* pub_key, const char* fw_ver,
@@ -105,7 +68,6 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
     : _cb(callbacks), _mqtt_prefs(mqtt_prefs), _owns_wifi(owns_wifi), _pub_key(pub_key),
       _fw_ver(fw_ver), _role(role), _board_name(board_name) {
   _mux = xSemaphoreCreateMutex();
-  _active = this;
 
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs* obs = static_cast<MQTTPrefs*>(_mqtt_prefs);
@@ -130,7 +92,7 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
 }
 
 WebConfigServer::~WebConfigServer() {
-  if (_active == this) _active = NULL;
+  detachRoutes();
   if (_mux) vSemaphoreDelete(_mux);
 }
 
@@ -201,8 +163,9 @@ bool WebConfigServer::takeButtonToggleRequest() {
 
 bool WebConfigServer::isRebootPending() {
   WebConfigServer* w = _active;
-  return w != NULL && w->_reboot_at != 0 && w->_batch_reboot &&
-         w->_batch_state == BATCH_DONE;
+  return w != NULL && WebConfigBatch::isConfigRebootPending(
+                          w->_reboot_at, w->_batch_reboot,
+                          toSpecState(w->_batch_state));
 }
 
 bool WebConfigServer::getSetupInfo(char* ssid, size_t ssid_len, char* ip, size_t ip_len) {
@@ -232,6 +195,10 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   // the AP is up. STA stays unconnected - the bridge won't touch WiFi
   // while wifi_ssid is empty, and `start webconfig ap` requires it stopped.
   WiFi.mode(WIFI_AP_STA);
+  // Setup mode has no login. Drop any STA association so the open setup API is
+  // reachable only from the setup AP, not from the operator's LAN.
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(false, true);
   snprintf(_ap_ssid, sizeof(_ap_ssid), "MeshCore-Setup-%02X%02X", _pub_key[0], _pub_key[1]);
 #ifdef WEBCONFIG_AP_PASSWORD
   bool ap_ok = WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD);
@@ -249,9 +216,12 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   _dns = new DNSServer();
   _dns->start(53, "*", ip);  // captive portal: every name resolves to us
 
-  if (!promote_lan) createServer();
   _mode = MODE_SETUP;
+  if (!promote_lan) createServer();
   _was_setup_ap = true;
+  NodeSnapshot node = {};
+  _cb->getNodeSnapshot(node);
+  _initial_setup = _wifi_ssid[0] == 0 && node.admin_password[0] != 0;
   _last_activity = millis();
   WiFi.scanNetworks(true);  // pre-populate the SSID picker
 
@@ -268,8 +238,8 @@ bool WebConfigServer::startLanMode(char reply[]) {
     strcpy(reply, "Err: WiFi not connected");
     return false;
   }
-  createServer();
   _mode = MODE_LAN;
+  createServer();
   _last_activity = millis();
 
   NodeSnapshot node = {};
@@ -306,36 +276,41 @@ bool WebConfigServer::startAutoMode(char reply[]) {
 }
 
 void WebConfigServer::createServer() {
-  _server = new AsyncWebServer(80);
+  if (_host == NULL) {
+    _host = new AsyncWebServer(80);
+    _server = _host;
+    registerRoutes();
+  } else {
+    _server = _host;
+  }
   // iOS caches plain-HTTP GETs aggressively (keyed by URL, surviving even a
   // device reflash behind the same IP), which poisons /api/config/result and
   // friends with stale responses from earlier sessions. Forbid caching on
   // every response; the HTML is small enough to refetch per visit.
-  // DefaultHeaders is process-global and survives a stop/start cycle. Adding
-  // this on every start would retain duplicate header nodes indefinitely.
   static bool cache_header_added = false;
   if (!cache_header_added) {
     DefaultHeaders::Instance().addHeader("Cache-Control", "no-store");
     cache_header_added = true;
   }
-  registerRoutes();
+  attachRoutes();
   _server->begin();
 }
 
 void WebConfigServer::requestStop() {
   if (_mode == MODE_OFF && !_stopping) return;
+  detachRoutes();
   if (_server) _server->end();
   if (_dns) _dns->stop();
   _mode = MODE_OFF;
   _stopping = true;
-  // Deleting an AsyncWebServer with live connections is a known crash source;
-  // give in-flight responses a grace period before freeing.
-  _delete_at = millis() + 2000;
-  if (_delete_at == 0) _delete_at = 1;
+  _stop_warn_at = WebConfigBatch::scheduleAt(millis(), STOP_WARN_MS);
+  _stop_warned = false;
 }
 
 void WebConfigServer::finalizeTeardown() {
-  delete _server;
+  // Async requests keep a pointer to their server until disconnect. Retain the
+  // listener and route table for the firmware lifetime; only detach and reclaim
+  // the per-session state.
   _server = NULL;
   delete _dns;
   _dns = NULL;
@@ -355,8 +330,10 @@ void WebConfigServer::finalizeTeardown() {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
   }
+  _initial_setup = false;
   _stopping = false;
-  _delete_at = 0;
+  _stop_warn_at = 0;
+  _stop_warned = false;
   _connect_deadline = 0;
   _reboot_at = 0;
   _batch_state = BATCH_IDLE;
@@ -369,15 +346,27 @@ void WebConfigServer::finalizeTeardown() {
 
 void WebConfigServer::tick(uint32_t now) {
   if (_stopping) {
-    if (_delete_at && (int32_t)(now - _delete_at) >= 0) finalizeTeardown();
+    uint32_t refs = handlerRefCount();
+    switch (WebConfigBatch::stopStep(refs, _stop_warned, _stop_warn_at, now)) {
+      case WebConfigBatch::StopAction::Finalize:
+        finalizeTeardown();
+        break;
+      case WebConfigBatch::StopAction::Warn:
+        _stop_warned = true;
+        Serial.printf("WC: stop waiting for %lu handler(s); retaining session safely\n",
+                      (unsigned long)refs);
+        break;
+      case WebConfigBatch::StopAction::Wait:
+        break;
+    }
     return;
   }
   if (_mode == MODE_OFF) return;
 
   if (_mode == MODE_CONNECTING) {
     if (WiFi.status() == WL_CONNECTED) {
-      createServer();
       _mode = MODE_LAN;
+      createServer();
       _connect_deadline = 0;
       _last_activity = now;
       Serial.printf("WebConfig ready: http://%s/\n", WiFi.localIP().toString().c_str());
@@ -397,7 +386,7 @@ void WebConfigServer::tick(uint32_t now) {
 
   if (_batch_state == BATCH_PENDING) drainBatch(now);
 
-  if (_reboot_at && (int32_t)(now - _reboot_at) >= 0) {
+  if (WebConfigBatch::rebootDue(_reboot_at, now)) {
     Serial.printf("WC: rebooting now (%s)\n", _batch_reboot_armed ? "confirmed" : "fallback");
     _cb->rebootNow();  // does not return
   }
@@ -432,7 +421,8 @@ void WebConfigServer::drainBatch(uint32_t now) {
   if (_batch_next == 0) {
     WCLock prefs_lock(_mux);
     _cb->onConfigBatchStart();
-  } else if (_batch_next < _batch_count && (int32_t)(now - _batch_last_cmd) < 25) {
+  } else if (WebConfigBatch::drainMustWait(_batch_next, _batch_count,
+                                            now, _batch_last_cmd)) {
     return;  // let the WiFi task breathe between flash writes
   }
   if (_batch_next < _batch_count) {
@@ -440,7 +430,9 @@ void WebConfigServer::drainBatch(uint32_t now) {
     BatchEntry& e = _batch[_batch_next++];
     e.reply[0] = 0;
     uint32_t t0 = millis();
-    const char* value = e.cmd + strlen("set ") + strlen(e.key) + 1;
+    const bool admin_pwd = wcIsAdminPasswordKey(e.key);
+    const char* value = admin_pwd ? e.cmd + strlen("password ")
+                                  : e.cmd + strlen("set ") + strlen(e.key) + 1;
     if ((_mqtt_prefs == NULL || !_owns_wifi) && strcmp(e.key, "wifi.ssid") == 0) {
       if (!value[0] || strlen(value) >= sizeof(_wifi_ssid)) {
         strcpy(e.reply, "Error: WiFi SSID must be 1-31 characters");
@@ -470,6 +462,9 @@ void WebConfigServer::drainBatch(uint32_t now) {
       }
     } else {
       _cb->execCommand(e.cmd, e.reply);
+      // The CLI password command echoes the new secret. Never return it to a
+      // browser client, especially over the open setup AP.
+      if (admin_pwd) strcpy(e.reply, "OK");
       // Keep the response snapshot current after MQTT/companion CLI handlers
       // persist a WiFi field. The browser can then soft-reload without a stale
       // value even before the requested reboot happens.
@@ -484,14 +479,14 @@ void WebConfigServer::drainBatch(uint32_t now) {
       }
     }
     if (e.reply[0] == 0) strcpy(e.reply, "OK");
-    // A wizard save must not reboot away from a rejected setting before the
-    // operator can correct it. A reboot-only batch (zero commands) is still
-    // allowed; otherwise every command must report success.
-    if (_batch_reboot && strncmp(e.reply, "OK", 2) != 0) _batch_reboot = false;
+    _batch_all_ok = WebConfigBatch::nextAllOk(
+        _batch_all_ok, strncmp(e.reply, "OK", 2) == 0);
     _batch_last_cmd = millis();
     Serial.printf("WC: cmd %d/%d '%s' took %lums\n", (int)_batch_next, (int)_batch_count,
                   e.key, (unsigned long)(_batch_last_cmd - t0));
-    if (_batch_next < _batch_count) return;  // more commands next tick
+    if (!WebConfigBatch::drainFinished(_batch_next, _batch_count)) {
+      return;  // more commands next tick
+    }
   }
   if (_standalone_wifi_dirty) {
     _standalone_wifi_dirty = false;
@@ -504,7 +499,7 @@ void WebConfigServer::drainBatch(uint32_t now) {
           break;
         }
       }
-      _batch_reboot = false;
+      _batch_all_ok = false;
     }
   }
   {
@@ -513,14 +508,12 @@ void WebConfigServer::drainBatch(uint32_t now) {
   }
   WCLock lock(_mux);
   _batch_state = BATCH_DONE;
-  if (_batch_reboot) {
-    // Fallback only: the real 3 s reboot timer is armed when the client reads
-    // /api/config/result (handleConfigResult), so the browser gets its
-    // confirmation before the AP/WiFi drops. This covers a client that
-    // disconnected and never polls - generous enough for a phone that got
-    // bounced off the AP mid-save to rejoin and fetch its confirmation.
-    _reboot_at = now + 30000;
-    if (_reboot_at == 0) _reboot_at = 1;
+  const uint32_t reboot_at =
+      WebConfigBatch::finishRebootAt(_batch_reboot, _batch_all_ok, now);
+  if (reboot_at != 0) {
+    // Fallback only: a successful result read replaces this with the shorter
+    // confirmation delay. Failed batches remain available for correction.
+    _reboot_at = reboot_at;
   }
 }
 
@@ -535,26 +528,94 @@ static void wcLogReq(AsyncWebServerRequest* r) {
   Serial.printf("WC: http %s %s\n", r->methodToString(), r->url().c_str());
 }
 
+void WebConfigServer::attachRoutes() {
+  portENTER_CRITICAL(&s_wc_route_mux);
+  _active = this;
+  portEXIT_CRITICAL(&s_wc_route_mux);
+}
+
+void WebConfigServer::detachRoutes() {
+  portENTER_CRITICAL(&s_wc_route_mux);
+  if (_active == this) _active = NULL;
+  portEXIT_CRITICAL(&s_wc_route_mux);
+}
+
+uint32_t WebConfigServer::handlerRefCount() const {
+  portENTER_CRITICAL(&s_wc_route_mux);
+  uint32_t refs = _handler_refs;
+  portEXIT_CRITICAL(&s_wc_route_mux);
+  return refs;
+}
+
+void WebConfigServer::dispatchRequest(AsyncWebServerRequest* req,
+                                      RequestHandler handler) {
+  wcLogReq(req);
+  WebConfigServer* target = NULL;
+  portENTER_CRITICAL(&s_wc_route_mux);
+  if (_active != NULL) {
+    target = _active;
+    target->_handler_refs++;
+  }
+  portEXIT_CRITICAL(&s_wc_route_mux);
+
+  if (target == NULL) {
+    req->send(503, "application/json", "{\"error\":\"webconfig stopped\"}");
+    return;
+  }
+
+  (target->*handler)(req);
+
+  portENTER_CRITICAL(&s_wc_route_mux);
+  if (target->_handler_refs > 0) target->_handler_refs--;
+  portEXIT_CRITICAL(&s_wc_route_mux);
+}
+
 void WebConfigServer::registerRoutes() {
-  _server->on("/", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleRoot(r); });
-  _server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleStatus(r); });
-  _server->on("/api/presets", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handlePresets(r); });
-  _server->on("/api/login", HTTP_POST, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleLogin(r); },
+  _server->on("/", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleRoot);
+  });
+  _server->on("/api/status", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleStatus);
+  });
+  _server->on("/api/presets", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handlePresets);
+  });
+  _server->on("/api/login", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleLogin);
+  },
               NULL, collectBody);
-  _server->on("/api/logout", HTTP_POST, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleLogout(r); });
+  _server->on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleLogout);
+  });
   // NB: plain-string routes match sub-paths too ("/api/config" matches
   // "/api/config/result") and handlers run in registration order, so the more
   // specific route MUST be registered first or it never fires. This was why
   // save confirmations were lost: result polls were answered with config JSON.
-  _server->on("/api/config/result", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleConfigResult(r); });
-  _server->on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleConfigGet(r); });
-  _server->on("/api/config", HTTP_POST, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleConfigPost(r); },
+  _server->on("/api/config/result", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleConfigResult);
+  });
+  _server->on("/api/config", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleConfigGet);
+  });
+  _server->on("/api/config", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleConfigPost);
+  },
               NULL, collectBody);
-  _server->on("/api/stats", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleStats(r); });
-  _server->on("/api/scan", HTTP_GET, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleScan(r); });
-  _server->on("/api/reboot", HTTP_POST, [this](AsyncWebServerRequest* r) { wcLogReq(r); handleReboot(r); });
-  _server->on("/api/portal/exit", HTTP_POST, [this](AsyncWebServerRequest* r) { wcLogReq(r); handlePortalExit(r); });
-  _server->onNotFound([this](AsyncWebServerRequest* r) { wcLogReq(r); handleNotFound(r); });
+  _server->on("/api/stats", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleStats);
+  });
+  _server->on("/api/scan", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleScan);
+  });
+  _server->on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleReboot);
+  });
+  _server->on("/api/portal/exit", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handlePortalExit);
+  });
+  _server->onNotFound([](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleNotFound);
+  });
 }
 
 // Accumulate a small JSON body into request->_tempObject (freed automatically
@@ -627,6 +688,8 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   doc["mode"] = (_mode == MODE_SETUP) ? "setup" : "lan";
   doc["auth"] = authed;
   doc["needs_setup"] = (_wifi_ssid[0] == 0);
+  doc["needs_password"] = _initial_setup;
+  doc["password_supported"] = node.admin_password[0] != 0;
   doc["name"] = (const char*)node.name;
   char node_id[17];
   for (int i = 0; i < 8; i++) sprintf(&node_id[i * 2], "%02x", _pub_key[i]);
@@ -638,9 +701,11 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
 #ifdef WITH_MQTT_BRIDGE
   doc["runtime_slots"] = has_mqtt ? RUNTIME_MQTT_SLOTS : 0;
   doc["max_slots"] = has_mqtt ? MAX_MQTT_SLOTS : 0;
+  doc["active_slots"] = has_mqtt ? MQTTBridge::getMaxActiveSlots() : 0;
 #else
   doc["runtime_slots"] = 0;
   doc["max_slots"] = 0;
+  doc["active_slots"] = 0;
 #endif
   doc["mqtt"] = has_mqtt;
   doc["capabilities"] = node.capabilities;
@@ -763,6 +828,8 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
                  : obs->mqtt_tx_enabled == 1 ? "on" : "off";
     mqtt["rx"] = (bool)obs->mqtt_rx_enabled;
     mqtt["interval"] = obs->mqtt_status_interval / 60000;
+    mqtt["neighbors"] = (bool)obs->mqtt_neighbors_enabled;
+    mqtt["neighbors_interval"] = obs->mqtt_neighbors_interval / 3600000UL;
     mqtt["timezone"] = (const char*)obs->timezone_string;
     mqtt["timezone_offset"] = obs->timezone_offset;
     mqtt["ntp"] = (const char*)obs->mqtt_ntp_server;
@@ -806,13 +873,42 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
     return;
   }
   bool reboot_after = doc["reboot"] | false;
+  const char* reqid = doc["reqid"] | "";
+  if (!wcIsValidReqId(reqid)) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
   JsonObject set = doc["set"];
 
   WCLock lock(_mux);
-  // A DONE batch stays readable until the next POST claims the slot, so a
-  // client that lost the result response can re-poll instead of failing.
-  if (_batch_state == BATCH_PENDING) {
-    req->send(409, "application/json", "{\"error\":\"busy\"}");
+  const WebConfigBatch::State bstate = toSpecState(_batch_state);
+  const bool reqid_matches = strcmp(reqid, _batch_reqid) == 0;
+  const WebConfigBatch::PostOutcome pre =
+      WebConfigBatch::classifyPost(bstate, reqid_matches, 1, reboot_after);
+  if (pre == WebConfigBatch::PostOutcome::Replay) {
+    StaticJsonDocument<96> ack;
+    ack["state"] = WebConfigBatch::replayStateName(bstate);
+    ack["count"] = _batch_count;
+    ack["reqid"] = (const char*)_batch_reqid;
+    String out;
+    serializeJson(ack, out);
+    req->send(202, "application/json", out);
+    return;
+  }
+  if (pre == WebConfigBatch::PostOutcome::Busy) {
+    StaticJsonDocument<96> busy;
+    busy["error"] = "busy";
+    busy["reqid"] = (const char*)_batch_reqid;
+    String out;
+    serializeJson(busy, out);
+    req->send(409, "application/json", out);
+    return;
+  }
+
+  if (_mode == MODE_SETUP && _initial_setup && !set.containsKey("password")
+      && (reboot_after || set.containsKey("wifi.ssid"))) {
+    req->send(400, "application/json",
+              "{\"error\":\"admin password required for initial setup\"}");
     return;
   }
 
@@ -820,10 +916,22 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   for (JsonPair kv : set) {
     const char* key = kv.key().c_str();
     const char* val = kv.value().as<const char*>();
-    if (!val || !isAllowedSetKey(key, _mqtt_prefs != NULL)) {
-      char err[96];
-      snprintf(err, sizeof(err), "{\"error\":\"bad key\",\"key\":\"%.32s\"}", key);
-      req->send(400, "application/json", err);
+    const bool admin_pwd = wcIsAdminPasswordKey(key);
+    if (!val || (!isAllowedSetKey(key, _mqtt_prefs != NULL) && !admin_pwd)) {
+      char safe_key[33];
+      strncpy(safe_key, key, sizeof(safe_key) - 1);
+      safe_key[sizeof(safe_key) - 1] = 0;
+      StaticJsonDocument<128> err;
+      err["error"] = "bad key";
+      err["key"] = safe_key;
+      String out;
+      serializeJson(err, out);
+      req->send(400, "application/json", out);
+      return;
+    }
+    if (admin_pwd && !wcIsValidAdminPassword(val)) {
+      req->send(400, "application/json",
+                "{\"error\":\"admin password must be 1-15 characters with no line breaks\"}");
       return;
     }
     if (isSecretKey(key) && strcmp(val, SECRET_SENTINEL) == 0) continue;  // unchanged
@@ -834,9 +942,10 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
     BatchEntry& e = _batch[count];
     strncpy(e.key, key, sizeof(e.key) - 1);
     e.key[sizeof(e.key) - 1] = 0;
-    // Build "set <key> <value>", stripping CR/LF so a value can't smuggle in
-    // a second command.
-    int pos = snprintf(e.cmd, sizeof(e.cmd), "set %s ", key);
+    // Build the allowlisted CLI command, stripping CR/LF so a value cannot
+    // smuggle in a second command. Admin password uses the top-level command.
+    int pos = admin_pwd ? snprintf(e.cmd, sizeof(e.cmd), "password ")
+                        : snprintf(e.cmd, sizeof(e.cmd), "set %s ", key);
     for (const char* p = val; *p && pos < (int)sizeof(e.cmd) - 1; p++) {
       if (*p == '\r' || *p == '\n') continue;
       e.cmd[pos++] = *p;
@@ -844,7 +953,8 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
     e.cmd[pos] = 0;
     count++;
   }
-  if (count == 0 && !reboot_after) {
+  if (WebConfigBatch::classifyPost(bstate, reqid_matches, count, reboot_after) ==
+      WebConfigBatch::PostOutcome::NoChanges) {
     req->send(400, "application/json", "{\"error\":\"no changes\"}");
     return;
   }
@@ -852,6 +962,9 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   _batch_next = 0;
   _batch_reboot = reboot_after;
   _batch_reboot_armed = false;
+  _batch_all_ok = true;
+  strncpy(_batch_reqid, reqid, sizeof(_batch_reqid) - 1);
+  _batch_reqid[sizeof(_batch_reqid) - 1] = 0;
   _standalone_wifi_dirty = false;
   _batch_state = BATCH_PENDING;  // tick() picks it up on the loop task
   uint32_t du = millis() + 60000;
@@ -859,33 +972,67 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   _diag_until = du;
   Serial.printf("WC: config POST accepted, %d cmds, reboot=%d\n", count, (int)reboot_after);
 
-  char msg[64];
-  snprintf(msg, sizeof(msg), "{\"state\":\"pending\",\"count\":%d}", count);
-  req->send(202, "application/json", msg);
+  StaticJsonDocument<96> ack;
+  ack["state"] = "pending";
+  ack["count"] = count;
+  ack["reqid"] = (const char*)_batch_reqid;
+  String out;
+  serializeJson(ack, out);
+  req->send(202, "application/json", out);
 }
 
 void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
   if (_mode == MODE_OFF) { Serial.println("WC: result read -> 503 (mode off)"); req->send(503); return; }
   if (!checkAuth(req)) { Serial.println("WC: result read -> 401"); req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
+  if (!req->hasParam("reqid")) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
+  String requested_reqid = req->getParam("reqid")->value();
+  if (!wcIsValidReqId(requested_reqid.c_str())) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
 
   // Entry print BEFORE the lock (racy state read is fine for diag): if this
   // fires but no branch print follows, the handler is blocked on _mux.
   Serial.printf("WC: result entry mode=%d state=%d\n", (int)_mode, (int)_batch_state);
   WCLock lock(_mux);
-  if (_batch_state == BATCH_IDLE) {
+  const WebConfigBatch::ResultOutcome outcome = WebConfigBatch::classifyResult(
+      toSpecState(_batch_state),
+      strcmp(requested_reqid.c_str(), _batch_reqid) == 0);
+  if (outcome == WebConfigBatch::ResultOutcome::Idle) {
     Serial.println("WC: result read -> idle");
-    req->send(200, "application/json", "{\"state\":\"idle\"}");
+    StaticJsonDocument<64> idle;
+    idle["state"] = "idle";
+    idle["reqid"] = requested_reqid;
+    String out;
+    serializeJson(idle, out);
+    req->send(200, "application/json", out);
     return;
   }
-  if (_batch_state == BATCH_PENDING) {
-    req->send(200, "application/json", "{\"state\":\"pending\"}");
+  if (outcome == WebConfigBatch::ResultOutcome::Unknown) {
+    req->send(404, "application/json", "{\"error\":\"unknown request\"}");
     return;
   }
-  Serial.printf("WC: result read -> done (reboot=%d armed=%d)\n",
-                (int)_batch_reboot, (int)_batch_reboot_armed);
+  if (outcome == WebConfigBatch::ResultOutcome::Pending) {
+    StaticJsonDocument<96> pending;
+    pending["state"] = "pending";
+    pending["reqid"] = (const char*)_batch_reqid;
+    String out;
+    serializeJson(pending, out);
+    req->send(200, "application/json", out);
+    return;
+  }
+  Serial.printf("WC: result read -> done (reboot=%d armed=%d all_ok=%d)\n",
+                (int)_batch_reboot, (int)_batch_reboot_armed,
+                (int)_batch_all_ok);
   DynamicJsonDocument doc(6144);
   doc["state"] = "done";
-  doc["reboot"] = _batch_reboot;
+  doc["reboot"] =
+      WebConfigBatch::doneReportsReboot(_batch_reboot, _batch_all_ok);
+  doc["all_ok"] = _batch_all_ok;
+  doc["reqid"] = (const char*)_batch_reqid;
   JsonArray results = doc.createNestedArray("results");
   for (int i = 0; i < _batch_count; i++) {
     JsonObject r = results.createNestedObject();
@@ -893,13 +1040,14 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     r["reply"] = (const char*)_batch[i].reply;
   }
   // State stays DONE (re-readable) until the next POST claims the slot.
-  if (_batch_reboot && !_batch_reboot_armed) {
+  if (WebConfigBatch::shouldArmConfirmReboot(
+          toSpecState(_batch_state), _batch_reboot,
+          _batch_all_ok, _batch_reboot_armed)) {
     // Confirmation delivered - reboot 3 s from now (replaces the 30 s
     // drain-time fallback) so the UI can show its countdown first. Armed
     // once; re-reads must not keep pushing the deadline out.
     _batch_reboot_armed = true;
-    _reboot_at = millis() + 3000;
-    if (_reboot_at == 0) _reboot_at = 1;
+    _reboot_at = WebConfigBatch::confirmRebootAt(millis());
   }
 
   AsyncResponseStream* res = req->beginResponseStream("application/json");
@@ -971,7 +1119,11 @@ void WebConfigServer::handlePresets(AsyncWebServerRequest* req) {
     // What the UI must collect for this preset to connect
     if (p.topic_style == MQTT_TOPIC_MESHRANK) {
       o["needs"] = "token";
-    } else if (mqttPresetNeedsSlotCredentials(&p)) {
+    } else if (mqttPresetNeedsSlotUsername(&p) && mqttPresetNeedsSlotPassword(&p)) {
+      o["needs"] = "userpass";
+    } else if (mqttPresetNeedsSlotPassword(&p)) {
+      o["needs"] = "password";
+    } else if (mqttPresetNeedsSlotUsername(&p)) {
       o["needs"] = "userpass";
     } else {
       o["needs"] = "none";

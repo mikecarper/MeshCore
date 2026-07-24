@@ -46,6 +46,7 @@
 #ifdef WITH_MQTT_BRIDGE
 #include "helpers/bridges/MQTTBridge.h"
 #define WITH_BRIDGE
+#include "helpers/esp32/WebConfigServer.h"   // defines WITH_WEBCONFIG on ESP32
 #endif
 
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
@@ -376,6 +377,44 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint8_t _wc_slot_restart_mask = 0;
 #endif
 
+#if defined(WITH_MQTT_NEIGHBORS)
+  // Neighbor-scope discovery: a snapshot of the neighbor table overlaid with an
+  // in-flight anon-regions query per neighbor, published to the MQTT neighbors
+  // topic once every neighbor has responded or the window times out.
+  enum NeighborDiscoverStatus : uint8_t {
+    ND_PENDING = 1,
+    ND_RESPONDED = 2,
+    ND_TIMEOUT = 3,
+    ND_SEND_FAILED = 4,
+  };
+  struct NeighborDiscoverEntry {
+    uint8_t neighbour_idx;   // index into neighbours[]
+    uint32_t tag;            // anon-regions request tag we're waiting on
+    char scopes[96];         // scope names from the response
+    uint8_t status;          // NeighborDiscoverStatus
+  };
+  NeighborDiscoverEntry neighbor_discover[MAX_NEIGHBOURS];
+  uint8_t neighbor_discover_count;
+  bool neighbor_discover_active;          // scope-query phase in flight
+  bool neighbor_table_refresh_active;     // zero-hop table refresh (stage 1) in flight
+  bool neighbor_table_refresh_periodic;   // that refresh was kicked by the periodic timer
+  unsigned long neighbor_discover_until;  // scope-query timeout deadline
+  unsigned long next_neighbors_publish;   // periodic publish deadline (0 = fire ASAP)
+  char self_scopes_buf[96];
+
+  bool sendAnonRegionsReq(const mesh::Identity& target, uint32_t& tag);
+  bool neighborDiscoverReady(char* reply);
+  bool startNeighborDiscover(char* reply);
+  void loopNeighborDiscover();
+  void finishNeighborDiscover();
+  bool handleNeighborDiscoverResponse(int overlay_idx, const uint8_t* data, size_t len);
+  void getLocalScopes(char* buf, size_t len);
+  // Overlay peer indices are offset by this base so onPeerDataRecv can tell a
+  // discovery response apart from a normal ACL-client index.
+  static const int NEIGHBOR_DISCOVER_PEER_BASE = 1000;
+  static const unsigned long NEIGHBOR_DISCOVER_TIMEOUT_MS = 30000;
+#endif
+
   bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
   int8_t getDirectRetryMinSNRX4() const;
   uint8_t getDirectRetryCodingRateForSNR(int8_t snr_x4) const;
@@ -554,9 +593,6 @@ protected:
   int getInterferenceThreshold() const override {
     return _prefs.interference_threshold;
   }
-  bool getCADEnabled() const override {
-    return _prefs.cad_enabled;
-  }
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
   }
@@ -720,7 +756,7 @@ public:
     AbstractBridge* active_bridge = activeBridge();
     if (!active_bridge || !active_bridge->isRunning()) return;
 #ifdef WITH_WEBCONFIG
-    if (_wc_batch_active) {
+    if (_wc_batch_active) {   // coalesced: applied once in onConfigBatchEnd()
       _wc_restart_pending = true;
       return;
     }
@@ -755,12 +791,52 @@ public:
 #endif
   }
 
+#if defined(WITH_MQTT_BRIDGE)
+  // Broadcast a key OTA milestone (start/fail only) on the configured alert
+  // channel, in addition to the Serial log -- so an operator who triggered
+  // `ota update` via remote management still gets feedback that lands well after
+  // the command's reply window. Respects the `alert on/off` master switch and
+  // rides the configured alert scope (sendChannel -> resolveAlertScope); a no-op
+  // when alerts are off or no channel is set. Deliberately NOT wired to routine
+  // slot connect/disconnect -- those remain in AlertReporter's fault logic.
+  void otaAlert(const char* msg) {
+    auto* obs = _cli.getObserverPrefs();
+    if (obs && obs->alert_enabled) _alerter.sendText(msg);
+  }
+
+  // Best-effort flush of the outbound packet queue before an OTA teardown that
+  // blocks the loop until reboot. The START alert (otaAlert) and the CLI reply
+  // are queued fire-and-forget (delay 0 / CLI_REPLY_DELAY_MILLIS); once
+  // setBridgeState(false) + otaFromManifest() run they spin the loop task until
+  // the chip reboots, so anything still in the send queue at that point is
+  // silently lost -- the observed "OTA update starting never arrives" case on a
+  // busy / duty-limited channel where the packet can't win a TX slot inside the
+  // 2.5 s window. Pump the mesh loop so already-queued packets get their airtime,
+  // bounded by timeout_ms so a jammed or budget-exhausted channel can't stall the
+  // update. Respects duty cycle / CAD: it only drains what is queued, it does not
+  // force a transmit. Returns instantly on a healthy node (queue already empty).
+  void drainOutbound(uint32_t timeout_ms) {
+    unsigned long start = millis();
+    while (hasOutbound() || _mgr->getOutboundCount(millis()) > 0) {
+      if (millis() - start >= timeout_ms) break;
+      mesh::Mesh::loop();  // base dispatcher only -- drives RX + checkSend()/TX
+      delay(1);            // yield to the radio ISR / other FreeRTOS tasks
+    }
+  }
+#endif
+
   // Schedule the pull-OTA flash to run from loop() in ~2.5 s, leaving time for the
   // "Beginning update..." CLI reply (CLI_REPLY_DELAY_MILLIS = 600 ms) to transmit
   // before the flash blocks the loop and reboots.
   bool beginDeferredOtaUpdate() override {
     _ota_update_at = millis() + 2500;
     if (_ota_update_at == 0) _ota_update_at = 1;  // 0 means "none"
+#if defined(WITH_MQTT_BRIDGE)
+    // Broadcast START now, while the loop still runs (the 2.5 s reply window):
+    // the deferred flash blocks the loop and, on success, reboots -- so a start
+    // alert queued at fire time could never transmit. See otaAlert().
+    otaAlert("OTA update starting");
+#endif
     return true;
   }
 
@@ -784,7 +860,7 @@ public:
 #ifdef WITH_MQTT_BRIDGE
     if (!mqtt_bridge || !mqtt_bridge->isRunning()) return false;
     // Marshal onto the MQTT task (Core 0); this runs on the CLI thread (Core 1).
-    return mqtt_bridge->requestForcedNtpSync();
+    return mqtt_bridge->requestForcedNtpSync(0);
 #else
     return false;
 #endif

@@ -227,111 +227,8 @@ struct NodePrefs { // persisted to file
 };
 
 #ifdef WITH_MQTT_BRIDGE
-// Old MQTT preferences layout (pre-slot firmware) - used only for migration detection
-struct OldMQTTPrefs {
-  char mqtt_origin[32];
-  char mqtt_iata[8];
-  uint8_t mqtt_status_enabled;
-  uint8_t mqtt_packets_enabled;
-  uint8_t mqtt_raw_enabled;
-  uint8_t mqtt_tx_enabled;
-  uint32_t mqtt_status_interval;
-  char wifi_ssid[32];
-  char wifi_password[64];
-  uint8_t wifi_power_save;
-  char timezone_string[32];
-  int8_t timezone_offset;
-  char mqtt_server[64];
-  uint16_t mqtt_port;
-  char mqtt_username[32];
-  char mqtt_password[64];
-  uint8_t mqtt_analyzer_us_enabled;
-  uint8_t mqtt_analyzer_eu_enabled;
-  char mqtt_owner_public_key[65];
-  char mqtt_email[64];
-};
-
-// 3-slot MQTTPrefs layout - used for migrating from 3-slot to 6-slot format.
-// Changing array sizes from [3] to [6] shifts all field offsets, so raw file.read()
-// into the new struct would corrupt data. This struct preserves the old binary layout.
-struct ThreeSlotMQTTPrefs {
-  char mqtt_origin[32];
-  char mqtt_iata[8];
-  uint8_t mqtt_status_enabled;
-  uint8_t mqtt_packets_enabled;
-  uint8_t mqtt_raw_enabled;
-  uint8_t mqtt_tx_enabled;
-  uint32_t mqtt_status_interval;
-  char wifi_ssid[32];
-  char wifi_password[64];
-  uint8_t wifi_power_save;
-  char timezone_string[32];
-  int8_t timezone_offset;
-  char mqtt_slot_preset[3][24];
-  char mqtt_slot_host[3][64];
-  uint16_t mqtt_slot_port[3];
-  char mqtt_slot_username[3][32];
-  char mqtt_slot_password[3][64];
-  char mqtt_owner_public_key[65];
-  char mqtt_email[64];
-  uint8_t _legacy_analyzer_us_enabled;
-  uint8_t _legacy_analyzer_eu_enabled;
-  char _legacy_mqtt_server[64];
-  uint16_t _legacy_mqtt_port;
-  char _legacy_mqtt_username[32];
-  char _legacy_mqtt_password[64];
-  char mqtt_slot_token[3][48];
-  char mqtt_slot_topic[3][96];
-};
-
-// Versionless 6-slot layout as shipped on mqtt-bridge-implementation-flex (the
-// several-thousand-device deployed fleet). This is the current MQTTPrefs minus the
-// observer tail, and it still carries the now-removed `_legacy_*` fields mid-struct.
-// loadMQTTPrefs reads a headerless file of this size into this struct, then
-// field-copies (dropping `_legacy_*`) into the compact versioned MQTTPrefs.
-struct Legacy6SlotMQTTPrefs {
-  char mqtt_origin[32];
-  char mqtt_iata[8];
-  uint8_t mqtt_status_enabled;
-  uint8_t mqtt_packets_enabled;
-  uint8_t mqtt_raw_enabled;
-  uint8_t mqtt_tx_enabled;
-  uint32_t mqtt_status_interval;
-  char wifi_ssid[32];
-  char wifi_password[64];
-  uint8_t wifi_power_save;
-  char timezone_string[32];
-  int8_t timezone_offset;
-  char mqtt_slot_preset[MAX_MQTT_SLOTS][24];
-  char mqtt_slot_host[MAX_MQTT_SLOTS][64];
-  uint16_t mqtt_slot_port[MAX_MQTT_SLOTS];
-  char mqtt_slot_username[MAX_MQTT_SLOTS][32];
-  char mqtt_slot_password[MAX_MQTT_SLOTS][64];
-  char mqtt_owner_public_key[65];
-  char mqtt_email[64];
-  uint8_t _legacy_analyzer_us_enabled;
-  uint8_t _legacy_analyzer_eu_enabled;
-  char _legacy_mqtt_server[64];
-  uint16_t _legacy_mqtt_port;
-  char _legacy_mqtt_username[32];
-  char _legacy_mqtt_password[64];
-  char mqtt_slot_token[MAX_MQTT_SLOTS][48];
-  char mqtt_slot_topic[MAX_MQTT_SLOTS][96];
-  char mqtt_slot_audience[MAX_MQTT_SLOTS][64];
-  uint8_t mqtt_rx_enabled;
-  char mqtt_ntp_server[64];
-};
-
-// The legacy layouts above describe files already written to the deployed fleet's
-// flash, so their sizes are frozen forever - loadMQTTPrefs() tells the eras apart
-// by file size and reads each file as a raw struct dump. These asserts pin the
-// layouts on every target toolchain; if one fires, the compiler (or an edit to a
-// legacy struct or MAX_MQTT_SLOTS) has changed a layout and fleet files would be
-// read at wrong offsets.
-static_assert(sizeof(MQTTPrefsHeader) == 8, "versioned /mqtt_prefs header must stay 8 bytes");
-static_assert(sizeof(OldMQTTPrefs) == 472, "frozen pre-slot /mqtt_prefs layout changed");
-static_assert(sizeof(ThreeSlotMQTTPrefs) == 1464, "frozen 3-slot /mqtt_prefs layout changed");
-static_assert(sizeof(Legacy6SlotMQTTPrefs) == 2904, "frozen deployed-fleet /mqtt_prefs layout changed");
+static_assert(MQTT_PREFS_SLOT_COUNT == MAX_MQTT_SLOTS,
+              "MQTT prefs layout and slot count must change together");
 
 // Observer settings captured from the trailing block of an old-format /com_prefs
 // (fork firmware that predates the NodePrefs -> MQTTPrefs split). loadPrefsInt()
@@ -476,7 +373,6 @@ public:
 
   // Browser-based configuration portal. ESP32 infrastructure roles override
   // these; force_ap=true asks for the captive SoftAP even when WiFi is set.
-#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   virtual bool startWebConfig(bool force_ap, char* reply) {
     (void)force_ap;
     (void)reply;
@@ -498,7 +394,6 @@ public:
     (void)reply;
     return false;
   };
-#endif
 
   virtual int getQueueSize() {
     return 0; // no op by default
@@ -553,6 +448,12 @@ public:
   };
 };
 
+#ifdef WITH_MQTT_BRIDGE
+namespace MQTTPrefsAtomicStore {
+class LegacyUpgradeGate;
+}
+#endif
+
 class CommonCLI {
   mesh::RTCClock* _rtc;
   NodePrefs* _prefs;
@@ -565,9 +466,8 @@ class CommonCLI {
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs _mqtt_prefs;
   LegacyObserverTail _legacy_tail;
-  // /mqtt_prefs carries a version newer than this firmware understands (a downgrade).
-  // The in-memory prefs run on defaults and saveMQTTPrefs() must not overwrite the
-  // file, or the first `set` command would destroy the newer config.
+  // /mqtt_prefs is newer, corrupt, or temporarily unreadable. The in-memory prefs
+  // run on defaults and saveMQTTPrefs() must not overwrite the source file.
   bool _mqtt_prefs_hold = false;
 #endif
   bool _com_prefs_needs_upgrade = false;  // old-format /com_prefs detected; rewrite once after load
@@ -576,8 +476,9 @@ class CommonCLI {
   void savePrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 #ifdef WITH_MQTT_BRIDGE
-  void loadMQTTPrefs(FILESYSTEM* fs);
-  void saveMQTTPrefs(FILESYSTEM* fs);
+  bool saveCommonPrefsImageAtomically(FILESYSTEM* fs);
+  void loadMQTTPrefs(FILESYSTEM* fs, MQTTPrefsAtomicStore::LegacyUpgradeGate* legacy_upgrade);
+  bool saveMQTTPrefs(FILESYSTEM* fs);
 #endif
 #if defined(ENABLE_OTA)
   void syncOtaConfigFromPrefs();   // persisted OTA policy + signer allowlist -> running OtaContext
@@ -607,7 +508,7 @@ public:
       : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
 
   void loadPrefs(FILESYSTEM* _fs);
-  void savePrefs(FILESYSTEM* _fs);
+  void savePrefs(FILESYSTEM* _fs, bool save_mqtt = true);
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   mesh::MainBoard* getBoard() { return _board; }
   uint8_t buildAdvertData(uint8_t node_type, uint8_t* app_data);

@@ -180,7 +180,7 @@ public:
     esp_restart();
   }
 
-  bool startOTAUpdate(const char* id, char reply[]) override;
+  bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) override;
   bool stopOTAUpdate(char reply[]) override;
   bool isOTAUpdateRunning() const override { return ota_server != nullptr; }
   bool otaFromManifest(const char* current_ver, bool dry_run, char reply[]) override;

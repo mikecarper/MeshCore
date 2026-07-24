@@ -173,6 +173,15 @@ canvas{width:100%;height:56px;display:block}
         <div class="hint">Maximum legal power varies by region &mdash; check local rules.</div></div>
       <div class="note">Need settings that aren't listed? Choose <b>Keep current settings</b>, finish setup, then fine-tune in the <a href="#" onclick="enterApp();return false">Advanced editor</a>.</div>
     </div>
+    <div class="card password-card">
+      <h2>Admin password</h2>
+      <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">Replaces the factory password. It is used to sign in here later and to administer the node remotely over the mesh.</p>
+      <div class="f"><label>New password</label>
+        <input type="password" data-k="password" maxlength="15" autocomplete="new-password">
+        <div class="hint">Maximum 15 characters.</div></div>
+      <div class="f"><label>Confirm password</label>
+        <input type="password" data-cfm="password" maxlength="15" autocomplete="new-password"></div>
+    </div>
     <div class="row">
       <button class="btn sec" onclick="wzGo(1)">Back</button>
       <button class="btn" style="flex:1" id="wz-radio-next" onclick="wzGo(3)">Next: MQTT</button>
@@ -236,6 +245,14 @@ canvas{width:100%;height:56px;display:block}
         <div class="f"><label>Latitude</label><input type="number" data-k="lat" step="any"></div>
         <div class="f"><label>Longitude</label><input type="number" data-k="lon" step="any"></div>
       </div>
+    </div>
+    <div class="card password-card">
+      <h2>Admin password</h2>
+      <div class="note">Signs in here and authenticates remote admin commands over the mesh. Leave blank to keep the current password. Maximum 15 characters.</div>
+      <div class="f"><label>New password</label>
+        <input type="password" data-k="password" maxlength="15" autocomplete="new-password"></div>
+      <div class="f"><label>Confirm password</label>
+        <input type="password" data-cfm="password" maxlength="15" autocomplete="new-password"></div>
     </div>
     <div class="card">
       <h2>LoRa radio <span class="chip err hide" id="radio-warn">reboot to apply</span></h2>
@@ -313,11 +330,17 @@ canvas{width:100%;height:56px;display:block}
         <span class="tgl"><input type="checkbox" data-k="mqtt.raw"><u></u></span></div>
       <div class="sw"><span><b>Received packets</b><i>Report packets heard over the air</i></span>
         <span class="tgl"><input type="checkbox" data-k="mqtt.rx"><u></u></span></div>
+      <div class="sw"><span><b>Publish neighbors</b><i>Periodic neighbor table and scopes (PSRAM boards only)</i></span>
+        <span class="tgl"><input type="checkbox" data-k="mqtt.neighbors"><u></u></span></div>
       <div class="row" style="margin-top:6px">
         <div class="f"><label>Transmitted packets</label>
           <select data-k="mqtt.tx"><option value="off">Off</option><option value="on">All TX</option><option value="advert">Own adverts only</option></select>
           <div class="hint">Report packets this node sends.</div></div>
         <div class="f"><label>Status interval (min)</label><input type="number" data-k="mqtt.interval" min="1" max="60"></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="f"><label>Neighbors interval (hours)</label><input type="number" data-k="mqtt.neighbors.interval" min="12" max="336">
+          <div class="hint">How often to publish the neighbor table (12-336, default 24).</div></div>
       </div>
     </div>
     <div class="card">
@@ -381,7 +404,7 @@ canvas{width:100%;height:56px;display:block}
 <div class="savebar" id="savebar">
   <b id="save-n"></b><span class="sp"></span>
   <button class="btn sec sm" onclick="revertAll()">Revert</button>
-  <button class="btn sm" id="save-btn" onclick="saveChanges()">Save changes</button>
+  <button class="btn sm" id="save-btn" onclick="appSave()">Save changes</button>
 </div>
 
 <!-- inline scan panel: moved under whichever SSID field requested it -->
@@ -422,7 +445,7 @@ canvas{width:100%;height:56px;display:block}
 <script>
 "use strict";
 var SENTINEL="********";
-var st={mode:"",authed:false,hasMqtt:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+var st={mode:"",authed:false,hasMqtt:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
 
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
@@ -440,10 +463,25 @@ function api(path,opts){
   }
   return fetch(path,opts).then(function(r){
     if(r.status===401){showLogin();throw new Error("auth")}
-    return r.json().then(function(j){if(!r.ok&&r.status!==202)throw new Error(j.error||("HTTP "+r.status));return j});
+    return r.json().then(function(j){
+      if(!r.ok&&r.status!==202){
+        var e=new Error(j.error||("HTTP "+r.status));
+        e.status=r.status;e.reqid=j.reqid;
+        throw e;
+      }
+      return j;
+    });
   });
 }
 function post(path,body){return api(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
+function mkReqId(){
+  var a=new Uint8Array(8);
+  if(window.crypto&&crypto.getRandomValues)crypto.getRandomValues(a);
+  else for(var i=0;i<8;i++)a[i]=Math.floor(Math.random()*256);
+  return Array.prototype.map.call(a,function(b){
+    return(b<16?"0":"")+b.toString(16);
+  }).join("");
+}
 
 function applyFeatures(){
   $$('[data-cap]').forEach(function(el){
@@ -451,6 +489,7 @@ function applyFeatures(){
   });
   var floodCard=$("#radio-flood-card");
   if(floodCard)floodCard.classList.toggle("hide",!(st.caps&(128|256)));
+  $$(".password-card").forEach(function(el){el.classList.toggle("hide",!st.passwordSupported)});
   if(st.hasMqtt)return;
 
   // One HTML asset serves every ESP32 role. The firmware reports whether it
@@ -471,7 +510,7 @@ function applyFeatures(){
 /* ---------- boot ---------- */
 function boot(){
   api("/api/status").then(function(s){
-    st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.caps=s.capabilities||0;st.nslots=s.runtime_slots||0;
+    st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.passwordSupported=!!s.password_supported;st.needsPassword=!!s.needs_password;st.caps=s.capabilities||0;st.nslots=s.active_slots||s.runtime_slots||0;
     $("#h-name").textContent=s.name||"MeshCore";
     $("#h-sub").textContent=s.role+" * "+s.fw+" * "+s.board;
     var b=$("#h-badge");b.classList.remove("hide");
@@ -523,11 +562,14 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"loop.detect":return r.loop_detect;
     case"advert.interval":return String(r.advert_interval);
     case"flood.advert.interval":return String(r.flood_advert_interval);
+    case"password":return"";
     case"wifi.ssid":return w.ssid;case"wifi.pwd":return w.pwd;case"wifi.powersave":return w.powersave;
     case"mqtt.origin":return q.origin;case"mqtt.iata":return q.iata;
     case"mqtt.status":return q.status?"on":"off";case"mqtt.packets":return q.packets?"on":"off";
     case"mqtt.raw":return q.raw?"on":"off";case"mqtt.tx":return q.tx;case"mqtt.rx":return q.rx?"on":"off";
-    case"mqtt.interval":return String(q.interval);case"mqtt.ntp":return q.ntp;
+    case"mqtt.interval":return String(q.interval);
+    case"mqtt.neighbors":return q.neighbors?"on":"off";case"mqtt.neighbors.interval":return String(q.neighbors_interval);
+    case"mqtt.ntp":return q.ntp;
     case"mqtt.owner":return q.owner;case"mqtt.email":return q.email;
     case"timezone":return q.timezone;case"timezone.offset":return String(q.timezone_offset);
     case"snmp":return q.snmp?"on":"off";case"snmp.community":return q.snmp_community;
@@ -555,6 +597,7 @@ function loadConfig(){
       st.orig[k]=v;setEl(el,v);el.classList.remove("dirty");
       var lab=el.closest(".f");var ch=lab&&lab.querySelector(".chip");if(ch)ch.remove();
     });
+    $$("[data-cfm]").forEach(function(el){el.value=""});
     $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg]);el.classList.remove("dirty")});
     st.orig.radio=radioCombo();afHint();
     if(st.hasMqtt)for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
@@ -581,6 +624,8 @@ document.addEventListener("input",function(ev){
     // keep duplicate fields (wizard vs app share keys) in sync
     $$('[data-k="'+el.dataset.k+'"]').forEach(function(o){if(o!==el)setEl(o,elVal(el))});
     markDirty(el.dataset.k,elVal(el),el);
+  }else if(el.dataset.cfm){
+    $$('[data-cfm="'+el.dataset.cfm+'"]').forEach(function(o){if(o!==el)o.value=el.value});
   }else if(el.dataset.rg){
     var v=radioCombo();
     $$("[data-rg]").forEach(function(o){o.classList.toggle("dirty",v!==st.orig.radio)});
@@ -633,7 +678,7 @@ function refreshSlotFields(host,i){
   var def=null;st.presets.forEach(function(p){if(p.name===name)def=p});
   var needs=name==="custom"?"custom":(def?def.needs:"none");
   var showMap={token:needs==="token",username:needs==="userpass"||needs==="custom",
-    password:needs==="userpass"||needs==="custom",server:needs==="custom",
+    password:needs==="userpass"||needs==="password"||needs==="custom",server:needs==="custom",
     port:needs==="custom",topic:needs==="custom",audience:needs==="custom"};
   Object.keys(showMap).forEach(function(f){
     var w=card.querySelector(".sf-"+f);if(w)w.classList.toggle("hide",!showMap[f]);
@@ -669,28 +714,51 @@ function saveChanges(extra,cb){
   // password together instead of reconnecting between the two writes.
   if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap))body.reboot=true;
   if(Object.keys(setmap).length===0&&!body.reboot){toast("Nothing to save");return}
+  var reqid=mkReqId();body.reqid=reqid;
   $("#save-btn").disabled=true;
-  post("/api/config",body).then(function(){pollResult(cb,0,0,true)})
+  post("/api/config",body).then(function(){pollResult(cb,0,0,true,reqid,setmap)})
   .catch(function(e){
     if(e.message==="auth"){$("#save-btn").disabled=false;if(cb)cb(null,false);return}
-    // The POST may have landed even though its response was lost (the save
-    // itself briefly stalls the AP's WiFi) - poll for the result regardless.
-    pollResult(cb,0,0,false);
+    if(e.status===400||e.status===413){
+      $("#save-btn").disabled=false;
+      if(cb)cb(null,false);else toast(e.message||"Save rejected");
+      return;
+    }
+    if(e.status===409){
+      if(e.reqid===reqid){pollResult(cb,0,0,true,reqid,setmap);return}
+      $("#save-btn").disabled=false;
+      if(cb)cb(null,false);else toast("Another change is being applied - retry shortly");
+      return;
+    }
+    // A network failure can lose the response after the POST landed. Poll the
+    // result by request ID so another or stale save cannot be mistaken for it.
+    pollResult(cb,0,0,false,reqid,setmap);
   });
+}
+function appSave(){
+  var wifiChanged=("wifi.ssid" in st.dirty)||("wifi.pwd" in st.dirty);
+  var pwdErr=adminPwdError(wifiChanged);
+  if(pwdErr){
+    $('#tabs button[data-t="radio"]').click();
+    toast(pwdErr);
+    return;
+  }
+  saveChanges();
 }
 // acked: the node returned 202 for the POST, so the batch will be processed.
 // A requested reboot happens only if every command succeeds. This still lets
 // callers distinguish "confirmation lost" from "save never sent".
-function pollResult(cb,errs,idles,acked){
+function pollResult(cb,errs,idles,acked,reqid,submitted){
   errs=errs||0;idles=idles||0;
   function fail(){$("#save-btn").disabled=false;
     if(cb)cb(null,acked);else toast(acked?"Saved, but confirmation was lost - reload to verify":"Save failed - check connection and retry")}
-  api("/api/config/result",{timeout:4000}).then(function(r){
-    if(r.state==="pending"){setTimeout(function(){pollResult(cb,0,idles,true)},400);return}
+  api("/api/config/result?reqid="+encodeURIComponent(reqid),{timeout:4000}).then(function(r){
+    if(r.reqid!==reqid){fail();return}
+    if(r.state==="pending"){setTimeout(function(){pollResult(cb,0,idles,true,reqid,submitted)},400);return}
     if(r.state!=="done"){
       // idle: the POST likely never arrived - but give it a moment in case
       // it's still in flight after a connection blip
-      if(idles<4){setTimeout(function(){pollResult(cb,errs,idles+1,acked)},700);return}
+      if(idles<4){setTimeout(function(){pollResult(cb,errs,idles+1,acked,reqid,submitted)},700);return}
       fail();return;
     }
     $("#save-btn").disabled=false;
@@ -698,9 +766,9 @@ function pollResult(cb,errs,idles,acked){
     (r.results||[]).forEach(function(it){
       var ok=/^OK/i.test(it.reply);
       if(!ok)fails++;
+      if(!cb&&ok&&submitted&&(it.key in submitted)&&st.dirty[it.key]===submitted[it.key])delete st.dirty[it.key];
       if(it.key==="radio"){
         if(/reboot/i.test(it.reply))radioReboot=true;
-        $$("#v-app [data-rg]").forEach(function(o){o.classList.remove("dirty")});
       }
       var el=document.querySelector('#v-app [data-k="'+it.key+'"]');
       if(el)chipFor(el,ok,ok?"OK":it.reply.replace(/^Err(or)?[:,]?\s*/i,""));
@@ -713,23 +781,38 @@ function pollResult(cb,errs,idles,acked){
       showReboot("The node is restarting with the saved WiFi settings. Reconnect to that network and open the node at its router-assigned address.",false,"Settings saved [OK] - rebooting");
       return;
     }else toast("Saved [OK]");
-    st.dirty={};
     loadConfigSoft();
   }).catch(function(e){
     if(e.message==="auth"){fail();return}
+    if(e.status===400||e.status===404){fail();return}
     // Transient network error: the save itself can knock the phone off the
     // AP for a moment (flash writes stall WiFi). Keep polling - the device
     // holds the result until we manage to read it.
-    if(errs<20){setTimeout(function(){pollResult(cb,errs+1,idles,acked)},700);return}
+    if(errs<20){setTimeout(function(){pollResult(cb,errs+1,idles,acked,reqid,submitted)},700);return}
     fail();
   });
 }
 function loadConfigSoft(){ // re-sync origin values without clobbering result chips
   api("/api/config").then(function(c){
     st.cfg=c;
-    $$("[data-k]").forEach(function(el){var k=el.dataset.k;st.orig[k]=cfgVal(k);setEl(el,st.orig[k]);el.classList.remove("dirty")});
-    $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg])});
-    st.orig.radio=radioCombo();
+    $$("[data-k]").forEach(function(el){
+      var k=el.dataset.k,stored=cfgVal(k);
+      st.orig[k]=stored;
+      if((k in st.dirty)&&st.dirty[k]!==stored){setEl(el,st.dirty[k]);el.classList.add("dirty")}
+      else{delete st.dirty[k];setEl(el,stored);el.classList.remove("dirty")}
+    });
+    if(!("password" in st.dirty))$$("[data-cfm]").forEach(function(el){el.value=""});
+    var storedRadio=[c.radio.freq,c.radio.bw,c.radio.sf,c.radio.cr].join(",");
+    st.orig.radio=storedRadio;
+    var keepRadio=("radio" in st.dirty)&&!comboEq(st.dirty.radio,storedRadio);
+    if(!keepRadio)delete st.dirty.radio;
+    var radioParts=(keepRadio?st.dirty.radio:storedRadio).split(",");
+    $$("[data-rg]").forEach(function(el){
+      var idx={freq:0,bw:1,sf:2,cr:3}[el.dataset.rg];
+      el.value=radioParts[idx];el.classList.toggle("dirty",keepRadio);
+    });
+    if(st.hasMqtt)for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
+    afHint();
     updateSaveBar();
   }).catch(function(){});
 }
@@ -944,6 +1027,14 @@ function popOut(){
     $("#exit-ov").classList.add("show");
   }).catch(function(){toast("Couldn't reach the node - try again")});
 }
+function eff(k){return (k in st.dirty)?st.dirty[k]:(st.orig[k]||"")}
+function adminPwdError(finishing){
+  if(!st.passwordSupported)return"";
+  var p=eff("password"),c=$('[data-cfm="password"]').value;
+  if(finishing&&st.needsPassword&&!p)return"Set an admin password";
+  if((p||c)&&p!==c)return"Admin passwords do not match";
+  return"";
+}
 function buildReview(){
   var rows=[],d=st.dirty;
   function row(l,v){rows.push('<div class="kv"><i>'+l+"</i><b>"+esc(v)+"</b></div>")}
@@ -954,6 +1045,7 @@ function buildReview(){
   RADIO_PRESETS.forEach(function(p){if(comboEq(presetCombo(p),rc))rp=p});
   row("Radio",(rp?rp.t+" - ":"")+rc.split(",").join(" / ")+(d.radio?"":" (unchanged)"));
   if(d.tx)row("TX power",d.tx+" dBm");
+  if(st.passwordSupported&&(st.needsPassword||eff("password")))row("Admin password",eff("password")?"set":"(not set)");
   if(st.hasMqtt){
     row("Observer name",d["mqtt.origin"]||st.orig["mqtt.origin"]||"(not set)");
     row("IATA",(d["mqtt.iata"]||st.orig["mqtt.iata"]||"(not set)").toUpperCase());
@@ -966,13 +1058,15 @@ function buildReview(){
       if(p&&p!=="none")row("Slot "+i,p);
     }
   }
-  var extra=Object.keys(d).filter(function(k){return!/^(wifi\.|name$|radio$|tx$|mqtt\.origin|mqtt\.iata|mqtt\.owner|mqtt\.email|mqtt[1-9]\.)/.test(k)}).length;
+  var extra=Object.keys(d).filter(function(k){return!/^(wifi\.|password$|name$|radio$|tx$|mqtt\.origin|mqtt\.iata|mqtt\.owner|mqtt\.email|mqtt[1-9]\.)/.test(k)}).length;
   if(extra)row("Other changes",extra+" setting(s)");
   $("#wz-review").innerHTML=rows.join("");
 }
 function wizardSave(){
   if(!st.dirty["wifi.ssid"]&&!st.orig["wifi.ssid"]){$("#wz-err").textContent="Please set a WiFi network (step 1).";return}
   if($("#wz-rp").value===""){$("#wz-err").textContent="Please choose a radio preset (step 2) - nodes ship with non-US defaults.";return}
+  var pwdErr=adminPwdError(true);
+  if(pwdErr){$("#wz-err").textContent=pwdErr+" (step 2).";return}
   if(st.hasMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
     $("#wz-err").textContent="Please enter a 3-letter IATA region code (MQTT step).";return}
   $("#wz-err").textContent="";
@@ -983,7 +1077,7 @@ function wizardSave(){
       if(acked){
         // The node accepted the batch (202), but without its result we cannot
         // know whether every field passed CLI validation.
-        showReboot("The node accepted the settings for processing, but the confirmation reply was lost. If every setting passed, its screen shows "Config saved!" and it reboots within 30 seconds. If it stays in setup mode, reconnect to MeshCore-Setup and correct the rejected field.",
+        showReboot("The node accepted the settings for processing, but the confirmation reply was lost. If every setting passed, its screen shows \"Config saved!\" and it reboots within 30 seconds. If it stays in setup mode, reconnect to MeshCore-Setup and correct the rejected field.",
           false,"Settings sent - verify the node");
         st.dirty={};
         return;
@@ -996,8 +1090,8 @@ function wizardSave(){
       $("#wz-err").textContent=fails.map(function(x){return x.key+": "+x.reply}).join(" * ");
       return;
     }
-    showReboot("The node is joining ""+(st.dirty["wifi.ssid"]||st.orig["wifi.ssid"])
-      +"". Reconnect your phone or laptop to your normal WiFi. Find the node's IP on your router, or run "get webui" over its CLI to see the address.",
+    showReboot("The node is joining '"+eff("wifi.ssid")
+      +"'. Reconnect your phone or laptop to your normal WiFi. Find the node's IP on your router, or run 'get webui' over its CLI to see the address.",
       false,"Settings saved [OK] - rebooting in a moment");
     st.dirty={};
   });

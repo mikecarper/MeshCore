@@ -100,6 +100,11 @@ static inline void applyMQTTDefaults(MQTTPrefs* prefs) {
   prefs->alert_wifi_minutes = 30;
   prefs->alert_mqtt_minutes = 240;
   prefs->alert_min_interval_min = 60;
+
+  // Neighbors publishing defaults off; a defaulted tail is a valid 24h interval
+  // (not 0) so an in-lineage upgrade from a pre-neighbors payload is sane.
+  prefs->mqtt_neighbors_enabled = 0;
+  prefs->mqtt_neighbors_interval = MQTT_NEIGHBORS_DEFAULT_INTERVAL_MS;
 }
 
 #endif // WITH_MQTT_BRIDGE

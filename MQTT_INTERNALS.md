@@ -57,6 +57,37 @@ scheduled time are expired at dequeue, so under throttle the queue holds only fr
 traffic and admin responses reach the trickle of TX budget. Non-observer builds keep
 the upstream pool behavior.
 
+### Neighbors publication path (PSRAM only)
+
+Periodic neighbors publishing is gated on `WITH_MQTT_NEIGHBORS`
+(`defined(BOARD_HAS_PSRAM) && defined(MAX_NEIGHBOURS) && MAX_NEIGHBOURS > 0`,
+defined in `MQTTBridge.h`). It spans two subsystems and two cores:
+
+- **Mesh side (Core 1), `MyMesh`**: the `loop()` runs a two-stage refresh driven by
+  `mqtt_neighbors_interval`. Stage 1 sends a zero-hop `sendNodeDiscoverReq()` and waits
+  out its 60 s collection window to refresh `neighbours[]`. Stage 2
+  (`startNeighborDiscover`) fires one anon-regions scope query per heard neighbor,
+  overlaying them onto the peer-index space at `NEIGHBOR_DISCOVER_PEER_BASE` so their
+  `PAYLOAD_TYPE_RESPONSE` packets decrypt via `searchPeersByHash`/`getPeerSharedSecret`/
+  `onPeerDataRecv` even when the neighbor is not an ACL client. After all responses land
+  or a 30 s window expires, `finishNeighborDiscover()` builds the JSON with
+  `MQTTMessageBuilder::buildNeighborsMessage` into a transient PSRAM buffer and hands it
+  to the bridge.
+- **Bridge side, handoff**: `requestPublishNeighbors(json, len)` (Core 1) memcpys into a
+  persistent ~10 KB PSRAM buffer (`NEIGHBORS_JSON_BUFFER_SIZE`) and sets
+  `_neighbors_publish_pending` with a release store; the MQTT task (`mqttTaskLoop`, Core 0)
+  consumes it with an acquire load, calls `publishNeighbors()`, and clears the flag. A
+  second snapshot is dropped while one is in flight. `publishNeighbors()` sends QoS 1,
+  retain = `preset->allow_retain` (custom slots non-retained). MeshRank slots are skipped
+  (the topic router rejects non-packets for MeshRank).
+- **Status reporting**: `MyMesh` reports the schedule each loop via
+  `setNeighborsSchedule(phase, secs)`; `formatMqttStatusReply` renders it as the trailing
+  `nbr: <when>/<last>` field in `get mqtt.status` while the feature is enabled.
+
+The JSON builder lives in the pure, host-tested `MQTTPayloadBuilder`
+(`test/test_mqtt_payload_builder`); the topic type in `MQTTTopicRouter`
+(`test/test_mqtt_topic_router`). The mesh<->bridge orchestration above is on-target only.
+
 ### `/mqtt_prefs` file format
 
 `/mqtt_prefs` is written with an 8-byte `MQTTPrefsHeader` (`magic`, `version`,
@@ -81,7 +112,8 @@ default; a newer, longer one is truncated harmlessly.
 - **`/mqtt_prefs`** - if the file has the version header it is read directly. Otherwise
   it is a legacy headerless file and its layout is detected by size: pre-slot
   (`OldMQTTPrefs`), 3-slot (`ThreeSlotMQTTPrefs`), or the 6-slot layout shipped on
-  `mqtt-bridge-implementation-flex` (`Legacy6SlotMQTTPrefs`). Each is field-copied into
+  `observer-firmware` back when it was named `mqtt-bridge-implementation-flex`
+  (`Legacy6SlotMQTTPrefs`). Each is field-copied into
   the current compact `MQTTPrefs` and re-saved with the version header - which also
   drops the vestigial `_legacy_*` fields the flex layout carried mid-struct. This is a
   one-time rewrite; every deployed device performs it on its first boot of versioned

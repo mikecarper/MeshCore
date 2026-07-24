@@ -57,5 +57,5 @@ public:
 
   void reboot() override { rp2040.reboot(); }
 
-  bool startOTAUpdate(const char *id, char reply[]) override;
+  bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
 };

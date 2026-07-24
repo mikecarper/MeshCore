@@ -218,6 +218,12 @@ void AlertReporter::onLoop(unsigned long now_ms) {
   // already enforces this on set, but a stale prefs file or future field
   // tweak shouldn't be able to drag the floor below 1 hour and let a
   // flapping link spam the mesh.
+  //
+  // The rate limiter only applies between two real sends: fired_at_ms == 0
+  // means "never fired since boot/config change", and treating it as a send
+  // at millis()==0 would suppress every first alert until uptime reaches
+  // min_interval (observed as a 30-minute alert.mqtt threshold not reporting
+  // until 60 minutes after a reboot).
   uint16_t cfg_min = _obs->alert_min_interval_min;
   if (cfg_min < 60) cfg_min = 60;
   unsigned long min_interval_ms = (unsigned long)cfg_min * 60000UL;

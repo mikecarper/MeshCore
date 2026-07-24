@@ -191,6 +191,15 @@ void UITask::loop() {
   }
 #endif
 
+#ifdef WITH_WEBCONFIG
+  // While the setup portal is up there's no user button to wake the screen
+  // reliably - keep it on so the join instructions stay visible.
+  if (WebConfigServer::getSetupInfo(NULL, 0, NULL, 0)) {
+    if (!_display->isOn()) _display->turnOn();
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+  }
+#endif
+
   if (_display->isOn()) {
     if (millis() >= _next_refresh) {
       _display->startFrame();

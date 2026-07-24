@@ -211,12 +211,12 @@ public:
 
 static LightweightOTAServer lightweight_ota_server;
 
-bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   (void)id;
   inhibit_sleep = true;
 
   IPAddress ip;
-  if (WiFi.status() == WL_CONNECTED) {
+  if (!force_ap && WiFi.status() == WL_CONNECTED) {
     ip = WiFi.localIP();
   } else {
     if (!lightweight_ota_started_ap) {
@@ -273,7 +273,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
 
 #include <SPIFFS.h>
 
-bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   inhibit_sleep = true;   // prevent sleep during OTA
 
   if (ota_server != nullptr) {   // already running (idempotent restart)
@@ -285,8 +285,11 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
   // If the device is already on a WiFi network (e.g. an observer joined in STA
   // mode), serve ElegantOTA on the station IP so it's reachable from the LAN
   // without joining a separate AP. Otherwise raise the MeshCore-OTA SoftAP.
+  // force_ap ("start ota ap") always raises the SoftAP, so the OTA UI stays
+  // reachable even when the joined network applies client isolation and the
+  // station IP can't be reached.
   IPAddress ip;
-  if (WiFi.status() == WL_CONNECTED) {
+  if (!force_ap && WiFi.status() == WL_CONNECTED) {
     ip = WiFi.localIP();
   } else {
     const IPAddress ap_ip(192, 168, 4, 1);
@@ -343,7 +346,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
 }
 
 #else
-bool ESP32Board::startOTAUpdate(const char* id, char reply[]) {
+bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   return false; // not supported
 }
 

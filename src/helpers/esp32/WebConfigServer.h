@@ -26,6 +26,7 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <helpers/WebConfigBatch.h>
 
 class AsyncWebServer;
 class AsyncWebServerRequest;
@@ -140,7 +141,7 @@ public:
   bool startSetupMode(char reply[]);   // open SoftAP + DNS captive portal
   bool startLanMode(char reply[]);     // bind to existing STA connection
   bool startAutoMode(char reply[]);    // use saved WiFi, or setup AP when absent
-  void requestStop();                  // stop listening now, free after grace period
+  void requestStop();                  // stop listening and detach this session
   void tick(uint32_t now);             // call every loop iteration
 
   Mode mode() const { return _mode; }
@@ -148,11 +149,19 @@ public:
   bool isStopping() const { return _stopping; }
 
 private:
-  static const int MAX_BATCH = 24;
+  static const int MAX_BATCH = WebConfigBatch::kMaxBatch;
   static const size_t MAX_BODY = 4096;
+  static const uint32_t STOP_WARN_MS = WebConfigBatch::kStopWarnMs;
   enum BatchState : uint8_t { BATCH_IDLE = 0, BATCH_PENDING, BATCH_DONE };
+  static WebConfigBatch::State toSpecState(BatchState state) {
+    switch (state) {
+      case BATCH_PENDING: return WebConfigBatch::State::Pending;
+      case BATCH_DONE: return WebConfigBatch::State::Done;
+      default: return WebConfigBatch::State::Idle;
+    }
+  }
   struct BatchEntry {
-    char key[24];     // allowlisted `set` key (echoed back to the UI)
+    char key[24];     // allowlisted config key (echoed back to the UI)
     char cmd[160];    // full CLI command (may contain secrets - never echoed)
     char reply[160];
   };
@@ -171,14 +180,18 @@ private:
   Mode _mode = MODE_OFF;
   bool _stopping = false;
   bool _was_setup_ap = false;
+  bool _initial_setup = false;
   uint32_t _connect_deadline = 0;
   char _wifi_ssid[32] = {0};
   char _wifi_password[64] = {0};
   uint8_t _wifi_power_save = 1;
   char _ap_ssid[33] = {0};
 
-  // Most-recently-created instance, for the display's getSetupInfo() poll.
+  // Currently attached session, also used by the display's setup-info poll.
   static WebConfigServer* _active;
+  // Process-lifetime listener and route table. Async requests retain their
+  // server pointer until disconnect, so this object is not deleted on stop.
+  static AsyncWebServer* _host;
 
   // Command batch: filled by async_tcp under _mux, drained by tick().
   volatile BatchState _batch_state = BATCH_IDLE;
@@ -187,6 +200,8 @@ private:
   uint32_t _batch_last_cmd = 0;
   bool _batch_reboot = false;
   bool _batch_reboot_armed = false;
+  bool _batch_all_ok = true;
+  char _batch_reqid[24] = {0};
   bool _standalone_wifi_dirty = false;
   BatchEntry _batch[MAX_BATCH];
 
@@ -207,14 +222,21 @@ private:
   uint32_t _diag_last = 0;
 
   volatile uint32_t _last_activity = 0;
-  uint32_t _reboot_at = 0;      // 0 = none scheduled
-  uint32_t _delete_at = 0;      // deferred teardown deadline
+  uint32_t _reboot_at = 0;         // 0 = none scheduled
+  uint32_t _stop_warn_at = 0;
+  bool _stop_warned = false;
+  uint32_t _handler_refs = 0;
   volatile uint32_t _stats_wanted_until = 0;
   uint32_t _stats_built_at = 0;
   char _stats_json[1024] = {0};
 
   void createServer();
   void registerRoutes();
+  typedef void (WebConfigServer::*RequestHandler)(AsyncWebServerRequest*);
+  static void dispatchRequest(AsyncWebServerRequest* req, RequestHandler handler);
+  void attachRoutes();
+  void detachRoutes();
+  uint32_t handlerRefCount() const;
   void drainBatch(uint32_t now);
   void finalizeTeardown();
   bool checkAuth(AsyncWebServerRequest* req);

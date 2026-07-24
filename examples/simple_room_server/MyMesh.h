@@ -28,6 +28,11 @@
 #ifdef WITH_MQTT_BRIDGE
 #include "helpers/bridges/MQTTBridge.h"
 #define WITH_BRIDGE
+#include "helpers/esp32/WebConfigServer.h"   // defines WITH_WEBCONFIG on ESP32
+#endif
+
+#ifdef WITH_SNMP
+#include "helpers/SNMPAgent.h"
 #endif
 
 
@@ -99,6 +104,13 @@ struct PostInfo {
   char text[MAX_POST_TEXT_LEN+1];
 };
 
+struct NeighbourInfo {
+  mesh::Identity id;
+  uint32_t advert_timestamp;
+  uint32_t heard_timestamp;
+  int8_t snr; // multiplied by 4, user should divide to get float value
+};
+
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #ifdef WITH_WEBCONFIG
     , public WebConfigServer::Callbacks
@@ -127,6 +139,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   RegionEntry* recv_pkt_region;
   TransportKey default_scope;
   unsigned long set_radio_at, revert_radio_at;
+  unsigned long _ota_update_at = 0;  // deferred `ota update` fire time (0 = none scheduled)
   float pending_freq;
   float pending_bw;
   uint8_t pending_sf;
@@ -137,8 +150,48 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long radio_apply_retry_at;
   uint8_t radio_apply_failures;
   int  matching_peer_indexes[MAX_CLIENTS];
+#if defined(WITH_MQTT_NEIGHBORS)
+  NeighbourInfo neighbours[MAX_NEIGHBOURS];
+  uint32_t pending_discover_tag;
+  unsigned long pending_discover_until;
+  enum NeighborDiscoverStatus : uint8_t {
+    ND_PENDING = 1,
+    ND_RESPONDED = 2,
+    ND_TIMEOUT = 3,
+    ND_SEND_FAILED = 4,
+  };
+  struct NeighborDiscoverEntry {
+    uint8_t neighbour_idx;
+    uint32_t tag;
+    char scopes[96];
+    uint8_t status;
+  };
+  NeighborDiscoverEntry neighbor_discover[MAX_NEIGHBOURS];
+  uint8_t neighbor_discover_count;
+  bool neighbor_discover_active;
+  bool neighbor_table_refresh_active;
+  bool neighbor_table_refresh_periodic;
+  unsigned long neighbor_discover_until;
+  unsigned long next_neighbors_publish;
+  char self_scopes_buf[96];
+
+  void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
+  void sendNodeDiscoverReq();
+  bool sendAnonRegionsReq(const mesh::Identity& target, uint32_t& tag);
+  bool neighborDiscoverReady(char* reply);
+  bool startNeighborDiscover(char* reply);
+  void loopNeighborDiscover();
+  void finishNeighborDiscover();
+  bool handleNeighborDiscoverResponse(int overlay_idx, const uint8_t* data, size_t len);
+  void getLocalScopes(char* buf, size_t len);
+  static const int NEIGHBOR_DISCOVER_PEER_BASE = 1000;
+  static const unsigned long NEIGHBOR_DISCOVER_TIMEOUT_MS = 30000;
+#endif
 #ifdef WITH_MQTT_BRIDGE
   MQTTBridge* bridge;
+#endif
+#ifdef WITH_SNMP
+  MeshSNMPAgent _snmp_agent;
 #endif
 #ifdef WITH_MQTT_BRIDGE
   AlertReporter _alerter;
@@ -193,9 +246,6 @@ protected:
   int getInterferenceThreshold() const override {
     return _prefs.interference_threshold;
   }
-  bool getCADEnabled() const override {
-    return _prefs.cad_enabled;
-  }
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
   }
@@ -215,6 +265,10 @@ protected:
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
+#if defined(WITH_MQTT_NEIGHBORS)
+  void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) override;
+  void onControlDataRecv(mesh::Packet* packet) override;
+#endif
 
 #if ENV_INCLUDE_GPS == 1
   void applyGpsPrefs() {
@@ -269,11 +323,11 @@ public:
   void getRxPsWatchdogCounts(uint32_t* soft, uint32_t* hard) override;
   bool setRxBoostedGain(bool enable) override;
 
-  void formatNeighborsReply(char *reply) override {
-    strcpy(reply, "not supported");
-  }
+  void formatNeighborsReply(char *reply) override;
+  void removeNeighbor(const uint8_t* pubkey, int key_len) override;
   void formatStatsReply(char *reply) override;
   void formatRadioStatsReply(char *reply) override;
+  void formatRadioDiagReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
   void startRegionsLoad() override;
   bool saveRegions() override;
@@ -317,6 +371,13 @@ public:
       bridge->setBuildDate(getBuildDate());
 #ifdef WITH_MQTT_BRIDGE
       bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+#ifdef WITH_SNMP
+      if (_cli.getObserverPrefs()->snmp_enabled) {
+        _snmp_agent.setNodeName(_prefs.node_name);
+        _snmp_agent.setFirmwareVersion(getFirmwareVer());
+        bridge->setSNMPAgent(&_snmp_agent);
+      }
+#endif
 #endif
       bridge->begin();
 #ifdef WITH_MQTT_BRIDGE
@@ -335,7 +396,7 @@ public:
   void restartBridge() override {
     if (!bridge || !bridge->isRunning()) return;
 #ifdef WITH_WEBCONFIG
-    if (_wc_batch_active) {
+    if (_wc_batch_active) {   // coalesced: applied once in onConfigBatchEnd()
       _wc_restart_pending = true;
       return;
     }
@@ -369,6 +430,29 @@ public:
 #endif
   }
 
+#if defined(WITH_MQTT_BRIDGE)
+  // Pump already-queued mesh traffic before OTA blocks the loop and reboots.
+  // This is deliberately bounded: a jammed or duty-limited channel must not
+  // prevent an update, and Mesh::loop() continues to respect TX constraints.
+  void drainOutbound(uint32_t timeout_ms) {
+    unsigned long start = millis();
+    while (hasOutbound() || _mgr->getOutboundCount(millis()) > 0) {
+      if (millis() - start >= timeout_ms) break;
+      mesh::Mesh::loop();
+      delay(1);
+    }
+  }
+#endif
+
+  // Schedule the pull-OTA flash to run from loop() in ~2.5 s, leaving time for the
+  // "Beginning update..." CLI reply (CLI_REPLY_DELAY_MILLIS = 600 ms) to transmit
+  // before the flash blocks the loop and reboots.
+  bool beginDeferredOtaUpdate() override {
+    _ota_update_at = millis() + 2500;
+    if (_ota_update_at == 0) _ota_update_at = 1;  // 0 means "none"
+    return true;
+  }
+
   int getQueueSize() override {
     return bridge ? bridge->getQueueSize() : 0;
   }
@@ -379,8 +463,11 @@ public:
 
   bool syncMqttNtp() override {
     if (!bridge || !bridge->isRunning()) return false;
-    // Marshal onto the MQTT task (Core 0); this runs on the CLI thread (Core 1).
-    return bridge->requestForcedNtpSync();
+    // Queue the sync onto the MQTT task (Core 0) without blocking: this runs on
+    // the Arduino loop task (serial CLI and the web config batch both drain
+    // here), and blocking up to 30 s would stall mesh/radio forwarding. Returns
+    // true once queued; verify with `get mqtt.ntp.diag`.
+    return bridge->requestForcedNtpSync(0);
   }
 
   bool runMqttNtpDiag(char* reply, size_t reply_size, bool verbose) override {

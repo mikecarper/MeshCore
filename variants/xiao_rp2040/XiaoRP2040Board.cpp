@@ -25,6 +25,9 @@ void XiaoRP2040Board::begin() {
   delay(10); // give sx1262 some time to power up
 }
 
-bool XiaoRP2040Board::startOTAUpdate(const char *id, char reply[]) {
+bool XiaoRP2040Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
+  (void)id;
+  (void)reply;
+  (void)force_ap;
   return false;
 }

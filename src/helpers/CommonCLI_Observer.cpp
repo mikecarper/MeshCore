@@ -3,15 +3,18 @@
 // only two small delegation hooks. These are CommonCLI member functions, so they
 // retain full access to _prefs/_callbacks/_board/savePrefs() with no re-plumbing.
 //
-// Behavior is intentionally identical to the previously-inlined branches: MQTT
-// commands keep their WITH_MQTT_BRIDGE guard; alert/SNMP commands remain unguarded.
-// Each handler returns true if it recognized the command, false to fall through to
-// the base get/set parser in CommonCLI.cpp.
+// Behavior is intentionally identical to the previously-inlined branches. NOTE:
+// the entire body of each set/get handler here is compiled under WITH_MQTT_BRIDGE
+// (see the #ifdef at the top of each), so on an observer build without the bridge
+// the WiFi/timezone/alert/SNMP commands compile out too -- they are not guarded
+// independently of the MQTT commands. Each handler returns true if it recognized
+// the command, false to fall through to the base get/set parser in CommonCLI.cpp.
 
 #include <Arduino.h>
 #include "CommonCLI.h"
 #include "TxtDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch[Hex]()
+#include "MQTTObserverValidation.h"  // pure input validators (host-testable)
 #include <Utils.h>
 #ifdef ESP_PLATFORM
 #include <WiFi.h>
@@ -20,6 +23,7 @@
 #endif
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
+#include "MQTTConnectionPolicy.h"  // classifySlotActivation() -- "will this slot connect here?"
 #include "MQTTDefaults.h"
 #endif
 
@@ -92,19 +96,16 @@ static int getMQTTPresetNameCount() {
   return MQTT_PRESET_COUNT + 2; // built-ins + custom + none
 }
 
-static bool isValidNtpHostname(const char* host) {
-  if (!host || host[0] == '\0') return false;
-  size_t len = strlen(host);
-  if (len > 63) return false;
-  if (host[0] == '.' || host[len - 1] == '.') return false;
-  for (size_t i = 0; i < len; i++) {
-    char c = host[i];
-    if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-          (c >= '0' && c <= '9') || c == '.' || c == '-')) {
-      return false;
-    }
+// Reject a value that wouldn't fit its destination MQTTPrefs buffer (which must
+// hold the string plus a NUL) so an over-long CLI/web submission fails loudly
+// instead of being silently truncated. Fills reply and returns true when too
+// long. reply is the caller's 160-byte command buffer.
+static bool valueTooLong(const char* val, size_t bufsize, char* reply, const char* label) {
+  if (!mqttValueFits(val, bufsize)) {
+    snprintf(reply, 160, "Error: %s too long (max %u chars)", label, (unsigned)(bufsize - 1));
+    return true;
   }
-  return true;
+  return false;
 }
 
 static const char* getMQTTPresetNameByIndex(int index) {
@@ -163,6 +164,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
 #ifdef WITH_MQTT_BRIDGE
   bool handled = true;
   if (memcmp(config, "snmp.community ", 15) == 0) {
+    if (valueTooLong(&config[15], sizeof(_mqtt_prefs.snmp_community), reply, "snmp.community")) return true;
     StrHelper::strncpy(_mqtt_prefs.snmp_community, &config[15], sizeof(_mqtt_prefs.snmp_community));
     savePrefs();
     strcpy(reply, "OK - restart to apply");
@@ -200,18 +202,36 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     savePrefs();
     strcpy(reply, "OK");
   } else if (memcmp(config, "mqtt.origin ", 12) == 0) {
+    if (valueTooLong(&config[12], sizeof(_mqtt_prefs.mqtt_origin), reply, "origin")) return true;
     StrHelper::strncpy(_mqtt_prefs.mqtt_origin, &config[12], sizeof(_mqtt_prefs.mqtt_origin));
     StrHelper::stripSurroundingQuotes(_mqtt_prefs.mqtt_origin, sizeof(_mqtt_prefs.mqtt_origin));
     savePrefs();
     strcpy(reply, "OK");
   } else if (memcmp(config, "mqtt.iata ", 10) == 0) {
-    StrHelper::strncpy(_mqtt_prefs.mqtt_iata, &config[10], sizeof(_mqtt_prefs.mqtt_iata));
-    for (int i = 0; _mqtt_prefs.mqtt_iata[i]; i++) {
-      _mqtt_prefs.mqtt_iata[i] = toupper(_mqtt_prefs.mqtt_iata[i]);
+    const char* iata = &config[10];
+    size_t iata_len = strlen(iata);
+    if (iata_len == 0) {
+      // Empty clears the region code (meshcore-topic publishing stays disabled
+      // until one is set). This keeps the pre-existing "clear IATA" capability.
+      _mqtt_prefs.mqtt_iata[0] = '\0';
+      savePrefs();
+      _callbacks->restartBridge();
+      strcpy(reply, "OK - IATA cleared");
+    } else {
+      // A region code goes straight into MQTT topic paths, so require exactly
+      // three alphanumeric characters (real IATA codes are 3 letters, e.g. DEN).
+      if (!mqttIataValid(iata)) {
+        strcpy(reply, "Error: IATA code must be exactly 3 letters/digits (e.g. DEN)");
+      } else {
+        StrHelper::strncpy(_mqtt_prefs.mqtt_iata, iata, sizeof(_mqtt_prefs.mqtt_iata));
+        for (int i = 0; _mqtt_prefs.mqtt_iata[i]; i++) {
+          _mqtt_prefs.mqtt_iata[i] = toupper(_mqtt_prefs.mqtt_iata[i]);
+        }
+        savePrefs();
+        _callbacks->restartBridge();
+        strcpy(reply, "OK");
+      }
     }
-    savePrefs();
-    _callbacks->restartBridge();
-    strcpy(reply, "OK");
   } else if (memcmp(config, "mqtt.status ", 12) == 0) {
     _mqtt_prefs.mqtt_status_enabled = memcmp(&config[12], "on", 2) == 0;
     savePrefs();
@@ -246,11 +266,35 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     } else {
       strcpy(reply, "Error: interval must be between 1-60 minutes");
     }
+#if defined(WITH_MQTT_NEIGHBORS)
+  } else if (memcmp(config, "mqtt.neighbors.interval ", 24) == 0) {
+    // Hours in, milliseconds stored. The 12-336h band keeps the interval under
+    // INT32_MAX so the mesh's wrap-safe signed-delta millis math stays valid.
+    uint32_t hours = _atoi(&config[24]);
+    if (hours >= MQTT_NEIGHBORS_MIN_INTERVAL_HOURS && hours <= MQTT_NEIGHBORS_MAX_INTERVAL_HOURS) {
+      _mqtt_prefs.mqtt_neighbors_interval = hours * 3600000UL;
+      savePrefs();
+      sprintf(reply, "OK - neighbors interval set to %u hours (%lu ms)", (unsigned)hours,
+              (unsigned long)_mqtt_prefs.mqtt_neighbors_interval);
+    } else {
+      strcpy(reply, "Error: neighbors interval must be between 12-336 hours");
+    }
+  } else if (memcmp(config, "mqtt.neighbors ", 15) == 0) {
+    // The mesh loop reads this live, so no bridge restart is needed; enabling it
+    // triggers a discovery on the next eligible loop pass.
+    _mqtt_prefs.mqtt_neighbors_enabled = memcmp(&config[15], "on", 2) == 0;
+    savePrefs();
+    strcpy(reply, "OK");
+#elif defined(WITH_MQTT_BRIDGE)
+  } else if (memcmp(config, "mqtt.neighbors.interval ", 24) == 0 ||
+             memcmp(config, "mqtt.neighbors ", 15) == 0) {
+    strcpy(reply, "Err - not supported (requires PSRAM)");
+#endif
   } else if (memcmp(config, "mqtt.ntp ", 9) == 0) {
     const char* host = &config[9];
     while (*host == ' ') host++;
     bool clearing = strcmp(host, "none") == 0;
-    if (!clearing && !isValidNtpHostname(host)) {
+    if (!clearing && !mqttNtpHostnameValid(host)) {
       strcpy(reply, "Error: invalid NTP hostname");
     } else {
       if (clearing) {
@@ -260,26 +304,30 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
       }
       savePrefs();
 #ifdef ESP_PLATFORM
-      // Validate by running an immediate sync. syncMqttNtp() marshals onto the MQTT
-      // task (Core 0) so no NTP I/O happens on this (Core 1) CLI thread.
+      // Queue a sync on the MQTT task (Core 0) but do NOT block: this handler
+      // runs on the Arduino loop task, shared with mesh/radio processing and the
+      // web config batch, so a synchronous wait of up to 30 s would stall the
+      // node. The sync runs in the background; verify with `get mqtt.ntp.diag`.
       if (WiFi.status() != WL_CONNECTED) {
         strcpy(reply, "OK - saved (WiFi not connected; NTP sync pending)");
       } else if (!_callbacks->isMqttBridgeRunning()) {
         strcpy(reply, "OK - saved (MQTT bridge not running)");
       } else if (_callbacks->syncMqttNtp()) {
-        strcpy(reply, "OK - time synced");
+        strcpy(reply, "OK - saved (NTP sync started; check 'get mqtt.ntp.diag')");
       } else {
-        strcpy(reply, "Error: NTP sync failed");
+        strcpy(reply, "OK - saved (NTP sync unavailable)");
       }
 #else
       strcpy(reply, "OK - saved");
 #endif
     }
   } else if (memcmp(config, "wifi.ssid ", 10) == 0) {
+    if (valueTooLong(&config[10], sizeof(_mqtt_prefs.wifi_ssid), reply, "wifi.ssid")) return true;
     StrHelper::strncpy(_mqtt_prefs.wifi_ssid, &config[10], sizeof(_mqtt_prefs.wifi_ssid));
     savePrefs();
     strcpy(reply, "OK");
   } else if (memcmp(config, "wifi.pwd ", 9) == 0) {
+    if (valueTooLong(&config[9], sizeof(_mqtt_prefs.wifi_password), reply, "wifi.pwd")) return true;
     StrHelper::strncpy(_mqtt_prefs.wifi_password, &config[9], sizeof(_mqtt_prefs.wifi_password));
     savePrefs();
     strcpy(reply, "OK");
@@ -323,6 +371,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
 #endif
     }
   } else if (memcmp(config, "timezone ", 9) == 0) {
+    if (valueTooLong(&config[9], sizeof(_mqtt_prefs.timezone_string), reply, "timezone")) return true;
     StrHelper::strncpy(_mqtt_prefs.timezone_string, &config[9], sizeof(_mqtt_prefs.timezone_string));
     savePrefs();
     strcpy(reply, "OK");
@@ -369,6 +418,12 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
           } else if (p && p->topic_style == MQTT_TOPIC_MESHCORE &&
                      (strlen(_mqtt_prefs.mqtt_iata) == 0 || strcmp(_mqtt_prefs.mqtt_iata, "XXX") == 0)) {
             sprintf(reply, "OK - slot %d preset: %s (run 'set mqtt.iata <airport_code>' to publish)", slot + 1, preset_name);
+          } else if (p && mqttPresetNeedsSlotPassword(p) &&
+                     _mqtt_prefs.mqtt_slot_password[slot][0] == '\0' &&
+                     !mqttPresetNeedsSlotUsername(p)) {
+            sprintf(reply,
+                    "OK - slot %d preset: %s (run 'set mqtt%d.password <pass>' to connect)",
+                    slot + 1, preset_name, slot + 1);
           } else if (p && mqttPresetNeedsSlotCredentials(p) &&
                      (_mqtt_prefs.mqtt_slot_username[slot][0] == '\0' ||
                       _mqtt_prefs.mqtt_slot_password[slot][0] == '\0')) {
@@ -378,13 +433,45 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
           } else {
             sprintf(reply, "OK - slot %d preset: %s", slot + 1, preset_name);
           }
+          // Warn when this slot won't actually connect on this hardware. The set
+          // is never blocked -- prefs persist so the config carries over if the
+          // device is moved to a board with more slots -- but flag it, or the
+          // operator waits for a connection that never comes (A15). Two failure
+          // modes, keyed off the same rule the bridge's setup loop uses
+          // (classifySlotActivation): slots past the runtime array are never
+          // tried; slots within it are skipped once more than getMaxActiveSlots()
+          // are enabled (each WSS/TLS link costs ~40 KB heap).
+          if (strcmp(preset_name, MQTT_PRESET_NONE) != 0) {
+            bool slot_enabled[MAX_MQTT_SLOTS];
+            for (int s = 0; s < MAX_MQTT_SLOTS; s++) {
+              slot_enabled[s] = _mqtt_prefs.mqtt_slot_preset[s][0] != '\0' &&
+                                strcmp(_mqtt_prefs.mqtt_slot_preset[s], MQTT_PRESET_NONE) != 0;
+            }
+            const int max_active = MQTTBridge::getMaxActiveSlots();
+            const MQTTConnectionPolicy::SlotActivation act =
+                MQTTConnectionPolicy::classifySlotActivation(slot, slot_enabled,
+                                                             RUNTIME_MQTT_SLOTS, max_active);
+            size_t used = strlen(reply);
+            if (used < 158) {
+              if (act == MQTTConnectionPolicy::SlotActivation::BeyondArray) {
+                snprintf(reply + used, 160 - used, " (slot inactive on this hardware)");
+              } else if (act == MQTTConnectionPolicy::SlotActivation::OverActiveCap) {
+                snprintf(reply + used, 160 - used,
+                         " (won't connect: %d-slot limit on this hardware)", max_active);
+              }
+            }
+          }
         }
       } else {
         strcpy(reply, "Error: unknown preset. Use 'get mqtt.presets'");
       }
     } else if (memcmp(subcmd, "server ", 7) == 0) {
+      if (valueTooLong(&subcmd[7], sizeof(_mqtt_prefs.mqtt_slot_host[slot]), reply, "server")) return true;
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_host[slot], &subcmd[7], sizeof(_mqtt_prefs.mqtt_slot_host[slot]));
       savePrefs();
+      // Reconfigure the slot so the new host reaches the live connection (other
+      // custom-slot setters do the same; without it the change only applies on
+      // the next reboot/bridge restart).
       _callbacks->restartBridgeSlot(slot);
       strcpy(reply, "OK");
     } else if (memcmp(subcmd, "port ", 5) == 0) {
@@ -398,16 +485,19 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         strcpy(reply, "Error: port must be between 1 and 65535");
       }
     } else if (memcmp(subcmd, "username ", 9) == 0) {
+      if (valueTooLong(&subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_username[slot]), reply, "username")) return true;
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_username[slot], &subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_username[slot]));
       savePrefs();
       _callbacks->restartBridgeSlot(slot);
       strcpy(reply, "OK");
     } else if (memcmp(subcmd, "password ", 9) == 0) {
+      if (valueTooLong(&subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_password[slot]), reply, "password")) return true;
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_password[slot], &subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_password[slot]));
       savePrefs();
       _callbacks->restartBridgeSlot(slot);
       strcpy(reply, "OK");
     } else if (memcmp(subcmd, "token ", 6) == 0) {
+      if (valueTooLong(&subcmd[6], sizeof(_mqtt_prefs.mqtt_slot_token[slot]), reply, "token")) return true;
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_token[slot], &subcmd[6], sizeof(_mqtt_prefs.mqtt_slot_token[slot]));
       savePrefs();
       _callbacks->restartBridgeSlot(slot);
@@ -415,6 +505,8 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     } else if (memcmp(subcmd, "topic ", 6) == 0) {
       if (strcmp(_mqtt_prefs.mqtt_slot_preset[slot], "custom") != 0) {
         sprintf(reply, "Error: topic template only applies to custom preset slots");
+      } else if (valueTooLong(&subcmd[6], sizeof(_mqtt_prefs.mqtt_slot_topic[slot]), reply, "topic")) {
+        return true;
       } else {
         StrHelper::strncpy(_mqtt_prefs.mqtt_slot_topic[slot], &subcmd[6], sizeof(_mqtt_prefs.mqtt_slot_topic[slot]));
         savePrefs();
@@ -422,6 +514,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         sprintf(reply, "OK - slot %d topic: %s", slot + 1, _mqtt_prefs.mqtt_slot_topic[slot]);
       }
     } else if (memcmp(subcmd, "audience ", 9) == 0) {
+      if (valueTooLong(&subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_audience[slot]), reply, "audience")) return true;
       StrHelper::strncpy(_mqtt_prefs.mqtt_slot_audience[slot], &subcmd[9], sizeof(_mqtt_prefs.mqtt_slot_audience[slot]));
       savePrefs();
       _callbacks->restartBridgeSlot(slot);
@@ -465,28 +558,21 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     strcpy(reply, "OK - owner cleared");
   } else if (memcmp(config, "mqtt.owner ", 11) == 0) {
     const char* owner_key = &config[11];
-    int key_len = strlen(owner_key);
-    if (key_len == 64) {
-      bool valid_key = true;
-      for (int i = 0; i < key_len; i++) {
-        if (!((owner_key[i] >= '0' && owner_key[i] <= '9') ||
-              (owner_key[i] >= 'A' && owner_key[i] <= 'F') ||
-              (owner_key[i] >= 'a' && owner_key[i] <= 'f'))) {
-          valid_key = false;
-          break;
-        }
-      }
-      if (valid_key) {
-        StrHelper::strncpy(_mqtt_prefs.mqtt_owner_public_key, owner_key, sizeof(_mqtt_prefs.mqtt_owner_public_key));
-        savePrefs();
-        strcpy(reply, "OK");
-      } else {
-        strcpy(reply, "Error: invalid hex characters in public key");
-      }
+    if (owner_key[0] == '\0') {
+      // Owner key is optional -- empty clears it (previously this errored, so a
+      // set key could never be removed via the portal/CLI).
+      _mqtt_prefs.mqtt_owner_public_key[0] = '\0';
+      savePrefs();
+      strcpy(reply, "OK - owner key cleared");
+    } else if (mqttOwnerKeyValid(owner_key)) {
+      StrHelper::strncpy(_mqtt_prefs.mqtt_owner_public_key, owner_key, sizeof(_mqtt_prefs.mqtt_owner_public_key));
+      savePrefs();
+      strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error: public key must be 64 hex characters (32 bytes)");
     }
   } else if (memcmp(config, "mqtt.email ", 11) == 0) {
+    if (valueTooLong(&config[11], sizeof(_mqtt_prefs.mqtt_email), reply, "email")) return true;
     StrHelper::strncpy(_mqtt_prefs.mqtt_email, &config[11], sizeof(_mqtt_prefs.mqtt_email));
     savePrefs();
     strcpy(reply, "OK");
@@ -702,6 +788,8 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
       start = (int)_atoi(start_arg);
     }
     formatMQTTPresetListReply(reply, 160, start);
+  } else if (memcmp(config, "mqtt.stats", 10) == 0) {
+    MQTTBridge::formatMqttStatsReply(reply, 160);
   } else if (memcmp(config, "mqtt.status", 11) == 0) {
     MQTTBridge::formatMqttStatusReply(reply, 160, &_mqtt_prefs);
   } else if (memcmp(config, "mqtt.packets", 12) == 0) {
@@ -716,6 +804,19 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
   } else if (memcmp(config, "mqtt.interval", 13) == 0) {
     uint32_t minutes = (_mqtt_prefs.mqtt_status_interval + 29999) / 60000;
     sprintf(reply, "> %u minutes (%lu ms)", minutes, (unsigned long)_mqtt_prefs.mqtt_status_interval);
+#if defined(WITH_MQTT_NEIGHBORS)
+  // Longer token first: a bare "mqtt.neighbors" (14) would otherwise swallow
+  // "mqtt.neighbors.interval" since the GET tokens carry no trailing space.
+  } else if (memcmp(config, "mqtt.neighbors.interval", 23) == 0) {
+    uint32_t hours = (_mqtt_prefs.mqtt_neighbors_interval + 3599999) / 3600000;
+    sprintf(reply, "> %u hours (%lu ms)", (unsigned)hours, (unsigned long)_mqtt_prefs.mqtt_neighbors_interval);
+  } else if (memcmp(config, "mqtt.neighbors", 14) == 0) {
+    sprintf(reply, "> %s", _mqtt_prefs.mqtt_neighbors_enabled ? "on" : "off");
+#elif defined(WITH_MQTT_BRIDGE)
+  } else if (memcmp(config, "mqtt.neighbors.interval", 23) == 0 ||
+             memcmp(config, "mqtt.neighbors", 14) == 0) {
+    strcpy(reply, "Err - not supported (requires PSRAM)");
+#endif
   } else if (memcmp(config, "mqtt.ntp.diag", 13) == 0 && (config[13] == '\0' || config[13] == ' ')) {
 #if defined(PORTABLE_MQTT_OBSERVER)
     strcpy(reply, "Error: NTP diagnostics omitted from portable build");
@@ -750,12 +851,20 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
     } else if (memcmp(subcmd, "username", 8) == 0) {
       sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_username[slot]);
     } else if (memcmp(subcmd, "password", 8) == 0) {
-      sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_password[slot]);
+      // Serial only; remote sees set/unset.
+      if (sender_timestamp == 0) {
+        sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_password[slot]);
+      } else {
+        strcpy(reply, _mqtt_prefs.mqtt_slot_password[slot][0] ? "> ******** (serial only)" : "> (not set)");
+      }
     } else if (memcmp(subcmd, "token", 5) == 0) {
-      if (_mqtt_prefs.mqtt_slot_token[slot][0] != '\0') {
+      // Serial only; remote sees set/unset.
+      if (_mqtt_prefs.mqtt_slot_token[slot][0] == '\0') {
+        strcpy(reply, "> (not set)");
+      } else if (sender_timestamp == 0) {
         sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_token[slot]);
       } else {
-        strcpy(reply, "> (not set)");
+        strcpy(reply, "> ******** (serial only)");
       }
     } else if (memcmp(subcmd, "topic", 5) == 0) {
       if (_mqtt_prefs.mqtt_slot_topic[slot][0] != '\0') {
@@ -777,7 +886,12 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
   } else if (memcmp(config, "wifi.ssid", 9) == 0) {
     sprintf(reply, "> %s", _mqtt_prefs.wifi_ssid);
   } else if (memcmp(config, "wifi.pwd", 8) == 0) {
-    sprintf(reply, "> %s", _mqtt_prefs.wifi_password);
+    // Serial only (WiFi creds grant LAN access); remote sees set/unset.
+    if (sender_timestamp == 0) {
+      sprintf(reply, "> %s", _mqtt_prefs.wifi_password);
+    } else {
+      strcpy(reply, _mqtt_prefs.wifi_password[0] ? "> ******** (serial only)" : "> (not set)");
+    }
   } else if (memcmp(config, "wifi.status", 11) == 0) {
     wl_status_t status = WiFi.status();
     const char* status_str;
@@ -801,8 +915,11 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
         unsigned long h = (uptime_sec % 86400) / 3600;
         unsigned long m = (uptime_sec % 3600) / 60;
         unsigned long s = uptime_sec % 60;
+        // reply points at the caller's char[160] command buffer (see main.cpp);
+        // compute the actual remaining space instead of assuming 128.
+        const size_t kReplyBufSize = 160;
         size_t len = strlen(reply);
-        const size_t reply_remaining = 128;
+        const size_t reply_remaining = (len < kReplyBufSize) ? (kReplyBufSize - len) : 0;
         if (d > 0) {
           snprintf(reply + len, reply_remaining, ", uptime: %lud %luh %lum %lus", d, h, m, s);
         } else if (h > 0) {
@@ -835,10 +952,13 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
     uint8_t ps = _mqtt_prefs.wifi_power_save;
     const char* ps_name = (ps == 1) ? "none" : (ps == 2) ? "max" : "min";
     sprintf(reply, "> %s", ps_name);
+  } else if (memcmp(config, "timezone.offset", 15) == 0) {
+    // Must precede the "timezone" (8-byte) check below -- that prefix-matches
+    // "timezone.offset" too, so the more-specific key has to come first or
+    // `get timezone.offset` returns the string and never the offset (A3).
+    sprintf(reply, "> %d", _mqtt_prefs.timezone_offset);
   } else if (memcmp(config, "timezone", 8) == 0) {
     sprintf(reply, "> %s", _mqtt_prefs.timezone_string);
-  } else if (memcmp(config, "timezone.offset", 15) == 0) {
-    sprintf(reply, "> %d", _mqtt_prefs.timezone_offset);
   } else if (memcmp(config, "mqtt.analyzer.us", 17) == 0) {
     sprintf(reply, "> %s", strcmp(_mqtt_prefs.mqtt_slot_preset[0], "analyzer-us") == 0 ? "on" : "off");
   } else if (memcmp(config, "mqtt.analyzer.eu", 17) == 0) {
@@ -985,6 +1105,21 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
     strcpy(reply, "ERR: online OTA not supported on this build");
 #endif
     return true;
+  } else if (memcmp(command, "start webconfig", 15) == 0 && (command[15] == 0 || command[15] == ' ')) {
+    // Web config portal: `start webconfig` binds to the LAN IP (or raises the
+    // setup AP when WiFi is unconfigured); `start webconfig ap` forces the AP.
+    bool force_ap = (command[15] == ' ' && strcmp(&command[16], "ap") == 0);
+    if (command[15] == ' ' && !force_ap) {
+      strcpy(reply, "ERR: usage start webconfig [ap]");
+    } else if (!_callbacks->startWebConfig(force_ap, reply)) {
+      strcpy(reply, "ERR: webconfig not supported on this build");
+    }
+    return true;
+  } else if (strcmp(command, "stop webconfig") == 0) {
+    if (!_callbacks->stopWebConfig(reply)) {
+      strcpy(reply, "ERR: webconfig not supported on this build");
+    }
+    return true;
   } else if (memcmp(command, "alert test", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
     // Send a one-off test alert on the configured alert channel.
     const char* extra = command[10] == ' ' ? &command[11] : "";
@@ -998,7 +1133,16 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
       strcpy(reply, "Error: alert channel not configured (set alert.psk or set alert.hashtag)");
     } else {
       bool ok = _callbacks->sendAlertText(text);
-      strcpy(reply, ok ? "OK - alert sent" : "Error: alert send failed (bad PSK or PUBLIC key refused?)");
+      if (!ok) {
+        strcpy(reply, "Error: alert send failed (bad PSK or PUBLIC key refused?)");
+      } else if (!_mqtt_prefs.alert_enabled) {
+        // `alert test` deliberately bypasses the master switch, so a successful
+        // send here does NOT mean automatic WiFi/MQTT/OTA alerts will fire -- those
+        // gate on `alert on`. Flag it so a working test can't give false confidence.
+        strcpy(reply, "OK - test sent, but automatic alerts are OFF (run 'set alert on')");
+      } else {
+        strcpy(reply, "OK - alert sent");
+      }
     }
     return true;
   }
