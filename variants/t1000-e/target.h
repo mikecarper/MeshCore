@@ -16,6 +16,7 @@ class T1000SensorManager: public SensorManager {
   bool gps_active = false;
   LocationProvider * _nmea;
 
+  void armGpsPowerSavingCycle();
   void start_gps();
   void sleep_gps();
   void stop_gps();
@@ -32,7 +33,8 @@ public:
   const char* getSettingName(int i) const override;
   const char* getSettingValue(int i) const override;
   bool setSettingValue(const char* name, const char* value) override;
-  LocationProvider* getLocationProvider() { return _nmea; }
+  void setPowerSavingEnabled(bool enabled) override;
+  LocationProvider* getLocationProvider() override { return _nmea; }
 };
 
 #ifdef DISPLAY_CLASS

@@ -42,19 +42,30 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+void HWTSensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextSleep();
+}
+
 void HWTSensorManager::start_gps() {
-  if (!gps_active) {
-    _location->begin();  // Claims periph_power via RefCountedDigitalPin
-    gps_active = true;
-    Serial1.println("$CFGSYS,h35155*68");  // Configure GPS for all constellations
-  }
+  if (gps_active) return;
+  _location->begin();  // Claims periph_power via RefCountedDigitalPin
+  gps_active = true;
+  armGpsPowerSavingCycle();
+  Serial1.println("$CFGSYS,h35155*68");  // Configure GPS for all constellations
 }
 
 void HWTSensorManager::stop_gps() {
-  if (gps_active) {
-    gps_active = false;
-    _location->stop();  // Releases periph_power via RefCountedDigitalPin
+  if (!gps_active) return;
+  gps_active = false;
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextWake();
   }
+  _location->stop();  // Releases periph_power via RefCountedDigitalPin
 }
 
 bool HWTSensorManager::begin() {
@@ -72,6 +83,20 @@ void HWTSensorManager::loop() {
   static unsigned long next_gps_update = 0;
   unsigned long now = millis();
   loopGpsTelemetry(now);
+
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
+                       || !_location->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS waking");
+      start_gps();
+    }
+  }
 
   if (gps_active) _location->loop();
 
@@ -100,8 +125,33 @@ const char* HWTSensorManager::getSettingValue(int i) const {
 }
 bool HWTSensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
   return false;  // not supported
+}
+
+void HWTSensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) {
+      armGpsPowerSavingCycle();
+    } else {
+      start_gps();
+    }
+  } else if (!gps_active) {
+    start_gps();
+  }
 }

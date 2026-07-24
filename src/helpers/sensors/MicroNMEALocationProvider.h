@@ -113,6 +113,14 @@ public :
         }
     }
 
+    void setPinEn(int pin_en) override {
+        _pin_en = pin_en;
+    }
+
+    int getPinEn() override {
+        return _pin_en;
+    }
+
     void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }
     mesh::RTCClock* getRTCClock() override { return _clock; }
     long getLatitude() override { return nmea.getLatitude(); }

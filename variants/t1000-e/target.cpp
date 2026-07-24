@@ -79,6 +79,13 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+void T1000SensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_nmea->getGPSPowerSaving()) return;
+  _nmea->syncTime();
+  _nmea->setNextGPSOn(0);
+  _nmea->setNextSleep();
+}
+
 void T1000SensorManager::start_gps() {
   if (gps_active) return;
   gps_active = true;
@@ -102,10 +109,18 @@ void T1000SensorManager::start_gps() {
   pinMode(GPS_RTC_INT, OUTPUT);
   digitalWrite(GPS_RTC_INT, LOW);
   pinMode(GPS_RESETB, INPUT_PULLUP);
+  armGpsPowerSavingCycle();
 }
 
 void T1000SensorManager::sleep_gps() {
+  if (!gps_active) return;
   gps_active = false;
+  if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
+    _nmea->stopTimeSync();
+    _nmea->setNextGPSOff(0);
+    _nmea->setNextWake();
+  }
+
   digitalWrite(GPS_VRTC_EN, HIGH);
   digitalWrite(GPS_EN, LOW);
   digitalWrite(GPS_RESET, HIGH);
@@ -117,7 +132,14 @@ void T1000SensorManager::sleep_gps() {
 }
 
 void T1000SensorManager::stop_gps() {
+  if (!gps_active) return;
   gps_active = false;
+  if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
+    _nmea->stopTimeSync();
+    _nmea->setNextGPSOff(0);
+    _nmea->setNextWake();
+  }
+
   digitalWrite(GPS_VRTC_EN, LOW);
   digitalWrite(GPS_EN, LOW);
   digitalWrite(GPS_RESET, HIGH);
@@ -150,6 +172,20 @@ void T1000SensorManager::loop() {
   unsigned long now = millis();
   loopGpsTelemetry(now);
 
+  if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
+    unsigned long next_off = _nmea->getNextGPSOff();
+    unsigned long next_on = _nmea->getNextGPSOn();
+    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
+                       || !_nmea->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _nmea->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS waking");
+      start_gps();
+    }
+  }
+
   if (gps_active) _nmea->loop();
 
   if ((long)(now - next_gps_update) >= 0) {
@@ -177,8 +213,33 @@ const char* T1000SensorManager::getSettingValue(int i) const {
 }
 bool T1000SensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _nmea->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
   return false;  // not supported
+}
+
+void T1000SensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _nmea->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) {
+      armGpsPowerSavingCycle();
+    } else {
+      start_gps();
+    }
+  } else if (!gps_active) {
+    start_gps();
+  }
 }

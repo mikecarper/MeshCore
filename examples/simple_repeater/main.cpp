@@ -127,6 +127,13 @@ void setup() {
   ethernet_command[0] = 0;
 #endif
 
+#if ENV_INCLUDE_GPS == 1
+  if (sensors.getLocationProvider() != NULL) {
+    // Keep GPS awake for at most 10 minutes, then asleep for one day.
+    sensors.getLocationProvider()->setPowerSavingProfile(600, 86400);
+  }
+#endif
+
   sensors.begin();
 
   the_mesh.begin(fs);

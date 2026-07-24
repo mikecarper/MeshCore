@@ -29,18 +29,29 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+void SolarSensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextSleep();
+}
+
 void SolarSensorManager::start_gps() {
-  if (!gps_active) {
-    gps_active = true;
-    _location->begin();
-  }
+  if (gps_active) return;
+  gps_active = true;
+  _location->begin();
+  armGpsPowerSavingCycle();
 }
 
 void SolarSensorManager::stop_gps() {
-  if (gps_active) {
-    gps_active = false;
-    _location->stop();
+  if (!gps_active) return;
+  gps_active = false;
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextWake();
   }
+  _location->stop();
 }
 
 bool SolarSensorManager::begin() {
@@ -67,6 +78,20 @@ void SolarSensorManager::loop() {
   static unsigned long next_gps_update = 0;
   unsigned long now = millis();
   loopGpsTelemetry(now);
+
+  if (powersaving_enabled && gps_detected && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
+                       || !_location->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      POWERSAVING_DEBUG_PRINTLN("GPS waking");
+      start_gps();
+    }
+  }
 
   if (gps_active) _location->loop();
 
@@ -99,10 +124,35 @@ const char* SolarSensorManager::getSettingValue(int i) const {
 
 bool SolarSensorManager::setSettingValue(const char* name, const char* value) {
   if (gps_detected && strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
   return false;  // not supported
+}
+
+void SolarSensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) {
+      armGpsPowerSavingCycle();
+    } else {
+      start_gps();
+    }
+  } else if (!gps_active) {
+    start_gps();
+  }
 }
 
 bool SolarExternalWatchdog::begin() {

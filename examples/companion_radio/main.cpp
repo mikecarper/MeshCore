@@ -470,6 +470,14 @@ void setup() {
 
   sensors.begin();
 
+#if ENV_INCLUDE_GPS == 1 && defined(BLE_PIN_CODE)
+  // BLE companions keep GPS duty cycling enabled by default: at most 10
+  // minutes awake, followed by 5 minutes asleep.
+  if (sensors.getLocationProvider() != NULL) {
+    sensors.getLocationProvider()->setPowerSavingProfile(600, 300);
+    sensors.setPowerSavingEnabled(true);
+  }
+#endif
 #if ENV_INCLUDE_GPS == 1
   the_mesh.applyGpsPrefs();
 #endif
