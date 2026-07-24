@@ -147,10 +147,7 @@ void setup() {
   board.onBootComplete();
 }
 
-void loop() {
-#if defined(NRF52_PLATFORM)
-  board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
-#endif
+static void __attribute__((noinline)) serviceCommandInterfaces() {
   // Handle Serial CLI
   int len = strlen(command);
   while (Serial.available() && len < sizeof(command)-1) {
@@ -197,6 +194,13 @@ void loop() {
     ethernet_command[0] = 0;
   }
 #endif
+}
+
+void loop() {
+#if defined(NRF52_PLATFORM)
+  board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
+#endif
+  serviceCommandInterfaces();
 
 #if defined(PIN_USER_BTN) && defined(_SEEED_SENSECAP_SOLAR_H_) && !defined(DISPLAY_CLASS)
   // Hold the user button to power off the SenseCAP Solar repeater.

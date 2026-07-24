@@ -149,6 +149,7 @@ class Mesh : public Dispatcher {
   void armFloodRetryOnSendComplete(const Packet* packet);
   void clearPendingFloodRetryOnSendFail(const Packet* packet);
   void maybeScheduleFloodRetry(const Packet* packet, uint8_t priority);
+  void serviceLoopMaintenance();
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
   DispatcherAction forwardMultipartDirect(Packet* pkt);
 

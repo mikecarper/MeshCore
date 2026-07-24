@@ -218,7 +218,10 @@ void Mesh::begin() {
 
 void Mesh::loop() {
   Dispatcher::loop();
+  serviceLoopMaintenance();
+}
 
+void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   if (_waiting_direct_retry_count != 0
       && millisHasNowPassed(_next_direct_retry_timeout)) {
     for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {

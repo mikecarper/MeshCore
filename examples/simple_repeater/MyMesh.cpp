@@ -760,11 +760,28 @@ static bool directPathsEqual(const uint8_t* a_path, uint8_t a_len, const uint8_t
 }
 
 void MyMesh::sendClientReply(ClientInfo* client, mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+  TransportKey fallback_scope;
+  const TransportKey* fallback_scope_ptr = NULL;
+  if (recv_pkt_region != NULL && !recv_pkt_region->isWildcard()
+      && region_map.getTransportKeysFor(*recv_pkt_region, &fallback_scope, 1) > 0) {
+    fallback_scope_ptr = &fallback_scope;
+  }
+  sendClientReplyWithFallbackScope(client, packet, delay_millis, path_hash_size,
+                                   fallback_scope_ptr);
+}
+
+void MyMesh::sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* packet,
+                                              unsigned long delay_millis, uint8_t path_hash_size,
+                                              const TransportKey* fallback_scope) {
   if (packet == NULL) {
     return;
   }
   if (client == NULL || !mesh::Packet::isValidPathLen(client->out_path_len)) {
-    sendFloodReply(packet, delay_millis, path_hash_size);
+    if (fallback_scope != NULL) {
+      sendFloodScoped(*fallback_scope, packet, delay_millis, path_hash_size);
+    } else {
+      sendFlood(packet, delay_millis, path_hash_size);
+    }
     return;
   }
 
@@ -2318,31 +2335,87 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         sendClientReply(client, ack, TXT_ACK_DELAY, packet->getPathHashSize());
       }
 
-      uint8_t temp[166];
       char *command = (char *)&data[5];
-      char *reply = (char *)&temp[5];
-      if (is_retry) {
-        *reply = 0;
-      } else {
-        handleCommand(sender_timestamp, client, command, reply);
-      }
-      int text_len = strlen(reply);
-      if (text_len > 0) {
-        uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
-        if (timestamp == sender_timestamp) {
-          // WORKAROUND: the two timestamps need to be different, in the CLI view
-          timestamp++;
+      if (!is_retry) {
+        TransportKey reply_scope;
+        const bool reply_scoped =
+            recv_pkt_region != NULL && !recv_pkt_region->isWildcard()
+            && region_map.getTransportKeysFor(*recv_pkt_region, &reply_scope, 1) > 0;
+        size_t command_len = strlen(command);
+        if (!deferred_cli_command.enqueue(i, sender_timestamp, packet->getPathHashSize(),
+                                          secret, command, command_len)) {
+          const char* error = deferred_cli_command.pending
+              ? "Err - another remote command is still running"
+              : "Err - remote command is too long";
+          sendRemoteCliReply(client, secret, packet->getPathHashSize(),
+                             sender_timestamp, error,
+                             reply_scoped ? &reply_scope : NULL);
+        } else {
+          deferred_cli_reply_scoped = reply_scoped;
+          if (reply_scoped) {
+            deferred_cli_reply_scope = reply_scope;
+          } else {
+            memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
+          }
         }
-        memcpy(temp, &timestamp, 4);        // mostly an extra blob to help make packet_hash unique
-        temp[4] = (TXT_TYPE_CLI_DATA << 2); // NOTE: legacy was: TXT_TYPE_PLAIN
-
-        auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret, temp, 5 + text_len);
-        sendClientReply(client, reply, CLI_REPLY_DELAY_MILLIS, packet->getPathHashSize());
       }
     } else {
       MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
     }
   }
+}
+
+void MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
+                                uint8_t path_hash_size, uint32_t sender_timestamp,
+                                const char* reply, const TransportKey* fallback_scope) {
+  if (client == NULL || secret == NULL || reply == NULL || reply[0] == 0) return;
+
+  size_t text_len = strlen(reply);
+  const size_t max_text_len =
+      MAX_PACKET_PAYLOAD - CIPHER_MAC_SIZE - (CIPHER_BLOCK_SIZE - 1) - 5;
+  if (text_len > max_text_len) text_len = max_text_len;
+
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  if (timestamp == sender_timestamp) {
+    // The two timestamps need to differ in the remote CLI view.
+    timestamp++;
+  }
+  memcpy(reply_data, &timestamp, sizeof(timestamp));
+  reply_data[4] = (TXT_TYPE_CLI_DATA << 2);
+  if (reply != (const char*)&reply_data[5]) {
+    memmove(&reply_data[5], reply, text_len);
+  }
+
+  mesh::Packet* packet = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret,
+                                        reply_data, 5 + text_len);
+  sendClientReplyWithFallbackScope(client, packet, CLI_REPLY_DELAY_MILLIS,
+                                   path_hash_size, fallback_scope);
+}
+
+void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
+  if (!deferred_cli_command.pending) return;
+
+  const int client_index = deferred_cli_command.client_index;
+  if (client_index < 0 || client_index >= acl.getNumClients()) {
+    MESH_DEBUG_PRINTLN("processDeferredCliCommand: invalid client idx: %d", client_index);
+    deferred_cli_command.clear();
+    deferred_cli_reply_scoped = false;
+    memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
+    return;
+  }
+
+  ClientInfo* client = acl.getClientByIdx(client_index);
+  char* reply = (char*)&reply_data[5];
+  reply[0] = 0;
+  handleCommand(deferred_cli_command.sender_timestamp, client,
+                deferred_cli_command.command, reply);
+  sendRemoteCliReply(client, deferred_cli_command.secret,
+                     deferred_cli_command.path_hash_size,
+                     deferred_cli_command.sender_timestamp, reply,
+                     deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL);
+  deferred_cli_command.clear();
+  deferred_cli_reply_scoped = false;
+  memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
 }
 
 bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t *secret, uint8_t *path,
@@ -2461,6 +2534,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
+  deferred_cli_reply_scoped = false;
+  memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
   pending_self_advert_delay = 0;
   pending_self_advert = false;
   pending_self_advert_flood = false;
@@ -3655,11 +3730,8 @@ bool MyMesh::formatFileSystem() {
 }
 
 void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
-  // CommonCLI can invoke this while handling an encrypted remote-admin packet.
-  // Creating the advert signs it with Ed25519, whose large stack frame would
-  // otherwise sit on top of the entire RX/decrypt/command call chain and
-  // overflow the nRF52 Arduino loop task's 4 KiB stack. Defer the work until
-  // Mesh::loop() has returned and that inbound call chain has unwound.
+  // Keep signing outside command handlers and other callers. This is a second
+  // stack boundary in addition to deferred remote-command dispatch.
   pending_self_advert_delay = delay_millis > 0 ? (uint32_t)delay_millis : 0;
   pending_self_advert_flood = flood;
   pending_self_advert = true;
@@ -7111,6 +7183,11 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+  processDeferredCliCommand();
+  servicePostMeshLoop();
+}
+
+void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   if (pending_self_advert) {
     const uint32_t delay_millis = pending_self_advert_delay;
     const bool flood = pending_self_advert_flood;
@@ -7220,6 +7297,7 @@ void MyMesh::loop() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (deferred_cli_command.pending || pending_self_advert) return true;
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) return true;
