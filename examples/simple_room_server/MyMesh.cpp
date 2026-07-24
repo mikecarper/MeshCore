@@ -774,6 +774,14 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.gps_enabled = 0;
   _prefs.gps_interval = 0;
   _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
+
+#if defined(USE_SX1262) || defined(USE_SX1268)
+#ifdef SX126X_RX_BOOSTED_GAIN
+  _prefs.rx_boosted_gain = SX126X_RX_BOOSTED_GAIN;
+#else
+  _prefs.rx_boosted_gain = 1; // enabled by default;
+#endif
+#endif
   _prefs.radio_fem_rxgain = 1;
 
   // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() - they live
@@ -829,6 +837,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   saved_radio_apply_pending = !applySavedRadioParams();
   if (!saved_radio_apply_pending) {
     radio_driver.setTxPower(_prefs.tx_power_dbm);
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
   }
   const bool fem_gain_changed = board.canControlLoRaFemLna()
       && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
@@ -1043,6 +1052,9 @@ void MyMesh::getRxPsWatchdogCounts(uint32_t* soft, uint32_t* hard) {
   *hard = radio_driver.getRxPsWatchdogHardCount();
 }
 
+bool MyMesh::setRxBoostedGain(bool enable) {
+  return radio_driver.setRxBoostedGainMode(enable);
+}
 
 void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -1480,6 +1492,7 @@ void MyMesh::loop() {
     if (applySavedRadioParams()) {
       if (saved_radio_apply_pending) {
         radio_driver.setTxPower(_prefs.tx_power_dbm);
+        radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
       }
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
@@ -1524,6 +1537,7 @@ void MyMesh::loop() {
       && radio_apply_ready && !radio_apply_failed) {
     if (applySavedRadioParams()) {
       radio_driver.setTxPower(_prefs.tx_power_dbm);
+      radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;

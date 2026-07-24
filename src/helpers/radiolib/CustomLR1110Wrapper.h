@@ -14,11 +14,17 @@ public:
 
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    return ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
+    bool success = ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf);
+    if (!success) return false;
+
+    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForSF(sf));
+    ((CustomLR1110 *)_radio)->setPreambleMillis(pm.preambleMillis);
+    ((CustomLR1110 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
+    return true;
   }
 
 public:

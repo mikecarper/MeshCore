@@ -11,6 +11,11 @@
 #define RX_PS_FALLBACK_RX_US    65625UL
 #define RX_PS_FALLBACK_SLEEP_US 60000UL
 
+struct PacketMillis {
+  uint32_t preambleMillis;  // preamble-detect -> header-valid deadline
+  uint32_t payloadMillis;   // header-valid   -> rx-done deadline
+};
+
 class RadioLibWrapper : public mesh::Radio {
 protected:
   PhysicalLayer* _radio;
@@ -151,6 +156,7 @@ public:
     _preamble_sf = sf;
     return true;
   }
+  PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols);
   virtual int16_t performChannelScan();
 
   int getNoiseFloor() const override { return _noise_floor; }

@@ -136,8 +136,6 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
   if (_isEnabled) {
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;
-
-    // loop() will detect this on next loop, and set deviceConnected to false
   }
 }
 
@@ -149,12 +147,14 @@ void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gat
 
   if (len > MAX_FRAME_SIZE) {
     BLE_DEBUG_PRINTLN("ERROR: onWrite(), frame too big, len=%d", len);
-  } else if (recv_queue_len >= FRAME_QUEUE_SIZE) {
-    BLE_DEBUG_PRINTLN("ERROR: onWrite(), recv_queue is full!");
   } else {
-    recv_queue[recv_queue_len].len = len;
-    memcpy(recv_queue[recv_queue_len].buf, rxValue, len);
-    recv_queue_len++;
+    Frame frame = {};
+    frame.len = len;
+    memcpy(frame.buf, rxValue, len);
+
+    if (xQueueSend(recv_queue, &frame, 0) != pdTRUE) {
+      BLE_DEBUG_PRINTLN("ERROR: onWrite(), recv_queue is full!");
+    }
   }
 }
 
@@ -168,6 +168,11 @@ void SerialBLEInterface::onStatus(BLECharacteristic* pCharacteristic, Status sta
 }
 
 // ---------- public methods
+
+void SerialBLEInterface::clearBuffers() {
+  xQueueReset(recv_queue);
+  send_queue_len = 0;
+}
 
 void SerialBLEInterface::enable() { 
   if (_isEnabled) return;
@@ -223,7 +228,7 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
 #define  BLE_WRITE_MIN_INTERVAL   60
 
 bool SerialBLEInterface::isReadBusy() const {
-  return (recv_queue_len > 0);
+  return uxQueueMessagesWaiting(recv_queue) > 0;
 }
 
 bool SerialBLEInterface::isWriteBusy() const {
@@ -258,17 +263,11 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     }
   }
 
-  if (deviceConnected && recv_queue_len > 0) {   // check recv queue after authentication
-    size_t len = recv_queue[0].len;   // take from top of queue
-    memcpy(dest, recv_queue[0].buf, len);
-
-    BLE_DEBUG_PRINTLN("readBytes: sz=%d, hdr=%d", len, (uint32_t) dest[0]);
-
-    recv_queue_len--;
-    for (int i = 0; i < recv_queue_len; i++) {   // delete top item from queue
-      recv_queue[i] = recv_queue[i + 1];
-    }
-    return len;
+  Frame frame;
+  if (deviceConnected && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
+    memcpy(dest, frame.buf, frame.len);
+    BLE_DEBUG_PRINTLN("readBytes: sz=%d, hdr=%d", (uint32_t) frame.len, (uint32_t) dest[0]);
+    return frame.len;
   }
 
   if (deviceConnected != oldDeviceConnected) {

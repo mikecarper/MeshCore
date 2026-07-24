@@ -267,6 +267,7 @@ public:
   bool setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) override;
   void recalibrateNoiseFloor() override { _radio->recalibrateNoiseFloor(); }
   void getRxPsWatchdogCounts(uint32_t* soft, uint32_t* hard) override;
+  bool setRxBoostedGain(bool enable) override;
 
   void formatNeighborsReply(char *reply) override {
     strcpy(reply, "not supported");

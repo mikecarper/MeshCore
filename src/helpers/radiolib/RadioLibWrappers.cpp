@@ -713,7 +713,7 @@ static float snr_threshold[] = {
     -17.5,// SF11 needs at least -17.5 dB SNR
     -20   // SF12 needs at least -20 dB SNR
 };
-  
+
 float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   if (sf < 7) return 0.0f;
   
@@ -723,4 +723,26 @@ float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   auto collision_penalty = 1 - (packet_len / 256.0);   // Assuming max packet of 256 bytes
 
   return max(0.0, min(1.0, success_rate_based_on_snr * collision_penalty));
+}
+
+PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols) {
+  // based on RadioLib's calculateTimeOnAir()
+  uint32_t tsym_us = ((uint32_t)10000 << sf) / (bw * 10);
+  uint32_t sfCoeff1_x4 = (sf == 5 || sf == 6) ? 25 : 17; // 6.25 : 4.25, semtech magic numbers to account for sync word + sfd
+
+  // preamble + syncword + sfd + header
+  uint32_t preamble_us = (((preambleSymbols + 8) * 4 + sfCoeff1_x4) * tsym_us) / 4;
+
+  // airtime for max packet at current radio settings
+  uint32_t total_us   = _radio->getTimeOnAir(MAX_TRANS_UNIT);
+  // airtime for payload only (no preamble, header or SOF)
+  const uint32_t fallback_total_us = 4000000UL;
+  uint32_t payload_us = total_us > preamble_us
+      ? total_us - preamble_us
+      : (fallback_total_us > preamble_us ? fallback_total_us - preamble_us
+                                        : fallback_total_us);
+  // rescale payload_us for max possible CR
+  if (cr >= 5 && cr < 8) { payload_us = (payload_us * 8) / cr; }
+
+  return PacketMillis {(preamble_us + 999) / 1000, (payload_us + 999) / 1000};
 }

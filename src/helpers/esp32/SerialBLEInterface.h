@@ -6,6 +6,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <atomic>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLEServerCallbacks, BLECharacteristicCallbacks {
   BLEServer *pServer;
@@ -28,12 +30,13 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   };
 
   #define FRAME_QUEUE_SIZE  4
-  int recv_queue_len;
-  Frame recv_queue[FRAME_QUEUE_SIZE];
+  StaticQueue_t recv_queue_state;
+  uint8_t recv_queue_storage[FRAME_QUEUE_SIZE * sizeof(Frame)];
+  QueueHandle_t recv_queue;
   int send_queue_len;
   Frame send_queue[FRAME_QUEUE_SIZE];
 
-  void clearBuffers() { recv_queue_len = 0; send_queue_len = 0; }
+  void clearBuffers();
 
 protected:
   // BLESecurityCallbacks methods
@@ -66,7 +69,10 @@ public:
     _isEnabled = false;
     _last_write = 0;
     last_conn_id = 0;
-    send_queue_len = recv_queue_len = 0;
+    recv_queue = xQueueCreateStatic(
+      FRAME_QUEUE_SIZE, sizeof(Frame), recv_queue_storage, &recv_queue_state
+    );
+    send_queue_len = 0;
   }
 
   /**
@@ -86,7 +92,9 @@ public:
 
   bool isReadBusy() const override;
   bool isWriteBusy() const override;
-  bool hasPendingIO() const override { return recv_queue_len > 0 || send_queue_len > 0; }
+  bool hasPendingIO() const override {
+    return uxQueueMessagesWaiting(recv_queue) > 0 || send_queue_len > 0;
+  }
   bool takePairingRequest() override {
     return _pairingRequestPending.exchange(false, std::memory_order_acq_rel);
   }
