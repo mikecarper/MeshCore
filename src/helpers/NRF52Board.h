@@ -58,6 +58,7 @@ public:
   // A loop blocked forever in SoftDevice-backed flash I/O will stop feeding it
   // and be reset automatically.
   void feedWatchdog(bool enabled = true);
+  void serviceWatchdog() override;
   virtual uint8_t getStartupReason() const override { return startup_reason; }
   virtual float getMCUTemperature() override;
   virtual void reboot() override { NVIC_SystemReset(); }

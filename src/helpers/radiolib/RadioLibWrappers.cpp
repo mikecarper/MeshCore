@@ -621,9 +621,16 @@ int16_t RadioLibWrapper::performChannelScan() {
   if (result != RADIOLIB_ERR_NONE) return result;
 
   const unsigned long started = millis();
-  while (millis() - started < 2000UL) {
+  unsigned long last_watchdog_service = started;
+  while (millis() - started < CAD_SCAN_TIMEOUT_MS) {
     result = _radio->getChannelScanResult();
     if (result != RADIOLIB_ERR_UNKNOWN) return result;
+
+    const unsigned long now = millis();
+    if (now - last_watchdog_service >= 1000UL) {
+      _board->serviceWatchdog();
+      last_watchdog_service = now;
+    }
     yield();
   }
 

@@ -12,6 +12,7 @@
 
 class RadioLibWrapper : public mesh::Radio {
 protected:
+  static constexpr unsigned long CAD_SCAN_TIMEOUT_MS = 10000UL;
   PhysicalLayer* _radio;
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;

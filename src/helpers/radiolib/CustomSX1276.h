@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "MeshCore.h"
 
 #define RH_RF95_MODEM_STATUS_CLEAR               0x10
 #define RH_RF95_MODEM_STATUS_HEADER_INFO_VALID   0x08
@@ -72,7 +73,7 @@ class CustomSX1276 : public SX1276 {
         | RH_RF95_MODEM_STATUS_HEADER_INFO_VALID)) != 0;
     }
 
-    int tryScanChannel(unsigned long timeout_ms = 2000UL) {
+    int tryScanChannel(unsigned long timeout_ms, mesh::MainBoard& board) {
       // start CAD
       int16_t state = startChannelScan();
       RADIOLIB_ASSERT(state);
@@ -81,12 +82,18 @@ class CustomSX1276 : public SX1276 {
       // completed, so wait on its IRQ pins with the same bounded policy used
       // by the generic wrapper.
       const unsigned long started = millis();
+      unsigned long last_watchdog_service = started;
       while(!this->mod->hal->digitalRead(this->mod->getIrq())) {
         this->mod->hal->yield();
         if(this->mod->hal->digitalRead(this->mod->getGpio())) {
           return(RADIOLIB_PREAMBLE_DETECTED);
         }
-        if(millis() - started >= timeout_ms) {
+        const unsigned long now = millis();
+        if(now - last_watchdog_service >= 1000UL) {
+          board.serviceWatchdog();
+          last_watchdog_service = now;
+        }
+        if(now - started >= timeout_ms) {
           return(RADIOLIB_ERR_RX_TIMEOUT);
         }
       }

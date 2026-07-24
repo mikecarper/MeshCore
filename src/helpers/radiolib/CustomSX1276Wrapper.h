@@ -42,7 +42,7 @@ public:
 
 protected:
   int16_t performChannelScan() override {
-    return ((CustomSX1276 *)_radio)->tryScanChannel();
+    return ((CustomSX1276 *)_radio)->tryScanChannel(CAD_SCAN_TIMEOUT_MS, *_board);
   }
 
   bool radioDeepInit() override {

@@ -56,6 +56,19 @@ void NRF52Board::begin() {
   startup_reason = BD_STARTUP_NORMAL;
 }
 
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+static void reloadWatchdogChannels() {
+  // Ordinarily only RR0 is enabled. If a bootloader left the watchdog running
+  // with a different reload channel, service every enabled channel.
+  const uint32_t enabled_channels = NRF_WDT->RREN & 0xFFUL;
+  for (uint8_t channel = 0; channel < 8; channel++) {
+    if (enabled_channels & (1UL << channel)) {
+      NRF_WDT->RR[channel] = WDT_RR_RR_Reload;
+    }
+  }
+}
+#endif
+
 void NRF52Board::feedWatchdog(bool enabled) {
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
   // The nRF52 watchdog cannot be stopped after it starts. When the persisted
@@ -77,17 +90,15 @@ void NRF52Board::feedWatchdog(bool enabled) {
     NRF_WDT->TASKS_START = 1;
   }
 
-  // Ordinarily only RR0 is enabled. If a bootloader left the watchdog running
-  // with a different reload channel, service every enabled channel rather
-  // than assuming ownership of RR0 and immediately entering a reset loop.
-  const uint32_t enabled_channels = NRF_WDT->RREN & 0xFFUL;
-  for (uint8_t channel = 0; channel < 8; channel++) {
-    if (enabled_channels & (1UL << channel)) {
-      NRF_WDT->RR[channel] = WDT_RR_RR_Reload;
-    }
-  }
+  reloadWatchdogChannels();
 #else
   (void)enabled;
+#endif
+}
+
+void NRF52Board::serviceWatchdog() {
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
 #endif
 }
 
