@@ -41,6 +41,10 @@ public:
   uint8_t getSpreadingFactor() const override { return ((CustomSX1276 *)_radio)->spreadingFactor; }
 
 protected:
+  int16_t performChannelScan() override {
+    return ((CustomSX1276 *)_radio)->tryScanChannel();
+  }
+
   bool radioDeepInit() override {
     return ((CustomSX1276 *)_radio)->std_init();
   }

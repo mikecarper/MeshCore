@@ -614,7 +614,21 @@ void RadioLibWrapper::onSendFinished() {
 }
 
 int16_t RadioLibWrapper::performChannelScan() {
-  return _radio->scanChannel();
+  // RadioLib's blocking scanChannel() waits forever if the radio never raises
+  // its CAD-done IRQ. Keep CAD bounded so a missing IRQ cannot starve the main
+  // loop until the MCU watchdog resets the node.
+  int16_t result = _radio->startChannelScan();
+  if (result != RADIOLIB_ERR_NONE) return result;
+
+  const unsigned long started = millis();
+  while (millis() - started < 2000UL) {
+    result = _radio->getChannelScanResult();
+    if (result != RADIOLIB_ERR_UNKNOWN) return result;
+    yield();
+  }
+
+  MESH_DEBUG_PRINTLN("RadioLibWrapper: CAD scan timed out");
+  return RADIOLIB_ERR_RX_TIMEOUT;
 }
 
 bool RadioLibWrapper::isChannelActive() {
