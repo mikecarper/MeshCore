@@ -6,6 +6,10 @@
 #define SX126X_IRQ_HEADER_VALID                0b0000010000  //  4     4     valid LoRa header received
 #define SX126X_IRQ_PREAMBLE_DETECTED           0x04
 
+#ifndef SX126X_TX_BUSY_TIMEOUT_MS
+#define SX126X_TX_BUSY_TIMEOUT_MS              1000UL
+#endif
+
 class CustomSX1262 : public SX1262 {
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
@@ -103,6 +107,35 @@ class CustomSX1262 : public SX1262 {
     bool isChipBusy() {
       uint32_t busy = this->mod->getGpio();
       return busy != RADIOLIB_NC && this->mod->hal->digitalRead(busy);
+    }
+
+    // RadioLib waits without a deadline for BUSY to fall after SetTx. A radio
+    // fault there blocks the entire main loop until the MCU watchdog reboots
+    // the node. Keep the normal launch behavior, but return the same timeout
+    // used by bounded RadioLib SPI waits so the wrapper can reset the radio.
+    int16_t launchMode() override {
+      if (this->stagedMode != RADIOLIB_RADIO_MODE_TX) {
+        return SX1262::launchMode();
+      }
+
+      this->mod->setRfSwitchState(this->txMode);
+      int16_t state = this->setTx(RADIOLIB_SX126X_TX_TIMEOUT_NONE);
+      if (state != RADIOLIB_ERR_NONE) {
+        this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+        return state;
+      }
+
+      const unsigned long started = millis();
+      while (isChipBusy()) {
+        yield();
+        if (millis() - started >= SX126X_TX_BUSY_TIMEOUT_MS) {
+          this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+          return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+        }
+      }
+
+      this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+      return RADIOLIB_ERR_NONE;
     }
 
     bool isReceiving() {

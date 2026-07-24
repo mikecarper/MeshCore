@@ -595,6 +595,11 @@ bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
   MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startTransmit(%d)", err);
   idle();   // trigger another startRecv()
   _board->onAfterTransmit();
+  if (err == RADIOLIB_ERR_SPI_CMD_TIMEOUT) {
+    // A stuck BUSY line cannot be repaired with another SPI command. Radios
+    // with a reset pin recover immediately; others use their safest fallback.
+    recoverRadio(true);
+  }
   return false;
 }
 
