@@ -625,9 +625,10 @@ int16_t RadioLibWrapper::performChannelScan() {
   int16_t result = _radio->startChannelScan();
   if (result != RADIOLIB_ERR_NONE) return result;
 
+  const unsigned long timeout_ms = cadScanTimeoutMillis();
   const unsigned long started = millis();
   unsigned long last_watchdog_service = started;
-  while (millis() - started < CAD_SCAN_TIMEOUT_MS) {
+  while (millis() - started < timeout_ms) {
     result = _radio->getChannelScanResult();
     if (result != RADIOLIB_ERR_UNKNOWN) return result;
 
@@ -639,7 +640,7 @@ int16_t RadioLibWrapper::performChannelScan() {
     yield();
   }
 
-  MESH_DEBUG_PRINTLN("RadioLibWrapper: CAD scan timed out");
+  MESH_DEBUG_PRINTLN("RadioLibWrapper: CAD scan timed out after %lu ms", timeout_ms);
   return RADIOLIB_ERR_RX_TIMEOUT;
 }
 

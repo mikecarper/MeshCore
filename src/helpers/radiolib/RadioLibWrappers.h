@@ -2,6 +2,7 @@
 
 #include <Mesh.h>
 #include <RadioLib.h>
+#include "CadTiming.h"
 
 // Fallback RX powersaving timings, only used until setRxPowerSaving() is called
 // (begin() always applies the persisted values). The authoritative defaults live
@@ -12,7 +13,6 @@
 
 class RadioLibWrapper : public mesh::Radio {
 protected:
-  static constexpr unsigned long CAD_SCAN_TIMEOUT_MS = 10000UL;
   PhysicalLayer* _radio;
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;
@@ -71,6 +71,11 @@ protected:
   void endNoiseFloorCalib(unsigned long now);
   void cacheParams(float freq, float bw, uint8_t sf, uint8_t cr) {
     _cur_freq = freq; _cur_bw = bw; _cur_sf = sf; _cur_cr = cr; _params_valid = true;
+  }
+  unsigned long cadScanTimeoutMillis() const {
+    const uint8_t sf = _params_valid ? _cur_sf : getSpreadingFactor();
+    const float bw = _params_valid ? _cur_bw : static_cast<float>(LORA_BW);
+    return mesh::calculateCadScanTimeoutMillis(sf, bw);
   }
   virtual int startReceiveMode();
   virtual void stopReceiveDutyCycle();
