@@ -1,4 +1,6 @@
 #include "TxtDataHelpers.h"
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 void StrHelper::stripSurroundingQuotes(char* str, size_t buf_sz) {
@@ -165,6 +167,52 @@ const char* StrHelper::ftoa3(float f) {
   int L = strlen(s);
   if (s[L - 1] == '.') s[L - 1] = 0;
   return s;
+}
+
+bool StrHelper::ftoaFixed(char* dest, size_t dest_size, float value, uint8_t precision) {
+  static const uint32_t scales[] = {
+    1U, 10U, 100U, 1000U, 10000U, 100000U, 1000000U, 10000000U
+  };
+
+  if (!dest || dest_size == 0) return false;
+  if (!isfinite(value)) {
+    strzcpy(dest, "0", dest_size);
+    return false;
+  }
+  if (precision > 7) precision = 7;
+
+  const bool negative = signbit(value);
+  const float magnitude = negative ? -value : value;
+  if (magnitude > 4294967040.0f) {
+    strzcpy(dest, "0", dest_size);
+    return false;
+  }
+
+  uint32_t whole = (uint32_t)magnitude;
+  const uint32_t scale = scales[precision];
+  uint32_t fraction = 0;
+  if (precision > 0) {
+    fraction = (uint32_t)(((magnitude - (float)whole) * (float)scale) + 0.5f);
+    if (fraction >= scale) {
+      whole++;
+      fraction = 0;
+    }
+  }
+
+  int written;
+  if (precision == 0) {
+    written = snprintf(dest, dest_size, "%s%lu",
+                       negative ? "-" : "", (unsigned long)whole);
+  } else {
+    written = snprintf(dest, dest_size, "%s%lu.%0*lu",
+                       negative ? "-" : "", (unsigned long)whole,
+                       (int)precision, (unsigned long)fraction);
+  }
+  if (written < 0 || (size_t)written >= dest_size) {
+    dest[dest_size - 1] = 0;
+    return false;
+  }
+  return true;
 }
 
 uint32_t StrHelper::fromHex(const char* src) {

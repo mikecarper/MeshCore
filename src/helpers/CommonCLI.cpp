@@ -9,6 +9,7 @@
 #endif
 #include <RTClib.h>
 #include <Utils.h>
+#include <math.h>
 #include <stddef.h>
 
 #if defined(NRF52_PLATFORM)
@@ -52,6 +53,7 @@ static void resetToUf2Bootloader() {
 #endif
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
+#include "CommonPrefsRecovery.h"
 #include "MQTTDefaults.h"
 #include "MQTTPrefsAtomicStore.h"
 #include "MQTTPrefsCodec.h"
@@ -329,7 +331,8 @@ static bool parseScheduledRadioArgs(const char* args, bool temporary, float& fre
 
   uint32_t sf_u32 = 0;
   uint32_t cr_u32 = 0;
-  if (!looksNumeric(parts[0]) || !looksNumeric(parts[1])
+  if (!mesh::cli::parseDecimalStrict(parts[0], freq)
+      || !mesh::cli::parseDecimalStrict(parts[1], bw)
       || !parseUint32Strict(parts[2], sf_u32)
       || !parseUint32Strict(parts[3], cr_u32)
       || !parseUint32Strict(parts[4], start_time)) {
@@ -339,8 +342,6 @@ static bool parseScheduledRadioArgs(const char* args, bool temporary, float& fre
     return false;
   }
 
-  freq = atof(parts[0]);
-  bw = atof(parts[1]);
   sf = (uint8_t)sf_u32;
   cr = (uint8_t)cr_u32;
   if (temporary && !parseUint32Strict(parts[5], end_time)) {
@@ -353,7 +354,8 @@ static bool parseScheduledRadioArgs(const char* args, bool temporary, float& fre
 }
 
 static int16_t parseSnrDbX4(const char* s) {
-  float db = atof(s);
+  float db = 0.0f;
+  mesh::cli::parseDecimalStrict(s, db);
   return (int16_t)(db * 4.0f + (db >= 0.0f ? 0.5f : -0.5f));
 }
 
@@ -844,6 +846,9 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 
 #ifdef WITH_MQTT_BRIDGE
   bool node_prefs_needs_migration = false;
+  if (!recoverCommonPrefsFiles(fs)) {
+    MESH_DEBUG_PRINTLN("Prefs: common preference recovery is incomplete");
+  }
 #endif
 
   if (fs->exists("/com_prefs")) {
@@ -965,6 +970,16 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
   File file = fs->open(filename);
 #endif
   if (file) {
+    // Every supported layout contains the fixed 290-byte common core. Reject
+    // a truncated in-place write before it can leave strings unterminated or
+    // feed partial radio values into startup. loadPrefs() rewrites the image.
+    if (file.size() < 290) {
+      MESH_DEBUG_PRINTLN("Prefs: %s is truncated (%u bytes); using defaults",
+                         filename, (unsigned)file.size());
+      file.close();
+      _com_prefs_needs_upgrade = true;
+      return;
+    }
     uint8_t pad[8];
 
     file.read((uint8_t *)&_prefs->airtime_factor, sizeof(_prefs->airtime_factor));    // 0
@@ -1010,6 +1025,11 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->discovery_mod_timestamp, sizeof(_prefs->discovery_mod_timestamp)); // 162
     file.read((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.read((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
+    _prefs->node_name[sizeof(_prefs->node_name) - 1] = '\0';
+    _prefs->password[sizeof(_prefs->password) - 1] = '\0';
+    _prefs->guest_password[sizeof(_prefs->guest_password) - 1] = '\0';
+    _prefs->bridge_secret[sizeof(_prefs->bridge_secret) - 1] = '\0';
+    _prefs->owner_info[sizeof(_prefs->owner_info) - 1] = '\0';
     // MQTT/observer settings are no longer stored in /com_prefs - they live in
     // /mqtt_prefs (loaded by loadMQTTPrefs). Old fork firmware wrote a zero-filled
     // MQTT gap here followed by a trailing observer block; detect that layout by the
@@ -1300,6 +1320,31 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     }
     }
 
+    // Sanitize non-finite values before constrain(), whose comparisons leave
+    // NaN unchanged. Safe defaults keep a damaged image from reaching radio
+    // initialization or advert coordinate encoding.
+    if (!isfinite(_prefs->airtime_factor)) _prefs->airtime_factor = 1.0f;
+#ifdef DEFAULT_RX_DELAY_BASE
+    if (!isfinite(_prefs->rx_delay_base)) _prefs->rx_delay_base = DEFAULT_RX_DELAY_BASE;
+#else
+    if (!isfinite(_prefs->rx_delay_base)) _prefs->rx_delay_base = 0.0f;
+#endif
+    if (!isfinite(_prefs->tx_delay_factor)) _prefs->tx_delay_factor = 0.5f;
+    if (!isfinite(_prefs->direct_tx_delay_factor)) _prefs->direct_tx_delay_factor = 0.3f;
+#ifdef LORA_FREQ
+    if (!isfinite(_prefs->freq)) _prefs->freq = (float)LORA_FREQ;
+#else
+    if (!isfinite(_prefs->freq)) _prefs->freq = 915.0f;
+#endif
+    if (!isfinite(_prefs->bw)) _prefs->bw = defaultLoRaBandwidth();
+    if (!isfinite(_prefs->adc_multiplier)) _prefs->adc_multiplier = 0.0f;
+    if (!isfinite(_prefs->node_lat) || _prefs->node_lat < -90.0 || _prefs->node_lat > 90.0) {
+      _prefs->node_lat = 0.0;
+    }
+    if (!isfinite(_prefs->node_lon) || _prefs->node_lon < -180.0 || _prefs->node_lon > 180.0) {
+      _prefs->node_lon = 0.0;
+    }
+
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
     _prefs->tx_delay_factor = constrain(_prefs->tx_delay_factor, 0, 2.0f);
@@ -1540,6 +1585,13 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
 #endif
 
 void CommonCLI::savePrefs(FILESYSTEM* fs, bool save_mqtt) {
+#ifdef WITH_MQTT_BRIDGE
+  // Observer builds use a verified temp/backup transaction for common prefs.
+  // Radio and bridge changes must never leave a truncated boot-time image.
+  saveCommonPrefsImageAtomically(fs);
+  if (save_mqtt) saveMQTTPrefs(fs);
+  return;
+#else
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(fs, "/com_prefs");
 #elif defined(STM32_PLATFORM)
@@ -1680,10 +1732,6 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, bool save_mqtt) {
     file.close();
 #endif
   }
-#ifdef WITH_MQTT_BRIDGE
-  // Observer config (MQTT/WiFi/timezone/SNMP/alert) is persisted separately. The
-  // observer CLI writes _mqtt_prefs directly, so no NodePrefs->MQTTPrefs sync runs.
-  if (save_mqtt) saveMQTTPrefs(fs);
 #endif
 }
 
@@ -1869,9 +1917,9 @@ private:
 #endif  // WITH_MQTT_BRIDGE
 
 #ifdef WITH_MQTT_BRIDGE
-// The old /node_prefs name is only removed after this transaction has published
-// a complete /com_prefs image. At this migration point /com_prefs is absent, so
-// rename never needs a platform-specific replace-existing implementation.
+// Common preferences use the same verified temp/backup transaction shape as
+// MQTT preferences. This protects both old-name migration and normal runtime
+// radio/bridge changes from power loss between truncate, write, and close.
 class CommonPrefsFileStore {
 public:
   explicit CommonPrefsFileStore(FILESYSTEM* fs)
@@ -1884,13 +1932,9 @@ public:
   bool begin() {
     _finished = false;
     _open = false;
+    _owns_temp = false;
     _bytes_written = 0;
-    // The old-name migration only starts when /com_prefs is absent. Refuse to
-    // overwrite a destination that appeared unexpectedly before this handoff.
-    if (_fs->exists("/com_prefs")) return false;
-    // Clear only stale, unpublished output. Guarded on exists() for the same
-    // reason as the /mqtt_prefs store above: remove() on a missing file logs a
-    // spurious VFS error on ESP32.
+    if (_fs->exists("/com_prefs.bak")) return false;
     if (_fs->exists("/com_prefs.tmp")) {
       _fs->remove("/com_prefs.tmp");
       if (_fs->exists("/com_prefs.tmp")) return false;  // could not clear it
@@ -1903,6 +1947,7 @@ public:
     _file = _fs->open("/com_prefs.tmp", "w", true);
 #endif
     _open = _file;
+    _owns_temp = _open;
     return _open;
   }
 
@@ -1931,14 +1976,25 @@ public:
   }
 
   bool commit() {
-    return _finished && _fs->rename("/com_prefs.tmp", "/com_prefs");
+    if (!_finished) return false;
+    if (_fs->exists("/com_prefs.bak")) return false;
+    if (_fs->exists("/com_prefs")
+        && !_fs->rename("/com_prefs", "/com_prefs.bak")) {
+      return false;
+    }
+    if (!_fs->rename("/com_prefs.tmp", "/com_prefs")) return false;
+    if (_fs->exists("/com_prefs.bak")) _fs->remove("/com_prefs.bak");
+    return true;
   }
 
   void abort() {
     if (_open) _file.close();
     _open = false;
+    if (_owns_temp && !_finished && _fs->exists("/com_prefs.tmp")) {
+      _fs->remove("/com_prefs.tmp");
+    }
     _finished = false;
-    if (_fs->exists("/com_prefs.tmp")) _fs->remove("/com_prefs.tmp");
+    _owns_temp = false;
   }
 
 private:
@@ -1946,6 +2002,7 @@ private:
   File _file;
   bool _open = false;
   bool _finished = false;
+  bool _owns_temp = false;
   size_t _bytes_written = 0;
 };
 
@@ -1960,14 +2017,59 @@ static const char* commonPrefsSaveResultName(MQTTPrefsAtomicStore::ImageResult r
   return "unknown";
 }
 
+bool CommonCLI::recoverCommonPrefsFiles(FILESYSTEM* fs) {
+  using CommonPrefsRecovery::Action;
+  const Action action = CommonPrefsRecovery::select(
+      fs->exists("/com_prefs"),
+      fs->exists("/com_prefs.tmp"),
+      fs->exists("/com_prefs.bak"));
+
+  switch (action) {
+    case Action::KeepPrimary:
+      if (fs->exists("/com_prefs.tmp")) fs->remove("/com_prefs.tmp");
+      if (fs->exists("/com_prefs.bak")) fs->remove("/com_prefs.bak");
+      return !fs->exists("/com_prefs.tmp") && !fs->exists("/com_prefs.bak");
+
+    case Action::PromoteTemp:
+      if (fs->rename("/com_prefs.tmp", "/com_prefs")) {
+        if (fs->exists("/com_prefs.bak")) fs->remove("/com_prefs.bak");
+        return fs->exists("/com_prefs");
+      }
+      // The verified new image could not be published. Restore the previous
+      // image so boot can continue with the last committed radio settings.
+      if (fs->rename("/com_prefs.bak", "/com_prefs")) {
+        if (fs->exists("/com_prefs.tmp")) fs->remove("/com_prefs.tmp");
+        return true;
+      }
+      return false;
+
+    case Action::PromoteBackup:
+      return fs->rename("/com_prefs.bak", "/com_prefs");
+
+    case Action::DiscardTemp:
+      // With no backup, a reset may have interrupted the very first write
+      // before finish(). Keep defaults or /node_prefs and retry the save.
+      fs->remove("/com_prefs.tmp");
+      return !fs->exists("/com_prefs.tmp");
+
+    case Action::None:
+      return true;
+  }
+  return false;
+}
+
 bool CommonCLI::saveCommonPrefsImageAtomically(FILESYSTEM* fs) {
+  if (!recoverCommonPrefsFiles(fs)) {
+    MESH_DEBUG_PRINTLN("Prefs: refusing save while recovery is incomplete");
+    return false;
+  }
   CommonPrefsFileStore store(fs);
   const MQTTPrefsAtomicStore::ImageResult result = MQTTPrefsAtomicStore::writeImage(
       store, [this](CommonPrefsFileStore& target) {
         return writeCommonPrefsImage(target, _prefs);
       });
   if (!MQTTPrefsAtomicStore::imageCommitted(result)) {
-    MESH_DEBUG_PRINTLN("Prefs: atomic /com_prefs migration save failed at %s; /node_prefs preserved",
+    MESH_DEBUG_PRINTLN("Prefs: atomic /com_prefs save failed at %s; previous image preserved",
                        commonPrefsSaveResultName(result));
     return false;
   }
@@ -2226,6 +2328,238 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.
     if (handleObserverCommand(sender_timestamp, command, reply)) return;
+#if defined(PORTABLE_ESP32_RADIO_CLI)
+    // Portable WiFi-heavy images keep the commands needed to commission,
+    // update, and diagnose the node. Their feature-complete FULL siblings keep
+    // the complete administration, logging, and external-sensor command tree.
+    if (strcmp(command, "poweroff") == 0 || strcmp(command, "shutdown") == 0) {
+      _board->powerOff();  // doesn't return
+    } else if (strcmp(command, "reboot") == 0) {
+      _board->reboot();  // doesn't return
+    } else if (strcmp(command, "advert.zerohop") == 0) {
+      _callbacks->sendSelfAdvertisement(1500, false);
+      strcpy(reply, "OK - zerohop advert sent");
+    } else if (strcmp(command, "advert") == 0) {
+      _callbacks->sendSelfAdvertisement(1500, true);
+      strcpy(reply, "OK - Advert sent");
+    } else if (strcmp(command, "clock sync") == 0) {
+      uint32_t curr = getRTCClock()->getCurrentTime();
+      if (sender_timestamp > curr) {
+        getRTCClock()->setCurrentTime(sender_timestamp + 1);
+        _callbacks->onManualClockSet();
+        uint32_t now = getRTCClock()->getCurrentTime();
+        DateTime dt = DateTime(now);
+        sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC",
+                dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+      } else {
+        strcpy(reply, "ERR: clock cannot go backwards");
+      }
+#ifdef ESP_PLATFORM
+    } else if (strcmp(command, "memory") == 0) {
+      sprintf(reply, "Free: %d, Min: %d, Max: %d, Queue: %d, IntFree: %d, IntMax: %d, PSRAM: %d/%d",
+              ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(),
+              _callbacks->getQueueSize(),
+              (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+              (int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+              (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+              (int)heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+#endif
+    } else if (memcmp(command, "start ota", 9) == 0
+               && (command[9] == 0 || command[9] == ' ')) {
+      const bool force_ap = command[9] == ' ' && strcmp(&command[10], "ap") == 0;
+      if (command[9] == ' ' && !force_ap) {
+        strcpy(reply, "ERR: usage start ota [ap]");
+      } else if (!_board->startOTAUpdate(_prefs->node_name, reply, force_ap)) {
+        strcpy(reply, "Error");
+      }
+#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
+      else {
+        _callbacks->setBridgeState(false);
+      }
+#endif
+    } else if (strcmp(command, "stop ota") == 0) {
+      if (!_board->stopOTAUpdate(reply)) {
+        strcpy(reply, "Error");
+      }
+#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
+      else if (_prefs->bridge_enabled) {
+        _callbacks->setBridgeState(true);
+      }
+#endif
+    } else if (strcmp(command, "clock") == 0) {
+      uint32_t now = getRTCClock()->getCurrentTime();
+      DateTime dt = DateTime(now);
+      sprintf(reply, "%02d:%02d - %d/%d/%d UTC",
+              dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+    } else if (memcmp(command, "time ", 5) == 0) {
+      uint32_t secs = _atoi(&command[5]);
+      uint32_t curr = getRTCClock()->getCurrentTime();
+      if (secs > curr) {
+        getRTCClock()->setCurrentTime(secs);
+        _callbacks->onManualClockSet();
+        uint32_t now = getRTCClock()->getCurrentTime();
+        DateTime dt = DateTime(now);
+        sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC",
+                dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+      } else {
+        strcpy(reply, "(ERR: clock cannot go backwards)");
+      }
+    } else if (strcmp(command, "neighbors") == 0) {
+      _callbacks->formatNeighborsReply(reply);
+    } else if (memcmp(command, "password ", 9) == 0 && command[9] != 0) {
+      StrHelper::strncpy(_prefs->password, &command[9], sizeof(_prefs->password));
+      savePrefs();
+      sprintf(reply, "password now: %s", _prefs->password);
+    } else if (memcmp(command, "get ", 4) == 0) {
+      handleGetCmd(sender_timestamp, command, reply);
+    } else if (memcmp(command, "set ", 4) == 0) {
+      handleSetCmd(sender_timestamp, command, reply);
+    } else if (sender_timestamp == 0 && strcmp(command, "erase") == 0) {
+      bool success = _callbacks->formatFileSystem();
+      sprintf(reply, "File system erase: %s", success ? "OK" : "Err");
+    } else if (strcmp(command, "ver") == 0) {
+      sprintf(reply, "%s (Build: %s)",
+              _callbacks->getFirmwareVer(), _callbacks->getBuildDate());
+    } else if (strcmp(command, "board") == 0) {
+      sprintf(reply, "%s", _board->getManufacturerName());
+    } else if (memcmp(command, "region", 6) == 0
+               && (command[6] == 0 || command[6] == ' ')) {
+      handleRegionCmd(command, reply);
+#if ENV_INCLUDE_GPS == 1
+    } else if (strcmp(command, "gps on") == 0) {
+      if (_sensors->setSettingValue("gps", "1")) {
+        _prefs->gps_enabled = 1;
+        savePrefs();
+        strcpy(reply, _prefs->powersaving_enabled ? "on (powersaving)" : "ok");
+      } else {
+        strcpy(reply, "gps toggle not found");
+      }
+    } else if (strcmp(command, "gps off") == 0) {
+      if (_sensors->setSettingValue("gps", "0")) {
+        _prefs->gps_enabled = 0;
+        savePrefs();
+        strcpy(reply, "ok");
+      } else {
+        strcpy(reply, "gps toggle not found");
+      }
+    } else if (strcmp(command, "gps sync") == 0) {
+      LocationProvider* location = _sensors->getLocationProvider();
+      if (!_prefs->gps_enabled) {
+        strcpy(reply, "gps is off");
+      } else if (location != NULL) {
+        location->syncTime();
+        strcpy(reply, "scheduled");
+      } else {
+        strcpy(reply, "gps provider not found");
+      }
+    } else if (strcmp(command, "gps setloc") == 0) {
+      _prefs->node_lat = _sensors->node_lat;
+      _prefs->node_lon = _sensors->node_lon;
+      savePrefs();
+      strcpy(reply, "ok");
+    } else if (memcmp(command, "gps advert", 10) == 0
+               && (command[10] == 0 || command[10] == ' ')) {
+      if (command[10] == 0) {
+        switch (_prefs->advert_loc_policy) {
+          case ADVERT_LOC_NONE: strcpy(reply, "> none"); break;
+          case ADVERT_LOC_PREFS: strcpy(reply, "> prefs"); break;
+          case ADVERT_LOC_SHARE: strcpy(reply, "> share"); break;
+          default: strcpy(reply, "error");
+        }
+      } else if (strcmp(&command[11], "none") == 0) {
+        _prefs->advert_loc_policy = ADVERT_LOC_NONE;
+        savePrefs();
+        strcpy(reply, "ok");
+      } else if (strcmp(&command[11], "share") == 0) {
+        _prefs->advert_loc_policy = ADVERT_LOC_SHARE;
+        savePrefs();
+        strcpy(reply, "ok");
+      } else if (strcmp(&command[11], "prefs") == 0) {
+        _prefs->advert_loc_policy = ADVERT_LOC_PREFS;
+        savePrefs();
+        strcpy(reply, "ok");
+      } else {
+        strcpy(reply, "error");
+      }
+    } else if (strcmp(command, "gps") == 0) {
+      LocationProvider* location = _sensors->getLocationProvider();
+      if (location == NULL) {
+        strcpy(reply, "Can't find GPS");
+      } else {
+        bool enabled = location->isEnabled();
+        bool fix = location->isValid();
+        int sats = location->satellitesCount();
+        const char* gps_setting = _sensors->getSettingByKey("gps");
+        bool active = gps_setting != NULL && strcmp(gps_setting, "1") == 0;
+        if (_prefs->powersaving_enabled && location->getGPSPowerSaving()) {
+          unsigned long now = millis();
+          unsigned long next_off = location->getNextGPSOff();
+          unsigned long deadline =
+              next_off != 0 ? next_off : location->getNextGPSOn();
+          long remaining_ms = deadline == 0 ? 0 : (long)(deadline - now);
+          unsigned long mins =
+              remaining_ms > 0 ? (unsigned long)remaining_ms / 60000UL : 0;
+          if (next_off != 0) {
+            snprintf(reply, 160,
+                     "on (powersaving, sleep in %luh %lum), %s, %s, %d sats",
+                     mins / 60UL, mins % 60UL,
+                     active ? "active" : "deactivated",
+                     fix ? "fix" : "no fix", sats);
+          } else {
+            snprintf(reply, 160, "off (powersaving, wake in %luh %lum)",
+                     mins / 60UL, mins % 60UL);
+          }
+          unsigned long last_sync = location->getLastValidTimeSync();
+          size_t used = strlen(reply);
+          if (last_sync == 0) {
+            snprintf(reply + used, 160 - used, ", last sync: none");
+          } else {
+            DateTime dt = DateTime(last_sync);
+            snprintf(reply + used, 160 - used,
+                     ", last sync: %02d:%02d - %d/%d/%d UTC",
+                     dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+          }
+        } else if (enabled) {
+          sprintf(reply, "on, %s, %s, %d sats",
+                  active ? "active" : "deactivated",
+                  fix ? "fix" : "no fix", sats);
+        } else {
+          strcpy(reply, "off");
+        }
+      }
+#endif
+    } else if (strcmp(command, "sensor") == 0) {
+#if defined(ENV_PIN_SDA) && defined(ENV_PIN_SCL)
+      sprintf(reply, "I2C Wire1: SDA=%s,SCL=%s\r\n",
+              STR(ENV_PIN_SDA), STR(ENV_PIN_SCL));
+#elif defined(PIN_BOARD_SDA) && defined(PIN_BOARD_SCL)
+      sprintf(reply, "I2C Wire: SDA=%s, SCL=%s\r\n",
+              STR(PIN_BOARD_SDA), STR(PIN_BOARD_SCL));
+#elif defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
+      sprintf(reply, "I2C Wire: SDA=%s, SCL=%s\r\n",
+              STR(PIN_WIRE_SDA), STR(PIN_WIRE_SCL));
+#else
+      sprintf(reply, "I2C GPIOs not defined\r\n");
+#endif
+#if defined(PIN_GPS_RX) && defined(PIN_GPS_TX)
+      sprintf(reply + strlen(reply), "GPS Serial: RX=%s, TX=%s",
+              STR(PIN_GPS_RX), STR(PIN_GPS_TX));
+  #if defined(ENV_INCLUDE_GPS) && ENV_INCLUDE_GPS > 0
+      sprintf(reply + strlen(reply), ". Configured");
+  #else
+      sprintf(reply + strlen(reply), ". Not configured");
+  #endif
+#else
+      sprintf(reply + strlen(reply), "GPS Serial not defined");
+#endif
+    } else if (strcmp(command, "powerlog") == 0) {
+      sprintf(reply, "Last reset reason: %s",
+              _board->getResetReasonString(_board->getResetReason()));
+    } else {
+      strcpy(reply, "Unknown command");
+    }
+    return;
+#else
     if (memcmp(command, "poweroff", 8) == 0 || memcmp(command, "shutdown", 8) == 0) {
       _board->powerOff();  // doesn't return
     } else if (memcmp(command, "reboot", 6) == 0) {
@@ -2346,12 +2680,17 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       strcpy(tmp, &command[10]);
       const char *parts[5];
       int num = mesh::Utils::parseTextParts(tmp, parts, 5);
-      float freq  = num > 0 ? strtof(parts[0], nullptr) : 0.0f;
-      float bw    = num > 1 ? strtof(parts[1], nullptr) : 0.0f;
+      float freq = 0.0f;
+      float bw = 0.0f;
       uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
       uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
       int temp_timeout_mins  = num > 4 ? atoi(parts[4]) : 0;
-      if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw) && temp_timeout_mins > 0) {
+      if (num == 5
+          && mesh::cli::parseDecimalStrict(parts[0], freq)
+          && mesh::cli::parseDecimalStrict(parts[1], bw)
+          && freq >= 150.0f && freq <= 2500.0f
+          && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
+          && isValidLoRaBandwidth(bw) && temp_timeout_mins > 0) {
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins);
         sprintf(reply, "OK - temp params for %d mins", temp_timeout_mins);
       } else {
@@ -2657,6 +2996,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else {
       strcpy(reply, "Unknown command");
     }
+#endif
 }
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
@@ -2679,11 +3019,174 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
-#if defined(PORTABLE_ESP32_MINIMAL_CLI)
-  // Size-constrained ESP32 images keep role-specific controls but omit the
-  // large general configuration parser. Radio and mesh defaults remain fixed
-  // by the selected build profile.
-  sprintf(reply, "unknown portable config: %s", config);
+#if defined(PORTABLE_ESP32_RADIO_CLI)
+  // Portable WiFi-heavy images keep the controls needed to configure and
+  // diagnose their radio. The full parser remains available in the FULL image.
+  if (memcmp(config, "int.thresh ", 11) == 0) {
+    _prefs->interference_threshold = atoi(&config[11]);
+    savePrefs();
+    strcpy(reply, "OK");
+  } else if (memcmp(config, "cad ", 4) == 0) {
+    const char* value = &config[4];
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set cad on|off");
+    } else {
+      _prefs->cad_enabled = strcmp(value, "on") == 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+  } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
+    _prefs->agc_reset_interval = atoi(&config[19]) / 4;
+    savePrefs();
+    sprintf(reply, "OK - interval rounded to %d",
+            ((uint32_t)_prefs->agc_reset_interval) * 4);
+  } else if (memcmp(config, "repeat ", 7) == 0) {
+    const char* value = &config[7];
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error, must be on or off");
+    } else {
+      _prefs->disable_fwd = strcmp(value, "off") == 0;
+      savePrefs();
+      _callbacks->onRetryConfigChanged();
+      strcpy(reply, _prefs->disable_fwd
+          ? "OK - repeat is now OFF" : "OK - repeat is now ON");
+    }
+  } else if (memcmp(config, "radio.rxgain ", 13) == 0) {
+    const char* value = &config[13];
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set radio.rxgain on|off");
+    } else {
+      bool enabled = strcmp(value, "on") == 0;
+      if (_callbacks->setRxBoostedGain(enabled)) {
+        _prefs->rx_boosted_gain = enabled;
+        savePrefs();
+        strcpy(reply, "OK");
+      } else {
+        strcpy(reply, "Error: unsupported");
+      }
+    }
+  } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0) {
+    const char* value = &config[17];
+    if (!_board->canControlLoRaFemLna()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: state must be on or off");
+    } else {
+      bool enabled = strcmp(value, "on") == 0;
+      bool changed = _board->isLoRaFemLnaEnabled() != enabled;
+      if (_board->setLoRaFemLnaEnabled(enabled)) {
+        if (changed) _callbacks->recalibrateNoiseFloor();
+        _prefs->radio_fem_rxgain = enabled ? 1 : 0;
+        savePrefs();
+        strcpy(reply, enabled
+            ? "OK - LoRa FEM RX gain on" : "OK - LoRa FEM RX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    }
+  } else if (memcmp(config, "radio ", 6) == 0) {
+    strcpy(tmp, &config[6]);
+    const char* parts[4];
+    int num = mesh::Utils::parseTextParts(tmp, parts, 4);
+    float freq = 0.0f;
+    float bw = 0.0f;
+    uint8_t sf = 0;
+    uint8_t cr = 0;
+    if (num == 4
+        && mesh::cli::parseDecimalStrict(parts[0], freq)
+        && mesh::cli::parseDecimalStrict(parts[1], bw)
+        && parseUint8Strict(parts[2], 5, 12, sf)
+        && parseUint8Strict(parts[3], 5, 8, cr)
+        && freq >= 150.0f && freq <= 2500.0f
+        && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
+        && isValidLoRaBandwidth(bw)) {
+      _prefs->sf = sf;
+      _prefs->cr = cr;
+      _prefs->freq = freq;
+      _prefs->bw = bw;
+      bool rxps_retuned = recalculateRxPowerSavingFromLevel(_prefs);
+      _callbacks->savePrefs();
+      strcpy(reply, rxps_retuned
+          ? "OK - reboot to apply (rxps retuned)" : "OK - reboot to apply");
+    } else {
+      strcpy(reply, "Error, invalid radio params");
+    }
+  } else if (memcmp(config, "tx ", 3) == 0) {
+    _prefs->tx_power_dbm = atoi(&config[3]);
+    savePrefs();
+    _callbacks->setTxPower(_prefs->tx_power_dbm);
+    strcpy(reply, "OK");
+  } else if (sender_timestamp == 0 && memcmp(config, "freq ", 5) == 0) {
+    float freq = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[5], freq)
+        && freq >= 150.0f && freq <= 2500.0f) {
+      _prefs->freq = freq;
+      savePrefs();
+      strcpy(reply, "OK - reboot to apply");
+    } else {
+      strcpy(reply, "Error, invalid frequency");
+    }
+#ifdef WITH_BRIDGE
+  } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
+    const char* value = &config[15];
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set bridge.enabled on|off");
+    } else {
+      _prefs->bridge_enabled = strcmp(value, "on") == 0;
+      _callbacks->setBridgeState(_prefs->bridge_enabled);
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+  } else if (memcmp(config, "bridge.delay ", 13) == 0) {
+    int delay = _atoi(&config[13]);
+    if (delay >= 0 && delay <= 10000) {
+      _prefs->bridge_delay = (uint16_t)delay;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error: delay must be between 0-10000 ms");
+    }
+  } else if (memcmp(config, "bridge.source ", 14) == 0) {
+    const char* value = &config[14];
+    if (strcmp(value, "rx") != 0 && strcmp(value, "tx") != 0) {
+      strcpy(reply, "Error: use set bridge.source rx|tx");
+    } else {
+      _prefs->bridge_pkt_src = strcmp(value, "rx") == 0;
+#ifdef WITH_MQTT_BRIDGE
+      _mqtt_prefs.mqtt_rx_enabled = _prefs->bridge_pkt_src;
+      _mqtt_prefs.mqtt_tx_enabled = !_prefs->bridge_pkt_src;
+#endif
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+#endif
+#ifdef WITH_ESPNOW_BRIDGE
+  } else if (memcmp(config, "bridge.channel ", 15) == 0) {
+    int channel = atoi(&config[15]);
+    if (channel >= 1 && channel <= 14) {
+      _prefs->bridge_channel = (uint8_t)channel;
+      _callbacks->restartBridge();
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error: channel must be between 1-14");
+    }
+  } else if (memcmp(config, "bridge.secret ", 14) == 0) {
+    const char* secret = &config[14];
+    if (secret[0] == 0 || strlen(secret) >= sizeof(_prefs->bridge_secret)) {
+      sprintf(reply, "Error: secret must be 1-%u characters",
+              (unsigned)(sizeof(_prefs->bridge_secret) - 1));
+    } else {
+      StrHelper::strncpy(_prefs->bridge_secret, secret,
+                         sizeof(_prefs->bridge_secret));
+      _callbacks->restartBridge();
+      savePrefs();
+      strcpy(reply, "OK");
+    }
+#endif
+  } else {
+    sprintf(reply, "unknown portable config: %s", config);
+  }
   return;
 #else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
@@ -2695,8 +3198,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
   if (memcmp(config, "dutycycle ", 10) == 0) {
-    float dc = atof(&config[10]);
-    if (dc < 1 || dc > 100) {
+    float dc = 0.0f;
+    if (!mesh::cli::parseDecimalStrict(&config[10], dc)
+        || dc < 1.0f || dc > 100.0f) {
       strcpy(reply, "ERROR: dutycycle must be 1-100");
     } else {
       _prefs->airtime_factor = (100.0f / dc) - 1.0f;
@@ -2724,17 +3228,27 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(reply, "Error: unsupported on this platform");
 #endif
   } else if (memcmp(config, "af ", 3) == 0) {
-    _prefs->airtime_factor = atof(&config[3]);
-    savePrefs();
-    strcpy(reply, "OK");
+    float factor = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[3], factor)) {
+      _prefs->airtime_factor = factor;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, invalid airtime factor");
+    }
   } else if (memcmp(config, "int.thresh ", 11) == 0) {
     _prefs->interference_threshold = atoi(&config[11]);
     savePrefs();
     strcpy(reply, "OK");
   } else if (memcmp(config, "cad ", 4) == 0) {
-    _prefs->cad_enabled = memcmp(&config[4], "on", 2) == 0;
-    savePrefs();
-    strcpy(reply, "OK");
+    const char* value = &config[4];
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set cad on|off");
+    } else {
+      _prefs->cad_enabled = strcmp(value, "on") == 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    }
   } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
     _prefs->agc_reset_interval = atoi(&config[19]) / 4;
     savePrefs();
@@ -2951,11 +3465,16 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(tmp, &config[6]);
     const char *parts[4];
     int num = mesh::Utils::parseTextParts(tmp, parts, 4);
-    float freq  = num > 0 ? strtof(parts[0], nullptr) : 0.0f;
-    float bw    = num > 1 ? strtof(parts[1], nullptr) : 0.0f;
+    float freq = 0.0f;
+    float bw = 0.0f;
     uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
     uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
-    if (freq >= 150.0f && freq <= 2500.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw)) {
+    if (num == 4
+        && mesh::cli::parseDecimalStrict(parts[0], freq)
+        && mesh::cli::parseDecimalStrict(parts[1], bw)
+        && freq >= 150.0f && freq <= 2500.0f
+        && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
+        && isValidLoRaBandwidth(bw)) {
       _prefs->sf = sf;
       _prefs->cr = cr;
       _prefs->freq = freq;
@@ -2991,16 +3510,27 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply);
     }
   } else if (memcmp(config, "lat ", 4) == 0) {
-    _prefs->node_lat = atof(&config[4]);
-    savePrefs();
-    strcpy(reply, "OK");
+    float latitude = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[4], latitude)) {
+      _prefs->node_lat = latitude;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, invalid latitude");
+    }
   } else if (memcmp(config, "lon ", 4) == 0) {
-    _prefs->node_lon = atof(&config[4]);
-    savePrefs();
-    strcpy(reply, "OK");
+    float longitude = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[4], longitude)) {
+      _prefs->node_lon = longitude;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, invalid longitude");
+    }
   } else if (memcmp(config, "rxdelay ", 8) == 0) {
-    float db = atof(&config[8]);
-    if (db >= 0 && db <= 20.0f) {
+    float db = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[8], db)
+        && db >= 0.0f && db <= 20.0f) {
       _prefs->rx_delay_base = db;
       savePrefs();
       strcpy(reply, "OK");
@@ -3008,8 +3538,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, must be 0-20");
     }
   } else if (memcmp(config, "txdelay ", 8) == 0) {
-    float f = atof(&config[8]);
-    if (f >= 0 && f <= 2.0f) {
+    float f = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[8], f)
+        && f >= 0.0f && f <= 2.0f) {
       _prefs->tx_delay_factor = f;
       savePrefs();
       strcpy(reply, "OK");
@@ -3044,8 +3575,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, max 64");
     }
   } else if (memcmp(config, "direct.txdelay ", 15) == 0) {
-    float f = atof(&config[15]);
-    if (f >= 0 && f <= 2.0f) {
+    float f = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[15], f)
+        && f >= 0.0f && f <= 2.0f) {
       _prefs->direct_tx_delay_factor = f;
       savePrefs();
       strcpy(reply, "OK");
@@ -3416,9 +3948,15 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _callbacks->setTxPower(_prefs->tx_power_dbm);
     strcpy(reply, "OK");
   } else if (sender_timestamp == 0 && memcmp(config, "freq ", 5) == 0) {
-    _prefs->freq = atof(&config[5]);
-    savePrefs();
-    strcpy(reply, "OK - reboot to apply");
+    float freq = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[5], freq)
+        && freq >= 150.0f && freq <= 2500.0f) {
+      _prefs->freq = freq;
+      savePrefs();
+      strcpy(reply, "OK - reboot to apply");
+    } else {
+      strcpy(reply, "Error, invalid frequency");
+    }
 #ifdef WITH_BRIDGE
   } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
     _prefs->bridge_enabled = memcmp(&config[15], "on", 2) == 0;
@@ -3483,8 +4021,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #endif
   } else if (memcmp(config, "adc.multiplier ", 15) == 0) {
-    _prefs->adc_multiplier = atof(&config[15]);
-    if (_board->setAdcMultiplier(_prefs->adc_multiplier)) {
+    float multiplier = 0.0f;
+    if (!mesh::cli::parseDecimalStrict(&config[15], multiplier)) {
+      strcpy(reply, "Error: invalid multiplier");
+    } else if (_board->setAdcMultiplier(multiplier)) {
+      _prefs->adc_multiplier = multiplier;
       savePrefs();
       if (_prefs->adc_multiplier == 0.0f) {
         strcpy(reply, "OK - using default board multiplier");
@@ -3492,7 +4033,6 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         sprintf(reply, "OK - multiplier set to %.3f", _prefs->adc_multiplier);
       }
     } else {
-      _prefs->adc_multiplier = 0.0f;
       strcpy(reply, "Error: unsupported");
     };
   } else if (memcmp(config, "reboot.interval ", 16) == 0) {
@@ -3526,8 +4066,66 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
-#if defined(PORTABLE_ESP32_MINIMAL_CLI)
-  sprintf(reply, "unknown portable config: %s", config);
+#if defined(PORTABLE_ESP32_RADIO_CLI)
+  if (strcmp(config, "int.thresh") == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->interference_threshold);
+  } else if (strcmp(config, "cad") == 0) {
+    sprintf(reply, "> %s. # channel busy: %u",
+            _prefs->cad_enabled ? "on" : "off", _board->n_cad_busy);
+  } else if (strcmp(config, "agc.reset.interval") == 0) {
+    sprintf(reply, "> %d", ((uint32_t)_prefs->agc_reset_interval) * 4);
+  } else if (strcmp(config, "repeat") == 0) {
+    sprintf(reply, "> %s", _prefs->disable_fwd ? "off" : "on");
+  } else if (strcmp(config, "radio.rxgain") == 0) {
+    sprintf(reply, "> %s", _prefs->rx_boosted_gain ? "on" : "off");
+  } else if (strcmp(config, "radio.fem.rxgain") == 0) {
+    if (!_board->canControlLoRaFemLna()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s",
+              _board->isLoRaFemLnaEnabled() ? "on" : "off");
+    }
+  } else if (strcmp(config, "radio") == 0) {
+    char freq[16], bw[16];
+    strcpy(freq, StrHelper::ftoa(_prefs->freq));
+    strcpy(bw, StrHelper::ftoa3(_prefs->bw));
+    sprintf(reply, "> %s,%s,%d,%d",
+            freq, bw, (uint32_t)_prefs->sf, (uint32_t)_prefs->cr);
+  } else if (strcmp(config, "tx") == 0) {
+    sprintf(reply, "> %d", (int32_t)_prefs->tx_power_dbm);
+  } else if (strcmp(config, "freq") == 0) {
+    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->freq));
+  } else if (strcmp(config, "role") == 0) {
+    sprintf(reply, "> %s", _callbacks->getRole());
+#ifdef WITH_BRIDGE
+  } else if (strcmp(config, "bridge.enabled") == 0) {
+    sprintf(reply, "> %s", _prefs->bridge_enabled ? "on" : "off");
+  } else if (strcmp(config, "bridge.delay") == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->bridge_delay);
+  } else if (strcmp(config, "bridge.source") == 0) {
+    sprintf(reply, "> %s", _prefs->bridge_pkt_src ? "logRx" : "logTx");
+  } else if (strcmp(config, "bridge.type") == 0) {
+    sprintf(reply, "> %s",
+#ifdef WITH_RS232_BRIDGE
+            "rs232"
+#elif WITH_ESPNOW_BRIDGE
+            "espnow"
+#elif WITH_MQTT_BRIDGE
+            "mqtt"
+#else
+            "none"
+#endif
+    );
+#endif
+#ifdef WITH_ESPNOW_BRIDGE
+  } else if (strcmp(config, "bridge.channel") == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->bridge_channel);
+  } else if (strcmp(config, "bridge.secret") == 0) {
+    sprintf(reply, "> %s", _prefs->bridge_secret);
+#endif
+  } else {
+    sprintf(reply, "unknown portable config: %s", config);
+  }
   return;
 #else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
@@ -3747,6 +4345,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
             "rs232"
 #elif WITH_ESPNOW_BRIDGE
             "espnow"
+#elif WITH_MQTT_BRIDGE
+            "mqtt"
 #else
             "none"
 #endif

@@ -240,6 +240,7 @@ set flood.filter response 9+
 set flood.filter 0x06 3+
 set flood.filter 0x07 9+
 set flood.filter path 9+
+set flood.filter control 1+
 get flood.filter
 ```
 
@@ -250,13 +251,17 @@ get flood.filter
 | `0x06 3+` (`grp_data`) | 3 or more path entries |
 | `0x07 9+` (`anon_req`) | 9 or more path entries |
 | `path 9+` | 9 or more path entries |
+| `control 1+` | 1 or more path entries |
 
 On a new table, the factory OTA rule occupies slot 1, so these unnumbered
-commands normally fill slots 2 through 6. Existing tables may choose different
+commands normally fill slots 2 through 7. Existing tables may choose different
 free slots. The `response`, `anon_req`, and `path` thresholds are above their
-protected `0-6` range, so all five rules take effect at the thresholds shown.
-These rules affect only retransmission by the repeater; local reception and
-logging remain unchanged.
+protected `0-6` range, so all six rules take effect at the thresholds shown.
+The Control rule allows a flood received with path count `0` to be forwarded
+once, then stops it at the next repeater. Normal node-discovery Control packets
+are direct zero-hop packets and never enter `flood.filter`. These rules affect
+only retransmission by the repeater; local reception and logging remain
+unchanged.
 
 Accepted payload names are:
 

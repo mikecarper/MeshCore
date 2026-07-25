@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "helpers/MQTTPayloadBuilder.h"
+#include "helpers/TxtDataHelpers.h"
 
 namespace {
 
@@ -132,6 +133,19 @@ TEST(MQTTPayloadBuilder, RxPacketIncludesMetricsScaledScoreAndPath) {
   ASSERT_EQ(2U, parsed_path.size());
   EXPECT_STREQ("aabb", parsed_path[0].as<const char*>());
   EXPECT_STREQ("012f", parsed_path[1].as<const char*>());
+}
+
+TEST(MQTTPayloadBuilder, FixedFloatFormattingDoesNotRequirePrintfFloat) {
+  char value[20];
+
+  EXPECT_TRUE(StrHelper::ftoaFixed(value, sizeof(value), 915.0f, 6));
+  EXPECT_STREQ("915.000000", value);
+  EXPECT_TRUE(StrHelper::ftoaFixed(value, sizeof(value), 10.26f, 1));
+  EXPECT_STREQ("10.3", value);
+  EXPECT_TRUE(StrHelper::ftoaFixed(value, sizeof(value), -87.25f, 2));
+  EXPECT_STREQ("-87.25", value);
+  EXPECT_FALSE(StrHelper::ftoaFixed(value, sizeof(value), std::nanf(""), 1));
+  EXPECT_STREQ("0", value);
 }
 
 TEST(MQTTPayloadBuilder, TxPacketOmitsReceiveOnlyMetricsAndAbsentPath) {

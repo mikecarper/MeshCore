@@ -17,6 +17,7 @@ public:
   static void stripSurroundingQuotes(char* str, size_t buf_sz);
   static const char* ftoa(float f);
   static const char* ftoa3(float f); //Converts float to string with 3 decimal places
+  static bool ftoaFixed(char* dest, size_t dest_size, float value, uint8_t precision);
   static bool isBlank(const char* str);
   static uint32_t fromHex(const char* src);
 };

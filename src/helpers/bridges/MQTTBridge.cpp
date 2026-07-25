@@ -54,6 +54,15 @@ static constexpr size_t kNtpBuiltinFallbackCount =
 static_assert(MQTTBridge::kMaxNtpServers >= 1 + (int)kNtpBuiltinFallbackCount,
               "kMaxNtpServers must hold the custom primary plus all built-in fallbacks");
 
+static void formatRadioInfo(float freq, float bw, int sf, int cr,
+                            char* dest, size_t dest_size) {
+  char freq_text[20];
+  char bw_text[16];
+  StrHelper::ftoaFixed(freq_text, sizeof(freq_text), freq, 6);
+  StrHelper::ftoaFixed(bw_text, sizeof(bw_text), bw, 1);
+  snprintf(dest, dest_size, "%s,%s,%d,%d", freq_text, bw_text, sf, cr);
+}
+
 static bool ntpHostnameEquals(const char* a, const char* b) {
   if (!a || !b) return false;
   return strcasecmp(a, b) == 0;
@@ -2337,11 +2346,11 @@ void MQTTBridge::publishStatusToSlot(int index) {
   gettimeofday(&now_tv, nullptr);
   MQTTMessageBuilder::formatIsoTimestampForMqtt(now_tv.tv_sec, now_tv.tv_usec, _timezone, timestamp, sizeof(timestamp));
 
-  snprintf(radio_info, sizeof(radio_info), "%.6f,%.1f,%d,%d",
-           _node_info.freq ? *_node_info.freq : 0.0f,
-           _node_info.bw ? *_node_info.bw : 0.0f,
-           _node_info.sf ? *_node_info.sf : 0,
-           _node_info.cr ? *_node_info.cr : 0);
+  formatRadioInfo(_node_info.freq ? *_node_info.freq : 0.0f,
+                  _node_info.bw ? *_node_info.bw : 0.0f,
+                  _node_info.sf ? *_node_info.sf : 0,
+                  _node_info.cr ? *_node_info.cr : 0,
+                  radio_info, sizeof(radio_info));
 
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
@@ -3118,11 +3127,11 @@ bool MQTTBridge::publishStatus() {
   gettimeofday(&now_tv, nullptr);
   MQTTMessageBuilder::formatIsoTimestampForMqtt(now_tv.tv_sec, now_tv.tv_usec, _timezone, timestamp, sizeof(timestamp));
 
-  snprintf(radio_info, sizeof(radio_info), "%.6f,%.1f,%d,%d",
-           _node_info.freq ? *_node_info.freq : 0.0f,
-           _node_info.bw ? *_node_info.bw : 0.0f,
-           _node_info.sf ? *_node_info.sf : 0,
-           _node_info.cr ? *_node_info.cr : 0);
+  formatRadioInfo(_node_info.freq ? *_node_info.freq : 0.0f,
+                  _node_info.bw ? *_node_info.bw : 0.0f,
+                  _node_info.sf ? *_node_info.sf : 0,
+                  _node_info.cr ? *_node_info.cr : 0,
+                  radio_info, sizeof(radio_info));
 
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
