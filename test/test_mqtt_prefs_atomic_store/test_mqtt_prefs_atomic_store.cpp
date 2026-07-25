@@ -5,10 +5,12 @@
 #include <string>
 #include <vector>
 
+#include "helpers/CommonPrefsRecovery.h"
 #include "helpers/MQTTPrefsAtomicStore.h"
 #include "helpers/MQTTPrefsRecovery.h"
 
 namespace AtomicStore = MQTTPrefsAtomicStore;
+namespace CommonRecovery = CommonPrefsRecovery;
 namespace Recovery = MQTTPrefsRecovery;
 
 namespace {
@@ -160,7 +162,9 @@ public:
     ++begin_calls;
     _files.erase("/com_prefs.tmp");
     _staging.clear();
+    _finished = false;
     _open = _failure != FailurePoint::Begin;
+    _owns_temp = _open;
     return _open;
   }
 
@@ -178,6 +182,7 @@ public:
     _open = false;
     if (_failure == FailurePoint::Finish) return false;
     _files["/com_prefs.tmp"] = _staging;
+    _finished = true;
     return true;
   }
 
@@ -186,6 +191,7 @@ public:
     if (_failure == FailurePoint::Commit) return false;
     _files["/com_prefs"] = _files["/com_prefs.tmp"];
     _files.erase("/com_prefs.tmp");
+    _finished = false;
     return true;
   }
 
@@ -193,7 +199,18 @@ public:
     ++abort_calls;
     _open = false;
     _staging.clear();
-    _files.erase("/com_prefs.tmp");
+    if (_owns_temp && !_finished) _files.erase("/com_prefs.tmp");
+    _finished = false;
+    _owns_temp = false;
+  }
+
+  void recover() {
+    const CommonRecovery::Action action = CommonRecovery::select(
+        destinationExists(), tempExists(), false);
+    if (action == CommonRecovery::Action::KeepPrimary ||
+        action == CommonRecovery::Action::DiscardTemp) {
+      _files.erase("/com_prefs.tmp");
+    }
   }
 
   void removeNodeSource() { _files.erase("/node_prefs"); }
@@ -215,6 +232,8 @@ public:
 private:
   FailurePoint _failure;
   bool _open = false;
+  bool _finished = false;
+  bool _owns_temp = false;
   std::vector<uint8_t> _staging;
   std::map<std::string, std::vector<uint8_t>> _files;
 };
@@ -497,6 +516,10 @@ TEST(MQTTPrefsAtomicStore, NodePrefsMigrationFailurePreservesSourceAndNeverPrefe
   for (const auto& test_case : cases) {
     InMemoryCommonPrefsStore store(test_case.point);
     EXPECT_EQ(test_case.expected, runCommonPrefsImage(&store));
+    if (test_case.point == FailurePoint::Commit) {
+      EXPECT_TRUE(store.tempExists());  // complete, but uncommitted first image
+    }
+    store.recover();
     EXPECT_EQ(legacy_node, store.nodeSource());
     EXPECT_TRUE(store.nodeSourceIsPreferred());
     EXPECT_FALSE(store.destinationExists());
@@ -615,6 +638,19 @@ TEST(MQTTPrefsAtomicStore, RecoveryNeverOverwritesOpaqueNewerLayout) {
   EXPECT_EQ(Recovery::Action::PromoteBackup,
             Recovery::select(Recovery::FileState::Missing, Recovery::FileState::Missing,
                              Recovery::FileState::Preserve));
+}
+
+TEST(MQTTPrefsAtomicStore, CommonPrefsRecoveryUsesOnlyVerifiedTempWithBackup) {
+  EXPECT_EQ(CommonRecovery::Action::KeepPrimary,
+            CommonRecovery::select(true, true, true));
+  EXPECT_EQ(CommonRecovery::Action::PromoteTemp,
+            CommonRecovery::select(false, true, true));
+  EXPECT_EQ(CommonRecovery::Action::PromoteBackup,
+            CommonRecovery::select(false, false, true));
+  EXPECT_EQ(CommonRecovery::Action::DiscardTemp,
+            CommonRecovery::select(false, true, false));
+  EXPECT_EQ(CommonRecovery::Action::None,
+            CommonRecovery::select(false, false, false));
 }
 
 int main(int argc, char** argv) {

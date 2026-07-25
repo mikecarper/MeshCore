@@ -122,22 +122,30 @@ GPS and other board-native telemetry remain enabled. RP2040 and STM32 targets ar
 platforms do not yet have a safe bootloader/apply path.
 
 Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
-keep MQTT/TLS and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, SSD1306 display support,
-GPS, and optional external sensor drivers. Their compact CLI keeps observer controls and uses UTC or fixed UTC/GMT
+keep MQTT/TLS, onboard GPS, and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, display
+support, and optional external sensor drivers. Their compact CLI keeps observer controls plus the radio,
+TX power, CAD, interference-threshold, AGC, repeat, and retained bridge controls. It uses UTC or fixed UTC/GMT
 offsets instead of the full named-timezone table. Built-in TLS presets keep their pinned CA roots; the 66 KB
 general CA bundle for custom TLS brokers is omitted, so portable observers use a built-in preset or a custom
-non-TLS broker. Portable observers also use compact C-library formatting and generic ESP-IDF/mbedTLS error
-text; error codes and MQTT status remain available. Classic T-Beam observers retain AXP192/AXP2101 radio
-and GPS rail setup plus battery-voltage readings, but omit unrelated PMU policy. ESP-NOW bridge builds keep
-the ESP-NOW bridge but likewise omit SSD1306 display support, GPS, optional external sensors, and the general
-configuration parser. These reductions do
+non-TLS broker. Size-constrained classic ESP32 observers without PSRAM may use Espressif's compact printf
+implementation from chip ROM while retaining the normal ESP-IDF C library and ABI. Generic ESP-IDF/mbedTLS
+error text keeps error codes and MQTT status available. Classic T-Beam observers retain AXP192/AXP2101 radio
+and GPS rail setup plus battery-voltage
+readings, but omit unrelated PMU policy. ESP-NOW bridge builds keep the ESP-NOW bridge, onboard GPS, and the
+same radio-capable compact CLI, but omit display support and optional external sensors. These reductions do
 not apply to companion builds. Ordinary repeater builds remain sensor-enabled; only explicitly named
 `*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution.
+
+MQTT observer radio and bridge preferences use verified temporary files plus a recoverable backup. A reset
+during a settings save restores the last committed common preference image or publishes the completed new
+image; it does not leave a partially written `/com_prefs` file to fail on the next boot. A truncated legacy
+image is rejected before any partial radio or string fields are applied, then rewritten from safe defaults.
 
 Option 3 in `build.sh` also emits `*-full-ota-*` ESP32 artifacts for non-companion roles where the portable
 profile removes a compiled feature and for the constrained companion fallbacks described above. Menu
 option 8, or `build-full-esp32-firmwares`, builds only those FULL
-artifacts. FULL builds restore WebConfig, the full CLI and observer feature set,
+artifacts. FULL builds restore WebConfig, display support, optional external sensors, the full CLI and
+observer feature set,
 full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
 including room servers, sensors, observers, and bridges. They use expanded A/B partition
 tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB

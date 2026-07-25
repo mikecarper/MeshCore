@@ -64,12 +64,26 @@ public:
   float getLastSNR() const override { return 9.0f; }
 
   // --- concrete RadioLibWrapper surface called directly on radio_driver ---
-  void setParams(float /*freq*/, float /*bw*/, uint8_t /*sf*/, uint8_t /*cr*/) {}
+  mesh::RadioParamApplyResult trySetParams(
+      float /*freq*/, float /*bw*/, uint8_t /*sf*/, uint8_t /*cr*/,
+      const uint32_t* /*rx_ps_timings*/ = nullptr) override {
+    return mesh::RadioParamApplyResult::APPLIED;
+  }
+  bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                 const uint32_t* rx_ps_timings = nullptr) {
+    return trySetParams(freq, bw, sf, cr, rx_ps_timings)
+        == mesh::RadioParamApplyResult::APPLIED;
+  }
+  void powerOff() {}
   void setTxPower(int8_t /*dbm*/) {}
   uint32_t getRngSeed() { return _simRandom(); }
   uint32_t getPacketsRecv() const { return n_recv; }
   uint32_t getPacketsSent() const { return n_sent; }
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
-  void setRxBoostedGainMode(bool) {}
+  bool setRxBoostedGainMode(bool /*enabled*/) { return false; }
   bool getRxBoostedGainMode() const { return false; }
+  uint32_t getRxPsWatchdogSoftCount() const { return 0; }
+  uint32_t getRxPsWatchdogHardCount() const { return 0; }
+  bool isWatchdogObserving() const { return false; }
+  bool isCalibratingNoiseFloor() const { return false; }
 };

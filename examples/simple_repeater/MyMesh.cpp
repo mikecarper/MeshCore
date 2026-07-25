@@ -6590,10 +6590,12 @@ void MyMesh::buildStatsJson(char* buf, size_t buf_size) {
   } else if (_webconfig && _webconfig->mode() == WebConfigServer::MODE_SETUP) {
     strncpy(ip, WiFi.softAPIP().toString().c_str(), sizeof(ip) - 1);
   }
+  char snr_text[16];
+  StrHelper::ftoaFixed(snr_text, sizeof(snr_text), radio_driver.getLastSNR(), 1);
   int pos = snprintf(buf, buf_size,
       "{\"uptime_s\":%lu,\"batt_mv\":%u,"
       "\"heap_free\":%lu,\"heap_min\":%lu,\"heap_max_alloc\":%lu,"
-      "\"noise\":%d,\"rssi\":%d,\"snr\":%.1f,"
+      "\"noise\":%d,\"rssi\":%d,\"snr\":%s,"
       "\"airtime_s\":%lu,\"rx_airtime_s\":%lu,"
       "\"recv\":%lu,\"sent\":%lu,\"rx_err\":%lu,"
       "\"sent_flood\":%lu,\"sent_direct\":%lu,\"recv_flood\":%lu,\"recv_direct\":%lu,"
@@ -6602,7 +6604,7 @@ void MyMesh::buildStatsJson(char* buf, size_t buf_size) {
       (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(),
       (unsigned long)ESP.getMaxAllocHeap(),
       (int)_radio->getNoiseFloor(), (int)radio_driver.getLastRSSI(),
-      radio_driver.getLastSNR(),
+      snr_text,
       (unsigned long)(getTotalAirTime() / 1000), (unsigned long)(getReceiveAirTime() / 1000),
       (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsSent(),
       (unsigned long)radio_driver.getPacketsRecvErrors(),

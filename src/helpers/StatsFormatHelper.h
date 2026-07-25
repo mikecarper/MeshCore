@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Mesh.h"
+#include "TxtDataHelpers.h"
 
 class StatsFormatHelper {
 public:
@@ -24,11 +25,13 @@ public:
                               RadioDriverType& driver,
                               uint32_t total_air_time_ms,
                               uint32_t total_rx_air_time_ms) {
-    sprintf(reply, 
-      "{\"noise_floor\":%d,\"last_rssi\":%d,\"last_snr\":%.2f,\"tx_air_secs\":%u,\"rx_air_secs\":%u}",
+    char last_snr[16];
+    StrHelper::ftoaFixed(last_snr, sizeof(last_snr), driver.getLastSNR(), 2);
+    sprintf(reply,
+      "{\"noise_floor\":%d,\"last_rssi\":%d,\"last_snr\":%s,\"tx_air_secs\":%u,\"rx_air_secs\":%u}",
       (int16_t)radio->getNoiseFloor(),
       (int16_t)driver.getLastRSSI(),
-      driver.getLastSNR(),
+      last_snr,
       total_air_time_ms / 1000,
       total_rx_air_time_ms / 1000
     );

@@ -476,6 +476,7 @@ class CommonCLI {
   void savePrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 #ifdef WITH_MQTT_BRIDGE
+  bool recoverCommonPrefsFiles(FILESYSTEM* fs);
   bool saveCommonPrefsImageAtomically(FILESYSTEM* fs);
   void loadMQTTPrefs(FILESYSTEM* fs, MQTTPrefsAtomicStore::LegacyUpgradeGate* legacy_upgrade);
   bool saveMQTTPrefs(FILESYSTEM* fs);

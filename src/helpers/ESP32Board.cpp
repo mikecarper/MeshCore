@@ -364,22 +364,256 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
 // this. We read the web-flasher manifest (config.json), find the `flash-update`
 // (app-only) build for our own variant, refuse partition-change releases (OTA
 // can't rewrite the partition table), skip if already up to date, then stream
-// the .bin straight into the inactive OTA slot via HTTPUpdate.
+// the .bin straight into the inactive OTA slot.
 // ---------------------------------------------------------------------------
 #if defined(WITH_MQTT_BRIDGE)
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <HTTPUpdate.h>
+#include <Update.h>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_partition.h>
+#include <strings.h>
 
 // Embedded CA bundle (produced by board_build.embed_files). Weak so non-bundle
 // builds still link; we check for presence at runtime.
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_certs_x509_crt_bundle_bin_start") __attribute__((weak));
 extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_certs_x509_crt_bundle_bin_end") __attribute__((weak));
+
+struct OtaHttpResponse {
+  int status;
+  size_t content_length;
+  bool has_content_length;
+};
+
+static bool ota_parseHttpUrl(const char* url, bool require_tls,
+                             char* host, size_t host_size,
+                             char* path, size_t path_size,
+                             uint16_t& port) {
+  const char* cursor;
+  bool tls;
+  if (strncmp(url, "https://", 8) == 0) {
+    cursor = url + 8;
+    tls = true;
+    port = 443;
+  } else if (strncmp(url, "http://", 7) == 0) {
+    cursor = url + 7;
+    tls = false;
+    port = 80;
+  } else {
+    return false;
+  }
+  if (tls != require_tls) return false;
+
+  const char* slash = strchr(cursor, '/');
+  const char* authority_end = slash ? slash : cursor + strlen(cursor);
+  const char* colon = nullptr;
+  for (const char* p = cursor; p < authority_end; p++) {
+    if (*p == ':') colon = p;
+  }
+  const char* host_end = colon ? colon : authority_end;
+  size_t host_len = (size_t)(host_end - cursor);
+  if (host_len == 0 || host_len >= host_size) return false;
+  memcpy(host, cursor, host_len);
+  host[host_len] = 0;
+
+  if (colon) {
+    uint32_t parsed_port = 0;
+    const char* p = colon + 1;
+    if (p == authority_end) return false;
+    while (p < authority_end) {
+      if (*p < '0' || *p > '9') return false;
+      parsed_port = parsed_port * 10U + (uint32_t)(*p++ - '0');
+      if (parsed_port > 65535U) return false;
+    }
+    if (parsed_port == 0) return false;
+    port = (uint16_t)parsed_port;
+  }
+
+  const char* source_path = slash ? slash : "/";
+  size_t path_len = strlen(source_path);
+  if (path_len >= path_size) return false;
+  memcpy(path, source_path, path_len + 1);
+  return true;
+}
+
+static bool ota_readHttpLine(Client& client, char* line, size_t line_size) {
+  size_t length = 0;
+  uint32_t deadline = millis() + 20000;
+  while (client.connected() || client.available()) {
+    while (client.available()) {
+      int c = client.read();
+      if (c < 0) break;
+      if (c == '\n') {
+        if (length && line[length - 1] == '\r') length--;
+        line[length] = 0;
+        return true;
+      }
+      if (length + 1 < line_size) line[length++] = (char)c;
+    }
+    if ((int32_t)(millis() - deadline) >= 0) break;
+    delay(1);
+  }
+  return false;
+}
+
+static bool ota_openHttp(Client& client, const char* url, bool require_tls,
+                         OtaHttpResponse& response, char reply[]) {
+  char host[96];
+  char path[224];
+  uint16_t port;
+  if (!ota_parseHttpUrl(url, require_tls, host, sizeof(host),
+                        path, sizeof(path), port)) {
+    strcpy(reply, require_tls ? "ERR: invalid HTTPS URL" : "ERR: invalid HTTP URL");
+    return false;
+  }
+
+  client.setTimeout(20000);
+  if (!client.connect(host, port)) {
+    strcpy(reply, "ERR: HTTP connect failed");
+    return false;
+  }
+  client.printf("GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: MeshCore-OTA\r\n"
+                "Accept: */*\r\nAccept-Encoding: identity\r\n"
+                "Cache-Control: no-cache\r\nConnection: close\r\n\r\n",
+                path, host);
+
+  char line[192];
+  if (!ota_readHttpLine(client, line, sizeof(line))) {
+    strcpy(reply, "ERR: HTTP response timeout");
+    client.stop();
+    return false;
+  }
+  char* status_text = strchr(line, ' ');
+  if (strncmp(line, "HTTP/", 5) != 0 || status_text == nullptr) {
+    strcpy(reply, "ERR: invalid HTTP response");
+    client.stop();
+    return false;
+  }
+
+  response.status = atoi(status_text + 1);
+  response.content_length = 0;
+  response.has_content_length = false;
+  bool chunked = false;
+  bool headers_complete = false;
+  while (ota_readHttpLine(client, line, sizeof(line))) {
+    if (line[0] == 0) {
+      headers_complete = true;
+      break;
+    }
+    if (strncasecmp(line, "Content-Length:", 15) == 0) {
+      const char* value = line + 15;
+      while (*value == ' ') value++;
+      char* end = nullptr;
+      unsigned long parsed = strtoul(value, &end, 10);
+      while (end != nullptr && *end == ' ') end++;
+      if (value == end || end == nullptr || *end != 0) {
+        strcpy(reply, "ERR: invalid HTTP length");
+        client.stop();
+        return false;
+      }
+      response.content_length = (size_t)parsed;
+      response.has_content_length = true;
+    } else if (strncasecmp(line, "Transfer-Encoding:", 18) == 0) {
+      const char* value = line + 18;
+      while (*value == ' ') value++;
+      chunked = strncasecmp(value, "chunked", 7) == 0;
+    }
+  }
+  if (!headers_complete) {
+    strcpy(reply, "ERR: incomplete HTTP headers");
+    client.stop();
+    return false;
+  }
+  if (chunked) {
+    strcpy(reply, "ERR: chunked HTTP unsupported");
+    client.stop();
+    return false;
+  }
+  return true;
+}
+
+static bool ota_fetchManifest(Client& client, const char* url, bool require_tls,
+                              JsonDocument& doc, char reply[]) {
+  OtaHttpResponse response;
+  if (!ota_openHttp(client, url, require_tls, response, reply)) return false;
+  if (response.status != 200) {
+    snprintf(reply, 160, "ERR: manifest HTTP %d", response.status);
+    client.stop();
+    return false;
+  }
+  if (response.has_content_length && response.content_length > 2048) {
+    strcpy(reply, "ERR: manifest too large");
+    client.stop();
+    return false;
+  }
+
+  DeserializationError err = deserializeJson(doc, client);
+  client.stop();
+  if (err) {
+    snprintf(reply, 160, "ERR: manifest parse (%s)", err.c_str());
+    return false;
+  }
+  return true;
+}
+
+static bool ota_streamFirmware(Client& client, size_t content_length, char reply[]) {
+  if (content_length == 0) {
+    strcpy(reply, "ERR: empty firmware image");
+    return false;
+  }
+  if (!Update.begin(content_length, U_FLASH)) {
+    snprintf(reply, 160, "ERR: OTA begin: %s", Update.errorString());
+    return false;
+  }
+
+  uint8_t buffer[2048];
+  size_t received_total = 0;
+  int progress_decile = -1;
+  uint32_t deadline = millis() + 20000;
+  while (received_total < content_length) {
+    int available = client.available();
+    if (available <= 0) {
+      if (!client.connected()) {
+        strcpy(reply, "ERR: firmware download incomplete");
+        Update.abort();
+        return false;
+      }
+      if ((int32_t)(millis() - deadline) >= 0) {
+        strcpy(reply, "ERR: firmware download timeout");
+        Update.abort();
+        return false;
+      }
+      delay(1);
+      continue;
+    }
+
+    size_t wanted = content_length - received_total;
+    if (wanted > sizeof(buffer)) wanted = sizeof(buffer);
+    if (wanted > (size_t)available) wanted = (size_t)available;
+    int received = client.read(buffer, wanted);
+    if (received <= 0) continue;
+    deadline = millis() + 20000;
+    if (Update.write(buffer, (size_t)received) != (size_t)received) {
+      snprintf(reply, 160, "ERR: OTA write: %s", Update.errorString());
+      Update.abort();
+      return false;
+    }
+    received_total += (size_t)received;
+    int decile = (int)((received_total * 10U) / content_length);
+    if (decile != progress_decile) {
+      progress_decile = decile;
+      Serial.printf("OTA: %d%%\n", decile * 10);
+    }
+  }
+
+  if (!Update.end()) {
+    snprintf(reply, 160, "ERR: OTA finish: %s", Update.errorString());
+    return false;
+  }
+  return true;
+}
 
 // Extract the trailing build hash. For a filename we first drop a ".bin"
 // suffix, then take the token after the last '-'. Works for both the manifest
@@ -474,7 +708,7 @@ static void ota_task_entry(void* param) {
 }
 
 bool ESP32Board::otaFromManifest(const char* current_ver, bool dry_run, char reply[]) {
-  // The TLS handshake (cert-bundle verify) + JSON parse / HTTPUpdate use far more
+  // The TLS handshake (cert-bundle verify), JSON parse, and flash stream use far more
   // stack than the ~8 KB loop task offers - especially when reached via the deep
   // mesh-receive call chain (it overflows the loopTask canary). Run the work in a
   // dedicated 24 KB-stack task and block here until it finishes. The big stack is
@@ -516,8 +750,7 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
   // <OTA_MANIFEST_BASE>/<OTA_VARIANT>.json - a ~180 byte per-variant file, not the
   // full config.json.
   char murl[200];
-  HTTPClient http;
-  WiFiClientSecure mclient;  // only used for the HTTPS (update) path
+  JsonDocument doc;
 
   if (dry_run) {
     // `ota check`: fetch over PLAIN HTTP. With no TLS handshake the fetch costs
@@ -532,50 +765,26 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
     } else {
       snprintf(murl, sizeof(murl), "%s/%s.json", OTA_MANIFEST_BASE, OTA_VARIANT);
     }
-    if (!http.begin(murl)) {
-      strcpy(reply, "ERR: manifest connect failed");
+    WiFiClient mclient;
+    if (!ota_fetchManifest(mclient, murl, false, doc, reply)) {
       return false;
     }
   } else {
     // `ota update`: HTTPS. The bridge is torn down for an update so heap is free,
     // and integrity matters because we're about to flash.
+    WiFiClientSecure mclient;
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     mclient.setCACertBundle(rootca_crt_bundle_start, bundle_len);
 #else
     mclient.setCACertBundle(rootca_crt_bundle_start);
 #endif
-    mclient.setTimeout(15000);
     snprintf(murl, sizeof(murl), "%s/%s.json", OTA_MANIFEST_BASE, OTA_VARIANT);
-    if (!http.begin(mclient, murl)) {
-      strcpy(reply, "ERR: manifest connect failed");
+    if (!ota_fetchManifest(mclient, murl, true, doc, reply)) {
       return false;
     }
   }
 
   if (!dry_run) { Serial.print("OTA: checking manifest "); Serial.println(murl); }
-
-  // Force HTTP/1.0: a CDN (e.g. Cloudflare) answers HTTP/1.1 with chunked encoding
-  // and no Content-Length; the raw chunked stream corrupts the parse. HTTP/1.0
-  // yields a Connection: close, unframed body.
-  http.useHTTP10(true);
-  http.setTimeout(20000);
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) {
-    snprintf(reply, 160, "ERR: manifest HTTP %d", code);
-    http.end();
-    return false;
-  }
-
-  WiFiClient* stream = http.getStreamPtr();
-  stream->setTimeout(20000);  // readBytes honours this, so a slow TLS link != EOF
-
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, *stream);
-  http.end();
-  if (err) {
-    snprintf(reply, 160, "ERR: manifest parse (%s)", err.c_str());
-    return false;
-  }
 
   // Copy fields out before the document is reused/cleared.
   char file_url[200] = {0}, avail_version[40] = {0}, avail_base[40] = {0}, avail_hash[24] = {0};
@@ -689,28 +898,39 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
 #else
   uclient.setCACertBundle(rootca_crt_bundle_start);
 #endif
-  uclient.setTimeout(20000);
 
-  // Console progress to the USB serial (always on; MESH_DEBUG is off on the default
-  // observer profile). Non-capturing lambdas + a file-static decile, so the global
-  // httpUpdate object never holds a dangling reference after this function returns.
-  static int ota_progress_decile;
-  ota_progress_decile = -1;
-  httpUpdate.onProgress([](int cur, int total) {
-    if (total <= 0) return;
-    int d = (int)((int64_t)cur * 10 / total);
-    if (d != ota_progress_decile) { ota_progress_decile = d; Serial.printf("OTA: %d%%\n", d * 10); }
-  });
-  httpUpdate.onEnd([]() { Serial.println("OTA: write complete, rebooting..."); });
-  httpUpdate.rebootOnUpdate(true);  // reboots into the new image on success
-  t_httpUpdate_return ret = httpUpdate.update(uclient, file_url);
+  OtaHttpResponse response;
+  if (!ota_openHttp(uclient, file_url, true, response, reply)) {
+    inhibit_sleep = false;
+    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    return false;
+  }
+  if (response.status != 200) {
+    inhibit_sleep = false;
+    snprintf(reply, 160, "ERR: firmware HTTP %d", response.status);
+    uclient.stop();
+    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    return false;
+  }
+  if (!response.has_content_length) {
+    inhibit_sleep = false;
+    strcpy(reply, "ERR: firmware size missing");
+    uclient.stop();
+    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    return false;
+  }
+  if (!ota_streamFirmware(uclient, response.content_length, reply)) {
+    inhibit_sleep = false;
+    uclient.stop();
+    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    return false;
+  }
 
-  // Only reached on failure (success reboots inside update()).
-  inhibit_sleep = false;
-  snprintf(reply, 160, "ERR: OTA failed (%d): %s", (int)ret,
-           httpUpdate.getLastErrorString().c_str());
-  Serial.print("OTA: FAILED - "); Serial.println(reply);
-  return false;
+  uclient.stop();
+  Serial.println("OTA: write complete, rebooting...");
+  delay(250);
+  esp_restart();
+  return true;  // unreachable
 #endif  // OTA_MANIFEST_BASE && OTA_VARIANT
 }
 #else
