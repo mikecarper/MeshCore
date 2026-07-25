@@ -56,6 +56,8 @@ not currently have a safe self-apply path and therefore cannot install LoRa firm
 ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
 install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
+Use a `*-full-logging-ota-*` artifact when the same complete feature set is needed with USB debug and packet
+logging enabled. The logging profile is intended for diagnostics and can produce substantial serial output.
 
 ### Choose the source radio
 
