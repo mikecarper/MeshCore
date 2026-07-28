@@ -9,15 +9,25 @@ public:
 
 class TestRadio : public mesh::Radio {
 public:
+  uint8_t pending_rx[MAX_TRANS_UNIT];
+  int pending_rx_len = 0;
   int send_starts = 0;
   bool receiving = false;
   bool in_recv_mode = true;
   int soft_recoveries = 0;
   int hard_recoveries = 0;
+  int cad_set_calls = 0;
+  bool cad_enabled = false;
   unsigned long last_irq = 0;
   bool recovery_result = true;
 
-  int recvRaw(uint8_t*, int) override { return 0; }
+  int recvRaw(uint8_t* dest, int max_len) override {
+    if (pending_rx_len == 0) return 0;
+    int len = pending_rx_len < max_len ? pending_rx_len : max_len;
+    memcpy(dest, pending_rx, len);
+    pending_rx_len = 0;
+    return len;
+  }
   uint32_t getEstAirtimeFor(int) override { return 1; }
   float packetScore(float, int) override { return 0; }
   bool startSendRaw(const uint8_t*, int) override { send_starts++; return true; }
@@ -25,6 +35,10 @@ public:
   void onSendFinished() override { }
   bool isInRecvMode() const override { return in_recv_mode; }
   bool isReceiving() override { return receiving; }
+  void setCADEnabled(bool enable) override {
+    cad_set_calls++;
+    cad_enabled = enable;
+  }
   unsigned long getLastRadioInterruptMillis() const override { return last_irq; }
   bool recoverRadio(bool hard) override {
     if (hard) {
@@ -34,13 +48,35 @@ public:
     }
     return recovery_result;
   }
+
+  void queueRx(const uint8_t* raw, int len) {
+    ASSERT_NE(raw, nullptr);
+    ASSERT_GT(len, 0);
+    ASSERT_LE(len, MAX_TRANS_UNIT);
+    memcpy(pending_rx, raw, len);
+    pending_rx_len = len;
+  }
 };
 
 class TestDispatcher : public mesh::Dispatcher {
   RxReservePacketManager& manager;
 
 protected:
-  mesh::DispatcherAction onRecvPacket(mesh::Packet*) override { return ACTION_RELEASE; }
+  mesh::DispatcherAction onRecvPacket(mesh::Packet*) override {
+    received_packets++;
+    return ACTION_RELEASE;
+  }
+  int calcRxDelay(float score, uint32_t air_time) const override {
+    return forced_rx_delay >= 0
+        ? forced_rx_delay
+        : mesh::Dispatcher::calcRxDelay(score, air_time);
+  }
+  bool shouldBypassRxDelay(const mesh::Packet*) override {
+    return bypass_rx_delay;
+  }
+  bool getCADEnabled() const override {
+    return configured_cad_enabled;
+  }
   void onSendFail(mesh::Packet* packet) override {
     failed_packet = packet;
     free_count_during_failure = manager.getFreeCount();
@@ -49,6 +85,10 @@ protected:
 public:
   mesh::Packet* failed_packet = nullptr;
   int free_count_during_failure = -1;
+  int received_packets = 0;
+  int forced_rx_delay = -1;
+  bool bypass_rx_delay = false;
+  bool configured_cad_enabled = false;
 
   TestDispatcher(TestRadio& radio, TestClock& clock, RxReservePacketManager& mgr)
     : mesh::Dispatcher(radio, clock, mgr), manager(mgr) { }
@@ -122,6 +162,71 @@ TEST(Dispatcher, ParserAcceptsACompletePacketWithEmptyPayload) {
   ASSERT_TRUE(dispatcher.parse(&packet, raw, sizeof(raw)));
   EXPECT_EQ(0U, packet.path_len);
   EXPECT_EQ(0U, packet.payload_len);
+}
+
+TEST(Dispatcher, FloodPacketWaitsForConfiguredRxDelayWithoutBypass) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.forced_rx_delay = 1000;
+  dispatcher.begin();
+  const uint8_t raw[] = {
+    ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT), 0, 0x42
+  };
+
+  clock.now = 100;
+  radio.queueRx(raw, sizeof(raw));
+  dispatcher.loop();
+  EXPECT_EQ(0, dispatcher.received_packets);
+
+  clock.now = 1099;
+  dispatcher.loop();
+  EXPECT_EQ(0, dispatcher.received_packets);
+
+  clock.now = 1100;
+  dispatcher.loop();
+  EXPECT_EQ(1, dispatcher.received_packets);
+}
+
+TEST(Dispatcher, ScopeRewriteHookBypassesConfiguredRxDelay) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.forced_rx_delay = 1000;
+  dispatcher.bypass_rx_delay = true;
+  dispatcher.begin();
+  const uint8_t raw[] = {
+    ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT), 0, 0x42
+  };
+
+  clock.now = 100;
+  radio.queueRx(raw, sizeof(raw));
+  dispatcher.loop();
+
+  EXPECT_EQ(1, dispatcher.received_packets);
+  EXPECT_EQ(4, manager.getFreeCount());
+}
+
+TEST(Dispatcher, ConfiguredCadStateIsPropagatedToTheRadio) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_cad_enabled = true;
+  dispatcher.begin();
+
+  clock.now = 1;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.cad_set_calls);
+  EXPECT_TRUE(radio.cad_enabled);
+
+  dispatcher.configured_cad_enabled = false;
+  clock.now = 2002;
+  dispatcher.loop();
+  EXPECT_EQ(2, radio.cad_set_calls);
+  EXPECT_FALSE(radio.cad_enabled);
 }
 
 TEST(StaticPoolPacketManager, ReportsEarliestQueueTimesWithoutDequeuing) {
@@ -366,7 +471,7 @@ TEST(StaticPoolPacketManager, RxDelayEqualPathsPreferNarrowerLocalScope) {
   manager.free(manager.getNextInbound(200));
 }
 
-TEST(Dispatcher, QueueWakeDelayIncludesSchedulesAndChannelBackoff) {
+TEST(Dispatcher, QueueWakeDelayIncludesSchedulesAndAdaptiveChannelBackoff) {
   RxReservePacketManager manager(8, 4);
   TestClock clock;
   clock.now = 100;
@@ -393,9 +498,60 @@ TEST(Dispatcher, QueueWakeDelayIncludesSchedulesAndChannelBackoff) {
   EXPECT_EQ(200U, delay_millis);
   EXPECT_FALSE(dispatcher.queuedWorkDue());
 
-  clock.now = 800;
+  mesh::Packet* second = dispatcher.obtainNewPacket();
+  ASSERT_NE(second, nullptr);
+  second->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  second->payload[0] = 0x43;
+  second->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(second, 0));
+
+  clock.now = 801;
+  dispatcher.loop();
+  ASSERT_TRUE(dispatcher.nextQueueWakeDelay(delay_millis));
+  EXPECT_EQ(100U, delay_millis);
+  EXPECT_FALSE(dispatcher.queuedWorkDue());
+
+  clock.now = 901;
   radio.receiving = false;
   EXPECT_TRUE(dispatcher.queuedWorkDue());
+}
+
+TEST(Dispatcher, GrowingQueueShortensCADBusyCeiling) {
+  RxReservePacketManager manager(8, 1);
+  TestClock clock;
+  clock.now = 100;
+  TestRadio radio;
+  radio.receiving = true;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  mesh::Packet* first = dispatcher.obtainNewPacket();
+  ASSERT_NE(first, nullptr);
+  first->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  first->payload[0] = 0x40;
+  first->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(first, 0));
+  clock.now = 101;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.send_starts);
+
+  for (uint8_t i = 1; i < 4; i++) {
+    mesh::Packet* packet = dispatcher.obtainNewPacket();
+    ASSERT_NE(packet, nullptr);
+    packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+    packet->payload[0] = (uint8_t)(0x40 + i);
+    packet->payload_len = 1;
+    ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+  }
+  EXPECT_EQ(4, manager.getOutboundCount(clock.now));
+
+  // Four ready packets reduce the normal four-second CAD ceiling to one
+  // second, measured from the original busy observation.
+  clock.now = 1102;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.send_starts);
+  EXPECT_EQ(3, manager.getOutboundCount(clock.now));
+  EXPECT_TRUE(dispatcher.getErrFlags() & ERR_EVENT_CAD_TIMEOUT);
 }
 
 TEST(Dispatcher, SilentRadioEscalatesFromSoftToHardRecovery) {
