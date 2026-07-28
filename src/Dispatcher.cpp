@@ -23,6 +23,18 @@ namespace mesh {
   #define RADIO_LIVENESS_HARD_MS  (12UL * 60UL * 60UL * 1000UL)
 #endif
 
+#define MIN_CAD_FAIL_RETRY_DELAY_MS       50UL
+#define MIN_CAD_FAIL_MAX_DURATION_MS     500UL
+
+static uint32_t scaleCADDelayForQueue(uint32_t normal_delay, int ready_count,
+                                     uint32_t minimum_delay) {
+  if (ready_count <= 1) return normal_delay;
+
+  uint32_t scaled = normal_delay / (uint32_t)ready_count;
+  uint32_t floor = normal_delay < minimum_delay ? normal_delay : minimum_delay;
+  return scaled < floor ? floor : scaled;
+}
+
 void Dispatcher::begin() {
   n_sent_flood = n_sent_direct = 0;
   n_recv_flood = n_recv_direct = 0;
@@ -427,7 +439,7 @@ void Dispatcher::checkRecv() {
     if (pkt->isRouteFlood()) {
       n_recv_flood++;
 
-      int _delay = calcRxDelay(score, air_time);
+      int _delay = calcRxDelayForPacket(pkt, score, air_time);
       if (_delay < 50) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(), score delay below threshold (%d)", getLogDateTime(), _delay);
         processRecvPacket(pkt);   // is below the score delay threshold, so process immediately
@@ -492,18 +504,24 @@ void Dispatcher::checkSend() {
     ? _radio->isReceivingPassive(getRetryInterferenceMargin())
     : _radio->isReceiving();
   if (channel_busy) {
+    const uint32_t cad_now = _ms->getMillis();
+    const int ready_count = _mgr->getOutboundCount(cad_now);
     if (cad_busy_start == 0) {
-      cad_busy_start = _ms->getMillis();   // record when CAD busy state started
+      cad_busy_start = cad_now;   // record when CAD busy state started
     }
 
-    if (_ms->getMillis() - cad_busy_start > getCADFailMaxDuration()) {
+    const uint32_t max_busy_duration = scaleCADDelayForQueue(
+        getCADFailMaxDuration(), ready_count, MIN_CAD_FAIL_MAX_DURATION_MS);
+    if (cad_now - cad_busy_start > max_busy_duration) {
       _err_flags |= ERR_EVENT_CAD_TIMEOUT;
 
       MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): CAD busy max duration reached!", getLogDateTime());
       // channel activity has gone on too long... (Radio might be in a bad state)
       // force the pending transmit below...
     } else {
-      next_tx_time = futureMillis(getCADFailRetryDelay());
+      const uint32_t retry_delay = scaleCADDelayForQueue(
+          getCADFailRetryDelay(), ready_count, MIN_CAD_FAIL_RETRY_DELAY_MS);
+      next_tx_time = futureMillis(retry_delay);
       return;
     }
   }

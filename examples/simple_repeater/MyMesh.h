@@ -127,6 +127,14 @@ struct NeighbourInfo {
 #endif
 #define FLOOD_PACKET_FILTER_ANY_TYPE  0xFF
 #define FLOOD_PACKET_FILTER_MAX_HOPS  63
+#define FLOOD_PACKET_FILTER_SCOPE_NAME_LEN 32
+#if defined(ESP32)
+  #define FLOOD_PACKET_FILTER_BLACKLIST_MAX 255
+#else
+  #define FLOOD_PACKET_FILTER_BLACKLIST_MAX 18
+#endif
+#define FLOOD_PACKET_FILTER_BLACKLIST_REPLACE_MAX 18
+#define FLOOD_PACKET_FILTER_PATH_ID_SIZE 3
 
 #ifndef FLOOD_CHANNEL_SCOPE_SLOTS
   #if defined(ESP32)
@@ -140,6 +148,9 @@ struct NeighbourInfo {
 #define FLOOD_CHANNEL_SCOPE_TXT_ANY    0
 #define FLOOD_CHANNEL_SCOPE_LOGIN_ANY  1
 #define FLOOD_CHANNEL_SCOPE_OTHER_ANY  2
+#ifndef FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS
+  #define FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS FLOOD_CHANNEL_SCOPE_SLOTS
+#endif
 
 #ifndef FLOOD_GROUP_MODERATION_SLOTS
   #define FLOOD_GROUP_MODERATION_SLOTS 16
@@ -230,6 +241,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   RegionMap region_map, temp_map;
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
+  bool recv_pkt_filter_scope_set;
+  bool recv_pkt_channel_scope_bypass;
+  bool recv_pkt_channel_scope_rejected;
   TransportKey default_scope;
   RateLimiter discover_limiter, anon_limiter;
   struct FloodRetryBridgeState {
@@ -259,11 +273,20 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint8_t min_hops;
     uint8_t max_hops;
     bool suspend_on_temp_radio;
+    char scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
+    bool match_blacklisted_path;
+    bool scope_requires_region_match;
+    bool scope_uses_slow_timing;
   };
   struct FloodChannelScopeEntry {
     uint16_t region_id;  // zero means unused
     // 0/1/2 are txt:*/login:*/other:*; 16/32 are exact channel-key lengths.
     uint8_t selector;
+    uint8_t channel_hash;
+    uint8_t secret[PUB_KEY_SIZE];
+  };
+  struct FloodChannelScopeRequireEntry {
+    uint8_t key_len;  // zero means unused
     uint8_t channel_hash;
     uint8_t secret[PUB_KEY_SIZE];
   };
@@ -295,7 +318,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
   FloodChannelBlockEntry flood_channel_blocks[FLOOD_CHANNEL_BLOCK_SLOTS];
   FloodPacketFilterEntry flood_packet_filters[FLOOD_PACKET_FILTER_SLOTS];
+  uint8_t flood_packet_filter_blacklist_count;
+  uint8_t flood_packet_filter_blacklist[FLOOD_PACKET_FILTER_BLACKLIST_MAX]
+                                       [FLOOD_PACKET_FILTER_PATH_ID_SIZE];
   FloodChannelScopeEntry flood_channel_scopes[FLOOD_CHANNEL_SCOPE_SLOTS];
+  FloodChannelScopeRequireEntry
+      flood_channel_scope_requirements[FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS];
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
   bool clock_sync_mesh_enabled;
@@ -489,22 +517,45 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool shouldBlockFloodChannelForward(const mesh::Packet* packet) const;
   void loadFloodPacketFilters();
   bool saveFloodPacketFilters();
+  void loadFloodPacketFilterBlacklist();
+  bool saveFloodPacketFilterBlacklist();
   void seedDefaultFloodPacketFilters();
+  bool floodPacketFilterBlacklistMatches(const mesh::Packet* packet) const;
+  bool floodPacketFilterMatches(const FloodPacketFilterEntry& entry,
+                                const mesh::Packet* packet) const;
+  bool applyFloodPacketFilterScope(mesh::Packet* packet, bool incoming_region_allowed,
+                                   bool& scope_set, bool& fast_track,
+                                   bool log_change = true);
   bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
   void formatFloodPacketFilters(const char* args, char* reply) const;
   void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
   void setFloodPacketFilter(const char* args, char* reply);
   void deleteFloodPacketFilter(const char* args, char* reply);
+  void formatFloodPacketFilterBlacklist(const char* args, char* reply) const;
+  void setFloodPacketFilterBlacklist(const char* args, char* reply);
+  void deleteFloodPacketFilterBlacklist(const char* args, char* reply);
   void loadFloodChannelScopes();
   bool saveFloodChannelScopes(bool empty_table = false);
-  bool applyFloodChannelScopeTarget(mesh::Packet* packet, const FloodChannelScopeEntry& entry);
-  bool applyFloodChannelScope(mesh::Packet* packet);
+  bool applyFloodChannelScopeTarget(mesh::Packet* packet, const FloodChannelScopeEntry& entry,
+                                    bool& scope_changed, bool& fast_track,
+                                    bool log_change = true);
+  bool applyFloodChannelScope(mesh::Packet* packet, bool& fast_track,
+                              bool log_change = true);
   static uint8_t scoreFloodTransportScope(const mesh::Packet* packet, void* context);
   uint8_t getFloodTransportScopeDepth(const mesh::Packet* packet);
   void formatFloodChannelScopes(const char* args, char* reply);
   void formatFloodChannelScopeDetail(int index, char* reply, size_t reply_len);
   void setFloodChannelScope(const char* args, char* reply);
   void deleteFloodChannelScope(const char* args, char* reply);
+  void loadFloodChannelScopeRequirements();
+  bool saveFloodChannelScopeRequirements(bool empty_table = false);
+  bool findFloodChannelScopeRequirementMatch(const mesh::Packet* packet,
+                                             bool& table_active) const;
+  void formatFloodChannelScopeRequirements(const char* args, char* reply);
+  void formatFloodChannelScopeRequirementDetail(int index, char* reply,
+                                                size_t reply_len) const;
+  void setFloodChannelScopeRequirement(const char* args, char* reply);
+  void deleteFloodChannelScopeRequirement(const char* args, char* reply);
   void loadFloodGroupModeration();
   bool saveFloodGroupModeration();
   bool shouldBlockFloodGroupTextForward(const mesh::Packet* packet);
@@ -554,6 +605,9 @@ protected:
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }
+  bool getCADEnabled() const override {
+    return _prefs.cad_enabled;
+  }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
   const char* getLogDateTime() override;
@@ -563,8 +617,14 @@ protected:
   void logTx(mesh::Packet* pkt, int len) override;
   void logTxFail(mesh::Packet* pkt, int len) override;
   int calcRxDelay(float score, uint32_t air_time) const override;
+  int calcRxDelayForPacket(const mesh::Packet* packet, float score,
+                           uint32_t air_time) override;
+  bool shouldBypassRxDelay(const mesh::Packet* packet) override;
+  bool evaluateScopeRewriteTiming(const mesh::Packet* packet,
+                                  bool& fast_track);
 
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
+  uint32_t getSlowScopeRetransmitDelay(const mesh::Packet* packet);
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   bool supportsBasicRetryConfig() const override { return true; }
   bool supportsAdvancedRetryConfig() const override { return true; }

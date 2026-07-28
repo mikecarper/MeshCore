@@ -293,6 +293,14 @@ protected:
 
   virtual float getAirtimeBudgetFactor() const;
   virtual int calcRxDelay(float score, uint32_t air_time) const;
+  virtual bool shouldBypassRxDelay(const Packet* packet) {
+    (void)packet;
+    return false;
+  }
+  virtual int calcRxDelayForPacket(const Packet* packet, float score,
+                                   uint32_t air_time) {
+    return shouldBypassRxDelay(packet) ? 0 : calcRxDelay(score, air_time);
+  }
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;
   virtual uint8_t getDefaultTxCodingRate() const { return 0; }
