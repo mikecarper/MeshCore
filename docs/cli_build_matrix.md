@@ -34,8 +34,8 @@ administrator.
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. A portable OTA artifact can still have the portable restrictions described below. |
 | Portable MQTT observer | Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, `neighbors`, and `discover.neighbors`. The large repeater administration tree is omitted to fit the legacy ESP32 application slot. |
 | Portable ESP-NOW bridge | Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials. |
-| FULL ESP32 | Removes size-based CLI cuts and restores the complete command surface supported by the role and hardware. |
-| FULL ESP32 logging | Same command coverage as FULL ESP32, with debug and packet logging enabled. |
+| FULL ESP32 | Uses the matching MQTT target with logging off, removes size-based CLI cuts, and restores the complete command surface supported by that role and hardware. |
+| FULL ESP32 logging | Uses the matching non-MQTT target with debug and packet logging enabled and the complete command surface supported by that role and hardware. |
 | `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. |
 
 `logging`, `OTA`, and `FULL` describe independent build features. Do not infer

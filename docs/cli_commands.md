@@ -189,7 +189,7 @@ single-command mode. A command that stops WebConfig, changes its WiFi
 connection, disables `wifi.cli`, or reboots the node stops the remaining block
 and can close the page before its reply is collected.
 
-On FULL standard and FULL logging ESP32 repeater/room-server builds,
+On FULL MQTT and FULL logging ESP32 repeater/room-server builds,
 `get wifi.ssid` reports the saved standalone WebConfig network and
 `get wifi.status` reports whether WiFi is unconfigured, off, connecting,
 running the setup AP, failed, or connected. A connected result includes the
@@ -310,8 +310,9 @@ draining the serial port.
 
 Ordinary `-logging-` artifacts keep packet logging separate from LoRa OTA.
 Use the separately named `-ota-` artifact when LoRa OTA is required. A
-`-full-logging-ota-` artifact is intentionally the exception: FULL profiles
-include every supported feature.
+`-full-logging-ota-` artifact is intentionally the exception: it combines
+logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
+disabled.
 
 ### Begin capture of rx log to node storage
 **Usage:** `log start`
