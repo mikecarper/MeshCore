@@ -133,6 +133,7 @@ Useful checks are:
 get wifi.ssid
 get wifi.status
 get wifi.powersave
+get wifi.cli
 get bridge.enabled
 get mqtt.rx
 get mqtt.tx
@@ -217,6 +218,17 @@ removes the TCP folder. Port 5001 has no login layer, so expose it only on a
 trusted LAN or temporary setup network. Firmware target and hash checks still
 apply at the receiving node, along with its configured signature/trust policy.
 
+When the shared seeder is running, `get wifi.status` appends its live state:
+
+```text
+OTA TCP 5001: listening
+OTA TCP 5001: client connected
+```
+
+The first state means WiFi is usable and the node is waiting for
+`motatool serve --tcp`. The second means a `motatool` folder is currently
+attached and available for LoRa OTA service.
+
 ## WiFi companion with MQTT
 
 A `*_companion_radio_wifi_mqtt` build combines both systems:
@@ -244,25 +256,72 @@ disconnects WiFi and turns the WiFi radio off. There is no persistent MQTT
 connection keeping WiFi active.
 
 FULL standard and FULL logging repeater/room-server builds provide these
-read-only CLI checks even though they do not include MQTT:
+CLI controls and status checks even though they do not include MQTT:
 
 ```text
 get wifi.ssid
 get wifi.status
+get wifi.powersave
+get wifi.cli
 get webui
+set wifi.ssid SlowFi
+set wifi.pwd your-password
+set wifi.powersave none
+set wifi.cli on
 ```
 
 `get wifi.status` distinguishes an unconfigured node, an inactive WiFi radio, a
 station connection attempt, the setup AP, a connection failure, and a working
 LAN connection. For a LAN connection it reports the SSID, IP address, and RSSI.
+If the shared OTA seeder is active, the same reply also reports whether TCP
+port 5001 is listening or has a `motatool` client attached.
+`get wifi.powersave` reports the saved standalone WebConfig setting as `none`,
+`min`, or `max`.
 An inactive status is normal when `webui` is off: run `start webconfig` to
-connect temporarily. Change standalone WiFi credentials through WebConfig;
-the MQTT observer `set wifi.*` CLI belongs to observer builds.
+connect temporarily. Standalone credentials can be changed through WebConfig
+or with the listed CLI commands. Changing the SSID or password stops an active
+WebConfig session; start it again to connect with the new values. Use
+`set wifi.pwd` with no value for an open network. The password is write-only
+and is never returned by `get`.
 
 `get webui` starts with the saved boot setting, then reports the current
 session. For example, `> off, http://192.168.1.130/` means automatic WebConfig
 startup is saved as off, but a temporary session started by `start webconfig`
 is currently active at that URL.
+
+### WebConfig CLI terminal
+
+The terminal defaults to on. Enable or disable it from an existing admin CLI:
+
+```text
+set wifi.cli on
+set wifi.cli off
+get wifi.cli
+```
+
+The saved `on` setting becomes active only when the WiFi station client is
+connected and WebConfig is running in LAN mode. It is never exposed on the open
+setup access point. When active, the WebConfig page has a **CLI** tab for sending
+commands directly to the repeater or room server. It uses the local
+administrator command parser and displays one reply at a time. The terminal is
+protected by the WebConfig admin login and uses remote-administrator
+permissions, so commands explicitly restricted to a physical serial connection
+remain unavailable.
+
+Use **Single command** for the normal prompt, or select **Command block** to
+paste up to 100 commands with one command per line. Blank lines are ignored.
+The browser validates all lines first, then sends one command at a time and
+waits for its reply before sending the next. The block queue is kept in the
+browser only, so closing the page or losing its WiFi connection stops the
+commands that have not yet been sent. Ctrl+Enter or Command+Enter starts a
+block.
+
+The up/down arrow keys recall commands entered during the current browser
+session in single-command mode. Commands available in the terminal still
+depend on the firmware role and build profile. Commands such as
+`stop webconfig`, `set wifi.cli off`, WiFi credential changes, and reboot
+operations stop the remaining block and can disconnect the page before it
+receives their final reply.
 
 ## Build profiles
 
@@ -292,7 +351,7 @@ updates using the same layout normally preserve them.
 
 ## WiFi power behavior
 
-MQTT observers support:
+MQTT observers and FULL standalone ESP32 repeater/room-server builds support:
 
 ```text
 set wifi.powersave none
@@ -311,12 +370,13 @@ WiFi only, not LoRa transmit power.
 
 ## Recognizing the wrong firmware
 
-`get wifi.status` and `get wifi.ssid` are available on MQTT observers and on
-FULL non-MQTT repeater/room-server builds with WebConfig. MQTT commands such as
-`get mqtt.status` and `set mqtt1.preset ...` still require an MQTT observer
-target. If the response is `Unsupported in this firmware`, the running image
-does not contain that configuration command, or it is not the expected target.
-Older portable builds report the same condition as `unknown portable config`.
+`get wifi.status`, `get wifi.ssid`, `get wifi.powersave`, and `get wifi.cli`
+are available on MQTT observers and on FULL non-MQTT repeater/room-server
+builds with WebConfig.
+MQTT commands such as `get mqtt.status` and `set mqtt1.preset ...` still require
+an MQTT observer target. Unknown settings return `Error: unknown setting:
+<name>`. Older portable builds can instead report `Unsupported in this
+firmware` when a command was intentionally cut for space.
 
 Check the complete firmware filename and role. In particular:
 

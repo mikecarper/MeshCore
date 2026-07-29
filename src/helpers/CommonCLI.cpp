@@ -3017,8 +3017,48 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
 #endif
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  const char* cli_value = nullptr;
+  if (mesh::cli::classifyStandaloneWiFiSet(config, &cli_value) ==
+      mesh::cli::StandaloneWiFiKey::CLI) {
+    if (!_callbacks->setWiFiCLI(cli_value, reply)) {
+      strcpy(reply, "Error: WiFi CLI unavailable on this build");
+    }
+    return;
+  }
+#endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && \
+    !defined(WEBCONFIG_DISABLED) && !defined(WITH_MQTT_BRIDGE)
+  const char* wifi_value = nullptr;
+  const mesh::cli::StandaloneWiFiKey wifi_key =
+      mesh::cli::classifyStandaloneWiFiSet(config, &wifi_value);
+  bool wifi_supported = true;
+  switch (wifi_key) {
+    case mesh::cli::StandaloneWiFiKey::SSID:
+      wifi_supported = _callbacks->setWiFiSSID(wifi_value, reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::Password:
+      wifi_supported = _callbacks->setWiFiPassword(wifi_value, reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::PowerSave:
+      wifi_supported = _callbacks->setWiFiPowerSave(wifi_value, reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::CLI:
+      wifi_supported = _callbacks->setWiFiCLI(wifi_value, reply);
+      break;
+    default:
+      wifi_supported = false;
+      break;
+  }
+  if (wifi_key != mesh::cli::StandaloneWiFiKey::None) {
+    if (!wifi_supported) {
+      strcpy(reply, "Error: standalone WiFi settings unavailable on this build");
+    }
+    return;
+  }
+#endif
 #if defined(PORTABLE_ESP32_RADIO_CLI)
   // Portable WiFi-heavy images keep the controls needed to configure and
   // diagnose their radio. The full parser remains available in the FULL image.
@@ -4064,21 +4104,44 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
 #endif
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  if (mesh::cli::classifyStandaloneWiFiGet(config) ==
+      mesh::cli::StandaloneWiFiKey::CLI) {
+    if (!_callbacks->getWiFiCLI(reply)) {
+      strcpy(reply, "Error: WiFi CLI unavailable on this build");
+    }
+    return;
+  }
+#endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   // Non-MQTT FULL repeater/room-server builds keep WiFi only for WebConfig.
   // Their credentials live in the standalone WebConfig NVS namespace rather
-  // than MQTTPrefs, so expose the useful read-only status through the role.
-  if (strcmp(config, "wifi.ssid") == 0) {
-    if (!_callbacks->getWiFiSSID(reply)) {
-      strcpy(reply, "Error: WiFi SSID unavailable on this build");
-    }
-    return;
+  // than MQTTPrefs, so expose the WiFi configuration through the role.
+  const mesh::cli::StandaloneWiFiKey wifi_key =
+      mesh::cli::classifyStandaloneWiFiGet(config);
+  bool wifi_supported = true;
+  switch (wifi_key) {
+    case mesh::cli::StandaloneWiFiKey::SSID:
+      wifi_supported = _callbacks->getWiFiSSID(reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::Status:
+      wifi_supported = _callbacks->getWiFiStatus(reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::PowerSave:
+      wifi_supported = _callbacks->getWiFiPowerSave(reply);
+      break;
+    case mesh::cli::StandaloneWiFiKey::CLI:
+      wifi_supported = _callbacks->getWiFiCLI(reply);
+      break;
+    default:
+      wifi_supported = false;
+      break;
   }
-  if (strcmp(config, "wifi.status") == 0) {
-    if (!_callbacks->getWiFiStatus(reply)) {
-      strcpy(reply, "Error: WiFi status unavailable on this build");
+  if (wifi_key != mesh::cli::StandaloneWiFiKey::None) {
+    if (!wifi_supported) {
+      strcpy(reply, "Error: WiFi information unavailable on this build");
     }
     return;
   }
@@ -4434,7 +4497,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "> %d", (uint8_t)_prefs->reboot_interval);
     }
   } else {
-    sprintf(reply, "??: %s", config);
+    mesh::cli::formatUnknownSetting(reply, 160, config);
   }
 #endif
 }

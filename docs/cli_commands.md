@@ -2,6 +2,10 @@
 
 This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.
 
+See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
+profile matrix, including the commands intentionally omitted from portable
+firmware.
+
 The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
 are equivalent, as are `get`, `Get`, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.
@@ -134,6 +138,12 @@ folder transport.
 - `get webui`
 - `get wifi.ssid`
 - `get wifi.status`
+- `get wifi.powersave`
+- `get wifi.cli`
+- `set wifi.ssid <network name>`
+- `set wifi.pwd [password]`
+- `set wifi.powersave <none|min|max>`
+- `set wifi.cli <on|off>`
 
 `set webui on` is the persistent master switch. It starts the portal now and
 again after future reboots; `set webui off` closes it and disables that boot
@@ -152,17 +162,50 @@ WiFi SSID, the command starts the open `MeshCore-Setup-XXXX` captive AP at
 <http://192.168.4.1/> instead.
 
 `start webconfig ap` forces captive-AP mode. It will not interrupt an active
-MQTT bridge, so run `set bridge off` first. Use `stop webconfig` to close either
-mode for the current boot. (`stop webconfig` does not change a saved `webui on`.)
+MQTT bridge, so run `set bridge.enabled off` first. Use `stop webconfig` to
+close either mode for the current boot. (`stop webconfig` does not change a
+saved `webui on`.)
 LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
 with no connected client.
+
+The saved `wifi.cli` setting defaults to `on`. Use `set wifi.cli off` to disable
+the **CLI** tab.
+`get wifi.cli` reports `off`, `on, waiting for WiFi client`, or `on, active`.
+The saved setting becomes active only in station/LAN mode while the WiFi client
+is connected. It is deliberately unavailable on the open setup access point.
+The tab sends one command at a time through the local administrator command
+parser and displays the reply in the browser. It uses remote-administrator
+command permissions, so commands explicitly restricted to a physical serial
+connection remain unavailable.
+Select **Command block** to paste up to 100 commands with one command per line.
+Blank lines are ignored, and every nonblank line must fit the normal 159-byte
+CLI command limit. The browser sends the lines sequentially and waits for each
+reply before sending the next line. The queue exists only in that browser page;
+closing it stops any commands that have not yet been sent. A lost connection
+also stops the remaining block.
+
+Up/down arrow keys recall commands from the current browser session in
+single-command mode. A command that stops WebConfig, changes its WiFi
+connection, disables `wifi.cli`, or reboots the node stops the remaining block
+and can close the page before its reply is collected.
 
 On FULL standard and FULL logging ESP32 repeater/room-server builds,
 `get wifi.ssid` reports the saved standalone WebConfig network and
 `get wifi.status` reports whether WiFi is unconfigured, off, connecting,
 running the setup AP, failed, or connected. A connected result includes the
-SSID, LAN IP, and RSSI. WiFi being off is normal while WebConfig is inactive;
-run `start webconfig` when a temporary connection is wanted.
+SSID, LAN IP, and RSSI. When the shared OTA seeder is running, the reply appends
+`OTA TCP 5001: listening` or `OTA TCP 5001: client connected`. WiFi being off
+is normal while WebConfig is inactive; run `start webconfig` when a temporary
+connection is wanted. `get wifi.powersave` reports the saved standalone setting
+as `none`, `min`, or `max`; the default is `none`.
+
+The WiFi `set` commands work on MQTT observers and on FULL standalone
+ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
+password stops an active WebConfig session; run `start webconfig` again to use
+the new credentials. `set wifi.pwd` with no value selects an open network.
+Power-save changes are applied immediately when WiFi is running and otherwise
+take effect on the next connection. `get wifi.pwd` is intentionally unavailable
+so the standalone password is never returned by the CLI.
 
 The browser portal is not compiled into the two 4 MB
 `LilyGo_TLora_V2_1_1_6_*_observer_mqtt` targets because it does not fit while
@@ -206,6 +249,10 @@ remain available.
 
 **Usage:** 
 - `discover.neighbors`
+
+This command is available in every repeater build profile, including portable
+MQTT, standard, logging, OTA, FULL, and FULL logging artifacts. It does not
+require MQTT or PSRAM.
 
 ---
 
@@ -1017,7 +1064,7 @@ hardware busy-result count.
 
 ---
 
-#### View or change the radio watchdog interval
+#### View or change the radio watchdog interval (MQTT observer only)
 **Usage:**
 - `get radio.watchdog`
 - `set radio.watchdog <minutes>`
@@ -1027,7 +1074,9 @@ hardware busy-result count.
 
 **Default:** `5`
 
-**Note:** On quiet meshes, increasing this can reduce false recoveries when no traffic is expected.
+**Note:** This watchdog belongs to the MQTT observer runtime and is not
+available on a standalone FULL repeater. On quiet meshes, increasing it can
+reduce false recoveries when no traffic is expected.
 
 ---
 

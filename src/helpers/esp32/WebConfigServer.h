@@ -12,9 +12,9 @@
 //
 // Concurrency model: AsyncWebServer handlers run on the async_tcp task and
 // must never touch the CLI, prefs persistence, or the radio. Config writes
-// are marshaled into a single-slot command batch that tick() - called from
-// MyMesh::loop() on the Arduino loop task - drains through the existing CLI
-// `set` handlers. Prefs-struct reads and batch state are guarded by _mux.
+// and browser-terminal commands are marshaled to tick() - called from
+// MyMesh::loop() on the Arduino loop task - and run through the existing CLI
+// handlers there. Prefs-struct reads and request state are guarded by _mux.
 //
 // The master switch and standalone WiFi credentials use independent NVS
 // namespaces, so role-specific prefs-file layouts remain untouched.
@@ -93,6 +93,12 @@ public:
     virtual void getNodeSnapshot(NodeSnapshot& snapshot) = 0;
     // Run one CLI command. Called from tick() only (loop task); reply is 160 bytes.
     virtual void execCommand(char* cmd, char* reply) = 0;
+    // Browser terminal commands use remote-admin semantics so serial-only
+    // secrets and destructive maintenance commands remain unavailable.
+    virtual bool supportsCliTerminal() const { return false; }
+    virtual void execAdminCommand(char* cmd, char* reply) {
+      execCommand(cmd, reply);
+    }
     virtual void rebootNow() = 0;
     // Bracket a config batch so bridge restarts triggered by individual
     // `set` handlers can be coalesced into one.
@@ -126,13 +132,25 @@ public:
   // namespaces. This avoids changing NodePrefs or MQTTPrefs file layouts.
   static bool loadEnabled(bool default_value = false);
   static bool saveEnabled(bool enabled);
+  static bool loadCliEnabled(bool default_value = true);
+  static bool saveCliEnabled(bool enabled);
   static bool loadStandaloneWiFi(char* ssid, size_t ssid_len,
                                  char* password, size_t password_len,
                                  uint8_t* power_save = NULL);
   static bool saveStandaloneWiFi(const char* ssid, const char* password,
                                  uint8_t power_save);
+  static bool setStandaloneWiFiSSID(const char* value, char* reply,
+                                    size_t reply_len);
+  static bool setStandaloneWiFiPassword(const char* value, char* reply,
+                                        size_t reply_len);
+  static bool setStandaloneWiFiPowerSave(const char* value, char* reply,
+                                         size_t reply_len);
+  static bool setWiFiCliEnabled(const char* value, char* reply,
+                                size_t reply_len);
   static bool formatWiFiSSID(char* reply, size_t reply_len);
   static bool formatWiFiStatus(char* reply, size_t reply_len);
+  static bool formatWiFiPowerSave(char* reply, size_t reply_len);
+  static bool formatWiFiCliStatus(char* reply, size_t reply_len);
 
   // UI tasks use an otherwise-unused multi-click gesture without reaching into
   // MyMesh directly. The mesh loop consumes the request and performs the NVS /
@@ -143,6 +161,7 @@ public:
   bool startSetupMode(char reply[]);   // open SoftAP + DNS captive portal
   bool startLanMode(char reply[]);     // bind to existing STA connection
   bool startAutoMode(char reply[]);    // use saved WiFi, or setup AP when absent
+  bool reloadStandaloneWiFi();
   void requestStop();                  // stop listening and detach this session
   void tick(uint32_t now);             // call every loop iteration
 
@@ -155,6 +174,7 @@ private:
   static const size_t MAX_BODY = 4096;
   static const uint32_t STOP_WARN_MS = WebConfigBatch::kStopWarnMs;
   enum BatchState : uint8_t { BATCH_IDLE = 0, BATCH_PENDING, BATCH_DONE };
+  enum CliState : uint8_t { CLI_IDLE = 0, CLI_PENDING, CLI_DONE };
   static WebConfigBatch::State toSpecState(BatchState state) {
     switch (state) {
       case BATCH_PENDING: return WebConfigBatch::State::Pending;
@@ -187,6 +207,7 @@ private:
   char _wifi_ssid[32] = {0};
   char _wifi_password[64] = {0};
   uint8_t _wifi_power_save = 1;
+  bool _cli_enabled = true;
   char _ap_ssid[33] = {0};
 
   // Currently attached session, also used by the display's setup-info poll.
@@ -206,6 +227,13 @@ private:
   char _batch_reqid[24] = {0};
   bool _standalone_wifi_dirty = false;
   BatchEntry _batch[MAX_BATCH];
+
+  // Browser terminal command: filled by async_tcp under _mux and executed by
+  // tick() on the loop task. Separate from the allowlisted config batch.
+  volatile CliState _cli_state = CLI_IDLE;
+  char _cli_reqid[24] = {0};
+  char _cli_command[160] = {0};
+  char _cli_reply[160] = {0};
 
   // LAN-mode session (single slot; new login evicts the old session)
   char _session_token[33] = {0};
@@ -240,6 +268,7 @@ private:
   void detachRoutes();
   uint32_t handlerRefCount() const;
   void drainBatch(uint32_t now);
+  void drainCliCommand();
   void finalizeTeardown();
   bool checkAuth(AsyncWebServerRequest* req);
   static void collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
@@ -252,6 +281,8 @@ private:
   void handleConfigGet(AsyncWebServerRequest* req);
   void handleConfigPost(AsyncWebServerRequest* req);
   void handleConfigResult(AsyncWebServerRequest* req);
+  void handleCliPost(AsyncWebServerRequest* req);
+  void handleCliResult(AsyncWebServerRequest* req);
   void handleStats(AsyncWebServerRequest* req);
   void handleScan(AsyncWebServerRequest* req);
   void handlePresets(AsyncWebServerRequest* req);

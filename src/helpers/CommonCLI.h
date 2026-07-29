@@ -402,6 +402,34 @@ public:
     (void)reply;
     return false;
   };
+  virtual bool getWiFiPowerSave(char* reply) const {
+    (void)reply;
+    return false;
+  };
+  virtual bool getWiFiCLI(char* reply) const {
+    (void)reply;
+    return false;
+  };
+  virtual bool setWiFiSSID(const char* value, char* reply) {
+    (void)value;
+    (void)reply;
+    return false;
+  };
+  virtual bool setWiFiPassword(const char* value, char* reply) {
+    (void)value;
+    (void)reply;
+    return false;
+  };
+  virtual bool setWiFiPowerSave(const char* value, char* reply) {
+    (void)value;
+    (void)reply;
+    return false;
+  };
+  virtual bool setWiFiCLI(const char* value, char* reply) {
+    (void)value;
+    (void)reply;
+    return false;
+  };
 
   virtual int getQueueSize() {
     return 0; // no op by default

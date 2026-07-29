@@ -12,6 +12,7 @@
 
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "CLICommandUtils.h"
 #include "TxtDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch[Hex]()
 #include "MQTTObserverValidation.h"  // pure input validators (host-testable)
@@ -20,6 +21,10 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
+#endif
+#if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
+    (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+#include "esp32/WiFiOtaSeeder.h"
 #endif
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
@@ -321,14 +326,18 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
       strcpy(reply, "OK - saved");
 #endif
     }
-  } else if (memcmp(config, "wifi.ssid ", 10) == 0) {
-    if (valueTooLong(&config[10], sizeof(_mqtt_prefs.wifi_ssid), reply, "wifi.ssid")) return true;
-    StrHelper::strncpy(_mqtt_prefs.wifi_ssid, &config[10], sizeof(_mqtt_prefs.wifi_ssid));
+  } else if (memcmp(config, "wifi.ssid ", 10) == 0
+             || strcmp(config, "wifi.ssid") == 0) {
+    const char* value = config[9] == 0 ? config + 9 : config + 10;
+    if (valueTooLong(value, sizeof(_mqtt_prefs.wifi_ssid), reply, "wifi.ssid")) return true;
+    StrHelper::strncpy(_mqtt_prefs.wifi_ssid, value, sizeof(_mqtt_prefs.wifi_ssid));
     savePrefs();
     strcpy(reply, "OK");
-  } else if (memcmp(config, "wifi.pwd ", 9) == 0) {
-    if (valueTooLong(&config[9], sizeof(_mqtt_prefs.wifi_password), reply, "wifi.pwd")) return true;
-    StrHelper::strncpy(_mqtt_prefs.wifi_password, &config[9], sizeof(_mqtt_prefs.wifi_password));
+  } else if (memcmp(config, "wifi.pwd ", 9) == 0
+             || strcmp(config, "wifi.pwd") == 0) {
+    const char* value = config[8] == 0 ? config + 8 : config + 9;
+    if (valueTooLong(value, sizeof(_mqtt_prefs.wifi_password), reply, "wifi.pwd")) return true;
+    StrHelper::strncpy(_mqtt_prefs.wifi_password, value, sizeof(_mqtt_prefs.wifi_password));
     savePrefs();
     strcpy(reply, "OK");
   } else if (memcmp(config, "wifi.powersave ", 15) == 0) {
@@ -881,7 +890,7 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
     } else if (memcmp(subcmd, "diag", 4) == 0) {
       MQTTBridge::formatSlotDiagReply(reply, 160, slot);
     } else {
-      sprintf(reply, "??: %s", config);
+      mesh::cli::formatUnknownSetting(reply, 160, config);
     }
   } else if (memcmp(config, "wifi.ssid", 9) == 0) {
     sprintf(reply, "> %s", _mqtt_prefs.wifi_ssid);
@@ -948,6 +957,10 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
       sprintf(reply, "> %s (code: %d)", status_str, status);
 #endif
     }
+#if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
+    (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+    mesh::ota::WiFiOtaSeeder::appendStatus(reply, 160);
+#endif
   } else if (memcmp(config, "wifi.powersave", 14) == 0) {
     uint8_t ps = _mqtt_prefs.wifi_power_save;
     const char* ps_name = (ps == 1) ? "none" : (ps == 2) ? "max" : "min";

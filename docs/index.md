@@ -6,6 +6,7 @@ Below are a few quick start guides.
 
 - [Frequently Asked Questions](./faq.md)
 - [CLI Commands](./cli_commands.md)
+- [CLI Availability by Firmware Build](./cli_build_matrix.md)
 - [Easy LoRa OTA: ESP32 full images and nRF52 deltas](./ota_easy.md)
 - [GPS Tracking](./gps_tracking.md)
 - [Companion Protocol](./companion_protocol.md)

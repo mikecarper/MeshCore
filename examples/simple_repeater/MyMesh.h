@@ -960,11 +960,21 @@ public:
   bool getWebUIStatus(char* reply) const override;
   bool getWiFiSSID(char* reply) const override;
   bool getWiFiStatus(char* reply) const override;
+  bool getWiFiPowerSave(char* reply) const override;
+  bool getWiFiCLI(char* reply) const override;
+  bool setWiFiSSID(const char* value, char* reply) override;
+  bool setWiFiPassword(const char* value, char* reply) override;
+  bool setWiFiPowerSave(const char* value, char* reply) override;
+  bool setWiFiCLI(const char* value, char* reply) override;
   bool isWebConfigActive() const override {
     return _webconfig && (_webconfig->isRunning() || _webconfig->isStopping());
   }
   void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
   void execCommand(char* cmd, char* reply) override { handleCommand(0, cmd, reply); }
+  bool supportsCliTerminal() const override { return true; }
+  void execAdminCommand(char* cmd, char* reply) override {
+    handleCommand(1, cmd, reply);
+  }
   void rebootNow() override { _cli.getBoard()->reboot(); }
   void onConfigBatchStart() override {
     _wc_batch_active = true;
