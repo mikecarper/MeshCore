@@ -144,16 +144,17 @@ image is rejected before any partial radio or string fields are applied, then re
 
 Option 3 in `build.sh` also emits `*-full-ota-*` and `*-full-logging-ota-*` ESP32 artifacts for
 non-companion roles where the portable profile removes a compiled feature and for the constrained companion
-fallbacks described above. Menu option 8, or `build-full-esp32-firmwares`, builds only the logging-off FULL
-artifacts. Menu option 9, or `build-full-esp32-logging-firmwares`, builds only the FULL logging artifacts.
-FULL builds restore WebConfig, display support, optional external sensors, the full CLI and observer feature
+fallbacks described above. Menu option 8, or `build-full-esp32-firmwares`, builds the logging-off FULL
+artifacts from matching MQTT targets. Menu option 9, or `build-full-esp32-logging-firmwares`, builds the
+FULL logging artifacts from matching non-MQTT targets.
+FULL builds restore WebConfig, display support, optional external sensors, and the full role CLI and feature
 set,
 full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
 including room servers, sensors, observers, and bridges. They use expanded A/B partition
 tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB
 and 16 MiB boards. Explicit `*_lora_ota_no_external_sensors` targets are not duplicated; their ordinary
-repeater build is the FULL, sensor-enabled counterpart. The `*-full-logging-ota-*` profile additionally
-enables USB debug and packet logging, including on MQTT observer targets. Install a matching
+repeater build is the FULL, sensor-enabled counterpart. The `*-full-logging-ota-*` profile enables USB
+debug and packet logging and explicitly disables MQTT. Install a matching
 `*-full-ota-*-merged.bin` or `*-full-logging-ota-*-merged.bin` over USB once to write the expanded partition
 table. After that, its matching non-merged FULL application image can be installed through USB, WiFi OTA,
 or LoRa OTA. Do not install a non-merged FULL image onto a node that still has its old partition table.

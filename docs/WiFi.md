@@ -255,8 +255,9 @@ In this case WebConfig owns WiFi only while it is needed. Stopping the portal
 disconnects WiFi and turns the WiFi radio off. There is no persistent MQTT
 connection keeping WiFi active.
 
-FULL standard and FULL logging repeater/room-server builds provide these
-CLI controls and status checks even though they do not include MQTT:
+FULL MQTT and FULL logging repeater/room-server builds both provide these CLI
+controls and status checks. FULL MQTT includes the MQTT bridge; FULL logging
+does not:
 
 ```text
 get wifi.ssid
@@ -334,15 +335,15 @@ role.
 | Standard | Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi. |
 | Logging | Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
-| FULL ESP32 | Uses expanded dual-OTA partitions, retains LoRa OTA, restores full-size ESP32 features such as WebConfig where supported, and exposes the TCP 5001 OTA seeder while WiFi is active. MQTT is present only when the selected target is an MQTT target. |
-| FULL ESP32 logging | Same expanded/full feature and OTA profile with debug and packet logging enabled. An MQTT target retains MQTT; a standard target remains non-MQTT. |
+| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. |
+| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, 254 neighbors, and LoRa OTA. |
 | LoRa-OTA no-external-sensors | A small radio-only repeater image; no WiFi or MQTT. |
 
-The interactive Option 1 **FULL everything** choice means every supported
-feature for the selected ESP32 target, including logging, LoRa OTA, WebConfig,
-and expanded dual-OTA partitions. It does not add an unrelated transport to a
-different role: select an `*_observer_mqtt` or
-`*_companion_radio_wifi_mqtt` target when MQTT is required.
+The interactive Option 1 **FULL everything** choice selects the FULL logging
+profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
+profile and Profile 4 of the five-profile matrix use the matching MQTT target
+instead. Both FULL profiles include LoRa OTA, WebConfig where supported, 254
+neighbors, and expanded dual-OTA partitions.
 
 FULL images change the ESP32 partition layout. Flash the matching
 `*-merged.bin` once when installing that layout. A partition-layout change can

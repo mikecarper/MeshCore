@@ -73,9 +73,9 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32, and FULL ESP32 logging profiles, logging each target under out/build-logs/ and continuing after failures.
-  build-full-esp32-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
-  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, logging, LoRa OTA, and expanded dual-OTA partitions.
+  build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures.
+  build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -364,13 +364,13 @@ prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
     "Build all firmwares"
-    "Build all firmwares in 5 profiles (standard, logging, MQTT, full ESP32, full ESP32 logging)"
+    "Build all firmwares in 5 profiles (standard, logging, MQTT, full ESP32 MQTT, full ESP32 logging without MQTT)"
     "Build all repeater firmwares"
     "Build all companion firmwares"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
-    "Build only FULL ESP32 firmwares (all features and LoRa OTA)"
-    "Build only FULL ESP32 logging firmwares (all features, logging, and LoRa OTA)"
+    "Build only FULL ESP32 MQTT firmwares (all features, MQTT, and LoRa OTA)"
+    "Build only FULL ESP32 logging firmwares (all features, logging, no MQTT, and LoRa OTA)"
   )
 
   echo "No command provided. Select a build action:"
@@ -434,7 +434,7 @@ prompt_for_single_target_build_profile() {
 
   local options=(
     "Standard/custom build"
-    "FULL everything (all features, 254 neighbors, logging, LoRa OTA, expanded dual-OTA partitions)"
+    "FULL everything (all features, 254 neighbors, logging, MQTT off, LoRa OTA, expanded dual-OTA partitions)"
   )
 
   echo "Select the Option 1 build profile:"
@@ -453,7 +453,7 @@ prompt_for_single_target_build_profile() {
         ;;
       2)
         SINGLE_TARGET_FULL_BUILD=1
-        echo "Using FULL everything: all features, 254 neighbors, logging, LoRa OTA, and expanded dual-OTA partitions."
+        echo "Using FULL everything: all features, 254 neighbors, logging, MQTT off, LoRa OTA, and expanded dual-OTA partitions."
         return 0
         ;;
     esac
@@ -1530,6 +1530,40 @@ is_mqtt_bridge_target() {
   [ "${PIO_ENV_MQTT_BY_NAME[$1]:-0}" == "1" ]
 }
 
+get_mqtt_enabled_target() {
+  local target=$1
+
+  if is_mqtt_bridge_target "$target"; then
+    echo "$target"
+  elif is_mqtt_bridge_target "${target}_mqtt"; then
+    echo "${target}_mqtt"
+  elif is_mqtt_bridge_target "${target}_observer_mqtt"; then
+    echo "${target}_observer_mqtt"
+  else
+    return 1
+  fi
+}
+
+get_mqtt_disabled_target() {
+  local target=$1
+  local candidate=$target
+
+  if is_mqtt_bridge_target "$target"; then
+    if [[ "$target" == *_observer_mqtt ]]; then
+      candidate=${target%_observer_mqtt}
+    elif [[ "$target" == *_companion_radio_wifi_mqtt ]]; then
+      candidate=${target%_mqtt}
+    else
+      return 1
+    fi
+  fi
+
+  if ! is_supported_build_env "$candidate" || is_mqtt_bridge_target "$candidate"; then
+    return 1
+  fi
+  echo "$candidate"
+}
+
 normalize_resolved_targets_for_mqtt() {
   local command=$1
   local target
@@ -1561,26 +1595,9 @@ normalize_resolved_targets_for_mqtt() {
   for target in "${candidates[@]}"; do
     candidate=""
     if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
-      if is_mqtt_bridge_target "$target"; then
-        candidate=$target
-      elif is_mqtt_bridge_target "${target}_mqtt"; then
-        candidate="${target}_mqtt"
-      elif is_mqtt_bridge_target "${target}_observer_mqtt"; then
-        candidate="${target}_observer_mqtt"
-      fi
+      candidate=$(get_mqtt_enabled_target "$target") || candidate=""
     else
-      if is_mqtt_bridge_target "$target"; then
-        if [[ "$target" == *_observer_mqtt ]]; then
-          candidate=${target%_observer_mqtt}
-        elif [[ "$target" == *_companion_radio_wifi_mqtt ]]; then
-          candidate=${target%_mqtt}
-        fi
-        if ! is_supported_build_env "$candidate" || is_mqtt_bridge_target "$candidate"; then
-          candidate=""
-        fi
-      else
-        candidate=$target
-      fi
+      candidate=$(get_mqtt_disabled_target "$target") || candidate=""
     fi
 
     if [ -z "$candidate" ]; then
@@ -2504,8 +2521,9 @@ run_full_esp32_profile() {
   shift 2
   local targets=("$@")
   local target
-  local full_standard_targets=()
-  local full_mqtt_targets=()
+  local full_target
+  local full_targets=()
+  local -A seen_full_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
@@ -2516,51 +2534,52 @@ run_full_esp32_profile() {
   local pass_status=0
 
   for target in "${targets[@]}"; do
-    if ! supports_esp32_full_build "$target"; then
+    full_target=""
+    if [ "$logging_mode" = "on" ]; then
+      full_target=$(get_mqtt_disabled_target "$target") || full_target=""
+    else
+      full_target=$(get_mqtt_enabled_target "$target") || full_target=""
+    fi
+    if [ -z "$full_target" ] || ! supports_esp32_full_build "$full_target"; then
       continue
     fi
-    if is_mqtt_bridge_target "$target"; then
-      full_mqtt_targets+=("$target")
-    else
-      full_standard_targets+=("$target")
+    if [ -z "${seen_full_targets[$full_target]+x}" ]; then
+      full_targets+=("$full_target")
+      seen_full_targets["$full_target"]=1
     fi
   done
 
-  if [ ${#full_standard_targets[@]} -eq 0 ] && [ ${#full_mqtt_targets[@]} -eq 0 ]; then
-    echo "${profile_label}: no feature-different ESP32 FULL targets resolved; skipping."
+  if [ ${#full_targets[@]} -eq 0 ]; then
+    if [ "$logging_mode" = "on" ]; then
+      echo "${profile_label}: no non-MQTT ESP32 FULL targets resolved; skipping."
+    else
+      echo "${profile_label}: no MQTT ESP32 FULL targets resolved; skipping."
+    fi
     return 0
   fi
 
   if [ "$logging_mode" = "on" ]; then
-    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging, and expanded dual-OTA partitions."
-    echo "FULL logging artifacts include LoRa OTA and use filename form: name-full-logging-ota-version."
+    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging on, MQTT off, and expanded dual-OTA partitions."
+    echo "FULL logging artifacts exclude MQTT, include LoRa OTA, and use filename form: name-full-logging-ota-version."
     MESHDEBUG_OVERRIDE="on"
     PACKET_LOGGING_OVERRIDE="on"
+    MQTT_BRIDGE_OVERRIDE="off"
     FIRMWARE_FILENAME_INFIX="full-logging"
   else
-    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors and expanded dual-OTA partitions."
-    echo "FULL artifacts include LoRa OTA and use filename form: name-full-ota-version."
+    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 MQTT target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging off, and expanded dual-OTA partitions."
+    echo "FULL artifacts include MQTT and LoRa OTA and use filename form: name-full-ota-version."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="off"
+    MQTT_BRIDGE_OVERRIDE="on"
     FIRMWARE_FILENAME_INFIX="full"
   fi
   echo "Flash the matching merged image once to install the expanded partition table."
   MQTT_DEBUG_OVERRIDE="off"
   ESP32_FULL_BUILD=1
 
-  if [ ${#full_standard_targets[@]} -gt 0 ]; then
-    MQTT_BRIDGE_OVERRIDE="off"
-    run_logged_build_targets "${full_standard_targets[@]}"
-    pass_status=$?
-    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
-  fi
-
-  if [ ${#full_mqtt_targets[@]} -gt 0 ]; then
-    MQTT_BRIDGE_OVERRIDE="on"
-    run_logged_build_targets "${full_mqtt_targets[@]}"
-    pass_status=$?
-    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
-  fi
+  run_logged_build_targets "${full_targets[@]}"
+  pass_status=$?
+  if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
   PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
@@ -2576,7 +2595,7 @@ run_full_esp32_build_targets() {
   local logging_mode=$1
   shift
   local targets=("$@")
-  local profile_name="FULL"
+  local profile_name="FULL MQTT"
   local build_status=0
 
   if [ "$logging_mode" = "on" ]; then
@@ -2835,14 +2854,14 @@ main() {
 
     prompt_for_build_mode
     if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
-      echo "Skipping separate debug and MQTT prompts; FULL everything enables the complete feature and logging profile."
+      echo "Skipping separate debug and MQTT prompts; FULL everything enables logging and explicitly disables MQTT."
     elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
         echo "Skipping debug and MQTT prompts; this action builds all five profiles automatically."
       elif is_full_esp32_logging_command "${SELECTED_COMMAND_ARGS[0]}"; then
-        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 logging profile."
+        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 logging profile with MQTT disabled."
       else
-        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 profile."
+        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 MQTT profile."
       fi
     else
       prompt_for_mqtt_bridge_build_setting
