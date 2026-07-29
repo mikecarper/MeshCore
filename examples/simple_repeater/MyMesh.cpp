@@ -8742,8 +8742,27 @@ void MyMesh::finishNeighborDiscover() {
   char timestamp[40];
   MQTTMessageBuilder::formatIsoTimestampForMqtt(getRTCClock()->getCurrentTime(), 0, nullptr, timestamp, sizeof(timestamp));
 
-  char pubkey_hex[MAX_NEIGHBOURS][65];
-  MQTTMessageBuilder::NeighborsMessageEntry entries[MAX_NEIGHBOURS];
+  struct NeighborPublishWorkspace {
+    char pubkey_hex[MAX_NEIGHBOURS][65];
+    MQTTMessageBuilder::NeighborsMessageEntry entries[MAX_NEIGHBOURS];
+  };
+#if defined(ESP_PLATFORM)
+  auto* publish_workspace = static_cast<NeighborPublishWorkspace*>(
+    heap_caps_malloc(sizeof(NeighborPublishWorkspace), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#else
+  auto* publish_workspace = static_cast<NeighborPublishWorkspace*>(
+    malloc(sizeof(NeighborPublishWorkspace)));
+#endif
+  if (!publish_workspace) {
+    neighbor_discover_active = false;
+    neighbor_discover_count = 0;
+    if (_cli.getObserverPrefs()->mqtt_neighbors_enabled) {
+      next_neighbors_publish = futureMillis(_cli.getObserverPrefs()->mqtt_neighbors_interval);
+    }
+    return;
+  }
+  auto& pubkey_hex = publish_workspace->pubkey_hex;
+  auto& entries = publish_workspace->entries;
   uint32_t now_secs = getRTCClock()->getCurrentTime();
 
   for (int i = 0; i < neighbor_discover_count; i++) {
@@ -8778,6 +8797,11 @@ void MyMesh::finishNeighborDiscover() {
   char* json_buf = (char*)malloc(MQTTBridge::NEIGHBORS_JSON_BUFFER_SIZE);
 #endif
   if (!json_buf) {
+#if defined(ESP_PLATFORM)
+    heap_caps_free(publish_workspace);
+#else
+    free(publish_workspace);
+#endif
     neighbor_discover_active = false;
     neighbor_discover_count = 0;
     if (_cli.getObserverPrefs()->mqtt_neighbors_enabled) {
@@ -8803,8 +8827,10 @@ void MyMesh::finishNeighborDiscover() {
 
 #if defined(ESP_PLATFORM)
   heap_caps_free(json_buf);
+  heap_caps_free(publish_workspace);
 #else
   free(json_buf);
+  free(publish_workspace);
 #endif
 
   neighbor_discover_active = false;
