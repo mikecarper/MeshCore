@@ -18,6 +18,7 @@ MQTT_BRIDGE_OVERRIDE=""
 MQTT_DEBUG_OVERRIDE=""
 FIRMWARE_FILENAME_INFIX=""
 ESP32_FULL_BUILD=0
+SINGLE_TARGET_FULL_BUILD=0
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 RADIO_SETTING_TITLE=""
 RADIO_FREQ_OVERRIDE=""
@@ -91,7 +92,9 @@ Examples:
 Build firmware for the "RAK_4631_repeater" device target
 $ bash build.sh build-firmware RAK_4631_repeater
 
-Run without arguments to choose an interactive build action/target, debug options, radio settings, firmware profile, and firmware version
+Run without arguments to choose an interactive build action/target, an optional
+FULL-everything profile for supported ESP32 Option 1 targets, debug options,
+radio settings, firmware profile, and firmware version
 $ bash build.sh
 
 Build all firmwares for device targets containing the string "RAK_4631"
@@ -381,6 +384,7 @@ prompt_for_build_mode() {
     case "$MENU_CHOICE" in
       1)
         prompt_for_board_target
+        prompt_for_single_target_build_profile
         SELECTED_COMMAND_ARGS=(build-firmware "$SELECTED_TARGET")
         return 0
         ;;
@@ -414,6 +418,41 @@ prompt_for_build_mode() {
         ;;
       9)
         SELECTED_COMMAND_ARGS=(build-full-esp32-logging-firmwares)
+        return 0
+        ;;
+    esac
+  done
+}
+
+prompt_for_single_target_build_profile() {
+  SINGLE_TARGET_FULL_BUILD=0
+  if ! supports_esp32_full_build "$SELECTED_TARGET"; then
+    echo "Selected target uses its standard build profile; FULL everything is available only for supported ESP32 targets."
+    return 0
+  fi
+
+  local options=(
+    "Standard/custom build"
+    "FULL everything (all features, logging, LoRa OTA, expanded dual-OTA partitions)"
+  )
+
+  echo "Select the Option 1 build profile:"
+  while true; do
+    print_numbered_menu "${options[@]}"
+    prompt_menu_choice "Build profile" "${#options[@]}"
+    if [ "$MENU_CHOICE" == "QUIT" ]; then
+      echo "Cancelled."
+      exit 1
+    fi
+
+    case "$MENU_CHOICE" in
+      1)
+        echo "Using the standard/custom single-target build."
+        return 0
+        ;;
+      2)
+        SINGLE_TARGET_FULL_BUILD=1
+        echo "Using FULL everything: all features, logging, LoRa OTA, and expanded dual-OTA partitions."
         return 0
         ;;
     esac
@@ -2722,6 +2761,11 @@ validate_command() {
 
 run_command() {
   # All build commands share execution after validation resolves their target list.
+  if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
+    run_full_esp32_build_targets "on" "${RESOLVED_BUILD_TARGETS[@]}"
+    return $?
+  fi
+
   if is_logging_matrix_command "$1"; then
     run_logging_matrix_build_targets "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
@@ -2784,7 +2828,9 @@ main() {
     fi
 
     prompt_for_build_mode
-    if is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
+    if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
+      echo "Skipping separate debug and MQTT prompts; FULL everything enables the complete feature and logging profile."
+    elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
         echo "Skipping debug and MQTT prompts; this action builds all five profiles automatically."
       elif is_full_esp32_logging_command "${SELECTED_COMMAND_ARGS[0]}"; then
@@ -2820,7 +2866,8 @@ main() {
   fi
 
   prompt_for_resolved_firmware_version
-  if is_automatic_profile_command "$1"; then
+  if is_automatic_profile_command "$1" \
+      || [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
     prompt_for_logging_matrix_output_policy
   else
     RESUME_BUILD_OUTPUT=0
