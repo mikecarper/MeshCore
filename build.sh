@@ -55,6 +55,7 @@ TAG_PREFIX_SENSOR="sensor"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
 OUTPUT_DIR="out"
 ESP32_LORA_OTA_APP_LIMIT=$((0x150000 - 0x10000))
+ESP32_FULL_MAX_NEIGHBOURS=254
 FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
@@ -73,8 +74,8 @@ Commands:
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
   build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32, and FULL ESP32 logging profiles, logging each target under out/build-logs/ and continuing after failures.
-  build-full-esp32-firmwares: Build only feature-complete ESP32 profiles with LoRa OTA and expanded dual-OTA partitions.
-  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with logging, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, logging, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -433,7 +434,7 @@ prompt_for_single_target_build_profile() {
 
   local options=(
     "Standard/custom build"
-    "FULL everything (all features, logging, LoRa OTA, expanded dual-OTA partitions)"
+    "FULL everything (all features, 254 neighbors, logging, LoRa OTA, expanded dual-OTA partitions)"
   )
 
   echo "Select the Option 1 build profile:"
@@ -452,7 +453,7 @@ prompt_for_single_target_build_profile() {
         ;;
       2)
         SINGLE_TARGET_FULL_BUILD=1
-        echo "Using FULL everything: all features, logging, LoRa OTA, and expanded dual-OTA partitions."
+        echo "Using FULL everything: all features, 254 neighbors, logging, LoRa OTA, and expanded dual-OTA partitions."
         return 0
         ;;
     esac
@@ -1811,6 +1812,11 @@ apply_esp32_full_size_profile() {
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1"
 
+  # Keep ordinary builds at their board-defined neighbor capacity. FULL builds
+  # use the largest table supported by the one-byte neighbor discovery indexes.
+  append_platformio_build_unflags "-DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS}"
+
   # Restore the full ElegantOTA implementation only when the target already
   # declares its dependency. Some ESP32-C6 targets intentionally have no
   # compatible ElegantOTA library and retain their target WiFi-OTA setting.
@@ -2526,13 +2532,13 @@ run_full_esp32_profile() {
   fi
 
   if [ "$logging_mode" = "on" ]; then
-    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with logging and expanded dual-OTA partitions."
+    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging, and expanded dual-OTA partitions."
     echo "FULL logging artifacts include LoRa OTA and use filename form: name-full-logging-ota-version."
     MESHDEBUG_OVERRIDE="on"
     PACKET_LOGGING_OVERRIDE="on"
     FIRMWARE_FILENAME_INFIX="full-logging"
   else
-    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with expanded dual-OTA partitions."
+    echo "${profile_label}: building $((${#full_standard_targets[@]} + ${#full_mqtt_targets[@]})) feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors and expanded dual-OTA partitions."
     echo "FULL artifacts include LoRa OTA and use filename form: name-full-ota-version."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="off"
