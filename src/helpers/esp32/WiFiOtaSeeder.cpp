@@ -7,6 +7,7 @@
 #include <WiFi.h>
 
 #include <helpers/WiFiOtaSeederPolicy.h>
+#include <helpers/WiFiOtaSeederStatus.h>
 #include <helpers/ota/FolderMotaStore.h>
 #include <helpers/ota/MotaSourceSerial.h>
 #include <helpers/ota/OtaContext.h>
@@ -119,6 +120,12 @@ bool WiFiOtaSeeder::isListening() {
 
 bool WiFiOtaSeeder::isAttached() {
   return tcp_folder_attached;
+}
+
+bool WiFiOtaSeeder::appendStatus(char* reply, size_t capacity) {
+  return WiFiOtaSeederStatus::append(
+      reply, capacity, listener_active, tcp_folder_attached,
+      OTA_SEEDER_TCP_PORT);
 }
 
 }  // namespace ota

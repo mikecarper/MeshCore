@@ -96,3 +96,18 @@ static inline bool wcIsValidReqId(const char* reqid) {
   }
   return true;
 }
+
+// The browser terminal submits exactly one command through the existing
+// 160-byte CLI buffer. Reject blank, oversized, or multiline input so a JSON
+// request cannot smuggle a second command into the dispatcher.
+static inline bool wcIsValidCliCommand(const char* command) {
+  if (command == NULL) return false;
+  const size_t len = strnlen(command, 161);
+  if (len == 0 || len > 159) return false;
+  bool has_text = false;
+  for (size_t i = 0; i < len; i++) {
+    if (command[i] == '\r' || command[i] == '\n') return false;
+    if (command[i] != ' ' && command[i] != '\t') has_text = true;
+  }
+  return has_text;
+}

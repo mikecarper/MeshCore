@@ -7644,6 +7644,51 @@ bool MyMesh::getWiFiStatus(char* reply) const {
   return WebConfigServer::formatWiFiStatus(reply, 160);
 }
 
+bool MyMesh::getWiFiPowerSave(char* reply) const {
+  return WebConfigServer::formatWiFiPowerSave(reply, 160);
+}
+
+bool MyMesh::getWiFiCLI(char* reply) const {
+  return WebConfigServer::formatWiFiCliStatus(reply, 160);
+}
+
+bool MyMesh::setWiFiSSID(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiSSID(value, reply, 160)) {
+    const bool was_running = _webconfig && _webconfig->isRunning();
+    if (was_running) _webconfig->requestStop();
+    if (_webconfig) _webconfig->reloadStandaloneWiFi();
+    if (was_running) {
+      strcpy(reply, "OK - WiFi SSID saved; WebConfig stopping, start again to apply");
+    }
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiPassword(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiPassword(value, reply, 160)) {
+    const bool was_running = _webconfig && _webconfig->isRunning();
+    if (was_running) _webconfig->requestStop();
+    if (_webconfig) _webconfig->reloadStandaloneWiFi();
+    if (was_running) {
+      strcpy(reply, "OK - WiFi password saved; WebConfig stopping, start again to apply");
+    }
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiPowerSave(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiPowerSave(value, reply, 160)
+      && _webconfig) {
+    _webconfig->reloadStandaloneWiFi();
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiCLI(const char* value, char* reply) {
+  WebConfigServer::setWiFiCliEnabled(value, reply, 160);
+  return true;
+}
+
 void MyMesh::onConfigBatchEnd() {
   _wc_batch_active = false;
 #ifdef WITH_MQTT_BRIDGE
@@ -7979,8 +8024,24 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   }
 
   mesh::cli::normalizeCommandVerb(command);
+  const mesh::cli::NoArgCommandMatch discover_neighbors_match =
+      mesh::cli::matchNoArgCommand(command, "discover.neighbors");
 
 #if defined(PORTABLE_MQTT_OBSERVER)
+  // Neighbor refresh is a core repeater operation, not an MQTT feature. Keep
+  // it ahead of the portable observer's reduced CommonCLI handoff so every
+  // repeater build exposes the same command.
+  if (discover_neighbors_match != mesh::cli::NoArgCommandMatch::NoMatch) {
+    if (discover_neighbors_match ==
+        mesh::cli::NoArgCommandMatch::HasArguments) {
+      strcpy(reply, "Err - discover.neighbors has no options");
+    } else {
+      sendNodeDiscoverReq();
+      strcpy(reply, "OK - Discover sent");
+    }
+    return;
+  }
+
   // The portable observer exposes its MQTT/WiFi/update controls through
   // CommonCLI. Omit the repeater's large remote-administration command tree;
   // its mesh behavior remains fixed by the selected build profile.
@@ -8352,10 +8413,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       savePrefs();
       strcpy(reply, "OK");
     }
-  } else if (memcmp(command, "discover.neighbors", 18) == 0) {
-    const char* sub = command + 18;
-    while (*sub == ' ') sub++;
-    if (*sub != 0) {
+  } else if (discover_neighbors_match !=
+             mesh::cli::NoArgCommandMatch::NoMatch) {
+    if (discover_neighbors_match ==
+        mesh::cli::NoArgCommandMatch::HasArguments) {
       strcpy(reply, "Err - discover.neighbors has no options");
     } else {
       sendNodeDiscoverReq();

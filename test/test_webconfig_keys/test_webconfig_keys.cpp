@@ -134,6 +134,32 @@ TEST(WebConfigKeys, RejectsMissingMalformedOrWrongLengthRequestIds) {
   EXPECT_FALSE(wcIsValidReqId("01234567 9abcdef"));
 }
 
+// ---- browser terminal commands -------------------------------------------
+
+TEST(WebConfigKeys, AcceptsSingleLineCliCommands) {
+  EXPECT_TRUE(wcIsValidCliCommand("get wifi.status"));
+  EXPECT_TRUE(wcIsValidCliCommand("set flood.max 12"));
+  EXPECT_TRUE(wcIsValidCliCommand("  neighbors  "));
+}
+
+TEST(WebConfigKeys, RejectsBlankMultilineOrOversizedCliCommands) {
+  EXPECT_FALSE(wcIsValidCliCommand(NULL));
+  EXPECT_FALSE(wcIsValidCliCommand(""));
+  EXPECT_FALSE(wcIsValidCliCommand("   \t"));
+  EXPECT_FALSE(wcIsValidCliCommand("get role\nreboot"));
+  EXPECT_FALSE(wcIsValidCliCommand("get role\rreboot"));
+
+  char max_command[160];
+  memset(max_command, 'x', sizeof(max_command) - 1);
+  max_command[sizeof(max_command) - 1] = 0;
+  EXPECT_TRUE(wcIsValidCliCommand(max_command));
+
+  char oversized[161];
+  memset(oversized, 'x', sizeof(oversized) - 1);
+  oversized[sizeof(oversized) - 1] = 0;
+  EXPECT_FALSE(wcIsValidCliCommand(oversized));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

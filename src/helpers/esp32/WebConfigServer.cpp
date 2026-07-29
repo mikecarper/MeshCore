@@ -12,6 +12,11 @@
 #include <esp_system.h>
 #include <esp_heap_caps.h>
 
+#if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
+    (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+  #include <helpers/esp32/WiFiOtaSeeder.h>
+#endif
+
 #ifdef WITH_MQTT_BRIDGE
   #include <helpers/MQTTPrefs.h>
   #include <helpers/MQTTPresets.h>
@@ -19,6 +24,7 @@
 #endif
 
 #include "WebConfigHtml.h"
+#include "helpers/CLICommandUtils.h"
 #include "helpers/WebConfigKeys.h"
 
 // Placeholder sent instead of stored secrets; POSTs carrying it are dropped
@@ -50,6 +56,16 @@ static bool fixedTimeEquals(const char* a, const char* b, size_t max_len) {
   return diff == 0;
 }
 
+static void appendOtaSeederStatus(char* reply, size_t reply_len) {
+#if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
+    (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+  mesh::ota::WiFiOtaSeeder::appendStatus(reply, reply_len);
+#else
+  (void)reply;
+  (void)reply_len;
+#endif
+}
+
 // RAII lock; tolerates a null mutex (allocation failure) by not locking.
 struct WCLock {
   SemaphoreHandle_t h;
@@ -68,6 +84,7 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
     : _cb(callbacks), _mqtt_prefs(mqtt_prefs), _owns_wifi(owns_wifi), _pub_key(pub_key),
       _fw_ver(fw_ver), _role(role), _board_name(board_name) {
   _mux = xSemaphoreCreateMutex();
+  _cli_enabled = loadCliEnabled(true);
 
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs* obs = static_cast<MQTTPrefs*>(_mqtt_prefs);
@@ -112,6 +129,22 @@ bool WebConfigServer::saveEnabled(bool enabled) {
   return written == sizeof(uint8_t);
 }
 
+bool WebConfigServer::loadCliEnabled(bool default_value) {
+  Preferences nvs;
+  if (!nvs.begin("mesh-webui", true)) return default_value;
+  bool enabled = nvs.getBool("cli", default_value);
+  nvs.end();
+  return enabled;
+}
+
+bool WebConfigServer::saveCliEnabled(bool enabled) {
+  Preferences nvs;
+  if (!nvs.begin("mesh-webui", false)) return false;
+  size_t written = nvs.putBool("cli", enabled);
+  nvs.end();
+  return written == sizeof(uint8_t);
+}
+
 bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
                                          char* password, size_t password_len,
                                          uint8_t* power_save) {
@@ -124,14 +157,16 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
   String stored_password = nvs.getString("password", "");
   uint8_t stored_ps = nvs.getUChar("powersave", 1);
   nvs.end();
-  if (stored_ssid.length() == 0 || stored_ssid.length() >= ssid_len
-      || stored_password.length() >= password_len) return false;
+  if (stored_ssid.length() >= ssid_len
+      || stored_password.length() >= password_len) {
+    return false;
+  }
   strncpy(ssid, stored_ssid.c_str(), ssid_len - 1);
   ssid[ssid_len - 1] = 0;
   strncpy(password, stored_password.c_str(), password_len - 1);
   password[password_len - 1] = 0;
   if (power_save) *power_save = stored_ps <= 2 ? stored_ps : 1;
-  return true;
+  return stored_ssid.length() != 0;
 }
 
 bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
@@ -151,6 +186,113 @@ bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
   return ok;
 }
 
+bool WebConfigServer::setStandaloneWiFiSSID(const char* value, char* reply,
+                                             size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+  if (!mesh::cli::standaloneWiFiSSIDValid(value)) {
+    snprintf(reply, reply_len, "Error: WiFi SSID must be 1-31 characters");
+    return false;
+  }
+
+  Preferences nvs;
+  if (!nvs.begin("mesh-wifi", false)) {
+    snprintf(reply, reply_len, "Error: failed to open WiFi settings");
+    return false;
+  }
+  const bool ok = nvs.putString("ssid", value) == strlen(value);
+  nvs.end();
+  snprintf(reply, reply_len, ok ? "OK - WiFi SSID saved"
+                                : "Error: failed to save WiFi SSID");
+  return ok;
+}
+
+bool WebConfigServer::setStandaloneWiFiPassword(const char* value, char* reply,
+                                                 size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+  if (!mesh::cli::standaloneWiFiPasswordValid(value)) {
+    snprintf(reply, reply_len,
+             "Error: WiFi password must be at most 63 characters");
+    return false;
+  }
+
+  Preferences nvs;
+  if (!nvs.begin("mesh-wifi", false)) {
+    snprintf(reply, reply_len, "Error: failed to open WiFi settings");
+    return false;
+  }
+  nvs.putString("password", value);
+  const bool ok = nvs.getString("password", "\x01") == value;
+  nvs.end();
+  snprintf(reply, reply_len, ok ? "OK - WiFi password saved"
+                                : "Error: failed to save WiFi password");
+  return ok;
+}
+
+bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
+                                                  size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+  uint8_t power_save = 1;
+  if (!mesh::cli::parseStandaloneWiFiPowerSave(value, power_save)) {
+    snprintf(reply, reply_len, "Error: power save must be none, min, or max");
+    return false;
+  }
+
+  Preferences nvs;
+  if (!nvs.begin("mesh-wifi", false)) {
+    snprintf(reply, reply_len, "Error: failed to open WiFi settings");
+    return false;
+  }
+  const bool ok =
+      nvs.putUChar("powersave", power_save) == sizeof(uint8_t);
+  nvs.end();
+  if (!ok) {
+    snprintf(reply, reply_len, "Error: failed to save WiFi power save");
+    return false;
+  }
+
+  esp_err_t apply_result = ESP_OK;
+  if (WiFi.getMode() != WIFI_OFF) {
+    const wifi_ps_type_t ps_mode =
+        power_save == 1 ? WIFI_PS_NONE
+                        : power_save == 2 ? WIFI_PS_MAX_MODEM
+                                          : WIFI_PS_MIN_MODEM;
+    apply_result = esp_wifi_set_ps(ps_mode);
+  }
+  if (apply_result == ESP_OK) {
+    snprintf(reply, reply_len, "OK - WiFi power save set to %s", value);
+  } else {
+    snprintf(reply, reply_len,
+             "OK - saved; WiFi power save applies on next connection");
+  }
+  return true;
+}
+
+bool WebConfigServer::setWiFiCliEnabled(const char* value, char* reply,
+                                        size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+  if (!value || (strcmp(value, "on") != 0 && strcmp(value, "off") != 0)) {
+    snprintf(reply, reply_len, "Error: use set wifi.cli on|off");
+    return false;
+  }
+  const bool enabled = strcmp(value, "on") == 0;
+  if (!saveCliEnabled(enabled)) {
+    snprintf(reply, reply_len, "Error: failed to save WiFi CLI setting");
+    return false;
+  }
+  WebConfigServer* active = _active;
+  if (active) active->_cli_enabled = enabled;
+  snprintf(reply, reply_len,
+           enabled ? "OK - WiFi CLI on; active with WiFi client"
+                   : "OK - WiFi CLI off");
+  return true;
+}
+
+bool WebConfigServer::reloadStandaloneWiFi() {
+  return loadStandaloneWiFi(
+      _wifi_ssid, sizeof(_wifi_ssid),
+      _wifi_password, sizeof(_wifi_password), &_wifi_power_save);
+}
+
 bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
   if (!reply || reply_len == 0) return false;
 
@@ -166,6 +308,46 @@ bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
   }
 
   snprintf(reply, reply_len, configured ? "> %s" : "> (not configured)", ssid);
+  return true;
+}
+
+bool WebConfigServer::formatWiFiPowerSave(char* reply, size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+
+  uint8_t power_save = 1;
+  if (_active) {
+    power_save = _active->_wifi_power_save;
+  } else {
+    char ssid[32] = "";
+    char password[64] = "";
+    loadStandaloneWiFi(
+        ssid, sizeof(ssid), password, sizeof(password), &power_save);
+  }
+
+  const char* name = "none";
+  if (power_save == 0) {
+    name = "min";
+  } else if (power_save == 2) {
+    name = "max";
+  }
+  snprintf(reply, reply_len, "> %s", name);
+  return true;
+}
+
+bool WebConfigServer::formatWiFiCliStatus(char* reply, size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+  WebConfigServer* active = _active;
+  const bool enabled = active ? active->_cli_enabled : loadCliEnabled(true);
+  const bool available = active && active->_cb->supportsCliTerminal();
+  const bool running = enabled && available && active->_mode == MODE_LAN
+      && WiFi.status() == WL_CONNECTED;
+  if (!enabled) {
+    snprintf(reply, reply_len, "> off");
+  } else if (running) {
+    snprintf(reply, reply_len, "> on, active");
+  } else {
+    snprintf(reply, reply_len, "> on, waiting for WiFi client");
+  }
   return true;
 }
 
@@ -189,23 +371,27 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
     char ip[16] = "";
     getSetupInfo(ap_ssid, sizeof(ap_ssid), ip, sizeof(ip));
     snprintf(reply, reply_len, "> setup AP, SSID: %s, IP: %s", ap_ssid, ip);
+    appendOtaSeederStatus(reply, reply_len);
     return true;
   }
   if (active && active->_mode == MODE_CONNECTING) {
     snprintf(reply, reply_len, "> connecting, SSID: %s",
              configured ? ssid : "(not configured)");
+    appendOtaSeederStatus(reply, reply_len);
     return true;
   }
 
   const wl_status_t status = WiFi.status();
   if (status == WL_CONNECTED) {
     snprintf(reply, reply_len, "> connected, SSID: %s, IP: %s, RSSI: %d dBm",
-             configured ? ssid : WiFi.SSID().c_str(),
+             WiFi.SSID().c_str(),
              WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    appendOtaSeederStatus(reply, reply_len);
     return true;
   }
   if (!configured) {
     strcpy(reply, "> not configured; run 'start webconfig'");
+    appendOtaSeederStatus(reply, reply_len);
     return true;
   }
 
@@ -228,6 +414,7 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
       }
       break;
   }
+  appendOtaSeederStatus(reply, reply_len);
   return true;
 }
 
@@ -419,6 +606,10 @@ void WebConfigServer::finalizeTeardown() {
   _batch_state = BATCH_IDLE;
   _batch_next = 0;
   _batch_reboot_armed = false;
+  _cli_state = CLI_IDLE;
+  _cli_reqid[0] = 0;
+  _cli_command[0] = 0;
+  _cli_reply[0] = 0;
   _session_token[0] = 0;
   _stats_json[0] = 0;
   if (_cb) _cb->onWebConfigStopped();
@@ -464,6 +655,7 @@ void WebConfigServer::tick(uint32_t now) {
 
   if (_dns) _dns->processNextRequest();
 
+  if (_cli_state == CLI_PENDING) drainCliCommand();
   if (_batch_state == BATCH_PENDING) drainBatch(now);
 
   if (WebConfigBatch::rebootDue(_reboot_at, now)) {
@@ -491,6 +683,26 @@ void WebConfigServer::tick(uint32_t now) {
       (now - _last_activity) > WEBCONFIG_AP_IDLE_TIMEOUT_MS) {
     requestStop();
   }
+}
+
+void WebConfigServer::drainCliCommand() {
+  char command[160];
+  {
+    WCLock lock(_mux);
+    if (_cli_state != CLI_PENDING) return;
+    strncpy(command, _cli_command, sizeof(command) - 1);
+    command[sizeof(command) - 1] = 0;
+  }
+
+  char reply[160] = "";
+  _cb->execAdminCommand(command, reply);
+  if (reply[0] == 0) strcpy(reply, "(no reply)");
+
+  WCLock lock(_mux);
+  if (_cli_state != CLI_PENDING) return;
+  strncpy(_cli_reply, reply, sizeof(_cli_reply) - 1);
+  _cli_reply[sizeof(_cli_reply) - 1] = 0;
+  _cli_state = CLI_DONE;
 }
 
 void WebConfigServer::drainBatch(uint32_t now) {
@@ -681,6 +893,13 @@ void WebConfigServer::registerRoutes() {
     dispatchRequest(r, &WebConfigServer::handleConfigPost);
   },
               NULL, collectBody);
+  _server->on("/api/cli/result", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleCliResult);
+  });
+  _server->on("/api/cli", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleCliPost);
+  },
+              NULL, collectBody);
   _server->on("/api/stats", HTTP_GET, [](AsyncWebServerRequest* r) {
     dispatchRequest(r, &WebConfigServer::handleStats);
   });
@@ -788,6 +1007,8 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   doc["active_slots"] = 0;
 #endif
   doc["mqtt"] = has_mqtt;
+  doc["cli"] = _cli_enabled && _mode == MODE_LAN
+      && WiFi.status() == WL_CONNECTED && _cb->supportsCliTerminal();
   doc["capabilities"] = node.capabilities;
 
   AsyncResponseStream* res = req->beginResponseStream("application/json");
@@ -961,6 +1182,11 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   JsonObject set = doc["set"];
 
   WCLock lock(_mux);
+  if (_cli_state == CLI_PENDING) {
+    req->send(409, "application/json",
+              "{\"error\":\"CLI command is still running\"}");
+    return;
+  }
   const WebConfigBatch::State bstate = toSpecState(_batch_state);
   const bool reqid_matches = strcmp(reqid, _batch_reqid) == 0;
   const WebConfigBatch::PostOutcome pre =
@@ -1130,6 +1356,139 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     _reboot_at = WebConfigBatch::confirmRebootAt(millis());
   }
 
+  AsyncResponseStream* res = req->beginResponseStream("application/json");
+  serializeJson(doc, *res);
+  req->send(res);
+}
+
+void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
+  if (_mode != MODE_LAN) {
+    req->send(403, "application/json",
+              "{\"error\":\"terminal requires LAN mode\"}");
+    return;
+  }
+  if (!_cb->supportsCliTerminal()) {
+    req->send(404, "application/json",
+              "{\"error\":\"terminal unavailable on this role\"}");
+    return;
+  }
+  if (!_cli_enabled) {
+    req->send(403, "application/json",
+              "{\"error\":\"terminal disabled; set wifi.cli on\"}");
+    return;
+  }
+  if (!checkAuth(req)) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
+  if (req->contentLength() > 512) {
+    req->send(413, "application/json", "{\"error\":\"body too large\"}");
+    return;
+  }
+
+  const char* body = (const char*)req->_tempObject;
+  DynamicJsonDocument doc(512);
+  if (!body || deserializeJson(doc, body) != DeserializationError::Ok) {
+    req->send(400, "application/json", "{\"error\":\"bad json\"}");
+    return;
+  }
+  const char* reqid = doc["reqid"] | "";
+  const char* command = doc["command"] | "";
+  if (!wcIsValidReqId(reqid)) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
+  if (!wcIsValidCliCommand(command)) {
+    req->send(400, "application/json",
+              "{\"error\":\"command must be one nonblank line up to 159 bytes\"}");
+    return;
+  }
+
+  WCLock lock(_mux);
+  const bool same_request = strcmp(reqid, _cli_reqid) == 0;
+  if (_cli_state == CLI_PENDING || same_request) {
+    if (!same_request) {
+      StaticJsonDocument<96> busy;
+      busy["error"] = "busy";
+      busy["reqid"] = (const char*)_cli_reqid;
+      String out;
+      serializeJson(busy, out);
+      req->send(409, "application/json", out);
+      return;
+    }
+    StaticJsonDocument<96> replay;
+    replay["state"] = _cli_state == CLI_DONE ? "done" : "pending";
+    replay["reqid"] = (const char*)_cli_reqid;
+    String out;
+    serializeJson(replay, out);
+    req->send(202, "application/json", out);
+    return;
+  }
+  if (_batch_state == BATCH_PENDING) {
+    req->send(409, "application/json",
+              "{\"error\":\"configuration change is still running\"}");
+    return;
+  }
+
+  strncpy(_cli_reqid, reqid, sizeof(_cli_reqid) - 1);
+  _cli_reqid[sizeof(_cli_reqid) - 1] = 0;
+  strncpy(_cli_command, command, sizeof(_cli_command) - 1);
+  _cli_command[sizeof(_cli_command) - 1] = 0;
+  _cli_reply[0] = 0;
+  _cli_state = CLI_PENDING;
+
+  StaticJsonDocument<96> ack;
+  ack["state"] = "pending";
+  ack["reqid"] = (const char*)_cli_reqid;
+  String out;
+  serializeJson(ack, out);
+  req->send(202, "application/json", out);
+}
+
+void WebConfigServer::handleCliResult(AsyncWebServerRequest* req) {
+  if (_mode != MODE_LAN) {
+    req->send(403, "application/json",
+              "{\"error\":\"terminal requires LAN mode\"}");
+    return;
+  }
+  if (!_cb->supportsCliTerminal()) {
+    req->send(404, "application/json",
+              "{\"error\":\"terminal unavailable on this role\"}");
+    return;
+  }
+  if (!checkAuth(req)) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
+  if (!req->hasParam("reqid")) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
+  String requested_reqid = req->getParam("reqid")->value();
+  if (!wcIsValidReqId(requested_reqid.c_str())) {
+    req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
+    return;
+  }
+
+  WCLock lock(_mux);
+  if (_cli_state == CLI_IDLE) {
+    StaticJsonDocument<64> idle;
+    idle["state"] = "idle";
+    idle["reqid"] = requested_reqid;
+    String out;
+    serializeJson(idle, out);
+    req->send(200, "application/json", out);
+    return;
+  }
+  if (strcmp(requested_reqid.c_str(), _cli_reqid) != 0) {
+    req->send(404, "application/json", "{\"error\":\"unknown request\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(512);
+  doc["state"] = _cli_state == CLI_DONE ? "done" : "pending";
+  doc["reqid"] = (const char*)_cli_reqid;
+  if (_cli_state == CLI_DONE) doc["reply"] = (const char*)_cli_reply;
   AsyncResponseStream* res = req->beginResponseStream("application/json");
   serializeJson(doc, *res);
   req->send(res);

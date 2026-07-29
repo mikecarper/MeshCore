@@ -106,6 +106,17 @@ canvas{width:100%;height:56px;display:block}
 .kv b{font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis}
 .hide{display:none!important}
 .note{font-size:12.5px;color:var(--mut);background:var(--chip);border-radius:8px;padding:9px 11px;margin-bottom:13px}
+.cli-out{min-height:260px;max-height:52vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;
+  background:#0b1016;color:#dce7f5;border:1px solid var(--line);border-radius:9px;padding:11px;
+  font:13px/1.45 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;margin-bottom:10px}
+.cli-mode{display:flex;gap:16px;margin:0 0 9px;font-size:13px;color:var(--mut)}
+.cli-mode label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.cli-mode input{margin:0}
+.cli-row{display:flex;align-items:flex-end;gap:8px}
+.cli-row input,.cli-row textarea{flex:1;min-width:0;padding:9px 10px;font:16px ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  color:var(--ink);background:var(--in-bg);border:1px solid var(--in-line);border-radius:8px;outline:none}
+.cli-row textarea{width:100%;min-height:150px;resize:vertical}
+.cli-row input:focus,.cli-row textarea:focus{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 25%,transparent)}
 </style>
 </head>
 <body>
@@ -235,6 +246,7 @@ canvas{width:100%;height:56px;display:block}
     <button data-t="mqtt">MQTT</button>
     <button data-t="wifi">WiFi</button>
     <button data-t="stats">Stats</button>
+    <button data-t="cli">CLI</button>
   </div>
 
   <div id="t-radio">
@@ -397,6 +409,28 @@ canvas{width:100%;height:56px;display:block}
       <div id="stat-slots" style="font-size:13.5px;color:var(--mut)">No data yet.</div>
     </div>
   </div>
+
+  <div id="t-cli" class="hide">
+    <div class="card">
+      <h2>Node terminal</h2>
+      <div class="note">Available only while connected as a WiFi client; control it with <b>set wifi.cli on|off</b>. Runs one administrator CLI command at a time. Commands that reboot the node or stop WebConfig can close this page before their reply arrives.</div>
+      <pre class="cli-out" id="cli-output">WebConfig CLI ready.
+</pre>
+      <div class="cli-mode" role="radiogroup" aria-label="Command input mode">
+        <label><input type="radio" name="cli-mode" value="single" checked> Single command</label>
+        <label><input type="radio" name="cli-mode" value="block"> Command block</label>
+      </div>
+      <form id="cli-form" class="cli-row">
+        <input type="text" id="cli-command" maxlength="159" autocomplete="off"
+          autocapitalize="off" autocorrect="off" spellcheck="false"
+          placeholder="Enter a command">
+        <textarea id="cli-block" class="hide" maxlength="16000" rows="8"
+          autocapitalize="off" autocorrect="off" spellcheck="false"
+          placeholder="Enter one command per line (up to 100 commands)"></textarea>
+        <button class="btn" id="cli-send" type="submit">Send</button>
+      </form>
+    </div>
+  </div>
 </section>
 </main>
 
@@ -445,7 +479,7 @@ canvas{width:100%;height:56px;display:block}
 <script>
 "use strict";
 var SENTINEL="********";
-var st={mode:"",authed:false,hasMqtt:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+var st={mode:"",authed:false,hasMqtt:false,hasCli:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
 
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
@@ -490,6 +524,10 @@ function applyFeatures(){
   var floodCard=$("#radio-flood-card");
   if(floodCard)floodCard.classList.toggle("hide",!(st.caps&(128|256)));
   $$(".password-card").forEach(function(el){el.classList.toggle("hide",!st.passwordSupported)});
+  if(!st.hasCli){
+    var cliTab=$('#tabs button[data-t="cli"]');if(cliTab)cliTab.remove();
+    $("#t-cli").classList.add("hide");
+  }
   if(st.hasMqtt)return;
 
   // One HTML asset serves every ESP32 role. The firmware reports whether it
@@ -510,7 +548,7 @@ function applyFeatures(){
 /* ---------- boot ---------- */
 function boot(){
   api("/api/status").then(function(s){
-    st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.passwordSupported=!!s.password_supported;st.needsPassword=!!s.needs_password;st.caps=s.capabilities||0;st.nslots=s.active_slots||s.runtime_slots||0;
+    st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.hasCli=!!s.cli;st.passwordSupported=!!s.password_supported;st.needsPassword=!!s.needs_password;st.caps=s.capabilities||0;st.nslots=s.active_slots||s.runtime_slots||0;
     $("#h-name").textContent=s.name||"MeshCore";
     $("#h-sub").textContent=s.role+" * "+s.fw+" * "+s.board;
     var b=$("#h-badge");b.classList.remove("hide");
@@ -825,8 +863,164 @@ function enterApp(){
 $("#tabs").addEventListener("click",function(ev){
   var b=ev.target.closest("button");if(!b)return;
   $$("#tabs button").forEach(function(x){x.classList.toggle("on",x===b)});
-  ["radio","mqtt","wifi","stats"].forEach(function(t){$("#t-"+t).classList.toggle("hide",t!==b.dataset.t)});
+  ["radio","mqtt","wifi","stats","cli"].forEach(function(t){$("#t-"+t).classList.toggle("hide",t!==b.dataset.t)});
   if(b.dataset.t==="stats")startStats();else stopStats();
+  if(b.dataset.t==="cli")setTimeout(focusCliInput,0);
+});
+
+/* ---------- CLI terminal ---------- */
+var cliHistory=[],cliHistoryAt=0,cliRunning=false,cliQueue=[],cliQueueAt=0,cliBlockRun=false;
+function appendCli(text){
+  var out=$("#cli-output");
+  out.textContent+=text;
+  if(out.textContent.length>12000)out.textContent=out.textContent.slice(-10000);
+  out.scrollTop=out.scrollHeight;
+}
+function isCliBlockMode(){
+  var selected=$('input[name="cli-mode"]:checked');
+  return selected&&selected.value==="block";
+}
+function focusCliInput(){
+  (isCliBlockMode()?$("#cli-block"):$("#cli-command")).focus();
+}
+function updateCliMode(){
+  var block=isCliBlockMode();
+  $("#cli-command").classList.toggle("hide",block);
+  $("#cli-block").classList.toggle("hide",!block);
+  $("#cli-send").textContent=block?"Run block":"Send";
+  focusCliInput();
+}
+function setCliRunning(running){
+  cliRunning=running;
+  $("#cli-command").disabled=running;
+  $("#cli-block").disabled=running;
+  $("#cli-send").disabled=running;
+  $$('input[name="cli-mode"]').forEach(function(input){input.disabled=running});
+}
+function cliByteLength(text){
+  if(typeof TextEncoder!=="undefined")return new TextEncoder().encode(text).length;
+  var bytes=encodeURIComponent(text).match(/%[0-9A-F]{2}|./g);
+  return bytes?bytes.length:0;
+}
+function parseCliBlock(text){
+  var lines=text.split(/\r\n|\r|\n/),commands=[];
+  for(var i=0;i<lines.length;i++){
+    if(!lines[i].trim())continue;
+    if(cliByteLength(lines[i])>159)throw new Error("line "+(i+1)+" exceeds 159 bytes");
+    commands.push(lines[i]);
+    if(commands.length>100)throw new Error("a block can contain at most 100 commands");
+  }
+  return commands;
+}
+function finishCliRun(completed){
+  var wasBlock=cliBlockRun,total=cliQueue.length;
+  cliQueue=[];
+  cliQueueAt=0;
+  cliBlockRun=false;
+  setCliRunning(false);
+  if(completed&&wasBlock){
+    appendCli("[block complete: "+total+" command"+(total===1?"":"s")+"]\n");
+    $("#cli-block").value="";
+  }
+  focusCliInput();
+  if(completed)loadConfigSoft();
+}
+function stopCliRun(message){
+  var remaining=cliQueue.length-cliQueueAt;
+  appendCli(message+"\n");
+  if(cliBlockRun&&remaining>0){
+    appendCli("[block stopped: "+remaining+" command"+(remaining===1?"":"s")+" not sent]\n");
+  }
+  finishCliRun(false);
+}
+function pollCli(reqid,tries,command){
+  api("/api/cli/result?reqid="+encodeURIComponent(reqid),{timeout:4000}).then(function(r){
+    if(r.reqid!==reqid)throw new Error("request mismatch");
+    if(r.state==="pending"){
+      setTimeout(function(){pollCli(reqid,tries,command)},150);
+      return;
+    }
+    if(r.state!=="done")throw new Error("result unavailable");
+    appendCli((r.reply||"(no reply)")+"\n");
+    if(/^set\s+wifi\.cli\s+off\s*$/i.test(command)){
+      appendCli("[terminal disabled]\n");
+      var remaining=cliQueue.length-cliQueueAt;
+      if(cliBlockRun&&remaining>0){
+        appendCli("[block stopped: "+remaining+" command"+(remaining===1?"":"s")+" not sent]\n");
+      }
+      finishCliRun(false);
+      setTimeout(function(){location.reload()},700);
+    }else{
+      runNextCliCommand();
+    }
+  }).catch(function(e){
+    if(e.message==="auth"){stopCliRun("[authentication required]");return}
+    if(tries<12){
+      setTimeout(function(){pollCli(reqid,tries+1,command)},400);
+      return;
+    }
+    stopCliRun("[reply unavailable - the command may have stopped WiFi, WebConfig, or rebooted the node]");
+  });
+}
+function runNextCliCommand(){
+  if(cliQueueAt>=cliQueue.length){
+    finishCliRun(true);
+    return;
+  }
+  var command=cliQueue[cliQueueAt++];
+  appendCli("> "+command+"\n");
+  var reqid=mkReqId();
+  post("/api/cli",{reqid:reqid,command:command}).then(function(){
+    pollCli(reqid,0,command);
+  }).catch(function(e){
+    stopCliRun("[error: "+e.message+"]");
+  });
+}
+$("#cli-form").addEventListener("submit",function(ev){
+  ev.preventDefault();
+  if(cliRunning)return;
+  var block=isCliBlockMode(),commands;
+  try{
+    commands=block?parseCliBlock($("#cli-block").value):[$("#cli-command").value];
+    if(!block&&cliByteLength(commands[0])>159)throw new Error("command exceeds 159 bytes");
+  }catch(e){
+    appendCli("[error: "+e.message+"]\n");
+    return;
+  }
+  commands=commands.filter(function(command){return command.trim()});
+  if(!commands.length)return;
+  commands.forEach(function(command){
+    cliHistory.push(command);
+    if(cliHistory.length>30)cliHistory.shift();
+  });
+  cliHistoryAt=cliHistory.length;
+  if(!block)$("#cli-command").value="";
+  cliQueue=commands;
+  cliQueueAt=0;
+  cliBlockRun=block;
+  if(block)appendCli("[running block: "+commands.length+" command"+(commands.length===1?"":"s")+"]\n");
+  setCliRunning(true);
+  runNextCliCommand();
+});
+$$('input[name="cli-mode"]').forEach(function(input){
+  input.addEventListener("change",updateCliMode);
+});
+$("#cli-command").addEventListener("keydown",function(ev){
+  if(ev.key!=="ArrowUp"&&ev.key!=="ArrowDown")return;
+  ev.preventDefault();
+  if(ev.key==="ArrowUp"&&cliHistoryAt>0)cliHistoryAt--;
+  if(ev.key==="ArrowDown"&&cliHistoryAt<cliHistory.length)cliHistoryAt++;
+  this.value=cliHistoryAt<cliHistory.length?cliHistory[cliHistoryAt]:"";
+  setTimeout(function(){
+    var input=$("#cli-command");
+    input.setSelectionRange(input.value.length,input.value.length);
+  },0);
+});
+$("#cli-block").addEventListener("keydown",function(ev){
+  if((ev.ctrlKey||ev.metaKey)&&ev.key==="Enter"){
+    ev.preventDefault();
+    $("#cli-form").requestSubmit();
+  }
 });
 
 /* ---------- stats ---------- */

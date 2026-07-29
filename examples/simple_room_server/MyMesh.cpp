@@ -1383,6 +1383,51 @@ bool MyMesh::getWiFiStatus(char* reply) const {
   return WebConfigServer::formatWiFiStatus(reply, 160);
 }
 
+bool MyMesh::getWiFiPowerSave(char* reply) const {
+  return WebConfigServer::formatWiFiPowerSave(reply, 160);
+}
+
+bool MyMesh::getWiFiCLI(char* reply) const {
+  return WebConfigServer::formatWiFiCliStatus(reply, 160);
+}
+
+bool MyMesh::setWiFiSSID(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiSSID(value, reply, 160)) {
+    const bool was_running = _webconfig && _webconfig->isRunning();
+    if (was_running) _webconfig->requestStop();
+    if (_webconfig) _webconfig->reloadStandaloneWiFi();
+    if (was_running) {
+      strcpy(reply, "OK - WiFi SSID saved; WebConfig stopping, start again to apply");
+    }
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiPassword(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiPassword(value, reply, 160)) {
+    const bool was_running = _webconfig && _webconfig->isRunning();
+    if (was_running) _webconfig->requestStop();
+    if (_webconfig) _webconfig->reloadStandaloneWiFi();
+    if (was_running) {
+      strcpy(reply, "OK - WiFi password saved; WebConfig stopping, start again to apply");
+    }
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiPowerSave(const char* value, char* reply) {
+  if (WebConfigServer::setStandaloneWiFiPowerSave(value, reply, 160)
+      && _webconfig) {
+    _webconfig->reloadStandaloneWiFi();
+  }
+  return true;
+}
+
+bool MyMesh::setWiFiCLI(const char* value, char* reply) {
+  WebConfigServer::setWiFiCliEnabled(value, reply, 160);
+  return true;
+}
+
 bool MyMesh::stopWebConfig(char* reply) {
   if (!_webconfig || !_webconfig->isRunning()) {
     strcpy(reply, "Err: webconfig not running");
