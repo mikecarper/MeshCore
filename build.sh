@@ -27,6 +27,11 @@ RADIO_SF_OVERRIDE=""
 RADIO_CR_OVERRIDE=""
 FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-}"
 BATCH_BUILD_MODE=0
+OPTION3_BUILD_WORKERS="${OPTION3_BUILD_WORKERS:-2}"
+OPTION3_PIO_JOBS="${OPTION3_PIO_JOBS:-8}"
+PROFILE_BUILD_WORKERS=1
+PIO_BUILD_JOBS_OVERRIDE=""
+PIO_BUILD_DIR_OVERRIDE=""
 RESOLVED_BUILD_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 LOGGING_MATRIX_FAILURES=()
@@ -60,7 +65,8 @@ FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
 # External programs invoked by this script:
-#   bash, cat, cp, date, git, grep, head, mkdir, pio, python3, rm, sed, sort
+#   bash, cat, cp, date, find, git, grep, head, mkdir, mv, pgrep, pio,
+#   python3, rm, sed, sleep, sort, wc
 # Keep this list in sync when adding or removing non-builtin command usage.
 
 global_usage() {
@@ -128,8 +134,10 @@ Environment Variables:
                            In interactive builds, this value is offered as the editable default.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
                    If not set, debug flags from variant platformio.ini files are used.
-  RESUME_BUILD_OUTPUT=1: For build-firmwares-logging-matrix, preserves out/ and skips
-                         targets whose expected output artifacts already exist.
+  RESUME_BUILD_OUTPUT=1: Preserves out/ and skips targets whose expected output
+                         artifacts already exist. Option 3 resumes by default.
+  OPTION3_BUILD_WORKERS=2: Concurrent targets per Option 3 profile pass.
+  OPTION3_PIO_JOBS=8: Compiler jobs assigned to each concurrent Option 3 target.
 
 Examples:
 Build without debug logging:
@@ -1407,7 +1415,13 @@ normalize_resume_build_output() {
 }
 
 prompt_for_logging_matrix_output_policy() {
+  local default_policy=${1:-clean}
   local choice file_count file_label
+
+  case "$default_policy" in
+    resume|clean) ;;
+    *) default_policy="clean" ;;
+  esac
 
   normalize_resume_build_output
 
@@ -1434,6 +1448,9 @@ prompt_for_logging_matrix_output_policy() {
   fi
 
   if ! [ -t 0 ]; then
+    if [ "$default_policy" = "resume" ]; then
+      RESUME_BUILD_OUTPUT=1
+    fi
     if [ "$RESUME_BUILD_OUTPUT" == "1" ]; then
       echo "Resuming previous profile-build output in ${OUTPUT_DIR} (${file_count} ${file_label})."
     fi
@@ -1441,10 +1458,10 @@ prompt_for_logging_matrix_output_policy() {
   fi
 
   while true; do
-    read -r -p "Output directory '${OUTPUT_DIR}' exists with ${file_count} ${file_label}. Resume previous profile-build progress or clean it? [resume/clean] (default: clean): " choice
+    read -r -p "Output directory '${OUTPUT_DIR}' exists with ${file_count} ${file_label}. Resume previous profile-build progress or clean it? [resume/clean] (default: ${default_policy}): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
-      choice="clean"
+      choice=$default_policy
     fi
 
     case "$choice" in
@@ -1966,9 +1983,10 @@ collect_esp32_artifacts() {
   local env_name=$1
   local pio_env_name=$2
   local firmware_filename=$3
+  local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
   local -a size_check_args=(
-    ".pio/build/${pio_env_name}/firmware.bin"
-    ".pio/build/${pio_env_name}/partitions.bin"
+    "${build_output_dir}/firmware.bin"
+    "${build_output_dir}/partitions.bin"
   )
   local partsig_name=$env_name
 
@@ -1977,20 +1995,19 @@ collect_esp32_artifacts() {
   fi
 
   python3 scripts/check_esp32_app_size.py "${size_check_args[@]}" || return $?
-  pio run -t mergebin -e "$pio_env_name" || return $?
-  copy_build_output ".pio/build/${pio_env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${pio_env_name}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
+  copy_build_output "${build_output_dir}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output "${build_output_dir}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
 
   # Emit the partition-table signature for OTA partition-compatibility checks.
   # Standard builds keep the env-name key used by the slim-manifest generator;
   # FULL builds use a suffix so their expanded table does not overwrite the
   # portable signature. The firmware computes the same signature at runtime.
   # Best-effort: local builds without the script's deps just skip it.
-  if [ -f ".pio/build/${pio_env_name}/partitions.bin" ]; then
+  if [ -f "${build_output_dir}/partitions.bin" ]; then
     if [ "$ESP32_FULL_BUILD" = "1" ]; then
       partsig_name="${env_name}-full"
     fi
-    python3 scripts/partition_signature.py ".pio/build/${pio_env_name}/partitions.bin" > "${OUTPUT_DIR}/${partsig_name}.partsig" 2>/dev/null || true
+    python3 scripts/partition_signature.py "${build_output_dir}/partitions.bin" > "${OUTPUT_DIR}/${partsig_name}.partsig" 2>/dev/null || true
   fi
 }
 
@@ -1998,28 +2015,33 @@ collect_nrf52_artifacts() {
   local env_name=$1
   local pio_env_name=$2
   local firmware_filename=$3
+  local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
 
-  python3 bin/uf2conv/uf2conv.py ".pio/build/${pio_env_name}/firmware.hex" -c -o ".pio/build/${pio_env_name}/firmware.uf2" -f 0xADA52840 || return $?
-  copy_build_output ".pio/build/${pio_env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
-  if [ -f ".pio/build/${pio_env_name}/firmware.zip" ]; then
-    copy_build_output ".pio/build/${pio_env_name}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
+  python3 bin/uf2conv/uf2conv.py "${build_output_dir}/firmware.hex" -c -o "${build_output_dir}/firmware.uf2" -f 0xADA52840 || return $?
+  copy_build_output "${build_output_dir}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
+  if [ -f "${build_output_dir}/firmware.zip" ]; then
+    copy_build_output "${build_output_dir}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
   fi
 }
 
 collect_stm32_artifacts() {
   local env_name=$1
-  local firmware_filename=$2
+  local pio_env_name=$2
+  local firmware_filename=$3
+  local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.hex" "${OUTPUT_DIR}/${firmware_filename}.hex" || return $?
+  copy_build_output "${build_output_dir}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output "${build_output_dir}/firmware.hex" "${OUTPUT_DIR}/${firmware_filename}.hex" || return $?
 }
 
 collect_rp2040_artifacts() {
   local env_name=$1
-  local firmware_filename=$2
+  local pio_env_name=$2
+  local firmware_filename=$3
+  local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
 
-  copy_build_output ".pio/build/${env_name}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
-  copy_build_output ".pio/build/${env_name}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
+  copy_build_output "${build_output_dir}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
+  copy_build_output "${build_output_dir}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
 }
 
 output_artifact_exists() {
@@ -2068,10 +2090,10 @@ collect_build_artifacts() {
       collect_nrf52_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
       ;;
     STM32_PLATFORM)
-      collect_stm32_artifacts "$env_name" "$firmware_filename"
+      collect_stm32_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
       ;;
     RP2040_PLATFORM)
-      collect_rp2040_artifacts "$env_name" "$firmware_filename"
+      collect_rp2040_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
       ;;
     *)
       echo "Unsupported or unknown platform for env: $env_name"
@@ -2143,6 +2165,7 @@ build_firmware() {
   local had_platformio_build_unflags=0
   local had_platformio_extra_scripts=0
   local build_status
+  local -a pio_run_args=()
 
   env_platform=$(get_platform_for_env "$env_name")
   if ! is_supported_platform "$env_platform"; then
@@ -2246,7 +2269,16 @@ build_firmware() {
   fi
 
   print_build_flags "$env_name"
-  pio run -e "$pio_env_name"
+  pio_run_args=(run -e "$pio_env_name")
+  if [[ "${PIO_BUILD_JOBS_OVERRIDE:-}" =~ ^[1-9][0-9]*$ ]]; then
+    pio_run_args+=(-j "$PIO_BUILD_JOBS_OVERRIDE")
+  fi
+  if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+    # The custom mergebin target depends on firmware.bin, so it compiles and
+    # merges in one SCons invocation instead of paying startup twice.
+    pio_run_args+=(-t mergebin)
+  fi
+  pio "${pio_run_args[@]}"
   build_status=$?
   if [ "$build_status" -eq 0 ]; then
     collect_build_artifacts "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
@@ -2457,6 +2489,18 @@ run_resolved_build_targets() {
   return "$build_status"
 }
 
+terminate_process_tree() {
+  local parent_pid=$1
+  local child_pid
+  local -a child_pids=()
+
+  mapfile -t child_pids < <(pgrep -P "$parent_pid" 2>/dev/null || true)
+  for child_pid in "${child_pids[@]}"; do
+    terminate_process_tree "$child_pid"
+  done
+  kill -TERM "$parent_pid" 2>/dev/null || true
+}
+
 run_logged_build_targets() {
   local targets=("$@")
   local env profile log_dir log_path log_tmp
@@ -2464,10 +2508,33 @@ run_logged_build_targets() {
   local build_status=0
   local overall_status=0
   local preserved_log=0
+  local worker_limit=${PROFILE_BUILD_WORKERS:-1}
+  local pio_job_limit=${OPTION3_PIO_JOBS:-8}
+  local next_index=0
+  local candidate_index
+  local candidate_env
+  local candidate_key
+  local pid pio_env_key
+  local completed_pid
+  local running_pid
+  local interrupted=0
+  local interrupt_pid
+  local -a running_pids=()
+  local -A active_pio_envs=()
+  local -A job_env_by_pid=()
+  local -A job_key_by_pid=()
+  local -A job_log_by_pid=()
+  local -A job_tmp_by_pid=()
 
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No build targets resolved."
     return 1
+  fi
+  if ! [[ "$worker_limit" =~ ^[1-9][0-9]*$ ]]; then
+    worker_limit=1
+  fi
+  if ! [[ "$pio_job_limit" =~ ^[1-9][0-9]*$ ]]; then
+    pio_job_limit=8
   fi
 
   if [ -n "$FIRMWARE_FILENAME_INFIX" ]; then
@@ -2483,13 +2550,127 @@ run_logged_build_targets() {
   if [ ${#targets[@]} -gt 1 ]; then
     BATCH_BUILD_MODE=1
   fi
-  for env in "${targets[@]}"; do
-    log_path="${log_dir}/${env}-${profile}.log"
-    log_tmp="${log_path}.tmp"
+
+  if [ "$worker_limit" -le 1 ]; then
+    for env in "${targets[@]}"; do
+      log_path="${log_dir}/${env}-${profile}.log"
+      log_tmp="${log_path}.tmp"
+      preserved_log=0
+      echo "Building ${env} (${profile}); log: ${log_path}"
+      build_firmware "$env" > "$log_tmp" 2>&1
+      build_status=$?
+      if [ "$build_status" -eq 0 ] \
+          && grep -q "^Skipping ${env}; existing artifacts found" "$log_tmp" \
+          && [ -s "$log_path" ]; then
+        rm -f -- "$log_tmp"
+        preserved_log=1
+      else
+        mv -f -- "$log_tmp" "$log_path"
+      fi
+      if [ "$build_status" -ne 0 ]; then
+        overall_status=1
+        LOGGING_MATRIX_FAILURES+=("${env} (${profile}) -> ${log_path}")
+        echo "FAILED: ${env} (${profile}), status ${build_status}"
+        echo "FAILED: ${env} (${profile}), status ${build_status}" >> "$log_path"
+      else
+        echo "SUCCEEDED: ${env} (${profile})"
+        if [ "$preserved_log" -eq 0 ]; then
+          echo "SUCCEEDED: ${env} (${profile})" >> "$log_path"
+        fi
+      fi
+    done
+    BATCH_BUILD_MODE=$previous_batch_build_mode
+    return "$overall_status"
+  fi
+
+  echo "Running up to ${worker_limit} target builds concurrently with ${pio_job_limit} PlatformIO jobs each."
+  mkdir -p -- ".pio/build-option3" || return 1
+  trap 'interrupted=1; for interrupt_pid in "${running_pids[@]}"; do terminate_process_tree "$interrupt_pid"; done' INT TERM
+
+  while [ "$next_index" -lt "${#targets[@]}" ] || [ ${#running_pids[@]} -gt 0 ]; do
+    while [ "$next_index" -lt "${#targets[@]}" ] \
+        && [ ${#running_pids[@]} -lt "$worker_limit" ]; do
+      candidate_index=$next_index
+      candidate_env=""
+      candidate_key=""
+      while [ "$candidate_index" -lt "${#targets[@]}" ]; do
+        candidate_env=${targets[$candidate_index]}
+        candidate_key=$(get_pio_build_env "$candidate_env")
+        if [ -z "${active_pio_envs[$candidate_key]+x}" ]; then
+          break
+        fi
+        candidate_index=$((candidate_index + 1))
+      done
+      if [ "$candidate_index" -ge "${#targets[@]}" ]; then
+        break
+      fi
+
+      # Pull an available environment forward so a generated alias waiting on
+      # its base environment does not leave another worker idle.
+      if [ "$candidate_index" -ne "$next_index" ]; then
+        targets[candidate_index]=${targets[next_index]}
+        targets[next_index]=$candidate_env
+      fi
+      env=$candidate_env
+      pio_env_key=$candidate_key
+      log_path="${log_dir}/${env}-${profile}.log"
+      log_tmp="${log_path}.tmp"
+      echo "Building ${env} (${profile}); log: ${log_path}"
+      (
+        BATCH_BUILD_MODE=1
+        PIO_BUILD_JOBS_OVERRIDE=$pio_job_limit
+        PIO_BUILD_DIR_OVERRIDE=".pio/build-option3/${pio_env_key}"
+        export PLATFORMIO_BUILD_DIR="$PIO_BUILD_DIR_OVERRIDE"
+        build_firmware "$env"
+      ) > "$log_tmp" 2>&1 &
+      pid=$!
+      running_pids+=("$pid")
+      active_pio_envs["$pio_env_key"]=1
+      job_env_by_pid["$pid"]=$env
+      job_key_by_pid["$pid"]=$pio_env_key
+      job_log_by_pid["$pid"]=$log_path
+      job_tmp_by_pid["$pid"]=$log_tmp
+      next_index=$((next_index + 1))
+    done
+
+    if [ ${#running_pids[@]} -eq 0 ]; then
+      echo "Unable to schedule remaining ${profile} targets."
+      overall_status=1
+      break
+    fi
+
+    completed_pid=""
+    while [ -z "$completed_pid" ]; do
+      for running_pid in "${running_pids[@]}"; do
+        if ! kill -0 "$running_pid" 2>/dev/null; then
+          completed_pid=$running_pid
+          break
+        fi
+      done
+      if [ -z "$completed_pid" ]; then
+        sleep 0.1
+      fi
+    done
+    if wait "$completed_pid"; then
+      build_status=0
+    else
+      build_status=$?
+    fi
+    if [ "$interrupted" -eq 1 ]; then
+      for interrupt_pid in "${running_pids[@]}"; do
+        wait "$interrupt_pid" 2>/dev/null || true
+      done
+      BATCH_BUILD_MODE=$previous_batch_build_mode
+      trap - INT TERM
+      echo "Interrupted ${profile} profile builds."
+      return 130
+    fi
+    pid=$completed_pid
+    env=${job_env_by_pid[$pid]}
+    pio_env_key=${job_key_by_pid[$pid]}
+    log_path=${job_log_by_pid[$pid]}
+    log_tmp=${job_tmp_by_pid[$pid]}
     preserved_log=0
-    echo "Building ${env} (${profile}); log: ${log_path}"
-    build_firmware "$env" > "$log_tmp" 2>&1
-    build_status=$?
     if [ "$build_status" -eq 0 ] \
         && grep -q "^Skipping ${env}; existing artifacts found" "$log_tmp" \
         && [ -s "$log_path" ]; then
@@ -2509,8 +2690,20 @@ run_logged_build_targets() {
         echo "SUCCEEDED: ${env} (${profile})" >> "$log_path"
       fi
     fi
+
+    unset 'active_pio_envs[$pio_env_key]'
+    unset 'job_env_by_pid[$pid]' 'job_key_by_pid[$pid]'
+    unset 'job_log_by_pid[$pid]' 'job_tmp_by_pid[$pid]'
+    local -a remaining_pids=()
+    for running_pid in "${running_pids[@]}"; do
+      if [ "$running_pid" != "$pid" ]; then
+        remaining_pids+=("$running_pid")
+      fi
+    done
+    running_pids=("${remaining_pids[@]}")
   done
   BATCH_BUILD_MODE=$previous_batch_build_mode
+  trap - INT TERM
 
   return "$overall_status"
 }
@@ -2631,6 +2824,7 @@ run_logging_matrix_build_targets() {
   local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local original_esp32_full_build=$ESP32_FULL_BUILD
+  local original_profile_build_workers=$PROFILE_BUILD_WORKERS
   local bluetooth_skip_count=0
   local lora_ota_only_skip_count=0
   local logging_target_count=0
@@ -2642,6 +2836,8 @@ run_logging_matrix_build_targets() {
     return 1
   fi
   LOGGING_MATRIX_FAILURES=()
+  PROFILE_BUILD_WORKERS=$OPTION3_BUILD_WORKERS
+  echo "Option 3 parallelism: ${PROFILE_BUILD_WORKERS} target build(s), ${OPTION3_PIO_JOBS} PlatformIO job(s) per target."
 
   for target in "${targets[@]}"; do
     if is_mqtt_bridge_target "$target"; then
@@ -2746,6 +2942,7 @@ run_logging_matrix_build_targets() {
   MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
   FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
   ESP32_FULL_BUILD=$original_esp32_full_build
+  PROFILE_BUILD_WORKERS=$original_profile_build_workers
 
   if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
     echo "Logging matrix completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
@@ -2893,7 +3090,11 @@ main() {
   prompt_for_resolved_firmware_version
   if is_automatic_profile_command "$1" \
       || [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
-    prompt_for_logging_matrix_output_policy
+    if is_logging_matrix_command "$1"; then
+      prompt_for_logging_matrix_output_policy "resume"
+    else
+      prompt_for_logging_matrix_output_policy "clean"
+    fi
   else
     RESUME_BUILD_OUTPUT=0
   fi
