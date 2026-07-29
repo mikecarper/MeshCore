@@ -1213,8 +1213,8 @@ del flood.channel.block.2
 **Usage:**
 - `get flood.channel.scope`
 - `get flood.channel.scope.<n>`
-- `set flood.channel.scope <channel|txt:*|login:*|other:*> <region> [tx=slow]`
-- `set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region> [tx=slow]`
+- `set flood.channel.scope <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]`
+- `set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]`
 - `del flood.channel.scope.<n>`
 - `del flood.channel.scope all`
 
@@ -1235,6 +1235,16 @@ del flood.channel.block.2
   raw custom. TRACE is deliberately exempt from forced-scope wildcards.
 - `region`: Existing named region with a usable transport key. A unique region
   name prefix is accepted; wildcard region `*` is not a scope target.
+- `path=blacklist`: Optional. Require the received path to match the passive
+  `flood.filter.blacklist` ID table. No `flood.filter` drop row needs to be
+  enabled. One exact listed ID qualifies a 3-byte path. A 2-byte path requires
+  two matching received path entries, while a 1-byte path never qualifies.
+- `path=bucket:<1-6>`: Optional alternative to `path=blacklist`. Match IDs in
+  the selected persistent `flood.retry.bucket`. Each bucket holds up to 17
+  three-byte IDs and remains usable when `flood.retry.bridge` is off. It uses
+  the same 3-byte, 2-byte, and 1-byte thresholds as `path=blacklist`.
+  `recent.repeater` freshness and `flood.retry.ignore` do not affect this
+  passive match.
 - `tx=slow`: Optional. Use an effective inbound `rxdelay` base of
   `max(2, configured rxdelay * 2)`, keep normal outbound queue priority, and
   schedule retransmission with the maximum supported `txdelay` factor of
@@ -1248,8 +1258,10 @@ Remote ACL permission `4` (region/scope manager) can use all `get`, `set`, and
 cannot change this table.
 
 Without `.n`, `set` updates the row for the same exact channel key or wildcard
-class, otherwise it uses the first empty slot. With `.n`, it replaces that
-slot. The three wildcard classes are independent and consume one slot each.
+class with the same path selector, otherwise it uses the first empty slot.
+This permits an ordinary fallback and separate blacklist or bridge-bucket
+rows for the same channel. With `.n`, it replaces that slot. The three
+wildcard classes are independent and consume one slot each.
 `get flood.channel.scope` reports active/total slot counts; use the numbered
 form for row detail. Keyed rows are displayed by the first four bytes of their
 derived channel hash because channel secrets are never returned.
@@ -1258,12 +1270,14 @@ This acts on received `ROUTE_TYPE_FLOOD` and
 `ROUTE_TYPE_TRANSPORT_FLOOD` packets. An unscoped packet gains the configured
 scope; an already-scoped packet has its existing transport codes replaced. For
 `GRP_TXT` and `GRP_DATA`, all exact channel-key rows are tried first and must
-validate the packet MAC/decryption. A row whose target region is missing or
-unusable is skipped; later exact rows and then `txt:*` are tried. Exact keyed
-rows with a usable target therefore beat `txt:*` regardless of slot number.
-`login:*` and `other:*` select their non-overlapping outer-type families
-without decrypting the payload. Duplicate rows within the same class are
-permitted with numbered slots; the lowest usable slot wins.
+validate the packet MAC/decryption. Matching path-qualified exact rows are
+tried before ordinary exact fallback rows. A row whose target region is
+missing or unusable is skipped; later exact rows and then `txt:*` are tried.
+Exact keyed rows with a usable target therefore beat `txt:*` regardless of
+slot number. Within each wildcard class, path-qualified rows similarly precede
+ordinary fallback rows. `login:*` and `other:*` select their non-overlapping
+outer-type families without decrypting the payload. The lowest usable slot
+wins within each priority tier.
 
 Standard traceroute is direct-routed and is therefore outside this flood-only
 table. A custom flood-form `TRACE` is also left unchanged: no wildcard adds a
@@ -1356,6 +1370,21 @@ get flood.channel.scope
 get flood.channel.scope.1
 del flood.channel.scope.2
 ```
+
+To use bridge bucket 1 to assign `east` to `public` packets whose received
+3-byte path contains `7576FB`, while assigning `west` to every other
+authenticated `public` packet:
+
+```text
+set flood.retry.bucket 1 7576FB
+set flood.channel.scope public west
+set flood.channel.scope public east path=bucket:1
+```
+
+Additional 3-byte IDs may be added to bucket 1 later; any one exact hit
+qualifies the `east` row. This use is passive and does not require
+`flood.retry.bridge` to be enabled. The separate blacklist selector remains
+available for tables shared with `flood.filter path=blacklist` rules.
 
 ---
 

@@ -5305,7 +5305,9 @@ void MyMesh::loadFloodChannelScopes() {
   bool success = file.read(magic, sizeof(magic)) == sizeof(magic);
   bool version_1 = success && memcmp(magic, "FCS1", sizeof(magic)) == 0;
   bool version_2 = success && memcmp(magic, "FCS2", sizeof(magic)) == 0;
-  success = (version_1 || version_2)
+  bool version_3 = success && memcmp(magic, "FCS3", sizeof(magic)) == 0;
+  bool version_4 = success && memcmp(magic, "FCS4", sizeof(magic)) == 0;
+  success = (version_1 || version_2 || version_3 || version_4)
       && file.read(&count, sizeof(count)) == sizeof(count);
   uint8_t retained = count < FLOOD_CHANNEL_SCOPE_SLOTS ? count : FLOOD_CHANNEL_SCOPE_SLOTS;
   size_t retained_bytes = (size_t)retained * sizeof(FloodChannelScopeEntry);
@@ -5316,8 +5318,14 @@ void MyMesh::loadFloodChannelScopes() {
   }
   for (int i = 0; success && i < retained; i++) {
     auto& entry = flood_channel_scopes[i];
-    if (version_1
-        && FloodFilterPolicy::scopeUsesSlowTiming(entry.selector)) {
+    if ((version_1
+         && (FloodFilterPolicy::scopeUsesSlowTiming(entry.selector)
+             || FloodFilterPolicy::scopeRequiresPath(entry.selector)))
+        || (version_2
+            && FloodFilterPolicy::scopeRequiresPath(entry.selector))
+        || (version_3
+            && FloodFilterPolicy::scopePathSelectorValue(entry.selector)
+                > FloodFilterPolicy::SCOPE_PATH_BLACKLIST)) {
       success = false;
       break;
     }
@@ -5348,7 +5356,7 @@ bool MyMesh::saveFloodChannelScopes(bool empty_table) {
   File file = openFloodChannelBlockWrite(_fs, FLOOD_CHANNEL_SCOPE_TEMP_FILE);
   if (!file) return false;
 
-  const uint8_t magic[4] = {'F', 'C', 'S', '2'};
+  const uint8_t magic[4] = {'F', 'C', 'S', '4'};
   uint8_t count = FLOOD_CHANNEL_SCOPE_SLOTS;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&count, sizeof(count)) == sizeof(count);
@@ -5514,6 +5522,12 @@ bool MyMesh::applyFloodChannelScopeTarget(mesh::Packet* packet,
 
 bool MyMesh::applyFloodChannelScope(mesh::Packet* packet, bool& fast_track,
                                     bool log_change) {
+  static_assert(FLOOD_RETRY_BRIDGE_BUCKETS
+                    == FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_COUNT,
+                "channel scope and bridge bucket counts must agree");
+  static_assert(FLOOD_RETRY_PREFIX_LEN
+                    == FloodFilterPolicy::BLACKLIST_ID_SIZE,
+                "channel scope and bridge bucket ID sizes must agree");
   fast_track = false;
   if (packet == NULL || !packet->isRouteFlood()) return false;
   uint8_t type = packet->getPayloadType();
@@ -5523,32 +5537,71 @@ bool MyMesh::applyFloodChannelScope(mesh::Packet* packet, bool& fast_track,
   bool valid_channel_layout = (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_GRP_DATA)
       && packet->payload_len >= PATH_HASH_SIZE + CIPHER_MAC_SIZE + CIPHER_BLOCK_SIZE
       && ((packet->payload_len - PATH_HASH_SIZE - CIPHER_MAC_SIZE) % CIPHER_BLOCK_SIZE) == 0;
+  uint8_t path_match_checked = 0;
+  uint8_t path_match_results = 0;
+  auto path_selector_matches = [&](uint8_t path_selector) {
+    if (path_selector == FloodFilterPolicy::SCOPE_PATH_NONE) return true;
+    uint8_t match_bit = (uint8_t)(1U << (path_selector - 1U));
+    if ((path_match_checked & match_bit) == 0) {
+      bool matches = false;
+      if (path_selector == FloodFilterPolicy::SCOPE_PATH_BLACKLIST) {
+        matches = floodPacketFilterBlacklistMatches(packet);
+      } else {
+        uint8_t bucket = (uint8_t)(
+            path_selector - FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE);
+        if (bucket < FLOOD_RETRY_BRIDGE_BUCKETS) {
+          matches = FloodFilterPolicy::pathMatchesConfiguredIds(
+              packet,
+              (const uint8_t*)_prefs.flood_retry_bridge_buckets[bucket],
+              FLOOD_RETRY_BUCKET_PREFIXES);
+        }
+      }
+      path_match_checked |= match_bit;
+      if (matches) path_match_results |= match_bit;
+    }
+    return (path_match_results & match_bit) != 0;
+  };
+  auto matches_path_pass = [&](uint8_t selector, bool qualified_pass) {
+    uint8_t path_selector =
+        FloodFilterPolicy::scopePathSelectorValue(selector);
+    bool path_matches = path_selector_matches(path_selector);
+    return FloodFilterPolicy::scopePathPassMatches(
+        selector, qualified_pass, path_matches);
+  };
 
   if (valid_channel_layout) {
     uint8_t data[MAX_PACKET_PAYLOAD];
-    for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
-      const auto& entry = flood_channel_scopes[i];
-      if (entry.region_id == 0 || !isExactFloodChannelScopeSelector(entry.selector)
-          || packet->payload[0] != entry.channel_hash) continue;
-      if (mesh::Utils::MACThenDecrypt(entry.secret, data, &packet->payload[PATH_HASH_SIZE],
-                                      packet->payload_len - PATH_HASH_SIZE) > 0) {
-        bool scope_changed;
-        if (applyFloodChannelScopeTarget(packet, entry, scope_changed, fast_track,
-                                         log_change)) {
-          return scope_changed;
+    for (int path_pass = 1; path_pass >= 0; path_pass--) {
+      for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+        const auto& entry = flood_channel_scopes[i];
+        if (entry.region_id == 0 || !isExactFloodChannelScopeSelector(entry.selector)
+            || packet->payload[0] != entry.channel_hash
+            || !matches_path_pass(entry.selector, path_pass != 0)) {
+          continue;
+        }
+        if (mesh::Utils::MACThenDecrypt(entry.secret, data, &packet->payload[PATH_HASH_SIZE],
+                                        packet->payload_len - PATH_HASH_SIZE) > 0) {
+          bool scope_changed;
+          if (applyFloodChannelScopeTarget(packet, entry, scope_changed, fast_track,
+                                           log_change)) {
+            return scope_changed;
+          }
         }
       }
     }
   }
   uint8_t wildcard = wildcardFloodChannelScopeSelector(type);
-  for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
-    const auto& entry = flood_channel_scopes[i];
-    if (entry.region_id != 0
-        && FloodFilterPolicy::scopeSelectorValue(entry.selector) == wildcard) {
-      bool scope_changed;
-      if (applyFloodChannelScopeTarget(packet, entry, scope_changed, fast_track,
-                                       log_change)) {
-        return scope_changed;
+  for (int path_pass = 1; path_pass >= 0; path_pass--) {
+    for (int i = 0; i < FLOOD_CHANNEL_SCOPE_SLOTS; i++) {
+      const auto& entry = flood_channel_scopes[i];
+      if (entry.region_id != 0
+          && FloodFilterPolicy::scopeSelectorValue(entry.selector) == wildcard
+          && matches_path_pass(entry.selector, path_pass != 0)) {
+        bool scope_changed;
+        if (applyFloodChannelScopeTarget(packet, entry, scope_changed, fast_track,
+                                         log_change)) {
+          return scope_changed;
+        }
       }
     }
   }
@@ -5690,14 +5743,29 @@ void MyMesh::formatFloodChannelScopeDetail(int index, char* reply, size_t reply_
     mesh::Utils::toHex(channel, prefix, sizeof(prefix));
   }
   RegionEntry* region = region_map.findById(entry.region_id);
+  char path[24];
+  uint8_t path_selector =
+      FloodFilterPolicy::scopePathSelectorValue(entry.selector);
+  if (path_selector == FloodFilterPolicy::SCOPE_PATH_BLACKLIST) {
+    strcpy(path, " path=blacklist");
+  } else {
+    uint8_t bucket =
+        FloodFilterPolicy::scopeBridgeBucketIndex(entry.selector);
+    if (bucket != FloodFilterPolicy::SCOPE_PATH_INVALID_BUCKET) {
+      snprintf(path, sizeof(path), " path=bucket:%u",
+               (unsigned int)bucket + 1U);
+    } else {
+      path[0] = 0;
+    }
+  }
   const char* timing =
       FloodFilterPolicy::scopeUsesSlowTiming(entry.selector) ? " tx=slow" : "";
   if (region != NULL) {
-    snprintf(reply, reply_len, "> %d match=%s scope=%s%s",
-             index + 1, channel, region->name, timing);
+    snprintf(reply, reply_len, "> %d match=%s%s scope=%s%s",
+             index + 1, channel, path, region->name, timing);
   } else {
-    snprintf(reply, reply_len, "> %d match=%s scope=id:%u?%s", index + 1,
-             channel, (unsigned int)entry.region_id, timing);
+    snprintf(reply, reply_len, "> %d match=%s%s scope=id:%u?%s", index + 1,
+             channel, path, (unsigned int)entry.region_id, timing);
   }
 }
 
@@ -5735,27 +5803,56 @@ void MyMesh::setFloodChannelScope(const char* args, char* reply) {
 
   char channel_text[80];
   char region_text[32];
-  char timing_text[12];
   if (takeFloodModerationToken(cursor, channel_text, sizeof(channel_text)) != 1
       || takeFloodModerationToken(cursor, region_text, sizeof(region_text)) != 1) {
-    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [tx=slow]");
+    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [path=blacklist|path=bucket:1-6] [tx=slow]");
     return;
   }
-  int timing_result =
-      takeFloodModerationToken(cursor, timing_text, sizeof(timing_text));
   bool slow_timing = false;
-  if (timing_result == 1) {
-    if (floodFilterAsciiEqual(timing_text, "tx=slow")) {
-      slow_timing = true;
-    } else if (!floodFilterAsciiEqual(timing_text, "tx=fast")) {
-      strcpy(reply, "Err - tx timing must be fast or slow");
+  uint8_t path_selector = FloodFilterPolicy::SCOPE_PATH_NONE;
+  bool timing_set = false;
+  bool path_set = false;
+  char option[20];
+  int option_result;
+  while ((option_result =
+              takeFloodModerationToken(cursor, option, sizeof(option))) == 1) {
+    if (floodFilterAsciiEqual(option, "tx=slow")
+        || floodFilterAsciiEqual(option, "tx=fast")) {
+      if (timing_set) {
+        strcpy(reply, "Err - duplicate tx timing");
+        return;
+      }
+      timing_set = true;
+      slow_timing = floodFilterAsciiEqual(option, "tx=slow");
+    } else if (floodFilterAsciiEqual(option, "path=blacklist")) {
+      if (path_set) {
+        strcpy(reply, "Err - duplicate path matcher");
+        return;
+      }
+      path_set = true;
+      path_selector = FloodFilterPolicy::SCOPE_PATH_BLACKLIST;
+    } else if (strncmp(option, "path=bucket:", 12) == 0) {
+      if (path_set) {
+        strcpy(reply, "Err - duplicate path matcher");
+        return;
+      }
+      uint8_t bucket = 0;
+      if (!parseFloodFilterUnsigned(
+              option + 12, FLOOD_RETRY_BRIDGE_BUCKETS, bucket)
+          || bucket == 0) {
+        strcpy(reply, "Err - path bucket must be 1-6");
+        return;
+      }
+      path_set = true;
+      path_selector = (uint8_t)(
+          FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE + bucket - 1U);
+    } else {
+      strcpy(reply, "Err - scope option must be path=blacklist, path=bucket:1-6, or tx=fast|slow");
       return;
     }
   }
-  char extra[2];
-  if (timing_result < 0
-      || takeFloodModerationToken(cursor, extra, sizeof(extra)) != 0) {
-    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [tx=slow]");
+  if (option_result < 0) {
+    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [path=blacklist|path=bucket:1-6] [tx=slow]");
     return;
   }
 
@@ -5796,6 +5893,8 @@ void MyMesh::setFloodChannelScope(const char* args, char* reply) {
     if (entry.region_id == 0) {
       if (free_slot < 0) free_slot = i;
     } else if (FloodFilterPolicy::scopeSelectorValue(entry.selector) == selector
+        && FloodFilterPolicy::scopePathSelectorValue(entry.selector)
+            == path_selector
         && (!isExactFloodChannelScopeSelector(selector)
             || memcmp(entry.secret, secret, PUB_KEY_SIZE) == 0)) {
       matching_slot = i;
@@ -5813,7 +5912,8 @@ void MyMesh::setFloodChannelScope(const char* args, char* reply) {
   memset(&entry, 0, sizeof(entry));
   entry.region_id = region->id;
   entry.selector =
-      FloodFilterPolicy::encodeScopeSelector(selector, slow_timing);
+      FloodFilterPolicy::encodeScopeSelector(
+          selector, slow_timing, path_selector);
   if (isExactFloodChannelScopeSelector(selector)) {
     entry.channel_hash = hash_prefix[0];
     memcpy(entry.secret, secret, sizeof(entry.secret));

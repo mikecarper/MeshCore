@@ -47,8 +47,8 @@ silently enable blocking.
 the scope of a transport-scoped flood before this repeater forwards it:
 
 ```text
-set flood.channel.scope <channel|txt:*|login:*|other:*> <region> [tx=slow]
-set flood.channel.scope.<slot> <channel|txt:*|login:*|other:*> <region> [tx=slow]
+set flood.channel.scope <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]
+set flood.channel.scope.<slot> <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]
 get flood.channel.scope
 get flood.channel.scope.<slot>
 del flood.channel.scope.<slot>
@@ -61,6 +61,21 @@ the one-byte channel hash carried in the packet, then validate the MAC by
 decrypting with the configured channel key. A hash collision alone cannot
 force a scope.
 
+Add `path=blacklist` to make a channel-scope row eligible only when the
+received path matches the passive `flood.filter.blacklist` ID table. It does
+not require an enabled `flood.filter` drop row. With 3-byte paths, one exact
+listed ID qualifies. With 2-byte paths, two received path entries must match
+the first two bytes of listed IDs. A 1-byte path never qualifies.
+
+Use `path=bucket:<1-6>` to match one of the existing
+`flood.retry.bucket` tables instead. Each bridge bucket holds up to 17
+three-byte IDs and remains usable by channel scoping while
+`flood.retry.bridge` is off. Bucket matching uses the same thresholds as the
+blacklist: one exact hit for 3-byte paths, two qualifying entries for 2-byte
+paths, and no matches for 1-byte paths. Channel scoping reads the configured
+IDs directly; `recent.repeater` freshness and `flood.retry.ignore` do not
+change this match.
+
 There are three independent wildcard classes:
 
 - `txt:*` handles otherwise-unmatched `GRP_TXT` and `GRP_DATA`; plain `*` is
@@ -72,9 +87,25 @@ There are three independent wildcard classes:
 `login:*` and `other:*` classify only the visible outer payload type; they do
 not authenticate its contents. Exact channel rows with usable target regions
 always take precedence over `txt:*`, even if that wildcard has a lower slot
-number. A missing or unusable target is skipped, so later exact rows and then
-the applicable wildcard are tried. Within a wildcard class, the lowest usable
-duplicate row wins.
+number. Within the exact class, matching path-qualified rows are tried before
+ordinary fallback rows. The same qualified-then-fallback order applies within
+each wildcard class. A missing or unusable target is skipped, so later rows
+remain eligible. The lowest usable slot wins within each priority tier.
+
+For example, this uses bridge bucket 1 to assign `east` to `public` packets
+whose received 3-byte path contains `7576FB`, and assigns `west` to all other
+authenticated `public` packets:
+
+```text
+set flood.retry.bucket 1 7576FB
+set flood.channel.scope public west
+set flood.channel.scope public east path=bucket:1
+```
+
+More 3-byte IDs can be added to bucket 1 later. Any one of them qualifies the
+`east` row. Replacing or clearing that bucket changes which paths qualify but
+leaves both channel-scope rows intact. Bridge retry does not need to be
+enabled.
 
 On a successful match, an unscoped route changes from `ROUTE_TYPE_FLOOD` to
 `ROUTE_TYPE_TRANSPORT_FLOOD`; an already-scoped route remains transport-flood
@@ -510,7 +541,8 @@ other words, the controls combine as deny rules:
 1. `flood.channel.scope.require` evaluates a listed group channel against the
    original incoming scope; unlisted group channels bypass the later region
    gate while the table is active.
-2. `flood.channel.scope` adds or replaces the scope of a matching flood packet.
+2. `flood.channel.scope` tries a path-qualified channel row before that
+   channel's ordinary fallback, then adds or replaces the scope.
 3. A matching `flood.filter scope=` row may replace that result; its scope does
    not require a region-list entry.
 4. `repeat`, `flood.max*`, and the channel-data gate are checked.

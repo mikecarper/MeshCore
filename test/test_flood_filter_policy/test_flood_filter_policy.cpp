@@ -113,6 +113,20 @@ TEST(FloodFilterBlacklist, Esp32MaximumListIncludesTheLastEntry) {
       &packet, &blacklist[0][0], 255));
 }
 
+TEST(FloodFilterBlacklist, ConfiguredBucketStopsAtEmptyTrailingIds) {
+  uint8_t bucket[17][3] = {
+    {0x10, 0x20, 0x30},
+    {0xAA, 0xBB, 0xCC},
+  };
+  const uint8_t path[] = {0xAA, 0xBB, 0xCC};
+  mesh::Packet packet = makeFloodPacket(3, path, 1);
+
+  EXPECT_EQ(2, FloodFilterPolicy::configuredIdCount(
+                   &bucket[0][0], 17));
+  EXPECT_TRUE(FloodFilterPolicy::pathMatchesConfiguredIds(
+      &packet, &bucket[0][0], 17));
+}
+
 TEST(FloodFilterScope, RegionRequirementHasTheExpectedTruthTable) {
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, false));
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, true));
@@ -123,12 +137,60 @@ TEST(FloodFilterScope, RegionRequirementHasTheExpectedTruthTable) {
 TEST(FloodFilterScope, SlowTimingFlagRoundTripsWithoutChangingSelector) {
   const uint8_t selector = 16;
   const uint8_t stored =
-      FloodFilterPolicy::encodeScopeSelector(selector, true);
+      FloodFilterPolicy::encodeScopeSelector(
+          selector, true, FloodFilterPolicy::SCOPE_PATH_BLACKLIST);
 
   EXPECT_EQ(selector, FloodFilterPolicy::scopeSelectorValue(stored));
   EXPECT_TRUE(FloodFilterPolicy::scopeUsesSlowTiming(stored));
+  EXPECT_TRUE(FloodFilterPolicy::scopeRequiresBlacklistPath(stored));
   EXPECT_FALSE(FloodFilterPolicy::scopeUsesSlowTiming(
       FloodFilterPolicy::encodeScopeSelector(selector, false)));
+  EXPECT_FALSE(FloodFilterPolicy::scopeRequiresBlacklistPath(
+      FloodFilterPolicy::encodeScopeSelector(
+          selector, true, FloodFilterPolicy::SCOPE_PATH_NONE)));
+}
+
+TEST(FloodFilterScope, PathQualifiedScopeRequiresBlacklistMatch) {
+  const uint8_t selector = 16;
+  const uint8_t general =
+      FloodFilterPolicy::encodeScopeSelector(
+          selector, false, FloodFilterPolicy::SCOPE_PATH_NONE);
+  const uint8_t qualified =
+      FloodFilterPolicy::encodeScopeSelector(
+          selector, false, FloodFilterPolicy::SCOPE_PATH_BLACKLIST);
+
+  EXPECT_TRUE(FloodFilterPolicy::scopePathQualifierMatches(general, false));
+  EXPECT_TRUE(FloodFilterPolicy::scopePathQualifierMatches(general, true));
+  EXPECT_FALSE(FloodFilterPolicy::scopePathQualifierMatches(qualified, false));
+  EXPECT_TRUE(FloodFilterPolicy::scopePathQualifierMatches(qualified, true));
+
+  EXPECT_FALSE(FloodFilterPolicy::scopePathPassMatches(general, true, true));
+  EXPECT_TRUE(FloodFilterPolicy::scopePathPassMatches(general, false, false));
+  EXPECT_TRUE(FloodFilterPolicy::scopePathPassMatches(qualified, true, true));
+  EXPECT_FALSE(FloodFilterPolicy::scopePathPassMatches(
+      qualified, true, false));
+  EXPECT_FALSE(FloodFilterPolicy::scopePathPassMatches(
+      qualified, false, true));
+}
+
+TEST(FloodFilterScope, EveryBridgeBucketRoundTripsWithoutChangingSelector) {
+  const uint8_t selector = 32;
+  for (uint8_t bucket = 0;
+       bucket < FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_COUNT;
+       bucket++) {
+    uint8_t path_selector = (uint8_t)(
+        FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE + bucket);
+    uint8_t stored = FloodFilterPolicy::encodeScopeSelector(
+        selector, true, path_selector);
+
+    EXPECT_EQ(selector, FloodFilterPolicy::scopeSelectorValue(stored));
+    EXPECT_EQ(path_selector,
+              FloodFilterPolicy::scopePathSelectorValue(stored));
+    EXPECT_EQ(bucket, FloodFilterPolicy::scopeBridgeBucketIndex(stored));
+    EXPECT_TRUE(FloodFilterPolicy::scopeRequiresPath(stored));
+    EXPECT_FALSE(FloodFilterPolicy::scopeRequiresBlacklistPath(stored));
+    EXPECT_TRUE(FloodFilterPolicy::scopeUsesSlowTiming(stored));
+  }
 }
 
 TEST(FloodFilterScope, OnlyChangedFastRulesReceiveFastTrackTreatment) {
