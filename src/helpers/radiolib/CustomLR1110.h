@@ -74,6 +74,15 @@ class CustomLR1110 : public LR1110 {
 
     bool getRxBoostedGainMode() const { return _rx_boosted; }
 
+    int16_t startReceive() override {
+      // Make preamble detection visible to CAD while retaining RadioLib's
+      // normal RX-complete and error events.
+      return LR1110::startReceive(
+          RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED,
+          RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED),
+          RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
+    }
+
     // BUSY high means the chip is asleep (RX duty-cycle sleep window) or mid
     // command; any SPI access would stall until the chip's next listen window.
     bool isChipBusy() {
@@ -91,6 +100,12 @@ class CustomLR1110 : public LR1110 {
       uint32_t now  = millis();
       if (hdrErr) {
         clearIrqState(RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED | RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID | RADIOLIB_LR11X0_IRQ_HEADER_ERR);
+        _activityAt = 0;
+        _headerSeen = false;
+        return false;
+      }
+      if (!header && _headerSeen) {
+        // Another path consumed the header IRQ; reset only our local timer.
         _activityAt = 0;
         _headerSeen = false;
         return false;

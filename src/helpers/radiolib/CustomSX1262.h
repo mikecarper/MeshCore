@@ -140,6 +140,15 @@ class CustomSX1262 : public SX1262 {
       return RADIOLIB_ERR_NONE;
     }
 
+    int16_t startReceive() override {
+      // Make preamble detection visible to CAD while retaining RadioLib's
+      // normal RX-complete and error events.
+      return SX1262::startReceive(
+          RADIOLIB_SX126X_RX_TIMEOUT_INF,
+          RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED),
+          RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
+    }
+
     bool isReceiving() {
       if (isChipBusy()) return false;   // asleep, cannot be mid-receive
 
@@ -150,6 +159,12 @@ class CustomSX1262 : public SX1262 {
       uint32_t now  = millis();
       if (hdrErr) {
         clearIrqFlags(RADIOLIB_SX126X_IRQ_PREAMBLE_DETECTED | RADIOLIB_SX126X_IRQ_HEADER_VALID | RADIOLIB_SX126X_IRQ_HEADER_ERR | RADIOLIB_SX126X_IRQ_SYNC_WORD_VALID);
+        _activityAt = 0;
+        _headerSeen = false;
+        return false;
+      }
+      if (!header && _headerSeen) {
+        // Another path consumed the header IRQ; reset only our local timer.
         _activityAt = 0;
         _headerSeen = false;
         return false;

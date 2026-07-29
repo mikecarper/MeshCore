@@ -530,7 +530,9 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
     Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
     Bluefruit.configPrphConn(92, BLE_GAP_EVENT_LENGTH_MIN, 16, 16);
 
-    Bluefruit.begin(1, 0);
+    if (!Bluefruit.begin(1, 0)) {
+      return false;
+    }
     ota_ble_started = true;
 
     // To be consistent OTA DFU should be added first if it exists
