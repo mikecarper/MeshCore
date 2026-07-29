@@ -3185,7 +3185,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #endif
   } else {
-    sprintf(reply, "unknown portable config: %s", config);
+    sprintf(reply, "Unsupported in this firmware: %s", config);
   }
   return;
 #else
@@ -4124,7 +4124,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", _prefs->bridge_secret);
 #endif
   } else {
-    sprintf(reply, "unknown portable config: %s", config);
+    sprintf(reply, "Unsupported in this firmware: %s", config);
   }
   return;
 #else
