@@ -9,10 +9,19 @@
 namespace FloodFilterPolicy {
 
 static constexpr uint8_t BLACKLIST_ID_SIZE = 3;
+static constexpr uint8_t SCOPE_PATH_LOW_MASK = 0x0C;
+static constexpr uint8_t SCOPE_PATH_HIGH_FLAG = 0x40;
+static constexpr uint8_t SCOPE_PATH_MASK =
+    SCOPE_PATH_LOW_MASK | SCOPE_PATH_HIGH_FLAG;
 static constexpr uint8_t SLOW_SCOPE_FLAG = 0x80;
 static constexpr uint8_t SLOW_SCOPE_TX_DELAY_FACTOR = 2;
 static constexpr float SLOW_SCOPE_RX_DELAY_MIN = 2.0f;
 static constexpr uint32_t MAX_DISPATCH_DELAY = 0xFFFFFF;
+static constexpr uint8_t SCOPE_PATH_NONE = 0;
+static constexpr uint8_t SCOPE_PATH_BLACKLIST = 1;
+static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_BASE = 2;
+static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_COUNT = 6;
+static constexpr uint8_t SCOPE_PATH_INVALID_BUCKET = 0xFF;
 
 enum ChannelScopeGate {
   CHANNEL_SCOPE_USE_GLOBAL,
@@ -35,16 +44,69 @@ inline ChannelScopeGate channelScopeGate(bool table_active,
       : CHANNEL_SCOPE_REQUIRED_REJECTED;
 }
 
-inline uint8_t encodeScopeSelector(uint8_t selector, bool slow) {
-  return slow ? (uint8_t)(selector | SLOW_SCOPE_FLAG) : selector;
+inline uint8_t encodeScopeSelector(uint8_t selector, bool slow,
+                                   uint8_t path_selector = SCOPE_PATH_NONE) {
+  uint8_t stored = selector;
+  if (slow) stored |= SLOW_SCOPE_FLAG;
+  if (path_selector == SCOPE_PATH_BLACKLIST) {
+    stored |= SCOPE_PATH_HIGH_FLAG;
+  } else if (path_selector >= SCOPE_PATH_BRIDGE_BUCKET_BASE
+      && path_selector < SCOPE_PATH_BRIDGE_BUCKET_BASE
+          + SCOPE_PATH_BRIDGE_BUCKET_COUNT) {
+    uint8_t bucket =
+        (uint8_t)(path_selector - SCOPE_PATH_BRIDGE_BUCKET_BASE);
+    stored |= (uint8_t)(((bucket % 3U) + 1U) << 2);
+    if (bucket >= 3U) stored |= SCOPE_PATH_HIGH_FLAG;
+  }
+  return stored;
 }
 
 inline uint8_t scopeSelectorValue(uint8_t stored_selector) {
-  return stored_selector & (uint8_t)~SLOW_SCOPE_FLAG;
+  return stored_selector
+      & (uint8_t)~(SLOW_SCOPE_FLAG | SCOPE_PATH_MASK);
 }
 
 inline bool scopeUsesSlowTiming(uint8_t stored_selector) {
   return (stored_selector & SLOW_SCOPE_FLAG) != 0;
+}
+
+inline uint8_t scopePathSelectorValue(uint8_t stored_selector) {
+  uint8_t low = (uint8_t)((stored_selector & SCOPE_PATH_LOW_MASK) >> 2);
+  bool high = (stored_selector & SCOPE_PATH_HIGH_FLAG) != 0;
+  if (low == 0) return high ? SCOPE_PATH_BLACKLIST : SCOPE_PATH_NONE;
+  uint8_t bucket = (uint8_t)(low - 1U + (high ? 3U : 0U));
+  return (uint8_t)(SCOPE_PATH_BRIDGE_BUCKET_BASE + bucket);
+}
+
+inline bool scopeRequiresPath(uint8_t stored_selector) {
+  return scopePathSelectorValue(stored_selector) != SCOPE_PATH_NONE;
+}
+
+inline bool scopeRequiresBlacklistPath(uint8_t stored_selector) {
+  return scopePathSelectorValue(stored_selector) == SCOPE_PATH_BLACKLIST;
+}
+
+inline uint8_t scopeBridgeBucketIndex(uint8_t stored_selector) {
+  uint8_t path_selector = scopePathSelectorValue(stored_selector);
+  if (path_selector < SCOPE_PATH_BRIDGE_BUCKET_BASE
+      || path_selector >= SCOPE_PATH_BRIDGE_BUCKET_BASE
+          + SCOPE_PATH_BRIDGE_BUCKET_COUNT) {
+    return SCOPE_PATH_INVALID_BUCKET;
+  }
+  return (uint8_t)(path_selector - SCOPE_PATH_BRIDGE_BUCKET_BASE);
+}
+
+inline bool scopePathQualifierMatches(uint8_t stored_selector,
+                                      bool path_matches) {
+  return !scopeRequiresPath(stored_selector)
+      || path_matches;
+}
+
+inline bool scopePathPassMatches(uint8_t stored_selector,
+                                 bool qualified_pass,
+                                 bool path_matches) {
+  return scopeRequiresPath(stored_selector) == qualified_pass
+      && scopePathQualifierMatches(stored_selector, path_matches);
 }
 
 inline bool fastTrackScopeChange(bool scope_changed, bool slow) {
@@ -70,6 +132,18 @@ inline uint8_t blacklistMatchThreshold(uint8_t path_hash_size) {
   return 0;
 }
 
+inline uint8_t configuredIdCount(const uint8_t* ids,
+                                 uint8_t maximum_count) {
+  if (ids == NULL) return 0;
+  uint8_t count = 0;
+  while (count < maximum_count) {
+    const uint8_t* id = &ids[count * BLACKLIST_ID_SIZE];
+    if (id[0] == 0 && id[1] == 0 && id[2] == 0) break;
+    count++;
+  }
+  return count;
+}
+
 inline bool pathMatchesBlacklist(const mesh::Packet* packet,
                                  const uint8_t* blacklist,
                                  uint8_t blacklist_count) {
@@ -93,6 +167,13 @@ inline bool pathMatchesBlacklist(const mesh::Packet* packet,
     }
   }
   return false;
+}
+
+inline bool pathMatchesConfiguredIds(const mesh::Packet* packet,
+                                     const uint8_t* ids,
+                                     uint8_t maximum_count) {
+  return pathMatchesBlacklist(
+      packet, ids, configuredIdCount(ids, maximum_count));
 }
 
 inline bool scopeRuleAllowed(bool requires_region_match,

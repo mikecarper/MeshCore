@@ -280,7 +280,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
   struct FloodChannelScopeEntry {
     uint16_t region_id;  // zero means unused
-    // 0/1/2 are txt:*/login:*/other:*; 16/32 are exact channel-key lengths.
+    // Low bits select txt:*/login:*/other:* or an exact channel-key length.
     uint8_t selector;
     uint8_t channel_hash;
     uint8_t secret[PUB_KEY_SIZE];

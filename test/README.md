@@ -34,7 +34,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_mqtt_prefs_codec` | `src/helpers/MQTTPrefsStorage.h`, `src/helpers/MQTTPrefsCodec.h` | binary pre-slot/3-slot/6-slot migration fixtures; v1 header integrity; downgrade preservation |
 | `test_mqtt_prefs_atomic_store` | `src/helpers/MQTTPrefsAtomicStore.h` | transactional MQTT writes and legacy `/node_prefs` handoff; exact short-write detection; begin/finish/rename failure cleanup; original-file preservation |
 | `test_mqtt_payload_builder` | `src/helpers/MQTTPayloadBuilder.cpp` | status/packet/raw JSON contracts; optional fields; escaping; RX metrics and path; score handling; exact buffer bounds; maximum representative payloads |
-| `test_flood_filter_policy` | `src/helpers/FloodFilterPolicy.h` | unordered 3-byte and 2-byte-prefix blacklist matching; match thresholds; repeated path-entry semantics; `require=region` and per-channel scope-gate truth tables; fast/slow scope timing; adding, replacing, and preserving packet scope |
+| `test_flood_filter_policy` | `src/helpers/FloodFilterPolicy.h` | unordered 3-byte and 2-byte-prefix path matching; match thresholds; repeated path-entry semantics; blacklist and bridge-bucket channel-scope selection; `require=region` and per-channel scope-gate truth tables; fast/slow scope timing; adding, replacing, and preserving packet scope |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 
 ## Conventions (and how to add a suite)
