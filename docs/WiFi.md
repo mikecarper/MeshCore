@@ -20,17 +20,18 @@ to MQTT unless its target name also contains `mqtt`.
 
 | Firmware target or role | Infrastructure WiFi | MQTT | What WiFi does |
 |---|---:|---:|---|
-| `*_repeater` | Build-dependent on ESP32 | No | WebConfig/WiFi OTA only when those features are compiled in |
+| `*_repeater` | Build-dependent on ESP32 | No | FULL builds provide WebConfig, browser OTA, and the TCP 5001 LoRa-OTA seeder while WiFi is active |
 | `*_repeater_observer_mqtt` | Yes | Yes | Uplinks heard and selected transmitted LoRa packets; repeating remains enabled by default |
-| `*_room_server` | Build-dependent on ESP32 | No | WebConfig/WiFi OTA only when those features are compiled in |
+| `*_room_server` | Build-dependent on ESP32 | No | FULL builds provide WebConfig, browser OTA, and the TCP 5001 LoRa-OTA seeder while WiFi is active |
 | `*_room_server_observer_mqtt` | Yes | Yes | Runs the room server and uplinks radio traffic |
 | `*_companion_radio_wifi` | Yes | No | Exposes the MeshCore companion protocol on TCP port 5000 |
 | `*_companion_radio_wifi_mqtt` | Yes | Yes | Runs both the TCP companion interface and the MQTT uplink |
 | USB, BLE, or serial companion | No | No | Uses the transport named by the target instead |
-| `*_repeater_bridge_espnow` | No LAN connection | No | Uses ESP-NOW to bridge packets between ESP32 devices |
+| `*_repeater_bridge_espnow` | Build-dependent on ESP32 | No | Uses ESP-NOW for its bridge; a FULL build also exposes the TCP 5001 LoRa-OTA seeder whenever WiFi is usable |
 | RS232 bridge | No | No | Bridges through a serial interface |
 | Ethernet repeater/room server | No WiFi | No | Uses wired Ethernet for its role-specific network interface |
-| Sensor, terminal-chat, or KISS modem | No in current targets | No | Uses LoRa and its role-specific local interface |
+| `*_sensor` | Build-dependent on ESP32 | No | A FULL ESP32 sensor can expose the TCP 5001 LoRa-OTA seeder through its browser-OTA setup AP |
+| Terminal-chat or KISS modem | No in current targets | No | Uses LoRa and its role-specific local interface |
 | `*_lora_ota_no_external_sensors` | No | No | Lean repeater image for receiving firmware over LoRa |
 
 Direct on-device WiFi and MQTT are currently ESP32 features. nRF52, STM32, and
@@ -92,7 +93,7 @@ best effort rather than durable storage. Each enabled slot publishes
 independently, so one failed broker does not intentionally stop the other
 slots.
 
-See [MQTT_IMPLEMENTATION.md](MQTT_IMPLEMENTATION.md) for the complete preset
+See [MQTT_IMPLEMENTATION.md](../MQTT_IMPLEMENTATION.md) for the complete preset
 list, custom broker configuration, topic formats, authentication, diagnostics,
 and memory limits.
 
@@ -195,6 +196,27 @@ When `ENABLE_OTA` is included, a WiFi companion also listens on:
 
 These ports do not replace the companion protocol on TCP 5000.
 
+FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
+role has a usable WiFi station or setup access point and stops when WiFi stops.
+For example, a FULL repeater can run `start webconfig` to join its saved
+network, then accept:
+
+```bash
+motatool serve --dir ./motas --tcp <repeater-ip>:5001 -v
+```
+
+The TCP connection supplies `.mota` files for the node to advertise and relay
+over LoRa; it is not a raw `.bin` uploader. `start ota` continues to provide the
+direct browser uploader on HTTP port 80. A FULL role without WebConfig but with
+browser OTA support can use the `MeshCore-OTA` access point raised by
+`start ota`; its seeder address is `192.168.4.1:5001`.
+
+Only one external folder link can be active. A TCP client is rejected while
+`ota folder on` is using USB serial, and disconnecting `motatool` automatically
+removes the TCP folder. Port 5001 has no login layer, so expose it only on a
+trusted LAN or temporary setup network. Firmware target and hash checks still
+apply at the receiving node, along with its configured signature/trust policy.
+
 ## WiFi companion with MQTT
 
 A `*_companion_radio_wifi_mqtt` build combines both systems:
@@ -221,6 +243,27 @@ In this case WebConfig owns WiFi only while it is needed. Stopping the portal
 disconnects WiFi and turns the WiFi radio off. There is no persistent MQTT
 connection keeping WiFi active.
 
+FULL standard and FULL logging repeater/room-server builds provide these
+read-only CLI checks even though they do not include MQTT:
+
+```text
+get wifi.ssid
+get wifi.status
+get webui
+```
+
+`get wifi.status` distinguishes an unconfigured node, an inactive WiFi radio, a
+station connection attempt, the setup AP, a connection failure, and a working
+LAN connection. For a LAN connection it reports the SSID, IP address, and RSSI.
+An inactive status is normal when `webui` is off: run `start webconfig` to
+connect temporarily. Change standalone WiFi credentials through WebConfig;
+the MQTT observer `set wifi.*` CLI belongs to observer builds.
+
+`get webui` starts with the saved boot setting, then reports the current
+session. For example, `> off, http://192.168.1.130/` means automatic WebConfig
+startup is saved as off, but a temporary session started by `start webconfig`
+is currently active at that URL.
+
 ## Build profiles
 
 `build.sh` produces several profiles. A profile changes the features compiled
@@ -232,8 +275,8 @@ role.
 | Standard | Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi. |
 | Logging | Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
-| FULL ESP32 | Uses expanded dual-OTA partitions, retains LoRa OTA, and restores full-size ESP32 features such as WebConfig where the selected target supports them. MQTT is present only when the selected target is an MQTT target. |
-| FULL ESP32 logging | Same expanded/full feature profile with debug and packet logging enabled. An MQTT target retains MQTT; a standard target remains non-MQTT. |
+| FULL ESP32 | Uses expanded dual-OTA partitions, retains LoRa OTA, restores full-size ESP32 features such as WebConfig where supported, and exposes the TCP 5001 OTA seeder while WiFi is active. MQTT is present only when the selected target is an MQTT target. |
+| FULL ESP32 logging | Same expanded/full feature and OTA profile with debug and packet logging enabled. An MQTT target retains MQTT; a standard target remains non-MQTT. |
 | LoRa-OTA no-external-sensors | A small radio-only repeater image; no WiFi or MQTT. |
 
 The interactive Option 1 **FULL everything** choice means every supported
@@ -268,12 +311,12 @@ WiFi only, not LoRa transmit power.
 
 ## Recognizing the wrong firmware
 
-Commands such as `get wifi.status`, `get mqtt.status`, and
-`set mqtt1.preset ...` exist only in firmware that compiled the MQTT observer
-CLI. If the response is `Unsupported in this firmware`, the running image does
-not contain that configuration command, or it is not the expected MQTT target.
-Older portable builds report the same condition as
-`unknown portable config`.
+`get wifi.status` and `get wifi.ssid` are available on MQTT observers and on
+FULL non-MQTT repeater/room-server builds with WebConfig. MQTT commands such as
+`get mqtt.status` and `set mqtt1.preset ...` still require an MQTT observer
+target. If the response is `Unsupported in this firmware`, the running image
+does not contain that configuration command, or it is not the expected target.
+Older portable builds report the same condition as `unknown portable config`.
 
 Check the complete firmware filename and role. In particular:
 

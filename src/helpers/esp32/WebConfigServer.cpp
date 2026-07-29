@@ -151,6 +151,86 @@ bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
   return ok;
 }
 
+bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+
+  char ssid[32] = "";
+  char password[64] = "";
+  uint8_t power_save = 1;
+  bool configured = loadStandaloneWiFi(
+      ssid, sizeof(ssid), password, sizeof(password), &power_save);
+  if (_active && _active->_wifi_ssid[0]) {
+    strncpy(ssid, _active->_wifi_ssid, sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = 0;
+    configured = true;
+  }
+
+  snprintf(reply, reply_len, configured ? "> %s" : "> (not configured)", ssid);
+  return true;
+}
+
+bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
+  if (!reply || reply_len == 0) return false;
+
+  char ssid[32] = "";
+  char password[64] = "";
+  uint8_t power_save = 1;
+  bool configured = loadStandaloneWiFi(
+      ssid, sizeof(ssid), password, sizeof(password), &power_save);
+  WebConfigServer* active = _active;
+  if (active && active->_wifi_ssid[0]) {
+    strncpy(ssid, active->_wifi_ssid, sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = 0;
+    configured = true;
+  }
+
+  if (active && active->_mode == MODE_SETUP) {
+    char ap_ssid[33] = "";
+    char ip[16] = "";
+    getSetupInfo(ap_ssid, sizeof(ap_ssid), ip, sizeof(ip));
+    snprintf(reply, reply_len, "> setup AP, SSID: %s, IP: %s", ap_ssid, ip);
+    return true;
+  }
+  if (active && active->_mode == MODE_CONNECTING) {
+    snprintf(reply, reply_len, "> connecting, SSID: %s",
+             configured ? ssid : "(not configured)");
+    return true;
+  }
+
+  const wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    snprintf(reply, reply_len, "> connected, SSID: %s, IP: %s, RSSI: %d dBm",
+             configured ? ssid : WiFi.SSID().c_str(),
+             WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    return true;
+  }
+  if (!configured) {
+    strcpy(reply, "> not configured; run 'start webconfig'");
+    return true;
+  }
+
+  switch (status) {
+    case WL_NO_SSID_AVAIL:
+      snprintf(reply, reply_len, "> failed, SSID not found: %s", ssid);
+      break;
+    case WL_CONNECT_FAILED:
+      snprintf(reply, reply_len, "> failed to connect, SSID: %s", ssid);
+      break;
+    case WL_CONNECTION_LOST:
+      snprintf(reply, reply_len, "> connection lost, SSID: %s", ssid);
+      break;
+    default:
+      if (active && active->_mode == MODE_LAN) {
+        snprintf(reply, reply_len, "> disconnected, SSID: %s", ssid);
+      } else {
+        snprintf(reply, reply_len,
+                 "> off, configured SSID: %s; run 'start webconfig'", ssid);
+      }
+      break;
+  }
+  return true;
+}
+
 void WebConfigServer::requestToggleFromButton() {
   webconfig_button_toggle_requested = true;
 }

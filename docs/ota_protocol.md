@@ -574,7 +574,8 @@ blocks) and streams payload blocks from the source on demand; proofs are generat
 ### 10.2 The `mota-seeder` transport (`MotaSeederProto.h`)
 
 A `MotaSource` is fed by a host that serves a folder over the device's **USB serial** (the same console the
-CLI uses - no extra hardware) or, on an ESP32 WiFi companion, over **WiFi (TCP)**. The host is the
+CLI uses - no extra hardware) or, on an ESP32 WiFi companion or FULL ESP32 role, over **WiFi (TCP)**. The
+host is the
 standalone Rust tool [`motatool`](https://github.com/vk496/motatool) (`motatool serve --serial <port>` /
 `--tcp <host[:port]>`, which also builds + verifies + inspects `.mota`). The device only emits request frames *while
 actively serving a fetch*, and reads the reply synchronously, so over the shared USB console binary frames
@@ -592,20 +593,22 @@ MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
 status: 0 = OK, non-zero = error (out of range / past EOF).
 ```
 
-**What to plug into `--serial`.** Use the USB serial console of an ESP32 MeshCore **companion** built with
-`OTA_FOLDER_SERIAL`. The companion is the required source node and must have a working LoRa radio plus an
+**What to plug into `--serial`.** Use the USB serial console of an OTA-enabled MeshCore node built with
+`OTA_FOLDER_SERIAL`. The node must have a working LoRa radio plus an
 `ota folder on` command; that command confirms it can host and advertise the folder. A **KISS modem will not
 work**: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI and `mota-seeder`
-request/response transport. A companion connected over WiFi is the alternative source connection: use its
-dedicated seeder port with `motatool serve --tcp <host>:5001`.
+request/response transport. An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
+source connection: use its dedicated seeder port with `motatool serve --tcp <host>:5001`.
 
 Device CLI: `ota folder on` (attach + announce), `ota folder` (list), `ota folder off`. Build flag
 `OTA_FOLDER_SERIAL` (default stream = console `Serial`; override `OTA_FOLDER_SERIAL_STREAM` + define
-`OTA_FOLDER_SERIAL_BEGIN` for a dedicated UART). On an ESP32 WiFi companion the node also runs a second
-`WiFiServer` on a **dedicated seeder port** (`OTA_SEEDER_TCP_PORT`, default `5001`), separate from the
-companion app port (`TCP_PORT`, default `5000`) - so `motatool serve --tcp` can feed updates while a phone
-app stays connected. The node auto-attaches the source when a seeder client connects and detaches when it
-closes (no `ota folder on` needed over TCP). Verified on hardware: a RAK4631 relays a host folder to a
+`OTA_FOLDER_SERIAL_BEGIN` for a dedicated UART). ESP32 WiFi companions and FULL ESP32 roles run a
+`WiFiServer` on the **dedicated seeder port** (`OTA_SEEDER_TCP_PORT`, default `5001`) while WiFi is usable.
+On a companion it is separate from the app port (`TCP_PORT`, default `5000`); on infrastructure roles it is
+separate from WebConfig and browser OTA on port 80. The node auto-attaches the source when a seeder client
+connects and detaches when it closes (no `ota folder on` needed over TCP). An already-active serial folder
+causes a TCP client to be rejected instead of silently replacing it. Verified on hardware: a RAK4631
+relays a host folder to a
 Heltec V3 over one USB cable, and a host feeds a Heltec V3 over WiFi (`:5001`) while the companion serves a
 phone on `:5000` - every block merkle-checked.
 

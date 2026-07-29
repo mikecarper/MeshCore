@@ -4,6 +4,9 @@
 #include "helpers/ota/OtaContext.h"   // OTA mesh-integration is centralized here so every role gets it
 #include "helpers/ota/OtaProtocol.h"  // decode_adv -> the `ota neighbors` discovery table
 #include "helpers/ota/OtaSelf.h"      // ota_self_firmware -> auto-advertise our own image
+#if defined(ESP32_PLATFORM) && (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+#include "helpers/esp32/WiFiOtaSeeder.h"
+#endif
 #ifndef OTA_ANNOUNCE_BOOT_MS
 #define OTA_ANNOUNCE_BOOT_MS      8000UL      // first self-advert ~8 s after boot (settled, but quick to discover)
 #endif
@@ -219,6 +222,10 @@ void Mesh::begin() {
 void Mesh::loop() {
   Dispatcher::loop();
   serviceLoopMaintenance();
+#if defined(ENABLE_OTA) && defined(ESP32_PLATFORM) && \
+    (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
+  ota::WiFiOtaSeeder::loop();
+#endif
 }
 
 void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {

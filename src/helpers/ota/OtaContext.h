@@ -158,6 +158,38 @@ struct OtaContext {
   uint32_t session_started_ms = 0;   // when the fetch session last left IDLE (for the age display)
   uint8_t  prev_fstate = OtaManager::IDLE;
   bool     folder_active = false;    // an external `.mota` folder is attached + being relayed
+  enum FolderLink : uint8_t {
+    FOLDER_LINK_NONE = 0,
+    FOLDER_LINK_SERIAL,
+    FOLDER_LINK_TCP,
+  };
+  FolderLink folderLink() const { return _folder_link; }
+
+  bool attach_folder_source(MotaSource* source, FolderLink link, const char* label,
+                            char* msg, size_t cap) {
+    if (!msg || cap == 0) return false;
+    if (!source || link == FOLDER_LINK_NONE) {
+      strncpy(msg, "ERR invalid folder source", cap);
+      msg[cap - 1] = 0;
+      return false;
+    }
+    if (folder_active && _folder_link != link) {
+      snprintf(msg, cap, "ERR folder already attached via %s",
+               _folder_link == FOLDER_LINK_TCP ? "tcp" : "serial");
+      return false;
+    }
+    manager.clear_sources();
+    if (!manager.add_source(source)) {
+      strncpy(msg, "ERR no free source slot", cap);
+      msg[cap - 1] = 0;
+      return false;
+    }
+    folder_active = true;
+    _folder_link = link;
+    snprintf(msg, cap, "OK folder attached (%s) - serving %u mOTA total (own fw + folder)",
+             label ? label : "external", (unsigned)manager.servedCount());
+    return true;
+  }
 
   // Attach/detach an external folder of `.mota` served by a host daemon over the seeder UART (the node
   // then advertises + relays them alongside its own fw). Only built when OTA_FOLDER_SERIAL is configured.
@@ -167,15 +199,14 @@ struct OtaContext {
 #ifdef OTA_FOLDER_SERIAL_BEGIN
     OTA_FOLDER_SERIAL_STREAM.begin(OTA_FOLDER_SERIAL_BAUD);     // dedicated UART; console is already up
 #endif
-    manager.clear_sources();                                   // idempotent re-attach
-    if (!manager.add_source(&src)) { strncpy(msg, "ERR no free source slot", cap); return false; }
-    folder_active = true;
-    snprintf(msg, cap, "OK folder attached (serial) - serving %u mOTA total (own fw + folder)",
-             (unsigned)manager.servedCount());
-    return true;
+    return attach_folder_source(&src, FOLDER_LINK_SERIAL, "serial", msg, cap);
   }
 #endif
-  void detach_folder() { manager.clear_sources(); folder_active = false; }
+  void detach_folder() {
+    manager.clear_sources();
+    folder_active = false;
+    _folder_link = FOLDER_LINK_NONE;
+  }
 
   void track_session(uint8_t fstate, uint32_t now) {            // stamp the session start (age display)
     if (fstate != prev_fstate) {
@@ -206,6 +237,9 @@ struct OtaContext {
 #endif
     manager.set_fetch_store(&fetch_store);
   }
+
+private:
+  FolderLink _folder_link = FOLDER_LINK_NONE;
 };
 
 OtaContext& ota_ctx();   // process-wide singleton
