@@ -394,6 +394,14 @@ public:
     (void)reply;
     return false;
   };
+  virtual bool getWiFiSSID(char* reply) const {
+    (void)reply;
+    return false;
+  };
+  virtual bool getWiFiStatus(char* reply) const {
+    (void)reply;
+    return false;
+  };
 
   virtual int getQueueSize() {
     return 0; // no op by default

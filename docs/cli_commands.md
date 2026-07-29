@@ -113,6 +113,13 @@ On an ESP32 build with WebConfig, the manual OTA uploader and WebConfig both use
 port 80 and cannot run together. Stop WebConfig before `start ota`, or stop OTA
 before `start webconfig`.
 
+FULL ESP32 builds also expose the `.mota` folder seeder on TCP port 5001
+whenever WiFi is usable. This listener is independent of port 80, so a host can
+run `motatool serve --dir ./motas --tcp <node-ip>:5001` while WebConfig is
+active. The TCP connection auto-attaches and detaches the folder; do not run
+`ota folder on` at the same time because that command selects the USB-serial
+folder transport.
+
 ---
 
 ### Browser configuration portal (ESP32 repeater and room server)
@@ -125,6 +132,8 @@ before `start webconfig`.
 - `set webui on`
 - `set webui off`
 - `get webui`
+- `get wifi.ssid`
+- `get wifi.status`
 
 `set webui on` is the persistent master switch. It starts the portal now and
 again after future reboots; `set webui off` closes it and disables that boot
@@ -132,6 +141,8 @@ start. `get webui` reports the saved on/off state plus whether the portal is
 inactive, joining WiFi, serving a setup AP, or serving a LAN URL. The default is
 `off` on repeater and room-server builds. On display-equipped repeaters, an
 otherwise-unused triple click toggles the same saved setting.
+Consequently, `> off, http://192.168.1.130/` means the saved boot setting is
+off while a temporary WebConfig session is currently active at that URL.
 
 `start webconfig` is a temporary start that does not change the saved switch.
 It serves the shared WiFi, radio, flood, loop, and status page and reports its
@@ -145,6 +156,13 @@ MQTT bridge, so run `set bridge off` first. Use `stop webconfig` to close either
 mode for the current boot. (`stop webconfig` does not change a saved `webui on`.)
 LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
 with no connected client.
+
+On FULL standard and FULL logging ESP32 repeater/room-server builds,
+`get wifi.ssid` reports the saved standalone WebConfig network and
+`get wifi.status` reports whether WiFi is unconfigured, off, connecting,
+running the setup AP, failed, or connected. A connected result includes the
+SSID, LAN IP, and RSSI. WiFi being off is normal while WebConfig is inactive;
+run `start webconfig` when a temporary connection is wanted.
 
 The browser portal is not compiled into the two 4 MB
 `LilyGo_TLora_V2_1_1_6_*_observer_mqtt` targets because it does not fit while

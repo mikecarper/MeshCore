@@ -4066,6 +4066,23 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
+#if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
+  // Non-MQTT FULL repeater/room-server builds keep WiFi only for WebConfig.
+  // Their credentials live in the standalone WebConfig NVS namespace rather
+  // than MQTTPrefs, so expose the useful read-only status through the role.
+  if (strcmp(config, "wifi.ssid") == 0) {
+    if (!_callbacks->getWiFiSSID(reply)) {
+      strcpy(reply, "Error: WiFi SSID unavailable on this build");
+    }
+    return;
+  }
+  if (strcmp(config, "wifi.status") == 0) {
+    if (!_callbacks->getWiFiStatus(reply)) {
+      strcpy(reply, "Error: WiFi status unavailable on this build");
+    }
+    return;
+  }
+#endif
 #if defined(PORTABLE_ESP32_RADIO_CLI)
   if (strcmp(config, "int.thresh") == 0) {
     sprintf(reply, "> %d", (uint32_t)_prefs->interference_threshold);

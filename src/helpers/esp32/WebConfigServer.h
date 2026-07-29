@@ -131,6 +131,8 @@ public:
                                  uint8_t* power_save = NULL);
   static bool saveStandaloneWiFi(const char* ssid, const char* password,
                                  uint8_t power_save);
+  static bool formatWiFiSSID(char* reply, size_t reply_len);
+  static bool formatWiFiStatus(char* reply, size_t reply_len);
 
   // UI tasks use an otherwise-unused multi-click gesture without reaching into
   // MyMesh directly. The mesh loop consumes the request and performs the NVS /

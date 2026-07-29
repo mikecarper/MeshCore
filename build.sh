@@ -1809,7 +1809,7 @@ apply_esp32_full_size_profile() {
   # The FULL artifact uses expanded dual-OTA slots, so restore features that
   # target or portable profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1"
 
   # Restore the full ElegantOTA implementation only when the target already
   # declares its dependency. Some ESP32-C6 targets intentionally have no

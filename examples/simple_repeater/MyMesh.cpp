@@ -7658,6 +7658,14 @@ bool MyMesh::getWebUIStatus(char* reply) const {
   return true;
 }
 
+bool MyMesh::getWiFiSSID(char* reply) const {
+  return WebConfigServer::formatWiFiSSID(reply, 160);
+}
+
+bool MyMesh::getWiFiStatus(char* reply) const {
+  return WebConfigServer::formatWiFiStatus(reply, 160);
+}
+
 void MyMesh::onConfigBatchEnd() {
   _wc_batch_active = false;
 #ifdef WITH_MQTT_BRIDGE

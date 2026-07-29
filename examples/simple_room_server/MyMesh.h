@@ -481,6 +481,8 @@ public:
   bool stopWebConfig(char* reply) override;
   bool setWebUIEnabled(bool enabled, char* reply) override;
   bool getWebUIStatus(char* reply) const override;
+  bool getWiFiSSID(char* reply) const override;
+  bool getWiFiStatus(char* reply) const override;
   bool isWebConfigActive() const override {
     return _webconfig && (_webconfig->isRunning() || _webconfig->isStopping());
   }

@@ -192,52 +192,6 @@ void halt() {
   }
 #endif
 
-/* WIFI OTA SEEDER - relay a host folder of .mota over WiFi (motatool `serve --tcp`), on a DEDICATED port
-   separate from the companion (TCP_PORT), so a phone app stays connected while motatool feeds updates. */
-#if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
-  #include <helpers/ota/OtaContext.h>
-  #include <helpers/ota/MotaSourceSerial.h>
-  #include <helpers/ota/FolderMotaStore.h>   // `ota pull <#> folder` destination over this same connection
-  #ifndef OTA_SEEDER_TCP_PORT
-    #define OTA_SEEDER_TCP_PORT 5001
-  #endif
-  static WiFiServer ota_seeder_server(OTA_SEEDER_TCP_PORT);
-  static WiFiClient ota_seeder_client;                                  // the live seeder connection (reused)
-  static mesh::ota::SerialMotaSource ota_seeder_source(ota_seeder_client, 3000);   // SERVE: read folder -> relay
-  static mesh::ota::FolderMotaStore  ota_folder_store(ota_seeder_client, 3000);    // PULL: capture .mota -> folder
-  static bool ota_seeder_attached = false;
-
-  // Accept one motatool connection at a time. While connected, the same link both SERVES the host folder
-  // over LoRa (register it as a source) and is offered as a `folder` PULL destination (`ota pull <#> folder`
-  // captures a fetched .mota back to that folder). Drop both the moment the connection closes.
-  static void ota_seeder_loop() {
-    if (ota_seeder_client && ota_seeder_client.connected()) return;     // still serving the current client
-    if (ota_seeder_attached) {                                          // previous client just disconnected
-      mesh::ota::ota_ctx().detach_folder();
-      mesh::ota::ota_ctx().clear_folder_dest();  // the `folder` pull destination is gone too
-      mesh::ota::ota_ctx().manager.announce();   // served set shrank back to our own fw -> re-advertise
-      ota_seeder_attached = false;
-      WIFI_DEBUG_PRINTLN("OTA seeder: client disconnected, relay stopped");
-    }
-    WiFiClient c = ota_seeder_server.available();
-    if (c) {
-      ota_seeder_client = c;                                            // rebind the persistent Stream to it
-      if (mesh::ota::ota_ctx().manager.add_source(&ota_seeder_source)) {
-        ota_seeder_attached = true;
-        char di[24]; snprintf(di, sizeof di, "tcp %s", ota_seeder_client.remoteIP().toString().c_str());
-        mesh::ota::ota_ctx().set_folder_dest(&ota_folder_store, di);   // offer `ota pull <#> folder`
-        // if a folder pull PAUSED when the link dropped, the host still holds the partial: rescan + resume
-        if (mesh::ota::ota_ctx().manager.fetchState() == mesh::ota::OtaManager::PAUSED)
-          mesh::ota::ota_ctx().manager.resumeStaged(nullptr);
-        mesh::ota::ota_ctx().manager.announce();   // new served set -> advertise the folder's fw to peers
-        WIFI_DEBUG_PRINTLN("OTA seeder: client connected (%s) - relay + folder pull-dest ready", di);
-      } else {
-        ota_seeder_client.stop();                                      // no free source slot
-      }
-    }
-  }
-#endif
-
 /* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. A WiFi companion has no serial text console, so
    without this its OTA is only reachable through the phone app. Connect with e.g. `nc <ip> 5002` and type
    `ota status` / `ota ls` / `ota announce` / ... - one client at a time, on a DEDICATED port separate from
@@ -449,8 +403,6 @@ void setup() {
   WiFi.setSleep(false);
   serial_interface.begin(TCP_PORT);
   #ifdef ENABLE_OTA
-    ota_seeder_server.begin();   // dedicated OTA seeder port for `motatool serve --tcp` (relay over LoRa)
-    WIFI_DEBUG_PRINTLN("OTA seeder listening on :%d  (motatool serve --tcp)", OTA_SEEDER_TCP_PORT);
     ota_console_server.begin();  // dedicated OTA text-console port (`nc <ip> 5002` -> `ota ...`)
     WIFI_DEBUG_PRINTLN("OTA console listening on :%d  (nc <ip> %d, type `ota ...`)", OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
   #endif
@@ -567,7 +519,6 @@ void loop() {
     the_mesh.serviceWebConfig();
   #endif
   #ifdef ENABLE_OTA
-    ota_seeder_loop();   // accept/drop a motatool `serve --tcp` connection on the dedicated seeder port
     ota_console_loop();  // service the OTA text console (port 5002)
   #endif
   if (WiFi.status() == WL_CONNECTED) {

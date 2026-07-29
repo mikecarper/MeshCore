@@ -235,14 +235,13 @@ remote area.
 
 1. Put the firmware files (`.mota` files - see below) in a folder on the computer.
 2. Install the helper tool once - the standalone `motatool` CLI (<https://github.com/vk496/motatool>) -
-   then point it at your node and the folder - over the node's **USB serial**, or over **WiFi** if it's
-   an ESP32 companion on your network:
+   then point it at your node and the folder - over the node's **USB serial**, or over **WiFi** if it is
+   an ESP32 WiFi companion or FULL ESP32 node:
    ```
    git clone https://github.com/vk496/motatool && cargo install --path ./motatool
    # over USB serial:
    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
-   # ...or over WiFi (ESP32 companion): the seeder is on a DEDICATED port (5001), separate from the
-   # phone-app port (5000), so a phone can stay connected while you serve:
+   # ...or over WiFi: the seeder is on dedicated TCP port 5001:
    motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v
    ```
    It answers the node's requests; your node then advertises those updates to neighbours, who can
@@ -251,6 +250,11 @@ remote area.
 
 To stop, just stop the daemon - over WiFi the node auto-detaches when the connection closes; over USB you
 can also run `ota folder off` on the node. `ota folder` on its own lists what your node is offering.
+On a FULL repeater or room server, run `start webconfig` first if WiFi is not
+already active. Other FULL roles with browser OTA support can use the
+`MeshCore-OTA` access point from `start ota` and connect to
+`192.168.4.1:5001`. Every LoRa participant still needs an overlapping
+`tempradio` window.
 
 ### Everyone helps share
 

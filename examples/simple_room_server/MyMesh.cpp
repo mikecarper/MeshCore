@@ -1375,6 +1375,14 @@ bool MyMesh::getWebUIStatus(char* reply) const {
   return true;
 }
 
+bool MyMesh::getWiFiSSID(char* reply) const {
+  return WebConfigServer::formatWiFiSSID(reply, 160);
+}
+
+bool MyMesh::getWiFiStatus(char* reply) const {
+  return WebConfigServer::formatWiFiStatus(reply, 160);
+}
+
 bool MyMesh::stopWebConfig(char* reply) {
   if (!_webconfig || !_webconfig->isRunning()) {
     strcpy(reply, "Err: webconfig not running");
