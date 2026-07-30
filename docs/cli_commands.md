@@ -6,6 +6,9 @@ See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
 profile matrix, including the commands intentionally omitted from portable
 firmware.
 
+See [CLI Command Availability Matrix](cli_command_availability.md) for the
+command-by-command nRF52 and ESP32 build tables.
+
 The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
 are equivalent, as are `get`, `Get`, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.

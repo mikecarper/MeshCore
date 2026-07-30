@@ -636,7 +636,7 @@ the recommended user-facing forms. Output is plain-language (a user-facing guide
 [ota_user_guide.md](ota_user_guide.md)).
 
 ```
-ota help | ?                       list the commands
+ota help | ? | h                   list the commands
 ota status | st  (or bare `ota`)   plain-language: running fw, the one fetch session (state/%/id), serving, keys
 ota ls | neighbors | nbrs | updates | n   discovered updates (queries sources; rows arrive async via OTA_HAVE)
 ota get | pull | download <#|mid8> fetch a chosen mOTA (manual; works regardless of autofetch)

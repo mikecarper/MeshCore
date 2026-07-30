@@ -9,6 +9,8 @@ MeshCore command availability is determined in three layers:
 
 The complete command descriptions are in [CLI Commands](cli_commands.md). This
 page describes the commands intentionally omitted or limited by build profile.
+The [CLI Command Availability Matrix](cli_command_availability.md) expands this
+summary into separate nRF52 and ESP32 command tables.
 
 ## Role comes first
 
@@ -69,7 +71,8 @@ matching FULL ESP32 build when those commands are required.
 
 Some observer commands have their own hardware limit:
 
-- `discover.scopes` and MQTT neighbor-table publishing require PSRAM.
+- MQTT neighbor-table publishing requires PSRAM. `discover.scopes` also
+  requires PSRAM and the FULL MQTT parser; the portable MQTT profile omits it.
 - `discover.neighbors` does **not** require MQTT or PSRAM.
 - full NTP connectivity diagnostics are omitted from the portable profile.
 
@@ -106,7 +109,8 @@ does not exist on that target:
   room-server builds support the corresponding WiFi setters and status
   commands.
 - MQTT commands require an MQTT observer target.
-- `discover.scopes` requires MQTT neighbor support and PSRAM.
+- `discover.scopes` requires a FULL MQTT build, MQTT neighbor support, and
+  PSRAM.
 - GPS and external-sensor commands require their drivers and pins.
 - Ethernet and bridge commands require the corresponding transport.
 - LoRa OTA commands require an artifact with OTA enabled.
