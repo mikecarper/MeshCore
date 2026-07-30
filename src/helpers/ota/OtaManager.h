@@ -169,6 +169,9 @@ public:
   void refresh_sources();
   // Drop all external sources (keep serving our own fw).
   void clear_sources();
+  // Stop serving the primary caller-owned image while preserving attached sources.
+  // Call this before releasing or overwriting the primary image's backing buffer.
+  void clear_primary();
   uint8_t servedCount() const { return _n_serve; }   // total mOTAs we offer (own fw + folder)
   // Read-only view of one served entry (for `ota serve` listing): mid/target/fwver/codec/flags + is_self.
   const ServeEntry* servedEntry(uint8_t i) const { return i < _n_serve ? &_serve[i] : nullptr; }
@@ -337,8 +340,15 @@ private:
   MotaSource* _src_list[OTA_MAX_SOURCE_OBJ] = {nullptr};
   uint8_t     _n_src_obj = 0;
   uint8_t     _src_manifest[OTA_SRC_MANIFEST_MAX];   // manifest-minus-leaves of the loaded source mota
+#if defined(ESP32_PLATFORM)
+  // Folder-source leaves and proof scratch are cold-path working storage. Keep
+  // them off classic ESP32 .bss and allocate them on first use.
+  uint8_t*    _src_leaves = nullptr;
+  uint8_t*    _scratch = nullptr;
+#else
   uint8_t     _src_leaves[OTA_PROOFGEN_SCRATCH];     // leaves[] of the loaded source mota (<=1024 blocks)
   uint8_t     _scratch[OTA_PROOFGEN_SCRATCH];        // proof-gen / fetch root-check working buffer
+#endif
 
   // fetch
   OtaStore*  _fetch = nullptr;
@@ -385,6 +395,9 @@ private:
   uint16_t   _loop_last_lvmask = 0;            // leaves bitmap last loop tick (retry only on no-progress)
   bool       _diffing = false;                 // leaves are in; diffing the seed a batch per tick
   uint32_t   _diff_idx = 0;                    // next block index to diff against the seed
+
+  uint8_t* ensureSourceLeaves();
+  uint8_t* ensureScratch();
 
   // discovery: heard sources (beacon senders) + the catalog assembled from their OTA_HAVE replies
   struct Source { uint8_t seeder[4]; uint8_t digest[4]; uint8_t n_motas; uint32_t last_ms; bool have_catalog; };

@@ -10,6 +10,24 @@
 namespace mesh {
 namespace ota {
 
+uint8_t* OtaManager::ensureSourceLeaves() {
+#if defined(ESP32_PLATFORM)
+  if (!_src_leaves) {
+    _src_leaves = static_cast<uint8_t*>(malloc(OTA_PROOFGEN_SCRATCH));
+  }
+#endif
+  return _src_leaves;
+}
+
+uint8_t* OtaManager::ensureScratch() {
+#if defined(ESP32_PLATFORM)
+  if (!_scratch) {
+    _scratch = static_cast<uint8_t*>(malloc(OTA_PROOFGEN_SCRATCH));
+  }
+#endif
+  return _scratch;
+}
+
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
   _fstate = IDLE; _have = 0; _fbc = 0;
@@ -24,10 +42,12 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
 // we advertise / answer OTA_QUERY with) is the lightweight _serve[] registry.
 
 bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
+  uint8_t* scratch = ensureScratch();
+  if (!scratch) return false;
   if (!mota_parse(mota, len, _view0.m)) return false;
   _view0.mfl = (uint16_t)(_view0.m.leaves - _view0.m.manifest_start);  // contiguous container
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
-  _view0.scratch = _scratch; _view0.scratch_sz = sizeof(_scratch);     // <=1024 blocks (RAM .mota is small)
+  _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 blocks (RAM .mota is small)
   _view0.valid = true;
   registerSelfEntry();
   return true;
@@ -52,12 +72,19 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
 // (Re)build registry slot 0 from view0 (our own fw / RAM mota). Keeps any source entries in [1..].
 void OtaManager::registerSelfEntry() {
   if (!_view0.valid) return;
+  if (_n_serve > 0 && !_serve[0].is_self) {
+    if (_n_serve < OTA_MAX_SERVE) _n_serve++;
+    for (uint8_t i = _n_serve - 1; i > 0; i--) {
+      _serve[i] = _serve[i - 1];
+    }
+  } else if (_n_serve == 0) {
+    _n_serve = 1;
+  }
   ServeEntry& e = _serve[0];
   memcpy(e.mid, _view0.m.merkle_root, 4);
   e.target_id = _view0.m.target_id; e.fw_version = _view0.m.fw_version;
   e.codec_id = _view0.m.codec_id; e.flags = _view0.m.flags; e.have_count = _view0.m.block_count;
   e.is_self = true; e.src = nullptr; e.src_idx = 0;
-  if (_n_serve == 0) _n_serve = 1;
 }
 
 bool OtaManager::add_source(MotaSource* src) {
@@ -68,9 +95,8 @@ bool OtaManager::add_source(MotaSource* src) {
 }
 
 void OtaManager::refresh_sources() {
-  uint8_t base = _view0.valid ? 1 : 0;       // entry 0 stays our own fw
+  _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
-  _n_serve = base;
   for (uint8_t s = 0; s < _n_src_obj; s++) {
     MotaSource* src = _src_list[s];
     if (!src) continue;
@@ -91,8 +117,18 @@ void OtaManager::refresh_sources() {
 
 void OtaManager::clear_sources() {
   _n_src_obj = 0; _srcv.valid = false;
-  _n_serve = _view0.valid ? 1 : 0;
+  _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
+}
+
+void OtaManager::clear_primary() {
+  _view0.valid = false;
+  if (_n_serve > 0 && _serve[0].is_self) {
+    for (uint8_t i = 1; i < _n_serve; i++) {
+      _serve[i - 1] = _serve[i];
+    }
+    _n_serve--;
+  }
 }
 
 int OtaManager::serveEntryIndex(const uint8_t* mid) const {
@@ -119,21 +155,24 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   if (!e.src) return false;
   uint16_t mfl = (uint16_t)(d.leaves_off - 8);
   if (mfl == 0 || mfl > sizeof(_src_manifest)) return false;
-  if (d.block_count == 0 || (uint64_t)d.block_count * 4 > sizeof(_src_leaves)) return false;
+  if (d.block_count == 0 || (uint64_t)d.block_count * 4 > OTA_PROOFGEN_SCRATCH) return false;
+  uint8_t* src_leaves = ensureSourceLeaves();
+  uint8_t* scratch = ensureScratch();
+  if (!src_leaves || !scratch) return false;
   bool ok = e.src->read(e.src_idx, 8, _src_manifest, mfl);
   if (!ok || !mota_parse_manifest(_src_manifest, mfl, _srcv.m)) return false;
   if (memcmp(_srcv.m.merkle_root, d.mid, 4) != 0) return false;       // descriptor/bytes disagree
   if (_srcv.m.block_count != d.block_count) return false;
-  ok = e.src->read(e.src_idx, d.leaves_off, _src_leaves, d.block_count * 4);
+  ok = e.src->read(e.src_idx, d.leaves_off, src_leaves, d.block_count * 4);
   if (!ok) return false;
   _srcv.m.manifest_start = _src_manifest;
-  _srcv.m.leaves   = _src_leaves;
+  _srcv.m.leaves   = src_leaves;
   _srcv.m.payload  = nullptr;
   _srcv.mfl = mfl;
   _srcv_rdctx.src = e.src; _srcv_rdctx.idx = e.src_idx;
   _srcv_rdctx.payload_off = d.payload_off;
   _srcv.read = srcReadTramp; _srcv.read_ctx = &_srcv_rdctx;
-  _srcv.scratch = _scratch; _srcv.scratch_sz = sizeof(_scratch);
+  _srcv.scratch = scratch; _srcv.scratch_sz = OTA_PROOFGEN_SCRATCH;
   memcpy(_srcv_mid, d.mid, 4);
   _srcv.valid = true;
   return true;
@@ -624,8 +663,9 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   OTA_DBG("OTA: RESUME have=%u/%u total=%u\n", (unsigned)_have, (unsigned)bc, (unsigned)total);
 
   if (_have >= bc) {                                  // already complete -> verify root + finalize
-    if (bc * 4 <= sizeof(_scratch) && _fetch->read(_floff, _scratch, bc * 4)) {
-      uint8_t root[4]; merkle_root(root, _scratch, bc);
+    uint8_t* scratch = bc * 4 <= OTA_PROOFGEN_SCRATCH ? ensureScratch() : nullptr;
+    if (scratch && _fetch->read(_floff, scratch, bc * 4)) {
+      uint8_t root[4]; merkle_root(root, scratch, bc);
       _fstate = (memcmp(root, _froot, 4) == 0) ? COMPLETE : FAILED;
     } else {
       _fstate = COMPLETE;
@@ -701,8 +741,9 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   if (_checkpoint_blocks && _have % _checkpoint_blocks == 0) _fetch->checkpoint();
   if (_have < _fbc) { requestMissing(); return; }            // next block
   // all blocks present -> final root cross-check + finalize
-  if (_fbc * 4 <= sizeof(_scratch) && _fetch->read(_floff, _scratch, _fbc * 4)) {
-    uint8_t root[4]; merkle_root(root, _scratch, _fbc);
+  uint8_t* scratch = _fbc * 4 <= OTA_PROOFGEN_SCRATCH ? ensureScratch() : nullptr;
+  if (scratch && _fetch->read(_floff, scratch, _fbc * 4)) {
+    uint8_t root[4]; merkle_root(root, scratch, _fbc);
     _fstate = (memcmp(root, _froot, 4) == 0) ? COMPLETE : FAILED;
   } else {
     _fstate = COMPLETE;   // per-block proofs already guaranteed integrity vs the root

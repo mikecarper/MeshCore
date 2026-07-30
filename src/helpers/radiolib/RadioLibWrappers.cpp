@@ -704,25 +704,17 @@ float RadioLibWrapper::getLastSNR() const {
   return _radio->getSNR();
 }
 
-// Approximate SNR threshold per SF for successful reception (based on Semtech datasheets)
-static float snr_threshold[] = {
-    -7.5,  // SF7 needs at least -7.5 dB SNR
-    -10,   // SF8 needs at least -10 dB SNR
-    -12.5, // SF9 needs at least -12.5 dB SNR
-    -15,  // SF10 needs at least -15 dB SNR
-    -17.5,// SF11 needs at least -17.5 dB SNR
-    -20   // SF12 needs at least -20 dB SNR
-};
-
 float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   if (sf < 7) return 0.0f;
-  
-  if (snr < snr_threshold[sf - 7]) return 0.0f;    // Below threshold, no chance of success
 
-  auto success_rate_based_on_snr = (snr - snr_threshold[sf - 7]) / 10.0;
-  auto collision_penalty = 1 - (packet_len / 256.0);   // Assuming max packet of 256 bytes
+  // Semtech's approximate threshold drops 2.5 dB for each step from SF7.
+  const float snr_threshold = -7.5f - (sf - 7) * 2.5f;
+  if (snr < snr_threshold) return 0.0f;
 
-  return max(0.0, min(1.0, success_rate_based_on_snr * collision_penalty));
+  const float success_rate = (snr - snr_threshold) * 0.1f;
+  const float collision_penalty = 1.0f - packet_len / 256.0f;
+  const float score = success_rate * collision_penalty;
+  return score < 1.0f ? score : 1.0f;
 }
 
 PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols) {
