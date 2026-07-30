@@ -3167,6 +3167,26 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, invalid frequency");
     }
 #ifdef WITH_BRIDGE
+  } else if (memcmp(config, "rxdelay ", 8) == 0) {
+    float delay = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[8], delay)
+        && delay >= 0.0f && delay <= 20.0f) {
+      _prefs->rx_delay_base = delay;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-20");
+    }
+  } else if (memcmp(config, "txdelay ", 8) == 0) {
+    float factor = 0.0f;
+    if (mesh::cli::parseDecimalStrict(&config[8], factor)
+        && factor >= 0.0f && factor <= 2.0f) {
+      _prefs->tx_delay_factor = factor;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0-2");
+    }
   } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
     const char* value = &config[15];
     if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
@@ -4178,6 +4198,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (strcmp(config, "role") == 0) {
     sprintf(reply, "> %s", _callbacks->getRole());
 #ifdef WITH_BRIDGE
+  } else if (strcmp(config, "rxdelay") == 0) {
+    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->rx_delay_base));
+  } else if (strcmp(config, "txdelay") == 0) {
+    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->tx_delay_factor));
   } else if (strcmp(config, "bridge.enabled") == 0) {
     sprintf(reply, "> %s", _prefs->bridge_enabled ? "on" : "off");
   } else if (strcmp(config, "bridge.delay") == 0) {

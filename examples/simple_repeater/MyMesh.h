@@ -468,6 +468,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void clearFloodRetryBridgeStateByKey(const uint8_t* retry_key);
   void refreshFloodRetryReachability(const mesh::Packet* packet);
   void formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const;
+  bool handleClientPathCommand(ClientInfo* sender, char* command, char* reply);
   bool formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);

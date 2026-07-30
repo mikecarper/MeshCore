@@ -7898,6 +7898,54 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
   out[pos] = 0;
 }
 
+static bool isClientPathCommand(const char* command) {
+  return strcmp(command, "get outpath") == 0
+      || strcmp(command, "set outpath") == 0
+      || strncmp(command, "set outpath ", 12) == 0
+      || strcmp(command, "get altpath") == 0
+      || strcmp(command, "set altpath") == 0
+      || strncmp(command, "set altpath ", 12) == 0;
+}
+
+bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* reply) {
+  if (!isClientPathCommand(command)) return false;
+
+  bool is_get = strncmp(command, "get ", 4) == 0;
+  bool is_alt = strncmp(command + 4, "altpath", 7) == 0;
+  if (sender == NULL) {
+    strcpy(reply, "Err - command needs remote client context");
+    return true;
+  }
+
+  uint8_t* stored_path = is_alt ? sender->alt_path : sender->out_path;
+  uint8_t* stored_path_len = is_alt ? &sender->alt_path_len : &sender->out_path_len;
+  if (is_get) {
+    formatPathReply(stored_path, *stored_path_len, reply, 160);
+    return true;
+  }
+
+  char* spec = command + 11;  // length of "set outpath" or "set altpath"
+  if (*spec == ' ') spec++;
+
+  uint8_t path[MAX_PATH_SIZE];
+  uint8_t path_len = OUT_PATH_UNKNOWN;
+  const char* err = NULL;
+  if (!parsePathCommand(spec, path, path_len, err)) {
+    strcpy(reply, err ? err : "Err - invalid path");
+    return true;
+  }
+
+  if (path_len == OUT_PATH_UNKNOWN || path_len == OUT_PATH_FORCE_FLOOD) {
+    memset(stored_path, 0, MAX_PATH_SIZE);
+    *stored_path_len = path_len;
+  } else {
+    *stored_path_len = mesh::Packet::copyPath(stored_path, path, path_len);
+  }
+  dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  formatPathReply(stored_path, *stored_path_len, reply, 160);
+  return true;
+}
+
 static bool commandFamilyMatches(const char* command, const char* family) {
   size_t len = strlen(family);
   if (strncmp(command, family, len) != 0) return false;
@@ -8045,6 +8093,22 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+    return;
+  }
+
+  // Reply-path overrides are core remote-client routing controls. Keep them
+  // available before the portable observer hands the remaining commands to
+  // its reduced CommonCLI parser.
+  if (isClientPathCommand(command)) {
+    if (sender && !sender->isAdmin()) {
+      bool allowed = (sender->isRegionMgr() || sender->isFilterMgr())
+          && isCommonManagerReadOnlyAllowed(command);
+      if (!allowed) {
+        strcpy(reply, "Err - not permitted");
+        return;
+      }
+    }
+    handleClientPathCommand(sender, command, reply);
     return;
   }
 
@@ -8274,43 +8338,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       Serial.printf("\n");
     }
     reply[0] = 0;
-  } else if (strcmp(command, "get outpath") == 0
-          || strcmp(command, "set outpath") == 0
-          || strncmp(command, "set outpath ", 12) == 0
-          || strcmp(command, "get altpath") == 0
-          || strcmp(command, "set altpath") == 0
-          || strncmp(command, "set altpath ", 12) == 0) {
-    bool is_get = strncmp(command, "get ", 4) == 0;
-    bool is_alt = strncmp(command + 4, "altpath", 7) == 0;
-    if (sender == NULL) {
-      strcpy(reply, "Err - command needs remote client context");
-    } else {
-      uint8_t* stored_path = is_alt ? sender->alt_path : sender->out_path;
-      uint8_t* stored_path_len = is_alt ? &sender->alt_path_len : &sender->out_path_len;
-      if (is_get) {
-        formatPathReply(stored_path, *stored_path_len, reply, 160);
-        return;
-      }
-
-      char* spec = command + 11;  // length of "set outpath" or "set altpath"
-      if (*spec == ' ') spec++;
-
-      uint8_t path[MAX_PATH_SIZE];
-      uint8_t path_len = OUT_PATH_UNKNOWN;
-      const char* err = NULL;
-      if (!parsePathCommand(spec, path, path_len, err)) {
-        strcpy(reply, err ? err : "Err - invalid path");
-      } else {
-        if (path_len == OUT_PATH_UNKNOWN || path_len == OUT_PATH_FORCE_FLOOD) {
-          memset(stored_path, 0, MAX_PATH_SIZE);
-          *stored_path_len = path_len;
-        } else {
-          *stored_path_len = mesh::Packet::copyPath(stored_path, path, path_len);
-        }
-        dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
-        formatPathReply(stored_path, *stored_path_len, reply, 160);
-      }
-    }
+  } else if (handleClientPathCommand(sender, command, reply)) {
+    return;
   } else if (strncmp(command, "send text.flood ", 16) == 0) {
     char* text = trimSpaces(command + 16);
     if (*text == 0) {

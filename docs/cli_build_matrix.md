@@ -32,8 +32,8 @@ administrator.
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable. |
 | Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds the compiled logging behavior. |
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. A portable OTA artifact can still have the portable restrictions described below. |
-| Portable MQTT observer | Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, `neighbors`, and `discover.neighbors`. The large repeater administration tree is omitted to fit the legacy ESP32 application slot. |
-| Portable ESP-NOW bridge | Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials. |
+| Portable MQTT observer | Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, `neighbors`, `discover.neighbors`, `outpath`, and `altpath`. The large repeater administration tree is omitted to fit the legacy ESP32 application slot. |
+| Portable ESP-NOW bridge | Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials, including `rxdelay`, `txdelay`, `outpath`, and `altpath`. |
 | FULL ESP32 | Uses the matching MQTT target with logging off, removes size-based CLI cuts, and restores the complete command surface supported by that role and hardware. |
 | FULL ESP32 logging | Uses the matching non-MQTT target with debug and packet logging enabled and the complete command surface supported by that role and hardware. |
 | `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. |
@@ -48,12 +48,13 @@ The portable MQTT observer keeps these command groups:
 - lifecycle and identity: `reboot`, `poweroff`, `shutdown`, `ver`, `board`,
   `password`, and `erase` on the local console;
 - radio operation: `advert`, `advert.zerohop`, `clock`, `clock sync`, `time`,
-  `memory`, `neighbors`, and `discover.neighbors`;
+  `memory`, `neighbors`, `discover.neighbors`, and the remote-client routing
+  controls `outpath` and `altpath`;
 - browser/update control when compiled: `start ota`, `stop ota`, `ota check`,
   and `ota update`;
 - radio essentials through `get`/`set`: radio parameters, TX power, CAD,
-  interference threshold, AGC reset interval, RX gain, repeat state, and
-  applicable FEM controls;
+  interference threshold, AGC reset interval, RX gain, `rxdelay`, `txdelay`,
+  repeat state, and applicable FEM controls;
 - MQTT, WiFi, NTP, bridge, and alert commands implemented by the observer
   feature set;
 - region and onboard-GPS commands that fit and are compiled into the selected
