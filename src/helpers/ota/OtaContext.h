@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>          // snprintf (hw_id mismatch message)
+#include <stdlib.h>         // malloc/free (lazy ESP32 manual-stage buffer)
 #include <string.h>         // strncmp/strncpy (hw_id)
 #include "OtaManager.h"
 #include "OtaStore.h"
@@ -62,7 +63,24 @@ struct OtaContext {
   OtaStoreRam<OTA_FETCH_BUF_SIZE> fetch_store;
 #endif
   SignerAllowlist allow;
+#if defined(ESP32_PLATFORM)
+  // Manual `ota dev stage` is a diagnostic path. Reserving its full buffer in
+  // .bss prevents high-capacity classic ESP32 images from linking, even when
+  // the command is never used, so allocate it only while a manual stage exists.
+  uint8_t* serve_buf = nullptr;
+  bool ensureServeBuffer() {
+    if (!serve_buf) serve_buf = static_cast<uint8_t*>(malloc(OTA_SERVE_BUF_SIZE));
+    return serve_buf != nullptr;
+  }
+  void releaseServeBuffer() {
+    free(serve_buf);
+    serve_buf = nullptr;
+  }
+#else
   uint8_t  serve_buf[OTA_SERVE_BUF_SIZE];
+  bool ensureServeBuffer() { return true; }
+  void releaseServeBuffer() {}
+#endif
   uint32_t serve_expected = 0;   // size declared by `ota stage`
   bool     serving = false;      // manager.serve() succeeded
   // flash-backed self-serve: cached merkle leaves (heap, freed on re-serve) + assembled manifest of our

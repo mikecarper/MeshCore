@@ -530,6 +530,28 @@ private:
 };
 }
 
+TEST(OtaServe, ClearPrimaryInvalidatesCallerOwnedView) {
+  OtaManager manager;
+  manager.begin(0, nullptr, nullptr);
+
+  ASSERT_TRUE(manager.serve(SIM_MOTA, SIM_MOTA_LEN));
+  RamMotaSource folder;
+  folder.add(SIM_MOTA_1K, SIM_MOTA_1K_LEN);
+  ASSERT_TRUE(manager.add_source(&folder));
+  ASSERT_EQ(manager.servedCount(), 2);
+
+  manager.clear_primary();
+  ASSERT_EQ(manager.servedCount(), 1);
+  EXPECT_FALSE(manager.servedEntry(0)->is_self);
+
+  // A caller may release the container and later install a fresh primary view
+  // without dropping or overwriting attached folder sources.
+  EXPECT_TRUE(manager.serve(SIM_MOTA, SIM_MOTA_LEN));
+  ASSERT_EQ(manager.servedCount(), 2);
+  EXPECT_TRUE(manager.servedEntry(0)->is_self);
+  EXPECT_FALSE(manager.servedEntry(1)->is_self);
+}
+
 TEST(OtaTransfer, TwoManagersFullTransfer) {
   g_q.clear();
   OtaManager server, client;

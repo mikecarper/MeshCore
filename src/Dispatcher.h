@@ -356,6 +356,11 @@ public:
   unsigned long futureMillis(int millis_from_now) const;
 
 private:
+#if MESH_PACKET_LOGGING
+  void logPacketStart(const char* direction, const Packet* packet, int len)
+      __attribute__((noinline));
+  void logPacketEnd(const Packet* packet) __attribute__((noinline));
+#endif
   void checkRecv();
   void checkSend();
 };

@@ -424,7 +424,9 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
   if (strncmp(d, "stage ", 6) == 0) {
     uint32_t sz = parse_u32(d + 6);
     if (sz == 0 || sz > OTA_SERVE_BUF_SIZE) { sprintf(reply, "ERR size 1..%u", OTA_SERVE_BUF_SIZE); }
-    else { memset(c.serve_buf, 0xFF, sz); c.serve_expected = sz; c.serving = false;
+    else if (!c.ensureServeBuffer()) { strcpy(reply, "ERR stage OOM"); }
+    else { c.manager.clear_primary(); c.serving = false;
+           memset(c.serve_buf, 0xFF, sz); c.serve_expected = sz;
            sprintf(reply, "OK stage %u bytes", (unsigned)sz); }
 
   } else if (strncmp(d, "recv ", 5) == 0) {
@@ -435,7 +437,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     int blen = (int)strlen(hex) / 2;
     uint8_t tmp[80];
     if (blen <= 0 || blen > (int)sizeof(tmp) || !mesh::Utils::fromHex(tmp, blen, hex)) strcpy(reply, "ERR hex");
-    else if (off + blen > c.serve_expected) strcpy(reply, "ERR off>size (stage first)");
+    else if (!c.serve_buf || off + blen > c.serve_expected) strcpy(reply, "ERR off>size (stage first)");
     else { memcpy(c.serve_buf + off, tmp, blen); sprintf(reply, "OK %d@%u", blen, (unsigned)off); }
 
   } else if (strncmp(d, "serve self", 10) == 0) {     // host our own running firmware, served from flash
@@ -447,6 +449,10 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       sprintf(reply, "OK serving self fw mid=%s (%u B, flash-backed) - peers can pull it", midhx, (unsigned)img);
     } else strcpy(reply, "ERR serve self (no EndF / image too big / OOM)");
   } else if (strncmp(d, "serve", 5) == 0) {
+    if (!c.serve_buf || c.serve_expected == 0) {
+      strcpy(reply, "ERR nothing staged");
+      return true;
+    }
     c.serving = c.manager.serve(c.serve_buf, c.serve_expected);
     if (!c.serving) { strcpy(reply, "ERR serve (bad .mota)"); return true; }
     VerifyResult r = ota_verify(c.serve_buf, c.serve_expected, c.allow);
@@ -466,7 +472,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
   } else if (strncmp(d, "verify", 6) == 0) {
     const uint8_t* buf; uint32_t len;
     if (c.manager.fetchState() == OtaManager::COMPLETE) { buf = c.fetch_store.data(); len = c.fetch_store.staged_size(); }
-    else { buf = c.serve_buf; len = c.serve_expected; }
+    else { buf = c.serve_buf; len = c.serve_buf ? c.serve_expected : 0; }
     if (len == 0 || !buf) { strcpy(reply, "ERR nothing to verify (flash-staged: applydelta verifies)"); return true; }
     VerifyResult r = ota_verify(buf, len, c.allow);
     sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
@@ -486,7 +492,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       if (ota_apply_slot_info(&addr, &size)) sprintf(reply, "inactive slot addr=0x%X size=%u", (unsigned)addr, (unsigned)size);
       else strcpy(reply, "ERR no A/B slot (apply unsupported on this build)");
     } else if (strncmp(sub, "manifest", 8) == 0) {
-      if (ota_apply_set_manifest(c.serve_buf, c.serve_expected, c.allow, c.apply_st))
+      if (c.serve_buf && ota_apply_set_manifest(c.serve_buf, c.serve_expected, c.allow, c.apply_st))
         sprintf(reply, "manifest ok img=%u sig=%d trust=%d", (unsigned)c.apply_st.image_size, c.apply_st.sig_ok, c.apply_st.trusted);
       else strcpy(reply, "ERR manifest parse / not full-image / unsupported");
     } else if (strncmp(sub, "verify", 6) == 0) {
@@ -501,7 +507,9 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 
   } else if (strncmp(d, "clear", 5) == 0) {
-    c.serve_expected = 0; c.serving = false; c.fetch_store.clear(); c.manager.reset_session();
+    c.manager.clear_primary();
+    c.serve_expected = 0; c.serving = false; c.releaseServeBuffer();
+    c.fetch_store.clear(); c.manager.reset_session();
     strcpy(reply, "OK cleared");
 
   } else {

@@ -87,8 +87,8 @@ void AutoDiscoverRTCClock::setCurrentTime(uint32_t time) {
     rtc_3231.adjust(DateTime(time));
   } else if (rv3028_success) {
     auto dt = DateTime(time);
-	  uint8_t weekday = (dt.day() + (uint16_t)((2.6 * dt.month()) - 0.2) - (2 * (dt.year() / 100)) + dt.year() + (uint16_t)(dt.year() / 4) + (uint16_t)(dt.year() / 400)) % 7;
-    rtc_rv3028.setTime(dt.year(), dt.month(), weekday, dt.day(), dt.hour(), dt.minute(), dt.second());
+    rtc_rv3028.setTime(dt.year(), dt.month(), dt.dayOfTheWeek(), dt.day(),
+                       dt.hour(), dt.minute(), dt.second());
   } else if (rtc_8563_success) {
     rtc_8563.adjust(DateTime(time));
   } else if (rtc_8130_success) {

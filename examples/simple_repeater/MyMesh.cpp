@@ -108,6 +108,12 @@
 #define FLOOD_PACKET_FILTER_LOGIN_PROTECTED_HOPS    7
 #define FLOOD_PACKET_FILTER_TXT_MSG_PROTECTED_HOPS  5
 #define DEFAULT_FLOOD_CHANNEL_BLOCK_NAME  "#wardriving"
+static const char FLOOD_PACKET_FILTER_USAGE[] =
+    "Err - use: set flood.filter[.n] <type> [hops] [path=blacklist] [scope=<name>] [require=region] [tx=slow] [suspend=tempradio]";
+static const char FLOOD_PACKET_FILTER_DUPLICATE[] =
+    "Err - duplicate filter option";
+static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
+    "Err - use: set flood.channel.scope[.n] <match> <region> [path=blacklist|path=bucket:1-6] [tx=slow]";
 #ifndef DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS
   #define DEFAULT_FLOOD_CHANNEL_BLOCK_HOPS 4
 #endif
@@ -5069,7 +5075,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
     }
     requested_slot = slot - 1;
     if (*cursor != ' ') {
-      strcpy(reply, "Err - expected packet type");
+      strcpy(reply, "Err - packet type must be name, any, 0-15, or 0x00-0x0F");
       return;
     }
   }
@@ -5097,7 +5103,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
     token = separator;
   }
   if (token_count == 0) {
-    strcpy(reply, "Err - use: set flood.filter[.n] <type> [hops] [path=blacklist] [scope=<name>] [require=region] [tx=slow] [suspend=tempradio]");
+    strcpy(reply, FLOOD_PACKET_FILTER_USAGE);
     return;
   }
 
@@ -5120,25 +5126,25 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
   for (int i = 1; i < token_count; i++) {
     if (floodFilterAsciiEqual(tokens[i], "suspend=tempradio")) {
       if (suspend_on_temp_radio) {
-        strcpy(reply, "Err - duplicate suspend=tempradio");
+        strcpy(reply, FLOOD_PACKET_FILTER_DUPLICATE);
         return;
       }
       suspend_on_temp_radio = true;
     } else if (floodFilterAsciiEqual(tokens[i], "path=blacklist")) {
       if (match_blacklisted_path) {
-        strcpy(reply, "Err - duplicate path=blacklist");
+        strcpy(reply, FLOOD_PACKET_FILTER_DUPLICATE);
         return;
       }
       match_blacklisted_path = true;
     } else if (floodFilterAsciiEqual(tokens[i], "require=region")) {
       if (scope_requires_region_match) {
-        strcpy(reply, "Err - duplicate require=region");
+        strcpy(reply, FLOOD_PACKET_FILTER_DUPLICATE);
         return;
       }
       scope_requires_region_match = true;
     } else if (floodFilterAsciiStartsWith(tokens[i], "tx=")) {
       if (scope_timing_set) {
-        strcpy(reply, "Err - duplicate tx timing");
+        strcpy(reply, FLOOD_PACKET_FILTER_DUPLICATE);
         return;
       }
       if (floodFilterAsciiEqual(tokens[i], "tx=slow")) {
@@ -5150,7 +5156,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
       scope_timing_set = true;
     } else if (floodFilterAsciiStartsWith(tokens[i], "scope=")) {
       if (scope_name[0] != 0) {
-        strcpy(reply, "Err - duplicate scope");
+        strcpy(reply, FLOOD_PACKET_FILTER_DUPLICATE);
         return;
       }
       if (!normalizeFloodFilterScopeName(tokens[i] + strlen("scope="),
@@ -5161,7 +5167,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply) {
     } else if (!hops_set && parseFloodFilterHopSpec(tokens[i], min_hops, max_hops)) {
       hops_set = true;
     } else {
-      strcpy(reply, "Err - use optional hops, path=blacklist, scope=<name>, require=region, tx=slow, and suspend=tempradio");
+      strcpy(reply, FLOOD_PACKET_FILTER_USAGE);
       return;
     }
   }
@@ -5805,7 +5811,7 @@ void MyMesh::setFloodChannelScope(const char* args, char* reply) {
   char region_text[32];
   if (takeFloodModerationToken(cursor, channel_text, sizeof(channel_text)) != 1
       || takeFloodModerationToken(cursor, region_text, sizeof(region_text)) != 1) {
-    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [path=blacklist|path=bucket:1-6] [tx=slow]");
+    strcpy(reply, FLOOD_CHANNEL_SCOPE_USAGE);
     return;
   }
   bool slow_timing = false;
@@ -5847,12 +5853,12 @@ void MyMesh::setFloodChannelScope(const char* args, char* reply) {
       path_selector = (uint8_t)(
           FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE + bucket - 1U);
     } else {
-      strcpy(reply, "Err - scope option must be path=blacklist, path=bucket:1-6, or tx=fast|slow");
+      strcpy(reply, FLOOD_CHANNEL_SCOPE_USAGE);
       return;
     }
   }
   if (option_result < 0) {
-    strcpy(reply, "Err - use: set flood.channel.scope[.n] <match> <region> [path=blacklist|path=bucket:1-6] [tx=slow]");
+    strcpy(reply, FLOOD_CHANNEL_SCOPE_USAGE);
     return;
   }
 

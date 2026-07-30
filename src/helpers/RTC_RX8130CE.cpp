@@ -108,27 +108,27 @@ bool RTC_RX8130CE::setTime(struct tm *t) {
 }
 
 void RTC_RX8130CE::adjust(DateTime dt) {
-   struct tm *atv;
-   time_t utime;
-
-   utime = (time_t)dt.unixtime();
-   atv = gmtime(&utime);
-
-   this->setTime(atv);
+   struct tm atv = {};
+   atv.tm_sec = dt.second();
+   atv.tm_min = dt.minute();
+   atv.tm_hour = dt.hour();
+   atv.tm_wday = dt.dayOfTheWeek();
+   atv.tm_mday = dt.day();
+   atv.tm_mon = dt.month() - 1;
+   atv.tm_year = dt.year() - 1900;
+   this->setTime(&atv);
 }
 
 DateTime RTC_RX8130CE::now() {
    struct tm atv;
    this->getTime(&atv);
 
-   return DateTime((uint32_t)mktime(&atv));
+   return DateTime(atv.tm_year + 1900, atv.tm_mon + 1, atv.tm_mday,
+                   atv.tm_hour, atv.tm_min, atv.tm_sec);
 }
 
 uint32_t RTC_RX8130CE::unixtime() {
-   struct tm atv;
-   this->getTime(&atv);
-
-   return (uint32_t)mktime(&atv);
+   return now().unixtime();
 }
 
 bool RTC_RX8130CE::getTime(struct tm *t) {
