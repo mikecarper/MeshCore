@@ -12,6 +12,12 @@
 #ifndef MESH_ENABLE_RECENT_REPEATERS
   #define MESH_ENABLE_RECENT_REPEATERS  1
 #endif
+
+// Staged only on the stable 1.16.07 bridge chain. Each higher stage enables
+// another independently bootable portion of the large flood-control update.
+#ifndef MOTA_BRIDGE_586_STAGE
+  #define MOTA_BRIDGE_586_STAGE 8
+#endif
 #ifndef MAX_RECENT_REPEATERS
   // Only repeater firmware supplies this RAM-heavy history storage.
   #if !MESH_ENABLE_RECENT_REPEATERS
@@ -605,9 +611,11 @@ protected:
   float getAirtimeBudgetFactor() const override {
     return _prefs.airtime_factor;
   }
+#if MOTA_BRIDGE_586_STAGE >= 1
   bool getCADEnabled() const override {
     return _prefs.cad_enabled;
   }
+#endif
 
   bool allowPacketForward(const mesh::Packet* packet) override;
   const char* getLogDateTime() override;
@@ -617,14 +625,18 @@ protected:
   void logTx(mesh::Packet* pkt, int len) override;
   void logTxFail(mesh::Packet* pkt, int len) override;
   int calcRxDelay(float score, uint32_t air_time) const override;
+#if MOTA_BRIDGE_586_STAGE >= 1
   int calcRxDelayForPacket(const mesh::Packet* packet, float score,
                            uint32_t air_time) override;
   bool shouldBypassRxDelay(const mesh::Packet* packet) override;
   bool evaluateScopeRewriteTiming(const mesh::Packet* packet,
                                   bool& fast_track);
+#endif
 
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
+#if MOTA_BRIDGE_586_STAGE >= 1
   uint32_t getSlowScopeRetransmitDelay(const mesh::Packet* packet);
+#endif
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   bool supportsBasicRetryConfig() const override { return true; }
   bool supportsAdvancedRetryConfig() const override { return true; }

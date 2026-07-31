@@ -883,10 +883,13 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
                          packet->getPathHashCount());
       return false;
     }
+#if MOTA_BRIDGE_586_STAGE >= 2
     if (shouldBlockFloodPacketForward(packet)) return false;
     if (shouldBlockFloodChannelForward(packet)) return false;
 #endif
+#endif
   }
+#if MOTA_BRIDGE_586_STAGE >= 2
   if (packet->isRouteFlood() && recv_pkt_channel_scope_rejected) {
     MESH_DEBUG_PRINTLN(
         "allowPacketForward: flood.channel.scope.require rejected incoming scope");
@@ -898,6 +901,13 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
     return false;
   }
+#else
+  if (packet->isRouteFlood() && packet->getPayloadType() != PAYLOAD_TYPE_TRACE
+      && recv_pkt_region == NULL) {
+    MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
+    return false;
+  }
+#endif
   if (packet->isRouteFlood() && _prefs.loop_detect != LOOP_DETECT_OFF) {
     const uint8_t* maximums;
     if (_prefs.loop_detect == LOOP_DETECT_MINIMAL) {
@@ -1028,6 +1038,7 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
 }
 
+#if MOTA_BRIDGE_586_STAGE >= 1
 bool MyMesh::evaluateScopeRewriteTiming(const mesh::Packet* packet,
                                         bool& fast_track) {
   fast_track = false;
@@ -1093,17 +1104,20 @@ int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
       FloodFilterPolicy::slowScopeRxDelayBase(_prefs.rx_delay_base);
   return (int)((powf(slow_base, 0.85f - score) - 1.0f) * air_time);
 }
+#endif
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
   uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
+#if MOTA_BRIDGE_586_STAGE >= 1
 uint32_t MyMesh::getSlowScopeRetransmitDelay(const mesh::Packet* packet) {
   uint32_t airtime =
       _radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2);
   uint32_t max_delay = FloodFilterPolicy::slowScopeMaxDelay(airtime);
   return getRNG()->nextInt(0, max_delay + 1);
 }
+#endif
 uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
   uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.direct_tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
@@ -2243,6 +2257,7 @@ void MyMesh::expireRecentRepeatersIfDue() {
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
+#if MOTA_BRIDGE_586_STAGE >= 2
   bool scope_changed = false;
   bool fast_track_scope_change = false;
   recv_pkt_filter_scope_set = false;
@@ -2291,6 +2306,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     }
   }
 #endif
+#endif
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
   } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
@@ -2303,6 +2319,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     recv_pkt_region = NULL;
   }
   mesh::DispatcherAction action = Mesh::onRecvPacket(pkt);
+#if MOTA_BRIDGE_586_STAGE >= 2
   if (scope_changed && action != ACTION_RELEASE && action != ACTION_MANUAL_HOLD) {
     if (fast_track_scope_change) {
       // This repeater changed the scope, so forward it at the highest queue
@@ -2314,6 +2331,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
           priority, getSlowScopeRetransmitDelay(pkt));
     }
   }
+#endif
   return action;
 }
 
@@ -2756,6 +2774,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(flood_retry_bridge_states, 0, sizeof(flood_retry_bridge_states));
   memset(flood_retry_bridge_reachability, 0, sizeof(flood_retry_bridge_reachability));
   recv_pkt_region = NULL;
+#if MOTA_BRIDGE_586_STAGE >= 2
   recv_pkt_filter_scope_set = false;
   recv_pkt_channel_scope_bypass = false;
   recv_pkt_channel_scope_rejected = false;
@@ -2766,6 +2785,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
   memset(flood_channel_scope_requirements, 0,
          sizeof(flood_channel_scope_requirements));
+#endif
   memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
   memset(clock_sync_samples, 0, sizeof(clock_sync_samples));
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
@@ -2925,10 +2945,12 @@ void MyMesh::begin(FILESYSTEM *fs) {
   region_map.load(_fs);
 #if !defined(PORTABLE_MQTT_OBSERVER)
   loadFloodChannelBlocks();
+#if MOTA_BRIDGE_586_STAGE >= 2
   loadFloodPacketFilterBlacklist();
   loadFloodPacketFilters();
   loadFloodChannelScopes();
   loadFloodChannelScopeRequirements();
+#endif
   loadFloodGroupModeration();
   loadClockSyncPrefs();
 #endif
@@ -7890,6 +7912,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   }
 
   // handle ACL related commands
+#if MOTA_BRIDGE_586_STAGE >= 3
   if (commandFamilyMatches(command, "get flood.channel.scope.require")) {
     formatFloodChannelScopeRequirements(
         command + strlen("get flood.channel.scope.require"), reply);
@@ -7899,28 +7922,45 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   } else if (commandFamilyMatches(command, "del flood.channel.scope.require")) {
     deleteFloodChannelScopeRequirement(
         command + strlen("del flood.channel.scope.require"), reply);
-  } else if (commandFamilyMatches(command, "get flood.channel.scope")) {
+  } else
+#endif
+#if MOTA_BRIDGE_586_STAGE >= 4
+  if (commandFamilyMatches(command, "get flood.channel.scope")) {
     formatFloodChannelScopes(command + strlen("get flood.channel.scope"), reply);
   } else if (commandFamilyMatches(command, "set flood.channel.scope")) {
     setFloodChannelScope(command + strlen("set flood.channel.scope"), reply);
   } else if (commandFamilyMatches(command, "del flood.channel.scope")) {
     deleteFloodChannelScope(command + strlen("del flood.channel.scope"), reply);
-  } else if (commandFamilyMatches(command, "get flood.filter.blacklist")) {
+  } else
+#endif
+#if MOTA_BRIDGE_586_STAGE >= 5
+  if (commandFamilyMatches(command, "get flood.filter.blacklist")) {
     formatFloodPacketFilterBlacklist(
         command + strlen("get flood.filter.blacklist"), reply);
-  } else if (commandFamilyMatches(command, "set flood.filter.blacklist")) {
-    setFloodPacketFilterBlacklist(
-        command + strlen("set flood.filter.blacklist"), reply);
   } else if (commandFamilyMatches(command, "del flood.filter.blacklist")) {
     deleteFloodPacketFilterBlacklist(
         command + strlen("del flood.filter.blacklist"), reply);
-  } else if (commandFamilyMatches(command, "get flood.filter")) {
+  } else
+#endif
+#if MOTA_BRIDGE_586_STAGE >= 6
+  if (commandFamilyMatches(command, "set flood.filter.blacklist")) {
+    setFloodPacketFilterBlacklist(
+        command + strlen("set flood.filter.blacklist"), reply);
+  } else
+#endif
+#if MOTA_BRIDGE_586_STAGE >= 7
+  if (commandFamilyMatches(command, "get flood.filter")) {
     formatFloodPacketFilters(command + strlen("get flood.filter"), reply);
-  } else if (commandFamilyMatches(command, "set flood.filter")) {
-    setFloodPacketFilter(command + strlen("set flood.filter"), reply);
   } else if (commandFamilyMatches(command, "del flood.filter")) {
     deleteFloodPacketFilter(command + strlen("del flood.filter"), reply);
-  } else if (commandFamilyMatches(command, "get flood.moderation")) {
+  } else
+#endif
+#if MOTA_BRIDGE_586_STAGE >= 8
+  if (commandFamilyMatches(command, "set flood.filter")) {
+    setFloodPacketFilter(command + strlen("set flood.filter"), reply);
+  } else
+#endif
+  if (commandFamilyMatches(command, "get flood.moderation")) {
     formatFloodGroupModeration(command + strlen("get flood.moderation"), reply);
   } else if (commandFamilyMatches(command, "set flood.moderation")) {
     setFloodGroupModeration(command + strlen("set flood.moderation"), reply);
