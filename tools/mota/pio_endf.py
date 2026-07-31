@@ -117,8 +117,10 @@ def _firmware_ident():
     ver_s = (_cppdef("FIRMWARE_VERSION") or "").replace("\\", "").strip().strip('"').strip("'")
     if not ver_s:                                             # not a -D -> read the header MeshCore ships
         ver_s = _version_from_headers()
-    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", ver_s)
-    fw_version = ml.pack_version(f"{m.group(1)}.{m.group(2)}.{m.group(3) or 0}") if m else 0
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?", ver_s)
+    fw_version = ml.pack_version(
+        f"{m.group(1)}.{m.group(2)}.{m.group(3) or 0}.{m.group(4) or 0}"
+    ) if m else 0
     return ml.FwIdent(fw_version=fw_version, target_id=target_id, hw_id=hw_id)
 
 
