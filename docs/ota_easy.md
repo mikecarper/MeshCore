@@ -55,8 +55,10 @@ overlapping window.
 repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
 OTA relay, but it cannot download or install an update for itself. The `-ota-` sibling omits optional external
 I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
-display, buttons, battery monitoring, and integrated GPS. RP2040 and STM32 repeaters do not currently have a
-safe self-apply path, but current repeater firmware can still relay OTA packets opaquely during TempRadio.
+display, buttons, battery monitoring, and integrated GPS. ESP32 `-ota-` siblings also retain the compact
+browser WiFi uploader (`start ota`) and use a 254-entry neighbor table. RP2040 and STM32 repeaters do not
+currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
+during TempRadio.
 
 ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:

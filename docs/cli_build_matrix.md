@@ -33,7 +33,7 @@ administrator.
 |---|---|
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable. |
 | Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds the compiled logging behavior. |
-| LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. A portable OTA artifact can still have the portable restrictions described below. |
+| LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader and use a 254-entry neighbor table. A portable OTA artifact can still have the other portable restrictions described below. |
 | Portable MQTT observer | Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, `neighbors`, `discover.neighbors`, `outpath`, and `altpath`. The large repeater administration tree is omitted to fit the legacy ESP32 application slot. |
 | Portable ESP-NOW bridge | Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials, including `rxdelay`, `txdelay`, `outpath`, and `altpath`. |
 | FULL ESP32 | Uses the matching MQTT target with logging off, removes size-based CLI cuts, and restores the complete command surface supported by that role and hardware. |

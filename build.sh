@@ -3,6 +3,7 @@
 ALL_PIO_ENVS=()
 SUPPORTED_PIO_ENVS=()
 declare -A PIO_ENV_PLATFORM_BY_NAME=()
+declare -A PIO_ENV_BOARD_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
 declare -A PIO_ENV_OTA_BY_NAME=()
 declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
@@ -165,12 +166,13 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_full env_full_wifi; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_full env_full_wifi env_board; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
       SUPPORTED_PIO_ENVS+=("$env_name")
       PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
+      PIO_ENV_BOARD_BY_NAME["$env_name"]=$env_board
       PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
       PIO_ENV_OTA_BY_NAME["$env_name"]=$env_ota
       PIO_ENV_FULL_BUILD_BY_NAME["$env_name"]=$env_full
@@ -193,9 +195,13 @@ for section, options in data:
     admin_enabled = False
     espnow_enabled = "bridge_espnow" in env_name.lower()
     full_wifi_ota = False
+    board = None
     platform = None
     for key, value in options:
         values = value if isinstance(value, list) else str(value).split()
+        if key == "board":
+            board = str(value)
+            continue
         if key == "lib_deps":
             full_wifi_ota = any("AsyncElegantOTA" in str(item) for item in values)
             continue
@@ -218,10 +224,12 @@ for section, options in data:
         full_enabled = platform == "ESP32_PLATFORM" and (
             mqtt_enabled or espnow_enabled or admin_enabled
         )
+        board_value = board or "-"
         print(
             f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}"
             f"\t{1 if ota_enabled and not ota_disabled else 0}"
             f"\t{1 if full_enabled else 0}\t{1 if full_wifi_ota else 0}"
+            f"\t{board_value}"
         )
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
@@ -250,6 +258,7 @@ for section, options in data:
       fi
       SUPPORTED_PIO_ENVS+=("$ota_env")
       PIO_ENV_PLATFORM_BY_NAME["$ota_env"]="${PIO_ENV_PLATFORM_BY_NAME[$env_name]}"
+      PIO_ENV_BOARD_BY_NAME["$ota_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
       PIO_ENV_MQTT_BY_NAME["$ota_env"]=0
       PIO_ENV_OTA_BY_NAME["$ota_env"]=1
       PIO_ENV_FULL_BUILD_BY_NAME["$ota_env"]=0
@@ -1782,6 +1791,26 @@ requires_esp32_portable_app_slot() {
     && ! is_esp32_companion_build "$1"
 }
 
+is_esp32_c6_target() {
+  [[ "${PIO_ENV_BOARD_BY_NAME[$1]:-}" == esp32-c6-* ]]
+}
+
+requires_esp32_portable_size_ceiling() {
+  local env_name=$1
+
+  requires_esp32_portable_app_slot "$env_name" || return 1
+
+  # Arduino 3.x pulls substantially more WiFi runtime into ESP32-C6 images.
+  # These target-specific OTA siblings already used 1920 KiB or larger A/B app
+  # slots before the compact browser uploader was enabled, so retain their
+  # established partition contract and enforce the actual partition below.
+  if is_lora_ota_only_target "$env_name" && is_esp32_c6_target "$env_name"; then
+    return 1
+  fi
+
+  return 0
+}
+
 supports_esp32_full_build() {
   local env_name=$1
 
@@ -1803,10 +1832,11 @@ apply_esp32_lora_ota_size_profile() {
 
   # All non-companion ESP32 artifacts must remain installable into the legacy
   # 0x10000..0x150000 app slot. The WebConfig portal is deliberately omitted.
-  # WiFi/MQTT observers retain their small WiFi updater, while radio-only roles
-  # avoid linking WiFi solely for that updater. Companions retain their target
-  # defaults because they are installed over USB. Keep ENV_INCLUDE_GPS for
-  # boards with onboard GPS; their target sensor managers require that support.
+  # WiFi/MQTT observers and lean LoRa-OTA repeaters retain the compact browser
+  # updater; other radio-only roles avoid linking WiFi solely for that updater.
+  # Companions retain their target defaults because they are installed over USB.
+  # Keep ENV_INCLUDE_GPS for boards with onboard GPS; their target sensor
+  # managers require that support.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWEBCONFIG_DISABLED=1"
   if is_mqtt_bridge_target "$env_name"; then
     # Keep the standard ESP-IDF libc. Use its ABI with the chip-ROM formatter,
@@ -1827,6 +1857,12 @@ apply_esp32_lora_ota_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DPORTABLE_ESP32_ROM_NANO_FORMAT=1"
     fi
     append_platformio_build_unflags "-DDISPLAY_CLASS=SSD1306Display -DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
+  elif is_lora_ota_only_target "$env_name"; then
+    # The no-external-sensors image is also the self-updatable field image. Keep
+    # manual browser OTA available on every ESP32 family through the compact
+    # uploader, and use the full one-byte neighbor-index range.
+    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS}"
   else
     append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -ULIGHTWEIGHT_WIFI_OTA -DDISABLE_WIFI_OTA=1"
@@ -1990,7 +2026,7 @@ collect_esp32_artifacts() {
   )
   local partsig_name=$env_name
 
-  if [ "$ESP32_FULL_BUILD" != "1" ] && requires_esp32_portable_app_slot "$env_name"; then
+  if [ "$ESP32_FULL_BUILD" != "1" ] && requires_esp32_portable_size_ceiling "$env_name"; then
     size_check_args+=("$ESP32_LORA_OTA_APP_LIMIT")
   fi
 

@@ -112,15 +112,19 @@ LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder ove
 their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
 companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
 OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits `-full-ota-` and
-`-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. Every other
-ESP32 artifact, including room,
+`-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. Except for
+the ESP32-C6 case below, every other ESP32 artifact, including room,
 sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
 `0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
-limit and the target's actual app partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also
-exposes an explicit `*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled,
-while that sibling disables optional external environmental-sensor drivers for LoRa distribution. Integrated
-GPS and other board-native telemetry remain enabled. RP2040 and STM32 targets are not offered because those
-platforms do not yet have a safe bootloader/apply path.
+limit and the target's actual app partition. The ESP32-C6 `no_external_sensors` OTA siblings are the narrow
+exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
+established target-specific 1920 KiB or larger A/B app layout and are checked against the actual app
+partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also exposes an explicit
+`*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled, while that sibling
+disables optional external environmental-sensor drivers for LoRa distribution. Integrated GPS and other
+board-native telemetry remain enabled. ESP32 siblings retain the compact browser WiFi updater and use the
+full 254-entry neighbor table. RP2040 and STM32 targets are not offered because those platforms do not yet
+have a safe bootloader/apply path.
 
 Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
 keep MQTT/TLS, onboard GPS, and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, display

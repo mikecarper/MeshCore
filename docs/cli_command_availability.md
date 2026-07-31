@@ -312,7 +312,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Board | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 only | No | No | No | No | No | No | No |
 | Board | [`get pwrmgt.support`; `get pwrmgt.source`; `get pwrmgt.bootreason`; `get pwrmgt.bootmv`](nrf52_power_management.md#cli-commands) | nRF52 only | No | No | No | No | No | No | No |
 | Ethernet | [`eth.status`](cli_commands.md#view-ethernet-connection-status) | Ethernet target | Feature | Feature | No | No | No | No | Feature |
-| Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | Compiled browser uploader | No | No | No | Yes | No | Feature | Feature |
+| Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | Compiled browser uploader | No | No | Yes | Yes | No | Feature | Feature |
 | WebConfig | [`start webconfig [ap]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | No | No | Feature | Feature |
 | WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](../MQTT_IMPLEMENTATION.md#wifi-commands) | MQTT WiFi, or standalone FULL WebConfig; standalone has no `get wifi.pwd` | No | No | No | Yes | No | Yes | Feature |
 | WiFi | [`get/set wifi.cli`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | No | No | Feature | Feature |

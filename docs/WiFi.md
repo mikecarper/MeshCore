@@ -32,7 +32,7 @@ to MQTT unless its target name also contains `mqtt`.
 | Ethernet repeater/room server | No WiFi | No | Uses wired Ethernet for its role-specific network interface |
 | `*_sensor` | Build-dependent on ESP32 | No | A FULL ESP32 sensor can expose the TCP 5001 LoRa-OTA seeder through its browser-OTA setup AP |
 | Terminal-chat or KISS modem | No in current targets | No | Uses LoRa and its role-specific local interface |
-| `*_lora_ota_no_external_sensors` | No | No | Lean repeater image for receiving firmware over LoRa |
+| `*_lora_ota_no_external_sensors` | On demand on ESP32 | No | Lean LoRa-OTA repeater image; ESP32 builds retain the compact `start ota` browser uploader |
 
 Direct on-device WiFi and MQTT are currently ESP32 features. nRF52, STM32, and
 the currently enabled RP2040 targets do not run this MQTT bridge. An nRF52
@@ -337,7 +337,7 @@ role.
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
 | FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. |
 | FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, 254 neighbors, and LoRa OTA. |
-| LoRa-OTA no-external-sensors | A small radio-only repeater image; no WiFi or MQTT. |
+| LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
 
 The interactive Option 1 **FULL everything** choice selects the FULL logging
 profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
