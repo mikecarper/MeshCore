@@ -467,6 +467,16 @@ void NRF52Board::shutdownPeripherals() {
   // Power off LoRa
   radio_driver.powerOff();
 
+  // RadioLib's IRQ setup can leave DIO1 as a GPIO wake source. Once the radio
+  // is asleep that line may float or remain asserted, immediately waking an
+  // nRF52 that is trying to enter SYSTEMOFF. Release the interrupt channel and
+  // explicitly disable pin sensing; board-specific code can then arm only its
+  // intended wake source (for example, the SenseCAP user button or LPCOMP).
+  #ifdef P_LORA_DIO_1
+    detachInterrupt(P_LORA_DIO_1);
+    pinMode(P_LORA_DIO_1, INPUT);
+  #endif
+
   // Keep LoRa inactive during deepsleep
   #ifdef P_LORA_NSS
     digitalWrite(P_LORA_NSS, HIGH);

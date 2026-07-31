@@ -16,6 +16,9 @@ The nRF52 Power Management module provides battery protection features to preven
 - Configures the nRF52's Low Power Comparator (LPCOMP) before entering SYSTEMOFF
 - Enables USB VBUS detection so external power can wake the device
 - Device automatically wakes when battery voltage rises above recovery threshold or when VBUS is detected
+- Uses no LPCOMP hysteresis; on divided battery inputs the additional 50 mV
+  comparator hysteresis can move the effective battery wake point by several
+  hundred millivolts and strand an otherwise charged node
 
 ### Early Boot Register Capture
 - Captures RESETREAS (reset reason) and GPREGRET2 (shutdown reason) before SystemInit() clears them
@@ -34,31 +37,32 @@ Shutdown reason codes (stored in GPREGRET2):
 
 ## Supported Boards
 
-
-| Board                                     | Implemented | LPCOMP wake | VBUS wake |
-|-------------------------------------------|-------------|-------------|-----------|
-| Seeed Studio XIAO nRF52840 (`xiao_nrf52`) | Yes         | Yes         | Yes       |
-| RAK4631 (`rak4631`)                       | Yes         | Yes         | Yes       |
-| Heltec T114 (`heltec_t114`)               | Yes         | Yes         | Yes       |
-| GAT562 Mesh Watch13                       | Yes         | Yes         | Yes       |
-| Promicro nRF52840                         | No          | No          | No        |
-| RAK WisMesh Tag                           | No          | No          | No        |
-| Heltec Mesh Solar                         | No          | No          | No        |
-| LilyGo T-Echo / T-Echo Lite               | No          | No          | No        |
-| SenseCAP Solar                            | Yes         | Yes         | Yes       |
-| WIO Tracker L1 / L1 E-Ink                 | No          | No          | No        |
-| WIO WM1110                                | No          | No          | No        |
-| Mesh Pocket                               | No          | No          | No        |
-| Nano G2 Ultra                             | No          | No          | No        |
-| ThinkNode M1/M3/M6                        | No          | No          | No        |
-| T1000-E                                   | No          | No          | No        |
-| Ikoka Nano/Stick/Handheld (nRF)           | No          | No          | No        |
-| Keepteen LT1                              | No          | No          | No        |
-| Minewsemi ME25LS01                        | No          | No          | No        |
+| Board family                                      | Implemented | LPCOMP wake | VBUS wake |
+|---------------------------------------------------|-------------|-------------|-----------|
+| Seeed Studio XIAO nRF52840 (`xiao_nrf52`)         | Yes         | Yes         | Yes       |
+| SenseCAP Solar                                    | Yes         | Yes         | Yes       |
+| RAK4631 / RAK3401                                 | Yes         | Yes         | Yes       |
+| GAT562 30S / EVB Pro / Tracker Pro / Watch13      | Yes         | Yes         | Yes       |
+| Heltec T096 / T114 / T1 / Tower V2                | Yes         | Yes         | Yes       |
+| Muzi Works R1 Neo                                 | Partial     | Inactive    | Inactive  |
+| Promicro nRF52840                                 | No          | No          | No        |
+| RAK WisMesh Tag                                   | No          | No          | No        |
+| Heltec Mesh Solar                                 | No          | No          | No        |
+| LilyGo T-Echo / T-Echo Lite / T-Impulse Plus      | No          | No          | No        |
+| WIO Tracker L1 / L1 E-Ink / WM1110                | No          | No          | No        |
+| Mesh Pocket / Meshtiny / Nano G2 Ultra            | No          | No          | No        |
+| ThinkNode M1 / M3 / M6                            | No          | No          | No        |
+| T1000-E                                           | No          | No          | No        |
+| Ikoka Nano / Stick / Handheld (nRF)               | No          | No          | No        |
+| Keepteen LT1 / Minewsemi ME25LS01                 | No          | No          | No        |
 
 Notes:
 - "Implemented" reflects Phase 1 (boot lockout + shutdown reason capture).
-- User power-off on Heltec T114 does not enable LPCOMP wake.
+- R1 Neo has the integration compiled, but its board configuration deliberately
+  sets `PWRMGT_VOLTAGE_BOOTLOCK` to `0`; automatic protective shutdown and its
+  voltage/VBUS recovery wake are therefore inactive.
+- User power-off does not enable LPCOMP wake; voltage recovery is armed only
+  for boot protection and automated low-voltage shutdown.
 - VBUS detection is used to skip boot lockout on external power, and VBUS wake is configured alongside LPCOMP when supported hardware exposes VBUS to the nRF52.
 
 ## Technical Details
@@ -138,7 +142,7 @@ The LPCOMP (Low Power Comparator) is configured to:
 - Monitor the specified AIN channel (0-7 corresponding to P0.02-P0.05, P0.28-P0.31)
 - Compare against VDD fraction reference (REFSEL: 0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
 - Detect UP events (voltage rising above threshold)
-- Use 50mV hysteresis for noise immunity
+- Use no hysteresis so the configured recovery threshold is not widened by the battery divider
 - Wake the device from SYSTEMOFF when triggered
 
 VBUS wake is enabled via the POWER peripheral USBDETECTED event whenever `configureVoltageWake()` is used. This requires USB VBUS to be routed to the nRF52 (typical on nRF52840 boards with native USB).
