@@ -1091,7 +1091,7 @@ int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
 
   float slow_base =
       FloodFilterPolicy::slowScopeRxDelayBase(_prefs.rx_delay_base);
-  return (int)((pow(slow_base, 0.85f - score) - 1.0f) * air_time);
+  return (int)((powf(slow_base, 0.85f - score) - 1.0f) * air_time);
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
