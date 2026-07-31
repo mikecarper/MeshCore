@@ -38,21 +38,25 @@ location and change it when necessary.
 
 Both paths require:
 
-- An OTA-enabled build whose artifact filename contains `-ota-` on the destination, plus an OTA-enabled
-  repeater on every intermediate hop. The `-ota-` stamp confirms that LoRa OTA is compiled into the build.
-  Portable logging, portable MQTT, and untagged builds cannot perform LoRa OTA; FULL logging OTA builds can.
+- An OTA-enabled build whose artifact filename contains `-ota-` on the destination. The `-ota-` stamp confirms
+  that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do **not** need an
+  OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
+  Portable logging, portable MQTT, and untagged builds cannot install LoRa OTA; FULL logging OTA builds can.
 - An OTA-enabled MeshCore source connected to the computer by USB serial, or an ESP32 WiFi companion/FULL
   ESP32 source connected over WiFi as described below.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
 
-LoRa OTA packets are generated, received, and relayed only while `tempradio` is active. If any required
-window closes, the transfer stops making progress and can resume during a later overlapping window.
+LoRa OTA packets are generated, consumed, and relayed only while `tempradio` is active. Intermediate repeaters
+apply their normal forwarding filters, duplicate checks, and flood limits; they do not interpret the OTA
+payload. If any required window closes, the transfer stops making progress and can resume during a later
+overlapping window.
 
 `build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for every standalone ESP32 and nRF52
-repeater target. The normal repeater build keeps its external-sensor support. The `-ota-` sibling omits
-optional external I2C environmental sensors to preserve the update workspace, while retaining board-native
-features such as its display, buttons, battery monitoring, and integrated GPS. RP2040 and STM32 repeaters do
-not currently have a safe self-apply path and therefore cannot install LoRa firmware updates.
+repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
+OTA relay, but it cannot download or install an update for itself. The `-ota-` sibling omits optional external
+I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
+display, buttons, battery monitoring, and integrated GPS. RP2040 and STM32 repeaters do not currently have a
+safe self-apply path, but current repeater firmware can still relay OTA packets opaquely during TempRadio.
 
 ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
@@ -289,7 +293,8 @@ ota status
 - **Nothing appears in `ota ls`:** confirm that `motatool serve` is still running and every required node
   has an active `tempradio 909.950,250,5,5,120` window.
 - **The CLI says LoRa OTA is not included:** that firmware does not contain the LoRa OTA feature.
-  `tempradio` cannot enable it; install a supported `-ota-` repeater build over WiFi or USB first.
+  If it is the source or destination, install a supported `-ota-` build over WiFi or USB first. An intermediate
+  repeater does not need the OTA CLI and can relay opaquely while its matching `tempradio` window is active.
 - **The update is marked `[other hw]`:** it is for a different board or firmware role. Do not install it.
 - **An nRF52 node does not list a full update:** this is intentional. nRF52 accepts only an in-place delta.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader

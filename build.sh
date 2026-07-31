@@ -1745,9 +1745,9 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # OTA is deliberately opt-in. The standard repeater remains a normal,
-  # sensor-enabled build; its explicit _lora_ota_no_external_sensors sibling
-  # is the constrained image distributed over LoRa.
+  # The OTA manager, staging store, and self-install path are deliberately opt-in. The standard repeater
+  # remains a normal, sensor-enabled build, but Mesh transport still relays OTA floods opaquely during
+  # TempRadio. Its explicit _lora_ota_no_external_sensors sibling is the constrained self-updatable image.
   if [[ "$env_name_lc" != *lora_ota_no_external_sensors ]]; then
     return 1
   fi

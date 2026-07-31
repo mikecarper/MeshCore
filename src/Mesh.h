@@ -2,17 +2,16 @@
 
 #include <Dispatcher.h>
 
-#if defined(ENABLE_OTA)
-  // OTA-over-LoRa: lowest TX priority (selected only after all real traffic). The hop limit is runtime-
-  // tunable (OtaManager::max_hops(), `ota config hops`); the default lives in OtaManager.h.
-  #ifndef OTA_TX_PRIORITY
-  #define OTA_TX_PRIORITY 250
-  #endif
-  // An OTA flood is relayed only while this many pool slots stay free, so heavy OTA (best-effort, low-
-  // priority) can never monopolise the shared packet pool and starve real traffic.
-  #ifndef OTA_FWD_MIN_FREE
-  #define OTA_FWD_MIN_FREE 4
-  #endif
+// OTA-over-LoRa transport is understood by every Mesh role even when the OTA manager/installer is not
+// compiled in. Repeaters can therefore relay PAYLOAD_TYPE_OTA opaquely while they are on TempRadio.
+// OTA traffic always uses the lowest TX priority (selected only after all real traffic).
+#ifndef OTA_TX_PRIORITY
+#define OTA_TX_PRIORITY 250
+#endif
+// Keep this many pool slots free while relaying OTA, so best-effort firmware traffic cannot monopolise the
+// shared packet pool and starve real traffic.
+#ifndef OTA_FWD_MIN_FREE
+#define OTA_FWD_MIN_FREE 4
 #endif
 
 namespace mesh {

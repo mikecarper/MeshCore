@@ -51,11 +51,27 @@ public:
   void clear(const mesh::Packet*) override { }
 };
 
+class ForwardingTestTables : public mesh::MeshTables {
+public:
+  bool seen = false;
+  int mark_seen_calls = 0;
+
+  bool wasSeen(const mesh::Packet*) override { return seen; }
+  void markSeen(const mesh::Packet*) override {
+    seen = true;
+    mark_seen_calls++;
+  }
+  void markSent(const mesh::Packet*) override { }
+  void clear(const mesh::Packet*) override { }
+};
+
 class TraceTestMesh : public mesh::Mesh {
 public:
   bool forwardFloods = false;
   bool floodRetriesAllowed = true;
   bool groupPacketObserved = false;
+  bool tempRadioActive = false;
+  bool rejectFloods = false;
 
   TraceTestMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng,
                 mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
@@ -82,8 +98,8 @@ public:
     onSendComplete(packet);
   }
 
-  void receivePacket(mesh::Packet* packet) {
-    onRecvPacket(packet);
+  mesh::DispatcherAction receivePacket(mesh::Packet* packet) {
+    return onRecvPacket(packet);
   }
 
   mesh::DispatcherAction routePacket(mesh::Packet* packet) {
@@ -94,6 +110,18 @@ public:
     return forwardFloods;
   }
 
+  bool filterRecvFloodPacket(mesh::Packet*) override {
+    return rejectFloods;
+  }
+
+  bool isTempRadioActive() const override {
+    return tempRadioActive;
+  }
+
+  bool canTransmit(const mesh::Packet* packet) const {
+    return allowPacketTransmit(packet);
+  }
+
   bool allowFloodRetry(const mesh::Packet*) const override {
     return floodRetriesAllowed;
   }
@@ -102,6 +130,111 @@ public:
     groupPacketObserved = true;
   }
 };
+
+static mesh::Packet makeFloodPacket(uint8_t payload_type) {
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_FLOOD | (payload_type << PH_TYPE_SHIFT);
+  packet.setPathHashSizeAndCount(1, 0);
+  packet.payload_len = 1;
+  packet.payload[0] = 0x42;
+  return packet;
+}
+
+TEST(RepeaterTransport, UnknownFloodPayloadIsRelayedWhenForwardingAllowsIt) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.forwardFloods = true;
+
+  mesh::Packet packet = makeFloodPacket(0x0D);  // deliberately unassigned payload type
+  mesh::DispatcherAction action = node.receivePacket(&packet);
+
+  EXPECT_NE(ACTION_RELEASE, action);
+  EXPECT_EQ(1, packet.getPathHashCount());
+  EXPECT_EQ(1, tables.mark_seen_calls);
+}
+
+TEST(RepeaterTransport, UnknownFloodPayloadHonorsReceiveAndForwardingRejections) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+
+  mesh::Packet filtered = makeFloodPacket(0x0D);
+  node.forwardFloods = true;
+  node.rejectFloods = true;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&filtered));
+  EXPECT_EQ(0, tables.mark_seen_calls);
+
+  mesh::Packet forwarding_disabled = makeFloodPacket(0x0D);
+  node.rejectFloods = false;
+  node.forwardFloods = false;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&forwarding_disabled));
+  EXPECT_EQ(1, tables.mark_seen_calls);
+}
+
+TEST(RepeaterTransport, OtaFloodRelaysWithoutOtaManagerOnlyDuringTempRadio) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.forwardFloods = true;
+
+  mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  EXPECT_FALSE(node.canTransmit(&packet));
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+  EXPECT_EQ(0, tables.mark_seen_calls);
+  EXPECT_EQ(0, packet.getPathHashCount());
+
+  node.tempRadioActive = true;
+  EXPECT_TRUE(node.canTransmit(&packet));
+  mesh::DispatcherAction action = node.receivePacket(&packet);
+  EXPECT_NE(ACTION_RELEASE, action);
+  EXPECT_EQ(OTA_TX_PRIORITY, (action >> 24) - 1);
+  EXPECT_EQ(1, tables.mark_seen_calls);
+  EXPECT_EQ(1, packet.getPathHashCount());
+
+  node.tempRadioActive = false;
+  EXPECT_FALSE(node.canTransmit(&packet));  // queued-near-expiry packets cannot leak onto the normal channel
+}
+
+TEST(RepeaterTransport, OpaqueKnownFloodPayloadsAreRelayed) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  StaticPoolPacketManager manager(12);
+
+  {
+    ForwardingTestTables tables;
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+    node.forwardFloods = true;
+    mesh::Packet custom = makeFloodPacket(PAYLOAD_TYPE_RAW_CUSTOM);
+    EXPECT_NE(ACTION_RELEASE, node.receivePacket(&custom));
+    EXPECT_EQ(1, custom.getPathHashCount());
+  }
+
+  {
+    ForwardingTestTables tables;
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+    node.forwardFloods = true;
+    mesh::Packet multipart = makeFloodPacket(PAYLOAD_TYPE_MULTIPART);
+    multipart.payload_len = 3;
+    multipart.payload[0] = PAYLOAD_TYPE_TXT_MSG;
+    EXPECT_NE(ACTION_RELEASE, node.receivePacket(&multipart));
+    EXPECT_EQ(1, multipart.getPathHashCount());
+  }
+}
 
 TEST(RTCClock, UniqueSequenceCanFollowAnIntentionalBackwardCorrection) {
   TraceTestRTC rtc;

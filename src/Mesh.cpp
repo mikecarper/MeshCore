@@ -350,12 +350,12 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 }
 
 bool Mesh::allowPacketTransmit(const Packet* packet) const {
-#if defined(ENABLE_OTA)
+  // This is an egress guard, separate from the receive-side TempRadio check below. A relay can queue an OTA
+  // packet just before its temporary window closes; never let that delayed packet leak onto the normal channel.
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
       && !isTempRadioActive()) {
     return false;
   }
-#endif
   if (packet != NULL && _active_flood_retry_count != 0) {
     for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
       if (!_flood_retries[i].active || !_flood_retries[i].queued
@@ -845,63 +845,69 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       break;
     }
     case PAYLOAD_TYPE_RAW_CUSTOM: {
-      if (pkt->isRouteDirect() && !_tables->wasSeen(pkt)) {
+      if (!_tables->wasSeen(pkt)) {
         _tables->markSeen(pkt);
-        onRawDataRecv(pkt);
-        //action = routeRecvPacket(pkt);    don't flood route these (yet)
+        if (pkt->isRouteDirect()) onRawDataRecv(pkt);
+        // Repeaters transport opaque custom floods without needing to understand their application payload.
+        action = routeRecvPacket(pkt);
       }
       break;
     }
     case PAYLOAD_TYPE_MULTIPART:
-      if (pkt->payload_len > 2) {
+      if (pkt->payload_len > 2 && !_tables->wasSeen(pkt)) {
+        _tables->markSeen(pkt);
         uint8_t remaining = pkt->payload[0] >> 4;  // num of packets in this multipart sequence still to be sent
         uint8_t type = pkt->payload[0] & 0x0F;
 
         if (type == PAYLOAD_TYPE_ACK && pkt->payload_len >= 5) {    // a multipart ACK
-          if (!_tables->wasSeen(pkt)) {
-            _tables->markSeen(pkt);
-            Packet tmp;
-            tmp.header = pkt->header;
-            tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
-            tmp.payload_len = pkt->payload_len - 1;
-            memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
-            uint32_t ack_crc;
-            memcpy(&ack_crc, tmp.payload, 4);
+          Packet tmp;
+          tmp.header = pkt->header;
+          tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
+          tmp.payload_len = pkt->payload_len - 1;
+          memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
+          uint32_t ack_crc;
+          memcpy(&ack_crc, tmp.payload, 4);
 
-            onAckRecv(&tmp, ack_crc);
-            //action = routeRecvPacket(&tmp);  // NOTE: currently not needed, as multipart ACKs not sent Flood
-          }
+          onAckRecv(&tmp, ack_crc);
         } else {
           // FUTURE: other multipart types??
         }
+        // Multipart contents are application semantics. A repeater still transports a valid framed flood.
+        action = routeRecvPacket(pkt);
       }
       break;
 
-#if defined(ENABLE_OTA)
     case PAYLOAD_TYPE_OTA: {
       // OTA is invisible outside an actually-running temporary-radio window. In particular, do not add it
       // to the seen table: a copy heard on the normal channel must not suppress one received after temp radio starts.
       if (!isTempRadioActive()) break;
       uint8_t n = pkt->getPathHashCount();   // hops travelled to reach us (flood path-hash count)
+#if defined(ENABLE_OTA)
       // Accept-gate (duty-cycle horizon): ignore OTA from further than our hop limit - neither process nor
       // relay it. 0 = only directly-received OTA. Runtime-tunable via `ota config hops`.
       if (n > getOtaHopLimit()) break;
+#endif
       // ALWAYS process every accepted copy: OTA handlers are idempotent, and "eventually reliable" retries
       // deliberately re-send IDENTICAL requests - if we gated processing on hasSeen(), the dedup would
       // suppress those retries and the transfer could never recover from a lost reply. hasSeen() is used
       // ONLY to avoid re-flooding the same packet more than once.
       bool seen = _tables->wasSeen(pkt);
       if (!seen) _tables->markSeen(pkt);
+#if defined(ENABLE_OTA)
       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
       ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);  // central OTA receive (beacon/query/
                                                                          // have/manifest/data/proof; all roles)
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook
+#endif
       // Re-flood at the LOWEST priority and only while still under the hop limit, so OTA never competes with
       // mesh traffic. The free-pool guard keeps heavy OTA from monopolising the shared packet pool - dropping
-      // a relay is safe (OTA is best-effort; the source retries).
+      // a relay is safe (OTA is best-effort; the source retries). A relay-only build has no OTA-specific hop
+      // preference, so its ordinary repeater flood limits in allowPacketForward() remain authoritative.
       if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
+#if defined(ENABLE_OTA)
           && n < getOtaHopLimit()
+#endif
           && (n + 1) * pkt->getPathHashSize() <= MAX_PATH_SIZE
           && _mgr->getFreeCount() > OTA_FWD_MIN_FREE
           && allowPacketForward(pkt)) {
@@ -911,10 +917,17 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
       break;
     }
-#endif
     default:
-      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): unknown payload type, header: %d", getLogDateTime(), (int) pkt->header);
-      // Don't flood route unknown packet types!   action = routeRecvPacket(pkt);
+      // Payload interpretation and mesh transport are separate concerns. A repeater must carry a future or
+      // application-defined flood type even when this firmware has no local handler for it. Framing validation,
+      // filterRecvFloodPacket(), duplicate detection, route limits, and allowPacketForward() remain the rejection
+      // gates. Unknown direct packets have no generic destination semantics and are still released.
+      if (pkt->isRouteFlood() && !_tables->wasSeen(pkt)) {
+        _tables->markSeen(pkt);
+        action = routeRecvPacket(pkt);
+      } else {
+        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): unhandled payload type, header: %d", getLogDateTime(), (int) pkt->header);
+      }
       break;
   }
   return action;
