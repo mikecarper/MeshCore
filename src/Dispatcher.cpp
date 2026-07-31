@@ -79,7 +79,7 @@ void Dispatcher::restoreOutboundTxOverrides() {
 }
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
-  return (int) ((pow(10, 0.85f - score) - 1.0) * air_time);
+  return (int) ((powf(10.0f, 0.85f - score) - 1.0f) * air_time);
 }
 
 uint32_t Dispatcher::getCADFailRetryDelay() const {

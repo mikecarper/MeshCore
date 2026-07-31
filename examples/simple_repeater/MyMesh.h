@@ -667,7 +667,9 @@ public:
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
 
-  void setLoggingOn(bool enable) override { _logging = enable; }
+  // Stable MOTA bridge builds keep repeater and LoRa OTA behavior but omit
+  // runtime packet-file logging to preserve in-place apply headroom.
+  void setLoggingOn(bool enable) override { (void)enable; }
 
   void eraseLogFile() override {
     _fs->remove(PACKET_LOG_FILE);

@@ -954,7 +954,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
   }
 #endif
 
-  if (_logging) {
+  if (false) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
@@ -984,7 +984,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
   }
 #endif
 
-  if (_logging) {
+  if (false) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
@@ -1003,7 +1003,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 }
 
 void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
-  if (_logging) {
+  if (false) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
@@ -1016,7 +1016,7 @@ void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
 
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   if (_prefs.rx_delay_base <= 0.0f) return 0;
-  return (int)((pow(_prefs.rx_delay_base, 0.85f - score) - 1.0) * air_time);
+  return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
@@ -1300,7 +1300,7 @@ void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, u
                      (uint32_t)log_cr,
                      (uint32_t)log_preamble_len);
 #endif
-  if (_logging) {
+  if (false) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
@@ -1880,7 +1880,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
   if (packet == NULL) {
     MESH_DEBUG_PRINTLN("flood retry %s (retry=%u, elapsed_ms=%lu, packet=released)",
                        event, (unsigned int)retry_attempt, (unsigned long)delay_millis);
-    if (_logging) {
+    if (false) {
       File f = openAppend(PACKET_LOG_FILE);
       if (f) {
         f.print(getLogDateTime());
@@ -1928,7 +1928,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
                      (uint32_t)log_cr,
                      (uint32_t)log_preamble_len);
 
-  if (_logging) {
+  if (false) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
       f.print(getLogDateTime());
