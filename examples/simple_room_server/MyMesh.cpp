@@ -607,7 +607,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
           if (is_retry) {
             temp[5] = 0; // no reply
           } else {
-            handleCommand(sender_timestamp, (char *)&data[5], (char *)&temp[5]);
+            handleCommand(sender_timestamp, (char *)&data[5], (char *)&temp[5],
+                          i, packet->getPathHashSize());
             temp[4] = (TXT_TYPE_CLI_DATA << 2); // attempt and flags,  (NOTE: legacy was: TXT_TYPE_PLAIN)
           }
           send_ack = false;
@@ -1598,8 +1599,70 @@ void MyMesh::formatPacketStatsReply(char *reply) {
                                        getNumRecvFlood(), getNumRecvDirect());
 }
 
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
+                                      uint32_t request_id) {
+  int client_index;
+  uint8_t path_hash_size;
+  uint8_t client_tag[UserGpioReplyTracker::CLIENT_TAG_SIZE];
+  if (!_gpio_reply_tracker.takeRoute(pin, request_id, client_index,
+                                     path_hash_size, client_tag)) {
+    MESH_DEBUG_PRINTLN("GPIO %u timer complete: %s", pin,
+                       UserGpio::stateName((UserGpio::State)state));
+    return;
+  }
+  ClientInfo* client = NULL;
+  if (client_index >= 0 && client_index < acl.getNumClients()) {
+    ClientInfo* indexed = acl.getClientByIdx(client_index);
+    if (UserGpioReplyTracker::matchesClient(indexed->id.pub_key, client_tag)) {
+      client = indexed;
+    }
+  }
+  if (client == NULL) {
+    for (int i = 0; i < acl.getNumClients(); i++) {
+      ClientInfo* candidate = acl.getClientByIdx(i);
+      if (UserGpioReplyTracker::matchesClient(candidate->id.pub_key, client_tag)) {
+        client = candidate;
+        break;
+      }
+    }
+  }
+  if (client == NULL) return;
 
-void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply) {
+  uint8_t data[72];
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  if (timestamp == request_id) timestamp++;
+  memcpy(data, &timestamp, 4);
+  data[4] = (TXT_TYPE_CLI_DATA << 2);
+  const int text_len = snprintf((char*)&data[5], sizeof(data) - 5,
+                                "> GPIO %u timer complete: %s", pin,
+                                UserGpio::stateName((UserGpio::State)state));
+  if (text_len <= 0) return;
+
+  mesh::Packet* packet = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id,
+                                        client->shared_secret, data,
+                                        5 + (size_t)text_len);
+  if (!packet) return;
+  if (client->out_path_len == OUT_PATH_UNKNOWN) {
+    sendFlood(packet, SERVER_RESPONSE_DELAY, path_hash_size);
+  } else {
+    sendDirect(packet, client->out_path, client->out_path_len,
+               SERVER_RESPONSE_DELAY);
+  }
+}
+#endif
+
+
+void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply,
+                           int gpio_client_index,
+                           uint8_t gpio_path_hash_size) {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  const uint8_t* gpio_client_key = gpio_client_index >= 0 &&
+      gpio_client_index < acl.getNumClients()
+      ? acl.getClientByIdx(gpio_client_index)->id.pub_key : NULL;
+  _gpio_reply_tracker.beginCommand(gpio_client_index, gpio_path_hash_size,
+                                   gpio_client_key);
+#endif
   if (region_load_active) {
     if (StrHelper::isBlank(command)) {  // empty/blank line, signal to terminate 'load' operation
       region_load_active = false;

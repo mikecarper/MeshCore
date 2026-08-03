@@ -2588,6 +2588,44 @@ void MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
                                    path_hash_size, fallback_scope);
 }
 
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
+                                      uint32_t request_id) {
+  int client_index;
+  uint8_t path_hash_size;
+  uint8_t client_tag[UserGpioReplyTracker::CLIENT_TAG_SIZE];
+  if (!_gpio_reply_tracker.takeRoute(pin, request_id, client_index,
+                                     path_hash_size, client_tag)) {
+    MESH_DEBUG_PRINTLN("GPIO %u timer complete: %s", pin,
+                       UserGpio::stateName((UserGpio::State)state));
+    return;
+  }
+  ClientInfo* client = NULL;
+  if (client_index >= 0 && client_index < acl.getNumClients()) {
+    ClientInfo* indexed = acl.getClientByIdx(client_index);
+    if (UserGpioReplyTracker::matchesClient(indexed->id.pub_key, client_tag)) {
+      client = indexed;
+    }
+  }
+  if (client == NULL) {
+    for (int i = 0; i < acl.getNumClients(); i++) {
+      ClientInfo* candidate = acl.getClientByIdx(i);
+      if (UserGpioReplyTracker::matchesClient(candidate->id.pub_key, client_tag)) {
+        client = candidate;
+        break;
+      }
+    }
+  }
+  if (client == NULL) return;
+
+  char reply[64];
+  snprintf(reply, sizeof(reply), "> GPIO %u timer complete: %s", pin,
+           UserGpio::stateName((UserGpio::State)state));
+  sendRemoteCliReply(client, client->shared_secret, path_hash_size, request_id,
+                     reply, NULL);
+}
+#endif
+
 void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   if (!deferred_cli_command.pending) return;
 
@@ -2604,7 +2642,8 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   char* reply = (char*)&reply_data[5];
   reply[0] = 0;
   handleCommand(deferred_cli_command.sender_timestamp, client,
-                deferred_cli_command.command, reply);
+                deferred_cli_command.command, reply, client_index,
+                deferred_cli_command.path_hash_size);
   sendRemoteCliReply(client, deferred_cli_command.secret,
                      deferred_cli_command.path_hash_size,
                      deferred_cli_command.sender_timestamp, reply,
@@ -8006,7 +8045,13 @@ static bool isFilterMgrAllowed(const char* cmd) {
       || commandFamilyMatches(cmd, "set repeat");
 }
 
-void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command, char *reply) {
+void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command,
+                           char *reply, int gpio_client_index,
+                           uint8_t gpio_path_hash_size) {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  _gpio_reply_tracker.beginCommand(gpio_client_index, gpio_path_hash_size,
+                                   sender == NULL ? NULL : sender->id.pub_key);
+#endif
   char* reply_start = reply;
   int recent_page = 1;
 

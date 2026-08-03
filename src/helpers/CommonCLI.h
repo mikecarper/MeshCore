@@ -261,6 +261,14 @@ public:
   // derive time from untrusted radio traffic can use this to prefer the manual
   // value for the remainder of the boot.
   virtual void onManualClockSet() { }
+  // GPIO timers use the active authenticated CLI client as a deduplication
+  // source and to route the asynchronous final-transition report. Local CLI
+  // commands keep the default source of zero and do not get a network report.
+  virtual uint32_t getUserGpioRequestSource() const { return 0; }
+  virtual void onUserGpioTimerScheduled(uint8_t /*pin*/, uint32_t /*request_id*/) { }
+  virtual void onUserGpioTimerCancelled(uint8_t /*pin*/) { }
+  virtual void onUserGpioTimerCompleted(uint8_t /*pin*/, uint8_t /*state*/,
+                                        uint32_t /*request_id*/) { }
   virtual const char* getFirmwareVer() = 0;
   virtual const char* getBuildDate() = 0;
   virtual const char* getRole() = 0;

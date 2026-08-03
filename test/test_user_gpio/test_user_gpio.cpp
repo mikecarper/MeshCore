@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <helpers/UserGpio.h>
+#include <helpers/UserGpioReplyTracker.h>
 
 #include <climits>
 #include <cstring>
@@ -54,6 +55,25 @@ TEST_F(UserGpioTest, ReportsWhenNoPinsAreAvailable) {
   EXPECT_STREQ("> available GPIOs: none", reply);
 }
 
+TEST_F(UserGpioTest, StateAliasesListOnlyPinsNotInResetState) {
+  UserGpio gpio(board);
+
+  gpio.handleGet(" state", reply, sizeof(reply));
+  EXPECT_STREQ("> active GPIOs: none", reply);
+
+  gpio.handleSet(" 4 off", reply, sizeof(reply));
+  gpio.handleSet(" 16 on 5 reset", reply, sizeof(reply));
+  gpio.handleGet(" states", reply, sizeof(reply));
+  EXPECT_STREQ("> active GPIOs: 4=off,16=on(5s->reset)", reply);
+
+  gpio.handleSet(" 4 reset", reply, sizeof(reply));
+  gpio.handleGet(" status", reply, sizeof(reply));
+  EXPECT_STREQ("> active GPIOs: 16=on(5s->reset)", reply);
+
+  gpio.handleGet(" status 16", reply, sizeof(reply));
+  EXPECT_STREQ("> GPIO 16 on, 5s -> reset", reply);
+}
+
 TEST_F(UserGpioTest, SetsAndGetsOnOffAndReset) {
   UserGpio gpio(board);
 
@@ -96,6 +116,62 @@ TEST_F(UserGpioTest, AppliesTimedTransitionWithoutBlocking) {
   EXPECT_FALSE(gpio.hasActiveTimer());
 }
 
+TEST_F(UserGpioTest, BareDurationsAreSeconds) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on 5 off", reply, sizeof(reply));
+  EXPECT_STREQ("OK - GPIO 16 on for 5s, then off", reply);
+
+  g_mock_millis = 4999;
+  gpio.loop();
+  EXPECT_EQ(HIGH, g_mock_pin_levels[16]);
+  g_mock_millis = 5000;
+  gpio.loop();
+  EXPECT_EQ(LOW, g_mock_pin_levels[16]);
+}
+
+TEST_F(UserGpioTest, SupportsMillisecondDurations) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on 5ms off", reply, sizeof(reply));
+  EXPECT_STREQ("OK - GPIO 16 on for 5ms, then off", reply);
+
+  g_mock_millis = 1;
+  gpio.handleGet(" 16", reply, sizeof(reply));
+  EXPECT_STREQ("> GPIO 16 on, 4ms -> off", reply);
+
+  g_mock_millis = 4;
+  gpio.loop();
+  EXPECT_EQ(HIGH, g_mock_pin_levels[16]);
+  g_mock_millis = 5;
+  gpio.loop();
+  EXPECT_EQ(LOW, g_mock_pin_levels[16]);
+}
+
+TEST_F(UserGpioTest, AcceptsUpToTwentyFourHours) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on 86400 off", reply, sizeof(reply));
+  EXPECT_STREQ("OK - GPIO 16 on for 86400s, then off", reply);
+  EXPECT_TRUE(gpio.hasActiveTimer());
+
+  gpio.handleSet(" 16 on 86401 off", reply, sizeof(reply));
+  EXPECT_STREQ("Error: timer must be 1ms-24h", reply);
+
+  gpio.handleSet(" 16 on 86400001ms off", reply, sizeof(reply));
+  EXPECT_STREQ("Error: timer must be 1ms-24h", reply);
+}
+
+TEST_F(UserGpioTest, OnAndOffWithoutDurationRemainUntilChanged) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on", reply, sizeof(reply));
+  g_mock_millis = 24UL * 60UL * 60UL * 1000UL;
+  gpio.loop();
+  EXPECT_EQ(HIGH, g_mock_pin_levels[16]);
+  EXPECT_FALSE(gpio.hasActiveTimer());
+}
+
 TEST_F(UserGpioTest, ResetCancelsAnExistingTimer) {
   UserGpio gpio(board);
 
@@ -106,6 +182,9 @@ TEST_F(UserGpioTest, ResetCancelsAnExistingTimer) {
   g_mock_millis = 30000;
   gpio.loop();
   EXPECT_EQ(INPUT, g_mock_pin_modes[16]);
+
+  UserGpio::Completion completion;
+  EXPECT_FALSE(gpio.takeCompletion(completion));
 }
 
 TEST_F(UserGpioTest, ANewCommandReplacesAnExistingTimer) {
@@ -137,6 +216,56 @@ TEST_F(UserGpioTest, TimedFinalStateCanResetThePin) {
   EXPECT_STREQ("> GPIO 4 reset", reply);
 }
 
+TEST_F(UserGpioTest, ReportsCompletedTimedTransition) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 4 off 2 reset", reply, sizeof(reply), 1234, 2);
+  g_mock_millis = 2000;
+  gpio.loop();
+
+  UserGpio::Completion completion;
+  ASSERT_TRUE(gpio.takeCompletion(completion));
+  EXPECT_EQ(4, completion.pin);
+  EXPECT_EQ(UserGpio::STATE_RESET, completion.state);
+  EXPECT_EQ(1234U, completion.request_id);
+  EXPECT_FALSE(gpio.takeCompletion(completion));
+}
+
+TEST_F(UserGpioTest, DuplicateNetworkTimerDoesNotRestartCountdown) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on 30 off", reply, sizeof(reply), 1234, 2);
+  g_mock_millis = 1000;
+  UserGpio::SetResult result =
+      gpio.handleSet(" 16 on 30 off", reply, sizeof(reply), 1234, 2);
+  EXPECT_EQ(UserGpio::SetResult::DUPLICATE_IGNORED, result.outcome);
+  EXPECT_STREQ("OK - duplicate ignored; GPIO 16 on, 29s -> off", reply);
+
+  g_mock_millis = 29999;
+  gpio.loop();
+  EXPECT_EQ(HIGH, g_mock_pin_levels[16]);
+  g_mock_millis = 30000;
+  gpio.loop();
+  EXPECT_EQ(LOW, g_mock_pin_levels[16]);
+}
+
+TEST_F(UserGpioTest, SameTimestampFromAnotherClientIsNotADuplicate) {
+  UserGpio gpio(board);
+
+  gpio.handleSet(" 16 on 30 off", reply, sizeof(reply), 1234, 2);
+  g_mock_millis = 1000;
+  UserGpio::SetResult result =
+      gpio.handleSet(" 16 on 30 off", reply, sizeof(reply), 1234, 3);
+  EXPECT_EQ(UserGpio::SetResult::TIMER_STARTED, result.outcome);
+
+  g_mock_millis = 30000;
+  gpio.loop();
+  EXPECT_EQ(HIGH, g_mock_pin_levels[16]);
+  g_mock_millis = 31000;
+  gpio.loop();
+  EXPECT_EQ(LOW, g_mock_pin_levels[16]);
+}
+
 TEST_F(UserGpioTest, TimersRemainCorrectAcrossMillisWrap) {
   g_mock_millis = UINT32_MAX - 499;
   UserGpio gpio(board);
@@ -159,8 +288,44 @@ TEST_F(UserGpioTest, RejectsUnavailablePinsAndMalformedTimers) {
   EXPECT_EQ(INPUT, g_mock_pin_modes[5]);
 
   gpio.handleSet(" 16 reset 10 on", reply, sizeof(reply));
-  EXPECT_STREQ("Error: use set gpio <pin> on|off [seconds on|off|reset]", reply);
+  EXPECT_STREQ("Error: use set gpio <pin> on|off [duration on|off|reset]", reply);
 
   gpio.handleSet(" 16 on 0 off", reply, sizeof(reply));
-  EXPECT_STREQ("Error: timer must be 1-2147483 seconds", reply);
+  EXPECT_STREQ("Error: timer must be 1ms-24h", reply);
+}
+
+TEST(UserGpioReplyTrackerTest, KeepsTheSchedulingClientRouteUntilCompletion) {
+  UserGpioReplyTracker tracker;
+  const uint8_t client_key[UserGpioReplyTracker::CLIENT_TAG_SIZE] =
+      {1, 2, 3, 4, 5, 6, 7, 8};
+  tracker.beginCommand(3, 2, client_key);
+  EXPECT_NE(0U, tracker.requestSource());
+  tracker.timerScheduled(16, 1234);
+
+  tracker.beginCommand(7, 1, client_key);
+  int client_index = -1;
+  uint8_t path_hash_size = 0;
+  uint8_t returned_tag[UserGpioReplyTracker::CLIENT_TAG_SIZE];
+  ASSERT_TRUE(tracker.takeRoute(16, 1234, client_index, path_hash_size,
+                                returned_tag));
+  EXPECT_EQ(3, client_index);
+  EXPECT_EQ(2, path_hash_size);
+  EXPECT_TRUE(UserGpioReplyTracker::matchesClient(client_key, returned_tag));
+  EXPECT_FALSE(tracker.takeRoute(16, 1234, client_index, path_hash_size,
+                                 returned_tag));
+}
+
+TEST(UserGpioReplyTrackerTest, ResetCancellationDropsTheCompletionRoute) {
+  UserGpioReplyTracker tracker;
+  const uint8_t client_key[UserGpioReplyTracker::CLIENT_TAG_SIZE] =
+      {1, 2, 3, 4, 5, 6, 7, 8};
+  tracker.beginCommand(3, 2, client_key);
+  tracker.timerScheduled(16, 1234);
+  tracker.timerCancelled(16);
+
+  int client_index = -1;
+  uint8_t path_hash_size = 0;
+  uint8_t returned_tag[UserGpioReplyTracker::CLIENT_TAG_SIZE];
+  EXPECT_FALSE(tracker.takeRoute(16, 1234, client_index, path_hash_size,
+                                 returned_tag));
 }

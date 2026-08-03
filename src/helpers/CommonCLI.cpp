@@ -145,6 +145,11 @@ static bool isGpioConfig(const char* config) {
 void CommonCLI::loop() {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _user_gpio.loop();
+  UserGpio::Completion completion;
+  while (_user_gpio.takeCompletion(completion)) {
+    _callbacks->onUserGpioTimerCompleted(completion.pin, (uint8_t)completion.state,
+                                         completion.request_id);
+  }
 #endif
 }
 
@@ -3026,7 +3031,15 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   const char* config = &command[4];
   if (isGpioConfig(config)) {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
-    _user_gpio.handleSet(config + 4, reply, 160);
+    const UserGpio::SetResult result = _user_gpio.handleSet(
+        config + 4, reply, 160, sender_timestamp,
+        _callbacks->getUserGpioRequestSource());
+    if (result.outcome == UserGpio::SetResult::TIMER_STARTED) {
+      _callbacks->onUserGpioTimerScheduled(result.pin, sender_timestamp);
+    } else if (result.outcome == UserGpio::SetResult::APPLIED &&
+               result.cancelled_timer) {
+      _callbacks->onUserGpioTimerCancelled(result.pin);
+    }
 #else
     strcpy(reply, "Error: GPIO control unsupported on this build");
 #endif

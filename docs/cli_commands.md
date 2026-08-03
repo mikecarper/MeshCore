@@ -892,18 +892,25 @@ get clock.sync.status
 **Usage:**
 
 - `get gpio` — list the Arduino pin numbers this firmware build permits
+- `get gpio state`, `get gpio states`, or `get gpio status` — list every available pin currently controlled by the user (anything not in `reset`)
+- `get gpio state <pin>` — show one pin's state; `states` and `status` are accepted here too
 - `get gpio <pin>` — show `on`, `off`, or `reset`, plus any pending timed transition
 - `set gpio <pin> on`
 - `set gpio <pin> off`
 - `set gpio <pin> reset`
-- `set gpio <pin> <on|off> <seconds> <on|off|reset>`
+- `set gpio <pin> <on|off> <duration> <on|off|reset>`
 
 **Examples:**
 
 - `set gpio 16 on 30 off` — drive GPIO16 high for 30 seconds, then drive it low
+- `set gpio 16 on 5ms off` — drive GPIO16 high for 5 milliseconds, then drive it low
 - `set gpio 16 off 5 reset` — drive GPIO16 low for 5 seconds, then return it to high impedance
 
-`reset` changes the pin to an input with no pull resistor (high impedance). It does not reboot the node. A new command for the same pin cancels and replaces its pending timer. Timers are non-blocking, are not saved, and are lost on reboot. The maximum timer is 2,147,483 seconds.
+An integer duration has seconds as its default unit, so `5` means 5 seconds. Add `ms` for milliseconds (`5ms`); an explicit `s` suffix is also accepted (`5s`). The maximum duration is 24 hours (86,400 seconds or 86,400,000 milliseconds). `on` or `off` without a duration remains in that state until another command, reset, or reboot.
+
+`reset` changes the pin to an input with no pull resistor (high impedance). It does not reboot the node. It also cancels any pending timer for that pin. A new timed command for the same pin cancels and replaces the previous timer. GPIOs begin in `reset`; states and timers are not saved and are lost on reboot.
+
+The immediate reply confirms the applied state and any pending transition. When a timed transition finishes, a command issued over the authenticated remote CLI receives a second report such as `> GPIO 16 timer complete: off`. Retries of the same authenticated timed command are recognized and do not restart its countdown.
 
 The pin number is the Arduino pin number used by that target (the normal GPIO number on ESP32 and the board's `D`/pin index on nRF52). The available-pin list is build-specific. Radio, flash/PSRAM, USB, serial console, display, GPS, I2C, buttons, LEDs, battery measurement, power control, bridge, Ethernet, watchdog, and other pins claimed by the firmware are rejected. A pin must also be physically broken out on your board; `get gpio` cannot detect wiring or an attached peripheral that is not represented by the firmware configuration.
 

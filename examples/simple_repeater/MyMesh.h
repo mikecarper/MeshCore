@@ -63,6 +63,9 @@
 #include <helpers/ClientACL.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/DeferredCliCommand.h>
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+#include <helpers/UserGpioReplyTracker.h>
+#endif
 #include <helpers/IdentityStore.h>
 #include <helpers/SimpleMeshTables.h>
 #include <helpers/StaticPoolPacketManager.h>
@@ -233,6 +236,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   NodePrefs _prefs;
   ClientACL  acl;
   CommonCLI _cli;
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  UserGpioReplyTracker _gpio_reply_tracker;
+#endif
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   uint8_t reply_path[MAX_PATH_SIZE];
   int8_t  reply_path_len;
@@ -713,6 +719,19 @@ public:
 
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  uint32_t getUserGpioRequestSource() const override {
+    return _gpio_reply_tracker.requestSource();
+  }
+  void onUserGpioTimerScheduled(uint8_t pin, uint32_t request_id) override {
+    _gpio_reply_tracker.timerScheduled(pin, request_id);
+  }
+  void onUserGpioTimerCancelled(uint8_t pin) override {
+    _gpio_reply_tracker.timerCancelled(pin);
+  }
+  void onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
+                                uint32_t request_id) override;
+#endif
 
 #ifdef WITH_MQTT_BRIDGE
   void onAlertConfigChanged() override { _alerter.onConfigChanged(); }
@@ -760,7 +779,9 @@ public:
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override;
 
-  void handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char* command, char* reply);
+  void handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char* command,
+                     char* reply, int gpio_client_index = -1,
+                     uint8_t gpio_path_hash_size = 1);
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     handleCommand(sender_timestamp, NULL, command, reply);
   }

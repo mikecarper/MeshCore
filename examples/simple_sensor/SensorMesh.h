@@ -20,6 +20,9 @@
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/CommonCLI.h>
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+#include <helpers/UserGpioReplyTracker.h>
+#endif
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/ClientACL.h>
 #include <helpers/RegionMap.h>
@@ -51,7 +54,9 @@ public:
   SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   void begin(FILESYSTEM* fs);
   void loop();
-  void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
+  void handleCommand(uint32_t sender_timestamp, char* command, char* reply,
+                     int gpio_client_index = -1,
+                     uint8_t gpio_path_hash_size = 1);
 
   // CommonCLI callbacks
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
@@ -81,6 +86,19 @@ public:
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override { }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  uint32_t getUserGpioRequestSource() const override {
+    return _gpio_reply_tracker.requestSource();
+  }
+  void onUserGpioTimerScheduled(uint8_t pin, uint32_t request_id) override {
+    _gpio_reply_tracker.timerScheduled(pin, request_id);
+  }
+  void onUserGpioTimerCancelled(uint8_t pin) override {
+    _gpio_reply_tracker.timerCancelled(pin);
+  }
+  void onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
+                                uint32_t request_id) override;
+#endif
 
   float getTelemValue(uint8_t channel, uint8_t type);
 
@@ -159,6 +177,9 @@ private:
   NodePrefs _prefs;
   ClientACL  acl;
   CommonCLI _cli;
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  UserGpioReplyTracker _gpio_reply_tracker;
+#endif
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   unsigned long dirty_contacts_expiry;
   CayenneLPP telemetry;
