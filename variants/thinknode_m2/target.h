@@ -1,5 +1,8 @@
 #pragma once
 
+// target.cpp directly configures GPIO48 for the board's status LED.
+#define USER_GPIO_RESERVED_PINS 48
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
@@ -25,5 +28,4 @@ extern SensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-
 

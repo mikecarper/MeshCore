@@ -68,6 +68,7 @@ public:
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;
   virtual void sleep(uint32_t secs) override;
+  bool isUserGpioAvailable(uint8_t pin) const override;
   bool isExternalPowered() override;
   bool isUsbDataConnected() override;
   bool isUsbHostConnected() override;

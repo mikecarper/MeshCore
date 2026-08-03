@@ -74,6 +74,10 @@ public:
   virtual void sleep(uint32_t secs)  { /* no op */ }
   virtual uint32_t getGpio() { return 0; }
   virtual void setGpio(uint32_t values) {}
+  // Returns true only for physical MCU GPIOs that are safe for the user to
+  // control in this build. Board implementations must reject pins already
+  // claimed by firmware or internal hardware.
+  virtual bool isUserGpioAvailable(uint8_t pin) const { return false; }
   virtual uint8_t getStartupReason() const = 0;
   virtual bool getBootloaderVersion(char* version, size_t max_len) { return false; }
   virtual bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) { return false; }   // not supported

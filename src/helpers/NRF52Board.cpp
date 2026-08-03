@@ -2,6 +2,9 @@
 #include "NRF52Board.h"
 #include "PowerManagementUtils.h"
 #include <target.h>
+#ifdef USER_GPIO_CONTROL
+#include "UserGpioPinPolicy.h"
+#endif
 
 #include <bluefruit.h>
 #include "ble_gap.h"
@@ -36,6 +39,57 @@ static void format_ota_reply(char reply[]) {
   Bluefruit.getAddr(mac_addr);
   sprintf(reply, "OK - mac: %02X:%02X:%02X:%02X:%02X:%02X", mac_addr[5], mac_addr[4], mac_addr[3],
           mac_addr[2], mac_addr[1], mac_addr[0]);
+}
+
+#ifdef USER_GPIO_CONTROL
+namespace {
+
+bool isExposedNrf52UserGpio(uint8_t pin) {
+#if defined(HELTEC_T096)
+  // Physical P2/P3 header GPIOs from the T096 schematic. Firmware-owned
+  // radio, display, GPS, power, button, and I2C pins are removed separately.
+  static const uint8_t exposed[] = {
+    2, 4, 7, 8, 9, 10, 13, 15, 17, 20, 22, 23, 24, 25, 27, 29, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 42, 43, 45, 47
+  };
+#elif defined(PROMICRO)
+  // D0-D17 are broken out on the ProMicro form factor.
+  if (pin <= 17) return true;
+  return false;
+#elif defined(RAK_3401) || defined(RAK_4631)
+  // GPIO and bus signals exposed by the WisBlock base/IO connector.
+  static const uint8_t exposed[] = {
+    2, 3, 4, 5, 9, 10, 13, 14, 15, 16, 17, 19, 20, 21, 24, 25,
+    26, 28, 29, 30, 31, 33, 34
+  };
+#else
+  return false;
+#endif
+
+#if defined(HELTEC_T096) || defined(RAK_3401) || defined(RAK_4631)
+  for (size_t i = 0; i < sizeof(exposed) / sizeof(exposed[0]); i++) {
+    if (pin == exposed[i]) return true;
+  }
+#endif
+  return false;
+}
+
+} // namespace
+#endif
+
+bool NRF52Board::isUserGpioAvailable(uint8_t pin) const {
+#ifdef USER_GPIO_CONTROL
+  if (pin >= PINS_COUNT || digitalPinToPinName(pin) == 0xFF) return false;
+#if defined(RAK_3401) || defined(RAK_4631)
+  // Sensor startup can toggle these WisBlock slot pins while detecting GPS,
+  // and WB_IO2 also controls the switched peripheral rail on supported bases.
+  if (pin == WB_IO2 || pin == WB_IO4 || pin == WB_IO5) return false;
+#endif
+  return isExposedNrf52UserGpio(pin) && !UserGpioPinPolicy::isFirmwareReserved(pin);
+#else
+  (void)pin;
+  return false;
+#endif
 }
 
 static void connect_callback(uint16_t conn_handle) {

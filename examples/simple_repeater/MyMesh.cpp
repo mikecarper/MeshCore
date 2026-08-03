@@ -8496,6 +8496,7 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+  _cli.loop();
   processDeferredCliCommand();
   servicePostMeshLoop();
 }
@@ -8966,7 +8967,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  if (deferred_cli_command.pending || pending_self_advert) return true;
+  if (deferred_cli_command.pending || pending_self_advert || _cli.hasActiveUserGpioTimer()) return true;
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) return true;

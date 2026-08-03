@@ -1,5 +1,8 @@
 #pragma once
 
+// target.cpp configures GPIO48 directly during radio initialization.
+#define USER_GPIO_RESERVED_PINS 48
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>

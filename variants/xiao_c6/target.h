@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef USE_XIAO_ESP32C6_EXTERNAL_ANTENNA
+// RF switch and antenna select pins configured directly by XiaoC6Board.
+#define USER_GPIO_RESERVED_PINS 3, 14
+#endif
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <XiaoC6Board.h>
@@ -16,4 +21,3 @@ extern SensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

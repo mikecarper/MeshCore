@@ -8,6 +8,7 @@
 #include "AtomicFileWriter.h"
 #endif
 #include <RTClib.h>
+#include <ctype.h>
 #include <Utils.h>
 #include <math.h>
 #include <stddef.h>
@@ -131,6 +132,28 @@ static bool isValidName(const char *n) {
     n++;
   }
   return true;
+}
+
+static bool isGpioConfig(const char* config) {
+  static const char expected[] = "gpio";
+  for (size_t i = 0; i < sizeof(expected) - 1; i++) {
+    if (config[i] == '\0' || tolower((unsigned char)config[i]) != expected[i]) return false;
+  }
+  return config[sizeof(expected) - 1] == '\0' || config[sizeof(expected) - 1] == ' ';
+}
+
+void CommonCLI::loop() {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  _user_gpio.loop();
+#endif
+}
+
+bool CommonCLI::hasActiveUserGpioTimer() const {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  return _user_gpio.hasActiveTimer();
+#else
+  return false;
+#endif
 }
 
 // Old fork firmware persisted the (since removed) NodePrefs MQTT fields to /com_prefs
@@ -3001,6 +3024,15 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+  if (isGpioConfig(config)) {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+    _user_gpio.handleSet(config + 4, reply, 160);
+#else
+    strcpy(reply, "Error: GPIO control unsupported on this build");
+#endif
+    return;
+  }
+
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   if (memcmp(config, "webui ", 6) == 0) {
     const char* value = &config[6];
@@ -4116,6 +4148,15 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+  if (isGpioConfig(config)) {
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+    _user_gpio.handleGet(config + 4, reply, 160);
+#else
+    strcpy(reply, "Error: GPIO control unsupported on this build");
+#endif
+    return;
+  }
+
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   if (strcmp(config, "webui") == 0) {
     if (!_callbacks->getWebUIStatus(reply)) {

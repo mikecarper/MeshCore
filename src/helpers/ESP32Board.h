@@ -137,6 +137,7 @@ public:
   }
 
   uint8_t getStartupReason() const override { return startup_reason; }
+  bool isUserGpioAvailable(uint8_t pin) const override;
 
 #if defined(P_LORA_TX_LED)
   void onBeforeTransmit() override {

@@ -1,5 +1,8 @@
 #pragma once
 
+// Wire is initialized on these numeric pins in target.cpp.
+#define USER_GPIO_RESERVED_PINS 18, 8
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>

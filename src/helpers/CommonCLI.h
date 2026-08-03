@@ -12,6 +12,10 @@
   #define DEFAULT_CAD_ENABLED 0
 #endif
 
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+#include <helpers/UserGpio.h>
+#endif
+
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) || defined(WITH_MQTT_BRIDGE)
 #define WITH_BRIDGE
 #endif
@@ -495,6 +499,9 @@ class CommonCLI {
   NodePrefs* _prefs;
   CommonCLICallbacks* _callbacks;
   mesh::MainBoard* _board;
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  UserGpio _user_gpio;
+#endif
   SensorManager* _sensors;
   RegionMap* _region_map;
   ClientACL* _acl;
@@ -542,10 +549,16 @@ public:
   static bool recalculateRxPowerSavingFromLevel(NodePrefs* prefs);
 
   CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, RegionMap& region_map, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
-      : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
+      : _rtc(&rtc), _prefs(prefs), _callbacks(callbacks), _board(&board),
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+        _user_gpio(board),
+#endif
+        _sensors(&sensors), _region_map(&region_map), _acl(&acl) { }
 
   void loadPrefs(FILESYSTEM* _fs);
   void savePrefs(FILESYSTEM* _fs, bool save_mqtt = true);
+  void loop();
+  bool hasActiveUserGpioTimer() const;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   mesh::MainBoard* getBoard() { return _board; }
   uint8_t buildAdvertData(uint8_t node_type, uint8_t* app_data);

@@ -1,5 +1,8 @@
 #pragma once
 
+// Wire1 is initialized on these numeric pins in ThinknodeM5Board.cpp.
+#define USER_GPIO_RESERVED_PINS 47, 48
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
@@ -30,4 +33,3 @@ bool radio_init();
 mesh::LocalIdentity radio_new_identity();
 
 
- 

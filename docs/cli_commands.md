@@ -23,6 +23,7 @@ arguments such as node names, passwords, and keys is left unchanged.
 - [Configuration](#configuration)
   - [Radio](#radio)
   - [System](#system)
+    - [GPIO](#control-an-exposed-gpio)
   - [Routing](#routing)
   - [Flood Filtering](#filter-flood-packets-by-payload-type-and-hop)
   - [Group Text Moderation](#moderate-flood-group-text-by-channel-sender-and-source-path)
@@ -881,6 +882,32 @@ get clock.sync.status
 **Default:** `off`
 
 **Note:** When enabled, device enters sleep mode between radio transmissions. Enabling is refused from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.
+
+---
+
+#### Control an exposed GPIO
+
+**Availability:** ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.
+
+**Usage:**
+
+- `get gpio` — list the Arduino pin numbers this firmware build permits
+- `get gpio <pin>` — show `on`, `off`, or `reset`, plus any pending timed transition
+- `set gpio <pin> on`
+- `set gpio <pin> off`
+- `set gpio <pin> reset`
+- `set gpio <pin> <on|off> <seconds> <on|off|reset>`
+
+**Examples:**
+
+- `set gpio 16 on 30 off` — drive GPIO16 high for 30 seconds, then drive it low
+- `set gpio 16 off 5 reset` — drive GPIO16 low for 5 seconds, then return it to high impedance
+
+`reset` changes the pin to an input with no pull resistor (high impedance). It does not reboot the node. A new command for the same pin cancels and replaces its pending timer. Timers are non-blocking, are not saved, and are lost on reboot. The maximum timer is 2,147,483 seconds.
+
+The pin number is the Arduino pin number used by that target (the normal GPIO number on ESP32 and the board's `D`/pin index on nRF52). The available-pin list is build-specific. Radio, flash/PSRAM, USB, serial console, display, GPS, I2C, buttons, LEDs, battery measurement, power control, bridge, Ethernet, watchdog, and other pins claimed by the firmware are rejected. A pin must also be physically broken out on your board; `get gpio` cannot detect wiring or an attached peripheral that is not represented by the firmware configuration.
+
+**Electrical warning:** GPIOs use 3.3 V logic and have limited drive current. Do not power a relay, motor, solenoid, or other load directly from a GPIO. Use a suitable transistor, MOSFET, optocoupler, or driver with the required protection components.
 
 ---
 
