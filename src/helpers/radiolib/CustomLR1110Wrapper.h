@@ -58,6 +58,24 @@ public:
   bool supportsRxPowerSaving() const override { return true; }
 
 protected:
+  bool isPacketReady() override {
+    // Header errors are recovery events, not packets. Handle them before the
+    // generic duty-cycle readiness check can discard the IRQ or a stale buffer
+    // length can be mistaken for a newly received frame.
+    if (_radio->checkIrq(RADIOLIB_IRQ_HEADER_ERR) > 0) {
+      MESH_DEBUG_PRINTLN("CustomLR1110Wrapper: recovering from header error");
+      int16_t err = ((CustomLR1110 *)_radio)->recoverReceivePath();
+      if (err != RADIOLIB_ERR_NONE) {
+        MESH_DEBUG_PRINTLN("CustomLR1110Wrapper: RX recovery error (%d)", err);
+      }
+      _rx_ps_armed = false;
+      _rx_hold_continuous = false;
+      n_recv_errors++;
+      return false;
+    }
+    return RadioLibWrapper::isPacketReady();
+  }
+
   int startReceiveMode() override {
     if (_rx_ps_armed) {
       // stop the previous duty-cycle sequence with an explicit standby before

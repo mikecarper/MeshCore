@@ -14,7 +14,9 @@ namespace {
 static const IPAddress SETUP_IP(192, 168, 4, 1);
 static const IPAddress SETUP_MASK(255, 255, 255, 0);
 static const uint32_t CONNECT_TIMEOUT_MS = 20000;
-static const uint32_t AP_CLOSE_DELAY_MS = 5000;
+// The rendered success page remains in the browser after the setup SSID
+// disappears; allow one second for the HTTP response to flush first.
+static const uint32_t AP_CLOSE_DELAY_MS = 1000;
 
 static const char SETUP_PAGE[] = R"HTML(<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -170,13 +172,15 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
            "<p>MeshCore joined the selected network.</p><p>IP address: <strong>%s</strong></p>"
            "<p>Reconnect this phone or computer to that WiFi network, then open "
            "<strong>http://%s/</strong> to finish MQTT setup.</p>"
-           "<p>The temporary setup access point will close shortly.</p>",
+           "<p>The setup SSID will close now; this page and address will remain visible.</p>",
            ip.c_str(), ip.c_str());
 #else
   snprintf(response, sizeof(response),
            "<!doctype html><meta name=viewport content='width=device-width'><h2>Connected</h2>"
-           "<p>MeshCore joined the WiFi network.</p><p>IP address: <strong>%s</strong></p>"
-           "<p>The setup access point will close shortly.</p>", ip.c_str());
+           "<p>MeshCore joined the WiFi network.</p>"
+           "<p>New network address: <strong>http://%s/</strong></p>"
+           "<p>The setup SSID will close now; this page and address will remain visible.</p>",
+           ip.c_str());
 #endif
   sendResponse(client, 200, "OK", "text/html", response);
   Serial.printf("WiFi setup: connected; IP %s\n", ip.c_str());
@@ -318,7 +322,8 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
 }
 
 void WiFiSetupPortal::configureRecovery(const char* ssid, const char* password,
-                                        uint32_t interval_ms) {
+                                        uint32_t interval_ms,
+                                        uint32_t initial_delay_ms) {
   PortalImpl* impl = static_cast<PortalImpl*>(_impl);
   if (!impl) return;
   impl->recovery_ssid[0] = 0;
@@ -326,7 +331,8 @@ void WiFiSetupPortal::configureRecovery(const char* ssid, const char* password,
   impl->recovery_password[sizeof(impl->recovery_password) - 1] = 0;
   impl->recovery_interval_ms = interval_ms;
   impl->recovery_connecting = false;
-  impl->next_recovery_at = millis() + interval_ms;
+  impl->next_recovery_at = millis()
+      + (initial_delay_ms ? initial_delay_ms : interval_ms);
   if (ssid) {
     strncpy(impl->recovery_ssid, ssid, sizeof(impl->recovery_ssid) - 1);
     impl->recovery_ssid[sizeof(impl->recovery_ssid) - 1] = 0;

@@ -119,6 +119,7 @@ public:
   void stopWebConfig();
   void serviceWebConfig();
   bool isWebConfigSetupActive() const;
+  bool isWebConfigWiFiRecoveryActive() const;
 
   void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
   void execCommand(char* cmd, char* reply) override;

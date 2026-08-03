@@ -1595,6 +1595,10 @@ bool MyMesh::isWebConfigSetupActive() const {
       && !_webconfig->isStopping();
 }
 
+bool MyMesh::isWebConfigWiFiRecoveryActive() const {
+  return _webconfig && _webconfig->isSavedWiFiRecoveryActive();
+}
+
 void MyMesh::rebootNow() {
   board.reboot();
 }

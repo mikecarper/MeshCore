@@ -41,6 +41,8 @@ static const int kMaxBatch = 24;             // .h:90 MAX_BATCH
 static const uint32_t kDrainPacingMs = 25;   // .cpp:296 inter-command gap
 static const uint32_t kRebootFallbackMs = 30000;  // .cpp:331 drain-finish fallback
 static const uint32_t kRebootConfirmMs = 3000;    // .cpp:784 first result-read arm
+static const uint32_t kSetupWiFiConnectTimeoutMs = 20000;
+static const uint32_t kSetupHandoffRebootConfirmMs = 1000;
 static const uint32_t kStopWarnMs = 10000;   // .h:95 STOP_WARN_MS
 
 // The batch lifecycle. A fresh POST moves Idle->Pending; the drainer moves
@@ -134,6 +136,23 @@ static inline uint32_t finishRebootAt(bool batch_reboot, bool batch_all_ok, uint
   return (batch_reboot && batch_all_ok) ? scheduleAt(now, kRebootFallbackMs) : 0u;
 }
 
+// A successful setup-portal save that changes station credentials is held in
+// Pending while AP+STA joins the selected network. That makes the DHCP address
+// available to the captive page before its setup AP disappears. Other saves
+// keep the ordinary batch/reboot path.
+static inline bool shouldStartSetupWiFiHandoff(bool setup_mode,
+                                               bool batch_reboot,
+                                               bool batch_all_ok,
+                                               bool wifi_credentials_changed,
+                                               bool has_wifi_ssid) {
+  return setup_mode && batch_reboot && batch_all_ok
+      && wifi_credentials_changed && has_wifi_ssid;
+}
+
+static inline uint32_t setupWiFiConnectDeadline(uint32_t now) {
+  return scheduleAt(now, kSetupWiFiConnectTimeoutMs);
+}
+
 // --------------------------------------------------------------------------
 // Result read (.cpp:738-786).
 // --------------------------------------------------------------------------
@@ -166,6 +185,12 @@ static inline bool shouldArmConfirmReboot(State state, bool batch_reboot,
 }
 static inline uint32_t confirmRebootAt(uint32_t now) {
   return scheduleAt(now, kRebootConfirmMs);
+}
+
+// The browser retains the rendered handoff page after the AP disappears, so
+// only a brief response-flush delay is needed before rebooting.
+static inline uint32_t confirmSetupHandoffRebootAt(uint32_t now) {
+  return scheduleAt(now, kSetupHandoffRebootConfirmMs);
 }
 
 // --------------------------------------------------------------------------

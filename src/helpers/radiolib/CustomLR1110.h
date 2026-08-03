@@ -2,6 +2,7 @@
 
 #include <RadioLib.h>
 #include "MeshCore.h"
+#include "LR1110RxRecovery.h"
 
 class CustomLR1110 : public LR1110 {
   uint32_t _preambleMillis = 66;
@@ -13,17 +14,45 @@ class CustomLR1110 : public LR1110 {
   public:
     CustomLR1110(Module *mod) : LR1110(mod) { }
 
+    int16_t recoverReceivePath() {
+      _activityAt = 0;
+      _headerSeen = false;
+
+      // Standby is the operation known to reset the LR1110's unreported
+      // four-byte RX-buffer displacement. Clear stale bytes and IRQ state too,
+      // then let RadioLibWrapper re-arm receive mode.
+      int16_t state = standby();
+      int16_t next = clearRxBuffer();
+      if (state == RADIOLIB_ERR_NONE) state = next;
+      next = clearIrqState(RADIOLIB_LR11X0_IRQ_ALL);
+      if (state == RADIOLIB_ERR_NONE) state = next;
+      return state;
+    }
+
     size_t getPacketLength(bool update) override {
-      size_t len = LR1110::getPacketLength(update);
-      if (len == 0 && getIrqStatus() & RADIOLIB_LR11X0_IRQ_HEADER_ERR) {
-        // we've just received a corrupted packet
-        // this may have triggered a bug causing subsequent packets to be shifted
-        // call standby() to return radio to known-good state
-        // recvRaw will call startReceive() to restart rx
-        MESH_DEBUG_PRINTLN("LR1110: got header err, calling standby()");
-        standby();
+      // GetRxBufferStatus can report either zero or a stale/nonzero length for
+      // a header-error event. Recover based on the IRQ itself, never its length.
+      if (getIrqStatus() & RADIOLIB_LR11X0_IRQ_HEADER_ERR) {
+        MESH_DEBUG_PRINTLN("LR1110: header error, resetting RX path");
+        recoverReceivePath();
+        return 0;
       }
-      return len;
+      return LR1110::getPacketLength(update);
+    }
+
+    int16_t readData(uint8_t* data, size_t len) override {
+      int16_t state = LR1110::readData(data, len);
+      if (state != RADIOLIB_ERR_NONE) return state;
+
+      // Defense in depth: if the trigger IRQ was missed, never pass the known
+      // shifted/truncated representation up to Dispatcher where it can look
+      // like a valid transport flood and be repeated by the mesh.
+      if (mesh::hasLR1110RxBufferShiftSignature(data, len)) {
+        MESH_DEBUG_PRINTLN("LR1110: four-byte RX shift detected, dropping packet");
+        recoverReceivePath();
+        return RADIOLIB_ERR_CRC_MISMATCH;
+      }
+      return RADIOLIB_ERR_NONE;
     }
 
     float getFreqMHz() const { return freqMHz; }
@@ -93,12 +122,12 @@ class CustomLR1110 : public LR1110 {
     bool getRxBoostedGainMode() const { return _rx_boosted; }
 
     int16_t startReceive() override {
-      // Make preamble detection visible to CAD while retaining RadioLib's
-      // normal RX-complete and error events.
+      // Keep preamble detection visible to CAD and route header errors to DIO1
+      // so the wrapper can reset the RX path before another packet is read.
       return LR1110::startReceive(
           RADIOLIB_LR11X0_RX_TIMEOUT_INF,
           RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED),
-          RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
+          RADIOLIB_IRQ_RX_DEFAULT_MASK | (1UL << RADIOLIB_IRQ_HEADER_ERR), 0);
     }
 
     // BUSY high means the chip is asleep (RX duty-cycle sleep window) or mid
@@ -117,7 +146,9 @@ class CustomLR1110 : public LR1110 {
       bool hdrErr   = irq & RADIOLIB_LR11X0_IRQ_HEADER_ERR;             // bit 6
       uint32_t now  = millis();
       if (hdrErr) {
-        clearIrqState(RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED | RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID | RADIOLIB_LR11X0_IRQ_HEADER_ERR);
+        // Do not clear this here. The receive wrapper owns header-error
+        // recovery and must see the IRQ in order to enter standby. Clearing it
+        // from this polling path recreates the four-byte RX-buffer shift bug.
         _activityAt = 0;
         _headerSeen = false;
         return false;

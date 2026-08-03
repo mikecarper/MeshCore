@@ -458,6 +458,9 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     strcpy(reply, "Err: webconfig busy");
     return false;
   }
+  _retry_saved_wifi_in_setup = false;
+  _setup_reconnect_in_progress = false;
+  _setup_reconnect_deadline = 0;
   // AP_STA (not pure AP) so the WiFi scan for the SSID picker works while
   // the AP is up. STA stays unconnected - the bridge won't touch WiFi
   // while wifi_ssid is empty, and `start webconfig ap` requires it stopped.
@@ -506,6 +509,10 @@ bool WebConfigServer::startLanMode(char reply[]) {
     return false;
   }
   _mode = MODE_LAN;
+  _wifi_reconnect_tracker.noteConnected();
+  _retry_saved_wifi_in_setup = false;
+  _setup_reconnect_in_progress = false;
+  _setup_reconnect_deadline = 0;
   createServer();
   _last_activity = millis();
 
@@ -530,6 +537,10 @@ bool WebConfigServer::startAutoMode(char reply[]) {
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+  _retry_saved_wifi_in_setup = false;
+  _setup_reconnect_in_progress = false;
+  _setup_reconnect_deadline = 0;
+  _wifi_reconnect_tracker.noteDisconnected(millis());
   WiFi.begin(_wifi_ssid, _wifi_password);
   wifi_ps_type_t ps_mode = _wifi_power_save == 1 ? WIFI_PS_NONE
                             : _wifi_power_save == 2 ? WIFI_PS_MAX_MODEM
@@ -602,10 +613,16 @@ void WebConfigServer::finalizeTeardown() {
   _stop_warn_at = 0;
   _stop_warned = false;
   _connect_deadline = 0;
+  _retry_saved_wifi_in_setup = false;
+  _setup_reconnect_in_progress = false;
+  _setup_reconnect_deadline = 0;
   _reboot_at = 0;
   _batch_state = BATCH_IDLE;
   _batch_next = 0;
   _batch_reboot_armed = false;
+  _setup_wifi_handoff_pending = false;
+  _setup_wifi_handoff_deadline = 0;
+  _setup_wifi_handoff_ip[0] = 0;
   _cli_state = CLI_IDLE;
   _cli_reqid[0] = 0;
   _cli_command[0] = 0;
@@ -636,6 +653,7 @@ void WebConfigServer::tick(uint32_t now) {
 
   if (_mode == MODE_CONNECTING) {
     if (WiFi.status() == WL_CONNECTED) {
+      _wifi_reconnect_tracker.noteConnected();
       _mode = MODE_LAN;
       createServer();
       _connect_deadline = 0;
@@ -643,20 +661,91 @@ void WebConfigServer::tick(uint32_t now) {
       Serial.printf("WebConfig ready: http://%s/\n", WiFi.localIP().toString().c_str());
     } else if (_connect_deadline && (int32_t)(now - _connect_deadline) >= 0) {
       Serial.printf("WebConfig: WiFi '%s' unavailable; opening setup AP\n", _wifi_ssid);
+      const bool retry_saved_wifi = _wifi_ssid[0] != 0;
       WiFi.disconnect(true);
       _mode = MODE_OFF;
       _connect_deadline = 0;
       char ignored[160];
-      startSetupMode(ignored);
+      if (startSetupMode(ignored)) {
+        _retry_saved_wifi_in_setup = retry_saved_wifi;
+      }
       Serial.println(ignored);
     }
     return;
   }
 
+  // MQTT and companion runtimes manage their own station connection. For
+  // standalone WiFi/WebUI builds, do not rely solely on ESP auto-reconnect:
+  // after five minutes offline, explicitly reassert the saved credentials and
+  // repeat at that interval until the router returns.
+  if (_mode == MODE_LAN && _owns_wifi && _wifi_ssid[0]) {
+    if (WiFi.status() == WL_CONNECTED) {
+      _wifi_reconnect_tracker.noteConnected();
+    } else {
+      _wifi_reconnect_tracker.noteDisconnected(now);
+      if (_wifi_reconnect_tracker.retryDue(now)) {
+        _wifi_reconnect_tracker.noteAttempt(now);
+        Serial.printf("WebConfig: WiFi still unavailable; retrying '%s'\n",
+                      _wifi_ssid);
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(true);
+        WiFi.disconnect(false, false);
+        WiFi.begin(_wifi_ssid, _wifi_password);
+      }
+    }
+  }
+
+  // If boot occurred while the configured router was down, startAutoMode()
+  // leaves a setup AP available instead of going dark. Keep that AP running,
+  // but retry the saved station credentials on the same five-minute cadence.
+  // A manually requested setup AP does not set this flag and is never closed
+  // by a background reconnect.
+  if (_mode == MODE_SETUP && _retry_saved_wifi_in_setup && _wifi_ssid[0]) {
+    // An external owner (MQTT or the companion runtime) can restore the link
+    // too. Promote as soon as any owner succeeds; only initiate retries here
+    // when WebConfig itself owns WiFi.
+    if (WiFi.status() == WL_CONNECTED) {
+      if (_dns) {
+        _dns->stop();
+        delete _dns;
+        _dns = NULL;
+      }
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      WiFi.setAutoReconnect(true);
+      _was_setup_ap = false;
+      _initial_setup = false;
+      _retry_saved_wifi_in_setup = false;
+      _setup_reconnect_in_progress = false;
+      _setup_reconnect_deadline = 0;
+      _wifi_reconnect_tracker.noteConnected();
+      _mode = MODE_LAN;
+      _last_activity = now;
+      Serial.printf("WebConfig: saved WiFi recovered; ready at http://%s/\n",
+                    WiFi.localIP().toString().c_str());
+    } else if (_owns_wifi && _setup_reconnect_in_progress
+               && (int32_t)(now - _setup_reconnect_deadline) >= 0) {
+      WiFi.disconnect(false, false);
+      _setup_reconnect_in_progress = false;
+      _setup_reconnect_deadline = 0;
+      Serial.println("WebConfig: saved WiFi still unavailable; setup AP remains active");
+    } else if (_owns_wifi && !_setup_reconnect_in_progress
+               && _wifi_reconnect_tracker.retryDue(now)) {
+      _wifi_reconnect_tracker.noteAttempt(now);
+      _setup_reconnect_in_progress = true;
+      _setup_reconnect_deadline = now + 20000UL;
+      Serial.printf("WebConfig: retrying saved WiFi '%s'\n", _wifi_ssid);
+      WiFi.begin(_wifi_ssid, _wifi_password);
+    }
+  }
+
   if (_dns) _dns->processNextRequest();
 
   if (_cli_state == CLI_PENDING) drainCliCommand();
-  if (_batch_state == BATCH_PENDING) drainBatch(now);
+  if (_setup_wifi_handoff_pending) serviceSetupWiFiHandoff(now);
+  if (_batch_state == BATCH_PENDING && !_setup_wifi_handoff_pending) {
+    drainBatch(now);
+  }
 
   if (WebConfigBatch::rebootDue(_reboot_at, now)) {
     Serial.printf("WC: rebooting now (%s)\n", _batch_reboot_armed ? "confirmed" : "fallback");
@@ -681,7 +770,29 @@ void WebConfigServer::tick(uint32_t now) {
   // left broadcasting an open AP). LAN mode runs until `stop webconfig`.
   if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0 &&
       (now - _last_activity) > WEBCONFIG_AP_IDLE_TIMEOUT_MS) {
-    requestStop();
+    if (_retry_saved_wifi_in_setup && _wifi_ssid[0]) {
+      // Close the open AP, but keep the WebConfig object alive in LAN mode so
+      // its (or an external owner's) saved-network retries continue forever.
+      // The listener becomes reachable again as soon as the router returns.
+      if (_dns) {
+        _dns->stop();
+        delete _dns;
+        _dns = NULL;
+      }
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      WiFi.setAutoReconnect(true);
+      _was_setup_ap = false;
+      _initial_setup = false;
+      _retry_saved_wifi_in_setup = false;
+      _setup_reconnect_in_progress = false;
+      _setup_reconnect_deadline = 0;
+      _mode = MODE_LAN;
+      _last_activity = now;
+      Serial.println("WebConfig: setup AP idle; saved WiFi recovery continues");
+    } else {
+      requestStop();
+    }
   }
 }
 
@@ -703,6 +814,67 @@ void WebConfigServer::drainCliCommand() {
   strncpy(_cli_reply, reply, sizeof(_cli_reply) - 1);
   _cli_reply[sizeof(_cli_reply) - 1] = 0;
   _cli_state = CLI_DONE;
+}
+
+void WebConfigServer::finishBatch(uint32_t now) {
+  WCLock lock(_mux);
+  _batch_state = BATCH_DONE;
+  const uint32_t reboot_at =
+      WebConfigBatch::finishRebootAt(_batch_reboot, _batch_all_ok, now);
+  if (reboot_at != 0) {
+    // Fallback only: a successful result read replaces this with the shorter
+    // confirmation delay. Failed batches remain available for correction.
+    _reboot_at = reboot_at;
+  }
+}
+
+void WebConfigServer::serviceSetupWiFiHandoff(uint32_t now) {
+  if (!_setup_wifi_handoff_pending) return;
+
+  IPAddress station_ip = WiFi.localIP();
+  if (WiFi.status() == WL_CONNECTED && static_cast<uint32_t>(station_ip) != 0) {
+    char ip[16];
+    snprintf(ip, sizeof(ip), "%s", station_ip.toString().c_str());
+    {
+      WCLock lock(_mux);
+      if (!_setup_wifi_handoff_pending) return;
+      strncpy(_setup_wifi_handoff_ip, ip,
+              sizeof(_setup_wifi_handoff_ip) - 1);
+      _setup_wifi_handoff_ip[sizeof(_setup_wifi_handoff_ip) - 1] = 0;
+      _setup_wifi_handoff_pending = false;
+      _setup_wifi_handoff_deadline = 0;
+    }
+    Serial.printf("WebConfig: joined '%s' at %s; waiting for browser handoff\n",
+                  _wifi_ssid, ip);
+    finishBatch(now);
+    return;
+  }
+
+  if (!WebConfigBatch::deadlineReached(now, _setup_wifi_handoff_deadline)) {
+    return;
+  }
+
+  WiFi.disconnect(false, false);  // stop STA attempt; leave the setup AP up
+  {
+    WCLock lock(_mux);
+    if (!_setup_wifi_handoff_pending) return;
+    for (int i = _batch_count - 1; i >= 0; i--) {
+      if (strcmp(_batch[i].key, "wifi.ssid") == 0
+          || strcmp(_batch[i].key, "wifi.pwd") == 0) {
+        snprintf(_batch[i].reply, sizeof(_batch[i].reply),
+                 "Error: could not join WiFi '%s'; setup AP remains active",
+                 _wifi_ssid);
+        break;
+      }
+    }
+    _batch_all_ok = false;
+    _setup_wifi_handoff_pending = false;
+    _setup_wifi_handoff_deadline = 0;
+    _setup_wifi_handoff_ip[0] = 0;
+  }
+  Serial.printf("WebConfig: could not join '%s'; setup AP remains active\n",
+                _wifi_ssid);
+  finishBatch(now);
 }
 
 void WebConfigServer::drainBatch(uint32_t now) {
@@ -798,15 +970,35 @@ void WebConfigServer::drainBatch(uint32_t now) {
     WCLock prefs_lock(_mux);
     _cb->onConfigBatchEnd();
   }
-  WCLock lock(_mux);
-  _batch_state = BATCH_DONE;
-  const uint32_t reboot_at =
-      WebConfigBatch::finishRebootAt(_batch_reboot, _batch_all_ok, now);
-  if (reboot_at != 0) {
-    // Fallback only: a successful result read replaces this with the shorter
-    // confirmation delay. Failed batches remain available for correction.
-    _reboot_at = reboot_at;
+
+  bool wifi_credentials_changed = false;
+  for (int i = 0; i < _batch_count; i++) {
+    if (strcmp(_batch[i].key, "wifi.ssid") == 0
+        || strcmp(_batch[i].key, "wifi.pwd") == 0) {
+      wifi_credentials_changed = true;
+      break;
+    }
   }
+  if (WebConfigBatch::shouldStartSetupWiFiHandoff(
+          _mode == MODE_SETUP, _batch_reboot, _batch_all_ok,
+          wifi_credentials_changed, _wifi_ssid[0] != 0)) {
+    {
+      WCLock lock(_mux);
+      _setup_wifi_handoff_pending = true;
+      _setup_wifi_handoff_deadline =
+          WebConfigBatch::setupWiFiConnectDeadline(now);
+      _setup_wifi_handoff_ip[0] = 0;
+    }
+    // AP+STA keeps the captive page reachable while DHCP assigns the address
+    // that will be shown to the operator before the setup AP is shut down.
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setAutoReconnect(false);
+    Serial.printf("WebConfig: testing saved WiFi '%s' before reboot\n",
+                  _wifi_ssid);
+    WiFi.begin(_wifi_ssid, _wifi_password);
+    return;
+  }
+  finishBatch(now);
 }
 
 // ---------------------------------------------------------------------------
@@ -932,7 +1124,13 @@ void WebConfigServer::collectBody(AsyncWebServerRequest* req, uint8_t* data, siz
 
 bool WebConfigServer::checkAuth(AsyncWebServerRequest* req) {
   _last_activity = millis();
-  if (_mode == MODE_SETUP) return true;  // physical proximity implied, nothing configured
+  if (_mode == MODE_SETUP) {
+    // AP+STA is used for scans and saved-network recovery. Keep the unauthenticated
+    // setup API reachable only through the physical setup AP, never through a
+    // briefly recovered LAN interface before tick() promotes the mode.
+    return req && req->client()
+        && req->client()->localIP() == WiFi.softAPIP();
+  }
   if (_mode != MODE_LAN) return false;
   NodeSnapshot node = {};
   {
@@ -1272,6 +1470,9 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   strncpy(_batch_reqid, reqid, sizeof(_batch_reqid) - 1);
   _batch_reqid[sizeof(_batch_reqid) - 1] = 0;
   _standalone_wifi_dirty = false;
+  _setup_wifi_handoff_pending = false;
+  _setup_wifi_handoff_deadline = 0;
+  _setup_wifi_handoff_ip[0] = 0;
   _batch_state = BATCH_PENDING;  // tick() picks it up on the loop task
   uint32_t du = millis() + 60000;
   if (du == 0) du = 1;
@@ -1339,6 +1540,9 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
       WebConfigBatch::doneReportsReboot(_batch_reboot, _batch_all_ok);
   doc["all_ok"] = _batch_all_ok;
   doc["reqid"] = (const char*)_batch_reqid;
+  if (_setup_wifi_handoff_ip[0]) {
+    doc["wifi_ip"] = (const char*)_setup_wifi_handoff_ip;
+  }
   JsonArray results = doc.createNestedArray("results");
   for (int i = 0; i < _batch_count; i++) {
     JsonObject r = results.createNestedObject();
@@ -1346,14 +1550,28 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     r["reply"] = (const char*)_batch[i].reply;
   }
   // State stays DONE (re-readable) until the next POST claims the slot.
+  const uint32_t result_now = millis();
   if (WebConfigBatch::shouldArmConfirmReboot(
           toSpecState(_batch_state), _batch_reboot,
           _batch_all_ok, _batch_reboot_armed)) {
-    // Confirmation delivered - reboot 3 s from now (replaces the 30 s
-    // drain-time fallback) so the UI can show its countdown first. Armed
-    // once; re-reads must not keep pushing the deadline out.
+    // Confirmation delivered. The handoff page remains rendered in the
+    // browser after the AP disappears, so it only needs a one-second response
+    // flush before reboot. Armed once; re-reads cannot push the deadline out.
     _batch_reboot_armed = true;
-    _reboot_at = WebConfigBatch::confirmRebootAt(millis());
+    const bool setup_handoff = _setup_wifi_handoff_ip[0] != 0;
+    const uint32_t reboot_delay = setup_handoff
+        ? WebConfigBatch::kSetupHandoffRebootConfirmMs
+        : WebConfigBatch::kRebootConfirmMs;
+    doc["reboot_in_ms"] = reboot_delay;
+    _reboot_at = setup_handoff
+        ? WebConfigBatch::confirmSetupHandoffRebootAt(result_now)
+        : WebConfigBatch::confirmRebootAt(result_now);
+  } else if (WebConfigBatch::doneReportsReboot(
+                 _batch_reboot, _batch_all_ok) && _reboot_at != 0) {
+    // A retry after a lost HTTP response gets the same IP plus an accurate
+    // remaining countdown; reading again never postpones the reboot.
+    doc["reboot_in_ms"] = WebConfigBatch::deadlineReached(
+        result_now, _reboot_at) ? 1u : _reboot_at - result_now;
   }
 
   AsyncResponseStream* res = req->beginResponseStream("application/json");

@@ -6,7 +6,8 @@
 // Two modes:
 //  - SETUP: open SoftAP + captive portal, raised automatically on first boot
 //    when no WiFi is configured (wifi_ssid empty), or manually via
-//    `start webconfig ap`. Save -> reboot; auto-stops after an idle timeout.
+//    `start webconfig ap`. A credential save joins in AP+STA mode, reports the
+//    assigned LAN IP, then reboots; the AP auto-stops after an idle timeout.
 //  - LAN: bound to an existing or portal-owned STA connection. Infrastructure
 //    roles require the node admin password; companions use their trusted LAN.
 //
@@ -27,6 +28,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <helpers/WebConfigBatch.h>
+#include <helpers/WiFiReconnectPolicy.h>
 
 class AsyncWebServer;
 class AsyncWebServerRequest;
@@ -168,6 +170,9 @@ public:
   Mode mode() const { return _mode; }
   bool isRunning() const { return _mode != MODE_OFF; }
   bool isStopping() const { return _stopping; }
+  bool isSavedWiFiRecoveryActive() const {
+    return _mode == MODE_SETUP && _retry_saved_wifi_in_setup && !_stopping;
+  }
 
 private:
   static const int MAX_BATCH = WebConfigBatch::kMaxBatch;
@@ -209,6 +214,10 @@ private:
   uint8_t _wifi_power_save = 1;
   bool _cli_enabled = true;
   char _ap_ssid[33] = {0};
+  WiFiReconnectPolicy::Tracker _wifi_reconnect_tracker;
+  bool _retry_saved_wifi_in_setup = false;
+  bool _setup_reconnect_in_progress = false;
+  uint32_t _setup_reconnect_deadline = 0;
 
   // Currently attached session, also used by the display's setup-info poll.
   static WebConfigServer* _active;
@@ -226,6 +235,9 @@ private:
   bool _batch_all_ok = true;
   char _batch_reqid[24] = {0};
   bool _standalone_wifi_dirty = false;
+  bool _setup_wifi_handoff_pending = false;
+  uint32_t _setup_wifi_handoff_deadline = 0;
+  char _setup_wifi_handoff_ip[16] = {0};
   BatchEntry _batch[MAX_BATCH];
 
   // Browser terminal command: filled by async_tcp under _mux and executed by
@@ -268,6 +280,8 @@ private:
   void detachRoutes();
   uint32_t handlerRefCount() const;
   void drainBatch(uint32_t now);
+  void serviceSetupWiFiHandoff(uint32_t now);
+  void finishBatch(uint32_t now);
   void drainCliCommand();
   void finalizeTeardown();
   bool checkAuth(AsyncWebServerRequest* req);

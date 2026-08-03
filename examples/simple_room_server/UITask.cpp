@@ -81,10 +81,10 @@ void UITask::renderCurrScreen() {
 #ifdef WITH_WEBCONFIG
     if (WebConfigServer::isRebootPending()) {
       _display->setTextSize(1);
-      _display->setColor(DisplayDriver::GREEN);
+      _display->setColor(UIColor::corp_blue);
       _display->setCursor(0, 14);
       _display->print("Config saved!");
-      _display->setColor(DisplayDriver::LIGHT);
+      _display->setColor(UIColor::primary_txt);
       _display->setCursor(0, 30);
       _display->print("Rebooting...");
       return;
@@ -92,19 +92,19 @@ void UITask::renderCurrScreen() {
     char wc_ssid[33], wc_ip[16];
     if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
       _display->setTextSize(1);
-      _display->setColor(DisplayDriver::GREEN);
+      _display->setColor(UIColor::corp_blue);
       _display->setCursor(0, 0);
       _display->print("WebUI WiFi Setup");
-      _display->setColor(DisplayDriver::LIGHT);
+      _display->setColor(UIColor::primary_txt);
       _display->setCursor(0, 14);
       _display->print("Join WiFi:");
-      _display->setColor(DisplayDriver::YELLOW);
+      _display->setColor(UIColor::warning_txt);
       _display->setCursor(6, 24);
       _display->print(wc_ssid);
-      _display->setColor(DisplayDriver::LIGHT);
+      _display->setColor(UIColor::primary_txt);
       _display->setCursor(0, 40);
       _display->print("Then browse to:");
-      _display->setColor(DisplayDriver::YELLOW);
+      _display->setColor(UIColor::warning_txt);
       _display->setCursor(6, 50);
       _display->print(wc_ip);
       return;
@@ -131,7 +131,7 @@ void UITask::renderCurrScreen() {
     if (WiFi.status() == WL_CONNECTED) {
       IPAddress ip = WiFi.localIP();
       _display->setCursor(0, 40);
-      _display->setColor(DisplayDriver::LIGHT);
+      _display->setColor(UIColor::primary_txt);
       snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
       _display->print(tmp);
     }

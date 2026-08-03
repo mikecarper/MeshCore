@@ -109,6 +109,26 @@ TEST(WebConfigBatch, FinishArmsThirtySecondFallbackOnlyForAFullyOkRebootBatch) {
   EXPECT_EQ(0u, Batch::finishRebootAt(false, true, now));
 }
 
+TEST(WebConfigBatch, SetupWiFiHandoffRequiresASuccessfulCredentialChangingReboot) {
+  EXPECT_TRUE(Batch::shouldStartSetupWiFiHandoff(
+      /*setup=*/true, /*reboot=*/true, /*all_ok=*/true,
+      /*wifi_changed=*/true, /*has_ssid=*/true));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(false, true, true, true, true));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, false, true, true, true));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, false, true, true));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, true, false, true));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, true, true, false));
+}
+
+TEST(WebConfigBatch, SetupWiFiHandoffUsesBoundedConnectAndBriefFlushDelays) {
+  const uint32_t now = 500000;
+  EXPECT_EQ(now + Batch::kSetupWiFiConnectTimeoutMs,
+            Batch::setupWiFiConnectDeadline(now));
+  EXPECT_EQ(now + Batch::kSetupHandoffRebootConfirmMs,
+            Batch::confirmSetupHandoffRebootAt(now));
+  EXPECT_EQ(1000U, Batch::kSetupHandoffRebootConfirmMs);
+}
+
 // --------------------------------------------------------------------------
 // Result read
 // --------------------------------------------------------------------------

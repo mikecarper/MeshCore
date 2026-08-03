@@ -228,7 +228,7 @@ canvas{width:100%;height:56px;display:block}
       <h2 id="wz-review-title">Step 4 &middot; Review &amp; save</h2>
       <div id="wz-review"></div>
     </div>
-    <div class="note">Saving reboots the node into normal operation. To keep the page available later, run <b>set webui on</b>; use <b>get webui</b> to see its address.</div>
+    <div class="note">Saving tests the selected WiFi, shows the node's new network address, then reboots into normal operation. To keep the page available later, run <b>set webui on</b>.</div>
     <div class="row">
       <button class="btn sec" id="wz-review-back" onclick="wzGo(3)">Back</button>
       <button class="btn" style="flex:1" id="wz-save" onclick="wizardSave()">Save &amp; reboot</button>
@@ -472,6 +472,7 @@ canvas{width:100%;height:56px;display:block}
     <span class="spin" style="width:34px;height:34px"></span>
     <h1 style="margin:16px 0 8px" id="reboot-title">Rebooting&hellip;</h1>
     <p id="reboot-msg" style="color:var(--mut);max-width:420px"></p>
+    <p class="hide" id="reboot-ip" style="margin-top:14px">New network address:<br><a id="reboot-ip-link" href="#" style="font-size:20px;font-weight:650"></a></p>
     <p style="margin-top:14px;font-size:26px;font-weight:650" id="reboot-count"></p>
   </div>
 </div>
@@ -816,7 +817,10 @@ function pollResult(cb,errs,idles,acked,reqid,submitted){
     if(fails)toast(fails+" setting(s) rejected - see fields");
     else if(r.reboot){
       st.dirty={};
-      showReboot("The node is restarting with the saved WiFi settings. Reconnect to that network and open the node at its router-assigned address.",false,"Settings saved [OK] - rebooting");
+      showReboot(r.wifi_ip
+        ? "The node joined the selected WiFi. This page and address stay visible while it reboots. Reconnect your phone or laptop to that network, then open the address."
+        : "The node is restarting with the saved WiFi settings. Reconnect to that network and open the node at its router-assigned address.",
+        false,"Settings saved [OK] - rebooting",r.wifi_ip,rebootSeconds(r));
       return;
     }else toast("Saved [OK]");
     loadConfigSoft();
@@ -1264,9 +1268,9 @@ function wizardSave(){
   if(st.hasMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
     $("#wz-err").textContent="Please enter a 3-letter IATA region code (MQTT step).";return}
   $("#wz-err").textContent="";
-  var b=$("#wz-save");b.disabled=true;
+  var b=$("#wz-save"),blabel=b.textContent;b.disabled=true;b.textContent="Testing WiFi...";
   saveChanges({reboot:true},function(r,acked){
-    b.disabled=false;
+    b.disabled=false;b.textContent=blabel;
     if(!r){
       if(acked){
         // The node accepted the batch (202), but without its result we cannot
@@ -1284,25 +1288,35 @@ function wizardSave(){
       $("#wz-err").textContent=fails.map(function(x){return x.key+": "+x.reply}).join(" * ");
       return;
     }
-    showReboot("The node is joining '"+eff("wifi.ssid")
-      +"'. Reconnect your phone or laptop to your normal WiFi. Find the node's IP on your router, or run 'get webui' over its CLI to see the address.",
-      false,"Settings saved [OK] - rebooting in a moment");
+    if(r.wifi_ip){
+      showReboot("The node joined '"+eff("wifi.ssid")
+        +"'. This page and address stay visible while it reboots. Reconnect your phone or laptop to that WiFi, then open the address.",
+        false,"WiFi connected [OK] - rebooting soon",r.wifi_ip,rebootSeconds(r));
+    }else{
+      showReboot("The settings were saved, but the node did not report a new network address. Reconnect to '"
+        +eff("wifi.ssid")+"' and use your router or 'get webui' to find it.",
+        false,"Settings saved [OK] - rebooting",null,rebootSeconds(r));
+    }
     st.dirty={};
   });
 }
 
 /* ---------- reboot ---------- */
+function rebootSeconds(r){return r&&r.reboot_in_ms?Math.max(1,Math.ceil(r.reboot_in_ms/1000)):30}
 function doReboot(){
   if(!confirm("Reboot this node now?"))return;
   post("/api/reboot",{}).then(function(){
     showReboot("The node is restarting. This page will try to reconnect automatically.",true);
   }).catch(function(e){if(e.message!=="auth")toast("Reboot failed: "+e.message)});
 }
-function showReboot(msg,reconnect,title){
+function showReboot(msg,reconnect,title,ip,seconds){
   $("#reboot-title").textContent=title||"Rebooting...";
   $("#reboot-msg").textContent=msg;
+  var iprow=$("#reboot-ip"),iplink=$("#reboot-ip-link");
+  if(ip){var url="http://"+ip+"/";iplink.textContent=url;iplink.href=url;iprow.classList.remove("hide")}
+  else{iplink.textContent="";iplink.href="#";iprow.classList.add("hide")}
   $("#reboot-ov").classList.add("show");
-  var n=30;$("#reboot-count").textContent=n;
+  var n=seconds||30;$("#reboot-count").textContent=n;
   var t=setInterval(function(){
     n--;$("#reboot-count").textContent=n>0?n:"";
     if(n<=5&&reconnect){

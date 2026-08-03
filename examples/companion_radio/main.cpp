@@ -45,6 +45,7 @@ MultiSerialInterface interface_manager;
     // include esp32 wifi interface
     #include <helpers/esp32/SerialWifiInterface.h>
     #include <helpers/WiFiSetupPortal.h>
+    #include <helpers/WiFiReconnectPolicy.h>
     SerialWifiInterface wifi_interface;
     #ifndef WIFI_PWD
       #define WIFI_PWD ""
@@ -120,9 +121,9 @@ void halt() {
 #if defined(ESP32) && defined(WIFI_SSID)
   static const unsigned long WIFI_SETUP_FALLBACK_MS = 120000UL;
   static const char COMPANION_WIFI_SETUP_AP[] = "MeshCore-Setup";
-  bool wifi_needs_reconnect = false;
-  unsigned long last_wifi_reconnect_attempt = 0;
-  unsigned long wifi_disconnected_since = 0;
+  WiFiReconnectPolicy::Tracker wifi_reconnect_tracker;
+  bool wifi_setup_attempted = false;
+  unsigned long last_wifi_setup_attempt = 0;
   bool wifi_setup_recovery_mode = false;
   static char configured_wifi_ssid[32];
   static char configured_wifi_password[64];
@@ -139,7 +140,7 @@ void halt() {
       companion_setup_display->turnOn();
       companion_setup_display->startFrame();
       companion_setup_display->setTextSize(1);
-      companion_setup_display->setColor(DisplayDriver::LIGHT);
+      companion_setup_display->setColor(UIColor::primary_txt);
 
       char setup_ssid[33] = {0};
       char setup_ip[16] = {0};
@@ -335,16 +336,10 @@ void setup() {
 
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
-          wifi_needs_reconnect = true;
-          if (wifi_disconnected_since == 0) {
-            wifi_disconnected_since = millis() ? millis() : 1;
-          }
+          WIFI_DEBUG_PRINTLN("WiFi disconnected; automatic recovery is active");
       } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
           WIFI_DEBUG_PRINTLN("connected! IP %s  (companion app on :%d)",
                              WiFi.localIP().toString().c_str(), TCP_PORT);
-          wifi_needs_reconnect = false;
-          wifi_disconnected_since = 0;
       }
   });
 
@@ -361,7 +356,7 @@ void setup() {
 
   if (have_wifi) {
     WiFi.mode(WIFI_STA);
-    wifi_disconnected_since = millis() ? millis() : 1;
+    wifi_reconnect_tracker.noteDisconnected(millis());
     WiFi.begin(configured_wifi_ssid, configured_wifi_password);
   }
 #ifndef WITH_WEBCONFIG
@@ -512,10 +507,18 @@ void loop() {
   #ifdef ENABLE_OTA
     ota_console_loop();  // service the OTA text console (port 5002)
   #endif
+  const unsigned long wifi_now = millis();
   if (WiFi.status() == WL_CONNECTED) {
-    wifi_disconnected_since = 0;
+    wifi_reconnect_tracker.noteConnected();
+    wifi_setup_attempted = false;
 #ifdef WITH_WEBCONFIG
-    if (wifi_setup_recovery_mode && the_mesh.isWebConfigSetupActive()) {
+    // startAutoMode() can raise the setup AP after its own short connection
+    // timeout, before the main-loop fallback marks recovery mode. A successful
+    // saved-SSID retry should close either kind of recovery AP.
+    if (configured_wifi_ssid[0] && the_mesh.isWebConfigSetupActive()
+        && (wifi_setup_recovery_mode
+            || the_mesh.isWebConfigWiFiRecoveryActive())) {
+      WiFi.setAutoReconnect(true);
       the_mesh.stopWebConfig();
       wifi_setup_recovery_mode = false;
     }
@@ -530,51 +533,69 @@ void loop() {
       wifi_setup_recovery_mode = false;
     }
   } else if (configured_wifi_ssid[0]) {
-    unsigned long now = millis();
-    if (wifi_disconnected_since == 0) wifi_disconnected_since = now ? now : 1;
+    wifi_reconnect_tracker.noteDisconnected(wifi_now);
     if (!wifi_setup_recovery_mode
 #ifdef WITH_WEBCONFIG
         && !the_mesh.isWebConfigSetupActive()
 #else
         && !wifiSetupPortal().isActive()
 #endif
-        && now - wifi_disconnected_since >= WIFI_SETUP_FALLBACK_MS) {
+        && wifi_reconnect_tracker.disconnectedFor(
+            wifi_now, WIFI_SETUP_FALLBACK_MS)
+        && (!wifi_setup_attempted
+            || WiFiReconnectPolicy::elapsedMs(
+                wifi_now, last_wifi_setup_attempt) >= WIFI_SETUP_FALLBACK_MS)) {
+      wifi_setup_attempted = true;
+      last_wifi_setup_attempt = wifi_now;
 #ifdef WITH_WEBCONFIG
       if (WebConfigServer::loadEnabled(true)) {
         char web_reply[160];
         if (the_mesh.startWebConfig(true, web_reply)) {
           wifi_setup_recovery_mode = true;
           WIFI_DEBUG_PRINTLN("WiFi unavailable for two minutes; %s", web_reply);
-        } else {
-          wifi_disconnected_since = now;
         }
       }
 #else
       if (wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP, saveCompanionWiFi, nullptr)) {
         wifiSetupPortal().configureRecovery(
-            configured_wifi_ssid, configured_wifi_password, WIFI_SETUP_FALLBACK_MS);
+            configured_wifi_ssid, configured_wifi_password,
+            WiFiReconnectPolicy::kRetryIntervalMs,
+            WiFiReconnectPolicy::kRetryIntervalMs - WIFI_SETUP_FALLBACK_MS);
         wifi_setup_recovery_mode = true;
         WIFI_DEBUG_PRINTLN("WiFi unavailable for two minutes; setup AP started");
-      } else {
-        // Avoid retrying portal creation on every pass through loop().
-        wifi_disconnected_since = now;
       }
 #endif
     }
   }
-  // Safely attempt to reconnect every 10 seconds if flagged
-  if (
+
+  // The ESP stack normally reconnects by itself. If it gets wedged after an AP
+  // outage, reassert the saved credentials every five minutes. WebConfig's
+  // setup AP uses AP+STA mode, so the station retry can run without taking the
+  // recovery page down. The legacy portal owns its own identical retry timer.
+  const bool reconnect_owned_here =
 #ifdef WITH_WEBCONFIG
       !the_mesh.isWebConfigSetupActive()
+          || wifi_setup_recovery_mode
+          || the_mesh.isWebConfigWiFiRecoveryActive();
 #else
-      !wifiSetupPortal().isActive()
+      !wifiSetupPortal().isActive();
 #endif
-      && wifi_needs_reconnect
-      && (millis() - last_wifi_reconnect_attempt > 10000)) {
-    WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
-    WiFi.disconnect();
-    WiFi.reconnect();
-    last_wifi_reconnect_attempt = millis();
+  if (configured_wifi_ssid[0] && reconnect_owned_here
+      && WiFi.status() != WL_CONNECTED
+      && wifi_reconnect_tracker.retryDue(wifi_now)) {
+    WIFI_DEBUG_PRINTLN("WiFi still unavailable; retrying saved SSID");
+    wifi_reconnect_tracker.noteAttempt(wifi_now);
+#ifdef WITH_WEBCONFIG
+    if (!the_mesh.isWebConfigSetupActive()) {
+      WiFi.mode(WIFI_STA);
+      WiFi.setAutoReconnect(true);
+    }
+#else
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+#endif
+    WiFi.disconnect(false, false);
+    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
   }
 #ifdef WITH_MQTT_BRIDGE
   the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password);
