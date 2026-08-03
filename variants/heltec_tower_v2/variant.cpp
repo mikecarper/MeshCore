@@ -36,6 +36,12 @@ void variant_shutdown()
   nrf_gpio_cfg_default(PIN_SPI_MISO);
   nrf_gpio_cfg_default(PIN_SPI_MOSI);
   nrf_gpio_cfg_default(PIN_SPI_SCK);
+#if defined(HELTEC_TOWER_V2_SDCARD)
+  nrf_gpio_cfg_default(PIN_SPI1_NSS);
+  nrf_gpio_cfg_default(PIN_SPI1_MISO);
+  nrf_gpio_cfg_default(PIN_SPI1_MOSI);
+  nrf_gpio_cfg_default(PIN_SPI1_SCK);
+#endif
   nrf_gpio_cfg_default(PIN_LED);
   detachInterrupt(PIN_GPS_PPS);
   detachInterrupt(PIN_BUTTON1);

@@ -58,6 +58,11 @@ DEFAULT_BLOCK_SIZE = 1024
 # the staged .mota must begin above it. Keep in sync with OtaFlashLayout_nrf52.h / the OTAFIX bootloader.
 NRF52_INPLACE_MEMORY = 0x00098000
 
+# MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
+# complete S140 v6 application region up to InternalFS instead of leaving room for internal staging.
+# This is deliberately target-specific: other nRF52 OTA builds still need NRF52_INPLACE_MEMORY above.
+NRF52_SD_APP_MEMORY = 0x000C7000
+
 
 # ---------------------------------------------------------------------------
 # Multihash helpers (sha2-256 truncations)

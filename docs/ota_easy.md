@@ -7,9 +7,11 @@ LoRa. Choose the package type for the **destination** node:
 | --- | --- | --- | --- |
 | ESP32 | Full firmware | New non-merged application `.bin` | ESP32 A/B firmware slots |
 | nRF52 | In-place delta | Exact running `firmware.hex` and new `firmware.hex` | Exact-board OTAFIX bootloader |
+| MeshTower V2 SD target | Full firmware or in-place delta | New `firmware.hex`; a delta also needs the exact running `firmware.hex` | Matching SD-aware OTAFIX bootloader |
 
-An nRF52 node cannot install an ESP32-style full-image container. It deliberately accepts only an in-place
-delta built against its exact running firmware.
+A normal nRF52 target cannot install a full-image container. It deliberately accepts only an in-place
+delta built against its exact running firmware. The MeshTower V2 microSD target is the exception because
+it stages the complete container off-chip; see [MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
 
 ## Temporary OTA channel used in this guide
 
@@ -298,7 +300,8 @@ ota status
   If it is the source or destination, install a supported `-ota-` build over WiFi or USB first. An intermediate
   repeater does not need the OTA CLI and can relay opaquely while its matching `tempradio` window is active.
 - **The update is marked `[other hw]`:** it is for a different board or firmware role. Do not install it.
-- **An nRF52 node does not list a full update:** this is intentional. nRF52 accepts only an in-place delta.
+- **An nRF52 node does not list a full update:** this is intentional for internal-flash targets. The
+  MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.
 - **nRF52 reports a base mismatch:** the file passed to `--base` is not the exact application running on

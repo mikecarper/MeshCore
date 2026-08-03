@@ -2,6 +2,7 @@
 #include "OtaFormat.h"
 #include "MotaContainer.h"
 #include "Identity.h"
+#include "OtaByteIO.h"
 #include <string.h>
 
 #if defined(ESP32_PLATFORM)
@@ -25,6 +26,9 @@
   #include "nrf.h"
   #include "nrf_soc.h"
   #include "nrf_sdm.h"
+  #if defined(OTA_SD_STORE)
+    #include "OtaStoreSdNrf52.h"
+  #endif
 #endif
 
 namespace mesh {
@@ -493,6 +497,86 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
           vr.is_signed ? " (signer trusted)" : " (unsigned)");
   return true;
 }
+
+#if defined(OTA_SD_STORE)
+bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  st = ApplyState();
+  uint8_t hdr[8], manifest[MOTA_MFL];
+  uint32_t total = store.staged_size();
+  if (total < 8 + MOTA_MFL + 5 || !store.read(0, hdr, sizeof(hdr)) ||
+      memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total ||
+      !store.read(8, manifest, sizeof(manifest))) {
+    strcpy(msg, "SD container parse failed");
+    return false;
+  }
+  MotaManifest m;
+  if (!mota_parse_manifest(manifest, sizeof(manifest), m)) {
+    strcpy(msg, "SD manifest parse failed");
+    return false;
+  }
+  const bool full = m.is_full() && m.codec_id == CODEC_FULL &&
+                    m.payload_size == m.image_size;
+  const bool delta = !m.is_full() && m.codec_id == CODEC_DETOOLS_INPLACE;
+  if (!full && !delta) {
+    strcpy(msg, "nRF52 SD bootloader accepts full or in-place delta only");
+    return false;
+  }
+  const uint32_t app_base = mota_nrf52_app_base();
+  if (m.image_size == 0 || app_base >= MOTA_NRF52_APP_END ||
+      m.image_size > MOTA_NRF52_APP_END - app_base) {
+    strcpy(msg, "image exceeds nRF52 application region");
+    return false;
+  }
+  st.image_size = m.image_size;
+  memcpy(st.image_hash, m.image_hash, sizeof(st.image_hash));
+  st.manifest_ok = true;
+
+  OtaBlCaps bl = ota_bootloader_caps();
+  if (!bl.present || !(bl.storage_flags & OTA_BL_STORAGE_SD)) {
+    strcpy(msg, "this bootloader has no SD OTA support - update the bootloader first");
+    return false;
+  }
+  if (bl.apply_abi < m.format_ver || !(bl.codec_mask & (1u << m.codec_id))) {
+    snprintf(msg, 159,
+             "bootloader cannot apply this SD update (abi=%u codecs=0x%x; need fmt=%u codec=%u)",
+             bl.apply_abi, bl.codec_mask, m.format_ver, m.codec_id);
+    return false;
+  }
+
+  VerifyResult vr = ota_verify(static_cast<const OtaStore&>(store), allow);
+  st.sig_ok = vr.sig_ok;
+  st.trusted = vr.trusted;
+  if (!vr.root_ok || !vr.payload_ok || !vr.image_ok) {
+    strcpy(msg, "payload hash mismatch (incomplete or corrupt SD .mota)");
+    return false;
+  }
+
+  if (delta) {
+    SelfFwInfo fi;
+    if (!ota_self_firmware(fi) || !fi.valid) {
+      strcpy(msg, "cannot read running firmware (no EndF)");
+      return false;
+    }
+    if (!m.base_hash || memcmp(m.base_hash, fi.body_hash, 8) != 0) {
+      strcpy(msg, "not built for the running firmware (base mismatch)");
+      return false;
+    }
+  }
+  st.slot_ok = true;
+  if (vr.is_signed) {
+    if (!vr.sig_ok)  { strcpy(msg, "bad signature"); return false; }
+    if (!vr.trusted) { strcpy(msg, "untrusted signer (pubkey not in allowlist)"); return false; }
+  }
+  if (!store.approve_for_bootloader()) {
+    snprintf(msg, 159, "SD handoff failed: %s", store.last_error());
+    return false;
+  }
+  sprintf(msg, "verified%s %s image on SD; rebooting into bootloader once this reply is sent",
+          vr.is_signed ? " (signer trusted)" : " (unsigned)", full ? "full" : "delta");
+  return true;
+}
+#endif
 
 #else  // native / other platforms
 

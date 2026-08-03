@@ -136,9 +136,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
              (unsigned)c.allow.count(), (unsigned)c.manager.target(), tenv ? tenv : "?");
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
-    // blrc = the bootloader's last in-place-apply code (diagnostic; 0xB8=success, see ota_delta.c).
+    // blrc = the bootloader's last apply code (diagnostic; 0xB8=success, see ota_delta.c).
+    const OtaBlCaps& bl = c.bootloaderCaps();
+#if defined(OTA_SD_STORE)
+    const char* bl_state = !bl.present ? "NONE" :
+                           (bl.storage_flags & OTA_BL_STORAGE_SD) ? "SD" : "NO-SD";
+#else
+    const char* bl_state = bl.present ? "apply" : "NONE";
+#endif
     if (n < 146) n += snprintf(reply + n, 160 - n, " | bl:%s blrc:%02X",
-                               c.bootloaderCaps().present ? "apply" : "NONE", ota_bootloader_last_rc());
+                               bl_state, ota_bootloader_last_rc());
 #endif
 
   // ---- admin OTA stats: crypto identities (our fw's content-id + body_hash), serving set, live fetch,
@@ -261,7 +268,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     OtaStore* store; const char* dname;
     if (strncmp(dst, "flash", 5) == 0) {
       store = &c.fetch_store; c.fetch_store.clear(); dname = "flash"; validate = false;   // seed lives in the folder
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
       c.manager.set_accept_full(false);                 // nRF52 flash can install only in-place deltas
 #endif
     } else if (strncmp(dst, "folder", 6) == 0) {
@@ -284,7 +291,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (fs != OtaManager::IDLE) mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
     c.manager.set_accept_full(false);
 #endif
     c.fetch_store.clear(); c.serving = false; c.serve_expected = 0; c.session_started_ms = 0;
@@ -304,10 +311,17 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     char hx[17]; mesh::Utils::toHex(hx, fi.body_hash, 8);
     int n = snprintf(reply, 160, "self body=%u image=%u base_hash=%s", (unsigned)fi.body_len, (unsigned)fi.image_len, hx);
 #if defined(NRF52_PLATFORM)
-    // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can (delta install gate)
+    // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can install this store.
     const OtaBlCaps& bl = c.bootloaderCaps();   // cached (flash scanned once)
+#if defined(OTA_SD_STORE)
+    if (bl.present && (bl.storage_flags & OTA_BL_STORAGE_SD))
+      snprintf(reply + n, 160 - n, " | bootloader: SD apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
+    else
+      snprintf(reply + n, 160 - n, " | bootloader: NO SD mota-apply support (install will refuse)");
+#else
     if (bl.present) snprintf(reply + n, 160 - n, " | bootloader: apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
     else            snprintf(reply + n, 160 - n, " | bootloader: NO mota-apply support (delta install will refuse)");
+#endif
 #endif
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {
@@ -470,9 +484,22 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     strcpy(reply, "OK announced");
 
   } else if (strncmp(d, "verify", 6) == 0) {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (c.manager.fetchState() == OtaManager::COMPLETE) {
+      VerifyResult r = ota_verify(static_cast<const OtaStore&>(c.fetch_store), c.allow);
+      sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
+              r.parsed, r.root_ok, r.payload_ok, r.image_ok, r.is_signed, r.sig_ok, r.trusted,
+              r.integrity_ok(), r.auto_appliable());
+      return true;
+    }
+#endif
     const uint8_t* buf; uint32_t len;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    buf = c.serve_buf; len = c.serve_buf ? c.serve_expected : 0;
+#else
     if (c.manager.fetchState() == OtaManager::COMPLETE) { buf = c.fetch_store.data(); len = c.fetch_store.staged_size(); }
     else { buf = c.serve_buf; len = c.serve_buf ? c.serve_expected : 0; }
+#endif
     if (len == 0 || !buf) { strcpy(reply, "ERR nothing to verify (flash-staged: applydelta verifies)"); return true; }
     VerifyResult r = ota_verify(buf, len, c.allow);
     sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",

@@ -28,6 +28,10 @@ inline uint32_t mota_nrf52_app_base() { return MOTA_NRF52_APP_BASE_S140_V6; }
 // ExtraFS at 0xD4000..0xED000 (and InternalFS at 0xED000), while default scripts leave that range free.
 // Staging below 0xD4000 therefore never touches either filesystem.
 static const uint32_t MOTA_NRF52_FS_START   = 0x000D4000u;  // ExtraFS start (universal staging ceiling)
+// End of the normal nRF52840 application region. The SD-backed MeshTower V2
+// target can use this whole range because its staged container is off-chip.
+// InternalFS begins here and must never be erased by the bootloader.
+static const uint32_t MOTA_NRF52_APP_END    = 0x000ED000u;
 static const uint32_t MOTA_NRF52_FLASH_PAGE = 4096u;
 static const uint8_t  GPREGRET_OTA_APPLY    = 0x6Au;        // distinct from DFU magics 0x57/0x4E/0xA8
 

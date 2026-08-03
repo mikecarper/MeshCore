@@ -16,11 +16,25 @@
 #define PIN_BOARD_SDA PIN_WIRE_SDA
 #define PIN_BOARD_SCL PIN_WIRE_SCL
 
+#if defined(HELTEC_TOWER_V2_SDCARD)
+#define SPI_INTERFACES_COUNT (2)
+#else
 #define SPI_INTERFACES_COUNT (1)
+#endif
 #define PIN_SPI_MISO (0 + 23)
 #define PIN_SPI_MOSI (0 + 22)
 #define PIN_SPI_SCK  (0 + 19)
 #define PIN_SPI_NSS  LORA_CS
+
+// MeshTower V2 microSD socket (separate SPIM2 bus), from the Heltec partial
+// reference circuit: CS=P1.00, MOSI=P1.01, SCK=P0.06, MISO=P0.26.
+#if defined(HELTEC_TOWER_V2_SDCARD)
+#define PIN_SPI1_MISO (0 + 26)
+#define PIN_SPI1_MOSI (32 + 1)
+#define PIN_SPI1_SCK  (0 + 6)
+#define PIN_SPI1_NSS  (32 + 0)
+#define OTA_SD_CS_PIN PIN_SPI1_NSS
+#endif
 
 #define LED_BUILTIN (32 + 15)
 #define PIN_LED     LED_BUILTIN
@@ -51,6 +65,12 @@
 #define P_LORA_MISO  PIN_SPI_MISO
 #define P_LORA_MOSI  PIN_SPI_MOSI
 #define P_LORA_SCLK  PIN_SPI_SCK
+
+#if defined(HELTEC_TOWER_V2_SDCARD)
+static const uint8_t SS = PIN_SPI1_NSS;
+#else
+static const uint8_t SS = PIN_SPI_NSS;
+#endif
 
 #define USE_KCT8103L_PA_ONLY
 #define LORA_KCT8103L_EN      (0 + 15)

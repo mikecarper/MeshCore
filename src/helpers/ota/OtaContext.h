@@ -10,7 +10,9 @@
 #include "OtaFormat.h"
 #include "OtaSelf.h"          // ota_self_firmware() - prefer self-describing EndF identity at begin()
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  #include "OtaStoreSdNrf52.h"
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   #include "OtaStoreFlashNrf52.h"
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
   #include "OtaStoreFlashEsp32.h"
@@ -43,7 +45,7 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 #ifndef OTA_SERVE_BUF_SIZE
   // nRF52 self-serving streams from flash; this buffer is only for the manual `ota dev stage` helper.
   // Keep it to one flash page so the OTA singleton does not consume another 16 KB of scarce SRAM.
-  #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+  #if defined(NRF52_PLATFORM) && (defined(OTA_FLASH_STORE) || defined(OTA_SD_STORE))
     #define OTA_SERVE_BUF_SIZE 4096
   #else
     #define OTA_SERVE_BUF_SIZE 16384
@@ -55,7 +57,9 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 
 struct OtaContext {
   OtaManager manager;
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  OtaStoreSdNrf52 fetch_store;             // MeshTower V2: persistent SD staging, full + delta
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   OtaStoreFlashNrf52 fetch_store;            // persistent flash staging (survives reboot; large deltas)
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
   OtaStoreFlashEsp32 fetch_store;            // stages in the inactive A/B slot (delta + full, RX-safe)
@@ -141,7 +145,9 @@ struct OtaContext {
       }
     }
     bool ok;
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    ok = ota_apply_mota_nrf52(fetch_store, allow, apply_st, msg);
+#elif defined(NRF52_PLATFORM)
     ok = ota_apply_mota_nrf52(fetch_store.data(), fetch_store.staged_size(), allow, apply_st, msg);
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
     ok = ota_apply_detools_mota(fetch_store, allow, apply_st, msg);
@@ -245,7 +251,10 @@ struct OtaContext {
     manager.begin(target_id, send, ctx);
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    manager.set_accept_full(true);
+    manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
+#elif defined(NRF52_PLATFORM)
     manager.set_accept_full(false);                       // single-slot bootloader applies deltas only
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(ESP32_PLATFORM)

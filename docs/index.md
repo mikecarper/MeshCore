@@ -8,6 +8,7 @@ Below are a few quick start guides.
 - [CLI Commands](./cli_commands.md)
 - [CLI Availability by Firmware Build](./cli_build_matrix.md)
 - [Easy LoRa OTA: ESP32 full images and nRF52 deltas](./ota_easy.md)
+- [MeshTower V2 microSD self-updates](./ota_meshtower_v2_sdcard.md)
 - [GPS Tracking](./gps_tracking.md)
 - [Companion Protocol](./companion_protocol.md)
 - [Packet Format](./packet_format.md)

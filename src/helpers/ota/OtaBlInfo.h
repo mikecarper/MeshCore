@@ -18,14 +18,17 @@
 namespace mesh {
 namespace ota {
 
-// 16-byte marker: magic[8] "MOTABLDR" + apply_abi(2) + codec_mask(2) + reserved(4).
+// 16-byte marker: magic[8] "MOTABLDR" + apply_abi(2) + codec_mask(2) + storage flags/reserved(4).
 static const uint8_t OTA_BL_MAGIC[8] = { 'M','O','T','A','B','L','D','R' };
 
 struct OtaBlCaps {
   bool     present = false;
   uint16_t apply_abi = 0;    // max .mota format_ver the bootloader can apply
   uint16_t codec_mask = 0;   // bit i set => can apply codec_id i (in-place delta = bit 2)
+  uint8_t  storage_flags = 0; // bit 0 => raw-SD handoff/apply is supported
 };
+
+static const uint8_t OTA_BL_STORAGE_SD = 0x01;
 
 // Scan the bootloader flash region for the marker. Returns {present=false} if not found / non-nRF52.
 inline OtaBlCaps ota_bootloader_caps() {
@@ -38,6 +41,7 @@ inline OtaBlCaps ota_bootloader_caps() {
     c.present    = true;
     c.apply_abi  = (uint16_t)(p[8]  | ((uint16_t)p[9]  << 8));
     c.codec_mask = (uint16_t)(p[10] | ((uint16_t)p[11] << 8));
+    c.storage_flags = p[12];
     break;
   }
 #endif

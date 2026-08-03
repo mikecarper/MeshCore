@@ -6,6 +6,7 @@ declare -A PIO_ENV_PLATFORM_BY_NAME=()
 declare -A PIO_ENV_BOARD_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
 declare -A PIO_ENV_OTA_BY_NAME=()
+declare -A PIO_ENV_SD_OTA_BY_NAME=()
 declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
 declare -A PIO_ENV_FULL_BUILD_BY_NAME=()
 declare -A PIO_ENV_FULL_WIFI_OTA_BY_NAME=()
@@ -166,7 +167,7 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_full env_full_wifi env_board; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_sd_ota env_full env_full_wifi env_board; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
@@ -175,6 +176,7 @@ init_project_context() {
       PIO_ENV_BOARD_BY_NAME["$env_name"]=$env_board
       PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
       PIO_ENV_OTA_BY_NAME["$env_name"]=$env_ota
+      PIO_ENV_SD_OTA_BY_NAME["$env_name"]=$env_sd_ota
       PIO_ENV_FULL_BUILD_BY_NAME["$env_name"]=$env_full
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$env_name"]=$env_full_wifi
     done < <(
@@ -192,6 +194,7 @@ for section, options in data:
     mqtt_enabled = False
     ota_enabled = False
     ota_disabled = False
+    sd_ota = False
     admin_enabled = False
     espnow_enabled = "bridge_espnow" in env_name.lower()
     full_wifi_ota = False
@@ -217,6 +220,8 @@ for section, options in data:
                 admin_enabled = True
             if "DISABLE_LORA_OTA" in str(flag):
                 ota_disabled = True
+            if "OTA_SD_STORE" in str(flag):
+                sd_ota = True
             match = pattern.search(str(flag))
             if match and platform is None:
                 platform = match.group(0)
@@ -228,6 +233,7 @@ for section, options in data:
         print(
             f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}"
             f"\t{1 if ota_enabled and not ota_disabled else 0}"
+            f"\t{1 if sd_ota else 0}"
             f"\t{1 if full_enabled else 0}\t{1 if full_wifi_ota else 0}"
             f"\t{board_value}"
         )
@@ -261,6 +267,7 @@ for section, options in data:
       PIO_ENV_BOARD_BY_NAME["$ota_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
       PIO_ENV_MQTT_BY_NAME["$ota_env"]=0
       PIO_ENV_OTA_BY_NAME["$ota_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$ota_env"]="${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}"
       PIO_ENV_FULL_BUILD_BY_NAME["$ota_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$ota_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$ota_env"]="$env_name"
@@ -1938,8 +1945,13 @@ apply_lora_ota_override() {
   local env_name=$1
 
   if is_lora_ota_build "$env_name"; then
-    append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_FOLDER_SERIAL"
+    if [ "${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
+      append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1 -DOTA_FLASH_STORE=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -DOTA_SD_STORE=1 -DOTA_FOLDER_SERIAL"
+    else
+      append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_FOLDER_SERIAL"
+    fi
   else
     append_platformio_build_unflags "-DENABLE_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"

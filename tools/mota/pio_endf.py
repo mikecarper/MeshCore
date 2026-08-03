@@ -148,9 +148,12 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     body = bytes(ih.tobinarray(start=app_start, size=app_end - app_start))
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
-    if len(out) > ml.NRF52_INPLACE_MEMORY:
-        raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; in-place limit is "
-                           f"{ml.NRF52_INPLACE_MEMORY} bytes")
+    sd_backed = _cppdef("OTA_SD_STORE") is not None
+    image_limit = ml.NRF52_SD_APP_MEMORY if sd_backed else ml.NRF52_INPLACE_MEMORY
+    limit_name = "SD application" if sd_backed else "in-place"
+    if len(out) > image_limit:
+        raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; {limit_name} limit is "
+                           f"{image_limit} bytes")
     if len(out) == len(body):
         print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
     trailer = out[len(body):]                      # the EndF trailer (56 bytes with identity)

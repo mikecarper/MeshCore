@@ -2,6 +2,7 @@
 
 #include "MotaContainer.h"
 #include "SignerAllowlist.h"
+#include "OtaStore.h"
 
 // Full verification of a staged `.mota` (device-side: uses Ed25519 via mesh::Identity, so NOT compiled
 // on the native host - the portable integrity checks live in MotaContainer and are unit-tested there).
@@ -25,6 +26,10 @@ struct VerifyResult {
 };
 
 VerifyResult ota_verify(const uint8_t* buf, uint32_t len, const SignerAllowlist& allow);
+
+// Streaming verification for a persistent store that cannot expose one
+// contiguous memory view (notably the MeshTower V2 SD-backed nRF52 store).
+VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow);
 
 } // namespace ota
 } // namespace mesh

@@ -50,6 +50,11 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len,
 // Returns true (msg = "verified...") when approved, false (msg = the first failing gate) otherwise.
 bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+class OtaStoreSdNrf52;
+bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store,
+                          const SignerAllowlist& allow, ApplyState& st, char* msg);
+#endif
 
 // Commit the (already approved/armed) update and reboot into it - does NOT return. Call this only after
 // a successful ota_apply_* AND after the confirmation reply has been delivered, so the operator knows
