@@ -30,4 +30,8 @@ void initVariant() {
   digitalWrite(PIN_GPS_STANDBY, HIGH);
   pinMode(PIN_GPS_EN, OUTPUT);
   digitalWrite(PIN_GPS_EN, HIGH);
+  // PIN_GPS_RESET (pin 29 / REINIT) is intentionally left floating (input).
+  // Driving it HIGH holds the L76K silent, so it never streams NMEA and the
+  // firmware reports "no GPS". Letting it float lets the module run.
+  // See GPS_RESET (-1) in variant.h.
 }

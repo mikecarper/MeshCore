@@ -799,7 +799,7 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
-  if (_serial->takePairingRequest()) {
+  if (_interfaceManager->takePairingRequest()) {
     showPairingPin();
   }
 

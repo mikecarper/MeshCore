@@ -149,11 +149,21 @@ void UITask::renderCurrScreen() {
     if (WiFi.status() == WL_CONNECTED) {
       IPAddress ip = WiFi.localIP();
       _display->setCursor(0, 40);
-      _display->setColor(DisplayDriver::LIGHT);
+      _display->setColor(UIColor::primary_txt);
       snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
       _display->print(tmp);
-    }
+    } else
 #endif
+    {
+      _display->setCursor(0, 40);
+      snprintf(tmp, sizeof(tmp), "BAT: %.2fV", _board->getBattMilliVolts() / 1000.0f);
+      _display->print(tmp);
+    }
+
+    // Keep power-saving state visible even when the MQTT IP occupies row 40.
+    _display->setCursor(0, 50);
+    snprintf(tmp, sizeof(tmp), "PowerSaving: %s", _node_prefs->powersaving_enabled ? "ON" : "off");
+    _display->print(tmp);
   }
 }
 

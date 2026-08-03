@@ -33,7 +33,12 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #endif
 
 #if RXPS_FIXED_ENABLED
-#error "RXPS must remain disabled for companion firmware"
+#if RXPS_FIXED_LEVEL < 1 || RXPS_FIXED_LEVEL > 10
+#error "RXPS_FIXED_LEVEL must be between 1 and 10"
+#endif
+#if RXPS_FIXED_PREAMBLE != 16 && RXPS_FIXED_PREAMBLE != 32
+#error "RXPS_FIXED_PREAMBLE must be 16 or 32"
+#endif
 #endif
 
 #define CMD_APP_START                 1

@@ -45,6 +45,9 @@ void RadioLibWrapper::begin() {
   _noise_floor_valid = false;
   _threshold = 0;
   _cad_enabled = false;
+  _last_rssi = 0;
+  _last_snr = 0;
+  _rx_hold_continuous = false;
 
   // start average out some samples
   _num_floor_samples = 0;
@@ -178,6 +181,7 @@ bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
 
 void RadioLibWrapper::idle() {
   _radio->standby();
+  _rx_hold_continuous = false;
   state = STATE_IDLE;   // need another startReceive()
 }
 
@@ -552,9 +556,18 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
   if (state & STATE_INT_READY) {
     last_radio_interrupt_millis = millis();   // ISR fired -> radio hardware is alive
     if (isPacketReady()) {
+      if (_rx_ps_armed) {
+        // RxDone stops the active receive window, but the duty-cycle RTC can
+        // still be running. Stop it before reading and re-arming another mode.
+        stopReceiveDutyCycle();
+      }
       len = _radio->getPacketLength();
       if (len > 0) {
         if (len > sz) { len = sz; }
+        // Cache packet status before readData() and before any new receive is
+        // started. Both operations may replace the radio's packet metadata.
+        _last_snr = _radio->getSNR();
+        _last_rssi = _radio->getRSSI();
         int err = _radio->readData(bytes, len);
         if (err != RADIOLIB_ERR_NONE) {
           MESH_DEBUG_PRINTLN("RadioLibWrapper: error: readData(%d)", err);
@@ -570,10 +583,47 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     state = STATE_IDLE;   // need another startReceive()
   }
 
+  if (len > 0 && _rx_ps_enabled) {
+    // Dispatcher still needs the just-cached RSSI/SNR. Keep the receiver in
+    // ordinary continuous mode until it has parsed and scored this packet,
+    // then onReceiveProcessed() restores the duty cycle.
+    _rx_hold_continuous = true;
+    int err = _radio->startReceive();
+    if (err == RADIOLIB_ERR_NONE) {
+      state = STATE_RX;
+      if (_nf_calib_active) {
+        _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
+      }
+    } else {
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startReceive after packet (%d)", err);
+    }
+    return len;
+  }
+
   if (state != STATE_RX) {
     startRecv();
   }
   return len;
+}
+
+void RadioLibWrapper::onReceiveProcessed() {
+  if (!_rx_hold_continuous) return;
+
+  if ((state & ~STATE_INT_READY) == STATE_TX_WAIT) {
+    _rx_hold_continuous = false;
+    return;
+  }
+  // A second packet may have completed while Dispatcher handled the first.
+  // Leave continuous RX intact until recvRaw() consumes that pending packet.
+  if ((state & STATE_INT_READY) != 0 || isReceivingPacket()) {
+    return;
+  }
+
+  _rx_hold_continuous = false;
+  if (!_rx_ps_enabled || _nf_calib_active) return;
+
+  state = STATE_IDLE;
+  startRecv();
 }
 
 uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
@@ -581,6 +631,7 @@ uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
 }
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
+  _rx_hold_continuous = false;
   if (_rx_ps_armed) {
     // stop the duty-cycle sequencer before SetTx, otherwise its next RTC
     // event can fire mid-transmission and abort the TX
@@ -653,6 +704,11 @@ bool RadioLibWrapper::isChannelActive() {
 
   // cad: hardware channel activity detection
   if (_cad_enabled) {
+    if (_rx_ps_armed) {
+      // CAD cannot safely run on top of an active duty-cycle sequencer: its
+      // pending RTC event can force standby in the middle of the scan.
+      stopReceiveDutyCycle();
+    }
     int16_t result = performChannelScan();
     // scanChannel() triggers DIO interrupt (CAD done) which sets STATE_INT_READY
     // via setFlag() ISR. Clear it before restarting RX so recvRaw() doesn't
@@ -698,10 +754,10 @@ uint8_t RadioLibWrapper::getRadioState() const {
 }
 
 float RadioLibWrapper::getLastRSSI() const {
-  return _radio->getRSSI();
+  return _last_rssi;
 }
 float RadioLibWrapper::getLastSNR() const {
-  return _radio->getSNR();
+  return _last_snr;
 }
 
 float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
