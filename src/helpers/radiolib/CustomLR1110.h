@@ -78,7 +78,7 @@ class CustomLR1110 : public LR1110 {
       // Make preamble detection visible to CAD while retaining RadioLib's
       // normal RX-complete and error events.
       return LR1110::startReceive(
-          RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED,
+          RADIOLIB_LR11X0_RX_TIMEOUT_INF,
           RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED),
           RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
     }

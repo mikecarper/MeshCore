@@ -36,4 +36,9 @@ struct NodePrefs {  // persisted to file
   char default_scope_name[31];
   uint8_t default_scope_key[16];
   uint8_t radio_fem_rxgain_override; // 1 once the user overrides the build default
+
+  // Keep the upstream repeat API while retaining the existing binary prefs
+  // layout used by this branch.
+  bool isRepeatEn() const { return client_repeat != 0; }
+  void setRepeatEn(bool enabled) { client_repeat = enabled ? 1 : 0; }
 };

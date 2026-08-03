@@ -2837,7 +2837,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 #endif
 
   // defaults
-  memset(&_prefs, 0, sizeof(_prefs));
   _prefs.airtime_factor = 1.0;
   _prefs.rx_delay_base = DEFAULT_RX_DELAY_BASE;   // fork kept this off by default (macro defaults 0.0f)
   _prefs.tx_delay_factor = 0.5f; // was 0.25f

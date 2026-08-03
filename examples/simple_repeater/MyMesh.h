@@ -31,6 +31,7 @@
   #include <LittleFS.h>
 #elif defined(ESP32)
   #include <SPIFFS.h>
+  using File = fs::File;
 #endif
 
 #ifdef WITH_RS232_BRIDGE

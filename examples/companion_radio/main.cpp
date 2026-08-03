@@ -17,6 +17,63 @@ static uint32_t _atoi(const char* sp) {
   return n;
 }
 
+// interface manager
+#include <helpers/MultiSerialInterface.h>
+MultiSerialInterface interface_manager;
+
+// include bluetooth interface
+#if defined(BLE_PIN_CODE)
+  #ifdef ESP32
+    // include esp32 bluetooth interface
+    #include <helpers/esp32/SerialBLEInterface.h>
+    SerialBLEInterface bluetooth_interface;
+  #elif defined(NRF52_PLATFORM)
+    // include nrf52 bluetooth interface
+    #include <helpers/nrf52/SerialBLEInterface.h>
+    SerialBLEInterface bluetooth_interface;
+  #else
+    #error "SerialBLEInterface is not defined for this platform"
+  #endif
+#endif
+
+// include wifi interface
+#ifdef WIFI_SSID
+  #ifndef TCP_PORT
+    #define TCP_PORT 5000
+  #endif
+  #ifdef ESP32
+    // include esp32 wifi interface
+    #include <helpers/esp32/SerialWifiInterface.h>
+    #include <helpers/WiFiSetupPortal.h>
+    SerialWifiInterface wifi_interface;
+    #ifndef WIFI_PWD
+      #define WIFI_PWD ""
+    #endif
+  #else
+    #error "SerialWifiInterface is not defined for this platform"
+  #endif
+#endif
+
+// include usb interface
+#if defined(ENABLE_USB_INTERFACE)
+  #include <helpers/ArduinoSerialInterface.h>
+  ArduinoSerialInterface usb_serial_interface;
+#endif
+
+// include ethernet interface
+#if defined(ETHERNET_ENABLED)
+  #include <helpers/ethernet/EthernetInterface.h>
+  ETHERNET_CLASS ethernet_interface;
+#endif
+
+// include hardware serial interface
+#if defined(SERIAL_RX)
+  #include <helpers/ArduinoSerialInterface.h>
+  ArduinoSerialInterface hardware_serial_interface;
+  HardwareSerial companion_serial(1);
+#endif
+
+// platform file system
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
   #if defined(QSPIFLASH)
@@ -39,68 +96,10 @@ static uint32_t _atoi(const char* sp) {
   DataStore store(SPIFFS, rtc_clock);
 #endif
 
-#ifdef ESP32
-  #ifdef WIFI_SSID
-    #include <helpers/esp32/SerialWifiInterface.h>
-    #include <helpers/WiFiSetupPortal.h>
-    SerialWifiInterface serial_interface;
-    #ifndef TCP_PORT
-      #define TCP_PORT 5000
-    #endif
-    #ifndef WIFI_PWD
-      #define WIFI_PWD ""
-    #endif
-  #elif defined(BLE_PIN_CODE)
-    #include <helpers/esp32/SerialBLEInterface.h>
-    SerialBLEInterface serial_interface;
-  #elif defined(SERIAL_RX)
-    #include <helpers/ArduinoSerialInterface.h>
-    ArduinoSerialInterface serial_interface;
-    HardwareSerial companion_serial(1);
-  #else
-    #include <helpers/ArduinoSerialInterface.h>
-    ArduinoSerialInterface serial_interface;
-  #endif
-#elif defined(RP2040_PLATFORM)
-  //#ifdef WIFI_SSID
-  //  #include <helpers/rp2040/SerialWifiInterface.h>
-  //  SerialWifiInterface serial_interface;
-  //  #ifndef TCP_PORT
-  //    #define TCP_PORT 5000
-  //  #endif
-  // #elif defined(BLE_PIN_CODE)
-  //   #include <helpers/rp2040/SerialBLEInterface.h>
-  //   SerialBLEInterface serial_interface;
-  #if defined(SERIAL_RX)
-    #include <helpers/ArduinoSerialInterface.h>
-    ArduinoSerialInterface serial_interface;
-    HardwareSerial companion_serial(1);
-  #else
-    #include <helpers/ArduinoSerialInterface.h>
-    ArduinoSerialInterface serial_interface;
-  #endif
-#elif defined(NRF52_PLATFORM)
-  #ifdef BLE_PIN_CODE
-    #include <helpers/nrf52/SerialBLEInterface.h>
-    SerialBLEInterface serial_interface;
-  #elif defined(ETHERNET_ENABLED)
-    #include <helpers/nrf52/SerialEthernetInterface.h>
-    SerialEthernetInterface serial_interface;
-  #else
-    #include <helpers/ArduinoSerialInterface.h>
-    ArduinoSerialInterface serial_interface;
-  #endif
-#elif defined(STM32_PLATFORM)
-  #include <helpers/ArduinoSerialInterface.h>
-  ArduinoSerialInterface serial_interface;
-#else
-  #error "need to define a serial interface"
-#endif
-
 /* GLOBAL OBJECTS */
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
-  UITask ui_task(&board, &serial_interface);
+  UITask ui_task(&board, &interface_manager);
 #endif
 
 StdRNG fast_rng;
@@ -299,26 +298,6 @@ void setup() {
         false
     #endif
   );
-
-#ifdef BLE_PIN_CODE
-  serial_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
-  the_mesh.startInterface(serial_interface);
-#elif defined(ETHERNET_ENABLED)
-  Serial.print("Waiting for serial to connect...\n");
-  unsigned long timeout = millis();
-  while (!Serial) {
-    if ((millis() - timeout) < 5000) { delay(100); } else { break; }
-  }
-  Serial.println("Initializing Ethernet adapter...");
-  if (serial_interface.begin()) {
-    the_mesh.startInterface(serial_interface);
-  } else {
-    Serial.println("ETH: Init failed, continuing without Ethernet (mesh only)");
-  }
-#else
-  serial_interface.begin(Serial);
-  the_mesh.startInterface(serial_interface);
-#endif
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   store.begin();
@@ -329,22 +308,6 @@ void setup() {
         false
     #endif
   );
-
-  //#ifdef WIFI_SSID
-  //  WiFi.begin(WIFI_SSID, WIFI_PWD);
-  //  serial_interface.begin(TCP_PORT);
-  // #elif defined(BLE_PIN_CODE)
-  //   char dev_name[32+16];
-  //   sprintf(dev_name, "%s%s", BLE_NAME_PREFIX, the_mesh.getNodeName());
-  //   serial_interface.begin(dev_name, the_mesh.getBLEPin());
-  #if defined(SERIAL_RX)
-    companion_serial.setPins(SERIAL_RX, SERIAL_TX);
-    companion_serial.begin(115200);
-    serial_interface.begin(companion_serial);
-  #else
-    serial_interface.begin(Serial);
-  #endif
-    the_mesh.startInterface(serial_interface);
 #elif defined(ESP32)
   SPIFFS.begin(true);
   store.begin();
@@ -355,7 +318,17 @@ void setup() {
         false
     #endif
   );
+#else
+  #error "need to define filesystem"
+#endif
 
+// add bluetooth interface
+#if defined(BLE_PIN_CODE)
+  bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
+  interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
+#endif
+
+// add wifi interface
 #ifdef WIFI_SSID
   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
   WiFi.setAutoReconnect(true);
@@ -410,25 +383,35 @@ void setup() {
   // restore a saved ESP-IDF WiFi power policy. Companion radios must keep
   // modem sleep disabled because its pauses can stall SX1262 SPI/DIO service.
   WiFi.setSleep(false);
-  serial_interface.begin(TCP_PORT);
+  wifi_interface.begin(TCP_PORT);
+  interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
   #ifdef ENABLE_OTA
     ota_console_server.begin();  // dedicated OTA text-console port (`nc <ip> 5002` -> `ota ...`)
     WIFI_DEBUG_PRINTLN("OTA console listening on :%d  (nc <ip> %d, type `ota ...`)", OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
   #endif
-#elif defined(BLE_PIN_CODE)
-  serial_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
-#elif defined(SERIAL_RX)
-  companion_serial.setPins(SERIAL_RX, SERIAL_TX);
-  companion_serial.begin(115200);
-  serial_interface.begin(companion_serial);
-#else
-  serial_interface.begin(Serial);
-#endif
-  the_mesh.startInterface(serial_interface);
-#else
-  #error "need to define filesystem"
 #endif
 
+// add usb interface
+#if defined(ENABLE_USB_INTERFACE)
+  usb_serial_interface.begin(Serial);
+  interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
+#endif
+
+// add ethernet interface
+#if defined(ETHERNET_ENABLED)
+  ethernet_interface.begin();
+  interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
+#endif
+
+// add hardware serial interface
+#if defined(SERIAL_RX)
+  companion_serial.setPins(SERIAL_RX, SERIAL_TX);
+  companion_serial.begin(115200);
+  hardware_serial_interface.begin(companion_serial);
+  interface_manager.addInterface(InterfaceType::HardwareSerial, &hardware_serial_interface);
+#endif
+
+  the_mesh.startInterface(interface_manager);
   sensors.begin();
 
 #if ENV_INCLUDE_GPS == 1 && defined(BLE_PIN_CODE)
@@ -486,6 +469,7 @@ void loop() {
   board.feedWatchdog();
 #endif
   the_mesh.loop();
+  interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
   #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)
@@ -507,19 +491,17 @@ void loop() {
   external_watchdog.loop();
 #endif
 
-#ifdef ETHERNET_ENABLED
-  serial_interface.loop();
-#endif
-
   // USB power alone (for example, a wall charger) must not disable power
   // saving. Stay awake only while a computer has an active USB data session.
-  if (!board.isUsbHostConnected() && !the_mesh.hasPendingWork()) {
+  bool can_sleep = !the_mesh.hasPendingWork();
+#if defined(NRF52_PLATFORM)
+  can_sleep = can_sleep && !board.isUsbHostConnected();
+#endif
+  if (can_sleep) {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)
-    if (!serial_interface.isReadBusy() && !serial_interface.isWriteBusy()) { // BLE is not busy
-      vTaskDelay(pdMS_TO_TICKS(10));  // attempt to sleep
-    }
+    vTaskDelay(pdMS_TO_TICKS(10));  // attempt to sleep
 #endif
   }
 

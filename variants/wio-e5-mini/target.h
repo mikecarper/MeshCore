@@ -8,7 +8,7 @@
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/SensorManager.h>
 #ifdef DISPLAY_CLASS
-  #include "NullDisplayDriver.h"
+  #include <helpers/ui/NullDisplayDriver.h>
 #endif
 
 #ifndef WIO_E5_MINI_NO_EXTERNAL_SENSORS
