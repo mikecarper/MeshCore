@@ -11,6 +11,8 @@ class CustomSX1276Wrapper : public RadioLibWrapper {
 public:
   CustomSX1276Wrapper(CustomSX1276& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
+  void powerOff() { _radio->standby(); _radio->sleep(); }
+
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     return ((CustomSX1276 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE

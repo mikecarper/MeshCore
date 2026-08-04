@@ -12,6 +12,8 @@ class CustomLR1110Wrapper : public RadioLibWrapper {
 public:
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
+  void powerOff() { _radio->standby(); _radio->sleep(); }
+
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     bool success = ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
@@ -56,6 +58,7 @@ public:
   }
 
   bool supportsRxPowerSaving() const override { return true; }
+  void onReceiveProcessed() override { finishReceiveProcessing(); }
 
 protected:
   bool isPacketReady() override {

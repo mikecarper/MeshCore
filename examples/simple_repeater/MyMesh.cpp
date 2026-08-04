@@ -942,7 +942,7 @@ const char *MyMesh::getLogDateTime() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-#if MESH_PACKET_LOGGING
+#if MESH_PACKET_LOGGING && !defined(MESH_COMPACT_PACKET_LOGGING)
   // Logging builds prefer backpressure over silently losing a packet record.
   Serial.print(getLogDateTime());
   Serial.print(" RAW: ");
@@ -7936,20 +7936,41 @@ static void formatPathReply(const uint8_t* path, uint8_t path_len, char* out, si
   out[pos] = 0;
 }
 
-static bool isClientPathCommand(const char* command) {
-  return strcmp(command, "get outpath") == 0
-      || strcmp(command, "set outpath") == 0
-      || strncmp(command, "set outpath ", 12) == 0
-      || strcmp(command, "get altpath") == 0
-      || strcmp(command, "set altpath") == 0
-      || strncmp(command, "set altpath ", 12) == 0;
+enum ClientPathCommand : uint8_t {
+  CLIENT_PATH_NONE = 0,
+  CLIENT_PATH_VALID = 1,
+  CLIENT_PATH_SET = 2,
+  CLIENT_PATH_ALT = 4,
+};
+
+static __attribute__((always_inline)) ClientPathCommand classifyClientPathCommand(const char* command) {
+  uint8_t result = CLIENT_PATH_VALID;
+  bool is_get = strncmp(command, "get ", 4) == 0;
+  if (!is_get) {
+    if (strncmp(command, "set ", 4) != 0) return CLIENT_PATH_NONE;
+    result |= CLIENT_PATH_SET;
+  }
+
+  const char* path = command + 4;
+  if (strncmp(path, "outpath", 7) != 0) {
+    if (strncmp(path, "altpath", 7) != 0) return CLIENT_PATH_NONE;
+    result |= CLIENT_PATH_ALT;
+  }
+
+  if (is_get) {
+    if (path[7] != 0) return CLIENT_PATH_NONE;
+  } else if (path[7] != 0 && path[7] != ' ') {
+    return CLIENT_PATH_NONE;
+  }
+  return (ClientPathCommand)result;
 }
 
 bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* reply) {
-  if (!isClientPathCommand(command)) return false;
+  const ClientPathCommand path_command = classifyClientPathCommand(command);
+  if (path_command == CLIENT_PATH_NONE) return false;
 
-  bool is_get = strncmp(command, "get ", 4) == 0;
-  bool is_alt = strncmp(command + 4, "altpath", 7) == 0;
+  bool is_get = (path_command & CLIENT_PATH_SET) == 0;
+  bool is_alt = (path_command & CLIENT_PATH_ALT) != 0;
   if (sender == NULL) {
     strcpy(reply, "Err - command needs remote client context");
     return true;
@@ -8143,7 +8164,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   // Reply-path overrides are core remote-client routing controls. Keep them
   // available before the portable observer hands the remaining commands to
   // its reduced CommonCLI parser.
-  if (isClientPathCommand(command)) {
+  if (classifyClientPathCommand(command) != CLIENT_PATH_NONE) {
     if (sender && !sender->isAdmin()) {
       bool allowed = (sender->isRegionMgr() || sender->isFilterMgr())
           && isCommonManagerReadOnlyAllowed(command);

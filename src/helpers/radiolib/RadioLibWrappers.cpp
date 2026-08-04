@@ -606,7 +606,7 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
   return len;
 }
 
-void RadioLibWrapper::onReceiveProcessed() {
+void RadioLibWrapper::finishReceiveProcessing() {
   if (!_rx_hold_continuous) return;
 
   if ((state & ~STATE_INT_READY) == STATE_TX_WAIT) {

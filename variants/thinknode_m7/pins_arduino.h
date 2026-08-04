@@ -16,4 +16,8 @@ static const uint8_t MOSI = 10;
 static const uint8_t MISO = 9;
 static const uint8_t SCK = 11;
 
+// Default ESP32-S3 UART0 pins used by HardwareSerial.
+static const uint8_t TX = 43;
+static const uint8_t RX = 44;
+
 #endif /* Pins_Arduino_h */

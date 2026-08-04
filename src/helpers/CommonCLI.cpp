@@ -134,6 +134,7 @@ static bool isValidName(const char *n) {
   return true;
 }
 
+#if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 static bool isGpioConfig(const char* config) {
   static const char expected[] = "gpio";
   for (size_t i = 0; i < sizeof(expected) - 1; i++) {
@@ -141,6 +142,7 @@ static bool isGpioConfig(const char* config) {
   }
   return config[sizeof(expected) - 1] == '\0' || config[sizeof(expected) - 1] == ' ';
 }
+#endif
 
 void CommonCLI::loop() {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
@@ -3029,8 +3031,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
-  if (isGpioConfig(config)) {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  if (isGpioConfig(config)) {
     const UserGpio::SetResult result = _user_gpio.handleSet(
         config + 4, reply, 160, sender_timestamp,
         _callbacks->getUserGpioRequestSource());
@@ -3040,11 +3042,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
                result.cancelled_timer) {
       _callbacks->onUserGpioTimerCancelled(result.pin);
     }
-#else
-    strcpy(reply, "Error: GPIO control unsupported on this build");
-#endif
     return;
   }
+#endif
 
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   if (memcmp(config, "webui ", 6) == 0) {
@@ -4161,14 +4161,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
-  if (isGpioConfig(config)) {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
+  if (isGpioConfig(config)) {
     _user_gpio.handleGet(config + 4, reply, 160);
-#else
-    strcpy(reply, "Error: GPIO control unsupported on this build");
-#endif
     return;
   }
+#endif
 
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   if (strcmp(config, "webui") == 0) {

@@ -103,13 +103,21 @@ uint32_t Dispatcher::getCADFailMaxDuration() const {
 
 #if MESH_PACKET_LOGGING
 void Dispatcher::logPacketStart(const char* direction, const Packet* packet, int len) {
+#if defined(MESH_COMPACT_PACKET_LOGGING)
+  (void)packet;
+  Serial.printf("%s %d\n", direction, len);
+#else
   Serial.print(getLogDateTime());
   Serial.printf(": %s, len=%d (type=%d, route=%s, payload_len=%d)",
                 direction, len, packet->getPayloadType(),
                 packet->isRouteDirect() ? "D" : "F", packet->payload_len);
+#endif
 }
 
 void Dispatcher::logPacketEnd(const Packet* packet) {
+#if defined(MESH_COMPACT_PACKET_LOGGING)
+  (void)packet;
+#else
   const uint8_t type = packet->getPayloadType();
   if (packet->payload_len >= 2
       && (type == PAYLOAD_TYPE_PATH || type == PAYLOAD_TYPE_REQ
@@ -119,6 +127,7 @@ void Dispatcher::logPacketEnd(const Packet* packet) {
   } else {
     Serial.write((uint8_t)'\n');
   }
+#endif
 }
 #endif
 
@@ -442,6 +451,7 @@ void Dispatcher::checkRecv() {
   if (pkt) {
     #if MESH_PACKET_LOGGING
     logPacketStart("RX", pkt, pkt->getRawLength());
+#if !defined(MESH_COMPACT_PACKET_LOGGING)
     Serial.printf(" SNR=%d RSSI=%d score=%d time=%d", (int)pkt->getSNR(),
                   (int)rssi, (int)(score * 1000), air_time);
 
@@ -450,6 +460,7 @@ void Dispatcher::checkRecv() {
     Serial.print(" hash=");
     mesh::Utils::printHex(Serial, packet_hash, MAX_HASH_SIZE);
     logPacketEnd(pkt);
+#endif
     #endif
     logRx(pkt, pkt->getRawLength(), score);   // hook for custom logging
 

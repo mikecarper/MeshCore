@@ -79,6 +79,7 @@ protected:
   void requestNoiseFloorRefresh();
   void noiseFloorCalibCheck(unsigned long now);
   void endNoiseFloorCalib(unsigned long now);
+  void finishReceiveProcessing();
   void cacheParams(float freq, float bw, uint8_t sf, uint8_t cr) {
     _cur_freq = freq; _cur_bw = bw; _cur_sf = sf; _cur_cr = cr; _params_valid = true;
   }
@@ -127,9 +128,7 @@ public:
         }
 
   void begin() override;
-  virtual void powerOff() { _radio->standby(); _radio->sleep(); }
   int recvRaw(uint8_t* bytes, int sz) override;
-  void onReceiveProcessed() override;
   uint32_t getEstAirtimeFor(int len_bytes) override;
   bool startSendRaw(const uint8_t* bytes, int len) override;
   bool isSendComplete() override;

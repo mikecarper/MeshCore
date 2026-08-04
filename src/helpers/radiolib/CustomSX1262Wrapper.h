@@ -47,12 +47,13 @@ public:
     return packetScoreInt(snr, sf, packet_len);
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1262 *)_radio)->spreadingFactor; }
-  virtual void powerOff() override {
+  void powerOff() {
     ((CustomSX1262 *)_radio)->standby();
     ((CustomSX1262 *)_radio)->sleep(false);
   }
 
   bool supportsRxPowerSaving() const override { return true; }
+  void onReceiveProcessed() override { finishReceiveProcessing(); }
 
 protected:
   int startReceiveMode() override {

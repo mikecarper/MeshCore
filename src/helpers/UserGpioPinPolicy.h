@@ -3,6 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Simulator targets do not include RadioLib, but board pin macros can still
+// use its sentinel value. Keep the fallback local to this header.
+#ifndef RADIOLIB_NC
+#define RADIOLIB_NC (-1)
+#define USER_GPIO_PIN_POLICY_UNDEF_RADIOLIB_NC
+#endif
+
 // This header is intentionally included only after target.h. The target's
 // build-time pin definitions are the authoritative list of GPIOs claimed by
 // the firmware in that particular image.
@@ -589,3 +596,8 @@ inline bool isFirmwareReserved(uint8_t pin) {
 }
 
 } // namespace UserGpioPinPolicy
+
+#ifdef USER_GPIO_PIN_POLICY_UNDEF_RADIOLIB_NC
+#undef RADIOLIB_NC
+#undef USER_GPIO_PIN_POLICY_UNDEF_RADIOLIB_NC
+#endif
