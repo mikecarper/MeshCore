@@ -120,7 +120,7 @@ void setup() {
   uint32_t start = millis();
   while (!Serial && millis() - start < 3000) delay(10);
   delay(100);
-#if defined(ESP32) && ARDUINO_USB_MODE
+#if defined(ESP32) && ARDUINO_USB_MODE && ARDUINO_USB_CDC_ON_BOOT
   Serial.setTxTimeoutMs(USB_TX_TIMEOUT_MS);
   Serial.setTxBufferSize(USB_TX_BUFFER_SIZE);
 #endif
