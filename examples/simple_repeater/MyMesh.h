@@ -9,6 +9,15 @@
 #include <CayenneLPP.h>
 #include <target.h>
 
+#ifndef MESH_ENABLE_TELEMETRY_HISTORY
+  // LoRa-E5-class STM32 repeater images have less than 3 KB of spare flash.
+  #if defined(STM32_PLATFORM)
+    #define MESH_ENABLE_TELEMETRY_HISTORY 0
+  #else
+    #define MESH_ENABLE_TELEMETRY_HISTORY 1
+  #endif
+#endif
+
 #ifndef MESH_ENABLE_RECENT_REPEATERS
   #define MESH_ENABLE_RECENT_REPEATERS  1
 #endif
@@ -71,6 +80,9 @@
 #include <helpers/SimpleMeshTables.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/StatsFormatHelper.h>
+#if MESH_ENABLE_TELEMETRY_HISTORY
+#include <helpers/TelemetryHistory.h>
+#endif
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/RegionMap.h>
 #include "RateLimiter.h"
@@ -358,6 +370,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
 #endif
   CayenneLPP telemetry;
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  mesh::TelemetryHistory telemetry_history;
+#endif
   unsigned long _ota_update_at = 0;  // deferred `ota update` fire time (0 = none scheduled)
   float active_bw;  // live BW, including temporary radio overrides
   uint8_t active_sf;  // live SF, including temporary radio overrides
@@ -491,6 +506,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                         unsigned long delay_millis, uint8_t path_hash_size,
                                         const TransportKey* fallback_scope);
   void servicePostMeshLoop();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  void sampleTelemetryHistory();
+  uint8_t resizeTelemetryGpsDays(uint8_t requested_days);
+#endif
   void sendSelfAdvertisementNow(uint32_t delay_millis, bool flood);
   bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,
                               mesh::Packet** queued_packet = nullptr);

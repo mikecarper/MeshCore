@@ -75,6 +75,7 @@ set flood.retry.ignore none
 
 | Setting | What it does | How to use | Example |
 | --- | --- | --- | --- |
+| `telemetry.temp`, `telemetry.volt`, `telemetry.gps` | Records 30-minute whole-degree MCU temperature and battery samples for seven days. GPS defaults to three days, or requests seven days at startup on onboard-GPS sensor builds. Runtime GPS retention can be `1`-`30` days and is reduced if needed to retain 2 KB of free memory. Pages are 1-based and newest first. History and runtime sizing reset on reboot. | `get telemetry.temp [page]`, `get telemetry.volt [page]`, `get telemetry.gps [page]`, `set telemetry.gps <1-30>` | `set telemetry.gps 30` |
 | `battery.alert` | Sends opt-in, region-scoped low-battery warnings to `#repeaters` after 30 minutes of uptime. | `get battery.alert`, `get battery.alert.region`, `set battery.alert on [region]`, `set battery.alert off` | `set battery.alert on sea` |
 | `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
 | `battery.alert.critical` | Critical threshold percentage. Critical and warning alerts use the same 12-hour resend cooldown. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |

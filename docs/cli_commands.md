@@ -303,6 +303,101 @@ refresh is already in flight, the scope pass is queued behind it.
 
 ---
 
+### Read repeater telemetry history
+
+Repeater firmware records one UTC-aligned sample every 30 minutes. Temperature
+and battery voltage retain 336 samples (seven rolling days). GPS retains three
+days by default. Sensor builds with an onboard GPS provider request a seven-day
+default at startup. The history and any runtime retention change are held in
+RAM and reset after a reboot.
+
+The feature is omitted from flash-constrained STM32 repeater images.
+
+**Usage:**
+
+- `get telemetry.temp [page]`
+- `get telemetry.volt [page]`
+- `get telemetry.gps [page]`
+- `set telemetry.gps <days>`
+
+**Parameters:**
+
+- `page`: Page `1` is always newest. Temperature and voltage pages each hold
+  24 hours and accept `1`-`7`. GPS pages each hold 12 hours and accept `1`
+  through twice the current GPS retention in days. Omitting the page selects
+  page `1`.
+- `days`: Requested GPS retention from `1` through `30` days. Retention above
+  three days uses heap memory. The allocator reduces the requested value as
+  needed to leave at least 2048 bytes free and replies with the days and pages
+  actually available. For example, a request can return
+  `OK - telemetry.gps days=18 pages=36 requested=30`.
+
+Local serial and remote administrator CLI sessions can read the history.
+Collection uses the MCU temperature, battery voltage, and an already-valid
+onboard GPS fix. It does not wake GPS, so an off, sleeping, or unfixed GPS
+produces a missing location sample without changing its power-saving schedule.
+
+Replies contain `> ` followed by standard padded Base64. After decoding, all
+multi-byte integers are little-endian. Packed fields are written most
+significant bit first, oldest sample first.
+
+Temperature payload (`0x11`, 61 bytes):
+
+| Bytes | Meaning |
+|---|---|
+| `0` | Format/type `0x11` |
+| `1`-`4` | First sample UTC epoch, unsigned 32-bit |
+| `5` | Sample interval in minutes (`30`) |
+| `6` | Sample count (`48`) |
+| `7`-`18` | 48 packed 2-bit temperature statuses |
+| `19`-`60` | 48 packed 7-bit temperatures |
+
+Temperature status codes are `0` none, `1` value, `2` below range, and `3`
+above range. For status `1`, the 7-bit temperature is an exact whole-degree
+integer from `-50 C` through `+77 C`; decode it as `code - 50`. Low values use
+code `0`, and high values use code `127`. The separate status map is required
+because 7 bits contain exactly 128 codes, leaving no spare code for none, low,
+or high when the complete range is represented at 1 C resolution. No
+fractional temperature is stored or transmitted.
+
+Voltage payload (`0x12`, 55 bytes):
+
+| Bytes | Meaning |
+|---|---|
+| `0` | Format/type `0x12` |
+| `1`-`4` | First sample UTC epoch, unsigned 32-bit |
+| `5` | Sample interval in minutes (`30`) |
+| `6` | Sample count (`48`) |
+| `7`-`54` | 48 8-bit voltage codes |
+
+Voltage codes reserve `0` for no reading, `1` for below `1.88 V`, and `255`
+for above `4.40 V`. Codes `2`-`254` represent `1.88 V` through `4.40 V` in
+`0.01 V` steps; decode millivolts as `1880 + (code - 2) * 10`.
+
+GPS payload (`0x13`, 101 bytes):
+
+| Bytes | Meaning |
+|---|---|
+| `0` | Format/type `0x13` |
+| `1`-`4` | First sample UTC epoch, unsigned 32-bit |
+| `5` | Sample interval in minutes (`30`) |
+| `6` | Sample count (`24`) |
+| `7`-`10` | Page origin latitude in signed degrees times `10^7` |
+| `11`-`14` | Page origin longitude in signed degrees times `10^7` |
+| `15` | Origin sample index, or `255` when the page has no GPS fix |
+| `16` | Flags; bit 0 means at least one differential was clipped |
+| `17`-`100` | 24 records: signed 14-bit north then signed 14-bit east |
+
+GPS differentials use signed 14-bit two's-complement values at 10-meter
+resolution and are applied to the preceding decoded valid point. The origin
+sample begins at the header coordinates. A no-fix slot encodes `0,0` and does
+not advance the reference; a stationary valid fix also quantizes to `0,0`.
+When a page has no fixes, its origin is `0,0`, origin index is `255`, and all
+differentials are `0,0`. Values outside `-8192` through `8191` are clipped and
+set flag bit 0.
+
+---
+
 ## Logging
 
 Builds compiled with `MESH_PACKET_LOGGING` emit one `RAW:` line for every

@@ -8,6 +8,10 @@
 #ifdef WITH_WEBCONFIG
 #include <WiFi.h>
 #endif
+#if MESH_ENABLE_TELEMETRY_HISTORY && defined(STM32_PLATFORM)
+#include <sys/types.h>
+extern "C" caddr_t _sbrk(int increment);
+#endif
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -133,8 +137,49 @@ static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
 #define RX_INACTIVITY_WATCHDOG_INTERVAL (12UL * 60UL * 60UL * 1000UL)
+#if MESH_ENABLE_TELEMETRY_HISTORY
+#define TELEMETRY_GPS_HEAP_RESERVE_BYTES 2048U
+#endif
 
 #define CLOCK_SYNC_VALID_YEARS 10
+
+#if MESH_ENABLE_TELEMETRY_HISTORY
+static size_t telemetryFreeHeapBytes() {
+#if defined(ESP_PLATFORM)
+  return (size_t)ESP.getFreeHeap();
+#elif defined(NRF52_PLATFORM)
+  const int free_bytes = dbgHeapFree();
+  return free_bytes > 0 ? (size_t)free_bytes : 0;
+#elif defined(RP2040_PLATFORM)
+  const int free_bytes = rp2040.getFreeHeap();
+  return free_bytes > 0 ? (size_t)free_bytes : 0;
+#elif defined(STM32_PLATFORM)
+  uint8_t stack_marker;
+  const caddr_t heap_end = _sbrk(0);
+  if (heap_end == (caddr_t)-1) return 0;
+  const uintptr_t stack_address = (uintptr_t)&stack_marker;
+  const uintptr_t heap_address = (uintptr_t)heap_end;
+  return stack_address > heap_address ? stack_address - heap_address : 0;
+#else
+  return 0;
+#endif
+}
+
+static bool parseTelemetryGpsDays(const char* args, uint8_t& days) {
+  while (*args == ' ') args++;
+  if (*args < '0' || *args > '9') return false;
+
+  unsigned parsed = 0;
+  while (*args >= '0' && *args <= '9') {
+    parsed = parsed * 10U + (unsigned)(*args++ - '0');
+    if (parsed > mesh::TelemetryHistory::GPS_MAX_RETENTION_DAYS) return false;
+  }
+  while (*args == ' ') args++;
+  if (*args != 0 || parsed < 1U) return false;
+  days = (uint8_t)parsed;
+  return true;
+}
+#endif
 
 enum ClockSyncSource : uint8_t {
   CLOCK_SYNC_SOURCE_NONE = 0,
@@ -3089,6 +3134,12 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
 #if ENV_INCLUDE_GPS == 1
   applyGpsPrefs();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  if (sensors.getLocationProvider() != NULL) {
+    const uint8_t gps_days = resizeTelemetryGpsDays(7);
+    MESH_DEBUG_PRINTLN("Telemetry GPS retention: %u days", (unsigned)gps_days);
+  }
+#endif
 #endif
 }
 
@@ -8142,6 +8193,68 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   const mesh::cli::NoArgCommandMatch discover_neighbors_match =
       mesh::cli::matchNoArgCommand(command, "discover.neighbors");
 
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  const char* telemetry_args = NULL;
+  mesh::TelemetryHistory::Series telemetry_series =
+      mesh::TelemetryHistory::SERIES_TEMPERATURE;
+  static const char telemetry_temp_command[] = "get telemetry.temp";
+  static const char telemetry_volt_command[] = "get telemetry.volt";
+  static const char telemetry_gps_command[] = "get telemetry.gps";
+  static const char telemetry_gps_set_command[] = "set telemetry.gps";
+  if (strncmp(command, telemetry_gps_set_command,
+              sizeof(telemetry_gps_set_command) - 1U) == 0
+      && (command[sizeof(telemetry_gps_set_command) - 1U] == 0
+          || command[sizeof(telemetry_gps_set_command) - 1U] == ' ')) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+      return;
+    }
+    uint8_t requested_days = 0;
+    if (!parseTelemetryGpsDays(
+            command + sizeof(telemetry_gps_set_command) - 1U,
+            requested_days)) {
+      strcpy(reply, "Err - use: set telemetry.gps <1-30>");
+      return;
+    }
+    const uint8_t actual_days = resizeTelemetryGpsDays(requested_days);
+    snprintf(reply, 160,
+             "OK - telemetry.gps days=%u pages=%u requested=%u",
+             (unsigned)actual_days,
+             (unsigned)telemetry_history.gpsPageCount(),
+             (unsigned)requested_days);
+    return;
+  }
+
+  if (strncmp(command, telemetry_temp_command,
+              sizeof(telemetry_temp_command) - 1U) == 0
+      && (command[sizeof(telemetry_temp_command) - 1U] == 0
+          || command[sizeof(telemetry_temp_command) - 1U] == ' ')) {
+    telemetry_args = command + sizeof(telemetry_temp_command) - 1U;
+  } else if (strncmp(command, telemetry_volt_command,
+                     sizeof(telemetry_volt_command) - 1U) == 0
+      && (command[sizeof(telemetry_volt_command) - 1U] == 0
+          || command[sizeof(telemetry_volt_command) - 1U] == ' ')) {
+    telemetry_series = mesh::TelemetryHistory::SERIES_VOLTAGE;
+    telemetry_args = command + sizeof(telemetry_volt_command) - 1U;
+  } else if (strncmp(command, telemetry_gps_command,
+                     sizeof(telemetry_gps_command) - 1U) == 0
+      && (command[sizeof(telemetry_gps_command) - 1U] == 0
+          || command[sizeof(telemetry_gps_command) - 1U] == ' ')) {
+    telemetry_series = mesh::TelemetryHistory::SERIES_GPS;
+    telemetry_args = command + sizeof(telemetry_gps_command) - 1U;
+  }
+
+  if (telemetry_args != NULL) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+    } else {
+      telemetry_history.formatPageReply(telemetry_series, telemetry_args,
+                                        reply, 160);
+    }
+    return;
+  }
+#endif
+
 #if defined(PORTABLE_MQTT_OBSERVER)
   // Neighbor refresh is a core repeater operation, not an MQTT feature. Keep
   // it ahead of the portable observer's reduced CommonCLI handoff so every
@@ -8562,6 +8675,74 @@ void MyMesh::loop() {
   servicePostMeshLoop();
 }
 
+#if MESH_ENABLE_TELEMETRY_HISTORY
+uint8_t MyMesh::resizeTelemetryGpsDays(uint8_t requested_days) {
+  size_t free_bytes = telemetryFreeHeapBytes();
+  const size_t allocation_budget = free_bytes > TELEMETRY_GPS_HEAP_RESERVE_BYTES
+      ? free_bytes - TELEMETRY_GPS_HEAP_RESERVE_BYTES : 0;
+  uint8_t actual_days = telemetry_history.resizeGpsDays(
+      requested_days, allocation_budget);
+
+  free_bytes = telemetryFreeHeapBytes();
+  while (actual_days > mesh::TelemetryHistory::GPS_DEFAULT_RETENTION_DAYS
+         && free_bytes < TELEMETRY_GPS_HEAP_RESERVE_BYTES) {
+    const size_t deficit = TELEMETRY_GPS_HEAP_RESERVE_BYTES - free_bytes;
+    size_t days_to_release =
+        (deficit + mesh::TelemetryHistory::GPS_HEAP_BYTES_PER_DAY - 1U)
+        / mesh::TelemetryHistory::GPS_HEAP_BYTES_PER_DAY;
+    if (days_to_release == 0) days_to_release = 1;
+    const uint8_t target_days = days_to_release
+            < actual_days - mesh::TelemetryHistory::GPS_DEFAULT_RETENTION_DAYS
+        ? (uint8_t)(actual_days - days_to_release)
+        : mesh::TelemetryHistory::GPS_DEFAULT_RETENTION_DAYS;
+    const uint8_t reduced_days = telemetry_history.resizeGpsDays(target_days, 0);
+    if (reduced_days >= actual_days) {
+      actual_days = telemetry_history.resizeGpsDays(
+          mesh::TelemetryHistory::GPS_DEFAULT_RETENTION_DAYS, 0);
+    } else {
+      actual_days = reduced_days;
+    }
+    free_bytes = telemetryFreeHeapBytes();
+  }
+  return actual_days;
+}
+
+void MyMesh::sampleTelemetryHistory() {
+  const uint32_t now = rtc_clock.getCurrentTime();
+  if (!telemetry_history.sampleDue(now)) return;
+
+  int32_t latitude_e7 = 0;
+  int32_t longitude_e7 = 0;
+  bool gps_valid = false;
+#if ENV_INCLUDE_GPS == 1
+  LocationProvider* location = sensors.getLocationProvider();
+  if (location != NULL && location->isEnabled() && location->isValid()) {
+    const long latitude_e6 = location->getLatitude();
+    const long longitude_e6 = location->getLongitude();
+    if (latitude_e6 >= -90000000L && latitude_e6 <= 90000000L
+        && longitude_e6 >= -180000000L && longitude_e6 <= 180000000L) {
+      latitude_e7 = (int32_t)((int64_t)latitude_e6 * 10);
+      longitude_e7 = (int32_t)((int64_t)longitude_e6 * 10);
+      gps_valid = latitude_e7 != 0 || longitude_e7 != 0;
+    }
+  }
+#endif
+
+  const float measured_temperature = _cli.getBoard()->getMCUTemperature();
+  const bool temperature_valid = isfinite(measured_temperature);
+  int16_t temperature_c = 0;
+  if (temperature_valid) {
+    if (measured_temperature < -32768.0f) temperature_c = INT16_MIN;
+    else if (measured_temperature > 32767.0f) temperature_c = INT16_MAX;
+    else temperature_c = (int16_t)lroundf(measured_temperature);
+  }
+
+  telemetry_history.record(now, temperature_c, temperature_valid,
+                           _cli.getBoard()->getBattMilliVolts(),
+                           latitude_e7, longitude_e7, gps_valid);
+}
+#endif
+
 void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   if (pending_self_advert) {
     const uint32_t delay_millis = pending_self_advert_delay;
@@ -8570,6 +8751,9 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     sendSelfAdvertisementNow(delay_millis, flood);
   }
   checkRxInactivityWatchdog();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  sampleTelemetryHistory();
+#endif
 #if !defined(PORTABLE_MQTT_OBSERVER)
   checkBatteryAlert();
   expireRecentRepeatersIfDue();
