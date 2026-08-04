@@ -2442,6 +2442,42 @@ resolve_bulk_command_targets() {
   mapfile -t RESOLVED_BUILD_TARGETS < <("$resolver_name")
 }
 
+get_build_platform_sort_rank() {
+  case "$1" in
+    NRF52_PLATFORM)
+      echo 10
+      ;;
+    ESP32_PLATFORM)
+      echo 20
+      ;;
+    RP2040_PLATFORM)
+      echo 30
+      ;;
+    STM32_PLATFORM)
+      echo 40
+      ;;
+    *)
+      echo 90
+      ;;
+  esac
+}
+
+sort_build_targets_by_platform_and_name() {
+  local env_name
+  local env_platform
+  local platform_rank
+
+  for env_name in "$@"; do
+    env_platform=$(get_platform_for_env "$env_name")
+    platform_rank=$(get_build_platform_sort_rank "$env_platform")
+    printf '%s\t%s\n' "$platform_rank" "$env_name"
+  done \
+    | LC_ALL=C sort -t $'\t' -k1,1n -k2,2f -k2,2 \
+    | while IFS=$'\t' read -r platform_rank env_name; do
+        printf '%s\n' "$env_name"
+      done
+}
+
 validate_build_target() {
   local env_name=$1
   local env_platform
@@ -2490,6 +2526,17 @@ resolve_command_targets() {
       echo "No build targets remain after skipping KISS modem targets."
       return 1
     fi
+  fi
+
+  # Keep one queue so parallel workers stay saturated. The scheduler may pull
+  # a later target forward when a generated alias shares an active PlatformIO
+  # base environment, so this is a best-effort start order rather than a phase
+  # barrier or completion-order guarantee.
+  if [ "$1" != "build-firmware" ]; then
+    mapfile -t RESOLVED_BUILD_TARGETS < <(
+      sort_build_targets_by_platform_and_name "${RESOLVED_BUILD_TARGETS[@]}"
+    )
+    echo "Bulk target start order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform (best effort with parallel workers)."
   fi
 }
 
