@@ -23,6 +23,21 @@ static uint32_t parse_u32(const char* s) {
   return n;
 }
 
+static bool parse_page(const char* s, uint16_t& page) {
+  while (*s == ' ') s++;
+  if (*s == 0) { page = 1; return true; }
+  uint32_t n = 0;
+  const char* p = s;
+  while (*p >= '0' && *p <= '9') {
+    n = n * 10 + (uint32_t)(*p++ - '0');
+    if (n > 255) return false;
+  }
+  while (*p == ' ') p++;
+  if (*p != 0 || n == 0) return false;
+  page = (uint16_t)n;
+  return true;
+}
+
 static char fstate_char(OtaManager::FetchState s) {
   switch (s) {
     case OtaManager::IDLE: return 'I';
@@ -111,7 +126,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   if (is_cmd(a, "help|?|h", &rest)) {
     snprintf(reply, 160,
       "OTA: status | stats=admin ids/hashes | ls=find updates | get <#>=download | install | cancel | "
-      "announce | self | folder | config | key. Try `ota ls`.");
+      "announce | self | folder | cache | config | key. Use `ota ls [page]`.");
 
   // ---- inventory dashboard: running fw (self), the one fetch session, serving state ----
   } else if (*a == 0 || is_cmd(a, "status|st", &rest)) {
@@ -187,18 +202,29 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   } else if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest)) {
     // Kick a fresh round of catalog queries (async - rows arrive over the next seconds); render what we
     // have now in plain words. The reply buffer is 160 B (serial / one LoRa packet for remote-admin), so
-    // writes are bounded and extra rows collapse to "+N more".
+    // the retained protocol catalog is rendered two rows at a time.
+    uint16_t page;
+    if (!parse_page(rest, page)) { strcpy(reply, "ERR usage: ota ls [page]"); return true; }
     c.manager.queryAll();
     const int CAP = 160;
-    int n = snprintf(reply, CAP, "Updates nearby (%u src) - `ota get <#>` to download:",
-                     (unsigned)c.manager.sourceCount());
+    static const uint8_t PAGE_SIZE = 2;
+    uint16_t count = c.manager.catalogCount();
+    uint16_t pages = count ? (uint16_t)((count + PAGE_SIZE - 1) / PAGE_SIZE) : 1;
+    if (page > pages) {
+      snprintf(reply, CAP, "ERR update page %u out of range (1-%u)", (unsigned)page, (unsigned)pages);
+      return true;
+    }
+    int n = snprintf(reply, CAP, "Updates %u/%u (%u src) - `ota get <#>`:",
+                     (unsigned)page, (unsigned)pages, (unsigned)c.manager.sourceCount());
     OtaManager::FetchState fs = c.manager.fetchState();
     const uint8_t* cur = (fs != OtaManager::IDLE) ? c.manager.fetchManifestId() : nullptr;
     uint32_t myt = c.manager.target();   // effective target (EndF identity if present, else build flag)
-    uint32_t now = millis(); int shown = 0, more = 0;
-    for (uint8_t i = 0; i < c.manager.catalogCount(); i++) {
+    uint32_t now = millis(); int shown = 0;
+    uint16_t first = (uint16_t)(page - 1) * PAGE_SIZE;
+    uint16_t last = first + PAGE_SIZE; if (last > count) last = count;
+    for (uint16_t i = first; i < last; i++) {
       const OtaManager::CatRow* h = c.manager.catalogRow(i);
-      if (CAP - n < 48) { more++; continue; }
+      if (!h || CAP - n < 24) break;
       bool on = cur && memcmp(cur, h->mid, 4) == 0;
       // Tag the active session by real fetch state (not always "downloading" - COMPLETE is ready).
       const char* tag = "";
@@ -220,11 +246,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       else if (env)                   fit = env;
       else if (h->target_id == 0)     fit = "?";
       else { snprintf(hwbuf, sizeof hwbuf, "hw %08X", (unsigned)h->target_id); fit = hwbuf; }
-      n += snprintf(reply + n, CAP - n, "\n %d) %s %s [%s] %un %us%s", shown + 1, ver,
+      n += snprintf(reply + n, CAP - n, "\n %u) %s %s [%s] %un %us%s", (unsigned)(i + 1), ver,
                     codec_kind(h->codec), fit, (unsigned)h->n_seeders, (unsigned)age, tag);
       shown++;
     }
-    if (more && n < CAP) snprintf(reply + n, CAP - n, "\n +%d more", more);
     if (shown == 0) strcpy(reply, "No updates seen yet - re-run `ota ls` in a few seconds (just asked around).");
 
   // ---- start fetching a specific catalogued mOTA (by list index or manifest_id) ----
@@ -267,12 +292,18 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     uint8_t selmid[4]; uint32_t seltgt = sel->target_id; memcpy(selmid, sel->mid, 4);   // sel may move on reset
     OtaStore* store; const char* dname;
     if (strncmp(dst, "flash", 5) == 0) {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+      c.stopSdCacheFetch();                         // manual install download takes priority over archiving
+#endif
       store = &c.fetch_store; c.fetch_store.clear(); dname = "flash"; validate = false;   // seed lives in the folder
 #if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
       c.manager.set_accept_full(false);                 // nRF52 flash can install only in-place deltas
 #endif
     } else if (strncmp(dst, "folder", 6) == 0) {
       if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+      c.stopSdCacheFetch();                         // an explicit host capture also takes priority
+#endif
       c.folder_dest->set_mid(selmid); store = c.folder_dest; dname = validate ? "folder+validate" : "folder";
 #if defined(NRF52_PLATFORM)
       c.manager.set_accept_full(true);                  // capture can store a full image; it is not applied
@@ -289,6 +320,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     OtaManager::FetchState fs = c.manager.fetchState();
     char midhx[9]; strcpy(midhx, "-");
     if (fs != OtaManager::IDLE) mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    c.stopSdCacheFetch();
+#endif
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
 #if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
@@ -329,6 +363,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // yes" round-trip - unreliable over LoRa): refuse unless the fetch is COMPLETE, then the apply path
     // validates in order (payload hash -> built-for-this-firmware -> signature/trust) and returns the
     // FIRST failing gate, so the operator knows exactly why it refused; it proceeds only if all pass.
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (c.sdCacheFetching()) {
+      strcpy(reply, "ERR SD archive capture is active; use `ota cancel` before installing");
+      return true;
+    }
+#endif
     if (c.manager.fetchState() != OtaManager::COMPLETE || c.fetch_store.staged_size() == 0) {
       sprintf(reply, "ERR no complete update fetched (fetch=%c %u/%u)",
               fstate_char(c.manager.fetchState()), (unsigned)c.manager.blocksHave(),
@@ -367,9 +407,56 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       }
     }
 
+  // ---- SD OTA archive: default-on capture of every advertised mOTA, retained and served after reboot. ----
+  } else if (is_cmd(a, "cache|archive|seed", &rest)) {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    const char* p = rest;
+    if (strcmp(p, "on") == 0 || strcmp(p, "off") == 0) {
+      bool enabled = p[1] == 'n';
+      if (!c.setSdCacheEnabled(enabled)) {
+        snprintf(reply, 160, "ERR SD OTA archive setting failed: %s", c.sd_cache.last_error());
+      } else {
+        snprintf(reply, 160, "OK SD OTA archive capture %s (saved on card; cached files still seed)",
+                 enabled ? "on" : "off");
+      }
+    } else if (*p != 0) {
+      strcpy(reply, "ERR usage: ota cache [on|off]");
+    } else if (!c.ensureSdCache()) {
+      snprintf(reply, 160, "SD OTA archive unavailable: %s", c.sd_cache.last_error());
+    } else {
+      OtaManager::FetchState fs = c.manager.fetchState();
+      if (c.sdCacheFetching()) {
+        char midhx[9]; mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
+        unsigned have = (unsigned)c.manager.blocksHave(), total = (unsigned)c.manager.blocksTotal();
+        snprintf(reply, 160, "SD OTA archive: capture=%s cached=%u, saving %s %u/%u",
+                 c.sd_cache.autoCaptureEnabled() ? "on" : "off",
+                 (unsigned)c.sd_cache.capturedCount(), midhx, have, total);
+      } else {
+        snprintf(reply, 160, "SD OTA archive: capture=%s cached=%u, %s; `ota cache off` stops new saves",
+                 c.sd_cache.autoCaptureEnabled() ? "on" : "off",
+                 (unsigned)c.sd_cache.capturedCount(), state_short(fs));
+      }
+    }
+#else
+    strcpy(reply, "ERR this target has no SD-backed OTA archive");
+#endif
+
   // ---- policy config (persisted via NodePrefs). conservative defaults: autofetch/autoinstall off ----
   } else if (is_cmd(a, "config|cfg|set", &rest)) {
     const char* p = rest;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (strncmp(p, "cache ", 6) == 0 || strncmp(p, "sdseed ", 7) == 0) {
+      const char* v = p + (p[0] == 'c' ? 6 : 7);
+      bool enabled;
+      if (strcmp(v, "on") == 0) enabled = true;
+      else if (strcmp(v, "off") == 0) enabled = false;
+      else { strcpy(reply, "ERR usage: ota config cache <on|off>"); return true; }
+      if (!c.setSdCacheEnabled(enabled))
+        snprintf(reply, 160, "ERR SD OTA archive setting failed: %s", c.sd_cache.last_error());
+      else
+        snprintf(reply, 160, "OK SD OTA archive capture %s (saved on card)", enabled ? "on" : "off");
+    } else
+#endif
     if (strncmp(p, "autofetch ", 10) == 0) {
       const char* v = p + 10;
       uint8_t pol = strncmp(v, "any", 3) == 0    ? OtaManager::AUTOFETCH_ANY
@@ -400,11 +487,22 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       sprintf(reply, "OK OTA reach = %ld hop%s (saved)%s", h, h == 1 ? "" : "s", h == 0 ? " - direct only" : "");
     } else {                                            // show current policy
       uint8_t af = c.manager.autofetch();
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+      bool cache_ready = c.ensureSdCache();
+      sprintf(reply, "ota config: cache=%s/%u autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u",
+              cache_ready ? (c.sd_cache.autoCaptureEnabled() ? "on" : "off") : "unavailable",
+              cache_ready ? (unsigned)c.sd_cache.capturedCount() : 0,
+              af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
+              c.autoinstall == OtaContext::AUTOINSTALL_TRUSTED ? "trusted" : "off",
+              (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
+              (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
+#else
       sprintf(reply, "ota config: autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u  (persisted)",
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
               c.autoinstall == OtaContext::AUTOINSTALL_TRUSTED ? "trusted" : "off",
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
               (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
+#endif
     }
 
   // ---- trusted signer allowlist (security config; persisted): `ota key add|rm <hex>` / `ota key` lists ----
@@ -534,6 +632,9 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 
   } else if (strncmp(d, "clear", 5) == 0) {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    c.stopSdCacheFetch();
+#endif
     c.manager.clear_primary();
     c.serve_expected = 0; c.serving = false; c.releaseServeBuffer();
     c.fetch_store.clear(); c.manager.reset_session();

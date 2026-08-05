@@ -20,6 +20,7 @@
 //
 //   MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1) total_size(4)
 //                         leaves_off(4) block_count(4) payload_off(4) payload_size(4)
+//                         block_size_log2(1) reserved(3)
 //
 // --- STORAGE ops (device -> host WRITE): "pull to folder". The device is fetching a `.mota` off the mesh
 // (e.g. a neighbour's self-served firmware it has no local copy of) and streams it into the host folder as
@@ -55,7 +56,7 @@ static const uint8_t  MS_OP_FIN      = 0x08;   // storage: transfer complete - v
 static const uint8_t  MS_STATUS_OK   = 0x00;
 static const uint8_t  MS_STATUS_ERR  = 0x01;
 
-static const uint16_t MOTA_DESC_WIRE = 38;   // bytes of a MotaDesc on the wire (see layout above)
+static const uint16_t MOTA_DESC_WIRE = 38;   // existing reserved bytes carry block geometry; wire size is unchanged
 static const uint16_t MOTA_SEEDER_WRITE_MAX = 512;  // max data bytes per OP_WRITE/OP_SREAD (bounds frames)
 
 } // namespace ota

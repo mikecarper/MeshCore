@@ -314,6 +314,9 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     }
     ota::ota_ctx().manager.set_clock(_ms->getMillis());   // for discovery jitter/ages + the pending-query timer
     ota::ota_ctx().manager.loop();         // re-request still-missing OTA blocks + fire scheduled queries
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    ota::ota_ctx().serviceSdCache(_ms->getMillis());  // archive unseen mOTAs only while the receive slot is idle
+#endif
     _next_ota_tick = futureMillis(3000);
   }
   if (millisHasNowPassed(_next_ota_announce)) {   // auto-advertise so peers discover us (tiny beacon)

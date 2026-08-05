@@ -63,6 +63,60 @@ static void resetToUf2Bootloader() {
 
 #define RECENT_REPEATER_PREFIX_MAX_BYTES  3
 
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+static const uint32_t SDCARD_ACTION_COOLDOWN_MILLIS = 5UL * 60UL * 1000UL;
+
+static void formatSdCardElapsed(char* out, size_t out_len, bool recorded,
+                                uint32_t ran_at, uint32_t now) {
+  if (!recorded) {
+    snprintf(out, out_len, "never");
+    return;
+  }
+
+  const uint32_t elapsed_secs = (now - ran_at) / 1000UL;
+  if (elapsed_secs < 60UL) {
+    snprintf(out, out_len, "%lus ago", (unsigned long)elapsed_secs);
+  } else if (elapsed_secs < 60UL * 60UL) {
+    snprintf(out, out_len, "%lum %lus ago",
+             (unsigned long)(elapsed_secs / 60UL),
+             (unsigned long)(elapsed_secs % 60UL));
+  } else if (elapsed_secs < 24UL * 60UL * 60UL) {
+    snprintf(out, out_len, "%luh %lum ago",
+             (unsigned long)(elapsed_secs / 3600UL),
+             (unsigned long)((elapsed_secs / 60UL) % 60UL));
+  } else {
+    snprintf(out, out_len, "%lud %luh ago",
+             (unsigned long)(elapsed_secs / 86400UL),
+             (unsigned long)((elapsed_secs / 3600UL) % 24UL));
+  }
+}
+
+static void formatSdCardBytes(char* out, size_t out_len, uint64_t bytes) {
+  static const char* const units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+  uint64_t unit_size = 1;
+  uint8_t unit = 0;
+  while (unit < 4 && bytes >= unit_size * 1024ULL) {
+    unit_size *= 1024ULL;
+    unit++;
+  }
+
+  if (unit == 0) {
+    snprintf(out, out_len, "%lu B", (unsigned long)bytes);
+    return;
+  }
+
+  uint64_t whole = bytes / unit_size;
+  uint32_t tenths = (uint32_t)(((bytes % unit_size) * 10ULL + unit_size / 2ULL) /
+                               unit_size);
+  if (tenths == 10) {
+    whole++;
+    tenths = 0;
+  }
+  snprintf(out, out_len, "%lu.%lu %s", (unsigned long)whole,
+           (unsigned long)tenths, units[unit]);
+}
+#endif
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -3029,6 +3083,173 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
 }
 
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
+  if (strncmp(config, "sdcard", 6) != 0 ||
+      (config[6] != 0 && config[6] != ' ')) {
+    return false;
+  }
+
+  const char* action_args = skipSpacesConst(config + 6);
+  bool is_format;
+  bool force = false;
+  if (strcmp(action_args, "format") == 0) {
+    is_format = true;
+  } else if (strcmp(action_args, "format --force") == 0) {
+    is_format = true;
+    force = true;
+  } else if (strcmp(action_args, "erase") == 0) {
+    is_format = false;
+  } else if (strcmp(action_args, "erase --force") == 0) {
+    is_format = false;
+    force = true;
+  } else {
+    strcpy(reply, "Error: use set sdcard format|erase [--force]");
+    return true;
+  }
+
+  const bool recorded = is_format ? _sdcard_format_recorded : _sdcard_erase_recorded;
+  const uint32_t ran_at = is_format ? _sdcard_format_at : _sdcard_erase_at;
+  const char* action = is_format ? "format" : "erase";
+  const uint32_t now = millis();
+  if (!force && recorded && now - ran_at < SDCARD_ACTION_COOLDOWN_MILLIS) {
+    char age[32];
+    formatSdCardElapsed(age, sizeof(age), true, ran_at, now);
+    snprintf(reply, 160,
+             "Error: SD card %s ran %s; use set sdcard %s --force",
+             action, age, action);
+    return true;
+  }
+
+  mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+  if (context.apply_pending) {
+    strcpy(reply, "Error: OTA apply is pending");
+    return true;
+  }
+
+  // A card-wide destructive operation invalidates any staged fetch. First let
+  // an archive capture checkpoint and close its shared card handles.
+  context.prepareSdCardReset();
+  context.manager.reset_session();
+  context.manager.want(0);
+  context.manager.want_mid(nullptr);
+  context.session_started_ms = 0;
+  context.prev_fstate = mesh::ota::OtaManager::IDLE;
+
+  if (is_format) {
+    if (!context.fetch_store.formatCard(*_board)) {
+      char error[80];
+      strncpy(error, context.fetch_store.last_error(), sizeof(error) - 1);
+      error[sizeof(error) - 1] = 0;
+      context.finishSdCardReset(millis());
+      snprintf(reply, 160, "Error: SD card format failed: %s",
+               error);
+      return true;
+    }
+    context.finishSdCardReset(millis());
+    _sdcard_format_recorded = true;
+    _sdcard_format_at = millis();
+    strcpy(reply, "OK - SD card format complete");
+    return true;
+  }
+
+  if (!context.fetch_store.eraseCard(*_board)) {
+    char error[80];
+    strncpy(error, context.fetch_store.last_error(), sizeof(error) - 1);
+    error[sizeof(error) - 1] = 0;
+    context.finishSdCardReset(millis());
+    snprintf(reply, 160, "Error: SD card erase failed: %s",
+             error);
+    return true;
+  }
+  _sdcard_erase_recorded = true;
+  _sdcard_erase_at = millis();
+
+  if (!context.fetch_store.formatCard(*_board)) {
+    char error[80];
+    strncpy(error, context.fetch_store.last_error(), sizeof(error) - 1);
+    error[sizeof(error) - 1] = 0;
+    context.finishSdCardReset(millis());
+    snprintf(reply, 160, "Error: SD card erased but format failed: %s",
+             error);
+    return true;
+  }
+  _sdcard_format_recorded = true;
+  _sdcard_format_at = millis();
+  context.finishSdCardReset(millis());
+  strcpy(reply, "OK - SD card erase and format complete");
+  return true;
+}
+
+bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
+  if (strncmp(config, "sdcard", 6) != 0 ||
+      (config[6] != 0 && config[6] != ' ')) {
+    return false;
+  }
+
+  const char* query = skipSpacesConst(config + 6);
+  const uint32_t now = millis();
+  if (*query == 0 || strcmp(query, "*") == 0) {
+    char format_age[32];
+    char erase_age[32];
+    formatSdCardElapsed(format_age, sizeof(format_age),
+                        _sdcard_format_recorded, _sdcard_format_at, now);
+    formatSdCardElapsed(erase_age, sizeof(erase_age),
+                        _sdcard_erase_recorded, _sdcard_erase_at, now);
+    snprintf(reply, 160, "> format: %s, erase: %s", format_age, erase_age);
+  } else if (strcmp(query, "format") == 0) {
+    char age[32];
+    formatSdCardElapsed(age, sizeof(age), _sdcard_format_recorded,
+                        _sdcard_format_at, now);
+    snprintf(reply, 160, "> format: %s", age);
+  } else if (strcmp(query, "erase") == 0) {
+    char age[32];
+    formatSdCardElapsed(age, sizeof(age), _sdcard_erase_recorded,
+                        _sdcard_erase_at, now);
+    snprintf(reply, 160, "> erase: %s", age);
+  } else if (strcmp(query, "free") == 0) {
+    uint64_t used_bytes = 0;
+    uint64_t free_bytes = 0;
+    mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+    if (!store.getSpace(*_board, used_bytes, free_bytes)) {
+      snprintf(reply, 160, "Error: SD card space query failed: %s",
+               store.last_error());
+    } else {
+      char used[24];
+      char free[24];
+      formatSdCardBytes(used, sizeof(used), used_bytes);
+      formatSdCardBytes(free, sizeof(free), free_bytes);
+      snprintf(reply, 160, "> used: %s, free: %s", used, free);
+    }
+  } else if (strncmp(query, "ls", 2) == 0 || strncmp(query, "dir", 3) == 0) {
+    const bool is_ls = strncmp(query, "ls", 2) == 0;
+    const size_t word_len = is_ls ? 2 : 3;
+    if (query[word_len] != 0 && query[word_len] != ' ') {
+      strcpy(reply, "Error: use get sdcard ls|dir [page]");
+      return true;
+    }
+    const char* page_arg = skipSpacesConst(query + word_len);
+    uint32_t page = 1;
+    if (*page_arg) {
+      char* end = nullptr;
+      unsigned long parsed = strtoul(page_arg, &end, 10);
+      if (parsed == 0 || parsed > 65535 || !end || *skipSpacesConst(end) != 0) {
+        strcpy(reply, "Error: use get sdcard ls|dir [page]");
+        return true;
+      }
+      page = parsed;
+    }
+    mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+    if (!store.listFiles(*_board, (uint16_t)page, reply, 160)) {
+      snprintf(reply, 160, "Error: SD card list failed: %s", store.last_error());
+    }
+  } else {
+    strcpy(reply, "Error: use get sdcard [format|erase|free|ls|dir [page]|*]");
+  }
+  return true;
+}
+#endif
+
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
@@ -3074,6 +3295,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  if (handleSdCardSetCmd(config, reply)) return;
+#endif
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && \
     !defined(WEBCONFIG_DISABLED) && !defined(WITH_MQTT_BRIDGE)
   const char* wifi_value = nullptr;
@@ -4187,6 +4411,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  if (handleSdCardGetCmd(config, reply)) return;
+#endif
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
   // Non-MQTT FULL repeater/room-server builds keep WiFi only for WebConfig.
   // Their credentials live in the standalone WebConfig NVS namespace rather

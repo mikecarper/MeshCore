@@ -92,6 +92,7 @@ from the app's repeater command screen, or the WiFi/serial OTA console.
 
 ```
 ota ls
+ota ls 2                 # page 2 when more than two updates are available
 ```
 
 Your node asks around and lists the firmware updates other nodes nearby are offering, in plain words -
@@ -99,7 +100,7 @@ each with a **number**, its version, whether it's a full image or a small delta,
 and how recently it was seen. For example:
 
 ```
-Updates nearby (2 src) - `ota get <#>` to download:
+Updates 1/1 (2 src) - `ota get <#>`:
  1) v1.2.3 delta [yours] 3n 5s
  2) v1.2.0 full [other hw] 1n 12s [downloading]
 ```
@@ -112,7 +113,9 @@ long ago it was seen. The fit marker:
 - **[?]** - can't tell (a build with no target id set, e.g. a bare IDE build rather than a release build).
 
 Run it again after a few seconds - discovery happens in the background, so the list fills in. Nothing is
-downloaded yet; this is just looking around. (`ota neighbors` / `ota updates` also work.)
+downloaded yet; this is just looking around. Two updates fit in each remote CLI reply; use `ota ls 2`,
+`ota ls 3`, and so on for later pages. The displayed update numbers remain global across pages.
+(`ota neighbors` / `ota updates` also work.)
 
 ### 3. Download an update
 
@@ -207,6 +210,14 @@ ota config                      # show the current settings
 
 Recommended for most people: leave both **off** and update by hand. Use `autoinstall trusted` only once
 you've added the signer's key (next section) and you trust them to push updates unattended.
+
+The MeshTower V2 SD OTA target has a separate, default-on **archive** policy. It saves all mOTAs it sees
+to the SD card so the repeater can seed them later; this does not install them and does not change the
+install-oriented `autofetch` default above. Use `ota cache` for status and `ota cache off` or
+`ota config cache off` to stop new archive captures. Already cached files remain available to peers.
+Manual `ota pull` commands take priority and an interrupted archive capture resumes later.
+See [Preload many mOTAs from a computer](ota_meshtower_v2_sdcard.md#preload-many-motas-from-a-computer)
+for the required `/mota/<manifest-id>.mota` filenames and the complete TempRadio seeding workflow.
 
 ---
 

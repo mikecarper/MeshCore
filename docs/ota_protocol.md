@@ -399,7 +399,8 @@ the beacon (steady state is query-free). For a single served mota, `set_digest =
 **Tier 2 - `OTA_QUERY` -> `OTA_HAVE`** (on interest only):
 
 ```
-OTA_QUERY  (flood):  seeder_id[4]  set_digest[4]  filter_target(uint32)   # filter_target 0 = everything
+OTA_QUERY  (flood):  seeder_id[4]  set_digest[4]  filter_target(uint32) want_fragments(uint32)
+                     # filter_target 0 = everything; want_fragments 0 = every fragment
 OTA_HAVE   (flood):  seeder_id[4]  set_digest[4]  frag_idx(1) frag_total(1) n_rows(1)  rows[]
   HaveRow (16 bytes, OTA_HAVE_ROW_BYTES): mid[4] target_id(4) fw_version(4) codec_id(1) flags(1) have_count(2)
 ```
@@ -408,8 +409,16 @@ OTA_HAVE   (flood):  seeder_id[4]  set_digest[4]  frag_idx(1) frag_total(1) n_ro
 Receivers do not advertise partial or completed downloads as new sources.
 
 A node interested in a source's offering schedules a QUERY; the source replies with its full catalog as
-`OTA_HAVE` rows (fragmented if they exceed one packet - up to 12 rows per fragment). The heavy manifest is
+`OTA_HAVE` rows (fragmented if they exceed one packet - 10 rows per fragment). A receiver marks the catalog
+complete only after all `frag_total` fragments arrive. If any are missing after the recovery timeout, it sends
+another QUERY whose `want_fragments` bitmap names only the holes. `want_fragments` is an append-only extension:
+an original 13-byte QUERY is still accepted and means "send every fragment." The heavy manifest is
 fetched per-mid only on commit (Section 8.3).
+
+Fragment numbers are canonical pages of the complete catalog sorted by `manifest_id`. `filter_target` may
+remove rows from a requested page (and can therefore produce an empty fragment), but it never renumbers pages
+or changes `frag_total`. This keeps missing-fragment recovery unambiguous when filtered and unfiltered queries
+for the same `{seeder, set_digest}` are overheard together.
 
 ### 8.2 Anti-storm (mandatory at mesh scale)
 
@@ -420,8 +429,11 @@ pattern), all in `OtaManager`:
   (keyed by `{seeder, set_digest}`) - no query of its own needed.
 - **Jittered query:** a peer needing a catalog schedules its `OTA_QUERY` after a random delay
   `OTA_QUERY_MIN_MS (300) + rand(OTA_QUERY_SPREAD_MS (4000))`, derived from `id +/ digest +/ self`.
-- **Overhear suppression:** during the jitter window, overhearing *another* QUERY **or** a HAVE for the same
-  `{seeder, set_digest}` CANCELS the pending query.
+- **Overhear suppression:** during the jitter window, overhearing another QUERY that covers the same scope,
+  or completing the HAVE fragment set for the same `{seeder, set_digest}`, cancels the pending query.
+- **Per-source recovery:** each seeder has independent query/retry state. One source cannot overwrite another
+  source's timer, and a partial reply requests only missing fragments after 15 seconds (five bounded retries,
+  then another source ADV or explicit `ota ls` can start a fresh series).
 
 Net effect: a digest change costs ~1 query + ~1 HAVE flood mesh-wide; a stable mesh is query-free.
 
@@ -474,15 +486,16 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   byte offset of `data` within the block, so the global position is `block_idx*block_size + frag_off` -
   a fragment is self-placing when returned by the source. The fetcher tracks a
   per-block slice bitmap and reassembles before requesting the proof.
-- **Fragment-level requests (anti-deadlock + anti-congestion):** both `OTA_REQ` and `OTA_GET_MANIFEST` carry
-  a `want_mask` - bit *k* asks for fragment *k*. A fetcher requests the **full** mask on the first ask
+- **Fragment-level requests (anti-deadlock + anti-congestion):** `OTA_REQ`, `OTA_GET_MANIFEST`, and `OTA_QUERY`
+  carry fragment masks. For catalog discovery, `want_fragments` is a 32-bit bitmap and covers the protocol
+  maximum 255-row catalog (26 fragments at the current packet size). For block and manifest transfer, the
+  `want_mask` is 16 bits. A fetcher requests the full set on the first ask
   (`(1<<nf)-1`, or `0xFFFF` before `frag_total` is known) and **only the still-missing bits** on any retry,
   so recovering one lost fragment re-sends *one* fragment, not the whole block/manifest. This is essential on
   half-duplex radios: re-requesting a whole multi-fragment burst let the periodic retry (a transmit) collide
   with the tail of the in-flight burst and drop the same fragment forever - a hang. Requesting only the hole
-  removes the burst, so there is nothing to collide with. The mask is 16 bits, matching the reassembly bitmap
-  (<=16 fragments/block; 1 KB blocks = 7). `OTA_HAVE` (broadcast catalog gossip that self-heals via re-query)
-  and `OTA_PROOF` (a single packet) have no such burst and need no mask.
+  removes the burst, so there is nothing to collide with. The block/manifest mask matches the 16-bit
+  reassembly bitmap (<=16 fragments/block; 1 KB blocks = 7). `OTA_PROOF` is a single packet and needs no mask.
 - **Data and proof are separate phases.** `OTA_DATA` carries no proof; the proof is fetched once per block
   via `OTA_REQ_PROOF`/`OTA_PROOF` after the block's data is complete.
 
@@ -492,7 +505,7 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
 |---|---|---|
 | `OTA_DATA` | 9 B (type+mid4+idx2+off2) | `OTA_FRAG_DATA = 160` -> 7 frags per 1 KB block |
 | `OTA_MANIFEST` | 7 B | `OTA_MF_FRAG = 176` -> signed manifest ~ 2 frags |
-| `OTA_HAVE` | 12 B | 12 rows x 14 B per fragment |
+| `OTA_HAVE` | 12 B | 10 rows x 16 B per fragment |
 | `OTA_PROOF` | 8 B | up to ~44 sibling digests (>> any real tree) |
 
 A served mota supports up to `OTA_MAX_BLOCK/4` leaves in the default 4 KB proof scratch (<=1024 blocks ~ 1 MB
@@ -502,8 +515,11 @@ payload); larger self-images pass a bigger scratch buffer.
 
 OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
 its `tempradio` window is actually running. A receiver requests missing blocks in serial order from the offered
-firmware source. It never serves partial blocks and never re-advertises a completed download. This keeps each
-update as one transmitter and one receiver while still allowing active temporary-radio repeaters between them.
+firmware source. It never serves partial blocks. A normal install receiver never re-advertises its completed
+download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
+to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
+This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
+repeaters between them and persistent archive nodes to improve future availability.
 
 ---
 
@@ -598,6 +614,7 @@ OP_DESCRIBE  0x02   args: idx(1)       -> payload: MotaDesc wire (38 B)
 OP_READ      0x03   args: idx(1) off(4) len(2)  -> payload: len bytes
 MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
                       total_size(4) leaves_off(4) block_count(4) payload_off(4) payload_size(4)
+                      block_size_log2(1) reserved(3)
 status: 0 = OK, non-zero = error (out of range / past EOF).
 ```
 
@@ -645,7 +662,7 @@ the recommended user-facing forms. Output is plain-language (a user-facing guide
 ```
 ota help | ? | h                   list the commands
 ota status | st  (or bare `ota`)   plain-language: running fw, the one fetch session (state/%/id), serving, keys
-ota ls | neighbors | nbrs | updates | n   discovered updates (queries sources; rows arrive async via OTA_HAVE)
+ota ls | neighbors | nbrs | updates | n [page]   paged updates (queries sources; rows arrive async via OTA_HAVE)
 ota get | pull | download <#|mid8> fetch a chosen mOTA (manual; works regardless of autofetch)
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
 ota cancel | drop | stop           drop the current fetch session (frees the slot)

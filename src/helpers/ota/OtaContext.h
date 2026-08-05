@@ -12,6 +12,7 @@
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   #include "OtaStoreSdNrf52.h"
+  #include "OtaCacheSdNrf52.h"
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   #include "OtaStoreFlashNrf52.h"
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
@@ -59,6 +60,7 @@ struct OtaContext {
   OtaManager manager;
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   OtaStoreSdNrf52 fetch_store;             // MeshTower V2: persistent SD staging, full + delta
+  OtaCacheSdNrf52 sd_cache;                 // persistent capture + source for every OTA container heard
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   OtaStoreFlashNrf52 fetch_store;            // persistent flash staging (survives reboot; large deltas)
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
@@ -129,6 +131,13 @@ struct OtaContext {
   // so the deferred-reboot path (mesh loop) takes over. Caller ensures the fetch is COMPLETE. Shared by
   // manual `ota applydelta` and the auto-install path.
   bool apply_fetched(char* msg) {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (sdCacheFetching()) {
+      strncpy(msg, "refused: SD archive capture owns the OTA receive slot", 96);
+      msg[95] = 0;
+      return false;
+    }
+#endif
     // hardware-compatibility gate (brick-safety) - refuse a .mota whose hw_id is for different hardware,
     // independent of signature; covers a manual cross-target `ota dev want` onto an incompatible board.
     {
@@ -202,7 +211,18 @@ struct OtaContext {
                _folder_link == FOLDER_LINK_TCP ? "tcp" : "serial");
       return false;
     }
-    manager.clear_sources();
+    if (folder_active && _folder_source == source) {
+      manager.refresh_sources();
+      snprintf(msg, cap, "OK folder refreshed (%s) - serving %u mOTA total",
+               label ? label : "external", (unsigned)manager.servedCount());
+      return true;
+    }
+    if (folder_active && _folder_source) {
+      manager.remove_source(_folder_source);       // replace this link without detaching the SD archive
+      folder_active = false;
+      _folder_link = FOLDER_LINK_NONE;
+      _folder_source = nullptr;
+    }
     if (!manager.add_source(source)) {
       strncpy(msg, "ERR no free source slot", cap);
       msg[cap - 1] = 0;
@@ -210,6 +230,7 @@ struct OtaContext {
     }
     folder_active = true;
     _folder_link = link;
+    _folder_source = source;
     snprintf(msg, cap, "OK folder attached (%s) - serving %u mOTA total (own fw + folder)",
              label ? label : "external", (unsigned)manager.servedCount());
     return true;
@@ -227,10 +248,120 @@ struct OtaContext {
   }
 #endif
   void detach_folder() {
-    manager.clear_sources();
+    if (_folder_source) manager.remove_source(_folder_source);
     folder_active = false;
     _folder_link = FOLDER_LINK_NONE;
+    _folder_source = nullptr;
   }
+
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  // Initialize and attach the persistent source lazily. This lets Mesh::begin finish quickly when no card
+  // is inserted, while archive interest is already enabled so early OTA advertisements still get queried.
+  bool ensureSdCache() {
+    sd_cache.attach(fetch_store);
+    if (!sd_cache.initialize()) return false;
+    if (!_sd_cache_source_attached) {
+      if (!manager.add_source(&sd_cache)) return false;
+      _sd_cache_source_attached = true;
+    }
+    manager.set_archive_interest(sd_cache.autoCaptureEnabled());
+    return true;
+  }
+
+  bool setSdCacheEnabled(bool enabled) {
+    if (!ensureSdCache()) return false;
+    bool saved = sd_cache.setAutoCaptureEnabled(enabled);
+    // The marker create/remove can succeed even if the card's final sync reports late. Keep the live
+    // manager consistent with the cache object's actual state while still reporting the persistence error.
+    bool active = sd_cache.autoCaptureEnabled();
+    manager.set_archive_interest(active);
+    if (!active) stopSdCacheFetch();
+    else if (saved) manager.queryAll();
+    return saved;
+  }
+
+  bool sdCacheFetching() const { return _sd_cache_fetching; }
+
+  // Give install-oriented/manual work immediate ownership of OtaManager's single receive slot. The partial
+  // archive remains on SD and is resumed later instead of being discarded.
+  void stopSdCacheFetch() {
+    if (!_sd_cache_fetching) return;
+    sd_cache.checkpoint();
+    manager.reset_session();
+    manager.want(0);
+    manager.want_mid(nullptr);
+    manager.set_fetch_store(&fetch_store);
+    _sd_cache_fetching = false;
+  }
+
+  // Close every archive handle before card-wide format/erase, then rebuild the source view afterwards.
+  void prepareSdCardReset() {
+    stopSdCacheFetch();
+    if (_sd_cache_source_attached) manager.remove_source(&sd_cache);
+    _sd_cache_source_attached = false;
+    sd_cache.resetMedia();
+    manager.set_fetch_store(&fetch_store);
+    manager.set_archive_interest(true);        // a freshly formatted card defaults to capture on
+    _sd_cache_init_retry_at = 0;
+  }
+
+  void finishSdCardReset(uint32_t now) {
+    sd_cache.resetMedia();
+    _sd_cache_init_retry_at = now;
+    ensureSdCache();
+  }
+
+  void serviceSdCache(uint32_t now) {
+    if (!_sd_cache_source_attached) {
+      if (_sd_cache_init_retry_at && (int32_t)(now - _sd_cache_init_retry_at) < 0) return;
+      if (!ensureSdCache()) {
+        _sd_cache_init_retry_at = now + 60000UL;
+        return;
+      }
+      _sd_cache_init_retry_at = 0;
+    }
+
+    if (_sd_cache_fetching) {
+      OtaManager::FetchState state = manager.fetchState();
+      if (state == OtaManager::COMPLETE) {
+        _sd_cache_fetching = false;            // cache store already finalized + published the file
+        manager.reset_session();
+        manager.want(0);
+        manager.want_mid(nullptr);
+        manager.set_fetch_store(&fetch_store);
+        manager.refresh_sources();
+        manager.announce();                    // peers learn the expanded persistent served set immediately
+        _sd_cache_next_at = now + 3000UL;
+      } else if (state == OtaManager::FAILED || state == OtaManager::PAUSED) {
+        manager.deferCatalog(_sd_cache_mid, now + 300000UL);
+        stopSdCacheFetch();                    // retain .part; a later pass resumes its verified blocks
+        _sd_cache_next_at = now + 3000UL;
+      } else if (state == OtaManager::IDLE) {
+        // A CLI/reset path may have reset the manager directly. Never leave the archive ownership flag
+        // wedged merely because the shared manager reached IDLE outside this service function.
+        stopSdCacheFetch();
+        _sd_cache_next_at = now + 3000UL;
+      }
+      return;
+    }
+
+    if (!sd_cache.autoCaptureEnabled() || apply_pending || manager.fetchState() != OtaManager::IDLE ||
+        (_sd_cache_next_at && (int32_t)(now - _sd_cache_next_at) < 0)) return;
+
+    for (uint8_t i = 0; i < manager.catalogCount(); i++) {
+      const OtaManager::CatRow* row = manager.catalogRow(i);
+      if (!row || row->have_max == 0 || sd_cache.contains(row->mid)) continue;
+      if (!manager.catalogReady(row, now)) continue;
+
+      memcpy(_sd_cache_mid, row->mid, 4);
+      sd_cache.set_mid(row->mid);
+      manager.set_fetch_store(&sd_cache);
+      _sd_cache_fetching = true;
+      manager.pull_archive(row->mid, row->target_id);
+      return;
+    }
+  }
+#endif
 
   void track_session(uint8_t fstate, uint32_t now) {            // stamp the session start (age display)
     if (fstate != prev_fstate) {
@@ -263,10 +394,22 @@ struct OtaContext {
     manager.set_apply_codec2(CODEC_DETOOLS_INPLACE);     // also accepted -> a single in-place .mota fits both
 #endif
     manager.set_fetch_store(&fetch_store);
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    sd_cache.attach(fetch_store);
+    manager.set_archive_interest(true);        // default on; the SD marker can turn it off at first mount
+#endif
   }
 
 private:
   FolderLink _folder_link = FOLDER_LINK_NONE;
+  MotaSource* _folder_source = nullptr;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  bool _sd_cache_source_attached = false;
+  bool _sd_cache_fetching = false;
+  uint8_t _sd_cache_mid[4] = {0};
+  uint32_t _sd_cache_init_retry_at = 0;
+  uint32_t _sd_cache_next_at = 0;
+#endif
 };
 
 OtaContext& ota_ctx();   // process-wide singleton

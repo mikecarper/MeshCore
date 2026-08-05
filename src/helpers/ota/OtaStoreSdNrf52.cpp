@@ -6,7 +6,9 @@
 #include <SdFat.h>
 #include <SPI.h>
 #include <new>
+#include <stdlib.h>
 #include <string.h>
+#include "MeshCore.h"
 #include "OtaByteIO.h"
 #include "OtaFlashLayout_nrf52.h"
 #include "OtaSdHandoff.h"
@@ -36,6 +38,29 @@ void OtaStoreSdNrf52::fail(const char* message) {
   _error[sizeof(_error) - 1] = 0;
 }
 
+void OtaStoreSdNrf52::resetStoreState() {
+  _total = 0;
+  _first_sector = 0;
+  _allocated_sectors = 0;
+  _partition_start = 0;
+  _partition_end = 0;
+  if (_file && *_file) _file->close();
+  if (_sd) _sd->end();
+  _mounted = false;
+}
+
+bool OtaStoreSdNrf52::beginCardOnly() {
+  _error[0] = 0;
+  resetStoreState();
+  if (!_sd || !_file ||
+      !_sd->cardBegin(SdSpiConfig(OTA_SD_CS_PIN, DEDICATED_SPI,
+                                  SD_SCK_MHZ(OTA_SD_SCK_MHZ), &SPI1))) {
+    fail("SD card init failed");
+    return false;
+  }
+  return true;
+}
+
 bool OtaStoreSdNrf52::mount() {
   if (_mounted) return true;
   _error[0] = 0;
@@ -49,6 +74,235 @@ bool OtaStoreSdNrf52::mount() {
     _sd->end();
     _mounted = false;
     return false;
+  }
+  return true;
+}
+
+bool OtaStoreSdNrf52::formatCard(MainBoard& board) {
+  if (!beginCardOnly()) return false;
+
+  board.serviceWatchdog();
+  if (!_sd->format()) {
+    fail("SD format failed");
+    _sd->end();
+    return false;
+  }
+  board.serviceWatchdog();
+  if (!_sd->volumeBegin()) {
+    fail("SD remount after format failed");
+    _sd->end();
+    return false;
+  }
+
+  _mounted = true;
+  if (!inspect_mbr()) {
+    _sd->end();
+    _mounted = false;
+    return false;
+  }
+  if (!invalidate_handoff()) {
+    fail("SD handoff clear failed");
+    _sd->end();
+    _mounted = false;
+    return false;
+  }
+  board.serviceWatchdog();
+  return true;
+}
+
+bool OtaStoreSdNrf52::eraseCard(MainBoard& board) {
+  if (!beginCardOnly()) return false;
+
+  SdCard* card = _sd->card();
+  const uint32_t sector_count = card ? card->sectorCount() : 0;
+  if (!card || sector_count == 0) {
+    fail("SD sector count failed");
+    _sd->end();
+    return false;
+  }
+
+  // Match SdFat's formatter example: bounded erase ranges avoid cards that
+  // reject or time out on a single whole-device erase command. Servicing the
+  // board watchdog between ranges keeps the intentionally long operation from
+  // looking like a wedged main loop.
+  const uint32_t erase_sectors = 262144UL;
+  uint32_t first_sector = 0;
+  while (first_sector < sector_count) {
+    const uint32_t remaining = sector_count - first_sector;
+    const uint32_t count = remaining < erase_sectors ? remaining : erase_sectors;
+    const uint32_t last_sector = first_sector + count - 1;
+    board.serviceWatchdog();
+    if (!card->erase(first_sector, last_sector)) {
+      fail("SD erase failed");
+      _sd->end();
+      return false;
+    }
+    first_sector += count;
+  }
+
+  board.serviceWatchdog();
+  if (!card->syncDevice()) {
+    fail("SD erase sync failed");
+    _sd->end();
+    return false;
+  }
+  _sd->end();
+  return true;
+}
+
+bool OtaStoreSdNrf52::getSpace(MainBoard& board, uint64_t& used_bytes,
+                               uint64_t& free_bytes) {
+  used_bytes = 0;
+  free_bytes = 0;
+  _error[0] = 0;
+  if (!mount()) return false;
+
+  board.serviceWatchdog();
+  const uint32_t cluster_count = _sd->clusterCount();
+  const uint32_t free_clusters = _sd->freeClusterCount();
+  const uint32_t bytes_per_cluster = _sd->bytesPerCluster();
+  board.serviceWatchdog();
+  if (cluster_count == 0 || bytes_per_cluster == 0 ||
+      free_clusters > cluster_count) {
+    fail("SD space query failed");
+    return false;
+  }
+
+  free_bytes = (uint64_t)free_clusters * bytes_per_cluster;
+  used_bytes = (uint64_t)(cluster_count - free_clusters) * bytes_per_cluster;
+  return true;
+}
+
+namespace {
+
+static const uint16_t SD_LIST_PAGE_SIZE = 2;
+static const size_t SD_LIST_NAME_CAP = 256;       // FAT/exFAT long-name maximum plus NUL
+static const size_t SD_LIST_SHOWN_PATH = 50;      // bounded CLI line; long paths get an explicit leading "..."
+
+struct SdListState {
+  SdListState(MainBoard& b, uint32_t f) : board(b), first(f) {}
+  MainBoard& board;
+  uint32_t first;
+  uint32_t total = 0;
+  char body[132] = {0};
+  size_t used = 0;
+  char* path = nullptr;
+  size_t path_len = 0;
+  size_t path_cap = 0;
+  bool failed = false;
+};
+
+static void compact_file_size(char* out, size_t cap, uint64_t bytes) {
+  static const char units[] = {'B', 'K', 'M', 'G', 'T'};
+  uint8_t unit = 0;
+  uint64_t whole = bytes;
+  while (whole >= 1024 && unit < sizeof(units) - 1) { whole /= 1024; unit++; }
+  snprintf(out, cap, "%lu%c", (unsigned long)whole, units[unit]);
+}
+
+static bool ensure_list_path(SdListState& state, size_t need) {
+  if (need <= state.path_cap) return true;
+  size_t cap = state.path_cap ? state.path_cap : 256;
+  while (cap < need) {
+    if (cap > SIZE_MAX / 2) { state.failed = true; return false; }
+    cap *= 2;
+  }
+  char* grown = static_cast<char*>(realloc(state.path, cap));
+  if (!grown) { state.failed = true; return false; }
+  state.path = grown;
+  state.path_cap = cap;
+  return true;
+}
+
+static bool append_sd_list_entry(SdListState& state, const char* path, uint64_t bytes) {
+  char size[12];
+  compact_file_size(size, sizeof(size), bytes);
+  const size_t path_len = strlen(path);
+  const char* shown = path;
+  char shortened[SD_LIST_SHOWN_PATH + 1];
+  if (path_len > SD_LIST_SHOWN_PATH) {
+    memcpy(shortened, "...", 3);
+    memcpy(shortened + 3, path + path_len - (SD_LIST_SHOWN_PATH - 3), SD_LIST_SHOWN_PATH - 3);
+    shortened[SD_LIST_SHOWN_PATH] = 0;
+    shown = shortened;
+  }
+  size_t remain = sizeof(state.body) - state.used;
+  int n = snprintf(state.body + state.used, remain, "\n %s %s", shown, size);
+  if (n <= 0 || (size_t)n >= remain) { state.failed = true; return false; }
+  state.used += (size_t)n;
+  return true;
+}
+
+static bool scan_sd_files(FsFile& dir, SdListState& state) {
+  FsFile file;
+  while (file.openNext(&dir, O_RDONLY)) {
+    state.board.serviceWatchdog();
+    const size_t parent_len = state.path_len;
+    if (parent_len > SIZE_MAX - SD_LIST_NAME_CAP - 2 ||
+        !ensure_list_path(state, parent_len + SD_LIST_NAME_CAP + 2)) {
+      file.close();
+      return false;
+    }
+    size_t name_at = parent_len;
+    if (name_at == 0 || state.path[name_at - 1] != '/') state.path[name_at++] = '/';
+    state.path[name_at] = 0;
+    file.getName(state.path + name_at, SD_LIST_NAME_CAP);
+    size_t name_len = strlen(state.path + name_at);
+    if (name_len == 0) { state.failed = true; file.close(); return false; }
+    state.path_len = name_at + name_len;
+
+    if (file.isDir()) {
+      if (!scan_sd_files(file, state)) {
+        state.path_len = parent_len;
+        state.path[parent_len] = 0;
+        file.close();
+        return false;
+      }
+    } else {
+      uint32_t index = state.total++;
+      if (index >= state.first && index < state.first + SD_LIST_PAGE_SIZE) {
+        if (!append_sd_list_entry(state, state.path, file.fileSize())) {
+          state.path_len = parent_len;
+          state.path[parent_len] = 0;
+          file.close();
+          return false;
+        }
+      }
+    }
+    state.path_len = parent_len;
+    state.path[parent_len] = 0;
+    file.close();
+  }
+  return true;
+}
+
+} // namespace
+
+bool OtaStoreSdNrf52::listFiles(MainBoard& board, uint16_t page,
+                                char* reply, size_t cap) {
+  if (!reply || cap == 0) return false;
+  if (page == 0) page = 1;
+  _error[0] = 0;
+  if (!mount()) return false;
+
+  FsFile root = _sd->open("/", O_RDONLY);
+  if (!root || !root.isDir()) { fail("SD root directory open failed"); return false; }
+  SdListState state(board, (uint32_t)(page - 1) * SD_LIST_PAGE_SIZE);
+  bool scanned = ensure_list_path(state, 2) && scan_sd_files(root, state);
+  root.close();
+  free(state.path);
+  if (!scanned || state.failed) { fail("SD file listing failed"); return false; }
+
+  uint32_t pages = (state.total + SD_LIST_PAGE_SIZE - 1) / SD_LIST_PAGE_SIZE;
+  if (pages == 0) {
+    snprintf(reply, cap, "> SD files: empty");
+  } else if (page > pages) {
+    snprintf(reply, cap, "Error: SD file page %u out of range (1-%lu)",
+             (unsigned)page, (unsigned long)pages);
+  } else {
+    snprintf(reply, cap, "> SD files %u/%lu (%lu):%s",
+             (unsigned)page, (unsigned long)pages,
+             (unsigned long)state.total, state.body);
   }
   return true;
 }

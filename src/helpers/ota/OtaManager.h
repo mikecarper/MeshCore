@@ -28,7 +28,11 @@ typedef void (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood)
 typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len);
 
 #ifndef OTA_PROOFGEN_SCRATCH
-#define OTA_PROOFGEN_SCRATCH 4096   // server proof-gen working buffer (supports up to 1024 blocks)
+  #if defined(OTA_SD_STORE)
+    #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 2 MB at 1 KB/block)
+  #else
+    #define OTA_PROOFGEN_SCRATCH 4096  // server proof-gen working buffer (supports up to 1024 blocks)
+  #endif
 #endif
 
 #ifndef OTA_MAX_BLOCK
@@ -74,7 +78,11 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_MAX_SOURCES 12          // heard OTA sources (beacon senders) tracked (LRU); ~12 B each
 #endif
 #ifndef OTA_MAX_SERVE
-#define OTA_MAX_SERVE 12            // mOTAs THIS node offers (own fw + external folder); == one HAVE fragment
+  #if defined(OTA_SD_STORE)
+    #define OTA_MAX_SERVE 255        // protocol maximum: own fw plus up to 254 persistent SD archive entries
+  #else
+    #define OTA_MAX_SERVE 12         // mOTAs THIS node offers (own fw + external folder); == one HAVE fragment
+  #endif
 #endif
 #ifndef OTA_MAX_SOURCE_OBJ
 #define OTA_MAX_SOURCE_OBJ 4        // external MotaSource objects (folders/transports) attached at once
@@ -83,13 +91,19 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_SRC_MANIFEST_MAX 256    // manifest-minus-leaves buffer for the loaded source mota (head+sig+approval)
 #endif
 #ifndef OTA_MAX_CATALOG
-#define OTA_MAX_CATALOG 12          // distinct mOTAs catalogued from OTA_HAVE replies (LRU)
+#define OTA_MAX_CATALOG 255          // protocol maximum; large SD seeders must remain browsable remotely
 #endif
 #ifndef OTA_QUERY_MIN_MS
 #define OTA_QUERY_MIN_MS 300        // min delay before sending a catalog query (overhear-suppression window)
 #endif
 #ifndef OTA_QUERY_SPREAD_MS
 #define OTA_QUERY_SPREAD_MS 4000    // random jitter span so 50 neighbours don't all query at once (storm)
+#endif
+#ifndef OTA_CATALOG_RETRY_MS
+#define OTA_CATALOG_RETRY_MS 15000  // wait for a fragmented HAVE burst before requesting only its holes
+#endif
+#ifndef OTA_CATALOG_MAX_RETRY
+#define OTA_CATALOG_MAX_RETRY 5     // bound retries until the source's next ADV or an explicit `ota ls`
 #endif
 #ifndef OTA_REQ_SPREAD_MS
 #define OTA_REQ_SPREAD_MS 3000      // initial random hold before a fetch's first REQ (de-sync N fetchers)
@@ -164,6 +178,9 @@ public:
   // Re-enumerates the source into the serve registry. Returns false if no slots remain. (Trustless: the
   // fetcher verifies merkle+signature, so the source is never trusted - see OtaSource.h.)
   bool add_source(MotaSource* src);
+  // Detach one source without disturbing other attached sources (for example, keep the persistent SD
+  // archive attached while a temporary host-folder link comes and goes).
+  bool remove_source(MotaSource* src);
   // Re-read every attached source's catalog (call when the folder's contents change). Rebuilds entries
   // [1..] from the sources; entry 0 (our own fw) is preserved.
   void refresh_sources();
@@ -213,7 +230,14 @@ public:
   // build already staged in the destination, and pull DATA only for the differing blocks. Ignored unless a
   // seed is present (a plain fetch just re-transfers everything). Normal P2P pulls pass false.
   void pull(const uint8_t* mid, uint32_t target, bool validate = false) {
+    _archive_fetch = false;
     want(target); want_mid(mid); startFetch(mid, target, validate);
+  }
+  // Capture an advertised container for relaying, not installation. Archive pulls accept every codec and
+  // target because the receiver only verifies and stores bytes; it never tries to apply the result locally.
+  void pull_archive(const uint8_t* mid, uint32_t target) {
+    _archive_fetch = true;
+    want(target); want_mid(mid); startFetch(mid, target, false);
   }
   // Ask every known source for its catalog (populates `ota neighbors`). Async - rows arrive via OTA_HAVE.
   void queryAll();
@@ -237,6 +261,11 @@ public:
   static const uint8_t AUTOFETCH_OFF = 0, AUTOFETCH_ANY = 1, AUTOFETCH_SIGNED = 2;
   void set_autofetch(uint8_t p) { _autofetch = p; reDiscover(); }
   uint8_t autofetch() const { return _autofetch; }
+  // A persistent archive needs full catalogs even when install-oriented autofetch is off.
+  void set_archive_interest(bool on) {
+    if (_archive_interest != on) { _archive_interest = on; reDiscover(); }
+  }
+  bool archive_interest() const { return _archive_interest; }
 
   // Resume checkpoint cadence (runtime-tunable, persisted in NodePrefs): persist progress every N
   // committed blocks. 0 = never (resume only from a finalized container). Default OTA_CHECKPOINT_BLOCKS.
@@ -268,7 +297,8 @@ public:
     clearReassembly();
     _loop_last_have = 0; _loop_last_mask = 0;
     _mf_total = 0; _mf_mask = 0; _mf_len = 0; _loop_last_mfmask = 0;
-    freeLeaves(); _validate = false; _lv_retries = 0; _loop_last_lvmask = 0;
+    freeLeaves(); _validate = false; _archive_fetch = false;
+    _lv_retries = 0; _loop_last_lvmask = 0;
   }
 
   FetchState fetchState() const { return _fstate; }
@@ -286,10 +316,15 @@ public:
     uint8_t  n_seeders;                    // count of the above (capped at OTA_CAT_SEEDERS) - "N+ nodes have it"
     uint32_t have_max;                     // best block-count any source reported (== total when a full copy exists)
     uint32_t last_ms;
+    uint32_t retry_after_ms;                // per-image archive retry deadline (0 = eligible)
   };
   uint8_t catalogCount() const { return _n_cat; }
   const CatRow* catalogRow(uint8_t i) const { return i < _n_cat ? &_catalog[i] : nullptr; }
   uint8_t sourceCount() const { return _n_src; }   // distinct OTA sources (beacon senders) heard
+  void deferCatalog(const uint8_t mid[4], uint32_t until_ms);
+  bool catalogReady(const CatRow* row, uint32_t now_ms) const {
+    return row && (row->retry_after_ms == 0 || (int32_t)(now_ms - row->retry_after_ms) >= 0);
+  }
 
 private:
   void emit(const uint8_t* b, uint16_t n, bool flood) { if (_send && n) _send(_ctx, b, n, flood); }
@@ -318,9 +353,20 @@ private:
   static bool srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len);  // source payload reader
   void emitBlockData(const uint8_t* mid, uint32_t idx, const uint8_t* data, uint32_t blen,
                      uint16_t want_mask);   // emit only the requested DATA fragments of one block
-  void sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target);  // ask a source for its catalog
+  void sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
+                 uint32_t want_fragments);                  // ask a source for all/selected catalog fragments
   void scheduleQuery(const uint8_t* seeder, const uint8_t* digest);   // jittered + suppressible
-  void reDiscover() { for (uint8_t i = 0; i < _n_src; i++) _sources[i].have_catalog = false; _pq_active = false; }
+  void reDiscover() {
+    for (uint8_t i = 0; i < _n_src; i++) {
+      _sources[i].have_catalog = false;
+      _sources[i].have_total = 0;
+      _sources[i].have_mask = 0;
+      _sources[i].query_pending = false;
+      _sources[i].query_owned = false;
+      _sources[i].query_retries = 0;
+      _sources[i].query_retry_at = 0;
+    }
+  }
   void setDigest(uint8_t out[4]) const;                   // sha2-256:4 over our served mids
   bool blockPresent(uint32_t i) const;
   void requestMissing();
@@ -365,6 +411,8 @@ private:
   uint8_t    _apply_codec = CODEC_DETOOLS_SEQUENTIAL;  // platform's delta codec (OtaContext sets it)
   uint8_t    _apply_codec2 = 0xFF;                     // optional 2nd accepted delta codec (ESP32: in-place)
   bool       _accept_full = true;                       // false on nRF52 flash (single-slot cannot apply full)
+  bool       _archive_fetch = false;                    // capture-only pull: accept any target/codec
+  bool       _archive_interest = false;                 // query full catalogs for the persistent archive
   uint8_t    _seeder_id[4] = {0,0,0,0};        // our node id (pubkey[0:4]) for advert seeder counting
   uint8_t    _autofetch = AUTOFETCH_OFF;       // auto-fetch policy (persisted in NodePrefs)
   uint16_t   _checkpoint_blocks = OTA_CHECKPOINT_BLOCKS;  // resume checkpoint cadence (persisted)
@@ -400,17 +448,25 @@ private:
   uint8_t* ensureScratch();
 
   // discovery: heard sources (beacon senders) + the catalog assembled from their OTA_HAVE replies
-  struct Source { uint8_t seeder[4]; uint8_t digest[4]; uint8_t n_motas; uint32_t last_ms; bool have_catalog; };
+  struct Source {
+    uint8_t seeder[4];
+    uint8_t digest[4];
+    uint8_t n_motas;
+    uint32_t last_ms;
+    bool have_catalog;
+    uint8_t have_total;
+    uint32_t have_mask;
+    bool query_pending;
+    bool query_owned;
+    uint8_t query_retries;
+    uint32_t query_at;
+    uint32_t query_retry_at;
+  };
   Source     _sources[OTA_MAX_SOURCES];
   uint8_t    _n_src = 0;
   CatRow     _catalog[OTA_MAX_CATALOG];
   uint8_t    _n_cat = 0;
   uint32_t   _now_ms = 0;                       // coarse clock (fed by set_clock; for ages/LRU/jitter)
-  // pending catalog query (jittered + suppressed on overhearing a matching QUERY/HAVE - anti-storm)
-  bool       _pq_active = false;
-  uint8_t    _pq_seeder[4] = {0};
-  uint8_t    _pq_digest[4] = {0};
-  uint32_t   _pq_at = 0;                         // _now_ms deadline to actually send the query
 };
 
 } // namespace ota

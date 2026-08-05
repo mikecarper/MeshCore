@@ -8,7 +8,12 @@ class SdFs;
 class FsFile;
 
 namespace mesh {
+
+class MainBoard;
+
 namespace ota {
+
+class OtaCacheSdNrf52;
 
 // Persistent nRF52840 OTA store backed by the MeshTower V2 microSD socket.
 // The .mota remains a normal file, but is preallocated contiguously so the
@@ -33,15 +38,22 @@ public:
   // Called only after the app has verified payload, base, signature and trust.
   // Writes APRV into the file, then publishes the raw-sector handoff record.
   bool approve_for_bootloader();
+  bool formatCard(MainBoard& board);
+  bool eraseCard(MainBoard& board);
+  bool getSpace(MainBoard& board, uint64_t& used_bytes, uint64_t& free_bytes);
+  bool listFiles(MainBoard& board, uint16_t page, char* reply, size_t cap);
   const char* last_error() const { return _error; }
 
 private:
+  friend class OtaCacheSdNrf52;
   static const char* const PATH;
 
   bool mount();
+  bool beginCardOnly();
   bool inspect_mbr();
   bool locate_file();
   bool invalidate_handoff();
+  void resetStoreState();
   void fail(const char* message);
 
   SdFs* _sd = nullptr;

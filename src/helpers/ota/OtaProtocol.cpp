@@ -12,7 +12,11 @@ struct W {
   void u8(uint8_t v)  { if (n + 1 > cap) { ok = false; return; } p[n++] = v; }
   void u16(uint16_t v){ u8(v & 0xFF); u8(v >> 8); }
   void u32(uint32_t v){ u8(v); u8(v >> 8); u8(v >> 16); u8(v >> 24); }
-  void raw(const uint8_t* d, uint16_t l) { if (n + l > cap) { ok = false; return; } memcpy(p + n, d, l); n += l; }
+  void raw(const uint8_t* d, uint16_t l) {
+    if (n + l > cap) { ok = false; return; }
+    if (l) memcpy(p + n, d, l);
+    n += l;
+  }
 };
 struct R {
   const uint8_t* p; uint16_t len; uint16_t n; bool ok;
@@ -38,7 +42,8 @@ bool decode_adv(const uint8_t* buf, uint16_t len, AdvMsg& m) {
 }
 
 uint16_t encode_query(uint8_t* buf, uint16_t cap, const QueryMsg& m) {
-  W w(buf, cap); w.u8(OTA_QUERY); w.raw(m.seeder_id, 4); w.raw(m.set_digest, 4); w.u32(m.filter_target);
+  W w(buf, cap); w.u8(OTA_QUERY); w.raw(m.seeder_id, 4); w.raw(m.set_digest, 4);
+  w.u32(m.filter_target); w.u32(m.want_fragments);
   return w.ok ? w.n : 0;
 }
 bool decode_query(const uint8_t* buf, uint16_t len, QueryMsg& m) {
@@ -46,6 +51,13 @@ bool decode_query(const uint8_t* buf, uint16_t len, QueryMsg& m) {
   const uint8_t* sid = r.raw(4); if (sid) memcpy(m.seeder_id, sid, 4);
   const uint8_t* dg = r.raw(4); if (dg) memcpy(m.set_digest, dg, 4);
   m.filter_target = r.u32();
+  // The fragment mask is an append-only protocol extension. Accept the original 13-byte QUERY as
+  // "all fragments" so new and old firmware remain interoperable during a rolling deployment.
+  m.want_fragments = 0;
+  if (r.remaining() != 0) {
+    if (r.remaining() < 4) return false;
+    m.want_fragments = r.u32();
+  }
   return r.ok;
 }
 

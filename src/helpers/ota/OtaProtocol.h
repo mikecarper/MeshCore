@@ -24,11 +24,14 @@ struct AdvMsg {
 
 // ---- OTA_QUERY: "list what you serve" - addressed to a source by seeder_id, FLOODED so neighbours
 // overhear it (storm suppression). set_digest identifies the offering being asked about (so an overhearer
-// can suppress its own pending query for the same {source,digest}). filter_target=0 = everything. ----
+// can suppress its own pending query for the same {source,digest}). filter_target=0 = everything.
+// want_fragments=0 asks for every fragment; otherwise bit k asks only for HAVE fragment k. The latter
+// lets a receiver recover catalog packet loss without causing another large all-fragment burst. ----
 struct QueryMsg {
   uint8_t  seeder_id[4];     // which source this query is for (the source matches its own id)
   uint8_t  set_digest[4];    // the offering digest we're asking about (for overhear-suppression)
   uint32_t filter_target;    // 0 = all (the scalable default); else only mOTAs for this target_id
+  uint32_t want_fragments;   // 0 = all; otherwise bit k requests OTA_HAVE fragment k
 };
 
 // ---- OTA_HAVE: the compact catalog (source -> mesh), FLOODED + tagged with set_digest so EVERY node
@@ -44,6 +47,7 @@ struct HaveMsg {
   const uint8_t* rows;       // points into buf: n_rows * OTA_HAVE_ROW_BYTES
 };
 static const uint8_t OTA_HAVE_ROW_BYTES = 16;   // mid4 + target4 + fwver4 + codec1 + flags1 + have_count2
+static const uint8_t OTA_HAVE_MAX_FRAGMENTS = 32;  // QueryMsg::want_fragments bitmap width
 
 // ---- OTA_GET_MANIFEST: request the manifest for a content id (direct) ----
 // body: manifest_id(4) want_mask(2). want_mask bit k = "send manifest fragment k"; 0xFFFF = "send all"

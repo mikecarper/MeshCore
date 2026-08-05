@@ -32,6 +32,7 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
   _fstate = IDLE; _have = 0; _fbc = 0;
   _n_serve = 0; _n_src_obj = 0; _view0.valid = false; _srcv.valid = false;
+  _n_src = 0; _n_cat = 0;
 }
 
 // ---------------- serve (multi-mota registry) ----------------
@@ -88,10 +89,26 @@ void OtaManager::registerSelfEntry() {
 }
 
 bool OtaManager::add_source(MotaSource* src) {
-  if (!src || _n_src_obj >= OTA_MAX_SOURCE_OBJ) return false;
+  if (!src) return false;
+  for (uint8_t i = 0; i < _n_src_obj; i++) {
+    if (_src_list[i] == src) { refresh_sources(); return true; }
+  }
+  if (_n_src_obj >= OTA_MAX_SOURCE_OBJ) return false;
   _src_list[_n_src_obj++] = src;
   refresh_sources();
   return true;
+}
+
+bool OtaManager::remove_source(MotaSource* src) {
+  if (!src) return false;
+  for (uint8_t i = 0; i < _n_src_obj; i++) {
+    if (_src_list[i] != src) continue;
+    for (uint8_t j = i + 1; j < _n_src_obj; j++) _src_list[j - 1] = _src_list[j];
+    _src_list[--_n_src_obj] = nullptr;
+    refresh_sources();
+    return true;
+  }
+  return false;
 }
 
 void OtaManager::refresh_sources() {
@@ -104,6 +121,21 @@ void OtaManager::refresh_sources() {
     for (uint8_t i = 0; i < cnt && _n_serve < OTA_MAX_SERVE; i++) {
       MotaDesc d;
       if (!src->describe(i, d)) continue;
+      if (d.block_count == 0 || (uint64_t)d.block_count * 4 > OTA_PROOFGEN_SCRATCH) continue;
+      // A legacy serial descriptor left the geometry byte zero. Inspect its fixed manifest once so it is
+      // either proven servable before advertisement or excluded from the registry.
+      if (d.block_size_log2 == 0) {
+        uint8_t mf[MOTA_MFL];
+        MotaManifest parsed;
+        if (!src->read(i, 8, mf, sizeof(mf)) || !mota_parse_manifest(mf, sizeof(mf), parsed) ||
+            memcmp(parsed.merkle_root, d.mid, 4) != 0 || parsed.block_count != d.block_count ||
+            parsed.payload_size != d.payload_size) continue;
+        d.block_size_log2 = parsed.block_size_log2;
+      }
+      if (d.block_size_log2 >= 32 || (1UL << d.block_size_log2) > OTA_MAX_BLOCK) continue;
+      if (d.leaves_off != 8 + MOTA_MFL ||
+          (uint64_t)d.leaves_off + (uint64_t)d.block_count * 4 != d.payload_off ||
+          (uint64_t)d.payload_off + d.payload_size + 5 != d.total_size) continue;
       if (serveEntryIndex(d.mid) >= 0) continue;             // already offered (e.g. our own fw in the folder)
       ServeEntry& e = _serve[_n_serve++];
       memcpy(e.mid, d.mid, 4);
@@ -148,7 +180,8 @@ OtaManager::ServeView* OtaManager::resolve(const uint8_t* mid) {
 
 // Load an external mota into the on-demand _srcv: read its manifest-minus-leaves + leaves[] from the
 // source into RAM, parse, and wire a payload reader that streams blocks from the source on REQ. (The
-// payload itself is NOT held in RAM - only the small head + the leaves, <=4 KB for <=1024 blocks.)
+// payload itself is NOT held in RAM - only the small head and the leaves, bounded by the configured
+// proof-generation scratch size.)
 bool OtaManager::loadSource(const ServeEntry& e) {
   const MotaDesc& d = e.desc;
   if (d.leaves_off < 8) return false;
@@ -161,6 +194,7 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   if (!src_leaves || !scratch) return false;
   bool ok = e.src->read(e.src_idx, 8, _src_manifest, mfl);
   if (!ok || !mota_parse_manifest(_src_manifest, mfl, _srcv.m)) return false;
+  if (_srcv.m.block_size() == 0 || _srcv.m.block_size() > OTA_MAX_BLOCK) return false;
   if (memcmp(_srcv.m.merkle_root, d.mid, 4) != 0) return false;       // descriptor/bytes disagree
   if (_srcv.m.block_count != d.block_count) return false;
   ok = e.src->read(e.src_idx, d.leaves_off, src_leaves, d.block_count * 4);
@@ -190,7 +224,7 @@ void OtaManager::setDigest(uint8_t out[4]) const {
   if (_n_serve == 0) { memset(out, 0, 4); return; }
   uint8_t order[OTA_MAX_SERVE];
   for (uint8_t i = 0; i < _n_serve; i++) order[i] = i;
-  for (uint8_t i = 1; i < _n_serve; i++) {                 // insertion sort by mid (n <= 12)
+  for (uint8_t i = 1; i < _n_serve; i++) {                 // insertion sort by mid
     uint8_t v = order[i]; int j = (int)i - 1;
     while (j >= 0 && memcmp(_serve[order[j]].mid, _serve[v].mid, 4) > 0) { order[j+1] = order[j]; j--; }
     order[j+1] = v;
@@ -216,31 +250,60 @@ void OtaManager::announce() {       // tiny per-node beacon (constant size, inde
 void OtaManager::handleQuery(const uint8_t* m, uint16_t n) {
   QueryMsg q;
   if (!decode_query(m, n, q)) return;
-  if (_pq_active && memcmp(_pq_seeder, q.seeder_id, 4) == 0 && memcmp(_pq_digest, q.set_digest, 4) == 0)
-    _pq_active = false;                                      // (1) suppress our own pending query
+  // Suppress only a pending query whose scope is covered by the overheard request. A target-filtered or
+  // fragment-only query cannot stand in for our unfiltered initial request.
+  for (uint8_t i = 0; i < _n_src; i++) {
+    Source& s = _sources[i];
+    if (!s.query_pending || memcmp(s.seeder, q.seeder_id, 4) != 0 ||
+        memcmp(s.digest, q.set_digest, 4) != 0 || q.filter_target != 0) continue;
+    uint32_t missing = 0;
+    if (s.have_total) {
+      uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
+      missing = full & ~s.have_mask;
+    }
+    if (q.want_fragments == 0 || (missing != 0 && (q.want_fragments & missing) == missing)) {
+      s.query_pending = false;
+      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    }
+  }
   if (_n_serve == 0 || memcmp(q.seeder_id, _seeder_id, 4) != 0) return;   // (2) only WE answer queries to us
   uint8_t dg[4]; setDigest(dg);
-  uint8_t rowbuf[OTA_MAX_SERVE * OTA_HAVE_ROW_BYTES];
-  uint8_t nm = 0;
-  for (uint8_t i = 0; i < _n_serve; i++) {
-    const ServeEntry& e = _serve[i];
-    if (q.filter_target != 0 && q.filter_target != e.target_id) continue;
-    uint8_t* row = rowbuf + (uint32_t)nm * OTA_HAVE_ROW_BYTES;
-    memcpy(row, e.mid, 4);
-    wr_u32le(row + 4, e.target_id); wr_u32le(row + 8, e.fw_version);
-    row[12] = e.codec_id; row[13] = e.flags;
-    uint32_t hc = e.have_count > 0xFFFFu ? 0xFFFFu : e.have_count;   // blocks we hold (awareness for fetchers)
-    row[14] = (uint8_t)(hc & 0xFF); row[15] = (uint8_t)(hc >> 8);
-    nm++;
-  }
   const uint8_t per = (uint8_t)((MAX_PACKET_PAYLOAD - 12) / OTA_HAVE_ROW_BYTES);  // rows per HAVE fragment
-  uint8_t ftotal = (uint8_t)((nm + per - 1) / per); if (ftotal == 0) ftotal = 1;
+  uint8_t ftotal = (uint8_t)((_n_serve + per - 1) / per); if (ftotal == 0) ftotal = 1;
+  if (ftotal > OTA_HAVE_MAX_FRAGMENTS) return;             // QueryMsg's recovery bitmap cannot represent it
+
+  // Fragment positions are canonical across rescans: digest-stable sets sort into the same pages even if
+  // FAT/folder enumeration order changed. filter_target removes rows from those pages but never renumbers
+  // fragments, so filtered and unfiltered HAVE floods cannot corrupt each other's completion bitmap.
+  uint8_t order[OTA_MAX_SERVE];
+  for (uint8_t i = 0; i < _n_serve; i++) order[i] = i;
+  for (uint8_t i = 1; i < _n_serve; i++) {
+    uint8_t v = order[i]; int j = (int)i - 1;
+    while (j >= 0 && memcmp(_serve[order[j]].mid, _serve[v].mid, 4) > 0) {
+      order[j + 1] = order[j]; j--;
+    }
+    order[j + 1] = v;
+  }
   for (uint8_t fi = 0; fi < ftotal; fi++) {
-    uint8_t bse = (uint8_t)(fi * per);
-    uint8_t cnt = (uint8_t)((nm - bse > per) ? per : (nm - bse));
+    if (q.want_fragments != 0 && !(q.want_fragments & (1UL << fi))) continue;
+    const uint8_t first = (uint8_t)(fi * per);
+    uint8_t rowbuf[MAX_PACKET_PAYLOAD];
+    uint8_t cnt = 0;
+    uint16_t end = (uint16_t)first + per; if (end > _n_serve) end = _n_serve;
+    for (uint16_t pos = first; pos < end; pos++) {
+      const ServeEntry& e = _serve[order[pos]];
+      if (q.filter_target != 0 && q.filter_target != e.target_id) continue;
+      uint8_t* row = rowbuf + (uint32_t)cnt * OTA_HAVE_ROW_BYTES;
+      memcpy(row, e.mid, 4);
+      wr_u32le(row + 4, e.target_id); wr_u32le(row + 8, e.fw_version);
+      row[12] = e.codec_id; row[13] = e.flags;
+      uint32_t hc = e.have_count > 0xFFFFu ? 0xFFFFu : e.have_count;
+      row[14] = (uint8_t)(hc & 0xFF); row[15] = (uint8_t)(hc >> 8);
+      cnt++;
+    }
     HaveMsg hv; memcpy(hv.seeder_id, _seeder_id, 4); memcpy(hv.set_digest, dg, 4);
     hv.frag_idx = fi; hv.frag_total = ftotal; hv.n_rows = cnt;
-    hv.rows = cnt ? (rowbuf + (uint32_t)bse * OTA_HAVE_ROW_BYTES) : nullptr;
+    hv.rows = cnt ? rowbuf : nullptr;
     uint8_t b[MAX_PACKET_PAYLOAD];
     emit(b, encode_have(b, sizeof(b), hv), true);            // broadcast: all neighbours cache it
   }
@@ -372,46 +435,104 @@ void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
   bool changed = fresh || memcmp(s.digest, a.set_digest, 4) != 0;
   memcpy(s.seeder, a.seeder_id, 4); memcpy(s.digest, a.set_digest, 4);
   s.n_motas = a.n_motas; s.last_ms = _now_ms;
-  if (changed) s.have_catalog = false;
+  if (changed) {
+    s.have_catalog = false;
+    s.have_total = 0;
+    s.have_mask = 0;
+    s.query_pending = false;
+    s.query_owned = false;
+    s.query_retries = 0;
+    s.query_retry_at = 0;
+  }
 
   // interested = auto-fetch enabled, or a manual pull/want is pending. (Browsing queries via queryAll().)
-  bool interested = (_autofetch != AUTOFETCH_OFF) || _have_desired_mid || _desired_target;
-  if (interested && !s.have_catalog) scheduleQuery(a.seeder_id, a.set_digest);  // jittered + suppressible
+  bool interested = _archive_interest || (_autofetch != AUTOFETCH_OFF) ||
+                    _have_desired_mid || _desired_target;
+  if (interested && !s.have_catalog) {
+    // A fresh ADV is also a new opportunity after the bounded retry series was exhausted.
+    if (s.query_retries >= OTA_CATALOG_MAX_RETRY) {
+      s.query_retries = 0;
+      s.query_retry_at = 0;
+      s.query_owned = false;
+    }
+    scheduleQuery(a.seeder_id, a.set_digest);  // jittered + suppressible
+  }
 }
 
 // Schedule a catalog query after a random jitter (id +/ digest, so neighbours pick different delays). The
 // node with the shortest jitter sends; the rest overhear that QUERY (or the broadcast HAVE) and suppress.
 void OtaManager::scheduleQuery(const uint8_t* seeder, const uint8_t* digest) {
-  if (_pq_active && memcmp(_pq_seeder, seeder, 4) == 0 && memcmp(_pq_digest, digest, 4) == 0) return;  // already pending
-  memcpy(_pq_seeder, seeder, 4); memcpy(_pq_digest, digest, 4);
-  uint32_t j = (rd_u32le(seeder) ^ rd_u32le(digest) ^ rd_u32le(_seeder_id)) % OTA_QUERY_SPREAD_MS;
-  _pq_at = _now_ms + OTA_QUERY_MIN_MS + j;
-  _pq_active = true;
+  for (uint8_t i = 0; i < _n_src; i++) {
+    Source& s = _sources[i];
+    if (memcmp(s.seeder, seeder, 4) != 0 || memcmp(s.digest, digest, 4) != 0) continue;
+    if (s.query_pending || s.have_catalog ||
+        (s.query_owned && s.query_retry_at && (int32_t)(_now_ms - s.query_retry_at) < 0)) return;
+    uint32_t j = (rd_u32le(seeder) ^ rd_u32le(digest) ^ rd_u32le(_seeder_id)) % OTA_QUERY_SPREAD_MS;
+    s.query_at = _now_ms + OTA_QUERY_MIN_MS + j;
+    s.query_pending = true;
+    s.query_owned = true;
+    return;
+  }
 }
 
-void OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target) {
-  QueryMsg q; memcpy(q.seeder_id, seeder, 4); memcpy(q.set_digest, digest, 4); q.filter_target = filter_target;
-  uint8_t b[16];
+void OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
+                           uint32_t want_fragments) {
+  QueryMsg q;
+  memcpy(q.seeder_id, seeder, 4); memcpy(q.set_digest, digest, 4);
+  q.filter_target = filter_target; q.want_fragments = want_fragments;
+  uint8_t b[24];
   emit(b, encode_query(b, sizeof(b), q), true);     // FLOODED so neighbours overhear it and suppress
 }
 
-// User-initiated browse (`ota neighbors`): ask every known source now (no jitter - infrequent + explicit).
-void OtaManager::queryAll() { for (uint8_t i = 0; i < _n_src; i++) sendQuery(_sources[i].seeder, _sources[i].digest, 0); }
+// User-initiated browse (`ota neighbors`): immediately ask every incomplete/changed source. A complete
+// digest-tagged catalog is already current, so paging through a 255-row list must not re-flood it each time.
+void OtaManager::queryAll() {
+  for (uint8_t i = 0; i < _n_src; i++) {
+    Source& s = _sources[i];
+    if (s.have_catalog) continue;
+    s.query_pending = false;
+    s.query_owned = true;
+    s.query_retries = 0;
+    s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    uint32_t want = 0;
+    if (s.have_total) {
+      uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
+      want = full & ~s.have_mask;
+    }
+    sendQuery(s.seeder, s.digest, 0, want);
+  }
+}
 
 // A catalog reply: record each mOTA (deduped by mid; distinct-source count for the UI), and if a row
 // matches our fetch interest (auto-fetch own-target, or a pending pull/want), begin fetching it.
 void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
   HaveMsg hv;
   if (!decode_have(m, n, hv)) return;
+  if (hv.frag_total == 0 || hv.frag_total > OTA_HAVE_MAX_FRAGMENTS || hv.frag_idx >= hv.frag_total) return;
   bool have_sid = (_seeder_id[0] | _seeder_id[1] | _seeder_id[2] | _seeder_id[3]) != 0;
   if (have_sid && memcmp(hv.seeder_id, _seeder_id, 4) == 0) return;   // our own catalog
-  // PASSIVE: any overheard HAVE marks its source catalogued + cancels a pending query for it (storm
-  // suppression) - every node caches the rows below, even one that never queried.
-  for (uint8_t i = 0; i < _n_src; i++)
-    if (memcmp(_sources[i].seeder, hv.seeder_id, 4) == 0 && memcmp(_sources[i].digest, hv.set_digest, 4) == 0)
-      _sources[i].have_catalog = true;
-  if (_pq_active && memcmp(_pq_seeder, hv.seeder_id, 4) == 0 && memcmp(_pq_digest, hv.set_digest, 4) == 0)
-    _pq_active = false;
+  // PASSIVE: every node caches rows it overhears. A source is catalogued only after EVERY advertised
+  // fragment arrived; otherwise a timed recovery QUERY asks for just the missing bitmap.
+  for (uint8_t i = 0; i < _n_src; i++) {
+    Source& s = _sources[i];
+    if (memcmp(s.seeder, hv.seeder_id, 4) != 0 || memcmp(s.digest, hv.set_digest, 4) != 0) continue;
+    if (s.have_total != hv.frag_total) {
+      s.have_total = hv.frag_total;
+      s.have_mask = 0;
+      s.have_catalog = false;
+    }
+    s.have_mask |= 1UL << hv.frag_idx;
+    uint32_t full = hv.frag_total >= 32 ? UINT32_MAX : ((1UL << hv.frag_total) - 1);
+    s.have_catalog = s.have_mask == full;
+    if (s.have_catalog) {
+      s.query_pending = false;
+      s.query_owned = false;
+      s.query_retries = 0;
+      s.query_retry_at = 0;
+    } else {
+      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    }
+  }
   for (uint8_t r = 0; r < hv.n_rows && hv.rows; r++) {
     const uint8_t* row = hv.rows + (uint32_t)r * OTA_HAVE_ROW_BYTES;
     const uint8_t* mid = row;
@@ -443,10 +564,20 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
   }
 }
 
+void OtaManager::deferCatalog(const uint8_t mid[4], uint32_t until_ms) {
+  if (!mid) return;
+  for (uint8_t i = 0; i < _n_cat; i++) {
+    if (memcmp(_catalog[i].mid, mid, 4) == 0) {
+      _catalog[i].retry_after_ms = until_ms;
+      return;
+    }
+  }
+}
+
 bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const {
   if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST || _fstate == PAUSED) return false;  // busy
   if (_fstate == COMPLETE && memcmp(mid, _fid, 4) == 0) return false;             // already have it
-  if (!codecOk(codec)) return false;                                              // can't apply this codec
+  if (!_archive_fetch && !codecOk(codec)) return false;                           // can't apply this codec
   if (_have_desired_mid)                                                          // manual pull of a specific mid
     return memcmp(mid, _desired_mid, 4) == 0 && (_desired_target == 0 || target == _desired_target);
   if (_desired_target) return target == _desired_target;                          // cross-target want (role switch)
@@ -509,7 +640,8 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   const uint8_t* mf = _mf_buf;                   // fully reassembled manifest-minus-leaves
   uint32_t mfl = _mf_len;
   if (mfl != MOTA_MFL) { _fstate = FAILED; return; }   // manifest-minus-leaves is a fixed 197 bytes
-  if (!codecOk(mf[56])) { _fstate = IDLE; return; }   // codec we can't apply (lying/stale ADV) - abort
+  if (mf[2] != HASH_ALGO_SHA256) { _fstate = FAILED; return; }  // this implementation supports sha2-256 only
+  if (!_archive_fetch && !codecOk(mf[56])) { _fstate = IDLE; return; }  // incompatible install codec
   uint32_t payload_size = rd_u32le(mf + 15);
   uint8_t  bsl = mf[19];
   if (bsl >= 32) { _fstate = FAILED; return; }
@@ -518,11 +650,16 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { _fstate = FAILED; return; }
   uint32_t bc = (payload_size + bs - 1) / bs;
   if (bc > 0xFFFFu) { _fstate = FAILED; return; }   // block_idx is uint16 on the wire - can't address more
+  if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) {
+    _fstate = FAILED; return;                       // retaining an image we cannot subsequently seed is useless
+  }
   memcpy(_froot, mf + 20, 4);
 
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
-  uint32_t total = payload_off + payload_size + 5;
+  uint64_t total64 = (uint64_t)payload_off + payload_size + 5;
+  if (total64 > UINT32_MAX) { _fstate = FAILED; return; }
+  uint32_t total = (uint32_t)total64;
 
   // Hand the store the parsed layout BEFORE begin(), so a partition-backed store (ESP32) can choose
   // placement and refuse an unfittable fetch up front: a FULL payload streams to the inactive slot,
@@ -642,11 +779,13 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   MotaManifest m;
   if (!_fetch->read(8, mbuf, mread) || !mota_parse_manifest(mbuf, mread, m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
-  if (!codecOk(m.codec_id)) return false;
+  if (m.hash_algo != HASH_ALGO_SHA256) return false;
+  if (!_archive_fetch && !codecOk(m.codec_id)) return false;
   uint32_t mfl = (uint32_t)(m.approval - m.manifest_start) + 4;            // manifest-minus-leaves length
   uint32_t bs = m.block_size();
   if (bs == 0 || bs > OTA_MAX_BLOCK) return false;
   uint32_t bc = m.block_count;
+  if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) return false;
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
   if ((uint64_t)payload_off + m.payload_size + 5 != total) return false;   // geometry must match the header
@@ -795,10 +934,30 @@ uint32_t OtaManager::pickMissingBlock() {
 }
 
 void OtaManager::loop() {
-  // fire a scheduled catalog query once its jitter has elapsed (unless overhearing already suppressed it)
-  if (_pq_active && (int32_t)(_now_ms - _pq_at) >= 0) {
-    _pq_active = false;
-    sendQuery(_pq_seeder, _pq_digest, 0);    // unfiltered: one broadcast HAVE serves everyone
+  // Each source owns its own pending/retry state, so a burst of advertisements cannot overwrite another
+  // seeder's query. Initial requests ask for all; recovery asks only for missing HAVE fragments.
+  for (uint8_t i = 0; i < _n_src; i++) {
+    Source& s = _sources[i];
+    if (s.query_pending && (int32_t)(_now_ms - s.query_at) >= 0) {
+      s.query_pending = false;
+      uint32_t want = 0;
+      if (s.have_total) {
+        uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
+        want = full & ~s.have_mask;
+      }
+      sendQuery(s.seeder, s.digest, 0, want);
+      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    } else if (s.query_owned && !s.have_catalog && !s.query_pending && s.query_retry_at &&
+               (int32_t)(_now_ms - s.query_retry_at) >= 0 && s.query_retries < OTA_CATALOG_MAX_RETRY) {
+      uint32_t want = 0;
+      if (s.have_total) {
+        uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
+        want = full & ~s.have_mask;
+      }
+      s.query_retries++;
+      sendQuery(s.seeder, s.digest, 0, want);
+      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    }
   }
   if (_fstate == WANT_MANIFEST) {
     // Retry GET_MANIFEST ONLY when a tick passed with no new fragment - re-bursting every tick would congest

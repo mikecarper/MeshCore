@@ -385,13 +385,18 @@ TEST(OtaProtocol, CodecRoundTrips) {
   EXPECT_EQ(0, memcmp(a2.set_digest, adv.set_digest, 4));
 
   // OTA_QUERY: ask a source (by seeder_id) for the offering set_digest, optionally filtered to a target
-  QueryMsg qy{{0x29,0x17,0xe4,0xf7}, {0xd1,0xd2,0xd3,0xd4}, 0x11223344};
+  QueryMsg qy{{0x29,0x17,0xe4,0xf7}, {0xd1,0xd2,0xd3,0xd4}, 0x11223344, 0xA5A50002};
   n = encode_query(buf, sizeof(buf), qy);
   ASSERT_GT(n, 0); EXPECT_EQ(ota_msg_type(buf, n), OTA_QUERY);
   QueryMsg q2; ASSERT_TRUE(decode_query(buf, n, q2));
   EXPECT_EQ(0, memcmp(q2.seeder_id, qy.seeder_id, 4));
   EXPECT_EQ(0, memcmp(q2.set_digest, qy.set_digest, 4));
   EXPECT_EQ(q2.filter_target, 0x11223344u);
+  EXPECT_EQ(q2.want_fragments, 0xA5A50002u);
+  QueryMsg qlegacy;
+  ASSERT_TRUE(decode_query(buf, n - 4, qlegacy));       // original QUERY ended after filter_target
+  EXPECT_EQ(qlegacy.filter_target, 0x11223344u);
+  EXPECT_EQ(qlegacy.want_fragments, 0u);                // old sender means "all fragments"
 
   // OTA_HAVE: a 2-row catalog (mid, target, fwver, codec, flags per row) tagged with the offering digest
   uint8_t rows[2 * OTA_HAVE_ROW_BYTES];
@@ -480,6 +485,10 @@ struct SendTo { OtaManager* dest; };
 static void sim_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   g_q.push_back({((SendTo*)ctx)->dest, std::vector<uint8_t>(msg, msg + len)});
 }
+struct CapturedMessages { std::vector<std::vector<uint8_t>> items; };
+static void capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+  ((CapturedMessages*)ctx)->items.emplace_back(msg, msg + len);
+}
 // Drive the bus to quiescence: deliver queued messages; when idle, advance the client's clock (monotonic
 // across calls, so a jittered query scheduled in a prior pump still comes due) and call loop() (fires the
 // scheduled catalog query / block re-requests). Two idle ticks in a row = quiescent.
@@ -513,6 +522,7 @@ public:
     std::memcpy(d.mid, m.merkle_root, 4);
     d.target_id = m.target_id; d.fw_version = m.fw_version;
     d.codec_id = m.codec_id; d.flags = m.flags;
+    d.block_size_log2 = m.block_size_log2;
     d.total_size = _len[idx];
     d.leaves_off = (uint32_t)(m.leaves - _buf[idx]);
     d.block_count = m.block_count;
@@ -527,6 +537,27 @@ public:
   }
 private:
   const uint8_t* _buf[8] = {nullptr}; uint32_t _len[8] = {0}; uint8_t _n = 0;
+};
+
+class SyntheticCatalogSource : public mesh::ota::MotaSource {
+public:
+  explicit SyntheticCatalogSource(uint8_t count, uint8_t block_log2 = 10)
+      : _count(count), _block_log2(block_log2) {}
+  uint8_t count() override { return _count; }
+  bool describe(uint8_t idx, mesh::ota::MotaDesc& d) override {
+    if (idx >= _count) return false;
+    d = mesh::ota::MotaDesc{};
+    d.mid[0] = (uint8_t)(idx + 1); d.mid[1] = 0xA5; d.mid[2] = 0x5A; d.mid[3] = 0xC3;
+    d.target_id = SIM_TARGET_ID; d.fw_version = 0x01000000u + idx;
+    d.codec_id = CODEC_FULL; d.flags = MFLAG_FULL; d.block_size_log2 = _block_log2;
+    d.leaves_off = 8 + MOTA_MFL; d.block_count = 1;
+    d.payload_off = d.leaves_off + 4; d.payload_size = 1; d.total_size = d.payload_off + 1 + 5;
+    return true;
+  }
+  bool read(uint8_t, uint32_t, uint8_t*, uint32_t) override { return false; }
+private:
+  uint8_t _count;
+  uint8_t _block_log2;
 };
 }
 
@@ -550,6 +581,12 @@ TEST(OtaServe, ClearPrimaryInvalidatesCallerOwnedView) {
   ASSERT_EQ(manager.servedCount(), 2);
   EXPECT_TRUE(manager.servedEntry(0)->is_self);
   EXPECT_FALSE(manager.servedEntry(1)->is_self);
+
+  // Detaching one source must preserve the primary view (and, on device, any other source such as SD).
+  EXPECT_TRUE(manager.remove_source(&folder));
+  ASSERT_EQ(manager.servedCount(), 1);
+  EXPECT_TRUE(manager.servedEntry(0)->is_self);
+  EXPECT_FALSE(manager.remove_source(&folder));
 }
 
 TEST(OtaTransfer, TwoManagersFullTransfer) {
@@ -627,6 +664,28 @@ TEST(OtaTransfer, RejectsManifestBlockExponentBeforeShift) {
   std::array<uint8_t, MOTA_MFL> bytes;
   memcpy(bytes.data(), manifest.manifest_start, bytes.size());
   bytes[19] = 32;
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  SendTo to_none{&client};
+  client.begin(SIM_TARGET_ID, sim_send, &to_none);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  g_q.clear();
+
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, bytes.data(), OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, bytes.data() + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  EXPECT_EQ(client.fetchState(), OtaManager::FAILED);
+}
+
+TEST(OtaTransfer, RejectsUnsupportedManifestHashAlgorithm) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  std::array<uint8_t, MOTA_MFL> bytes;
+  memcpy(bytes.data(), manifest.manifest_start, bytes.size());
+  bytes[2] = HASH_ALGO_SHA256 + 1;
 
   OtaManager client;
   OtaStoreRam<4096> store;
@@ -720,6 +779,120 @@ TEST(OtaFolder, ServesSelfPlusFolderAndFetchesExternal) {
   ASSERT_TRUE(mota_parse(store.data(), store.staged_size(), got));
   EXPECT_TRUE(mota_check_root(got));
   EXPECT_TRUE(mota_check_image_hash_full(got));
+}
+
+TEST(OtaCatalog, QueryCanRequestOnlyMissingHaveFragment) {
+  OtaManager server;
+  CapturedMessages sent;
+  uint8_t sid[4] = {0x10, 0x20, 0x30, 0x40};
+  server.begin(0, capture_send, &sent);
+  server.set_seeder_id(sid);
+  SyntheticCatalogSource source(12);                 // 10 rows/fragment => two HAVE fragments
+  ASSERT_TRUE(server.add_source(&source));
+  ASSERT_EQ(server.servedCount(), 12);
+
+  QueryMsg query{};
+  memcpy(query.seeder_id, sid, 4);
+  query.want_fragments = 1UL << 1;                   // recover only fragment 1
+  uint8_t wire[32];
+  uint16_t n = encode_query(wire, sizeof(wire), query);
+  ASSERT_GT(n, 0);
+  server.on_message(wire, n);
+
+  ASSERT_EQ(sent.items.size(), 1u);
+  HaveMsg have;
+  ASSERT_TRUE(decode_have(sent.items[0].data(), (uint16_t)sent.items[0].size(), have));
+  EXPECT_EQ(have.frag_idx, 1);
+  EXPECT_EQ(have.frag_total, 2);
+  EXPECT_EQ(have.n_rows, 2);
+}
+
+TEST(OtaCatalog, IncompleteCatalogRetriesOnlyMissingFragment) {
+  OtaManager client;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_archive_interest(true);
+  uint8_t sid[4] = {0x44, 0x33, 0x22, 0x11};
+  uint8_t digest[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+  AdvMsg adv{}; memcpy(adv.seeder_id, sid, 4); memcpy(adv.set_digest, digest, 4); adv.n_motas = 3;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t n = encode_adv(wire, sizeof(wire), adv);
+  client.set_clock(100);
+  client.on_message(wire, n);
+  client.set_clock(5000);                            // past every possible discovery jitter
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  QueryMsg first;
+  ASSERT_TRUE(decode_query(sent.items[0].data(), (uint16_t)sent.items[0].size(), first));
+  EXPECT_EQ(first.want_fragments, 0u);
+  sent.items.clear();
+
+  auto deliver_have = [&](uint8_t frag) {
+    uint8_t row[OTA_HAVE_ROW_BYTES] = {0};
+    row[0] = (uint8_t)(frag + 1); row[1] = 0x77;
+    wr_u32le(row + 4, SIM_TARGET_ID); wr_u32le(row + 8, 0x01000000u + frag);
+    row[12] = CODEC_FULL; row[13] = MFLAG_FULL; row[14] = 1;
+    HaveMsg have{};
+    memcpy(have.seeder_id, sid, 4); memcpy(have.set_digest, digest, 4);
+    have.frag_idx = frag; have.frag_total = 3; have.n_rows = 1; have.rows = row;
+    uint16_t have_len = encode_have(wire, sizeof(wire), have);
+    ASSERT_GT(have_len, 0);
+    client.on_message(wire, have_len);
+  };
+
+  deliver_have(0);
+  deliver_have(2);                                   // fragment 1 is lost
+  client.set_clock(5000 + OTA_CATALOG_RETRY_MS + 1);
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  QueryMsg retry;
+  ASSERT_TRUE(decode_query(sent.items[0].data(), (uint16_t)sent.items[0].size(), retry));
+  EXPECT_EQ(retry.want_fragments, 1UL << 1);
+  sent.items.clear();
+
+  deliver_have(1);
+  EXPECT_EQ(client.catalogCount(), 3);
+  client.set_clock(5000 + OTA_CATALOG_RETRY_MS * 2 + 2);
+  client.loop();
+  EXPECT_TRUE(sent.items.empty());                    // complete means no further catalog retries
+}
+
+TEST(OtaCatalog, RetainsProtocolMaximumRows) {
+  OtaManager client;
+  client.begin(SIM_TARGET_ID, nullptr, nullptr);
+  const uint8_t per = (uint8_t)((MAX_PACKET_PAYLOAD - 12) / OTA_HAVE_ROW_BYTES);
+  const uint8_t total = (uint8_t)((255 + per - 1) / per);
+  uint8_t sid[4] = {1, 2, 3, 4}, digest[4] = {5, 6, 7, 8};
+  uint16_t index = 0;
+  for (uint8_t frag = 0; frag < total; frag++) {
+    uint8_t rows[MAX_PACKET_PAYLOAD] = {0};
+    uint8_t count = 0;
+    while (count < per && index < 255) {
+      uint8_t* row = rows + (uint16_t)count * OTA_HAVE_ROW_BYTES;
+      row[0] = (uint8_t)index; row[1] = 0xC1; row[2] = 0xD2; row[3] = 0xE3;
+      wr_u32le(row + 4, SIM_TARGET_ID); wr_u32le(row + 8, 0x01000000u + index);
+      row[12] = CODEC_FULL; row[13] = MFLAG_FULL; row[14] = 1;
+      count++; index++;
+    }
+    HaveMsg have{};
+    memcpy(have.seeder_id, sid, 4); memcpy(have.set_digest, digest, 4);
+    have.frag_idx = frag; have.frag_total = total; have.n_rows = count; have.rows = rows;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    uint16_t n = encode_have(wire, sizeof(wire), have);
+    ASSERT_GT(n, 0);
+    client.on_message(wire, n);
+  }
+  ASSERT_EQ(client.catalogCount(), 255);
+  ASSERT_NE(client.catalogRow(254), nullptr);
+  EXPECT_EQ(client.catalogRow(254)->mid[0], 254);
+}
+
+TEST(OtaCatalog, RejectsAdvertisedSourceWithOversizedBlocks) {
+  OtaManager server;
+  server.begin(0, nullptr, nullptr);
+  SyntheticCatalogSource source(1, 11);              // 2048-byte blocks exceed OTA_MAX_BLOCK
+  ASSERT_TRUE(server.add_source(&source));
+  EXPECT_EQ(server.servedCount(), 0);
 }
 
 // Fetch-resume across a reboot: a client commits some blocks, "reboots" (a fresh OtaManager on the SAME
@@ -857,6 +1030,30 @@ TEST(OtaTransfer, RejectsIncompatibleCodec) {
   client.on_message(b, make_have1(b, sizeof(b), midB, SIM_TARGET_ID, 0x01000000, CODEC_DETOOLS_INPLACE, 0));
   EXPECT_EQ(client.fetchState(), OtaManager::WANT_MANIFEST);
   g_q.clear();
+}
+
+// An archive capture is not an install. It must retain cross-target and otherwise unsupported containers
+// byte-for-byte so this node can relay them to hardware that does understand their codec.
+TEST(OtaTransfer, ArchivePullAcceptsCrossTargetUnsupportedCodec) {
+  g_q.clear();
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  SendTo to_client{&client}, to_server{&server};
+  server.begin(0, sim_send, &to_client);
+  client.begin(SIM_TARGET_ID ^ 0x55AAu, sim_send, &to_server);
+  client.set_fetch_store(&store);
+  client.set_apply_codec(CODEC_DETOOLS_INPLACE);
+  client.set_accept_full(false);                    // install path cannot accept SIM_MOTA (full image)
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+
+  MotaManifest m;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, m));
+  client.pull_archive(m.merkle_root, m.target_id);  // capture ignores local target + install codec
+  pump(client);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_LEN);
+  EXPECT_EQ(0, std::memcmp(store.data(), SIM_MOTA, SIM_MOTA_LEN));
 }
 
 // Encode a 1-row OTA_HAVE from a specific seeder, carrying have_count (Phase-2 awareness).

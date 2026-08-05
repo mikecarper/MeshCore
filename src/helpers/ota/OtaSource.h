@@ -27,6 +27,7 @@ struct MotaDesc {
   uint32_t fw_version = 0;
   uint8_t  codec_id = 0;
   uint8_t  flags = 0;
+  uint8_t  block_size_log2 = 0; // serve geometry; 0 means a legacy descriptor that must be inspected
   uint32_t total_size = 0;      // full `.mota` length (bytes)
   uint32_t leaves_off = 0;      // byte offset of the merkle leaves[] (manifest-minus-leaves = [8, leaves_off))
   uint32_t block_count = 0;     // == number of leaves (== number of payload blocks)

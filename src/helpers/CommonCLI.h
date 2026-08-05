@@ -514,6 +514,12 @@ class CommonCLI {
   RegionMap* _region_map;
   ClientACL* _acl;
   char tmp[COMMON_CLI_TMP_LEN];
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  bool _sdcard_format_recorded = false;
+  bool _sdcard_erase_recorded = false;
+  uint32_t _sdcard_format_at = 0;
+  uint32_t _sdcard_erase_at = 0;
+#endif
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs _mqtt_prefs;
   LegacyObserverTail _legacy_tail;
@@ -540,6 +546,10 @@ class CommonCLI {
   void handleGetCmd(uint32_t sender_timestamp, char* command, char* reply);
   void handleSetCmd(uint32_t sender_timestamp, char* command, char* reply);
   void handleDelCmd(char* command, char* reply);
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  bool handleSdCardGetCmd(const char* config, char* reply);
+  bool handleSdCardSetCmd(const char* config, char* reply);
+#endif
 
   // Observer/MQTT/WiFi/timezone/alert/SNMP CLI handling lives in the fork-owned
   // CommonCLI_Observer.cpp to keep these branches out of the upstream-tracked
