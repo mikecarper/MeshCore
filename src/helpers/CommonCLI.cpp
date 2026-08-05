@@ -4326,6 +4326,28 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       savePrefs();
       sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
     }
+#if defined(USE_LR2021)
+  } else if (memcmp(config, "extra.sf ", 9) == 0) {
+    strcpy(tmp, &config[9]);
+    const char *parts[4];
+    uint8_t sideDetSFs[4];
+    int num = mesh::Utils::parseTextParts(tmp, parts, 4);
+    if (num > 3) {
+      sprintf(reply, "Invalid extra SF config");
+    } else {
+      for (int i = 0; i < num; i++) {
+        sideDetSFs[i] = atoi(parts[i]);
+      }
+      sideDetSFs[num] = 0;
+      if (_callbacks->configSideDetectors(sideDetSFs, num, _prefs->bw)) {
+        for (int i = 0; i <= num; i++) _prefs->extra_sf[i] = sideDetSFs[i];
+        savePrefs();
+        strcpy(reply, "OK - extra SFs set");
+      } else {
+        strcpy(reply, "Invalid extra SF config");
+      }
+    }
+#endif
   } else {
     sprintf(reply, "unknown config: %s", config);
   }
@@ -4747,6 +4769,14 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "disabled");
     } else {
       sprintf(reply, "> %d", (uint8_t)_prefs->reboot_interval);
+    }
+  } else if (memcmp(config, "extra.sf", 8) == 0) {
+    char* tmp = reply;
+    for (int i = 0; i < 3 && _prefs->extra_sf[i] != 0; i++) {
+      tmp += sprintf(tmp, "%s%d", (i == 0) ? "" : ",", _prefs->extra_sf[i]);
+    }
+    if (tmp == reply) {
+      strcpy(reply, "No extra SF configured");
     }
   } else {
     mesh::cli::formatUnknownSetting(reply, 160, config);

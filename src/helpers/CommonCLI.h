@@ -163,6 +163,9 @@ struct NodePrefs { // persisted to file
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
   uint8_t cad_enabled;      // hardware Channel Activity Detection before TX (boolean)
+  // LR2021 side-detector SFs are runtime-only in upstream/dev. Keep the field
+  // here without shifting the established /com_prefs binary layout.
+  uint8_t extra_sf[4] = {};
   uint8_t retry_preset;
   uint8_t direct_retry_attempts;
   uint16_t direct_retry_base_ms;
@@ -452,6 +455,12 @@ public:
   virtual bool setRxBoostedGain(bool enable) {
     return false; // CommonCLI reports unsupported if not overridden by wrapper
   };
+
+  #if defined(USE_LR2021)
+  virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) {
+    return false; // Override in wrapper
+  }
+  #endif
 
   virtual void recalibrateNoiseFloor() {
     // no op by default for radios without a noise-floor estimator

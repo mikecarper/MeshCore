@@ -581,7 +581,11 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
         }
       }
     }
+    #if defined(USE_LR2021)
+    state = STATE_RX;     // LR2021 stays in Rx after readData, calling startReceive while still in Rx throws -706 errors
+    #else
     state = STATE_IDLE;   // need another startReceive()
+    #endif
   }
 
   if (len > 0 && _rx_ps_enabled) {

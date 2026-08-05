@@ -1018,4 +1018,8 @@ public:
   bool setRxBoostedGain(bool enable) override;
   void recalibrateNoiseFloor() override { _radio->recalibrateNoiseFloor(); }
 
+  #if defined(USE_LR2021)
+  virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) override;
+  #endif
+
 };

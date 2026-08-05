@@ -201,6 +201,8 @@ public:
 
   bool setRxBoostedGainMode(bool enabled);
   virtual bool getRxBoostedGainMode() const { return false; }
+
+  virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) { return false; }
 };
 
 /**
