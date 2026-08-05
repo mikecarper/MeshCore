@@ -27,6 +27,10 @@ A command belonging to a different role is not considered a profile cut. For
 example, adding FULL features to a sensor does not turn it into a repeater
 administrator.
 
+Repeater profiles use 254 neighbor entries across supported platforms. The
+classic T-Beam SX1262 and SX1276 MQTT observer repeaters are the exception and
+retain 50 because their MQTT discovery tables are constrained by internal DRAM.
+
 ## Profile matrix
 
 | Build/profile | Command availability |

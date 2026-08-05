@@ -62,8 +62,9 @@ TAG_PREFIX_SENSOR="sensor"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
 OUTPUT_DIR="out"
 ESP32_LORA_OTA_APP_LIMIT=$((0x150000 - 0x10000))
-ESP32_FULL_MAX_NEIGHBOURS=254
-ESP32_FULL_DRAM_LIMITED_MAX_NEIGHBOURS=50
+REPEATER_MAX_NEIGHBOURS=254
+DRAM_LIMITED_MAX_NEIGHBOURS=50
+ESP32_FULL_MAX_NEIGHBOURS=$REPEATER_MAX_NEIGHBOURS
 FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
@@ -87,7 +88,7 @@ Commands:
   build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
-  build-repeater-firmwares: Build all repeater firmwares for all build targets.
+  build-repeater-firmwares: Build all repeater firmwares with 254 neighbors, except DRAM-limited targets that retain 50.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
 
@@ -1739,12 +1740,19 @@ requires_esp32_companion_full_ota_fallback() {
   esac
 }
 
-requires_esp32_full_dram_limited_neighbors() {
-  # These classic ESP32 MQTT observers already declare a 50-entry table because
-  # their GPS, TLS, and OTA state leave little internal DRAM. FULL restores flash-
-  # limited features, but must not override that explicit RAM safety limit.
+requires_dram_limited_neighbors() {
+  # These classic ESP32 MQTT observers keep their persistent neighbor and MQTT
+  # discovery tables in internal DRAM. Their GPS, TLS, and OTA state leave too
+  # little linker margin for the protocol maximum, even when PSRAM is present.
   case "${1,,}" in
     tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_repeater_role_target() {
+  case "${1,,}" in
+    *repeater*|*repeatr*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -1904,8 +1912,8 @@ apply_esp32_full_size_profile() {
   # Keep ordinary builds at their board-defined neighbor capacity. FULL builds
   # normally use the largest table supported by the one-byte neighbor discovery
   # indexes. Explicitly DRAM-limited classic ESP32 observers retain 50 entries.
-  if requires_esp32_full_dram_limited_neighbors "$env_name"; then
-    max_neighbours=$ESP32_FULL_DRAM_LIMITED_MAX_NEIGHBOURS
+  if requires_dram_limited_neighbors "$env_name"; then
+    max_neighbours=$DRAM_LIMITED_MAX_NEIGHBOURS
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=8"
   else
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
@@ -1924,6 +1932,26 @@ apply_esp32_full_size_profile() {
     append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
   fi
+}
+
+apply_repeater_neighbor_capacity() {
+  local env_name=$1
+  local max_neighbours=$REPEATER_MAX_NEIGHBOURS
+
+  if ! is_repeater_role_target "$env_name"; then
+    return 0
+  fi
+
+  # Repeater discovery uses one-byte indexes, so 254 is the largest usable
+  # table. Keep the two classic T-Beam MQTT observers at their measured safe
+  # capacity; their 254-entry builds leave less than 256 bytes of DRAM margin.
+  if requires_dram_limited_neighbors "$env_name"; then
+    max_neighbours=$DRAM_LIMITED_MAX_NEIGHBOURS
+    append_platformio_build_unflags "-DMAX_NEIGHBOURS=8 -DMAX_NEIGHBOURS=254"
+  else
+    append_platformio_build_unflags "-DMAX_NEIGHBOURS=8 -DMAX_NEIGHBOURS=50"
+  fi
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 }
 
 apply_lora_ota_no_external_sensors_profile() {
@@ -2316,6 +2344,7 @@ build_firmware() {
   apply_lora_ota_override "$env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
+  apply_repeater_neighbor_capacity "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides

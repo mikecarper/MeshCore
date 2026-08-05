@@ -335,9 +335,14 @@ role.
 | Standard | Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi. |
 | Logging | Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
-| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because they have no PSRAM. |
+| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
 | FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. |
 | LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
+
+All repeater profiles use the full 254-entry neighbor table, including standard,
+logging, bridge, and LoRa-OTA builds on every supported platform. The classic
+T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
+persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.
 
 The interactive Option 1 **FULL everything** choice selects the FULL logging
 profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
