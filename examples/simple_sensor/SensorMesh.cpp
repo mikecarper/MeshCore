@@ -1,5 +1,6 @@
 #include "SensorMesh.h"
 #include <helpers/CLICommandUtils.h>
+#include <helpers/radiolib/RXPowerSaving.h>
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;

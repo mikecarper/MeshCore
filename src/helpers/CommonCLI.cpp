@@ -117,6 +117,8 @@ static void formatSdCardBytes(char* out, size_t out_len, uint64_t bytes) {
 }
 #endif
 
+#include <helpers/radiolib/RXPowerSaving.h>
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -462,78 +464,21 @@ static const char* retryPresetName(uint8_t preset) {
   }
 }
 
-static bool isValidRxPowerSavingPeriod(uint32_t us) {
-  return us >= RX_POWERSAVING_MIN_PERIOD_US && us <= RX_POWERSAVING_MAX_PERIOD_US;
-}
-
-// MeshCore preamble convention used for the RX powersaving timing calculation.
-// Must stay in sync with RadioLibWrapper::preambleLengthForSF() (the value the
-// radio actually transmits); kept local here because CommonCLI is radio-agnostic.
-static uint16_t rxPowerSavingPreambleForSF(uint8_t sf) {
-  return sf <= 8 ? 32 : 16;
-}
-
-static bool isNumeric(const char* sp) {
-  if (!sp || !*sp) return false;
-  while (*sp) {
-    if (*sp < '0' || *sp > '9') return false;
-    sp++;
-  }
-  return true;
-}
-
-static uint32_t ceilPositiveFloat(float value) {
-  uint32_t rounded = (uint32_t)value;
-  return value > (float)rounded ? rounded + 1 : rounded;
-}
-
 bool CommonCLI::calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
                                             uint32_t* rx_us, uint32_t* sleep_us) {
-  if (level < 1 || level > 10 || sf < 5 || sf > 12 || bw <= 0.0f || (preamble != 16 && preamble != 32)) {
+  if (level < 1 || level > 10 || (preamble != 16 && preamble != 32)) {
     return false;
   }
-
-  const float symbol_us = (1000.0f * (float)(1UL << sf)) / bw;
-  const float amount = (float)(level - 1) / 9.0f;
-  const float rx_start_symbols = preamble == 16 ? 12.0f : 16.0f;
-  const float sleep_start_symbols = preamble == 16 ? 2.0f : 15.0f;
-  const float rx_edge_symbols = 8.0f;
-  const float sleep_edge_symbols = (float)preamble + 4.25f - 8.0f;
-
-  const float rx_symbols = rx_start_symbols + amount * (rx_edge_symbols - rx_start_symbols);
-  const float sleep_symbols = sleep_start_symbols + amount * (sleep_edge_symbols - sleep_start_symbols);
-
-  *rx_us = ceilPositiveFloat(rx_symbols * symbol_us);
-  *sleep_us = (uint32_t)(sleep_symbols * symbol_us);
-  return true;
-}
-
-static void ensureRxPowerSavingDefaults(NodePrefs* prefs) {
-  if (!isValidRxPowerSavingPeriod(prefs->rx_ps_rx_us)) {
-    prefs->rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
-  }
-  if (!isValidRxPowerSavingPeriod(prefs->rx_ps_sleep_us)) {
-    prefs->rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
-  }
+  return calcRxPowerSavingLevel((uint8_t)level, sf, bw, (uint8_t)preamble, rx_us, sleep_us);
 }
 
 // Recomputes rx_ps_rx_us/rx_ps_sleep_us from the stored level and the current
 // radio SF/BW. No-op (returns false) for manual timings (rx_ps_level == 0).
 // Lets level-based RX powersaving auto-retune when SF/BW change.
 bool CommonCLI::recalculateRxPowerSavingFromLevel(NodePrefs* prefs) {
-  if (prefs->rx_ps_level < 1 || prefs->rx_ps_level > 10) return false;  // manual: nothing to recompute
-  uint32_t preamble = prefs->rx_ps_preamble ? prefs->rx_ps_preamble
-                                            : rxPowerSavingPreambleForSF(prefs->sf);
-  uint32_t rx_us, sleep_us;
-  if (!calculateRxPowerSavingLevel(prefs->rx_ps_level, prefs->sf, prefs->bw, preamble, &rx_us, &sleep_us)) {
-    return false;
-  }
-  if (!isValidRxPowerSavingPeriod(rx_us) || !isValidRxPowerSavingPeriod(sleep_us)) {
-    return false;
-  }
-  prefs->rx_ps_rx_us = rx_us;
-  prefs->rx_ps_sleep_us = sleep_us;
-  return true;
+  return recalcRxPowerSavingFromLevel(prefs->rx_ps_level, prefs->sf, prefs->bw,
+                                      prefs->rx_ps_preamble, &prefs->rx_ps_rx_us,
+                                      &prefs->rx_ps_sleep_us);
 }
 
 static void markDirectRetryPrefsValid(NodePrefs* prefs) {
@@ -1524,8 +1469,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     if (_prefs->rx_ps_preamble != 16 && _prefs->rx_ps_preamble != 32) {
       _prefs->rx_ps_preamble = 0;   // 0 = auto (derive from SF)
     }
-    ensureRxPowerSavingDefaults(_prefs);
-    recalculateRxPowerSavingFromLevel(_prefs);   // retune level-based timings to the loaded SF/BW
+    ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
+    recalcRxPowerSavingFromLevel(_prefs->rx_ps_level, _prefs->sf, _prefs->bw, _prefs->rx_ps_preamble,
+                                 &_prefs->rx_ps_rx_us,
+                                 &_prefs->rx_ps_sleep_us); // retune level-based timings to the loaded SF/BW
 
     file.close();
   }
@@ -3691,17 +3638,17 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, "Error: state must be on or off");
     }
-  } else if (memcmp(config, "radio.rxps ", 11) == 0) {
+  } else if (memcmp(config, "radio.rxps ", 11) == 0) { // RX PowerSaving
     const char* value = &config[11];
     uint8_t enable = _prefs->rx_powersaving_enabled;
     uint32_t rx_us = _prefs->rx_ps_rx_us;
     uint32_t sleep_us = _prefs->rx_ps_sleep_us;
-    uint32_t level = 0;
-    uint32_t preamble = rxPowerSavingPreambleForSF(_prefs->sf);
+    uint8_t level = 0;
+    uint8_t preamble = rxPowerSavingPreambleForSF(_prefs->sf);
     bool level_requested = false;
     bool preamble_overridden = false;
 
-    ensureRxPowerSavingDefaults(_prefs);
+    ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
     rx_us = _prefs->rx_ps_rx_us;
     sleep_us = _prefs->rx_ps_sleep_us;
 
@@ -3810,7 +3757,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->bw = bw;
       // Retune level-based RX powersaving to the new SF/BW. Persist only; the
       // radio itself is "reboot to apply", and begin() re-arms the timings then.
-      bool rxps_retuned = recalculateRxPowerSavingFromLevel(_prefs);
+      bool rxps_retuned = recalcRxPowerSavingFromLevel(
+          _prefs->rx_ps_level, _prefs->sf, _prefs->bw, _prefs->rx_ps_preamble, &_prefs->rx_ps_rx_us,
+          &_prefs->rx_ps_sleep_us); // retune level-based timings to the loaded SF/BW
       _callbacks->savePrefs();
       strcpy(reply, rxps_retuned ? "OK - reboot to apply (rxps retuned)" : "OK - reboot to apply");
     } else {
@@ -3884,7 +3833,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error, max 64");
-    } 
+    }
   } else if (memcmp(config, "flood.max.advert ", 17) == 0) {
     uint8_t m = atoi(&config[17]);
     if (m <= 64) {
@@ -4576,8 +4525,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     _callbacks->formatScheduledRadioParams(true, skipSpacesConst(&config[11]), reply);
   } else if (memcmp(config, "radioat", 7) == 0 && (config[7] == 0 || config[7] == ' ')) {
     _callbacks->formatScheduledRadioParams(false, skipSpacesConst(&config[7]), reply);
-  } else if (memcmp(config, "radio.rxps", 10) == 0) {
-    ensureRxPowerSavingDefaults(_prefs);
+  } else if (memcmp(config, "radio.rxps", 10) == 0) { // RX PowerSaving
+    ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
     sprintf(reply, "> %s,%lu,%lu", _prefs->rx_powersaving_enabled ? "on" : "off",
             (unsigned long)_prefs->rx_ps_rx_us, (unsigned long)_prefs->rx_ps_sleep_us);
   } else if (memcmp(config, "rxps.wd", 7) == 0) {

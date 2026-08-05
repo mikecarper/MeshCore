@@ -2,6 +2,7 @@
 
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
+#include "helpers/radiolib/RXPowerSaving.h"
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
 #include <helpers/MQTTDefaults.h>
@@ -21,16 +22,6 @@ static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
 }
 
 static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
-
-#ifndef RXPS_FIXED_ENABLED
-#define RXPS_FIXED_ENABLED 0
-#endif
-#ifndef RXPS_FIXED_LEVEL
-#define RXPS_FIXED_LEVEL 2
-#endif
-#ifndef RXPS_FIXED_PREAMBLE
-#define RXPS_FIXED_PREAMBLE 16
-#endif
 
 #if RXPS_FIXED_ENABLED
 #if RXPS_FIXED_LEVEL < 1 || RXPS_FIXED_LEVEL > 10
@@ -353,36 +344,10 @@ int MyMesh::getInterferenceThreshold() const {
 }
 
 #if RXPS_FIXED_ENABLED
-static uint32_t ceilPositiveFloat(float value) {
-  uint32_t rounded = (uint32_t)value;
-  return value > (float)rounded ? rounded + 1 : rounded;
-}
-
-static bool calcFixedRxPowerSaving(uint8_t sf, float bw, uint32_t* rx_us, uint32_t* sleep_us) {
-  if (RXPS_FIXED_LEVEL < 1 || RXPS_FIXED_LEVEL > 10 || sf < 5 || sf > 12 ||
-      bw <= 0.0f || (RXPS_FIXED_PREAMBLE != 16 && RXPS_FIXED_PREAMBLE != 32)) {
-    return false;
-  }
-
-  const float symbol_us = (1000.0f * (float)(1UL << sf)) / bw;
-  const float amount = (float)(RXPS_FIXED_LEVEL - 1) / 9.0f;
-  const float rx_start_symbols = RXPS_FIXED_PREAMBLE == 16 ? 12.0f : 16.0f;
-  const float sleep_start_symbols = RXPS_FIXED_PREAMBLE == 16 ? 2.0f : 15.0f;
-  const float rx_edge_symbols = 8.0f;
-  const float sleep_edge_symbols = (float)RXPS_FIXED_PREAMBLE + 4.25f - 8.0f;
-
-  const float rx_symbols = rx_start_symbols + amount * (rx_edge_symbols - rx_start_symbols);
-  const float sleep_symbols = sleep_start_symbols + amount * (sleep_edge_symbols - sleep_start_symbols);
-
-  *rx_us = ceilPositiveFloat(rx_symbols * symbol_us);
-  *sleep_us = (uint32_t)(sleep_symbols * symbol_us);
-  return true;
-}
-
 static mesh::RadioParamApplyResult applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   uint32_t rx_us, sleep_us;
-  if (!calcFixedRxPowerSaving(sf, bw, &rx_us, &sleep_us)) {
-    MESH_DEBUG_PRINTLN("RX Power Saving fixed profile invalid");
+  if (!calcRxPowerSavingLevel(RXPS_FIXED_LEVEL, sf, bw, RXPS_FIXED_PREAMBLE, &rx_us, &sleep_us)) {
+    POWERSAVING_DEBUG_PRINTLN("RX Power Saving fixed profile invalid");
     return mesh::RadioParamApplyResult::FAILED;
   }
 
@@ -394,14 +359,13 @@ static mesh::RadioParamApplyResult applyFixedRadioParams(float freq, float bw, u
   // transition on radios that do support it.
   mesh::RadioParamApplyResult result =
       radio_driver.trySetParams(freq, bw, sf, cr, supports_rxps ? timings : NULL);
-  MESH_DEBUG_PRINTLN("RX Power Saving fixed level %d p%d: %s (%lu/%lu us)",
-                     RXPS_FIXED_LEVEL,
-                     RXPS_FIXED_PREAMBLE,
-                     result == mesh::RadioParamApplyResult::APPLIED
-                         ? (supports_rxps ? "Enabled" : "Unsupported")
-                         : (result == mesh::RadioParamApplyResult::BUSY ? "Busy" : "Apply failed"),
-                     (unsigned long)rx_us,
-                     (unsigned long)sleep_us);
+  POWERSAVING_DEBUG_PRINTLN(
+      "RX Power Saving fixed level %d p%d: %s (%lu/%lu us)", RXPS_FIXED_LEVEL,
+      RXPS_FIXED_PREAMBLE,
+      result == mesh::RadioParamApplyResult::APPLIED
+          ? (supports_rxps ? "Enabled" : "Unsupported")
+          : (result == mesh::RadioParamApplyResult::BUSY ? "Busy" : "Apply failed"),
+      (unsigned long)rx_us, (unsigned long)sleep_us);
   return result;
 }
 #endif

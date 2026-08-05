@@ -6,8 +6,8 @@
 
 // Fallback RX powersaving timings, only used until setRxPowerSaving() is called
 // (begin() always applies the persisted values). The authoritative defaults live
-// in CommonCLI.h as RX_POWERSAVING_DEFAULT_RX_US / _SLEEP_US and are delivered
-// via NodePrefs; keep these mirrored.
+// in RXPowerSaving.h as RX_POWERSAVING_DEFAULT_RX_US / _SLEEP_US and are
+// delivered via NodePrefs; keep these mirrored.
 #define RX_PS_FALLBACK_RX_US    65625UL
 #define RX_PS_FALLBACK_SLEEP_US 60000UL
 

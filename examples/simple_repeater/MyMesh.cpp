@@ -4,6 +4,7 @@
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/FloodFilterPolicy.h>
+#include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/RxReservePacketManager.h>
 #ifdef WITH_WEBCONFIG
 #include <WiFi.h>

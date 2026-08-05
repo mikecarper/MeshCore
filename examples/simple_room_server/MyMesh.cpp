@@ -1,5 +1,6 @@
 #include "MyMesh.h"
 #include <helpers/CLICommandUtils.h>
+#include <helpers/radiolib/RXPowerSaving.h>
 #include <algorithm>
 #include <helpers/RxReservePacketManager.h>
 #ifdef WITH_WEBCONFIG

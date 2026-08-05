@@ -536,6 +536,7 @@ bool RadioLibWrapper::isInRecvMode() const {
   return (state & ~STATE_INT_READY) == STATE_RX;
 }
 
+// RX PowerSaving
 bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
   if (enabled && !supportsRxPowerSaving()) {
     return false;
