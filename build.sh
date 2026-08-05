@@ -63,6 +63,7 @@ SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_
 OUTPUT_DIR="out"
 ESP32_LORA_OTA_APP_LIMIT=$((0x150000 - 0x10000))
 ESP32_FULL_MAX_NEIGHBOURS=254
+ESP32_FULL_DRAM_LIMITED_MAX_NEIGHBOURS=50
 FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
@@ -82,8 +83,8 @@ Commands:
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
   build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures.
-  build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
-  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with up to 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
   build-repeater-firmwares: Build all repeater firmwares for all build targets.
@@ -1738,6 +1739,16 @@ requires_esp32_companion_full_ota_fallback() {
   esac
 }
 
+requires_esp32_full_dram_limited_neighbors() {
+  # These classic ESP32 MQTT observers already declare a 50-entry table because
+  # their GPS, TLS, and OTA state leave little internal DRAM. FULL restores flash-
+  # limited features, but must not override that explicit RAM safety limit.
+  case "${1,,}" in
+    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
@@ -1879,6 +1890,7 @@ apply_esp32_lora_ota_size_profile() {
 
 apply_esp32_full_size_profile() {
   local env_name=$1
+  local max_neighbours=$ESP32_FULL_MAX_NEIGHBOURS
 
   if [ "$ESP32_FULL_BUILD" != "1" ] || ! supports_esp32_full_build "$env_name"; then
     return 0
@@ -1890,9 +1902,15 @@ apply_esp32_full_size_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1"
 
   # Keep ordinary builds at their board-defined neighbor capacity. FULL builds
-  # use the largest table supported by the one-byte neighbor discovery indexes.
-  append_platformio_build_unflags "-DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS}"
+  # normally use the largest table supported by the one-byte neighbor discovery
+  # indexes. Explicitly DRAM-limited classic ESP32 observers retain 50 entries.
+  if requires_esp32_full_dram_limited_neighbors "$env_name"; then
+    max_neighbours=$ESP32_FULL_DRAM_LIMITED_MAX_NEIGHBOURS
+    append_platformio_build_unflags "-DMAX_NEIGHBOURS=8"
+  else
+    append_platformio_build_unflags "-DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
+  fi
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 
   # Restore the full ElegantOTA implementation only when the target already
   # declares its dependency. Some ESP32-C6 targets intentionally have no
@@ -2847,14 +2865,14 @@ run_full_esp32_profile() {
   fi
 
   if [ "$logging_mode" = "on" ]; then
-    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging on, MQTT off, and expanded dual-OTA partitions."
+    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), logging on, MQTT off, and expanded dual-OTA partitions."
     echo "FULL logging artifacts exclude MQTT, include LoRa OTA, and use filename form: name-full-logging-ota-version."
     MESHDEBUG_OVERRIDE="on"
     PACKET_LOGGING_OVERRIDE="on"
     MQTT_BRIDGE_OVERRIDE="off"
     FIRMWARE_FILENAME_INFIX="full-logging"
   else
-    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 MQTT target(s) with ${ESP32_FULL_MAX_NEIGHBOURS} neighbors, logging off, and expanded dual-OTA partitions."
+    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 MQTT target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), logging off, and expanded dual-OTA partitions."
     echo "FULL artifacts include MQTT and LoRa OTA and use filename form: name-full-ota-version."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="off"

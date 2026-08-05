@@ -10,6 +10,19 @@
 namespace mesh {
 namespace ota {
 
+OtaManager::~OtaManager() {
+  free(_catalog_heap);
+}
+
+bool OtaManager::expandCatalog() {
+  if (_catalog_heap || OTA_INLINE_CATALOG >= OTA_MAX_CATALOG) return false;
+  CatRow* expanded = static_cast<CatRow*>(malloc(sizeof(CatRow) * OTA_MAX_CATALOG));
+  if (!expanded) return false;
+  memcpy(expanded, _catalog_inline, sizeof(CatRow) * _n_cat);
+  _catalog_heap = expanded;
+  return true;
+}
+
 uint8_t* OtaManager::ensureSourceLeaves() {
 #if defined(ESP32_PLATFORM)
   if (!_src_leaves) {
@@ -539,25 +552,27 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     uint32_t target = rd_u32le(row + 4), fwver = rd_u32le(row + 8);
     uint8_t codec = row[12], flags = row[13];
     uint32_t have_count = rd_u16le(row + 14);   // this source's progress
+    CatRow* catalog = catalogData();
     int slot = -1, lru = 0;                                           // upsert into the catalog (dedup by mid)
     for (int i = 0; i < _n_cat; i++) {
-      if (memcmp(_catalog[i].mid, mid, 4) == 0) { slot = i; break; }
-      if (_catalog[i].last_ms < _catalog[lru].last_ms) lru = i;
+      if (memcmp(catalog[i].mid, mid, 4) == 0) { slot = i; break; }
+      if (catalog[i].last_ms < catalog[lru].last_ms) lru = i;
     }
     if (slot < 0) {
-      slot = (_n_cat < OTA_MAX_CATALOG) ? _n_cat++ : lru;
-      _catalog[slot] = CatRow{};
-      memcpy(_catalog[slot].mid, mid, 4);
-      memcpy(_catalog[slot].seeders[0], hv.seeder_id, 4);
-      _catalog[slot].n_seeders = 1;
+      if (_n_cat >= catalogCapacity() && expandCatalog()) catalog = catalogData();
+      slot = (_n_cat < catalogCapacity()) ? _n_cat++ : lru;
+      catalog[slot] = CatRow{};
+      memcpy(catalog[slot].mid, mid, 4);
+      memcpy(catalog[slot].seeders[0], hv.seeder_id, 4);
+      catalog[slot].n_seeders = 1;
     } else {
-      CatRow& cc = _catalog[slot];                                   // count DISTINCT sources (no double-count)
+      CatRow& cc = catalog[slot];                                    // count DISTINCT sources (no double-count)
       bool known = false;
       for (uint8_t k = 0; k < cc.n_seeders; k++)
         if (memcmp(cc.seeders[k], hv.seeder_id, 4) == 0) { known = true; break; }
       if (!known && cc.n_seeders < OTA_CAT_SEEDERS) memcpy(cc.seeders[cc.n_seeders++], hv.seeder_id, 4);
     }
-    CatRow& c = _catalog[slot];
+    CatRow& c = catalog[slot];
     c.target_id = target; c.fw_version = fwver; c.codec = codec; c.flags = flags; c.last_ms = _now_ms;
     if (have_count > c.have_max) c.have_max = have_count;             // best-known progress among sources
     if (wantRow(mid, target, codec, flags)) startFetch(mid, target);
@@ -566,9 +581,10 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
 
 void OtaManager::deferCatalog(const uint8_t mid[4], uint32_t until_ms) {
   if (!mid) return;
+  CatRow* catalog = catalogData();
   for (uint8_t i = 0; i < _n_cat; i++) {
-    if (memcmp(_catalog[i].mid, mid, 4) == 0) {
-      _catalog[i].retry_after_ms = until_ms;
+    if (memcmp(catalog[i].mid, mid, 4) == 0) {
+      catalog[i].retry_after_ms = until_ms;
       return;
     }
   }

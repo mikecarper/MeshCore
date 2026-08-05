@@ -335,15 +335,16 @@ role.
 | Standard | Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi. |
 | Logging | Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
-| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. |
-| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, 254 neighbors, and LoRa OTA. |
+| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because they have no PSRAM. |
+| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. |
 | LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
 
 The interactive Option 1 **FULL everything** choice selects the FULL logging
 profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
 profile and Profile 4 of the five-profile matrix use the matching MQTT target
-instead. Both FULL profiles include LoRa OTA, WebConfig where supported, 254
-neighbors, and expanded dual-OTA partitions.
+instead. Both FULL profiles include LoRa OTA, WebConfig where supported, up to
+254 neighbors, and expanded dual-OTA partitions. Target-specific internal-DRAM
+limits still apply.
 
 FULL images change the ESP32 partition layout. Flash the matching
 `*-merged.bin` once when installing that layout. A partition-layout change can

@@ -93,6 +93,16 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #ifndef OTA_MAX_CATALOG
 #define OTA_MAX_CATALOG 255          // protocol maximum; large SD seeders must remain browsable remotely
 #endif
+#ifndef OTA_INLINE_CATALOG
+#define OTA_INLINE_CATALOG 12        // keep the common case static; expand to OTA_MAX_CATALOG only on demand
+#endif
+#if OTA_INLINE_CATALOG < 1
+#error "OTA_INLINE_CATALOG must be at least 1"
+#endif
+#if OTA_INLINE_CATALOG > OTA_MAX_CATALOG
+#undef OTA_INLINE_CATALOG
+#define OTA_INLINE_CATALOG OTA_MAX_CATALOG
+#endif
 #ifndef OTA_QUERY_MIN_MS
 #define OTA_QUERY_MIN_MS 300        // min delay before sending a catalog query (overhear-suppression window)
 #endif
@@ -128,6 +138,11 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 
 class OtaManager {
 public:
+  OtaManager() = default;
+  ~OtaManager();
+  OtaManager(const OtaManager&) = delete;
+  OtaManager& operator=(const OtaManager&) = delete;
+
   // PAUSED: a folder-destination write failed mid-transfer (the seeder link dropped). Progress is held on
   // the host; the manager stops requesting and does NOT fall back to RAM/flash. resumeStaged() (called on
   // reconnect) re-STATs the host file, recomputes which blocks are missing, and resumes.
@@ -319,7 +334,7 @@ public:
     uint32_t retry_after_ms;                // per-image archive retry deadline (0 = eligible)
   };
   uint8_t catalogCount() const { return _n_cat; }
-  const CatRow* catalogRow(uint8_t i) const { return i < _n_cat ? &_catalog[i] : nullptr; }
+  const CatRow* catalogRow(uint8_t i) const { return i < _n_cat ? &catalogData()[i] : nullptr; }
   uint8_t sourceCount() const { return _n_src; }   // distinct OTA sources (beacon senders) heard
   void deferCatalog(const uint8_t mid[4], uint32_t until_ms);
   bool catalogReady(const CatRow* row, uint32_t now_ms) const {
@@ -327,6 +342,11 @@ public:
   }
 
 private:
+  CatRow* catalogData() { return _catalog_heap ? _catalog_heap : _catalog_inline; }
+  const CatRow* catalogData() const { return _catalog_heap ? _catalog_heap : _catalog_inline; }
+  uint16_t catalogCapacity() const { return _catalog_heap ? OTA_MAX_CATALOG : OTA_INLINE_CATALOG; }
+  bool expandCatalog();
+
   void emit(const uint8_t* b, uint16_t n, bool flood) { if (_send && n) _send(_ctx, b, n, flood); }
   void handleAdv(const uint8_t* m, uint16_t n);     // beacon -> sources table (+ query if interested)
   void handleQuery(const uint8_t* m, uint16_t n);   // serve: reply OTA_HAVE catalog
@@ -464,7 +484,8 @@ private:
   };
   Source     _sources[OTA_MAX_SOURCES];
   uint8_t    _n_src = 0;
-  CatRow     _catalog[OTA_MAX_CATALOG];
+  CatRow     _catalog_inline[OTA_INLINE_CATALOG];
+  CatRow*    _catalog_heap = nullptr;
   uint8_t    _n_cat = 0;
   uint32_t   _now_ms = 0;                       // coarse clock (fed by set_clock; for ages/LRU/jitter)
 };
