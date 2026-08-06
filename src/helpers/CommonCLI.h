@@ -6,6 +6,7 @@
 #include <helpers/ClientACL.h>
 #include <helpers/MQTTPresets.h>  // For MAX_MQTT_SLOTS (used in NodePrefs struct layout)
 #include <helpers/MQTTPrefs.h>
+#include <helpers/PrefsSaveRouting.h>
 #include <helpers/RegionMap.h>
 
 #ifndef DEFAULT_CAD_ENABLED
@@ -247,7 +248,11 @@ struct LegacyObserverTail {
 
 class CommonCLICallbacks {
 public:
-  virtual void savePrefs() = 0;
+  // Ordinary CommonCLI setters mutate NodePrefs and therefore save only the
+  // common image. Observer setters explicitly request Observer; only
+  // cross-file migration and mixed-owner setters request Both.
+  virtual void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) = 0;
   // Called only after a CLI command successfully changes the RTC. Roles that
   // derive time from untrusted radio traffic can use this to prefer the manual
   // value for the remainder of the boot.
@@ -531,7 +536,9 @@ class CommonCLI {
   bool _com_prefs_needs_upgrade = false;  // old-format /com_prefs detected; rewrite once after load
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
-  void savePrefs();
+  void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
+  void saveObserverPrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 #ifdef WITH_MQTT_BRIDGE
   bool recoverCommonPrefsFiles(FILESYSTEM* fs);
@@ -575,7 +582,9 @@ public:
         _sensors(&sensors), _region_map(&region_map), _acl(&acl) { }
 
   void loadPrefs(FILESYSTEM* _fs);
-  void savePrefs(FILESYSTEM* _fs, bool save_mqtt = true);
+  void savePrefs(
+      FILESYSTEM* _fs,
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Both);
   void loop();
   bool hasActiveUserGpioTimer() const;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);

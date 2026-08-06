@@ -728,8 +728,9 @@ public:
     return &_prefs;
   }
 
-  void savePrefs() override {
-    _cli.savePrefs(_fs);
+  void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
+    _cli.savePrefs(_fs, scope);
   }
 
   void onManualClockSet() override;

@@ -64,7 +64,10 @@ public:
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() { return &_prefs; }
-  void savePrefs() override { _cli.savePrefs(_fs); }
+  void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
+    _cli.savePrefs(_fs, scope);
+  }
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;

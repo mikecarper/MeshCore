@@ -157,6 +157,7 @@ canvas{width:100%;height:56px;display:block}
     <div class="card">
       <h2>Step 1 &middot; WiFi</h2>
       <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px" id="wz-wifi-copy">Connect this node to your WiFi network so it can reach the MQTT servers.</p>
+      <div class="note"><b>Preparing for remote deployment?</b> This wizard tests the WiFi before reboot. If the deployment network is not available here, use USB serial at <b>config.meshcore.io</b> and run <b>set wifi.ssid ...</b> and <b>set wifi.pwd ...</b>. The node saves them without connecting and retries after deployment.</div>
       <div class="f"><label>Network name (SSID)</label>
         <div class="row" style="gap:8px">
           <input type="text" data-k="wifi.ssid" id="wz-ssid" autocapitalize="off" autocorrect="off" style="flex:1">

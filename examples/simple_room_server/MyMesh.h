@@ -299,8 +299,9 @@ public:
     return &_prefs;
   }
 
-  void savePrefs() override {
-    _cli.savePrefs(_fs);
+  void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
+    _cli.savePrefs(_fs, scope);
   }
 
   void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);

@@ -936,7 +936,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     if (legacy_upgrade.mayRewriteComPrefs()) {
       // loadMQTTPrefs has already committed the full MQTT payload (including
       // any recovered observer tail), so compact only /com_prefs now.
-      savePrefs(fs, false);
+      savePrefs(fs, PrefsSaveRouting::Scope::Common);
       legacy_upgrade.recordComPrefsRewrite();
       _com_prefs_needs_upgrade = false;
     } else {
@@ -1607,14 +1607,17 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
 }
 #endif
 
-void CommonCLI::savePrefs(FILESYSTEM* fs, bool save_mqtt) {
+void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
+  const PrefsSaveRouting::Plan plan = PrefsSaveRouting::planFor(scope);
 #ifdef WITH_MQTT_BRIDGE
   // Observer builds use a verified temp/backup transaction for common prefs.
   // Radio and bridge changes must never leave a truncated boot-time image.
-  saveCommonPrefsImageAtomically(fs);
-  if (save_mqtt) saveMQTTPrefs(fs);
+  if (plan.common) saveCommonPrefsImageAtomically(fs);
+  if (plan.observer) saveMQTTPrefs(fs);
   return;
 #else
+  // Observer-only saves are a no-op on roles with no observer preference image.
+  if (!plan.common) return;
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(fs, "/com_prefs");
 #elif defined(STM32_PLATFORM)
@@ -2321,7 +2324,7 @@ bool CommonCLI::saveMQTTPrefs(FILESYSTEM* fs) {
 
 #define MIN_LOCAL_ADVERT_INTERVAL   60
 
-void CommonCLI::savePrefs() {
+void CommonCLI::savePrefs(PrefsSaveRouting::Scope scope) {
   uint8_t old_advert_interval = _prefs->advert_interval;
   if (_prefs->advert_interval * 2 < MIN_LOCAL_ADVERT_INTERVAL) {
     _prefs->advert_interval = 0;  // turn it off, now that device has been manually configured
@@ -2330,7 +2333,11 @@ void CommonCLI::savePrefs() {
   if (old_advert_interval != _prefs->advert_interval) {
     _callbacks->updateAdvertTimer();
   }
-  _callbacks->savePrefs();
+  _callbacks->savePrefs(scope);
+}
+
+void CommonCLI::saveObserverPrefs() {
+  _callbacks->savePrefs(PrefsSaveRouting::Scope::Observer);
 }
 
 uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
@@ -3424,8 +3431,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #ifdef WITH_MQTT_BRIDGE
       _mqtt_prefs.mqtt_rx_enabled = _prefs->bridge_pkt_src;
       _mqtt_prefs.mqtt_tx_enabled = !_prefs->bridge_pkt_src;
-#endif
+      savePrefs(PrefsSaveRouting::Scope::Both);
+#else
       savePrefs();
+#endif
       strcpy(reply, "OK");
     }
 #endif
@@ -4253,8 +4262,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _mqtt_prefs.mqtt_rx_enabled = 0;
       _mqtt_prefs.mqtt_tx_enabled = 1;
     }
-#endif
+    savePrefs(PrefsSaveRouting::Scope::Both);
+#else
     savePrefs();
+#endif
     strcpy(reply, "OK");
 #endif
 #ifdef WITH_RS232_BRIDGE
