@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/nrf52_power_management/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_meshtower_v2_sdcard/">
       
       
-        <link rel="prev" href="../kiss_modem_protocol/">
+        <link rel="prev" href="../ota_easy/">
       
       
-        <link rel="next" href="../number_allocations/">
+        <link rel="next" href="../ota_protocol/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>nRF52 Power Management - MeshCore Docs</title>
+        <title>MeshTower V2 microSD LoRa OTA - MeshCore Docs</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nrf52-power-management" class="md-skip">
+        <a href="#meshtower-v2-microsd-lora-ota" class="md-skip">
           Skip to content
         </a>
       
@@ -107,7 +107,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              nRF52 Power Management
+              MeshTower V2 microSD LoRa OTA
             
           </span>
         </div>
@@ -549,37 +549,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    nRF52 Power Management
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
         
   
   
@@ -595,225 +568,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Features
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Features">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#boot-voltage-protection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Boot Voltage Protection
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-lpcomp-vbus" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake (LPCOMP + VBUS)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-register-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Register Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#shutdown-reason-tracking" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shutdown Reason Tracking
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Supported Boards
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technical-details" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Technical Details
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Technical Details">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Architecture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#board-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Board Implementation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#softdevice-compatibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SoftDevice Compatibility
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#debug-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Debug Output
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2 (Planned)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#references" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        References
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -876,10 +630,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -895,6 +676,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#card-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity-and-update-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capacity and update types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sd-card-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SD card CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent OTA archive and seeder
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preload many mOTAs from a computer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serve the preloaded archive over TempRadio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1142,10 +1015,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#card-requirements" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Card requirements
       
     </span>
   </a>
@@ -1153,22 +1026,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#capacity-and-update-types" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features
+        Capacity and update types
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Features">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sd-card-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SD card CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent OTA archive and seeder
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#boot-voltage-protection" class="md-nav__link">
+  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Boot Voltage Protection
+        Preload many mOTAs from a computer
       
     </span>
   </a>
@@ -1176,32 +1071,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#voltage-wake-lpcomp-vbus" class="md-nav__link">
+  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Voltage Wake (LPCOMP + VBUS)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-register-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Register Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#shutdown-reason-tracking" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shutdown Reason Tracking
+        Serve the preloaded archive over TempRadio
       
     </span>
   </a>
@@ -1210,133 +1083,6 @@
         
       </ul>
     </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Supported Boards
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technical-details" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Technical Details
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Technical Details">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Architecture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#board-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Board Implementation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#softdevice-compatibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SoftDevice Compatibility
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#debug-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Debug Output
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2 (Planned)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#references" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        References
-      
-    </span>
-  </a>
   
 </li>
       
@@ -1357,7 +1103,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/nrf52_power_management.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_meshtower_v2_sdcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1365,421 +1111,269 @@
   
 
 
-<h1 id="nrf52-power-management">nRF52 Power Management</h1>
-<h2 id="overview">Overview</h2>
-<p>The nRF52 Power Management module provides battery protection features to prevent over-discharge, minimise likelihood of brownout and flash corruption conditions existing, and enable safe voltage-based recovery.</p>
-<h2 id="features">Features</h2>
-<h3 id="boot-voltage-protection">Boot Voltage Protection</h3>
-<ul>
-<li>Checks battery voltage immediately after boot and before mesh operations commence</li>
-<li>If voltage is below a configurable threshold (e.g., 3300mV), the device configures voltage wake (LPCOMP + VBUS) and enters protective shutdown (SYSTEMOFF)</li>
-<li>Prevents boot loops when battery is critically low</li>
-<li>Skipped when external power (USB VBUS) is detected</li>
-</ul>
-<h3 id="voltage-wake-lpcomp-vbus">Voltage Wake (LPCOMP + VBUS)</h3>
-<ul>
-<li>Configures the nRF52's Low Power Comparator (LPCOMP) before entering SYSTEMOFF</li>
-<li>Enables USB VBUS detection so external power can wake the device</li>
-<li>Device automatically wakes when battery voltage rises above recovery threshold or when VBUS is detected</li>
-<li>Uses no LPCOMP hysteresis; on divided battery inputs the additional 50 mV
-  comparator hysteresis can move the effective battery wake point by several
-  hundred millivolts and strand an otherwise charged node</li>
-</ul>
-<h3 id="early-boot-register-capture">Early Boot Register Capture</h3>
-<ul>
-<li>Captures RESETREAS (reset reason) and GPREGRET2 (shutdown reason) before SystemInit() clears them</li>
-<li>Allows firmware to determine why it booted (cold boot, watchdog, LPCOMP wake, etc.)</li>
-<li>Allows firmware to determine why it last shut down (user request, low voltage, boot protection)</li>
-</ul>
-<h3 id="shutdown-reason-tracking">Shutdown Reason Tracking</h3>
-<p>Shutdown reason codes (stored in GPREGRET2):</p>
+<h1 id="meshtower-v2-microsd-lora-ota">MeshTower V2 microSD LoRa OTA</h1>
+<p>The <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> target uses the MeshTower V2 onboard
+microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
+both full <code>.mota</code> images and in-place delta <code>.mota</code> images. After verification,
+the matching SD-aware OTAFIX bootloader reads the staged file from the card and
+programs the nRF52840 application region.</p>
+<p>The pin assignment follows the
+<a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf">Heltec MeshTower V2 partial reference circuit</a>:</p>
 <table>
 <thead>
 <tr>
-<th>Code</th>
-<th>Name</th>
-<th>Description</th>
+<th>Signal</th>
+<th style="text-align: right;">nRF52840 pin</th>
+<th style="text-align: right;">Arduino pin number</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>0x00</td>
-<td>NONE</td>
-<td>Normal boot / no previous shutdown</td>
+<td>SD CS</td>
+<td style="text-align: right;">P1.00</td>
+<td style="text-align: right;">32</td>
 </tr>
 <tr>
-<td>0x4C</td>
-<td>LOW_VOLTAGE</td>
-<td>Runtime low voltage threshold reached</td>
+<td>SD MOSI</td>
+<td style="text-align: right;">P1.01</td>
+<td style="text-align: right;">33</td>
 </tr>
 <tr>
-<td>0x55</td>
-<td>USER</td>
-<td>User requested powerOff()</td>
+<td>SD SCK</td>
+<td style="text-align: right;">P0.06</td>
+<td style="text-align: right;">6</td>
 </tr>
 <tr>
-<td>0x42</td>
-<td>BOOT_PROTECT</td>
-<td>Boot voltage protection triggered</td>
+<td>SD MISO</td>
+<td style="text-align: right;">P0.26</td>
+<td style="text-align: right;">26</td>
 </tr>
 </tbody>
 </table>
-<h2 id="supported-boards">Supported Boards</h2>
-<table>
-<thead>
-<tr>
-<th>Board family</th>
-<th>Implemented</th>
-<th>LPCOMP wake</th>
-<th>VBUS wake</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Seeed Studio XIAO nRF52840 (<code>xiao_nrf52</code>)</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>SenseCAP Solar</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>RAK4631 / RAK3401</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>GAT562 30S / EVB Pro / Tracker Pro / Watch13</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Heltec T096 / T114 / T1 / Tower V2</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Muzi Works R1 Neo</td>
-<td>Partial</td>
-<td>Inactive</td>
-<td>Inactive</td>
-</tr>
-<tr>
-<td>Promicro nRF52840</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>RAK WisMesh Tag</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Heltec Mesh Solar</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>LilyGo T-Echo / T-Echo Lite / T-Impulse Plus</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>WIO Tracker L1 / L1 E-Ink / WM1110</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Mesh Pocket / Meshtiny / Nano G2 Ultra</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>ThinkNode M1 / M3 / M6</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>T1000-E</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Ikoka Nano / Stick / Handheld (nRF)</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Keepteen LT1 / Minewsemi ME25LS01</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-</tbody>
-</table>
-<p>Notes:
-- "Implemented" reflects Phase 1 (boot lockout + shutdown reason capture).
-- R1 Neo has the integration compiled, but its board configuration deliberately
-  sets <code>PWRMGT_VOLTAGE_BOOTLOCK</code> to <code>0</code>; automatic protective shutdown and its
-  voltage/VBUS recovery wake are therefore inactive.
-- User power-off does not enable LPCOMP wake; voltage recovery is armed only
-  for boot protection and automated low-voltage shutdown.
-- VBUS detection is used to skip boot lockout on external power, and VBUS wake is configured alongside LPCOMP when supported hardware exposes VBUS to the nRF52.</p>
-<h2 id="technical-details">Technical Details</h2>
-<h3 id="architecture">Architecture</h3>
-<p>The power management functionality is integrated into the <code>NRF52Board</code> base class in <code>src/helpers/NRF52Board.cpp</code>. Board variants provide hardware-specific configuration via a <code>PowerMgtConfig</code> struct and override <code>initiateShutdown(uint8_t reason)</code> to perform board-specific power-down work and conditionally enable voltage wake (LPCOMP + VBUS).</p>
-<h3 id="early-boot-capture">Early Boot Capture</h3>
-<p>A static constructor with priority 101 in <code>NRF52Board.cpp</code> captures the RESETREAS and GPREGRET2 registers before:
-- SystemInit() (priority 102) - which clears RESETREAS
-- Static C++ constructors (default priority 65535)</p>
-<p>This ensures we capture the true reset reason before any initialisation code runs.</p>
-<h3 id="board-implementation">Board Implementation</h3>
-<p>To enable power management on a board variant:</p>
+<p>The SD socket uses its own SPI peripheral, so card traffic does not change the
+LoRa radio pinout.</p>
+<h2 id="card-requirements">Card requirements</h2>
+<p>Use a FAT16, FAT32, or exFAT card with an MBR partition table whose first
+partition starts after sector 1. This is the normal layout produced by most SD
+formatters. GPT and unpartitioned "super-floppy" layouts are rejected.</p>
+<p>MeshCore creates <code>/meshcore-ota.mota</code> as a contiguous file. Sector 1, which is
+outside the partition, holds a checksummed bootloader handoff record. The
+firmware validates this gap before writing it; an incompatible card layout
+fails safely without modifying sector 1.</p>
+<h2 id="capacity-and-update-types">Capacity and update types</h2>
+<p>The card removes the internal-flash staging limit. The <code>.mota</code> container may be
+much larger than the old internal staging gap, and either a full image or an
+in-place delta may be downloaded. The installed firmware itself must still fit
+the nRF52840 application region below InternalFS (ending at <code>0xED000</code>); SD
+storage does not increase the MCU's executable flash.</p>
+<p>For this S140 v6 target, the maximum application image including its <code>EndF</code>
+trailer is <code>0xC7000</code> bytes (815,104 bytes). To package a full self-update:</p>
+<pre><code class="language-bash">motatool build --fw ./Heltec_tower_v2_sdcard-new.hex --out-dir ./motas
+motatool verify ./motas/*.mota
+</code></pre>
+<p>A delta uses the exact installed image as its base. The normal <code>0x98000</code>
+workspace remains compatible. If either image is larger than that legacy
+limit, build the patch with the SD target's larger workspace:</p>
+<pre><code class="language-bash">motatool build \
+  --base ./Heltec_tower_v2_sdcard-running.hex \
+  --fw ./Heltec_tower_v2_sdcard-new.hex \
+  --patch-type in-place \
+  --inplace-memory 0xC7000 \
+  --out-dir ./motas
+motatool verify ./motas/*.mota
+</code></pre>
+<p>The download is resumable because the partial <code>.mota</code> stays on the card.
+Once it reaches <code>ready</code>, <code>ota install</code> performs the final verification,
+publishes the bootloader handoff, and reboots. Keep the card inserted through
+the reboot and installation.</p>
+<p>The SD-aware bootloader is mandatory. <code>ota install</code> refuses to reboot if the
+bootloader capability marker does not advertise SD staging and the selected
+codec. Existing <code>Heltec_tower_v2_repeater</code> firmware continues to use the
+internal-flash delta path and is unchanged.</p>
+<h2 id="sd-card-cli">SD card CLI</h2>
+<p>The SD-backed target provides these CLI commands:</p>
+<pre><code class="language-text">set sdcard format [--force]
+set sdcard erase [--force]
+get sdcard
+get sdcard *
+get sdcard format
+get sdcard erase
+get sdcard free
+get sdcard ls
+get sdcard ls 2
+get sdcard dir 3
+</code></pre>
+<p><code>format</code> creates a new FAT16, FAT32, or exFAT filesystem according to card
+size. <code>erase</code> first uses the card's raw media erase command and then formats it,
+so a successful erase finishes with a usable filesystem. Both operations
+destroy all data on the card and cancel any staged OTA download.</p>
+<p>The firmware records successful format and erase completion times in RAM.
+Repeating the same operation within five minutes is rejected unless <code>--force</code>
+is present. Format and erase have independent cooldowns. Because erase also
+formats the card, a successful erase updates both timestamps. The timestamps
+reset when the device reboots. The <code>get sdcard</code> age queries report how long ago
+each operation completed. <code>get sdcard free</code> reports used and free filesystem
+space in human-readable binary units.</p>
+<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, four
+files per page. A bare command shows page 1; append a positive page number to
+move through the remaining results. Each row includes the path and a compact
+file size. The header reports the selected page, total pages, and total files.</p>
+<h2 id="persistent-ota-archive-and-seeder">Persistent OTA archive and seeder</h2>
+<p>On the SD-backed target, automatic OTA archiving is on by default. While the
+temporary OTA radio is active, the node requests full catalogs from seeders and
+saves every complete mOTA it discovers, including firmware for other hardware
+targets and codecs that this node cannot install. Archive downloads use the
+same per-block Merkle proof checks as an install download, but archived images
+are never selected for local installation.</p>
+<p>Completed containers are stored as <code>/mota/&lt;manifest-id&gt;.mota</code>. An interrupted
+download remains <code>/mota/&lt;manifest-id&gt;.part</code> and resumes when that mOTA is seen
+again. Completed files survive reboot, are enumerated on the first archive
+access or TempRadio window, and are advertised and served directly from SD.
+The SD target supports the protocol maximum served set: its own running
+firmware plus up to 254 archived mOTAs.</p>
+<p>Automatic capture preserves an 8 MiB free-space reserve for manual
+<code>/meshcore-ota.mota</code> installation staging. It stops starting new archive files
+when the next file would cross that reserve. Archive allocation first tries the
+fast contiguous path and then falls back to an ordinary fragmented FAT file;
+only the bootloader staging file requires contiguous sectors.</p>
+<h3 id="preload-many-motas-from-a-computer">Preload many mOTAs from a computer</h3>
+<p>You can populate the archive much faster on a computer than over LoRa. Use only
+complete, verified <code>.mota</code> containers. Do not copy firmware <code>.bin</code>, <code>.hex</code>,
+<code>.zip</code>, or <code>.part</code> files into the archive.</p>
+<p>Install the standalone <a href="https://github.com/vk496/motatool"><code>motatool</code></a> first if
+it is not already available:</p>
+<pre><code class="language-bash">git clone https://github.com/vk496/motatool.git
+cargo install --path ./motatool
+</code></pre>
+<p>The on-card filename is part of the archive index and has a strict format:</p>
+<pre><code class="language-text">/mota/&lt;merkle_root&gt;.mota
+</code></pre>
+<p><code>&lt;merkle_root&gt;</code> is the eight-hex-digit value printed by <code>motatool inspect</code>. It
+is also the mOTA's four-byte manifest ID. The extension must be lowercase, the
+file must be directly inside <code>/mota</code>, and descriptive release filenames are
+not indexed. For example, if inspection reports:</p>
+<pre><code class="language-text">merkle_root    : ABCD1234
+</code></pre>
+<p>copy that container to:</p>
+<pre><code class="language-text">/mota/abcd1234.mota
+</code></pre>
+<p>If two containers have the same Merkle root, they have the same protocol ID
+and cannot both be present. Keep only the intended one. The current SD seeder
+can index up to 254 archived files. A served file must use a logical block size
+of at most 1024 bytes and contain at most 2048 blocks; check <code>block_size</code> and
+<code>block_count</code> in <code>motatool inspect</code> when importing unusually large images.
+Files outside that serve geometry are not counted or advertised. If a malformed
+<code>/mota/&lt;id&gt;.mota</code> conflicts with a newly discovered valid image, the repeater
+preserves the malformed file as <code>&lt;id&gt;.bad</code> through <code>&lt;id&gt;.bad9</code> and downloads a
+clean replacement instead of treating path existence as a valid cache hit.</p>
+<p>To prepare and load the card:</p>
 <ol>
-<li>
-<p><strong>Enable in platformio.ini</strong>:
-   <code>ini
-   -D NRF52_POWER_MANAGEMENT</code></p>
-</li>
-<li>
-<p><strong>Define configuration in variant.h</strong>:
-   <code>c
-   #define PWRMGT_VOLTAGE_BOOTLOCK    3300   // Won't boot below this voltage (mV)
-   #define PWRMGT_LPCOMP_AIN          7      // AIN channel for voltage sensing
-   #define PWRMGT_LPCOMP_REFSEL       2      // REFSEL (0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)</code></p>
-</li>
-<li>
-<p><strong>Implement in board .cpp file</strong>:
-   ```cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-   const PowerMgtConfig power_config = {
-     .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
-     .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
-     .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
-   };</p>
-</li>
+<li>Format it as described under <a href="#card-requirements">Card requirements</a>. The
+   easiest way to guarantee the expected layout is to insert it in the
+   repeater, run <code>set sdcard format</code>, power the repeater off, and then move the
+   card to the computer. Formatting destroys the existing card contents.</li>
+<li>Mount the card on the computer and create a directory named <code>mota</code> at the
+   filesystem root. Do not use a nested directory such as <code>/firmware/mota</code>.</li>
+<li>Run <code>motatool verify FILE.mota</code> for every source file. Do not copy a file
+   that reports <code>FAIL</code>.</li>
+<li>Run <code>motatool inspect FILE.mota</code>, read its <code>merkle_root</code>, and copy the file
+   to <code>/mota/&lt;lowercase-merkle-root&gt;.mota</code> on the card.</li>
+<li>Flush pending writes, safely eject the card, power the repeater off, insert
+   the card, and boot
+   <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>.</li>
 </ol>
-<p>void MyBoard::initiateShutdown(uint8_t reason) {
-     // Board-specific shutdown preparation (e.g., disable peripherals)
-     bool enable_lpcomp = (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
-                           reason == SHUTDOWN_REASON_BOOT_PROTECT);</p>
-<pre><code> if (enable_lpcomp) {
-   configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
- }
+<p>On Linux or macOS, this Bash example verifies and imports every <code>.mota</code> from
+<code>./motas</code>. Replace the example mount path before running it:</p>
+<pre><code class="language-bash">card_mount=/media/YOU/MESHCORE
+mkdir -p &quot;$card_mount/mota&quot;
 
- enterSystemOff(reason);
+shopt -s nullglob
+for image in ./motas/*.mota; do
+  motatool verify &quot;$image&quot; || exit 1
+  mid=$(motatool inspect &quot;$image&quot; |
+    awk '$1 == &quot;merkle_root&quot; { print tolower($3) }')
+  if [[ ! $mid =~ ^[0-9a-f]{8}$ ]]; then
+    echo &quot;Could not read the Merkle root from: $image&quot; &gt;&amp;2
+    exit 1
+  fi
+
+  destination=&quot;$card_mount/mota/$mid.mota&quot;
+  if [[ -e $destination ]]; then
+    cmp -s &quot;$image&quot; &quot;$destination&quot; || {
+      echo &quot;Different containers have the same ID: $mid&quot; &gt;&amp;2
+      exit 1
+    }
+  else
+    cp &quot;$image&quot; &quot;$destination&quot;
+  fi
+done
+sync
 </code></pre>
-<p>}
-   #endif</p>
-<p>void MyBoard::begin() {
-     NRF52Board::begin();  // or NRF52BoardDCDC::begin()
-     // ... board setup ...</p>
-<p>#ifdef NRF52_POWER_MANAGEMENT
-     checkBootVoltage(&amp;power_config);
-   #endif
-   }
-   ```</p>
-<p>For user-initiated shutdowns, <code>powerOff()</code> remains board-specific. Power management only arms LPCOMP for automated shutdown reasons (boot protection/low voltage).</p>
-<ol>
-<li><strong>Declare override in board .h file</strong>:
-   <code>cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-     void initiateShutdown(uint8_t reason) override;
-   #endif</code></li>
-</ol>
-<h3 id="voltage-wake-configuration">Voltage Wake Configuration</h3>
-<p>The LPCOMP (Low Power Comparator) is configured to:
-- Monitor the specified AIN channel (0-7 corresponding to P0.02-P0.05, P0.28-P0.31)
-- Compare against VDD fraction reference (REFSEL: 0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
-- Detect UP events (voltage rising above threshold)
-- Use no hysteresis so the configured recovery threshold is not widened by the battery divider
-- Wake the device from SYSTEMOFF when triggered</p>
-<p>VBUS wake is enabled via the POWER peripheral USBDETECTED event whenever <code>configureVoltageWake()</code> is used. This requires USB VBUS to be routed to the nRF52 (typical on nRF52840 boards with native USB).</p>
-<p><strong>LPCOMP Reference Selection (PWRMGT_LPCOMP_REFSEL)</strong>:</p>
-<table>
-<thead>
-<tr>
-<th>REFSEL</th>
-<th>Fraction</th>
-<th>VBAT @ 1M/1M divider (VDD=3.0-3.3)</th>
-<th>VBAT @ 1.5M/1M divider (VDD=3.0-3.3)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>1/8</td>
-<td>0.75-0.82 V</td>
-<td>0.94-1.03 V</td>
-</tr>
-<tr>
-<td>1</td>
-<td>2/8</td>
-<td>1.50-1.65 V</td>
-<td>1.88-2.06 V</td>
-</tr>
-<tr>
-<td>2</td>
-<td>3/8</td>
-<td>2.25-2.47 V</td>
-<td>2.81-3.09 V</td>
-</tr>
-<tr>
-<td>3</td>
-<td>4/8</td>
-<td>3.00-3.30 V</td>
-<td>3.75-4.12 V</td>
-</tr>
-<tr>
-<td>4</td>
-<td>5/8</td>
-<td>3.75-4.12 V</td>
-<td>4.69-5.16 V</td>
-</tr>
-<tr>
-<td>5</td>
-<td>6/8</td>
-<td>4.50-4.95 V</td>
-<td>5.62-6.19 V</td>
-</tr>
-<tr>
-<td>6</td>
-<td>7/8</td>
-<td>5.25-5.77 V</td>
-<td>6.56-7.22 V</td>
-</tr>
-<tr>
-<td>7</td>
-<td>ARef</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>8</td>
-<td>1/16</td>
-<td>0.38-0.41 V</td>
-<td>0.47-0.52 V</td>
-</tr>
-<tr>
-<td>9</td>
-<td>3/16</td>
-<td>1.12-1.24 V</td>
-<td>1.41-1.55 V</td>
-</tr>
-<tr>
-<td>10</td>
-<td>5/16</td>
-<td>1.88-2.06 V</td>
-<td>2.34-2.58 V</td>
-</tr>
-<tr>
-<td>11</td>
-<td>7/16</td>
-<td>2.62-2.89 V</td>
-<td>3.28-3.61 V</td>
-</tr>
-<tr>
-<td>12</td>
-<td>9/16</td>
-<td>3.38-3.71 V</td>
-<td>4.22-4.64 V</td>
-</tr>
-<tr>
-<td>13</td>
-<td>11/16</td>
-<td>4.12-4.54 V</td>
-<td>5.16-5.67 V</td>
-</tr>
-<tr>
-<td>14</td>
-<td>13/16</td>
-<td>4.88-5.36 V</td>
-<td>6.09-6.70 V</td>
-</tr>
-<tr>
-<td>15</td>
-<td>15/16</td>
-<td>5.62-6.19 V</td>
-<td>7.03-7.73 V</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Important</strong>: For boards with a voltage divider on the battery sense pin, LPCOMP measures the divided voltage. Use:
-<code>VBAT_threshold ~ (VDD * fraction) * divider_scale</code>, where <code>divider_scale = (Rtop + Rbottom) / Rbottom</code> (e.g., 2.0 for 1M/1M, 2.5 for 1.5M/1M, 3.0 for XIAO).</p>
-<h3 id="softdevice-compatibility">SoftDevice Compatibility</h3>
-<p>The power management code checks whether SoftDevice is enabled and uses the appropriate API:
-- When SD enabled: <code>sd_power_*</code> functions
-- When SD disabled: Direct register access (NRF_POWER-&gt;*)</p>
-<p>This ensures compatibility regardless of BLE stack state.</p>
-<h2 id="cli-commands">CLI Commands</h2>
-<p>Power management status can be queried via the CLI:</p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>get pwrmgt.support</code></td>
-<td>Returns "supported" or "unsupported"</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.source</code></td>
-<td>Returns current power source - "battery" or "external" (5V/USB power)</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.bootreason</code></td>
-<td>Returns reset and shutdown reason strings</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.bootmv</code></td>
-<td>Returns boot voltage in millivolts</td>
-</tr>
-</tbody>
-</table>
-<p>On boards without power management enabled, all commands except <code>get pwrmgt.support</code> return:</p>
-<pre><code>ERROR: Power management not supported
+<p>On Windows, create <code>E:\mota</code>, inspect each source with <code>motatool inspect</code>, and
+rename it to the reported lowercase root in the same way. Safely eject the
+drive after all copies finish.</p>
+<p>After boot, scan the archive and confirm the card contents from the repeater
+console:</p>
+<pre><code class="language-text">get sdcard ls
+get sdcard ls 2
+ota cache
+ota folder
 </code></pre>
-<h2 id="debug-output">Debug Output</h2>
-<p>When <code>MESH_DEBUG=1</code> is enabled, the power management module outputs:</p>
-<pre><code>DEBUG: PWRMGT: Reset = Wake from LPCOMP (0x20000); Shutdown = Low Voltage (0x4C)
-DEBUG: PWRMGT: Boot voltage = 3450 mV (threshold = 3300 mV)
-DEBUG: PWRMGT: LPCOMP wake configured (AIN7, ref=3/8 VDD)
+<p><code>ota cache</code> should report the imported count. <code>ota folder</code> reports the current
+served count; once OTA serving starts in TempRadio, that set also includes the
+repeater's running firmware. If the files appear in <code>get sdcard ls</code> but not in
+the served count, check their exact names, run <code>motatool verify</code> again, and
+inspect their block geometry. It is fine to run <code>ota cache off</code> for a curated,
+read-mostly archive: that disables capture of new mOTAs but continues serving
+every valid file already on the card.</p>
+<h3 id="serve-the-preloaded-archive-over-tempradio">Serve the preloaded archive over TempRadio</h3>
+<p>LoRa OTA traffic exists only during an active temporary-radio window. The SD
+repeater, each receiving node, and every intermediate repeater in the path need
+overlapping windows on the same temporary channel. Use a frequency permitted
+for the node's configured region. This North American example uses the
+recommended fast OTA settings and a 120-minute window:</p>
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
 </code></pre>
-<h2 id="phase-2-planned">Phase 2 (Planned)</h2>
-<ul>
-<li>Runtime voltage monitoring</li>
-<li>Voltage state machine (Normal -&gt; Warning -&gt; Critical -&gt; Shutdown)</li>
-<li>Configurable thresholds</li>
-<li>Load shedding callbacks for power reduction</li>
-<li>Deep sleep integration</li>
-<li>Scheduled wake-up</li>
-<li>Extended sleep with periodic monitoring</li>
-</ul>
-<h2 id="references">References</h2>
-<ul>
-<li><a href="https://infocenter.nordicsemi.com/topic/ps_nrf52840/power.html">nRF52840 Product Specification - POWER</a></li>
-<li><a href="https://infocenter.nordicsemi.com/topic/ps_nrf52840/lpcomp.html">nRF52840 Product Specification - LPCOMP</a></li>
-<li><a href="https://infocenter.nordicsemi.com/topic/sdk_nrf5_v17.1.0/group__nrf__sdm__api.html">SoftDevice S140 API - Power Management</a></li>
-</ul>
+<p>Start the farthest receiving node first, then intermediate repeaters, and the
+SD source last so their windows overlap for as long as possible. Before or
+during the source window, <code>ota cache</code> makes the source scan and attach the SD
+archive. Entry into TempRadio automatically triggers an OTA advertisement
+burst; <code>ota announce</code> can send another advertisement immediately.</p>
+<p>On a receiving OTA-capable node, allow a few seconds for catalog exchange,
+then run:</p>
+<pre><code class="language-text">ota ls
+ota ls 2
+ota get 1 flash
+ota status
+</code></pre>
+<p>Use <code>ota ls 2</code>, <code>ota ls 3</code>, and so on when the source advertises more than the
+two rows that fit in one remote CLI reply. The update numbers are global across
+pages, so select the displayed number for the desired target instead of assuming
+it is always <code>1</code>. A receiver retains the complete protocol catalog and verifies
+every transferred block. It still applies its normal target, hardware, codec,
+signature, and installation checks. The SD
+repeater may advertise images for many hardware families; it never installs
+those archive files merely because it serves them.</p>
+<p>When a temporary window expires or a node reboots, it returns to its saved
+radio settings and OTA transfer stops. The archive remains on the card. Start
+another set of overlapping <code>tempradio</code> windows to resume an interrupted
+download, or use synchronized <code>tempradioat</code> entries for a scheduled window.</p>
+<p>Archive capture is lower priority than operator work. An explicit <code>ota pull</code>
+to install storage or a host folder immediately takes the single receive slot;
+the archive partial is checkpointed and resumes later. Existing cached files
+can still answer peer requests while another archive file is downloading.</p>
+<p>Use these commands to inspect or control automatic capture:</p>
+<pre><code class="language-text">ota cache
+ota cache on
+ota cache off
+ota config cache on
+ota config cache off
+</code></pre>
+<p>The on/off choice is saved on the SD card. Turning capture off stops new
+downloads but keeps serving files already cached. Formatting or erasing the
+card removes both the archive and its off marker, so a newly formatted card
+returns to the default-on setting. <code>ota config sdseed on|off</code> is also accepted
+as an alias.</p>
 
 
 

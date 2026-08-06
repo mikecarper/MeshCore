@@ -1,0 +1,2459 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_protocol/">
+      
+      
+        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
+      
+      
+        <link rel="next" href="../ota_user_guide/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>MeshCore OTA - .mota container & LoRa protocol - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#meshcore-ota-mota-container-lora-protocol" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MeshCore OTA - .mota container &amp; LoRa protocol
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-firmware-image-the-endf-trailer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Firmware image &amp; the EndF trailer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Firmware image &amp; the EndF trailer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#esp32-portable-app-slot-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 portable app-slot profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-mota-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The .mota container
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The manifest
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The manifest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-signed-region" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Signed region
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-the-approval-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 The approval field
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-payload-codecs-delta-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Payload, codecs &amp; delta base
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-merkle-tree-sha2-2564" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Merkle tree (sha2-256:4)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Merkle tree (sha2-256:4)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-proofs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Proofs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-block-availability-staging-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Block availability, staging &amp; resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-lora-ota-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. LoRa OTA protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. LoRa OTA protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-two-tier-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Two-tier discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-anti-storm-mandatory-at-mesh-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Anti-storm (mandatory at mesh scale)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-fetch-handshake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 Fetch handshake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-message-bodies-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 Message bodies (transfer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-sizing-against-max_packet_payload-184" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5 Sizing against MAX_PACKET_PAYLOAD = 184
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#86-temporary-radio-and-transfer-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.6 Temporary-radio and transfer boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-identity-trust-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Identity, trust &amp; versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-multi-mota-serve-the-external-folder-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Multi-mota serve &amp; the external "folder" relay
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Multi-mota serve &amp; the external &#34;folder&#34; relay">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-the-motasource-abstraction-otasourceh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.1 The MotaSource abstraction (OtaSource.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-the-mota-seeder-transport-motaseederprotoh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.2 The mota-seeder transport (MotaSeederProto.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-cli-surface-otaclicpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. CLI surface (OtaCli.cpp)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-apply-bootloader-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Apply &amp; bootloader contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-versioning-of-this-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Versioning of this spec
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-firmware-image-the-endf-trailer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Firmware image &amp; the EndF trailer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Firmware image &amp; the EndF trailer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#esp32-portable-app-slot-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 portable app-slot profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-the-mota-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. The .mota container
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The manifest
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The manifest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-signed-region" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Signed region
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-the-approval-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 The approval field
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-payload-codecs-delta-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Payload, codecs &amp; delta base
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-merkle-tree-sha2-2564" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Merkle tree (sha2-256:4)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Merkle tree (sha2-256:4)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-proofs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Proofs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-block-availability-staging-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Block availability, staging &amp; resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-lora-ota-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. LoRa OTA protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. LoRa OTA protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-two-tier-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Two-tier discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-anti-storm-mandatory-at-mesh-scale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Anti-storm (mandatory at mesh scale)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-fetch-handshake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 Fetch handshake
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-message-bodies-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 Message bodies (transfer)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-sizing-against-max_packet_payload-184" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5 Sizing against MAX_PACKET_PAYLOAD = 184
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#86-temporary-radio-and-transfer-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.6 Temporary-radio and transfer boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-identity-trust-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Identity, trust &amp; versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-multi-mota-serve-the-external-folder-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Multi-mota serve &amp; the external "folder" relay
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Multi-mota serve &amp; the external &#34;folder&#34; relay">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101-the-motasource-abstraction-otasourceh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.1 The MotaSource abstraction (OtaSource.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102-the-mota-seeder-transport-motaseederprotoh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.2 The mota-seeder transport (MotaSeederProto.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-cli-surface-otaclicpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. CLI surface (OtaCli.cpp)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-apply-bootloader-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Apply &amp; bootloader contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-versioning-of-this-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Versioning of this spec
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_protocol.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="meshcore-ota-mota-container-lora-protocol">MeshCore OTA - <code>.mota</code> container &amp; LoRa protocol</h1>
+<p>This is the <strong>single source of truth</strong> for MeshCore's over-the-air firmware update system ("mOTA"). It is
+written for developers who want to implement an interoperable peer (server, fetcher, relay, or host tool)
+in another codebase or project. Everything below is implemented and hardware-verified in this repository;
+where a section names a source file, that file is the authoritative reference for byte-level details.</p>
+<blockquote>
+<p><strong>Just want to update your node?</strong> See the plain-language <a href="../ota_user_guide/">OTA user guide</a> - this
+document is the technical/wire specification.</p>
+</blockquote>
+<p><strong>Design goals</strong></p>
+<ul>
+<li>Distribute firmware over LoRa as a <strong>self-verifying, resumable, single-source block transfer</strong> that
+  survives reboots and never auto-applies without explicit consent.</li>
+<li><strong>Trustless mesh relay:</strong> repeaters may forward packets while the source alone serves firmware data;
+  integrity is content-addressed
+  against a signed merkle root, so a relay need not be trusted and never needs the signing keys.</li>
+<li><strong>Lowest priority, always:</strong> OTA traffic is enqueued behind all mesh traffic - "eventually upgradable".
+  A busy node delays OTA indefinitely rather than competing with real traffic.</li>
+<li><strong>Portable:</strong> the engine (<code>src/helpers/ota/OtaManager</code>) is Arduino/radio/crypto-free and host-testable,
+  so the same logic drives a device, a simulation, or a third-party implementation.</li>
+</ul>
+<p><strong>Source map</strong> (all under <code>src/helpers/ota/</code> unless noted)</p>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Constants, enums, flags</td>
+<td><code>OtaFormat.h</code></td>
+</tr>
+<tr>
+<td>Container/manifest parse</td>
+<td><code>MotaContainer.{h,cpp}</code></td>
+</tr>
+<tr>
+<td>Merkle tree + proofs</td>
+<td><code>MerkleTree.{h,cpp}</code></td>
+</tr>
+<tr>
+<td>EndF self-identity</td>
+<td><code>FirmwareInfo.{h,cpp}</code></td>
+</tr>
+<tr>
+<td>Wire message codec</td>
+<td><code>OtaProtocol.{h,cpp}</code></td>
+</tr>
+<tr>
+<td>Session engine (serve+fetch+discovery)</td>
+<td><code>OtaManager.{h,cpp}</code></td>
+</tr>
+<tr>
+<td>Multi-mota / folder relay</td>
+<td><code>OtaSource.h</code>, <code>MotaSourceSerial.{h,cpp}</code>, <code>MotaSeederProto.h</code></td>
+</tr>
+<tr>
+<td>Staging stores</td>
+<td><code>OtaStore.h</code>, <code>OtaStoreFlashNrf52.*</code>, <code>OtaStoreFlashEsp32.*</code></td>
+</tr>
+<tr>
+<td>Apply</td>
+<td><code>OtaApply.*</code>, bootloader <code>Adafruit_nRF52_Bootloader_OTAFIX</code></td>
+</tr>
+<tr>
+<td>Device glue (CLI/context)</td>
+<td><code>OtaCli.cpp</code>, <code>OtaContext.h</code></td>
+</tr>
+<tr>
+<td>Host tooling</td>
+<td><a href="https://github.com/vk496/motatool"><code>motatool</code></a> (standalone Rust CLI: build/verify/inspect/serve); <code>tools/mota/</code> (Python reference lib <code>motalib.py</code> + build/test glue)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="1-conventions">1. Conventions</h2>
+<ul>
+<li><strong>Endianness:</strong> all multi-byte integers are little-endian unless stated.</li>
+<li><strong>Hashes (multihash):</strong> the hash family is declared once per manifest via <code>hash_algo</code> =
+  <code>0x12</code> = <strong>SHA-256</strong> (the <a href="https://github.com/multiformats/multihash">multihash</a> code for sha2-256).
+  Truncations used:</li>
+<li><code>sha2-256:4</code> - first 4 bytes of the SHA-256 digest. Merkle leaves, internal nodes, root, proofs,
+    <code>manifest_id</code>, and the discovery <code>set_digest</code>.</li>
+<li><code>sha2-256:8</code> - first 8 bytes. Base-firmware identity (<code>base_hash</code>, <code>EndF.body_hash</code>).</li>
+<li><code>sha2-256:32</code> - full digest. The image security anchor (<code>image_hash</code>).
+  Digests are stored <strong>bare</strong> (just the truncated bytes); the family is implied by <code>hash_algo</code>.</li>
+<li><strong>Signatures:</strong> Ed25519 (RFC 8032), 64-byte detached signature, 32-byte public key.</li>
+</ul>
+<p><strong>Reference constants</strong> (<code>OtaFormat.h</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Value</th>
+<th>ASCII / note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container <code>MAGIC</code></td>
+<td><code>6D 4F 54 41</code></td>
+<td><code>mOTA</code></td>
+</tr>
+<tr>
+<td>Container <code>TRAILER</code></td>
+<td><code>76 6B 34 39 36</code></td>
+<td><code>vk496</code></td>
+</tr>
+<tr>
+<td><code>EndF</code> marker</td>
+<td><code>45 6E 64 46</code></td>
+<td><code>EndF</code></td>
+</tr>
+<tr>
+<td><code>hash_algo</code> (sha2-256)</td>
+<td><code>0x12</code></td>
+<td>multihash code</td>
+</tr>
+<tr>
+<td><code>format_ver</code></td>
+<td><code>0x02</code></td>
+<td>this spec</td>
+</tr>
+<tr>
+<td><code>approval</code> = not approved</td>
+<td><code>FF FF FF FF</code></td>
+<td>erased NOR word</td>
+</tr>
+<tr>
+<td><code>approval</code> = approved</td>
+<td><code>41 50 52 56</code></td>
+<td><code>APRV</code></td>
+</tr>
+<tr>
+<td><code>MFLAG_FULL</code></td>
+<td><code>0x01</code></td>
+<td>flags bit0</td>
+</tr>
+<tr>
+<td><code>MFLAG_SIGNED</code></td>
+<td><code>0x02</code></td>
+<td>flags bit1</td>
+</tr>
+<tr>
+<td><code>CODEC_FULL</code> / <code>_SEQUENTIAL</code> / <code>_INPLACE</code></td>
+<td><code>0</code> / <code>1</code> / <code>2</code></td>
+<td>Section 5</td>
+</tr>
+<tr>
+<td><code>PAYLOAD_TYPE_OTA</code></td>
+<td><code>0x0C</code></td>
+<td>MeshCore packet type (<code>src/Packet.h</code>)</td>
+</tr>
+<tr>
+<td><code>MAX_PACKET_PAYLOAD</code></td>
+<td><code>184</code></td>
+<td>usable bytes per packet (<code>src/MeshCore.h</code>)</td>
+</tr>
+<tr>
+<td>Default block size</td>
+<td><code>1024</code></td>
+<td><code>block_size_log2 = 0x0A</code></td>
+</tr>
+<tr>
+<td>OTA TX priority</td>
+<td><code>250</code></td>
+<td>lowest (<code>OTA_TX_PRIORITY</code>, <code>src/Mesh.h</code>)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="2-firmware-image-the-endf-trailer">2. Firmware image &amp; the <code>EndF</code> trailer</h2>
+<p>Every OTA-capable build appends a fixed <strong>56-byte</strong> <code>EndF</code> trailer to its flashed image so a running node
+can discover its own size <strong>and self-describing identity</strong> on any MCU (no linker symbols needed). Every
+field is always present at a constant offset. Implemented by <code>FirmwareInfo.cpp</code>; appended at build time by
+<code>tools/mota/pio_endf.py</code> (post-build hook).</p>
+<pre><code>flashed image = BODY (image bytes) || EndF trailer
+EndF trailer (fixed 56 bytes):
+  off 0   4   &quot;EndF&quot;        45 6E 64 46
+  off 4   4   body_len      uint32 LE - length of BODY (excludes the whole trailer)
+  off 8   8   body_hash     sha2-256:8 of BODY
+  off 16  4   fw_version    uint32 LE, packed MAJOR&lt;&lt;24|MINOR&lt;&lt;16|PATCH&lt;&lt;8|pre  (0 = unknown)
+  off 20  4   target_id     uint32 LE - sha2-256:4(pio_env): hardware + role + partition (fetch routing)
+  off 24  32  hw_id         NUL-padded ASCII hardware tag (brick-safety), e.g. &quot;RAK4631&quot; (&quot;&quot; = unknown)
+</code></pre>
+<ul>
+<li><strong>Self-describing identity.</strong> <code>pio_endf.py</code> uses <code>build.sh</code>'s <code>MOTA_TARGET_ID</code> when present (required for
+  virtual LoRa-OTA build names), otherwise it computes <code>target_id</code> from the PlatformIO env name. It reads
+  <code>hw_id</code> from <code>MOTA_HW_ID</code> and <code>fw_version</code>
+  from <code>FIRMWARE_VERSION</code>. The device reads them back (<code>ota_self_firmware()</code>), so a node's advertised
+  identity is correct regardless of how it was built - and the packaging tool reads them straight from a raw
+  <code>.bin</code> (no <code>--target-env</code>/<code>--fw-version</code> flags, no reliance on filenames; Section 9, Section 13). A dev build with no
+  dotted version simply carries <code>fw_version = 0</code> / empty <code>hw_id</code> (= unknown) - still a full 56-byte trailer.</li>
+<li><strong>Size discovery:</strong> scan flash from the partition top downward for the <code>EndF</code> marker; the byte before it
+  is the last BODY byte (the trailer is always 56 bytes). See <code>ota_self_firmware()</code>.</li>
+<li><strong>Delta base matching:</strong> a node's <code>body_hash</code> is read directly from its own <code>EndF</code>; a delta's <code>base_hash</code>
+  (Section 5) must equal it. <code>body_hash</code> is over BODY only.</li>
+<li><strong>No circularity:</strong> <code>EndF</code> hashes only the BODY, never itself.</li>
+</ul>
+<p>The "reconstructed image" referenced by the manifest is the full <code>BODY || EndF</code> (what gets flashed).</p>
+<h3 id="esp32-portable-app-slot-profile">ESP32 portable app-slot profile</h3>
+<p>ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
+LoRa OTA and carry <code>-ota-</code> in their filenames so they can seed a host folder over serial or TCP; they keep
+their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
+companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
+OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits <code>-full-ota-</code> and
+<code>-full-logging-ota-</code> variants with 100 contacts, 8 group channels, and a 16-frame offline queue. Except for
+the ESP32-C6 case below, every other ESP32 artifact, including room,
+sensor, and repeater roles, must fit the legacy slot from <code>0x10000</code> up to
+<code>0x150000</code> (<code>0x140000</code>, 1,310,720 bytes), including the 56-byte <code>EndF</code> trailer. The build checks both that
+limit and the target's actual app partition. The ESP32-C6 <code>no_external_sensors</code> OTA siblings are the narrow
+exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
+established target-specific 1920 KiB or larger A/B app layout and are checked against the actual app
+partition. For every standalone ESP32 and nRF52 repeater, <code>build.sh</code> also exposes an explicit
+<code>*_lora_ota_no_external_sensors</code> artifact: the ordinary repeater remains sensor-enabled, while that sibling
+disables optional external environmental-sensor drivers for LoRa distribution. Integrated GPS and other
+board-native telemetry remain enabled. ESP32 siblings retain the compact browser WiFi updater and use the
+full 254-entry neighbor table. RP2040 and STM32 targets are not offered because those platforms do not yet
+have a safe bootloader/apply path.</p>
+<p>Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
+keep MQTT/TLS, onboard GPS, and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, display
+support, and optional external sensor drivers. Their compact CLI keeps observer controls plus the radio,
+TX power, CAD, interference-threshold, AGC, repeat, and retained bridge controls. It uses UTC or fixed UTC/GMT
+offsets instead of the full named-timezone table. Built-in TLS presets keep their pinned CA roots; the 66 KB
+general CA bundle for custom TLS brokers is omitted, so portable observers use a built-in preset or a custom
+non-TLS broker. Size-constrained classic ESP32 observers without PSRAM may use Espressif's compact printf
+implementation from chip ROM while retaining the normal ESP-IDF C library and ABI. Generic ESP-IDF/mbedTLS
+error text keeps error codes and MQTT status available. Classic T-Beam observers retain AXP192/AXP2101 radio
+and GPS rail setup plus battery-voltage
+readings, but omit unrelated PMU policy. ESP-NOW bridge builds keep the ESP-NOW bridge, onboard GPS, and the
+same radio-capable compact CLI, but omit display support and optional external sensors. These reductions do
+not apply to companion builds. Ordinary repeater builds remain sensor-enabled; only explicitly named
+<code>*_lora_ota_no_external_sensors</code> siblings omit sensors for LoRa distribution.</p>
+<p>MQTT observer radio and bridge preferences use verified temporary files plus a recoverable backup. A reset
+during a settings save restores the last committed common preference image or publishes the completed new
+image; it does not leave a partially written <code>/com_prefs</code> file to fail on the next boot. A truncated legacy
+image is rejected before any partial radio or string fields are applied, then rewritten from safe defaults.</p>
+<p>Option 3 in <code>build.sh</code> also emits <code>*-full-ota-*</code> and <code>*-full-logging-ota-*</code> ESP32 artifacts for
+non-companion roles where the portable profile removes a compiled feature and for the constrained companion
+fallbacks described above. Menu option 8, or <code>build-full-esp32-firmwares</code>, builds the logging-off FULL
+artifacts from matching MQTT targets. Menu option 9, or <code>build-full-esp32-logging-firmwares</code>, builds the
+FULL logging artifacts from matching non-MQTT targets.
+FULL builds restore WebConfig, display support, optional external sensors, and the full role CLI and feature
+set,
+full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
+including room servers, sensors, observers, and bridges. They use expanded A/B partition
+tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB
+and 16 MiB boards. Explicit <code>*_lora_ota_no_external_sensors</code> targets are not duplicated; their ordinary
+repeater build is the FULL, sensor-enabled counterpart. The <code>*-full-logging-ota-*</code> profile enables USB
+debug and packet logging and explicitly disables MQTT. Install a matching
+<code>*-full-ota-*-merged.bin</code> or <code>*-full-logging-ota-*-merged.bin</code> over USB once to write the expanded partition
+table. After that, its matching non-merged FULL application image can be installed through USB, WiFi OTA,
+or LoRa OTA. Do not install a non-merged FULL image onto a node that still has its old partition table.</p>
+<blockquote>
+<p><strong>Implementer note:</strong> the bootloader (and any non-Arduino consumer) MUST locate the body extent by
+scanning for <code>EndF</code>, never by trusting a stored size - see the bootloader contract in Section 12.</p>
+</blockquote>
+<hr />
+<h2 id="3-the-mota-container">3. The <code>.mota</code> container</h2>
+<p>The distributed form (host-built, wire-transferred). Parsed by <code>mota_parse()</code> in <code>MotaContainer.cpp</code>.</p>
+<pre><code>off            size   field
+0              4      MAGIC = 6D 4F 54 41
+4              4      MOTA_TOTAL_SIZE  uint32 LE - total container bytes (incl. manifest, leaves[],
+                                       payload, trailer). Lets a node pre-reserve staging and compute
+                                       write_start = staging_region_end - MOTA_TOTAL_SIZE.
+8              M      MANIFEST         (Section 4; M = 197 fixed + leaves[], 4*BC; no length field - BC from payload_size)
+8 + M          P      PAYLOAD          (payload_size bytes; delta or full image)
+8 + M + P      5      TRAILER = 76 6B 34 39 36
+</code></pre>
+<p><code>MOTA_TOTAL_SIZE = 4 + 4 + M + P + 5</code>. The manifest <code>M</code> <strong>includes</strong> <code>leaves[]</code>; the manifest-minus-leaves
+prefix (<code>mfl</code>, sent over the wire as <code>OTA_MANIFEST</code>) is <code>[8, leaves_off)</code>.</p>
+<p><strong>Staged (in-flash) form.</strong> Written bottom-aligned so <code>TRAILER</code> ends at <code>staging_region_end</code>. Identical
+bytes, except the device mutates two regions in place (both NOR-safe, no re-erase): the <code>leaves[]</code> slots
+(filled as blocks arrive - Section 7) and the 4-byte <code>approval</code> field (on owner consent - Section 4.2). Everything else
+is immutable.</p>
+<hr />
+<h2 id="4-the-manifest">4. The manifest</h2>
+<p><strong>Fixed layout.</strong> Every field sits at a constant offset and is always present - <code>base_hash</code>,
+<code>signer_pubkey</code> and <code>signature</code> are zero-filled when not applicable (a full image / an unsigned container).
+Only <code>leaves[]</code> is variable (one 4-byte hash per block). So the manifest-minus-leaves (<code>mfl</code>) is <strong>always
+197 bytes</strong> and the parser is plain offset reads - no conditionals. Parsed by <code>mota_parse_manifest()</code>.</p>
+<pre><code>off  size   field            notes
+0    1      format_ver       = 0x02
+1    1      flags            bit0 FULL (0=delta/partial, 1=full image); bit1 SIGNED; bits2-7 reserved 0
+2    1      hash_algo        0x12 = sha2-256
+3    4      target_id        device/arch/role discriminator (Section 9)
+7    4      fw_version       MAJOR&lt;&lt;24 | MINOR&lt;&lt;16 | PATCH&lt;&lt;8 | pre   (comparable uint32)
+11   4      image_size       size of the reconstructed image (BODY||EndF)
+15   4      payload_size     PAYLOAD bytes in this container
+19   1      block_size_log2  e.g. 0x0A = 1024
+20   4      merkle_root      sha2-256:4 over PAYLOAD blocks (Section 6) - also the manifest_id
+24   32     image_hash       sha2-256:32 of the reconstructed image - SECURITY anchor
+56   1      codec_id         0=full/raw, 1=detools-sequential, 2=detools-in-place
+57   32     hw_id            NUL-padded ASCII hardware tag (e.g. &quot;RAK4631&quot;); same tag =&gt; bootable-compatible.
+                             SIGNED. Applier refuses a mismatch (brick-safety); empty on either side = skip.
+89   8      base_hash        sha2-256:8 of the BASE image's BODY (== that build's EndF.body_hash). 0 if FULL.
+97   32     signer_pubkey    Ed25519 public key. 0 if not SIGNED.
+129  64     signature        Ed25519 over manifest[0, 129). 0 if not SIGNED.
+193  4      approval         FF FF FF FF = not approved; 41 50 52 56 (&quot;APRV&quot;) = approved
+--- end of manifest-minus-leaves: mfl = 197 (constant); leaves_off = 8 + 197 = 205 in the container ---
+197  4*BC   leaves[]         BC = ceil(payload_size / 2^block_size_log2). sha2-256:4 each (the only variable field)
+</code></pre>
+<p>The signature always covers <code>manifest[0, 129)</code> (the head + <code>base_hash</code> + <code>signer_pubkey</code>). <code>approval</code> is
+outside the signed region so it can be flipped in place on consent without breaking the signature.</p>
+<p>Manifest-minus-leaves size (<code>mfl</code>) is a constant <strong>197 bytes</strong> for every container (full or delta, signed
+or unsigned). At 197 bytes the manifest exceeds one packet, so <code>OTA_MANIFEST</code> is always sent multi-fragment
+(Section 8.4, 2 fragments) and reassembled by the fetcher.</p>
+<h3 id="41-signed-region">4.1 Signed region</h3>
+<p><code>signature</code> covers manifest bytes <code>[0, 129)</code> - the head + <code>base_hash</code> + <code>signer_pubkey</code>. It does <strong>not</strong>
+cover <code>approval</code> or <code>leaves[]</code>:</p>
+<ul>
+<li><code>leaves[]</code> are verified against the signed <code>merkle_root</code> (Section 6), so they need no separate signature.</li>
+<li><code>approval</code> is device-local consent (Section 4.2), deliberately outside the signature.</li>
+</ul>
+<h3 id="42-the-approval-field">4.2 The <code>approval</code> field</h3>
+<ul>
+<li>Distributed and <strong>forced on ingest</strong> to <code>FF FF FF FF</code> (a peer can never pre-approve).</li>
+<li>The local owner's <code>ota applydelta</code> writes <code>41 50 52 56</code> (<code>"APRV"</code>) - a single NOR-safe write (only clears
+  bits from the erased word). Any partial/other value reads as not-approved (fail-safe).</li>
+<li>Bound to this image (lives in this <code>.mota</code>'s manifest, re-erased when a new <code>.mota</code> is staged).</li>
+<li>A <strong>consent</strong> marker, not a security primitive. Authenticity = <code>signature</code> + <code>image_hash</code> + <code>hw_id</code>.</li>
+</ul>
+<hr />
+<h2 id="5-payload-codecs-delta-base">5. Payload, codecs &amp; delta base</h2>
+<p><code>PAYLOAD</code> is either the full reconstructed image (<code>FULL</code>) or a delta (<code>!FULL</code>).</p>
+<table>
+<thead>
+<tr>
+<th><code>codec_id</code></th>
+<th>Meaning</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>full / raw</td>
+<td>PAYLOAD = reconstructed image (<code>BODY||EndF</code>). ESP32 A/B or the SD-backed MeshTower V2 target.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>detools <strong>sequential</strong></td>
+<td>random read of base + sequential write of result -&gt; ESP32 A-&gt;B inactive slot.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>detools <strong>in-place</strong></td>
+<td>bounded scratch; rewrites the app region in place -&gt; nRF52 single-slot.</td>
+</tr>
+</tbody>
+</table>
+<p>For deltas, <code>base_hash</code> = the base build's <code>EndF.body_hash</code> (sha2-256:8 of its BODY). A node applies a
+delta only if <code>base_hash</code> matches its own <code>EndF.body_hash</code>. After applying, the result MUST hash
+(sha2-256:32) to <code>image_hash</code> before it is booted - the hard security gate.</p>
+<p><strong>A fetcher only requests firmware it can apply.</strong> Each node declares the codec(s) it can apply
+(<code>set_apply_codec</code>/<code>set_apply_codec2</code>): ESP32 accepts <code>full</code> + <code>sequential</code> (+ <code>in-place</code>). Normal nRF52
+targets accept only <code>in-place</code> because internal flash cannot stage a full application image. The
+MeshTower V2 SD target accepts <code>full</code> + <code>in-place</code> because the card holds the container. A <code>.mota</code> with
+an unsupported codec is rejected at discovery time, before any blocks are requested. A manual pull to
+an external folder may accept other codecs because that path captures bytes and never installs them.</p>
+<p>Compression is internal to the detools patch and must be supported by the applier. Patches are produced by
+<strong>detools 0.53.0</strong> (<code>tools/mota</code> -&gt; <code>detools.create_patch</code>) and decoded on-device by detools' embeddable C
+decoder, vendored verbatim at <code>src/helpers/ota/detools/</code> (see its <code>README.meshcore.txt</code>). That build
+enables only the self-contained <code>NONE</code> + <code>CRLE</code> compressions (no malloc/liblzma/heatshrink), so MeshCore
+deltas use <code>--compression crle</code>. <strong>Do not reimplement the codec</strong> - use the vendored decoder.</p>
+<hr />
+<h2 id="6-merkle-tree-sha2-2564">6. Merkle tree (sha2-256:4)</h2>
+<p>Verifies each PAYLOAD block against the signed <code>merkle_root</code> <strong>before</strong> the whole payload exists, so
+corruption/forgery is localized to a block. Implemented in <code>MerkleTree.cpp</code>.</p>
+<ul>
+<li><strong>Blocks:</strong> PAYLOAD splits into <code>BC = ceil(payload_size / B)</code> blocks, <code>B = 2^block_size_log2</code> (default
+  1024). The last block is its real length (<strong>no zero padding</strong>).</li>
+<li><strong>Leaf:</strong> <code>leaves[i] = sha2-256:4( block_i_bytes )</code>.</li>
+<li><strong>Internal node:</strong> <code>node = sha2-256:4( left || right )</code> (4+4 input bytes).</li>
+<li><strong>Odd level:</strong> an odd count promotes the <strong>last node unchanged</strong> to the next level (no duplication).</li>
+<li><strong>Root:</strong> reduce until one node remains. <code>BC == 1</code> -&gt; root = <code>leaves[0]</code>. <code>BC == 0</code> is invalid.</li>
+</ul>
+<h3 id="61-proofs">6.1 Proofs</h3>
+<p>A proof for block <code>i</code> is the ordered list of sibling digests from leaf to root. Promoted levels contribute
+<strong>no</strong> element. Verification (needs <code>BC</code> to know the tree shape):</p>
+<pre><code>h = leaf_i ; idx = i ; n = BC ; p = 0
+while n &gt; 1:
+    if (n is odd) and (idx == n-1):        # this node was promoted
+        pass
+    else:
+        sib, side = proof[p] ; p += 1
+        h = sha2-256:4( sib || h ) if side==left else sha2-256:4( h || sib )
+    idx //= 2 ; n = (n + 1) // 2
+accept iff h == merkle_root and p == len(proof)
+</code></pre>
+<p>Over LoRa, <code>leaves[]</code> are <strong>omitted</strong> from the manifest transfer; a serving node computes a block's proof
+on demand from its stored <code>leaves[]</code> (<code>OTA_REQ_PROOF</code>/<code>OTA_PROOF</code>, Section 8.5), and the fetcher fills its own
+<code>leaves[i]</code> as each verified block lands.</p>
+<hr />
+<h2 id="7-block-availability-staging-resume">7. Block availability, staging &amp; resume</h2>
+<p>There is no separate availability structure. <strong>Block <code>i</code> is present &lt;=&gt; <code>leaves[i]</code> is non-erased</strong>
+(<code>!= FF FF FF FF</code>). Because <code>leaves[]</code> live in the staged flash region, availability <strong>survives reboot</strong>.</p>
+<p><strong>Commit order per block (crash-safe):</strong> (1) verify proof, (2) write block payload to its offset, (3) write
+<code>leaves[i]</code> <strong>last</strong>. A power loss before step 3 leaves the slot erased -&gt; the block is simply re-fetched
+(idempotent). On boot a node rebuilds an in-RAM present-bitmap by scanning <code>leaves[]</code>.</p>
+<p><strong>Resume (<code>OtaManager::resumeStaged</code> + <code>OtaStore::checkpoint</code>/<code>reopen</code>):</strong> an interrupted fetch resumes from
+the staged container after a reboot - re-parse the stored manifest, recompute geometry, count present
+blocks, continue fetching the holes (or jump straight to COMPLETE). The checkpoint cadence (persist progress
+every N committed blocks) is runtime-tunable (<code>ota config checkpoint &lt;N&gt;</code>, 0 = only finalized containers
+resume). Stores keep <code>leaves[]</code> in RAM until flush and never auto-GC, preserving resumable progress.</p>
+<p><strong>Flash-store note (RX-safe writes):</strong> a flash page-erase halts the CPU (~85 ms on nRF52) and starves LoRa
+RX, so the flash stores (<code>OtaStoreFlashNrf52</code>/<code>OtaStoreFlashEsp32</code>) <strong>coalesce writes to the erase unit</strong>
+(4 KB page / sector) and commit each once off the per-packet path - RAM stays O(one page), not O(image). A
+small delta that fits page 0 does zero flash I/O until COMPLETE.</p>
+<hr />
+<h2 id="8-lora-ota-protocol">8. LoRa OTA protocol</h2>
+<p>Carried in MeshCore packets with <strong><code>PAYLOAD_TYPE_OTA = 0x0C</code></strong>. Every OTA packet payload is:</p>
+<pre><code>[0]    ota_msg_type      (OtaMsgType, OtaFormat.h)
+[1..]  body              (fixed per type; encode/decode in OtaProtocol.cpp)
+</code></pre>
+<p>Message types:</p>
+<table>
+<thead>
+<tr>
+<th><code>ota_msg_type</code></th>
+<th>val</th>
+<th>routing</th>
+<th>purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OTA_ADV</code></td>
+<td>0x01</td>
+<td>flood</td>
+<td>tiny per-node beacon (discovery tier 1)</td>
+</tr>
+<tr>
+<td><code>OTA_QUERY</code></td>
+<td>0x02</td>
+<td>flood</td>
+<td>ask a source for its catalog (discovery tier 2)</td>
+</tr>
+<tr>
+<td><code>OTA_HAVE</code></td>
+<td>0x03</td>
+<td>flood</td>
+<td>the catalog reply (fragmented, digest-tagged)</td>
+</tr>
+<tr>
+<td><code>OTA_GET_MANIFEST</code></td>
+<td>0x04</td>
+<td>direct</td>
+<td>request a manifest's fragments (<code>want_mask</code>) by <code>manifest_id</code></td>
+</tr>
+<tr>
+<td><code>OTA_MANIFEST</code></td>
+<td>0x05</td>
+<td>direct</td>
+<td>the manifest-minus-leaves, fragmented</td>
+</tr>
+<tr>
+<td><code>OTA_REQ</code></td>
+<td>0x06</td>
+<td>direct</td>
+<td>request specific DATA fragments of one block (<code>want_mask</code>)</td>
+</tr>
+<tr>
+<td><code>OTA_DATA</code></td>
+<td>0x07</td>
+<td>direct</td>
+<td>one self-describing fragment of a block's data</td>
+</tr>
+<tr>
+<td><code>OTA_REQ_PROOF</code></td>
+<td>0x08</td>
+<td>direct</td>
+<td>request the merkle proof for one block</td>
+</tr>
+<tr>
+<td><code>OTA_PROOF</code></td>
+<td>0x09</td>
+<td>direct</td>
+<td>the merkle proof for one block</td>
+</tr>
+<tr>
+<td><code>OTA_GET_LEAVES</code></td>
+<td>0x0A</td>
+<td>direct</td>
+<td>request the target's <code>leaves[]</code> fragments (<code>want_mask</code>) - warm-start only</td>
+</tr>
+<tr>
+<td><code>OTA_LEAVES</code></td>
+<td>0x0B</td>
+<td>direct</td>
+<td>a fragment of the <code>leaves[]</code> array (for host-side seed leaf-diff)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>manifest_id</code></strong> = the manifest's <code>merkle_root</code> (4 bytes) - a compact content id present in every
+  transfer message, so a multi-mota server dispatches each request to the right image.</li>
+<li><strong>Priority:</strong> all OTA packets enqueue at <code>OTA_TX_PRIORITY = 250</code> (lowest). OTA never competes with mesh
+  traffic; on a busy node it is delayed indefinitely.</li>
+<li><strong>Reliability is <em>eventual</em>:</strong> the fetcher re-requests missing fragments/blocks after a timeout, possibly
+  from a different peer. No hard ACKs, no global ordering.</li>
+<li><strong>Relay:</strong> replies are flooded, so transparent relay needs no per-requester addressing, and the transfer
+  is trustless (the fetcher verifies every block against the signed root). Any neighbor may serve any
+  fragment it has. A repeater without <code>ENABLE_OTA</code> transports <code>PAYLOAD_TYPE_OTA</code> opaquely and does not need
+  the manager, staging store, installer, or destination bootloader.</li>
+<li><strong>Hop limit + duty cycle:</strong> OTA floods accumulate one path-hash per relay (the mesh's flood routing). A
+  node with the OTA manager <em>accepts</em> a packet only if it arrived within <code>ota config hops</code> hops (default 3;
+  <code>0</code> = direct only) and <em>relays</em> it only while still under that limit, appending its own hash. Relay-only
+  repeaters instead use their ordinary flood limits and forwarding filters. Relays are lowest-priority and
+  are skipped when the packet pool runs low (the source retries), so heavy OTA can never monopolise a
+  repeater's RAM or starve real traffic.</li>
+</ul>
+<h3 id="81-two-tier-discovery">8.1 Two-tier discovery</h3>
+<p>Because a node may serve <strong>many</strong> mOTAs (its own firmware plus an external folder - Section 10), discovery is split
+so the periodic beacon stays tiny regardless of catalog size:</p>
+<p><strong>Tier 1 - <code>OTA_ADV</code> beacon</strong> (10 bytes, constant). Flooded as a short burst at boot, then every
+<code>advert_mins</code> minutes (default 24h; runtime-tunable via <code>ota config advert</code>, <code>0</code> disables the periodic
+re-advertise). It is also emitted immediately whenever the served set changes (e.g. a <code>motatool</code> folder is
+attached/detached), so peers learn about newly-available firmware without waiting for the next interval:</p>
+<pre><code>seeder_id[4]    advertiser node id = pubkey[0:4]; the QUERY address + distinct-source id
+n_motas         uint8 - count of complete servable mOTAs (saturates at 255)
+set_digest[4]   sha2-256:4 over the SORTED set of served manifest_ids (see below)
+</code></pre>
+<p><code>set_digest</code> is a <strong>content hash of the offering</strong>, not a counter: canonical across nodes, and it changes
+iff the set of served mids changes. A peer that has already catalogued this <code>{seeder, set_digest}</code> ignores
+the beacon (steady state is query-free). For a single served mota, <code>set_digest = sha2-256:4(mid)</code>.</p>
+<p><strong>Tier 2 - <code>OTA_QUERY</code> -&gt; <code>OTA_HAVE</code></strong> (on interest only):</p>
+<pre><code>OTA_QUERY  (flood):  seeder_id[4]  set_digest[4]  filter_target(uint32) want_fragments(uint32)
+                     # filter_target 0 = everything; want_fragments 0 = every fragment
+OTA_HAVE   (flood):  seeder_id[4]  set_digest[4]  frag_idx(1) frag_total(1) n_rows(1)  rows[]
+  HaveRow (16 bytes, OTA_HAVE_ROW_BYTES): mid[4] target_id(4) fw_version(4) codec_id(1) flags(1) have_count(2)
+</code></pre>
+<p><code>have_count</code> is the number of blocks the source holds (<code>== block_count</code> for a complete offered image).
+Receivers do not advertise partial or completed downloads as new sources.</p>
+<p>A node interested in a source's offering schedules a QUERY; the source replies with its full catalog as
+<code>OTA_HAVE</code> rows (fragmented if they exceed one packet - 10 rows per fragment). A receiver marks the catalog
+complete only after all <code>frag_total</code> fragments arrive. If any are missing after the recovery timeout, it sends
+another QUERY whose <code>want_fragments</code> bitmap names only the holes. <code>want_fragments</code> is an append-only extension:
+an original 13-byte QUERY is still accepted and means "send every fragment." The heavy manifest is
+fetched per-mid only on commit (Section 8.3).</p>
+<p>Fragment numbers are canonical pages of the complete catalog sorted by <code>manifest_id</code>. <code>filter_target</code> may
+remove rows from a requested page (and can therefore produce an empty fragment), but it never renumbers pages
+or changes <code>frag_total</code>. This keeps missing-fragment recovery unambiguous when filtered and unfiltered queries
+for the same <code>{seeder, set_digest}</code> are overheard together.</p>
+<h3 id="82-anti-storm-mandatory-at-mesh-scale">8.2 Anti-storm (mandatory at mesh scale)</h3>
+<p>If 50 neighbours all queried a new beacon at once, the mesh would collapse. Mitigations (gossip/mDNS
+pattern), all in <code>OtaManager</code>:</p>
+<ul>
+<li><strong><code>OTA_HAVE</code> is flooded and digest-tagged.</strong> EVERY node that overhears it caches the rows <strong>passively</strong>
+  (keyed by <code>{seeder, set_digest}</code>) - no query of its own needed.</li>
+<li><strong>Jittered query:</strong> a peer needing a catalog schedules its <code>OTA_QUERY</code> after a random delay
+  <code>OTA_QUERY_MIN_MS (300) + rand(OTA_QUERY_SPREAD_MS (4000))</code>, derived from <code>id +/ digest +/ self</code>.</li>
+<li><strong>Overhear suppression:</strong> during the jitter window, overhearing another QUERY that covers the same scope,
+  or completing the HAVE fragment set for the same <code>{seeder, set_digest}</code>, cancels the pending query.</li>
+<li><strong>Per-source recovery:</strong> each seeder has independent query/retry state. One source cannot overwrite another
+  source's timer, and a partial reply requests only missing fragments after 15 seconds (five bounded retries,
+  then another source ADV or explicit <code>ota ls</code> can start a fresh series).</li>
+</ul>
+<p>Net effect: a digest change costs ~1 query + ~1 HAVE flood mesh-wide; a stable mesh is query-free.</p>
+<h3 id="83-fetch-handshake">8.3 Fetch handshake</h3>
+<pre><code>fetcher                                   server (any node that has the mid)
+  OTA_GET_MANIFEST(mid, want_mask)  &gt;     (want_mask=0xFFFF first; only missing fragments on retry)
+                               &lt;-------   OTA_MANIFEST(mid, frag_idx, frag_total, bytes)   x requested frags
+  (reassemble manifest, verify, compute geometry: BC, block_size, payload_size)
+  for each missing block:
+    OTA_REQ(mid, block_idx, want_mask) &gt;  (want_mask=all fragments first; only the holes on retry)
+                               &lt;-------   OTA_DATA(mid, block_idx, frag_off, data) x requested frags
+    (reassemble block from frag_off slices)
+    OTA_REQ_PROOF(mid, block_idx) ----&gt;
+                               &lt;-------   OTA_PROOF(mid, block_idx, n_proof, proof)
+    (verify proof vs merkle_root -&gt; write block -&gt; write leaves[i])
+  when all blocks present: verify full merkle_root + image_hash -&gt; COMPLETE
+</code></pre>
+<h3 id="84-message-bodies-transfer">8.4 Message bodies (transfer)</h3>
+<p>All offsets after the 1-byte type. Encoders/decoders in <code>OtaProtocol.cpp</code>; constants in <code>OtaManager.h</code>.</p>
+<pre><code>OTA_GET_MANIFEST:  manifest_id[4]  want_mask(uint16)   # bit k = send manifest fragment k; 0xFFFF = all
+OTA_MANIFEST:      manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]     # up to OTA_MF_FRAG=176 B/frag
+OTA_REQ:           manifest_id[4]  block_idx(uint16)  want_mask(uint16)    # bit k = send fragment k of block
+OTA_DATA:          manifest_id[4]  block_idx(uint16)  frag_off(uint16)  data[]   # up to OTA_FRAG_DATA=160 B
+OTA_REQ_PROOF:     manifest_id[4]  block_idx(uint16)
+OTA_PROOF:         manifest_id[4]  block_idx(uint16)  n_proof(1)  proof[]   # n_proof x 4 bytes
+OTA_GET_LEAVES:    manifest_id[4]  want_mask(uint16)   # bit k = send leaves fragment k; 0xFFFF = all
+OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up to OTA_LEAVES_FRAG=176 leaf bytes
+</code></pre>
+<ul>
+<li>
+<p><strong>Warm-start / leaf-diff (<code>OTA_GET_LEAVES</code>/<code>OTA_LEAVES</code>) - motatool folder-capture only.</strong> Capturing a
+  device's firmware into a <code>motatool serve</code> folder is slow (a full image is hundreds of blocks). Because
+  builds here are non-deterministic, you cannot reproduce the exact target on the host - but a <em>similar</em>
+  build (e.g. a fresh recompile) is ~99% identical. So <code>motatool serve --seed &lt;similar.mota&gt;</code> stages that
+  build's payload into the destination <code>.part</code>, and <code>ota pull &lt;#&gt; folder validate</code> makes the fetcher (1) bulk-
+  fetch the target's <code>leaves[]</code> via <code>OTA_GET_LEAVES</code>/<code>OTA_LEAVES</code> (bitmap-fragmented with a <code>want_mask</code>, same
+  anti-burst rule as <code>OTA_MANIFEST</code>), (2) recompute the merkle root from them and check it equals the
+  manifest root (authenticate), then (3) keep every seeded block whose leaf matches and pull full <code>OTA_DATA</code>
+  only for the blocks that differ. The <code>want_mask</code> is a fixed <strong>uint16</strong>, so <code>leaves[]</code> is capped at
+  <code>OTA_LEAVES_MAXFRAG=16</code> fragments (<code>OTA_DIFF_MAX_BLOCKS=704</code> blocks); larger images just fall back to a full
+  fetch. <strong>Normal P2P nodes never use this</strong> - they target only the blocks they want; the only always-on part
+  is answering <code>OTA_GET_LEAVES</code> with leaves the node already holds, so any node's firmware can be captured.</p>
+</li>
+<li>
+<p><strong>Block &lt;-&gt; fragments:</strong> a 1 KB block is split into self-describing <code>OTA_DATA</code> fragments. <code>frag_off</code> is the
+  byte offset of <code>data</code> within the block, so the global position is <code>block_idx*block_size + frag_off</code> -
+  a fragment is self-placing when returned by the source. The fetcher tracks a
+  per-block slice bitmap and reassembles before requesting the proof.</p>
+</li>
+<li><strong>Fragment-level requests (anti-deadlock + anti-congestion):</strong> <code>OTA_REQ</code>, <code>OTA_GET_MANIFEST</code>, and <code>OTA_QUERY</code>
+  carry fragment masks. For catalog discovery, <code>want_fragments</code> is a 32-bit bitmap and covers the protocol
+  maximum 255-row catalog (26 fragments at the current packet size). For block and manifest transfer, the
+  <code>want_mask</code> is 16 bits. A fetcher requests the full set on the first ask
+  (<code>(1&lt;&lt;nf)-1</code>, or <code>0xFFFF</code> before <code>frag_total</code> is known) and <strong>only the still-missing bits</strong> on any retry,
+  so recovering one lost fragment re-sends <em>one</em> fragment, not the whole block/manifest. This is essential on
+  half-duplex radios: re-requesting a whole multi-fragment burst let the periodic retry (a transmit) collide
+  with the tail of the in-flight burst and drop the same fragment forever - a hang. Requesting only the hole
+  removes the burst, so there is nothing to collide with. The block/manifest mask matches the 16-bit
+  reassembly bitmap (&lt;=16 fragments/block; 1 KB blocks = 7). <code>OTA_PROOF</code> is a single packet and needs no mask.</li>
+<li><strong>Data and proof are separate phases.</strong> <code>OTA_DATA</code> carries no proof; the proof is fetched once per block
+  via <code>OTA_REQ_PROOF</code>/<code>OTA_PROOF</code> after the block's data is complete.</li>
+</ul>
+<h3 id="85-sizing-against-max_packet_payload-184">8.5 Sizing against <code>MAX_PACKET_PAYLOAD = 184</code></h3>
+<table>
+<thead>
+<tr>
+<th>message</th>
+<th>fixed overhead</th>
+<th>payload/packet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OTA_DATA</code></td>
+<td>9 B (type+mid4+idx2+off2)</td>
+<td><code>OTA_FRAG_DATA = 160</code> -&gt; 7 frags per 1 KB block</td>
+</tr>
+<tr>
+<td><code>OTA_MANIFEST</code></td>
+<td>7 B</td>
+<td><code>OTA_MF_FRAG = 176</code> -&gt; signed manifest ~ 2 frags</td>
+</tr>
+<tr>
+<td><code>OTA_HAVE</code></td>
+<td>12 B</td>
+<td>10 rows x 16 B per fragment</td>
+</tr>
+<tr>
+<td><code>OTA_PROOF</code></td>
+<td>8 B</td>
+<td>up to ~44 sibling digests (&gt;&gt; any real tree)</td>
+</tr>
+</tbody>
+</table>
+<p>A served mota supports up to <code>OTA_MAX_BLOCK/4</code> leaves in the default 4 KB proof scratch (&lt;=1024 blocks ~ 1 MB
+payload); larger self-images pass a bigger scratch buffer.</p>
+<h3 id="86-temporary-radio-and-transfer-boundary">8.6 Temporary-radio and transfer boundary</h3>
+<p>OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
+its <code>tempradio</code> window is actually running. A receiver requests missing blocks in serial order from the offered
+firmware source. It never serves partial blocks. A normal install receiver never re-advertises its completed
+download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
+to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
+This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
+repeaters between them and persistent archive nodes to improve future availability.</p>
+<hr />
+<h2 id="9-identity-trust-versioning">9. Identity, trust &amp; versioning</h2>
+<ul>
+<li><strong><code>target_id</code></strong> (4 B): <code>sha2-256:4(pio_env_name)</code> (little-endian uint32). The env name uniquely captures
+  hardware <strong>and</strong> role/partition, so a node auto-fetches only matching firmware (a companion image is not
+  fetched onto a repeater even though it shares <code>hw_id</code>). It is <strong>self-described in the firmware's EndF</strong>
+  (Section 2, written by <code>pio_endf.py</code>) and read via <code>ota_self_firmware()</code>, so it is correct on any build;
+  <code>-D MOTA_TARGET_ID</code> / <code>MainBoard::getOtaTargetId()</code> is the fallback when no EndF identity is present.
+  <code>tools/mota</code> reads it from the firmware's EndF (or <code>--target-env</code>). A manual <code>ota pull</code>/<code>want</code> can override
+  target (deliberate role switch); the <code>hw_id</code> brick-safety gate (Section 4) still applies at apply time.</li>
+<li><strong><code>target_id</code> vs <code>hw_id</code></strong> - complementary, not redundant: <code>target_id</code> is the fetch-routing key
+  (hw + role + partition); <code>hw_id</code> is the human-readable brick-safety key (hardware only). Same board, two
+  roles =&gt; same <code>hw_id</code>, different <code>target_id</code>.</li>
+<li><strong>Naming a <code>target_id</code> locally:</strong> only the 4-byte <code>target_id</code> ever travels on the wire. To show <em>which</em>
+  board/role a target is, a node (and <code>motatool</code>) reverse-looks-it-up in <code>src/helpers/ota/OtaTargets.h</code> -
+  a generated <code>target_id -&gt; env-name</code> table covering every <code>ENABLE_OTA</code> env (<code>tools/mota/gen_targets.py</code>,
+  resolved from <code>pio project config</code>). So <code>ota ls</code> can render <code>[Heltec_v3_repeater]</code> for a neighbour's
+  beacon without the string being transmitted. Unknown ids show as <code>other hw</code> / <code>N/A</code>.</li>
+<li><strong><code>fw_version</code>:</strong> packed comparable uint32 (<code>MAJOR&lt;&lt;24 | MINOR&lt;&lt;16 | PATCH&lt;&lt;8 | pre</code>); also self-described
+  in EndF. <code>ota ls</code> decodes it for display and flags each update <code>[yours]</code> / <code>[other hw]</code> / <code>[?]</code> by
+  comparing the advertised <code>target_id</code> to the node's own.</li>
+<li><strong><code>hw_id</code>:</strong> 32-byte NUL-padded ASCII hardware tag inside the signed head. The applier refuses a <code>.mota</code>
+  whose <code>hw_id</code> differs from the device's own tag (empty on either side = permissive). Brick-safety
+  independent of signature.</li>
+<li><strong>Signing &amp; allowlist:</strong> a node keeps a runtime allowlist of trusted Ed25519 signer pubkeys (none embedded
+  in firmware; <code>ota key add/list/rm</code>). A <code>.mota</code> is eligible for <strong>auto-install</strong> only if signed by an
+  allowlisted key, the signature verifies, and <code>image_hash</code> matches; otherwise it is manual-apply only with
+  explicit confirmation. <strong>Transfer needs no trust</strong> - blocks are content-addressed against the signed root.</li>
+<li><strong>Policies (persisted):</strong> <code>autofetch</code> in {off, any, signed} (default off) gates automatic block fetching of
+  own-target adverts; <code>autoinstall</code> in {off, trusted} (default off) gates auto-apply of a COMPLETE signed +
+  allowlisted fetch. Conservative defaults: a fresh node discovers + announces but never fetches/installs
+  without operator intent.</li>
+<li><strong>Supersession:</strong> a newer version announced mid-download does not abort the in-progress transfer
+  (finish-current).</li>
+</ul>
+<hr />
+<h2 id="10-multi-mota-serve-the-external-folder-relay">10. Multi-mota serve &amp; the external "folder" relay</h2>
+<p>A node serves a <strong>set</strong> of mOTAs: its own firmware plus, optionally, an external folder of <code>.mota</code> files it
+relays without holding them in flash. To peers it simply "has N mOTAs"; the relay is trustless (fetchers
+verify everything). The serve side (<code>OtaManager</code>) keeps a lightweight registry of what it advertises and two
+resident "views": <code>view0</code> (its own firmware) and one on-demand view loaded from a source when a request
+targets an external mota. Every fetch message carries <code>manifest_id</code>, so dispatch is a registry lookup.</p>
+<p>The same host-folder link is also a <strong>pull destination</strong> (the reverse direction): <code>ota pull &lt;#&gt; folder</code>
+fetches a <code>.mota</code> off the mesh and streams it onto the host as <code>&lt;mid&gt;.mota</code> via the seeder STORAGE ops
+(<code>OP_STAT/BEGIN/WRITE/SREAD/FIN</code>, see <code>MotaSeederProto.h</code>), using a <code>FolderMotaStore</code> as the fetch's
+<code>OtaStore</code> instead of RAM/flash. This captures an exact copy of a device's firmware - e.g. to build a delta
+against firmware you don't have. Resume is bookkeeping-free: <code>BEGIN</code> 0xFF-fills the file and, on reconnect
+after a link drop (the fetch PAUSES, holding progress on the host - no RAM/flash fallback), <code>STAT</code>+<code>SREAD</code>
+let the fetcher recompute and refill only the missing blocks.</p>
+<h3 id="101-the-motasource-abstraction-otasourceh">10.1 The <code>MotaSource</code> abstraction (<code>OtaSource.h</code>)</h3>
+<p>Transport-agnostic provider of one or more complete <code>.mota</code> as random-access bytes. The same serve code
+drives USB-serial, BLE, a WiFi URL list, an NFS/samba mount, etc. - only <code>read()</code> differs.</p>
+<pre><code class="language-cpp">struct MotaDesc {                      // catalog metadata + region offsets (no whole image in RAM)
+  uint8_t mid[4]; uint32_t target_id, fw_version; uint8_t codec_id, flags;
+  uint32_t total_size, leaves_off, block_count, payload_off, payload_size;
+};
+class MotaSource {
+  virtual uint8_t count();                                  // # mOTAs offered
+  virtual bool    describe(uint8_t idx, MotaDesc&amp; out);     // metadata + offsets
+  virtual bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len);   // random-access bytes
+};
+</code></pre>
+<p>To serve an external mota the node reads its manifest-minus-leaves + <code>leaves[]</code> into RAM (&lt;=4 KB for &lt;=1024
+blocks) and streams payload blocks from the source on demand; proofs are generated from the read leaves.</p>
+<h3 id="102-the-mota-seeder-transport-motaseederprotoh">10.2 The <code>mota-seeder</code> transport (<code>MotaSeederProto.h</code>)</h3>
+<p>A <code>MotaSource</code> is fed by a host that serves a folder over the device's <strong>USB serial</strong> (the same console the
+CLI uses - no extra hardware) or, on an ESP32 WiFi companion or FULL ESP32 role, over <strong>WiFi (TCP)</strong>. The
+host is the
+standalone Rust tool <a href="https://github.com/vk496/motatool"><code>motatool</code></a> (<code>motatool serve --serial &lt;port&gt;</code> /
+<code>--tcp &lt;host[:port]&gt;</code>, which also builds + verifies + inspects <code>.mota</code>). The device only emits request frames <em>while
+actively serving a fetch</em>, and reads the reply synchronously, so over the shared USB console binary frames
+coexist with the text CLI/logs (resync on magic + checksum). Little-endian, XOR-checksummed:</p>
+<pre><code>request  (device -&gt; host):  'M' 'S'  op(1)  args...                 xsum(1 = XOR of op+args)
+response (host -&gt; device):  'm' 's'  op(1)  status(1)  payload...    xsum(1 = XOR of all prior)
+
+OP_COUNT     0x01   args: -            -&gt; payload: count(1)
+OP_DESCRIBE  0x02   args: idx(1)       -&gt; payload: MotaDesc wire (38 B)
+OP_READ      0x03   args: idx(1) off(4) len(2)  -&gt; payload: len bytes
+MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
+                      total_size(4) leaves_off(4) block_count(4) payload_off(4) payload_size(4)
+                      block_size_log2(1) reserved(3)
+status: 0 = OK, non-zero = error (out of range / past EOF).
+</code></pre>
+<p><strong>What to plug into <code>--serial</code>.</strong> Use the USB serial console of an OTA-enabled MeshCore node built with
+<code>OTA_FOLDER_SERIAL</code>. The node must have a working LoRa radio plus an
+<code>ota folder on</code> command; that command confirms it can host and advertise the folder. A <strong>KISS modem will not
+work</strong>: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI and <code>mota-seeder</code>
+request/response transport. An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
+source connection: use its dedicated seeder port with <code>motatool serve --tcp &lt;host&gt;:5001</code>.</p>
+<p>Device CLI: <code>ota folder on</code> (attach + announce), <code>ota folder</code> (list), <code>ota folder off</code>. Build flag
+<code>OTA_FOLDER_SERIAL</code> (default stream = console <code>Serial</code>; override <code>OTA_FOLDER_SERIAL_STREAM</code> + define
+<code>OTA_FOLDER_SERIAL_BEGIN</code> for a dedicated UART). ESP32 WiFi companions and FULL ESP32 roles run a
+<code>WiFiServer</code> on the <strong>dedicated seeder port</strong> (<code>OTA_SEEDER_TCP_PORT</code>, default <code>5001</code>) while WiFi is usable.
+On a companion it is separate from the app port (<code>TCP_PORT</code>, default <code>5000</code>); on infrastructure roles it is
+separate from WebConfig and browser OTA on port 80. The node auto-attaches the source when a seeder client
+connects and detaches when it closes (no <code>ota folder on</code> needed over TCP). An already-active serial folder
+causes a TCP client to be rejected instead of silently replacing it. Verified on hardware: a RAK4631
+relays a host folder to a
+Heltec V3 over one USB cable, and a host feeds a Heltec V3 over WiFi (<code>:5001</code>) while the companion serves a
+phone on <code>:5000</code> - every block merkle-checked.</p>
+<p><strong>Transport-agnostic by design.</strong> The request/response <em>semantics</em> (<code>COUNT</code> / <code>DESCRIBE(idx)</code> /
+<code>READ(idx, off, len)</code> over a folder catalog) are independent of the link. The 2-byte magic + XOR checksum +
+resync framing above exists for the shared USB-UART (an unframed byte stream); it is harmless over a
+reliable stream and the <strong>WiFi (TCP)</strong> transport reuses it as-is - both ends just treat the socket as a
+byte stream (on-device, <code>SerialMotaSource</code> runs verbatim over an Arduino <code>Stream</code>-compatible <code>WiFiClient</code>;
+<code>motatool</code>'s <code>TcpTransport</code> mirrors its <code>SerialTransport</code>). A future framed link such as <strong>BLE GATT</strong> (an
+Android phone relaying a folder) could carry the same ops with no magic/checksum at all - a request
+characteristic write delivers <code>op + args</code>, the reply notifies <code>status + payload</code>. <code>motatool</code> reflects this
+split: a transport-free <code>SeederCore</code> (the catalog logic) under a swappable framing/transport layer.</p>
+<hr />
+<h2 id="11-cli-surface-otaclicpp">11. CLI surface (<code>OtaCli.cpp</code>)</h2>
+<p>User-facing OTA data should travel via <code>CMD_OTA_*</code> companion binary frames; the text CLI below is
+debug/operator oriented and replies are <code>snprintf</code>-bounded into a 160-byte buffer.</p>
+<p>Commands take intuitive aliases (matched by the first word; see <code>is_cmd</code> in <code>OtaCli.cpp</code>) so they're easy
+to type and read - <code>status</code>/<code>neighbors</code>/<code>pull</code>/<code>drop</code>/<code>applydelta</code> are the canonical names, the aliases are
+the recommended user-facing forms. Output is plain-language (a user-facing guide lives at
+<a href="../ota_user_guide/">ota_user_guide.md</a>).</p>
+<pre><code>ota help | ? | h                   list the commands
+ota status | st  (or bare `ota`)   plain-language: running fw, the one fetch session (state/%/id), serving, keys
+ota ls | neighbors | nbrs | updates | n [page]   paged updates (queries sources; rows arrive async via OTA_HAVE)
+ota get | pull | download &lt;#|mid8&gt; fetch a chosen mOTA (manual; works regardless of autofetch)
+ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
+ota cancel | drop | stop           drop the current fetch session (frees the slot)
+ota announce | adv                 serve self + send a beacon now
+ota self | id                      print this firmware's EndF (body/image size, base_hash)
+ota folder | fold [on|off]         attach/detach an external .mota folder (host daemon) ; bare = list
+ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persisted policy
+ota key | keys [add|rm &lt;hex&gt;]      trusted signer allowlist ; bare = list
+ota dev ...                        bring-up helpers (stage/recv/serve/verify)
+</code></pre>
+<hr />
+<h2 id="12-apply-bootloader-contract">12. Apply &amp; bootloader contract</h2>
+<ul>
+<li><strong>ESP32 (A/B):</strong> applied in-firmware via the detools decoder into the inactive OTA slot
+  (<code>OtaApply.cpp::ota_apply_detools_mota</code> + <code>OtaStoreFlashEsp32</code>), then set-boot + reboot (power-safe,
+  rollback-capable). No bootloader changes. Erase ranges must be sector-aligned (4096).</li>
+<li><strong>nRF52 (single-slot):</strong> the running firmware <strong>never</strong> flashes the app. <code>ota applydelta</code> verifies fully
+  (<code>image_hash</code>, <code>base_hash</code>, signature/allowlist, <code>hw_id</code>), writes <code>approval = "APRV"</code>, then reboots into
+  the modified bootloader (<code>Adafruit_nRF52_Bootloader_OTAFIX</code>). The bootloader:</li>
+<li><strong>scans flash for <code>MAGIC</code></strong> to find the staged <code>.mota</code> (it must NOT trust any stored size),</li>
+<li>re-checks <code>TRAILER</code>, <code>image_hash</code>, <code>approval == "APRV"</code>, and that the delta's <code>base_hash</code> equals the
+     running firmware's <code>EndF.body_hash</code> (recomputed by scanning for <code>EndF</code> - never trust <code>bank_0_size</code>),</li>
+<li>applies the in-place codec over the app region and boots only if the result hashes to <code>image_hash</code>.</li>
+<li><strong>MeshTower V2 SD nRF52:</strong> the application stores a contiguous <code>/meshcore-ota.mota</code> on microSD and
+  publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
+  bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,
+  verifies the staged/full result hash, and never writes through <code>0xED000</code> where InternalFS begins.</li>
+</ul>
+<p>The signature proves author authenticity; <code>approval</code> proves local owner consent - both required to apply.</p>
+<blockquote>
+<p><strong>Bootloader testing note:</strong> always test apply with a <em>real different</em> image (base != target). A same-image
+(X-&gt;X) "delta" trivially reproduces the target and gives a false positive.</p>
+</blockquote>
+<hr />
+<h2 id="13-versioning-of-this-spec">13. Versioning of this spec</h2>
+<p><code>format_ver = 2</code>. A parser accepts exactly this value and rejects anything else - there is one container
+format, fixed-layout, and no compatibility shims to carry. If the format ever needs to change, bump
+<code>format_ver</code>; the multihash <code>hash_algo</code> separately allows swapping the digest family without a format
+bump. Unknown <code>codec_id</code> / <code>ota_msg_type</code> values are ignored (a node simply won't fetch what it can't apply).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

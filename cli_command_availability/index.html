@@ -1,0 +1,4512 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/cli_command_availability/">
+      
+      
+        <link rel="prev" href="../cli_build_matrix/">
+      
+      
+        <link rel="next" href="../cli_commands/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>CLI Command Availability Matrix - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli-command-availability-matrix" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI Command Availability Matrix
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#nrf52" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supplemental-command-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supplemental command notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supplemental command notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sensor-hardware-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sensor hardware summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#powerlog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        powerlog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stats-radio-diag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stats-radio-diag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#radiorxps-and-rxpswd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        radio.rxps and rxps.wd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebootinterval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reboot.interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sensor-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensor io
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttndiag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqttN.diag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttstats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqtt.stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttconfigvalid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqtt.config.valid
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsbundletest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tls.bundletest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manifest-ota-check-and-ota-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manifest ota check and ota update
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#nrf52" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supplemental-command-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supplemental command notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supplemental command notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sensor-hardware-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sensor hardware summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#powerlog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        powerlog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stats-radio-diag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stats-radio-diag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#radiorxps-and-rxpswd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        radio.rxps and rxps.wd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebootinterval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reboot.interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sensor-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensor io
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttndiag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqttN.diag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttstats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqtt.stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-mqttconfigvalid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get mqtt.config.valid
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tlsbundletest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tls.bundletest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manifest-ota-check-and-ota-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manifest ota check and ota update
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/cli_command_availability.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="cli-command-availability-matrix">CLI Command Availability Matrix</h1>
+<p>This page is the command-by-command companion to
+<a href="../cli_build_matrix/">CLI Availability by Firmware Build</a>. Each command name
+links to its detailed documentation.</p>
+<p>The tables cover the text administration CLI used by repeater, room-server,
+sensor, and bridge firmware. Companion firmware uses the companion protocol,
+KISS firmware uses framed KISS/TNC commands, and terminal-chat firmware has its
+own interface, so those build roles are not represented here.</p>
+<p>Build columns mean:</p>
+<ul>
+<li><strong>Standard</strong> - the ordinary non-MQTT artifact, without the <code>logging</code> or
+  explicit <code>ota</code> filename marker.</li>
+<li><strong>Logging</strong> - the ordinary non-MQTT <code>-logging-</code> artifact. Logging does not
+  remove commands by itself.</li>
+<li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. Its
+  optional external-sensor drivers are removed, but onboard GPS is retained.</li>
+<li><strong>MQTT portable</strong> - the size-reduced ESP32 MQTT observer for the legacy
+  application slot.</li>
+<li><strong>ESP-NOW portable</strong> - the size-reduced ESP32 ESP-NOW repeater bridge.</li>
+<li><strong>FULL MQTT</strong> - the expanded-partition ESP32 MQTT artifact with LoRa OTA and
+  the complete parser.</li>
+<li><strong>FULL logging</strong> - the expanded-partition ESP32 non-MQTT artifact with
+  logging, LoRa OTA, and the complete parser.</li>
+</ul>
+<p>Cell values mean:</p>
+<ul>
+<li><strong>Yes</strong> - the parser includes the command. The Scope column still applies.</li>
+<li><strong>No</strong> - the profile does not expose the command.</li>
+<li><strong>Feature</strong> - available only when the target compiles the feature or hardware
+  named in Scope.</li>
+<li><strong>Serial</strong> - available only from the local serial console.</li>
+<li><strong>PSRAM</strong> - available only on an MQTT target with PSRAM neighbor support.</li>
+<li><strong>Manifest</strong> - available only when the MQTT target defines
+  <code>OTA_MANIFEST_BASE</code>.</li>
+<li><strong>Limited</strong> - the family exists, but the limitation in Scope applies.</li>
+</ul>
+<p>Runtime state can still make an included command fail. Examples include no GPS
+fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
+<code>.mota</code> apply support.</p>
+<h2 id="nrf52">nRF52</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Command</th>
+<th>Scope</th>
+<th>Standard</th>
+<th>Logging</th>
+<th>LoRa OTA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#reboot-the-node"><code>reboot</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#power-off-the-node"><code>poweroff</code>; <code>shutdown</code></a></td>
+<td>Board power-off support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#enter-the-uf2-bootloader-nrf52-only"><code>uf2reset</code></a></td>
+<td>Local serial; supported UF2 boards</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#reset-the-clock-and-reboot"><code>clkreboot</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#sync-the-clock-with-the-remote-device"><code>clock sync</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#display-current-time-in-utc"><code>clock</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#set-the-time-to-a-specific-timestamp"><code>time &lt;epoch_seconds&gt;</code></a></td>
+<td>Clock only moves forward</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#send-a-flood-advert"><code>advert</code></a></td>
+<td>Advert-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#send-a-zero-hop-advert"><code>advert.zerohop</code></a></td>
+<td>Advert-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#erasefactory-reset"><code>erase</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Information</td>
+<td><a href="../cli_commands/#get-the-version"><code>ver</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Information</td>
+<td><a href="../cli_commands/#show-the-hardware-name"><code>board</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#memory"><code>memory</code></a></td>
+<td>ESP32 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#sensor-hardware-summary"><code>sensor</code></a></td>
+<td>Hardware wiring summary</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#powerlog"><code>powerlog</code></a></td>
+<td>Reset, shutdown, and boot-voltage summary</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#list-nearby-neighbors"><code>neighbors</code></a></td>
+<td>Role with a neighbor table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#remove-a-neighbor"><code>neighbor.remove &lt;pubkey_prefix&gt;</code></a></td>
+<td>Role with a mutable neighbor table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#discover-zero-hop-neighbors"><code>discover.neighbors</code></a></td>
+<td>Repeater; some MQTT room servers</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-psram-only"><code>discover.scopes</code></a></td>
+<td>MQTT observer with PSRAM</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#clear-stats"><code>clear stats</code></a></td>
+<td>All full-parser text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#system-stats---battery-uptime-queue-length-and-debug-flags"><code>stats-core</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors"><code>stats-radio</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="#stats-radio-diag"><code>stats-radio-diag</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#packet-stats---packet-counters-received-sent"><code>stats-packets</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#read-repeater-telemetry-history"><code>get telemetry.temp/volt/gps</code>; <code>set telemetry.gps</code></a></td>
+<td>Non-STM32 repeater; remote access requires administrator</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#logging"><code>log start</code>; <code>log stop</code>; <code>log erase</code></a></td>
+<td>Storage-backed roles retain data; other roles can return empty data</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#print-the-captured-log-to-the-serial-terminal"><code>log</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-radio-parameters"><code>get radio</code>; <code>set radio ...</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-transmit-power"><code>get tx</code>; <code>set tx &lt;dbm&gt;</code></a></td>
+<td>Board TX-power limits apply</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#change-the-radio-parameters-for-a-set-duration"><code>tempradio ...</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#schedule-radio-parameter-changes"><code>get/set/del radioat</code>; <code>get/set/del tempradioat</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
+<td><code>set</code> is local serial only</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141"><code>get/set radio.rxgain</code></a></td>
+<td>Supported radio</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards"><code>get/set radio.fem.rxgain</code></a></td>
+<td>Controllable LoRa FEM</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="#radio-rxps"><code>get/set radio.rxps</code>; <code>get rxps.wd</code></a></td>
+<td>RX power-saving support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-name"><code>get/set name</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-latitude"><code>get/set lat</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-longitude"><code>get/set lon</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-identity-private-key"><code>get/set prv.key</code></a></td>
+<td><code>get</code> is local serial only</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>password &lt;new_password&gt;</code></a></td>
+<td>Administrator</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-guest-password"><code>get/set guest.password</code></a></td>
+<td>Role with guest administration</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-owner-info"><code>get/set owner.info</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#fine-tune-the-battery-reading"><code>get/set adc.multiplier</code></a></td>
+<td>Board ADC override support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#send-a-repeater-flood-text"><code>send text.flood &lt;message&gt;</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-battery-alert-state"><code>get/set battery.alert</code>; <code>get battery.alert.region</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-battery-alert-thresholds"><code>get/set battery.alert.low</code>; <code>get/set battery.alert.critical</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#enable-or-disable-the-rx-inactivity-watchdog-repeater-only"><code>get/set rx.watchdog</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#enable-or-disable-the-nrf52-system-watchdog"><code>get/set system.watchdog</code></a></td>
+<td>nRF52</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-this-nodes-public-key"><code>get public.key</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-this-nodes-configured-role"><code>get role</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-power-saving-flag-repeater-only"><code>powersaving</code>; <code>powersaving on/off</code></a></td>
+<td>Supported repeater board</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="#reboot-interval"><code>get/set reboot.interval</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Clock sync</td>
+<td><a href="../cli_commands/#estimate-and-correct-repeater-time-after-startup"><code>get/set clock.sync.*</code>; <code>clock.sync.mesh now</code></a></td>
+<td>Repeater; <code>clock.sync.internet</code> needs MQTT</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-repeat-flag"><code>get/set repeat</code></a></td>
+<td>Forwarding-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-advert-path-hash-size"><code>get/set path.hash.mode</code></a></td>
+<td>Role that supports path-hash selection</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-loop-detection"><code>get/set loop.detect</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-retransmit-delay-factor-for-flood-traffic"><code>get/set txdelay</code></a></td>
+<td>All text CLI roles, including bridges</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-retransmit-delay-factor-for-direct-traffic"><code>get/set direct.txdelay</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#experimental-view-or-change-the-processing-delay-for-received-traffic"><code>get/set rxdelay</code></a></td>
+<td>All text CLI roles, including bridges</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-duty-cycle-limit"><code>get/set dutycycle</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-airtime-factor-duty-cycle-limit"><code>get/set af</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-local-interference-threshold"><code>get/set int.thresh</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#enable-or-disable-hardware-channel-activity-detection-cad"><code>get/set cad</code></a></td>
+<td>Radio CAD support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-agc-reset-interval"><code>get/set agc.reset.interval</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-radio-watchdog-interval-mqtt-observer-only"><code>get/set radio.watchdog</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#enable-or-disable-multi-acks-support"><code>get/set multi.acks</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-flood-advert-interval"><code>get/set flood.advert.interval</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-zero-hop-advert-interval"><code>get/set advert.interval</code></a></td>
+<td>Advert-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-a-flood-message"><code>get/set flood.max</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-an-unscoped-flood-message"><code>get/set flood.max.unscoped</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-an-advert-flood-message"><code>get/set flood.max.advert</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#forward-flood-group-data-packets-on-repeaters"><code>get/set flood.channel.data</code>; <code>get/set flood.channel.data.hops</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#block-selected-flood-channel-packets-on-repeaters"><code>get/set/del flood.channel.block*</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#force-a-transport-scope-onto-floods"><code>get/set/del flood.channel.scope*</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#require-valid-incoming-scopes-only-on-selected-channels"><code>get/set/del flood.channel.scope.require*</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#filter-flood-packets-by-payload-type-hop-count-and-path"><code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#moderate-flood-group-text-by-channel-sender-and-source-path"><code>get/set/del flood.moderation*</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../halo_keymind_settings/#direct-path-overrides"><code>get/set outpath</code></a></td>
+<td>Repeater remote-client context</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../halo_keymind_settings/#direct-path-overrides"><code>get/set altpath</code></a></td>
+<td>Repeater remote-client context</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#add-update-or-remove-permissions-for-a-companion"><code>setperm &lt;pubkey&gt; &lt;permissions&gt;</code></a></td>
+<td>Repeater, room server, or sensor</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#view-the-current-acl"><code>get acl</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#view-or-change-this-room-servers-read-only-flag"><code>get/set allow.read.only</code></a></td>
+<td>Room server</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#bulk-load-region-lists"><code>region load</code></a>; <a href="../cli_commands/#save-any-changes-to-regions-made-since-reboot"><code>region save</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#allow-a-region"><code>region allowf</code></a>; <a href="../cli_commands/#block-a-region"><code>region denyf</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#show-information-for-a-region"><code>region get</code></a>; <a href="../cli_commands/#view-all-regions"><code>region list</code></a>; <a href="../cli_commands/#dump-all-defined-regions-and-flood-permissions"><code>region</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#view-or-change-the-home-region-for-this-node"><code>region home</code></a>; <a href="../cli_commands/#view-or-change-the-default-scope-region-for-this-node"><code>region default</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#create-a-new-region"><code>region put</code></a>; <a href="../cli_commands/#define-region-hierarchy-single-line"><code>region def</code></a>; <a href="../cli_commands/#remove-a-region"><code>region remove</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-state"><code>get/set direct.retry</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-heard-table-gate"><code>get/set direct.retry.heard</code></a></td>
+<td>Role with basic retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-apply-a-retry-preset"><code>get/set retry.preset</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-count"><code>get/set flood.retry.count</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-path-gate"><code>get/set flood.retry.path</code></a>; <a href="../cli_commands/#view-or-change-the-group-data-flood-retry-path-gate"><code>get/set flood.retry.group.path</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-advert-handling"><code>get/set flood.retry.advert</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-target-prefixes"><code>get/set flood.retry.prefixes</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-ignored-prefixes"><code>get/set flood.retry.ignore</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-bridge-mode"><code>get/set flood.retry.bridge</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-bridge-buckets"><code>get/set flood.retry.bucket</code></a></td>
+<td>Repeater bridge retry support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-count"><code>get/set direct.retry.count</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-base-delay"><code>get/set direct.retry.base</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-step-delay"><code>get/set direct.retry.step</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-snr-margin"><code>get/set direct.retry.margin</code></a>; <a href="../cli_commands/#view-or-change-adaptive-direct-retry-coding-rate"><code>get/set direct.retry.cr</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-seed-or-clear-the-recent-repeater-table"><code>get/set/clear recent.repeater</code>; <code>get recent.repeaters</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#view-or-change-gps-state"><code>gps</code>; <code>gps on/off</code></a></td>
+<td>Compiled GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#sync-this-nodes-clock-with-gps-time"><code>gps sync</code></a></td>
+<td>Compiled GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#set-this-nodes-location-based-on-the-gps-coordinates"><code>gps setloc</code></a></td>
+<td>Compiled GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#view-or-change-the-gps-advert-policy"><code>gps advert [none/share/prefs]</code></a></td>
+<td>Compiled GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-or-change-telemetry-access-mode"><code>get/set telemetry.access</code></a></td>
+<td>Sensor-capable role</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-the-list-of-sensors-on-this-node"><code>sensor list [start]</code></a></td>
+<td>Compiled sensor manager; OTA omits external sensors</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-or-change-the-value-of-a-sensor"><code>sensor get</code>; <code>sensor set</code></a></td>
+<td>Compiled sensor setting; OTA omits external sensors</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="#sensor-io"><code>io [r/s/t]&lt;hex&gt;</code></a></td>
+<td>Simple sensor role with board GPIO support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-the-compiled-bridge-type"><code>get bridge.type</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#add-a-delay-to-packets-routed-through-this-bridge"><code>get/set bridge.delay</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-source-of-packets-bridged-to-the-external-interface"><code>get/set bridge.source</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-speed-of-the-bridge-rs-232-only"><code>get/set bridge.baud</code></a></td>
+<td>RS-232 bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-channel-used-for-bridging-espnow-only"><code>get/set bridge.channel</code></a></td>
+<td>ESP-NOW is ESP32 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#set-the-esp-now-secret"><code>get/set bridge.secret</code></a></td>
+<td>ESP-NOW is ESP32 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Board</td>
+<td><a href="../cli_commands/#view-the-bootloader-version-nrf52-only"><code>get bootloader.ver</code></a></td>
+<td>nRF52 bootloader metadata</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Board</td>
+<td><a href="../nrf52_power_management/#cli-commands"><code>get pwrmgt.support</code>; <code>get pwrmgt.source</code>; <code>get pwrmgt.bootreason</code>; <code>get pwrmgt.bootmv</code></a></td>
+<td>Board power-management implementation</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Ethernet</td>
+<td><a href="../cli_commands/#view-ethernet-connection-status"><code>eth.status</code></a></td>
+<td>Ethernet target</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Browser OTA</td>
+<td><a href="../cli_commands/#start-or-stop-an-over-the-air-ota-firmware-update"><code>start ota [ap]</code>; <code>stop ota</code></a></td>
+<td>ESP32 browser uploader</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>WebConfig</td>
+<td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>start webconfig [ap]</code>; <code>stop webconfig</code>; <code>get/set webui</code></a></td>
+<td>ESP32 WebConfig</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>WiFi</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
+<td>ESP32 WiFi</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>WiFi</td>
+<td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>get/set wifi.cli</code></a></td>
+<td>ESP32 WebConfig</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota help</code>; <code>ota ?</code>; <code>ota h</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota</code>; <code>ota status</code>; <code>ota st</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_user_guide/#1-see-what-im-running-and-whether-anything-is-going-on"><code>ota stats</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota ls</code>; <code>ota neighbors</code>; <code>ota nbrs</code>; <code>ota updates</code>; <code>ota n</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota get</code>; <code>ota pull</code>; <code>ota download</code></a></td>
+<td>LoRa OTA build; nRF52 installs in-place deltas</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota install</code>; <code>ota apply</code>; <code>ota applydelta</code></a></td>
+<td>Compatible bootloader and completed update</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota cancel</code>; <code>ota drop</code>; <code>ota stop</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota announce</code>; <code>ota adv</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota self</code>; <code>ota id</code></a></td>
+<td>Firmware with EndF trailer</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota folder</code>; <code>ota fold</code></a></td>
+<td><code>on</code> needs compiled folder transport</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota config</code>; <code>ota cfg</code>; <code>ota set</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota key</code>; <code>ota keys</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota dev ...</code></a></td>
+<td>Developer diagnostics</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-slot-diagnostics"><code>get mqttN.diag</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-stats"><code>get mqtt.stats</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-mqtt-rx-packet-uplinking"><code>get/set mqtt.rx</code></a>; <a href="../cli_commands/#view-or-change-mqtt-tx-packet-uplinking"><code>get/set mqtt.tx</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only"><code>get/set mqtt.neighbors.interval</code></a></td>
+<td>MQTT observer with PSRAM</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-the-ntp-server-mqtt-observer-only"><code>get/set mqtt.ntp</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#diagnose-ntp-server-connectivity-mqtt-observer-only"><code>get mqtt.ntp.diag</code></a></td>
+<td>Full MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
+<td>Legacy MQTT aliases</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
+<td>MQTT observer; <code>get</code> is local serial only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-config-valid"><code>get mqtt.config.valid</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>SNMP</td>
+<td><a href="../MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
+<td>MQTT target compiled with SNMP</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td><a href="../ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td><a href="../ALERTS.md#cli"><code>alert test [message]</code></a></td>
+<td>MQTT observer with configured alert channel</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td><a href="#tls-bundle-test"><code>tls.bundletest &lt;host&gt;</code></a></td>
+<td>MQTT target with embedded certificate bundle</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Manifest OTA</td>
+<td><a href="#manifest-ota"><code>ota check</code></a></td>
+<td>MQTT target with <code>OTA_MANIFEST_BASE</code></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Manifest OTA</td>
+<td><a href="#manifest-ota"><code>ota update</code></a></td>
+<td>MQTT target with <code>OTA_MANIFEST_BASE</code></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h2 id="esp32">ESP32</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Command</th>
+<th>Scope</th>
+<th>Standard</th>
+<th>Logging</th>
+<th>LoRa OTA</th>
+<th>MQTT portable</th>
+<th>ESP-NOW portable</th>
+<th>FULL MQTT</th>
+<th>FULL logging</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#reboot-the-node"><code>reboot</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#power-off-the-node"><code>poweroff</code>; <code>shutdown</code></a></td>
+<td>Board power-off support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#enter-the-uf2-bootloader-nrf52-only"><code>uf2reset</code></a></td>
+<td>nRF52 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#reset-the-clock-and-reboot"><code>clkreboot</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#sync-the-clock-with-the-remote-device"><code>clock sync</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#display-current-time-in-utc"><code>clock</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#set-the-time-to-a-specific-timestamp"><code>time &lt;epoch_seconds&gt;</code></a></td>
+<td>Clock only moves forward</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#send-a-flood-advert"><code>advert</code></a></td>
+<td>Advert-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#send-a-zero-hop-advert"><code>advert.zerohop</code></a></td>
+<td>Advert-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#erasefactory-reset"><code>erase</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Information</td>
+<td><a href="../cli_commands/#get-the-version"><code>ver</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Information</td>
+<td><a href="../cli_commands/#show-the-hardware-name"><code>board</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#memory"><code>memory</code></a></td>
+<td>ESP32 heap and PSRAM summary</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#sensor-hardware-summary"><code>sensor</code></a></td>
+<td>Hardware wiring summary</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
+<td><a href="#powerlog"><code>powerlog</code></a></td>
+<td>Reset-reason summary</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#list-nearby-neighbors"><code>neighbors</code></a></td>
+<td>Role with a neighbor table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#remove-a-neighbor"><code>neighbor.remove &lt;pubkey_prefix&gt;</code></a></td>
+<td>Role with a mutable neighbor table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#discover-zero-hop-neighbors"><code>discover.neighbors</code></a></td>
+<td>Repeater; some MQTT room servers</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Neighbors</td>
+<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-psram-only"><code>discover.scopes</code></a></td>
+<td>MQTT observer with PSRAM</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>PSRAM</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#clear-stats"><code>clear stats</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#system-stats---battery-uptime-queue-length-and-debug-flags"><code>stats-core</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors"><code>stats-radio</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="#stats-radio-diag"><code>stats-radio-diag</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#packet-stats---packet-counters-received-sent"><code>stats-packets</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Statistics</td>
+<td><a href="../cli_commands/#read-repeater-telemetry-history"><code>get telemetry.temp/volt/gps</code>; <code>set telemetry.gps</code></a></td>
+<td>Non-STM32 repeater; remote access requires administrator</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#logging"><code>log start</code>; <code>log stop</code>; <code>log erase</code></a></td>
+<td>Storage-backed roles retain data</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#print-the-captured-log-to-the-serial-terminal"><code>log</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-radio-parameters"><code>get radio</code>; <code>set radio ...</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-transmit-power"><code>get tx</code>; <code>set tx &lt;dbm&gt;</code></a></td>
+<td>Board TX-power limits apply</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#change-the-radio-parameters-for-a-set-duration"><code>tempradio ...</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#schedule-radio-parameter-changes"><code>get/set/del radioat</code>; <code>get/set/del tempradioat</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
+<td><code>set</code> is local serial only</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141"><code>get/set radio.rxgain</code></a></td>
+<td>Supported radio</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards"><code>get/set radio.fem.rxgain</code></a></td>
+<td>Controllable LoRa FEM</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="#radio-rxps"><code>get/set radio.rxps</code>; <code>get rxps.wd</code></a></td>
+<td>Full parser and RX power-saving support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-name"><code>get/set name</code></a></td>
+<td>All full-parser text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-latitude"><code>get/set lat</code></a></td>
+<td>All full-parser text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-longitude"><code>get/set lon</code></a></td>
+<td>All full-parser text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-identity-private-key"><code>get/set prv.key</code></a></td>
+<td><code>get</code> is local serial only</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>password &lt;new_password&gt;</code></a></td>
+<td>Administrator</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-guest-password"><code>get/set guest.password</code></a></td>
+<td>Role with guest administration</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-owner-info"><code>get/set owner.info</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#fine-tune-the-battery-reading"><code>get/set adc.multiplier</code></a></td>
+<td>Board ADC override support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#send-a-repeater-flood-text"><code>send text.flood &lt;message&gt;</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-battery-alert-state"><code>get/set battery.alert</code>; <code>get battery.alert.region</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-battery-alert-thresholds"><code>get/set battery.alert.low</code>; <code>get/set battery.alert.critical</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#enable-or-disable-the-rx-inactivity-watchdog-repeater-only"><code>get/set rx.watchdog</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#enable-or-disable-the-nrf52-system-watchdog"><code>get/set system.watchdog</code></a></td>
+<td>nRF52 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-this-nodes-public-key"><code>get public.key</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-this-nodes-configured-role"><code>get role</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-power-saving-flag-repeater-only"><code>powersaving</code>; <code>powersaving on/off</code></a></td>
+<td>Supported repeater board</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="#reboot-interval"><code>get/set reboot.interval</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Clock sync</td>
+<td><a href="../cli_commands/#estimate-and-correct-repeater-time-after-startup"><code>get/set clock.sync.*</code>; <code>clock.sync.mesh now</code></a></td>
+<td>Repeater; <code>clock.sync.internet</code> needs MQTT</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-repeat-flag"><code>get/set repeat</code></a></td>
+<td>Forwarding-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-advert-path-hash-size"><code>get/set path.hash.mode</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-this-nodes-loop-detection"><code>get/set loop.detect</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-retransmit-delay-factor-for-flood-traffic"><code>get/set txdelay</code></a></td>
+<td>All text CLI roles, including bridges</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-retransmit-delay-factor-for-direct-traffic"><code>get/set direct.txdelay</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#experimental-view-or-change-the-processing-delay-for-received-traffic"><code>get/set rxdelay</code></a></td>
+<td>All text CLI roles, including bridges</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-duty-cycle-limit"><code>get/set dutycycle</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-airtime-factor-duty-cycle-limit"><code>get/set af</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-local-interference-threshold"><code>get/set int.thresh</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#enable-or-disable-hardware-channel-activity-detection-cad"><code>get/set cad</code></a></td>
+<td>Radio CAD support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-agc-reset-interval"><code>get/set agc.reset.interval</code></a></td>
+<td>All text CLI roles</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-radio-watchdog-interval-mqtt-observer-only"><code>get/set radio.watchdog</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#enable-or-disable-multi-acks-support"><code>get/set multi.acks</code></a></td>
+<td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-flood-advert-interval"><code>get/set flood.advert.interval</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#view-or-change-the-zero-hop-advert-interval"><code>get/set advert.interval</code></a></td>
+<td>Full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-a-flood-message"><code>get/set flood.max</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-an-unscoped-flood-message"><code>get/set flood.max.unscoped</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#limit-the-number-of-hops-for-an-advert-flood-message"><code>get/set flood.max.advert</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#forward-flood-group-data-packets-on-repeaters"><code>get/set flood.channel.data</code>; <code>get/set flood.channel.data.hops</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#block-selected-flood-channel-packets-on-repeaters"><code>get/set/del flood.channel.block*</code></a></td>
+<td>Repeater, full common parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#force-a-transport-scope-onto-floods"><code>get/set/del flood.channel.scope*</code></a></td>
+<td>Repeater role handler</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#require-valid-incoming-scopes-only-on-selected-channels"><code>get/set/del flood.channel.scope.require*</code></a></td>
+<td>Repeater role handler</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#filter-flood-packets-by-payload-type-hop-count-and-path"><code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
+<td>Repeater role handler</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#moderate-flood-group-text-by-channel-sender-and-source-path"><code>get/set/del flood.moderation*</code></a></td>
+<td>Repeater role handler</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../halo_keymind_settings/#direct-path-overrides"><code>get/set outpath</code></a></td>
+<td>Repeater remote-client context</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../halo_keymind_settings/#direct-path-overrides"><code>get/set altpath</code></a></td>
+<td>Repeater remote-client context</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#add-update-or-remove-permissions-for-a-companion"><code>setperm &lt;pubkey&gt; &lt;permissions&gt;</code></a></td>
+<td>Repeater, room server, or sensor</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#view-the-current-acl"><code>get acl</code></a></td>
+<td>Local serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>No</td>
+<td>Serial</td>
+<td>Serial</td>
+<td>Serial</td>
+</tr>
+<tr>
+<td>ACL</td>
+<td><a href="../cli_commands/#view-or-change-this-room-servers-read-only-flag"><code>get/set allow.read.only</code></a></td>
+<td>Room server</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#bulk-load-region-lists"><code>region load</code></a>; <a href="../cli_commands/#save-any-changes-to-regions-made-since-reboot"><code>region save</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#allow-a-region"><code>region allowf</code></a>; <a href="../cli_commands/#block-a-region"><code>region denyf</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#show-information-for-a-region"><code>region get</code></a>; <a href="../cli_commands/#view-all-regions"><code>region list</code></a>; <a href="../cli_commands/#dump-all-defined-regions-and-flood-permissions"><code>region</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#view-or-change-the-home-region-for-this-node"><code>region home</code></a>; <a href="../cli_commands/#view-or-change-the-default-scope-region-for-this-node"><code>region default</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Regions</td>
+<td><a href="../cli_commands/#create-a-new-region"><code>region put</code></a>; <a href="../cli_commands/#define-region-hierarchy-single-line"><code>region def</code></a>; <a href="../cli_commands/#remove-a-region"><code>region remove</code></a></td>
+<td>Role with region storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-state"><code>get/set direct.retry</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-heard-table-gate"><code>get/set direct.retry.heard</code></a></td>
+<td>Role with basic retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-apply-a-retry-preset"><code>get/set retry.preset</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-count"><code>get/set flood.retry.count</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-path-gate"><code>get/set flood.retry.path</code></a>; <a href="../cli_commands/#view-or-change-the-group-data-flood-retry-path-gate"><code>get/set flood.retry.group.path</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-advert-handling"><code>get/set flood.retry.advert</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-target-prefixes"><code>get/set flood.retry.prefixes</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-ignored-prefixes"><code>get/set flood.retry.ignore</code></a></td>
+<td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-flood-retry-bridge-mode"><code>get/set flood.retry.bridge</code></a>; <a href="../cli_commands/#view-or-change-flood-retry-bridge-buckets"><code>get/set flood.retry.bucket</code></a></td>
+<td>Repeater bridge retry support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-count"><code>get/set direct.retry.count</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-base-delay"><code>get/set direct.retry.base</code></a>; <a href="../cli_commands/#view-or-change-direct-retry-step-delay"><code>get/set direct.retry.step</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-or-change-direct-retry-snr-margin"><code>get/set direct.retry.margin</code></a>; <a href="../cli_commands/#view-or-change-adaptive-direct-retry-coding-rate"><code>get/set direct.retry.cr</code></a></td>
+<td>Role with retry support</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Retry</td>
+<td><a href="../cli_commands/#view-seed-or-clear-the-recent-repeater-table"><code>get/set/clear recent.repeater</code>; <code>get recent.repeaters</code></a></td>
+<td>Repeater; portable ESP-NOW retains reads only</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Limited</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#view-or-change-gps-state"><code>gps</code>; <code>gps on/off</code></a></td>
+<td>Compiled onboard GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#sync-this-nodes-clock-with-gps-time"><code>gps sync</code></a></td>
+<td>Compiled onboard GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#set-this-nodes-location-based-on-the-gps-coordinates"><code>gps setloc</code></a></td>
+<td>Compiled onboard GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>GPS</td>
+<td><a href="../cli_commands/#view-or-change-the-gps-advert-policy"><code>gps advert [none/share/prefs]</code></a></td>
+<td>Compiled onboard GPS</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-or-change-telemetry-access-mode"><code>get/set telemetry.access</code></a></td>
+<td>Sensor-capable full parser</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-the-list-of-sensors-on-this-node"><code>sensor list [start]</code></a></td>
+<td>Compiled sensor manager; portable profiles omit external sensors</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="../cli_commands/#view-or-change-the-value-of-a-sensor"><code>sensor get</code>; <code>sensor set</code></a></td>
+<td>Compiled sensor setting; portable profiles omit external sensors</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Limited</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Sensors</td>
+<td><a href="#sensor-io"><code>io [r/s/t]&lt;hex&gt;</code></a></td>
+<td>Simple sensor role with board GPIO support</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-the-compiled-bridge-type"><code>get bridge.type</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#add-a-delay-to-packets-routed-through-this-bridge"><code>get/set bridge.delay</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-source-of-packets-bridged-to-the-external-interface"><code>get/set bridge.source</code></a></td>
+<td>Compiled bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-speed-of-the-bridge-rs-232-only"><code>get/set bridge.baud</code></a></td>
+<td>RS-232 bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-channel-used-for-bridging-espnow-only"><code>get/set bridge.channel</code></a></td>
+<td>ESP-NOW bridge</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#set-the-esp-now-secret"><code>get/set bridge.secret</code></a></td>
+<td>ESP-NOW bridge</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Board</td>
+<td><a href="../cli_commands/#view-the-bootloader-version-nrf52-only"><code>get bootloader.ver</code></a></td>
+<td>nRF52 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Board</td>
+<td><a href="../nrf52_power_management/#cli-commands"><code>get pwrmgt.support</code>; <code>get pwrmgt.source</code>; <code>get pwrmgt.bootreason</code>; <code>get pwrmgt.bootmv</code></a></td>
+<td>nRF52 only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Ethernet</td>
+<td><a href="../cli_commands/#view-ethernet-connection-status"><code>eth.status</code></a></td>
+<td>Ethernet target</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Browser OTA</td>
+<td><a href="../cli_commands/#start-or-stop-an-over-the-air-ota-firmware-update"><code>start ota [ap]</code>; <code>stop ota</code></a></td>
+<td>Compiled browser uploader</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>WebConfig</td>
+<td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>start webconfig [ap]</code>; <code>stop webconfig</code>; <code>get/set webui</code></a></td>
+<td>Compiled WebConfig</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>WiFi</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
+<td>MQTT WiFi, or standalone FULL WebConfig; standalone has no <code>get wifi.pwd</code></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>WiFi</td>
+<td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>get/set wifi.cli</code></a></td>
+<td>Compiled WebConfig</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota help</code>; <code>ota ?</code>; <code>ota h</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota</code>; <code>ota status</code>; <code>ota st</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_user_guide/#1-see-what-im-running-and-whether-anything-is-going-on"><code>ota stats</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota ls</code>; <code>ota neighbors</code>; <code>ota nbrs</code>; <code>ota updates</code>; <code>ota n</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota get</code>; <code>ota pull</code>; <code>ota download</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota install</code>; <code>ota apply</code>; <code>ota applydelta</code></a></td>
+<td>Compatible completed update</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota cancel</code>; <code>ota drop</code>; <code>ota stop</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota announce</code>; <code>ota adv</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota self</code>; <code>ota id</code></a></td>
+<td>Firmware with EndF trailer</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota folder</code>; <code>ota fold</code></a></td>
+<td><code>on</code> needs compiled serial or TCP folder transport</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota config</code>; <code>ota cfg</code>; <code>ota set</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota key</code>; <code>ota keys</code></a></td>
+<td>LoRa OTA build</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>LoRa OTA</td>
+<td><a href="../ota_protocol/#11-cli-surface-otaclicpp"><code>ota dev ...</code></a></td>
+<td>Developer diagnostics</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-slot-diagnostics"><code>get mqttN.diag</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-stats"><code>get mqtt.stats</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-mqtt-rx-packet-uplinking"><code>get/set mqtt.rx</code></a>; <a href="../cli_commands/#view-or-change-mqtt-tx-packet-uplinking"><code>get/set mqtt.tx</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only"><code>get/set mqtt.neighbors.interval</code></a></td>
+<td>MQTT observer with PSRAM</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>PSRAM</td>
+<td>No</td>
+<td>PSRAM</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#view-or-change-the-ntp-server-mqtt-observer-only"><code>get/set mqtt.ntp</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../cli_commands/#diagnose-ntp-server-connectivity-mqtt-observer-only"><code>get mqtt.ntp.diag</code></a></td>
+<td>Full MQTT observer; intentionally cut from portable</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
+<td>Legacy MQTT aliases</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
+<td>MQTT observer; <code>get</code> is local serial only</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><a href="#mqtt-config-valid"><code>get mqtt.config.valid</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>SNMP</td>
+<td><a href="../MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
+<td>MQTT target compiled with SNMP</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td><a href="../ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
+<td>MQTT observer</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td><a href="../ALERTS.md#cli"><code>alert test [message]</code></a></td>
+<td>MQTT observer with configured alert channel</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td><a href="#tls-bundle-test"><code>tls.bundletest &lt;host&gt;</code></a></td>
+<td>MQTT target with embedded certificate bundle</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>No</td>
+<td>Feature</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Manifest OTA</td>
+<td><a href="#manifest-ota"><code>ota check</code></a></td>
+<td>MQTT target with <code>OTA_MANIFEST_BASE</code></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Manifest</td>
+<td>No</td>
+<td>Manifest</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Manifest OTA</td>
+<td><a href="#manifest-ota"><code>ota update</code></a></td>
+<td>MQTT target with <code>OTA_MANIFEST_BASE</code></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Manifest</td>
+<td>No</td>
+<td>Manifest</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h2 id="supplemental-command-notes">Supplemental command notes</h2>
+<p>These short entries cover implemented commands that do not yet have their own
+section in the primary command reference.</p>
+<h3 id="memory"><code>memory</code></h3>
+<p>ESP32 only. Prints free heap, minimum heap, largest allocation, queue depth,
+internal heap, and PSRAM totals.</p>
+<h3 id="sensor-hardware-summary"><code>sensor</code> hardware summary</h3>
+<p>Prints the configured I2C pins and GPS serial pins. This is a wiring/build
+diagnostic, distinct from <code>sensor list</code>, <code>sensor get</code>, and <code>sensor set</code>.</p>
+<h3 id="powerlog"><code>powerlog</code></h3>
+<p>Prints the last reset reason. nRF52 also prints the captured shutdown reason and
+boot voltage.</p>
+<h3 id="stats-radio-diag"><code>stats-radio-diag</code></h3>
+<p>Local-serial diagnostic that prints the extended radio diagnostic counters.</p>
+<p><a id="radio-rxps"></a></p>
+<h3 id="radiorxps-and-rxpswd"><code>radio.rxps</code> and <code>rxps.wd</code></h3>
+<p><code>get radio.rxps</code> reports RX power-saving state and timing.
+<code>set radio.rxps ...</code> changes that configuration. <code>get rxps.wd</code> reports the soft
+and hard RX power-saving watchdog counters.</p>
+<p><a id="reboot-interval"></a></p>
+<h3 id="rebootinterval"><code>reboot.interval</code></h3>
+<p><code>get reboot.interval</code> shows the scheduled reboot interval. Use
+<code>set reboot.interval &lt;hours&gt;</code> for 1-255 hours, or
+<code>set reboot.interval 0</code> to disable it.</p>
+<p><a id="sensor-io"></a></p>
+<h3 id="sensor-io">Sensor <code>io</code></h3>
+<p>The simple-sensor role exposes its board GPIO word as hexadecimal. <code>io</code> reads
+it; <code>io &lt;hex&gt;</code> replaces it; and <code>io r&lt;hex&gt;</code>, <code>io s&lt;hex&gt;</code>, or <code>io t&lt;hex&gt;</code>
+clear, set, or toggle selected bits.</p>
+<p><a id="mqtt-slot-diagnostics"></a></p>
+<h3 id="get-mqttndiag"><code>get mqttN.diag</code></h3>
+<p>Prints the runtime diagnostic summary for MQTT slot N, including its connection
+state and failure history.</p>
+<p><a id="mqtt-stats"></a></p>
+<h3 id="get-mqttstats"><code>get mqtt.stats</code></h3>
+<p>Prints the MQTT bridge runtime statistics summary.</p>
+<p><a id="mqtt-config-valid"></a></p>
+<h3 id="get-mqttconfigvalid"><code>get mqtt.config.valid</code></h3>
+<p>Reports whether the saved MQTT configuration has the minimum values needed to
+run.</p>
+<p><a id="tls-bundle-test"></a></p>
+<h3 id="tlsbundletest"><code>tls.bundletest</code></h3>
+<p><code>tls.bundletest &lt;host[:port]|url&gt;</code> tests the embedded TLS certificate bundle
+against a remote host without changing the MQTT configuration.</p>
+<p><a id="manifest-ota"></a></p>
+<h3 id="manifest-ota-check-and-ota-update">Manifest <code>ota check</code> and <code>ota update</code></h3>
+<p>On MQTT targets with <code>OTA_MANIFEST_BASE</code>, <code>ota check</code> fetches and checks the
+target manifest. <code>ota update</code> downloads and applies the compatible update
+selected by that manifest.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

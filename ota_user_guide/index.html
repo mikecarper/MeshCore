@@ -1,0 +1,1699 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_user_guide/">
+      
+      
+        <link rel="prev" href="../ota_protocol/">
+      
+      
+        <link rel="next" href="../packet_format/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Updating your node over the air (OTA) - user guide - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#updating-your-node-over-the-air-ota-user-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Updating your node over the air (OTA) - user guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-important-part-first-its-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The important part first: it's safe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-talk-to-your-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to talk to your node
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common tasks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-see-what-im-running-and-whether-anything-is-going-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. See what I'm running and whether anything is going on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-find-updates-available-near-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Find updates available near me
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-download-an-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Download an update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-install-a-downloaded-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Install a downloaded update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-if-something-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. If something goes wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-let-it-update-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: let it update automatically
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-only-trust-updates-from-specific-people" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: only trust updates from specific people
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharing-updates-with-others-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing updates with others (advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharing updates with others (advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#relay-a-folder-of-firmware-from-a-computer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relay a folder of firmware from a computer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#everyone-helps-share" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everyone helps share
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-firmware-files-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where firmware files come from
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-few-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A few terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-important-part-first-its-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The important part first: it's safe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-talk-to-your-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to talk to your node
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common tasks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-see-what-im-running-and-whether-anything-is-going-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. See what I'm running and whether anything is going on
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-find-updates-available-near-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Find updates available near me
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-download-an-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Download an update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-install-a-downloaded-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Install a downloaded update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-if-something-goes-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. If something goes wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-let-it-update-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: let it update automatically
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-only-trust-updates-from-specific-people" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: only trust updates from specific people
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharing-updates-with-others-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing updates with others (advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharing updates with others (advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#relay-a-folder-of-firmware-from-a-computer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relay a folder of firmware from a computer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#everyone-helps-share" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Everyone helps share
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-firmware-files-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where firmware files come from
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-few-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A few terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_user_guide.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="updating-your-node-over-the-air-ota-user-guide">Updating your node over the air (OTA) - user guide</h1>
+<p>This guide is for <strong>node operators</strong>: how to update your MeshCore device's firmware over the radio, in
+plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
+install it. (For the technical wire format, see <a href="../ota_protocol/">the OTA protocol spec</a>.)</p>
+<p>LoRa OTA download and installation are present only in supported Keymind artifacts whose filename contains
+<code>-ota-</code>. Use an <code>-ota-</code> build on the source and receiver. Intermediate repeaters do not need OTA-enabled
+firmware: current repeater builds transport OTA floods opaquely, subject to their normal forwarding filters,
+duplicate checks, and flood limits. OTA radio traffic is accepted, generated, and relayed only while
+<code>tempradio</code> is actually running on that node. Every source, receiver, and intermediate repeater must therefore
+have an overlapping temporary-radio window.</p>
+<p>The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
+North American node currently configured for 909.950 MHz, run this on every participating node:</p>
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
+</code></pre>
+<p>Use the node's current permitted regional frequency in place of <code>909.950</code> when necessary.</p>
+<blockquote>
+<p><strong>Can my node install the update?</strong> Choose a supported repeater artifact carrying the <code>-ota-</code> filename stamp.
+LoRa OTA firmware is available for supported <strong>ESP32</strong> boards and nRF52 repeater targets. Every nRF52
+installation also requires the OTAFIX bootloader built for that exact board; having an OTA-capable
+application image alone is not enough. An intermediate repeater only relays packets and needs neither the
+<code>-ota-</code> image nor OTAFIX. Check the bootloader release for an exact board match before attempting an update.</p>
+</blockquote>
+<p>The following nRF52 repeater targets gained firmware-side LoRa OTA support in this release without losing
+their normal external-sensor support:</p>
+<ul>
+<li>Heltec Mesh Solar, T1, and Tower V2</li>
+<li>Keepteen LT1, LilyGo T-Impulse Plus, Mesh Pocket, and Nano G2 Ultra</li>
+<li>Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110</li>
+</ul>
+<p>The full-sensor <code>RAK_4631_repeater</code> image is too large for the safe nRF52 in-place update limit. Use
+<code>RAK_4631_repeater_lora_ota_no_external_sensors</code> when LoRa OTA is required. That target removes optional
+external environmental/GPS sensor packages, but retains the RAK4631's built-in battery-voltage reading,
+battery telemetry, and <code>battery.alert</code> behavior.</p>
+<hr />
+<h2 id="the-important-part-first-its-safe">The important part first: it's safe</h2>
+<ul>
+<li><strong>Nothing installs by itself.</strong> Your node can <em>discover</em> and <em>download</em> an update in the background, but
+  it only <strong>installs</strong> when you say so (unless you deliberately turn on auto-install - see below).</li>
+<li><strong>Bad downloads can't sneak in.</strong> Every piece of the firmware is checked against a cryptographic
+  fingerprint as it arrives, and the whole image is verified again before install. A corrupt or tampered
+  download is rejected, not installed.</li>
+<li><strong>You choose who to trust.</strong> Updates can be <em>signed</em> by their author. You can tell your node to only
+  auto-install firmware signed by keys you've added.</li>
+<li><strong>It won't disrupt your mesh.</strong> OTA traffic is always the <strong>lowest priority</strong> - your node only spends
+  spare airtime on it. Messages and routing always come first; a busy node simply updates later. Think of
+  it as <em>"eventually upgradable."</em></li>
+<li><strong>It can recover.</strong> If an install ever fails, the node falls back to a safe recovery mode (you can
+  re-flash a known-good firmware over USB) - it won't be left bricked.</li>
+</ul>
+<hr />
+<h2 id="how-to-talk-to-your-node">How to talk to your node</h2>
+<p>Connect to your node's <strong>console</strong> - usually a USB serial terminal at <strong>115200 baud</strong> (or whatever tool
+you already use to manage the node). You type <code>ota ...</code> commands and the node replies in plain words.</p>
+<p>The commands have short, friendly names (and most accept aliases, so you don't have to remember exact
+spelling): type <strong><code>ota help</code></strong> any time to see the list, or just <strong><code>ota</code></strong> for a status summary.</p>
+<hr />
+<h2 id="common-tasks">Common tasks</h2>
+<h3 id="1-see-what-im-running-and-whether-anything-is-going-on">1. See what I'm running and whether anything is going on</h3>
+<pre><code>ota status
+</code></pre>
+<p>Shows your current firmware version, your node's update "target" (its hardware/role id), and whether a
+download is in progress.</p>
+<p>For a denser admin view - your firmware's content id (<code>mid</code>) <strong>and</strong> its body hash, the fingerprint of the
+set you're serving, live download progress, and the current policy - use:</p>
+<pre><code>ota stats
+</code></pre>
+<p>On a remote node this is <strong>admin-only</strong> (the remote command console requires the admin password) - send it
+from the app's repeater command screen, or the WiFi/serial OTA console.</p>
+<h3 id="2-find-updates-available-near-me">2. Find updates available near me</h3>
+<pre><code>ota ls
+ota ls 2                 # page 2 when more than two updates are available
+</code></pre>
+<p>Your node asks around and lists the firmware updates other nodes nearby are offering, in plain words -
+each with a <strong>number</strong>, its version, whether it's a full image or a small delta, how many nodes have it,
+and how recently it was seen. For example:</p>
+<pre><code>Updates 1/1 (2 src) - `ota get &lt;#&gt;`:
+ 1) v1.2.3 delta [yours] 3n 5s
+ 2) v1.2.0 full [other hw] 1n 12s [downloading]
+</code></pre>
+<p>Each row shows the version, full-vs-delta, <strong>whether it fits your node</strong>, how many nodes have it, and how
+long ago it was seen. The fit marker:</p>
+<ul>
+<li><strong>[yours]</strong> - built for your exact hardware <strong>and</strong> role; safe to install.</li>
+<li><strong>[other hw]</strong> - a different board or role (e.g. a companion image, or another board). Don't install it.</li>
+<li><strong>[?]</strong> - can't tell (a build with no target id set, e.g. a bare IDE build rather than a release build).</li>
+</ul>
+<p>Run it again after a few seconds - discovery happens in the background, so the list fills in. Nothing is
+downloaded yet; this is just looking around. Two updates fit in each remote CLI reply; use <code>ota ls 2</code>,
+<code>ota ls 3</code>, and so on for later pages. The displayed update numbers remain global across pages.
+(<code>ota neighbors</code> / <code>ota updates</code> also work.)</p>
+<h3 id="3-download-an-update">3. Download an update</h3>
+<p>Pick one from the list by its <strong>number</strong>, and say <strong>where</strong> to put it:</p>
+<pre><code>ota pull 1 flash            # stage it in this node's flash, to install here
+ota pull 1 folder           # capture it onto a connected motatool folder as &lt;id&gt;.mota (don't install here)
+ota pull 1 folder validate  # same capture, warm-started from a motatool --seed build (much faster; below)
+</code></pre>
+<p>The destination is required - <code>ota pull 1</code> on its own just shows the choices. <strong><code>flash</code></strong> is always
+available (stage here, then <code>ota install</code>). <strong><code>folder</code></strong> appears only while a <code>motatool serve</code> link is
+attached (it shows the link, e.g. <code>folder: tcp 192.168.4.5</code>); it streams the firmware straight onto the
+host folder - nothing is staged on this node. That's how you grab an <strong>exact copy of another device's
+firmware</strong> off the mesh (to a <code>.mota</code> file) so you can later build a <em>delta</em> against firmware you don't
+otherwise have. (<code>ota get</code> is an alias.)</p>
+<p><strong><code>validate</code> (warm-start, advanced).</strong> Capturing a full image over the radio is slow. If you have a
+<em>similar</em> build on the computer (e.g. a fresh recompile of the same firmware), run motatool with
+<code>--seed &lt;that.mota&gt;</code> and add <strong><code>validate</code></strong>: the node fetches just the target's block fingerprints, keeps
+every block your seed already matches, and pulls over the radio only the handful that actually differ -
+turning a ~30-minute capture into seconds. The result is still a byte-exact, verified copy of the target.</p>
+<p><em>Where the seed comes from:</em> it is the <strong><code>--seed &lt;file&gt;</code> you pass to <code>motatool serve</code></strong> - <strong>not</strong> a file you
+drop into the capture (<code>--dir</code>) folder, which is only the destination and starts empty. There is exactly one
+configured seed. When you run <code>... folder validate</code>, the node asks motatool to begin the capture and motatool
+stamps that seed's payload into the fresh <code>.part</code> in the same step - so it is always the file you named, with
+no guessing. <strong><code>validate</code> is the switch:</strong> a plain <code>folder</code> pull ignores any seed and fetches from scratch;
+re-running a <code>validate</code> pull re-begins fresh (it never resumes a stale partial). Nothing about the seed is
+trusted - every kept block is checked against the target's own fingerprints, so a mismatched or missing seed
+just means those blocks are fetched over the radio (correct result, only slower).</p>
+<p>The node fetches from one source, <strong>at low priority</strong>, one block at a time. Mesh repeaters may carry the
+packets, but only while their temporary-radio windows are active. Check progress with <code>ota status</code>.</p>
+<p>If a <code>folder</code> pull loses its link mid-transfer, <code>ota status</code> shows <strong>paused</strong> - the host keeps the
+partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
+falls back to flash. To <strong>stop</strong> a download you no longer want:</p>
+<pre><code>ota cancel
+</code></pre>
+<h3 id="4-install-a-downloaded-update">4. Install a downloaded update</h3>
+<p>Once <code>ota status</code> shows the download is <strong>ready to install</strong>:</p>
+<pre><code>ota install
+</code></pre>
+<p>The node verifies the firmware one last time, and if everything checks out it installs it and <strong>reboots
+into the new version</strong>. If the check fails, it tells you why and does <strong>not</strong> install. (If you haven't
+added the signer's key, an unsigned/untrusted image will only install with this explicit command - never
+automatically.)</p>
+<p>After it reboots, run <code>ota status</code> to confirm the new version.</p>
+<h3 id="5-if-something-goes-wrong">5. If something goes wrong</h3>
+<ul>
+<li>A download that stalls or gets interrupted just <strong>resumes</strong> later, or you can <code>ota cancel</code> and try again.</li>
+<li>If an <strong>install</strong> fails, the node won't boot a broken image - it lands in <strong>recovery mode</strong>:</li>
+<li><strong>nRF52:</strong> it appears as a USB drive; drag a known-good firmware <code>.uf2</code> for that exact board onto it
+    to recover.</li>
+<li><strong>ESP32:</strong> it keeps the previous firmware in the other slot and rolls back.</li>
+<li>When in doubt, you can always re-flash over USB the normal way.</li>
+</ul>
+<hr />
+<h2 id="optional-let-it-update-automatically">Optional: let it update automatically</h2>
+<p>By default your node only <em>discovers</em> updates - it won't download or install on its own. If you want more
+automation (e.g. for a remote node you can't easily reach), you can opt in. These settings are saved.</p>
+<pre><code>ota config autofetch any        # auto-DOWNLOAD any compatible update for this node (still won't install)
+ota config autofetch signed     # auto-download only signed updates
+ota config autofetch off        # back to manual (default)
+
+ota config autoinstall trusted  # auto-INSTALL a downloaded update IF it's signed by a key you trust
+ota config autoinstall off      # never auto-install (default)
+
+ota config advert 1440          # re-advertise every N minutes while temp radio is running
+ota config advert 0             # only advertise when a temp-radio window starts
+
+ota config hops 3               # how far OTA travels: accept from / relay up to N repeater hops (default 3)
+ota config hops 0               # only exchange OTA with directly-connected nodes (never relay)
+
+ota config                      # show the current settings
+</code></pre>
+<p>Recommended for most people: leave both <strong>off</strong> and update by hand. Use <code>autoinstall trusted</code> only once
+you've added the signer's key (next section) and you trust them to push updates unattended.</p>
+<p>The MeshTower V2 SD OTA target has a separate, default-on <strong>archive</strong> policy. It saves all mOTAs it sees
+to the SD card so the repeater can seed them later; this does not install them and does not change the
+install-oriented <code>autofetch</code> default above. Use <code>ota cache</code> for status and <code>ota cache off</code> or
+<code>ota config cache off</code> to stop new archive captures. Already cached files remain available to peers.
+Manual <code>ota pull</code> commands take priority and an interrupted archive capture resumes later.
+See <a href="../ota_meshtower_v2_sdcard/#preload-many-motas-from-a-computer">Preload many mOTAs from a computer</a>
+for the required <code>/mota/&lt;manifest-id&gt;.mota</code> filenames and the complete TempRadio seeding workflow.</p>
+<hr />
+<h2 id="optional-only-trust-updates-from-specific-people">Optional: only trust updates from specific people</h2>
+<p>If you'll use auto-install, tell your node which signing keys to trust. The firmware author shares their
+<strong>public</strong> key (a hex string); you add it:</p>
+<pre><code>ota key add &lt;public-key-hex&gt;    # trust this signer
+ota key list                    # show trusted signers
+ota key rm &lt;public-key-hex&gt;     # stop trusting one
+</code></pre>
+<p>Only updates signed by a trusted key are eligible for auto-install. Manual <code>ota install</code> still lets you
+install anything yourself, on your own responsibility.</p>
+<hr />
+<h2 id="sharing-updates-with-others-advanced">Sharing updates with others (advanced)</h2>
+<h3 id="relay-a-folder-of-firmware-from-a-computer">Relay a folder of firmware from a computer</h3>
+<p>If your node is connected to a computer (e.g. a gateway on a Raspberry Pi), it can <strong>hand out</strong> a whole
+folder of firmware files to the mesh - without storing them itself. Useful for seeding a new release to a
+remote area.</p>
+<ol>
+<li>Put the firmware files (<code>.mota</code> files - see below) in a folder on the computer.</li>
+<li>Install the helper tool once - the standalone <code>motatool</code> CLI (<a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>) -
+   then point it at your node and the folder - over the node's <strong>USB serial</strong>, or over <strong>WiFi</strong> if it is
+   an ESP32 WiFi companion or FULL ESP32 node:
+   <code>git clone https://github.com/vk496/motatool &amp;&amp; cargo install --path ./motatool
+   # over USB serial:
+   motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
+   # ...or over WiFi: the seeder is on dedicated TCP port 5001:
+   motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v</code>
+   It answers the node's requests; your node then advertises those updates to neighbours, who can
+   <code>ota get</code> them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
+   Details: <a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>.)</li>
+</ol>
+<p>To stop, just stop the daemon - over WiFi the node auto-detaches when the connection closes; over USB you
+can also run <code>ota folder off</code> on the node. <code>ota folder</code> on its own lists what your node is offering.
+On a FULL repeater or room server, run <code>start webconfig</code> first if WiFi is not
+already active. Other FULL roles with browser OTA support can use the
+<code>MeshCore-OTA</code> access point from <code>start ota</code> and connect to
+<code>192.168.4.1:5001</code>. Every LoRa participant still needs an overlapping
+<code>tempradio</code> window.</p>
+<h3 id="everyone-helps-share">Everyone helps share</h3>
+<p>You don't have to be a gateway to help. Once <strong>any</strong> node finishes downloading an update, it automatically
+offers it to <em>its</em> neighbours too. So a new firmware spreads outward node-to-node, instead of everyone
+hammering the one node that had it first - and no node is ever overloaded, because all of this stays
+lowest-priority.</p>
+<hr />
+<h2 id="where-firmware-files-come-from">Where firmware files come from</h2>
+<p>OTA distributes <strong><code>.mota</code></strong> files - a packaged, verifiable firmware image (full image or a small "delta"
+that only contains what changed). You get them by:</p>
+<ul>
+<li><strong>Downloading a build.</strong> This fork publishes a rolling <strong><code>dev-latest</code></strong> release on GitHub with the
+  current firmware for many boards, each accompanied by a <code>.full.mota</code> and a tiny <code>.delta.mota</code>. Grab the
+  one for your board to test.</li>
+<li><strong>Building your own</strong> with the <code>mota</code> packaging tool - see <a href="../tools/mota/README.md">tools/mota/README.md</a>
+  (this is for people distributing updates, not everyday operators).</li>
+</ul>
+<hr />
+<h2 id="quick-reference">Quick reference</h2>
+<table>
+<thead>
+<tr>
+<th>I want to...</th>
+<th>Command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>List all commands</td>
+<td><code>ota help</code></td>
+</tr>
+<tr>
+<td>See my firmware + any download</td>
+<td><code>ota status</code> (or just <code>ota</code>)</td>
+</tr>
+<tr>
+<td>Admin: ids/hashes + serving + policy</td>
+<td><code>ota stats</code> (admin-only remotely)</td>
+</tr>
+<tr>
+<td>Find updates nearby</td>
+<td><code>ota ls</code></td>
+</tr>
+<tr>
+<td>Download update #1 for installation</td>
+<td><code>ota get 1 flash</code></td>
+</tr>
+<tr>
+<td>Cancel a download</td>
+<td><code>ota cancel</code></td>
+</tr>
+<tr>
+<td>Install a finished download</td>
+<td><code>ota install</code></td>
+</tr>
+<tr>
+<td>Turn on auto-download</td>
+<td><code>ota config autofetch any</code></td>
+</tr>
+<tr>
+<td>Turn on auto-install (trusted only)</td>
+<td><code>ota config autoinstall trusted</code></td>
+</tr>
+<tr>
+<td>Trust a signer</td>
+<td><code>ota key add &lt;hex&gt;</code></td>
+</tr>
+<tr>
+<td>Relay a folder (gateway)</td>
+<td><code>ota folder on</code> + the seeder daemon</td>
+</tr>
+<tr>
+<td>List what I'm offering</td>
+<td><code>ota folder</code></td>
+</tr>
+</tbody>
+</table>
+<p>(Older names still work too: <code>neighbors</code>/<code>updates</code> = <code>ls</code>, <code>pull</code> = <code>get</code>, <code>applydelta</code>/<code>apply</code> = <code>install</code>, <code>drop</code>/<code>stop</code> = <code>cancel</code>.)</p>
+<hr />
+<h2 id="a-few-terms">A few terms</h2>
+<ul>
+<li><strong>Firmware</strong> - the software running your node. Updating it can add features or fix bugs.</li>
+<li><strong><code>.mota</code></strong> - a packaged firmware update file, with built-in integrity checks.</li>
+<li><strong>Target</strong> - your node's hardware + role identity. Your node only auto-fetches updates built for the
+  same target, so it won't grab firmware meant for a different board.</li>
+<li><strong>Delta</strong> - a small update containing only the changes from your current firmware (faster to send than a
+  full image). Your node rebuilds the complete firmware from it and verifies the result before installing.</li>
+<li><strong>Signed</strong> - the update carries the author's cryptographic signature, so you can verify who made it.</li>
+</ul>
+<p>For the full technical details (the file format and the radio protocol), see
+<a href="../ota_protocol/">the OTA protocol spec</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

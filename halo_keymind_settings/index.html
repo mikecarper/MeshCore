@@ -1,0 +1,1903 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/halo_keymind_settings/">
+      
+      
+        <link rel="prev" href="../gps_tracking/">
+      
+      
+        <link rel="next" href="../kiss_modem_protocol/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Halo and Keymind Branch Settings - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#halo-and-keymind-branch-settings" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Halo and Keymind Branch Settings
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#added-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-keymind-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other Keymind Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#battery-alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Battery Alerts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recent-repeater-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recent Repeater Table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-path-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Path Overrides
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-retry-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Retry Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flood-and-advert-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flood And Advert Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#north-south-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        North South Buckets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#added-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-keymind-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other Keymind Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#battery-alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Battery Alerts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recent-repeater-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recent Repeater Table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-path-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Path Overrides
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-retry-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Retry Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flood-and-advert-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flood And Advert Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#north-south-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        North South Buckets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/halo_keymind_settings.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="halo-and-keymind-branch-settings">Halo and Keymind Branch Settings</h1>
+<p>This file covers only CLI settings and helper commands added by the Halo or
+Keymind branches. Use <code>docs/cli_commands.md</code> for the general MeshCore CLI.
+See <a href="../flood_filtering/">Repeater Flood Filtering and Moderation</a> for a focused
+filter setup and troubleshooting guide.</p>
+<h2 id="quick-start">Quick Start</h2>
+<pre><code class="language-text">set retry.preset rooftop
+set direct.retry.heard on
+set flood.retry.advert off
+set flood.retry.bridge off
+set flood.retry.prefixes none
+set flood.retry.ignore none
+</code></pre>
+<p>Then verify:</p>
+<pre><code class="language-text">get retry.preset
+get direct.retry.heard
+get flood.retry.advert
+get flood.retry.prefixes
+get flood.retry.ignore
+</code></pre>
+<p>Use prefixes from the analyzer or neighbors list or <code>get recent.repeater</code> after the repeater has been online for a few hours.</p>
+<h2 id="common-examples">Common Examples</h2>
+<p>Disable retrying advert packets:</p>
+<pre><code class="language-text">set flood.retry.advert off
+get flood.retry.advert
+</code></pre>
+<p>Ignore a repeater as a successful flood retry echo:
+Use this if you have a car repeater and a house repeater; have the house ignore the car.</p>
+<pre><code class="language-text">set flood.retry.ignore 71CE82,C7618C
+get flood.retry.ignore
+</code></pre>
+<p>Only accept specific downstream relays as flood retry success:
+You're in a hole and need to hit a mountain top repeater to get out; keep trying till one you see one of these send out your packet.</p>
+<pre><code class="language-text">set flood.retry.prefixes A58296,860CCA,425E5C
+get flood.retry.prefixes
+</code></pre>
+<p>Bridge two groups of repeaters:</p>
+<pre><code class="language-text">set flood.retry.bridge on
+set flood.retry.bucket 1 71CE82,C7618C
+set flood.retry.bucket 2 BEEBB0,425E5C
+get flood.retry.bucket.1
+get flood.retry.bucket.2
+</code></pre>
+<p>Return to simple non-bridge flood retry:</p>
+<pre><code class="language-text">set flood.retry.bridge off
+set flood.retry.prefixes none
+set flood.retry.ignore none
+</code></pre>
+<h2 id="added-settings">Added Settings</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it does</th>
+<th>How to use</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.temp</code>, <code>telemetry.volt</code>, <code>telemetry.gps</code></td>
+<td>Records 30-minute whole-degree MCU temperature and battery samples for seven days. GPS defaults to three days, or requests seven days at startup on onboard-GPS sensor builds. Runtime GPS retention can be <code>1</code>-<code>30</code> days and is reduced if needed to retain 2 KB of free memory. Pages are 1-based and newest first. History and runtime sizing reset on reboot.</td>
+<td><code>get telemetry.temp [page]</code>, <code>get telemetry.volt [page]</code>, <code>get telemetry.gps [page]</code>, <code>set telemetry.gps &lt;1-30&gt;</code></td>
+<td><code>set telemetry.gps 30</code></td>
+</tr>
+<tr>
+<td><code>battery.alert</code></td>
+<td>Sends opt-in, region-scoped low-battery warnings to <code>#repeaters</code> after 30 minutes of uptime.</td>
+<td><code>get battery.alert</code>, <code>get battery.alert.region</code>, <code>set battery.alert on [region]</code>, <code>set battery.alert off</code></td>
+<td><code>set battery.alert on sea</code></td>
+</tr>
+<tr>
+<td><code>battery.alert.low</code></td>
+<td>Warning threshold percentage. Must be greater than <code>battery.alert.critical</code>.</td>
+<td><code>get battery.alert.low</code>, <code>set battery.alert.low &lt;1-100&gt;</code></td>
+<td><code>set battery.alert.low 20</code></td>
+</tr>
+<tr>
+<td><code>battery.alert.critical</code></td>
+<td>Critical threshold percentage. Critical and warning alerts use the same 12-hour resend cooldown.</td>
+<td><code>get battery.alert.critical</code>, <code>set battery.alert.critical &lt;0-99&gt;</code></td>
+<td><code>set battery.alert.critical 10</code></td>
+</tr>
+<tr>
+<td><code>recent.repeater</code></td>
+<td>Shows, searches, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. Search results include the last-recorded age. Entries older than 24 hours are removed by a three-hour sweep.</td>
+<td><code>get recent.repeater [page]</code>, <code>get recent.repeaters search &lt;2|4|6 hex&gt; [page]</code>, <code>set recent.repeater &lt;prefix&gt; &lt;snr_db&gt;</code>, <code>clear recent.repeater</code></td>
+<td><code>get recent.repeaters search A1B2</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.data</code></td>
+<td>Turns forwarding of flood <code>GRP_DATA</code> channel packets on or off. With the default <code>on</code>, <code>GRP_DATA</code> repeats normally even when <code>flood.channel.block.hops</code> is set.</td>
+<td><code>get flood.channel.data</code>, <code>set flood.channel.data on/off</code></td>
+<td><code>set flood.channel.data off</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.data.hops</code></td>
+<td>Separate hop gate used only when <code>flood.channel.data</code> is <code>off</code>; <code>all</code> blocks <code>GRP_DATA</code> at any hop count, <code>1</code>-<code>7</code> repeats at that hop count or lower and blocks longer paths.</td>
+<td><code>get flood.channel.data.hops</code>, <code>set flood.channel.data.hops &lt;all|1-7&gt;</code></td>
+<td><code>set flood.channel.data.hops 7</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.block</code></td>
+<td>Blocks selected flood <code>GRP_TXT</code>/<code>GRP_DATA</code> channels when the key validates the packet. New repeater block lists start with editable/deletable <code>#wardriving h=4</code>. Add <code>h=&lt;all|1-7|default&gt;</code> for a per-channel hop override.</td>
+<td><code>get flood.channel.block</code>, <code>set flood.channel.block[.n] &lt;key|#channel&gt; [name] [h=...]</code>, <code>del flood.channel.block[.n]</code></td>
+<td><code>set flood.channel.block #wardriving h=4</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.block.hops</code></td>
+<td>Limits keyed channel-block matches to short flood paths. <code>all</code> blocks matching packets at any hop count; <code>1</code>-<code>7</code> repeats packets at that hop count or lower and blocks longer matches. This does not restrict unkeyed <code>GRP_DATA</code>; use <code>flood.channel.data.hops</code> for that.</td>
+<td><code>get flood.channel.block.hops</code>, <code>set flood.channel.block.hops &lt;all|1-7&gt;</code></td>
+<td><code>set flood.channel.block.hops 3</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.scope</code></td>
+<td>Adds a transport-region scope to received unscoped floods or replaces the scope of already-scoped floods. By default, a changed packet bypasses inbound <code>rxdelay</code> and is forwarded at the highest outbound queue priority with zero initial <code>txdelay</code>, so the selected scope can win at the next hop. <code>tx=slow</code> uses an effective inbound <code>rxdelay</code> base of <code>max(2, configured rxdelay * 2)</code>, retains normal queue priority, and forces the maximum <code>txdelay</code> factor of <code>2.0</code>; its actual randomized transmit delay ranges from zero through ten packet airtimes. <code>path=blacklist</code> and <code>path=bucket:&lt;1-6&gt;</code> make a row path-qualified; bridge buckets remain usable while bridge retry is off. An already-matching scope is a no-op. Exact channel keys beat <code>txt:*</code>; path-qualified rows beat the ordinary channel fallback. <code>login:*</code> covers the remote-login family, and <code>other:*</code> covers every remaining flood type except TRACE, including OTA. TRACE remains unchanged across scope boundaries. ACL permission <code>4</code> can manage the table.</td>
+<td><code>get flood.channel.scope[.n]</code>, <code>set flood.channel.scope[.n] &lt;channel|txt:*|login:*|other:*&gt; &lt;region&gt; [path=blacklist|path=bucket:1-6] [tx=slow]</code>, <code>del flood.channel.scope.&lt;n&gt;|all</code></td>
+<td><code>set flood.channel.scope public east path=bucket:1</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.scope.require</code></td>
+<td>Switches group-channel region enforcement to opt-in when the table has entries. Listed authenticated <code>GRP_TXT</code>/<code>GRP_DATA</code> channels must arrive already scoped to a locally allowed region; unscoped, unknown, or denied incoming scopes are dropped before any rewrite can rescue them. Unlisted group channels bypass only the region gate and retain all other forwarding controls. An empty table preserves global region behavior; non-channel payloads are unchanged. ACL permission <code>4</code> can manage the table.</td>
+<td><code>get flood.channel.scope.require[.n]</code>, <code>set flood.channel.scope.require[.n] &lt;public|#channel|key&gt;</code>, <code>del flood.channel.scope.require.&lt;n&gt;|all</code></td>
+<td><code>set flood.channel.scope.require #bot</code></td>
+</tr>
+<tr>
+<td><code>flood.filter</code></td>
+<td>Persistent repeater-only rules for flood routes <code>0x00</code>/<code>0x01</code>, selected by payload type, optional received hop count/range (omitted means <code>all</code>), and optional unordered <code>path=blacklist</code>. The separate blacklist stores up to 255 full 3-byte repeater IDs on ESP32 and 18 on other builds; the path condition qualifies on at least one exact 3-byte hit, at least two 2-byte-prefix hits, and never on 1-byte paths. Rows normally drop matching retransmissions; <code>scope=&lt;name&gt;</code> instead adds or replaces a public hashtag-derived scope without requiring a region-list entry. Scope rewrites default to bypassing inbound <code>rxdelay</code> and using zero initial <code>txdelay</code> plus highest queue priority; <code>tx=slow</code> uses an effective inbound <code>rxdelay</code> base of <code>max(2, configured rxdelay * 2)</code>, retains normal queue priority, and forces <code>txdelay</code> factor <code>2.0</code>. Adding <code>require=region</code> makes that rewrite conditional on the original incoming packet already passing local region enforcement, so unknown or denied incoming scopes are not rescued. New tables seed slot 1 with <code>ota all suspend=tempradio</code>; only rows marked <code>suspend=tempradio</code> are skipped during temporary-radio operation. Login-capable <code>anon_req</code>/<code>path</code>/<code>response</code> drop actions begin at hop <code>7</code>; flood <code>txt_msg</code> drops begin at hop <code>5</code>. Standard direct traceroute, other direct routing, and local receive/logging are unchanged.</td>
+<td><code>get/set/del flood.filter.blacklist[.n]</code>, <code>get flood.filter[.n]</code>, <code>set flood.filter[.n] &lt;type&gt; [N|N+|N-M|all] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>, <code>del flood.filter.&lt;n&gt;|all</code></td>
+<td><code>set flood.filter grp_txt all scope=local tx=slow</code></td>
+</tr>
+<tr>
+<td><code>flood.moderation</code></td>
+<td>Decrypts keyed <code>GRP_TXT</code> channels and applies drop, per-username messages/minute, and maximum-hop controls, optionally matched against the first 1-3 path hashes. Supports <code>public</code>, <code>#channel</code>, and 128/256-bit channel keys. Sender names and truncated path hashes are moderation hints, not authenticated identities.</td>
+<td><code>get flood.moderation[.n]</code>, <code>set flood.moderation[.n] &lt;channel&gt; &lt;sender&gt; &lt;drop|rate=X/min|hops=N&gt; [path=...]</code>, <code>del flood.moderation.&lt;n&gt;|all</code></td>
+<td><code>set flood.moderation public "Noisy User" rate=5/min hops=4</code></td>
+</tr>
+<tr>
+<td><code>clock.sync.mesh</code></td>
+<td>Defaults on for nRF52 repeaters and off for other builds; a saved setting overrides that default. It estimates UTC as soon as the configured number of fresh signed-advert or valid Public-channel sources is collected, with a 30-minute bootstrap/retry timer when evidence is still insufficient, then repeats lazily seven days after each successful estimate. New evidence retriggers evaluation after a no-consensus result. <code>clock.sync.mesh now</code> queues an immediate LoRa-only attempt without bypassing quorum or source suppression. Only timestamps from firmware build time through build time plus ten years are recorded. Successful CLI, GPS, or WiFi/NTP clock updates suppress LoRa time collection until reboot; after reboot LoRa is the fallback if NTP cannot sync. Status reports the reason a clock was not set; its <code>.table</code> and <code>.1</code> through <code>.16</code> forms inspect collected samples.</td>
+<td><code>get clock.sync.mesh</code>, <code>set clock.sync.mesh &lt;on|off&gt;</code>, <code>clock.sync.mesh now</code>, <code>get clock.sync.status[.table|.1-.16]</code></td>
+<td><code>set clock.sync.mesh on</code></td>
+</tr>
+<tr>
+<td><code>clock.sync.mesh.edge</code></td>
+<td>Defaults on so edge repeaters can collect clock evidence when all packets arrive through one relay path. Verified evidence is observed before the forwarding decision, so <code>repeat off</code> and forwarding filters do not prevent collection. Signed adverts are deduplicated by public key and Public-channel timestamps by case-insensitive display name; all may share one receive path. Public display names are unauthenticated and can be spoofed. Changing this setting clears current clock samples.</td>
+<td><code>get clock.sync.mesh.edge</code>, <code>set clock.sync.mesh.edge &lt;on|off&gt;</code></td>
+<td><code>set clock.sync.mesh.edge on</code></td>
+</tr>
+<tr>
+<td><code>clock.sync.internet</code></td>
+<td>Adds a read-only internet/NTP estimate at the same initial and seven-day checks on WiFi MQTT repeater-observer builds. Other builds retain the setting but report internet unavailable.</td>
+<td><code>get clock.sync.internet</code>, <code>set clock.sync.internet &lt;on|off&gt;</code></td>
+<td><code>set clock.sync.internet on</code></td>
+</tr>
+<tr>
+<td><code>clock.sync.drift</code></td>
+<td>Absolute correction threshold in seconds. The clock is moved forward or backward only when the estimate differs by more than this value.</td>
+<td><code>get clock.sync.drift</code>, <code>set clock.sync.drift &lt;30-86400&gt;</code></td>
+<td><code>set clock.sync.drift 3600</code></td>
+</tr>
+<tr>
+<td><code>clock.sync.samples</code></td>
+<td>Minimum fresh evidence count before mesh time can be used: distinct receive paths in normal mode or distinct advert keys/Public-channel display names in edge mode. A strict majority of all fresh samples is also required. Range <code>3-16</code>; default <code>9</code>.</td>
+<td><code>get clock.sync.samples</code>, <code>set clock.sync.samples &lt;3-16&gt;</code></td>
+<td><code>set clock.sync.samples 9</code></td>
+</tr>
+<tr>
+<td><code>outpath</code></td>
+<td>Overrides the primary direct route used for replies to the current remote client.</td>
+<td><code>get outpath</code>, <code>set outpath &lt;hops&gt;</code>, <code>set outpath direct</code>, <code>set outpath clear</code>, <code>set outpath flood</code></td>
+<td><code>set outpath A1B2C3,D4E5F6</code></td>
+</tr>
+<tr>
+<td><code>altpath</code></td>
+<td>Adds a secondary direct route for repeater replies to the current remote client.</td>
+<td><code>get altpath</code>, <code>set altpath &lt;hops&gt;</code>, <code>set altpath direct</code>, <code>set altpath clear</code>, <code>set altpath flood</code></td>
+<td><code>set altpath 71CE82,BA09F0</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="other-keymind-commands">Other Keymind Commands</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+<th>How to use</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>send text.flood</code></td>
+<td>Sends a <code>#repeaters</code> flood text message formatted as <code>&lt;node_name&gt;: &lt;message&gt;</code>, with <code>:</code> in the node name sent as <code>;</code>.</td>
+<td><code>send text.flood &lt;message&gt;</code></td>
+<td><code>send text.flood checking ridge link</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="battery-alerts">Battery Alerts</h2>
+<p>Battery alerts are off by default. Enabling requires a named region. With no
+region argument, the repeater selects the single deepest (most narrow) region
+in the hierarchy; if multiple regions tie, the command asks for an explicit
+region. For example, after <code>region def west pnw wa w-wa sea</code>, <code>set
+battery.alert on</code> selects <code>sea</code>, while <code>set battery.alert on w-wa</code> overrides
+the default. Alerts are never sent as unscoped floods, and removing the selected
+region stops alerts until a valid scope is selected again.</p>
+<p>The repeater suppresses alerts for its first 30 minutes of uptime. It then
+checks every 30 minutes and sends a flood text warning to <code>#repeaters</code> when
+voltage is above <code>1 V</code> and the estimated battery percent is below
+<code>battery.alert.low</code>.</p>
+<p>Warnings and critical alerts both use a <code>12</code>-hour resend cooldown, beginning
+only after the radio reports that the alert transmission completed.</p>
+<p>Defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th style="text-align: right;">Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>battery.alert</code></td>
+<td style="text-align: right;"><code>off</code></td>
+</tr>
+<tr>
+<td><code>battery.alert.region</code></td>
+<td style="text-align: right;"><code>&lt;unset&gt;</code></td>
+</tr>
+<tr>
+<td><code>battery.alert.low</code></td>
+<td style="text-align: right;"><code>20</code></td>
+</tr>
+<tr>
+<td><code>battery.alert.critical</code></td>
+<td style="text-align: right;"><code>10</code></td>
+</tr>
+</tbody>
+</table>
+<p>Example:</p>
+<pre><code class="language-text">set battery.alert.low 20
+set battery.alert.critical 10
+set battery.alert on
+get battery.alert
+get battery.alert.region
+</code></pre>
+<p>CPU power saving remains compatible with the check. The battery timer never
+requests a wake earlier than its 30-minute deadline; when the normal loop is
+already awake after that deadline, no additional wake is needed. Sleeping time
+counts toward the startup delay, and an outbound warning prevents another sleep
+until the queued packet has been handled. This is separate from RX duty-cycle
+power saving, which only cycles the LoRa receiver and does not stop the main
+loop's battery timer.</p>
+<h2 id="recent-repeater-table">Recent Repeater Table</h2>
+<p>Direct retry uses the recent repeater table when <code>direct.retry.heard</code> is <code>on</code>.
+Bridge buckets also use this table: a configured bucket prefix is active only
+when it was heard within the last hour.</p>
+<p>Show learned rows:</p>
+<pre><code class="language-text">get recent.repeater
+get recent.repeater 2
+get recent.repeaters 2
+get recent.repeater page 3
+get recent.repeaters search A1
+get recent.repeaters search A1B2 page 2
+</code></pre>
+<p>Search matches overlapping 1-, 2-, and 3-byte path hashes. Each matching row
+shows its stored SNR and a whole <code>s</code>, <code>m</code>, or <code>h</code> age measured from the most
+recent recording. Search pages contain up to six rows.</p>
+<p>Seed or correct a prefix:</p>
+<pre><code class="language-text">set recent.repeater A1B2C3 8.5
+</code></pre>
+<p>Clear learned and manually seeded rows:</p>
+<pre><code class="language-text">clear recent.repeater
+</code></pre>
+<p>Rows are sorted by prefix width, then SNR. A full direct retry failure lowers
+the matching row by <code>0.25 dB</code>. Unfiltered paged replies contain up to <code>10</code>
+rows; an unpaged local serial query prints the full table.</p>
+<h2 id="direct-path-overrides">Direct Path Overrides</h2>
+<p><code>outpath</code> and <code>altpath</code> apply to the current remote client ACL entry. They need
+remote client context, so they are not useful from the local serial CLI.</p>
+<p>Set paths with comma-separated hop hashes. Each hop must be <code>2</code>, <code>4</code>, or <code>6</code>
+hex characters, and all hops in one path must use the same width. Hex input is
+case-insensitive. Replies use uppercase hex and retain the commas, so the value
+can be copied directly into another <code>set outpath</code> or <code>set altpath</code> command.</p>
+<pre><code class="language-text">get outpath
+set outpath A1B2C3,D4E5F6
+set outpath direct
+set outpath clear
+set outpath flood
+get altpath
+set altpath 71CE82,BA09F0
+set altpath clear
+</code></pre>
+<p>For example, both <code>set altpath 600000,0d2784,f8dada</code> and
+<code>Set altpath 600000,0d2784,f8dada</code> store the same path and reply with:</p>
+<pre><code class="language-text">&gt; 600000,0D2784,F8DADA
+</code></pre>
+<p>The first CLI word is case-insensitive (<code>set</code>, <code>Set</code>, and <code>SET</code> are the same,
+as are <code>get</code>, <code>Get</code>, and the other command verbs). Argument case is preserved.</p>
+<p><code>set outpath direct</code> sets a zero-hop direct route for a client reachable without
+repeaters. <code>set outpath clear</code> forgets the override and lets normal path
+discovery fill it again. <code>set outpath flood</code> forces replies to use flood packets
+until the client logs in again.</p>
+<p>When <code>outpath</code> is a valid direct path and <code>altpath</code> is also a valid, different
+direct path, repeater DM replies send two packets: one on <code>outpath</code> and one on
+<code>altpath</code>. The secondary <code>altpath</code> copy does not create its own direct-retry
+state, so retry tracking stays attached to the primary <code>outpath</code> packet.
+<code>altpath clear</code> disables the secondary direct reply. <code>altpath flood</code> is accepted
+for command symmetry, but it does not create a second flood reply; only a valid
+direct <code>altpath</code> sends the second packet.</p>
+<h2 id="direct-retry-settings">Direct Retry Settings</h2>
+<p>Direct retry applies to direct-routed packets. A queued resend is canceled when the next-hop echo is heard. Repeaters expose the settings below; non-repeater firmware uses the same packet-type timing rules with fixed shared base/step timing.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it does</th>
+<th>How to use</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>retry.preset</code></td>
+<td>Applies shared direct and flood retry defaults. Values: <code>infra</code>, <code>rooftop</code>, <code>mobile</code> or <code>0</code>, <code>1</code>, <code>2</code>.</td>
+<td><code>get retry.preset</code>, <code>set retry.preset &lt;value&gt;</code></td>
+<td><code>set retry.preset rooftop</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.heard</code></td>
+<td>Uses the recent repeater table as the direct retry eligibility gate.</td>
+<td><code>get direct.retry.heard</code>, <code>set direct.retry.heard on/off</code></td>
+<td><code>set direct.retry.heard on</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.margin</code></td>
+<td>SNR margin in dB above the SF-specific receive floor.</td>
+<td><code>get direct.retry.margin</code>, <code>set direct.retry.margin &lt;0-40&gt;</code></td>
+<td><code>set direct.retry.margin 5</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.count</code></td>
+<td>Maximum direct retry attempts after initial TX. Direct-routed type 2 text packets always use 21 attempts regardless of this setting or the short-path cap.</td>
+<td><code>get direct.retry.count</code>, <code>set direct.retry.count &lt;1-15&gt;</code></td>
+<td><code>set direct.retry.count 15</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.base</code></td>
+<td>Base wait in milliseconds before retry; packet-length add-on is 3x for TRACE and ANON_REQ/type 7, 7x for TXT_MSG/type 2, and 6x for other direct retry packets.</td>
+<td><code>get direct.retry.base</code>, <code>set direct.retry.base &lt;10-5000&gt;</code></td>
+<td><code>set direct.retry.base 175</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.step</code></td>
+<td>Milliseconds added per retry attempt after the base, packet-length add-on, and random forwarding jitter.</td>
+<td><code>get direct.retry.step</code>, <code>set direct.retry.step &lt;0-5000&gt;</code></td>
+<td><code>set direct.retry.step 100</code></td>
+</tr>
+<tr>
+<td><code>direct.retry.cr</code></td>
+<td>Adaptive coding-rate thresholds for repeater direct retry packets. Repeaters use <code>CR4</code>, <code>CR5</code>, <code>CR7</code>, or <code>CR8</code>, then escalate by attempt: CR4, CR5, CR7, CR7, then CR8 from a CR4 start; CR5, CR7, CR7, then CR8 from a CR5 start. Non-repeaters start at the current radio CR and follow the same escalation pattern, clamped at CR8.</td>
+<td><code>get direct.retry.cr</code>, <code>set direct.retry.cr &lt;cr4_min&gt;,&lt;cr5_min&gt;,&lt;cr7_min&gt;,&lt;cr8_max&gt;</code>, <code>set direct.retry.cr off</code></td>
+<td><code>set direct.retry.cr 10.0,7.5,2.5,0</code></td>
+</tr>
+</tbody>
+</table>
+<p>The default adaptive coding-rate profile is <code>10.0,7.5,2.5,2.5</code>.
+SNR <code>10.0 dB</code> and up uses <code>CR4</code>, <code>7.5 dB</code> and up uses <code>CR5</code>,
+<code>2.5 dB</code> and down uses <code>CR8</code>, and the middle band uses <code>CR7</code>. If no
+recent repeater table entry is available, retry packets use <code>CR5</code>. Use
+<code>set direct.retry.cr off</code> to disable adaptive coding-rate overrides. Repeater
+attempts escalate from the adaptive starting CR: <code>CR4</code>, <code>CR5</code>, <code>CR7</code>, <code>CR7</code>,
+then <code>CR8</code> from a <code>CR4</code> start; <code>CR5</code>, <code>CR7</code>, <code>CR7</code>, then <code>CR8</code> from a <code>CR5</code>
+start. Non-repeaters use the current radio CR as the first retry CR and follow
+the same pattern up to <code>CR8</code>.</p>
+<p>Preset details:</p>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th style="text-align: right;">Base</th>
+<th style="text-align: right;">Count</th>
+<th style="text-align: right;">Step</th>
+<th>SNR gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>infra</code></td>
+<td style="text-align: right;"><code>275 ms</code></td>
+<td style="text-align: right;"><code>4</code></td>
+<td style="text-align: right;"><code>150 ms</code></td>
+<td>SF floor + <code>15 dB</code></td>
+</tr>
+<tr>
+<td><code>rooftop</code></td>
+<td style="text-align: right;"><code>175 ms</code></td>
+<td style="text-align: right;"><code>15</code></td>
+<td style="text-align: right;"><code>100 ms</code></td>
+<td>SF floor + <code>5 dB</code></td>
+</tr>
+<tr>
+<td><code>mobile</code></td>
+<td style="text-align: right;"><code>175 ms</code></td>
+<td style="text-align: right;"><code>15</code></td>
+<td style="text-align: right;"><code>50 ms</code></td>
+<td>SF floor</td>
+</tr>
+</tbody>
+</table>
+<p>Example for a quiet fixed repeater:</p>
+<pre><code class="language-text">set retry.preset rooftop
+set direct.retry.heard on
+set direct.retry.margin 5
+</code></pre>
+<p>Example for a moving or weak-link node:</p>
+<pre><code class="language-text">set retry.preset mobile
+set direct.retry.margin 0
+</code></pre>
+<h2 id="flood-and-advert-settings">Flood And Advert Settings</h2>
+<p>Flood retry applies to flood-routed packets. A queued retry is canceled when the
+same packet is heard from a qualifying, non-ignored repeater. Bridge mode uses
+the bucket rules below instead.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it does</th>
+<th>How to use</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flood.retry.count</code></td>
+<td>Base flood retry attempts after initial TX. Role path scaling happens first, then all builds apply payload caps: <code>REQ</code> is <code>0</code>; <code>GRP_TXT</code> keeps up to <code>15</code>; remote-login <code>RESPONSE</code>, <code>TXT_MSG</code>, <code>ANON_REQ</code>, and <code>PATH</code> keep up to <code>15</code> at path count 0 and cap at <code>2</code> in transit; every other flood type caps at <code>1</code>. A lower calculated value is preserved, and <code>0</code> disables flood retry.</td>
+<td><code>get flood.retry.count</code>, <code>set flood.retry.count &lt;0-15&gt;</code></td>
+<td><code>set flood.retry.count 7</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.path</code></td>
+<td>Maximum path hash count eligible for flood retry, or <code>off</code> to disable the gate.</td>
+<td><code>get flood.retry.path</code>, <code>set flood.retry.path &lt;0-63/off&gt;</code></td>
+<td><code>set flood.retry.path 1</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.group.path</code></td>
+<td>Additional path gate for group data (<code>type=6</code>) flood retries. The stricter of this and <code>flood.retry.path</code> applies; <code>off</code> disables only this additional gate. Setting the general path gate to <code>0</code> forces this setting to <code>off</code>; a named preset restores the default of <code>1</code>.</td>
+<td><code>get flood.retry.group.path</code>, <code>set flood.retry.group.path &lt;0-63/off&gt;</code></td>
+<td><code>set flood.retry.group.path 1</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.advert</code></td>
+<td>Allows or blocks retry for node advert packets (<code>type=4</code>). Default is <code>off</code>.</td>
+<td><code>get flood.retry.advert</code>, <code>set flood.retry.advert on/off</code></td>
+<td><code>set flood.retry.advert off</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.prefixes</code></td>
+<td>Target prefixes. If set, only same-packet echoes from matching last-hop prefixes cancel a retry.</td>
+<td><code>get flood.retry.prefixes</code>, <code>set flood.retry.prefixes &lt;prefixes/none/off&gt;</code></td>
+<td><code>set flood.retry.prefixes BEEBB0,425E5C</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.ignore</code></td>
+<td>Ignored prefixes. In non-bridge retry, ignored last-hop echoes do not cancel retry.</td>
+<td><code>get flood.retry.ignore</code>, <code>set flood.retry.ignore &lt;prefixes/none/off&gt;</code></td>
+<td><code>set flood.retry.ignore 71CE82,C7618C</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.bridge</code></td>
+<td>Enables bucket-based bridge retry logic.</td>
+<td><code>get flood.retry.bridge</code>, <code>set flood.retry.bridge on/off</code></td>
+<td><code>set flood.retry.bridge on</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.bucket.&lt;n&gt;</code></td>
+<td>Shows one bridge bucket. Buckets are numbered <code>1</code>-<code>6</code>.</td>
+<td><code>get flood.retry.bucket.&lt;n&gt;</code></td>
+<td><code>get flood.retry.bucket.1</code></td>
+</tr>
+<tr>
+<td><code>flood.retry.bucket</code></td>
+<td>Sets bridge bucket prefixes.</td>
+<td><code>set flood.retry.bucket &lt;1-6&gt; &lt;prefixes/none/off&gt;</code></td>
+<td><code>set flood.retry.bucket 1 71CE82,C7618C</code></td>
+</tr>
+</tbody>
+</table>
+<p>Bridge buckets may also be reused as passive <code>flood.channel.scope</code>
+path selectors with <code>path=bucket:&lt;1-6&gt;</code>. This does not require
+<code>flood.retry.bridge</code> to be enabled and does not depend on recent-repeater
+freshness or the retry ignore list.</p>
+<p>Forwarded neighbor adverts also use an automatic echo guard in every build. If this node hears a downstream, longer-path echo after transmitting an advert whose signed timestamp is less than six hours old, it will not forward that exact advert again during the six-hour age window. This guard works even when <code>flood.retry.advert</code> is off and does not affect self-originated adverts.</p>
+<p>Self-originated advert retries are deliberately slow: the first retry waits at least one extra minute beyond the normal airtime-aware delay. Queueing a newer self advert retires queued and future retry attempts for older self adverts without disturbing other flood retry sequences. Companion firmware allows the one slow retry for its own adverts but not for neighbor adverts it relays.</p>
+<p>The shared retry preset sets these flood defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th style="text-align: right;">Retry count</th>
+<th style="text-align: right;">Path gate</th>
+<th style="text-align: right;">Group-data path gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>infra</code></td>
+<td style="text-align: right;"><code>1</code></td>
+<td style="text-align: right;"><code>1</code></td>
+<td style="text-align: right;"><code>1</code></td>
+</tr>
+<tr>
+<td><code>rooftop</code></td>
+<td style="text-align: right;"><code>3</code></td>
+<td style="text-align: right;"><code>2</code></td>
+<td style="text-align: right;"><code>1</code></td>
+</tr>
+<tr>
+<td><code>mobile</code></td>
+<td style="text-align: right;"><code>15</code></td>
+<td style="text-align: right;"><code>1</code></td>
+<td style="text-align: right;"><code>1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Example for path-gated retry:</p>
+<pre><code class="language-text">set retry.preset rooftop
+set flood.retry.path 1
+set flood.retry.group.path 1
+set flood.retry.advert off
+set flood.retry.ignore 71CE82,C7618C
+</code></pre>
+<h2 id="north-south-buckets">North South Buckets</h2>
+<p>Buckets describe groups of repeaters on different sides of this relay. Bucket
+numbers do not have built-in meanings; this example uses bucket <code>1</code> for North
+and bucket <code>2</code> for South.</p>
+<pre><code class="language-text">              North bucket 1
+        +-----------------------+
+        | A1B2C3       D4E5F6   |
+        | North A      North B  |
+        +-----------+-----------+
+                    |
+                    v
+              +-----------+
+              | This node |
+              +-----------+
+                    ^
+                    |
+        +-----------+-----------+
+        | 71CE82       C7618C   |
+        | South A      South B  |
+        +-----------------------+
+              South bucket 2
+</code></pre>
+<p>Configure the buckets:</p>
+<pre><code class="language-text">set flood.retry.bridge on
+set flood.retry.bucket 1 A1B2C3,D4E5F6
+set flood.retry.bucket 2 71CE82,C7618C
+set flood.retry.ignore none
+</code></pre>
+<p>Packet heard from the North:</p>
+<pre><code class="language-text">     heard source
+         |
+         v
+  +--------------+        retry targets
+  | North bucket | -----&gt; South bucket
+  | bucket 1     | -----&gt; Other fresh/unbucketed relays
+  +--------------+
+</code></pre>
+<p>Packet heard from the South:</p>
+<pre><code class="language-text">     heard source
+         |
+         v
+  +--------------+        retry targets
+  | South bucket | -----&gt; North bucket
+  | bucket 2     | -----&gt; Other fresh/unbucketed relays
+  +--------------+
+</code></pre>
+<p>Packet heard from an unbucketed or pathless source:</p>
+<pre><code class="language-text">     heard source
+         |
+         v
+  +--------------+        retry targets
+  | Other bucket | -----&gt; North bucket
+  | implicit     | -----&gt; South bucket
+  +--------------+
+</code></pre>
+<p>Bridge retry stays eligible until every target bucket has been heard or
+<code>flood.retry.count</code> is exhausted. A configured bucket is a target only when at
+least one of its prefixes is fresh in <code>recent.repeater</code>. Prefixes in
+<code>flood.retry.ignore</code> never count as bucket hits.</p>
+<p>Configuration reports a warning when prefixes in different buckets, including
+bucket 7 (<code>flood.retry.prefixes</code>), share the same first byte. A 1-byte path cannot
+distinguish those buckets. Bridge mode therefore excludes every matching bucket
+when that short prefix is the source, and credits every matching target bucket
+when it is heard as an echo. This prevents an ambiguous short prefix from keeping
+an impossible target outstanding through every retry.</p>
+<p>Each flood retry wait retains the fixed maximum-frame plus 20 packet-airtime
+delay, then adds random jitter from zero to 200 percent of one additional packet
+airtime. This keeps nearby repeaters from repeating a collision on fixed timing
+while capping the added wait at two frames.</p>
+<p>Only one enhanced retry sequence can be active for the same logical flood
+packet. Identical floods still receive their normal transmission, but do not
+multiply the extra attempts. Evicted queued retries release their bridge state,
+and the final echo wait does not reserve a packet-pool entry.</p>
+<p>Earlier path hops from a successful bridge echo refresh a separate per-bucket
+reachability cache without an SNR value. Only the final hop, which actually sent
+the received RF frame, updates <code>recent.repeater</code> and its SNR. Indirect path hops
+therefore cannot change direct-retry SNR gating or coding-rate selection.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>If advert packets are still retrying:</p>
+<pre><code class="language-text">get flood.retry.advert
+set flood.retry.advert off
+</code></pre>
+<p>If ignored prefixes still appear in <code>flood retry good</code> logs:</p>
+<pre><code class="language-text">get flood.retry.ignore
+set flood.retry.ignore &lt;prefix&gt;
+</code></pre>
+<p>The ignored prefix must match the last hop shown as <code>heard=&lt;prefix&gt;</code>. For example, this log needs <code>C7618C</code> in the ignore list:</p>
+<pre><code class="language-text">flood retry good (... path=7773D0&gt;C7618C, heard=C7618C ...)
+</code></pre>
+<p>If retries are too aggressive:</p>
+<pre><code class="language-text">set flood.retry.count 1
+set flood.retry.path 1
+set direct.retry.count 4
+</code></pre>
+<p>If retries are too sparse:</p>
+<pre><code class="language-text">set flood.retry.count 7
+set flood.retry.path 2
+</code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

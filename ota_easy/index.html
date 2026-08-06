@@ -1,0 +1,1667 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_easy/">
+      
+      
+        <link rel="prev" href="../number_allocations/">
+      
+      
+        <link rel="next" href="../ota_meshtower_v2_sdcard/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Easy firmware updates over LoRa - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#easy-firmware-updates-over-lora" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Easy firmware updates over LoRa
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#temporary-ota-channel-used-in-this-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary OTA channel used in this guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Before you start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choose-the-source-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose the source radio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-motatool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install motatool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-package-a-full-firmware-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32: package a full firmware image
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nrf52-package-an-in-place-delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52: package an in-place delta
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="nRF52: package an in-place delta">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-and-check-the-otafix-bootloader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install and check the OTAFIX bootloader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-keep-the-exact-current-and-new-application-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Keep the exact current and new application images
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-build-and-check-the-in-place-delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build and check the in-place delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transfer-and-install-either-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transfer and install either package
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Transfer and install either package">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-start-the-temporary-ota-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Start the temporary OTA channel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-serve-the-update-from-the-computer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Serve the update from the computer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-find-and-download-the-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Find and download the update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-verify-and-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify and install
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#temporary-ota-channel-used-in-this-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary OTA channel used in this guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Before you start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choose-the-source-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose the source radio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-motatool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install motatool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-package-a-full-firmware-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32: package a full firmware image
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nrf52-package-an-in-place-delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52: package an in-place delta
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="nRF52: package an in-place delta">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-install-and-check-the-otafix-bootloader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install and check the OTAFIX bootloader
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-keep-the-exact-current-and-new-application-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Keep the exact current and new application images
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-build-and-check-the-in-place-delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Build and check the in-place delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transfer-and-install-either-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transfer and install either package
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Transfer and install either package">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-start-the-temporary-ota-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Start the temporary OTA channel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-serve-the-update-from-the-computer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Serve the update from the computer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-find-and-download-the-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Find and download the update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-verify-and-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify and install
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_easy.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="easy-firmware-updates-over-lora">Easy firmware updates over LoRa</h1>
+<p>This guide shows the shortest manual path for sending firmware from a computer to a MeshCore node over
+LoRa. Choose the package type for the <strong>destination</strong> node:</p>
+<table>
+<thead>
+<tr>
+<th>Destination</th>
+<th>Update type</th>
+<th>Files needed to build the <code>.mota</code></th>
+<th>Installer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32</td>
+<td>Full firmware</td>
+<td>New non-merged application <code>.bin</code></td>
+<td>ESP32 A/B firmware slots</td>
+</tr>
+<tr>
+<td>nRF52</td>
+<td>In-place delta</td>
+<td>Exact running <code>firmware.hex</code> and new <code>firmware.hex</code></td>
+<td>Exact-board OTAFIX bootloader</td>
+</tr>
+<tr>
+<td>MeshTower V2 SD target</td>
+<td>Full firmware or in-place delta</td>
+<td>New <code>firmware.hex</code>; a delta also needs the exact running <code>firmware.hex</code></td>
+<td>Matching SD-aware OTAFIX bootloader</td>
+</tr>
+</tbody>
+</table>
+<p>A normal nRF52 target cannot install a full-image container. It deliberately accepts only an in-place
+delta built against its exact running firmware. The MeshTower V2 microSD target is the exception because
+it stages the complete container off-chip; see <a href="../ota_meshtower_v2_sdcard/">MeshTower V2 microSD LoRa OTA</a>.</p>
+<h2 id="temporary-ota-channel-used-in-this-guide">Temporary OTA channel used in this guide</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Center frequency</td>
+<td>909.950 MHz</td>
+</tr>
+<tr>
+<td>Bandwidth</td>
+<td>250 kHz</td>
+</tr>
+<tr>
+<td>Spreading factor</td>
+<td>SF5</td>
+</tr>
+<tr>
+<td>Coding rate used in this guide</td>
+<td>CR5</td>
+</tr>
+<tr>
+<td>Example window</td>
+<td>120 minutes</td>
+</tr>
+</tbody>
+</table>
+<p>The copy/paste command is:</p>
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
+</code></pre>
+<p>The fourth value is the transmit coding rate. This guide uses CR5, but the participating nodes' coding rates
+do not need to match.</p>
+<p><code>tempradio</code> is not saved and the node returns to its normal radio settings when the window ends or the node
+reboots. This frequency is intended for North American configurations. Confirm that it is permitted in your
+location and change it when necessary.</p>
+<h2 id="before-you-start">Before you start</h2>
+<p>Both paths require:</p>
+<ul>
+<li>An OTA-enabled build whose artifact filename contains <code>-ota-</code> on the destination. The <code>-ota-</code> stamp confirms
+  that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do <strong>not</strong> need an
+  OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
+  Portable logging, portable MQTT, and untagged builds cannot install LoRa OTA; FULL logging OTA builds can.</li>
+<li>An OTA-enabled MeshCore source connected to the computer by USB serial, or an ESP32 WiFi companion/FULL
+  ESP32 source connected over WiFi as described below.</li>
+<li>Overlapping <code>tempradio</code> windows on the source, destination, and every repeater needed between them.</li>
+</ul>
+<p>LoRa OTA packets are generated, consumed, and relayed only while <code>tempradio</code> is active. Intermediate repeaters
+apply their normal forwarding filters, duplicate checks, and flood limits; they do not interpret the OTA
+payload. If any required window closes, the transfer stops making progress and can resume during a later
+overlapping window.</p>
+<p><code>build.sh</code> provides a <code>*_repeater_lora_ota_no_external_sensors</code> build for every standalone ESP32 and nRF52
+repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
+OTA relay, but it cannot download or install an update for itself. The <code>-ota-</code> sibling omits optional external
+I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
+display, buttons, battery monitoring, and integrated GPS. ESP32 <code>-ota-</code> siblings also retain the compact
+browser WiFi uploader (<code>start ota</code>) and use a 254-entry neighbor table. RP2040 and STM32 repeaters do not
+currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
+during TempRadio.</p>
+<p>ESP32 <code>*-full-ota-*</code> artifacts retain all compiled features and enable LoRa OTA for every FULL role,
+including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
+install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
+The <code>*-full-ota-*</code> profile uses MQTT with logging off. Use a <code>*-full-logging-ota-*</code> artifact when USB debug
+and packet logging are needed instead; that diagnostic profile explicitly disables MQTT and can produce
+substantial serial output.</p>
+<h3 id="choose-the-source-radio">Choose the source radio</h3>
+<p>Use an OTA-enabled MeshCore node as the source. It receives the update folder from the computer, then
+advertises it over LoRa. ESP32 USB/WiFi companions and FULL ESP32 roles include the required transport.
+A small set of high-capacity classic ESP32 companions
+keep their normal image and provide a separate <code>-full-ota-</code> image with 100 contacts, 8 group channels, and
+a 16-frame offline queue. Install that variant's merged image over USB once before using it. Connect the
+source by USB serial or, when supported, by WiFi. For USB serial, confirm that its USB CLI accepts:</p>
+<pre><code class="language-text">ota folder on
+</code></pre>
+<p>If an older build reports that <code>OTA_FOLDER_SERIAL</code> is not compiled in, install a current <code>-ota-</code> or
+<code>-full-ota-</code> build first. Do <strong>not</strong> use a KISS modem: KISS firmware is a TNC/KISS frame interface
+and does not provide the MeshCore CLI or the OTA-folder transport that <code>motatool serve</code> requires.</p>
+<p>For an ESP32 WiFi companion or FULL ESP32 source with active WiFi, use its dedicated OTA seeder:</p>
+<pre><code class="language-bash">motatool serve --dir ./motas --tcp &lt;source-host&gt;:5001 -v
+</code></pre>
+<p>Port <code>5001</code> is separate from the companion application port (<code>5000</code>) and the
+infrastructure WebConfig/browser-OTA port (<code>80</code>). On a FULL repeater or room
+server, <code>start webconfig</code> can bring up the saved WiFi connection. Other FULL
+roles with browser OTA support can raise <code>MeshCore-OTA</code> with <code>start ota</code> and
+use <code>192.168.4.1:5001</code>. The TCP seeder auto-attaches; do not also run
+<code>ota folder on</code> for USB serial.</p>
+<h2 id="install-motatool">Install <code>motatool</code></h2>
+<p>Install Rust if necessary, then install the standalone packaging and serving tool:</p>
+<pre><code class="language-bash">git clone https://github.com/vk496/motatool
+cargo install --path ./motatool
+</code></pre>
+<h2 id="esp32-package-a-full-firmware-image">ESP32: package a full firmware image</h2>
+<p>The destination must be an OTA-capable ESP32 with an A/B partition table. Download or build the new
+non-merged <code>.bin</code> application for the destination's exact board <strong>and role</strong>. Do not use an ESP32
+<code>-merged.bin</code> factory image.</p>
+<p>Put the application firmware in a working directory, then build a full <code>.mota</code> container. For example:</p>
+<pre><code class="language-bash">mkdir -p ./motas
+motatool build --fw ./Heltec_v3_repeater-ota-v1.16.05.bin --out-dir ./motas
+motatool verify ./motas/*.mota
+</code></pre>
+<p>Replace the example filename with the firmware for the destination's exact target. With no <code>--base</code>
+argument, <code>motatool build</code> creates a full-image update. The firmware must contain its MeshCore <code>EndF</code>
+identity trailer so <code>motatool</code> and the destination can verify the target, hardware, and version.</p>
+<p>Do not continue if <code>motatool verify</code> reports a failure.</p>
+<h2 id="nrf52-package-an-in-place-delta">nRF52: package an in-place delta</h2>
+<h3 id="1-install-and-check-the-otafix-bootloader">1. Install and check the OTAFIX bootloader</h3>
+<p>This is a one-time prerequisite. Install the OTAFIX bootloader built for the destination's <strong>exact board</strong>
+from the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.9.2-OTAFIX2.4">OTAFIX 2.4 nRF52 bootloader release</a>.
+Follow the release's board-specific installation and erase instructions. If it does not contain the
+destination's exact board, this LoRa install path is not yet available for that board; never substitute a
+similar board's bootloader.</p>
+<p>Before preparing or downloading a LoRa update, run this on the destination:</p>
+<pre><code class="language-text">ota self
+</code></pre>
+<p>Continue only if the reply includes:</p>
+<pre><code class="language-text">bootloader: apply OK
+</code></pre>
+<p>The reply also contains the running firmware's <code>base_hash</code>. Save it for the package check below. A stock,
+legacy, or older OTAFIX bootloader without <code>.mota</code> in-place-apply support will report that apply support is
+missing, and <code>ota install</code> will refuse to reboot into it.</p>
+<h3 id="2-keep-the-exact-current-and-new-application-images">2. Keep the exact current and new application images</h3>
+<p>You need the raw <code>.pio/build/&lt;environment&gt;/firmware.hex</code> from the build that is <strong>actually running</strong>, plus
+the corresponding <code>firmware.hex</code> from the new build. Save the current file before building the new version,
+because PlatformIO reuses that path. For example:</p>
+<pre><code class="language-bash"># Save this immediately after building/flashing the version now running on the node.
+cp .pio/build/Heltec_t114_repeater/firmware.hex ./Heltec_t114_repeater-running.hex
+
+# After checking out and building the new version, save its image separately.
+cp .pio/build/Heltec_t114_repeater/firmware.hex ./Heltec_t114_repeater-new.hex
+</code></pre>
+<p>Replace <code>Heltec_t114_repeater</code> with the destination's exact PlatformIO environment. The two images must be
+for the same board and role, and both must contain their <code>EndF</code> trailers. Do not pass a release <code>.uf2</code> or
+BLE-DFU <code>.zip</code> to <code>motatool</code>; those are installation containers rather than raw application images.</p>
+<p>Keeping a file with the same version label is not enough: the base must be byte-for-byte identical to the
+running application. The hash check in the next step proves that it is the right file.</p>
+<p>On RAK4631 repeaters, use the
+<code>RAK_4631_repeater_lora_ota_no_external_sensors</code> environment. It retains built-in battery monitoring but
+omits optional external environmental sensor packages so the delta fits the safe in-place workspace.</p>
+<h3 id="3-build-and-check-the-in-place-delta">3. Build and check the in-place delta</h3>
+<pre><code class="language-bash">mkdir -p ./motas
+motatool build \
+  --base ./Heltec_t114_repeater-running.hex \
+  --fw ./Heltec_t114_repeater-new.hex \
+  --patch-type in-place \
+  --out-dir ./motas
+motatool verify ./motas/*.mota
+</code></pre>
+<p><code>motatool</code> prints the generated filename. Inspect that file:</p>
+<pre><code class="language-bash">motatool inspect ./motas/GENERATED_FILENAME.mota
+</code></pre>
+<p>Check all three of these before serving it:</p>
+<ul>
+<li><code>codec_id</code> is <code>2 (detools-in-place)</code>.</li>
+<li><code>base_hash</code> is the same 8-byte value reported by the destination's <code>ota self</code> command.</li>
+<li>The numeric <code>target_id</code> exactly matches <code>target:</code> in the destination's <code>ota status</code>, and the hardware and
+  firmware version identify the intended board and role. If <code>inspect</code> shows <code>N/A</code> for the human-readable
+  target name, the tool's name table is older than that environment; the numeric IDs still must match.</li>
+</ul>
+<p>The default <code>--inplace-memory 0x98000</code> and 4096-byte segment size match the supported MeshCore OTAFIX
+builds; do not override them for this normal nRF52 flow. Do not continue if verification or any identity
+check fails.</p>
+<h2 id="transfer-and-install-either-package">Transfer and install either package</h2>
+<h3 id="1-start-the-temporary-ota-channel">1. Start the temporary OTA channel</h3>
+<p>On the source node, destination node, and every intermediate repeater, run:</p>
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
+</code></pre>
+<p>All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
+overlap. Start with the farthest hop (the destination) and work back toward the source when using <code>tempradio</code>.</p>
+<p>If you administer the destination over LoRa, the controller used to send later <code>ota</code> commands must also be
+able to communicate on this temporary channel. For unattended nodes, use synchronized <code>tempradioat</code> entries
+instead of manually starting the windows. Ensure the nodes' clocks are set before using <code>tempradioat</code>.</p>
+<h3 id="2-serve-the-update-from-the-computer">2. Serve the update from the computer</h3>
+<p>Close any serial terminal using the source node's USB port, find its device name, and start the server:</p>
+<pre><code class="language-bash">motatool serve --dir ./motas --serial /dev/ttyACM0 -v
+</code></pre>
+<p>Replace <code>/dev/ttyACM0</code> with the USB serial device of the source companion selected above.
+<code>motatool</code> attaches the folder to the source, which advertises the update over LoRa while its temporary-radio
+window is active. KISS modem serial ports cannot be used here.</p>
+<p>Leave this command running until the destination finishes downloading.</p>
+<h3 id="3-find-and-download-the-update">3. Find and download the update</h3>
+<p>On the destination node, check its state and ask for nearby updates:</p>
+<pre><code class="language-text">ota status
+ota ls
+</code></pre>
+<p>Discovery is asynchronous. Wait a few seconds and run <code>ota ls</code> again if the list is initially empty. Select
+the entry marked <code>[yours]</code>: it should say <code>full</code> for the ESP32 path or <code>delta</code> for the nRF52 path. If it is
+entry 1, run:</p>
+<pre><code class="language-text">ota pull 1 flash
+</code></pre>
+<p>Monitor the transfer:</p>
+<pre><code class="language-text">ota status
+</code></pre>
+<p>The update is ready when the status says <code>ready to install</code>. OTA is deliberately the lowest-priority mesh
+traffic. At the temporary-radio settings in this guide, allow roughly <strong>one hour</strong> for a typical ESP32 full
+image over a quiet, direct link. That is a planning estimate, not an upper bound: repeaters, retries, weak
+links, and normal mesh traffic can extend it well past an hour. The 120-minute example window is
+intentional. If necessary, start another overlapping <code>tempradio</code> window; the download resumes rather than
+starting over.</p>
+<h3 id="4-verify-and-install">4. Verify and install</h3>
+<p>Once the destination reports <code>ready to install</code>, run:</p>
+<pre><code class="language-text">ota install
+</code></pre>
+<p>The destination verifies the complete package again before approving it. ESP32 installs the full image into
+its inactive A/B slot. nRF52 checks the base hash and bootloader capability, then reboots into OTAFIX; the
+bootloader independently rechecks the package, applies the delta in place, and verifies the resulting image.
+Pre-install failures leave the running firmware unchanged and report the reason. If power is lost after an
+nRF52 in-place apply has begun, OTAFIX will not boot a partial image; it enters recovery DFU so a known-good
+application can be restored.</p>
+<p>After the node returns, reconnect on its normal radio channel and confirm:</p>
+<pre><code class="language-text">ota status
+</code></pre>
+<h2 id="quick-troubleshooting">Quick troubleshooting</h2>
+<ul>
+<li><strong>Nothing appears in <code>ota ls</code>:</strong> confirm that <code>motatool serve</code> is still running and every required node
+  has an active <code>tempradio 909.950,250,5,5,120</code> window.</li>
+<li><strong>The CLI says LoRa OTA is not included:</strong> that firmware does not contain the LoRa OTA feature.
+  If it is the source or destination, install a supported <code>-ota-</code> build over WiFi or USB first. An intermediate
+  repeater does not need the OTA CLI and can relay opaquely while its matching <code>tempradio</code> window is active.</li>
+<li><strong>The update is marked <code>[other hw]</code>:</strong> it is for a different board or firmware role. Do not install it.</li>
+<li><strong>An nRF52 node does not list a full update:</strong> this is intentional for internal-flash targets. The
+  MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.</li>
+<li><strong>nRF52 reports no bootloader apply support:</strong> install the exact-board in-place-delta OTAFIX bootloader
+  before trying LoRa OTA.</li>
+<li><strong>nRF52 reports a base mismatch:</strong> the file passed to <code>--base</code> is not the exact application running on
+  the destination. Rebuild the delta from the correct saved <code>firmware.hex</code>.</li>
+<li><strong>The download stalls:</strong> check the source, destination, and intermediate repeaters. Restart matching,
+  overlapping temporary-radio windows if one expired.</li>
+<li><strong>The serial port is busy:</strong> close the serial terminal before starting <code>motatool serve</code>.</li>
+<li><strong>The destination rejects the package:</strong> verify the source files, their <code>EndF</code> trailers, the package's
+  target/hardware identity, and the result of <code>motatool verify</code>.</li>
+</ul>
+<p>For additional commands and safety details, see <a href="../ota_user_guide/">the full OTA user guide</a>. For protocol
+and container internals, see <a href="../ota_protocol/">the OTA protocol specification</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

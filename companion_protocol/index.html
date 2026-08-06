@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://meshcore-dev.github.io/meshcore/companion_protocol/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_protocol/">
       
       
         <link rel="prev" href="../cli_commands/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -51,6 +51,8 @@
     
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -161,13 +163,13 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
       </div>
@@ -206,13 +208,13 @@
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
     </div>
@@ -234,6 +236,87 @@
     
   
     Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
   
 
     
@@ -973,6 +1056,87 @@
   
   
     <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1035,6 +1199,114 @@
     
   
     Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
   
 
     
@@ -1143,6 +1415,33 @@
     
   
     Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
   
 
     
@@ -1790,7 +2089,7 @@
 
 
   
-    <a href="https://github.com/meshcore-dev/meshcore/edit/main/docs/companion_protocol.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_protocol.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1841,8 +2140,8 @@
 <p>MeshCore Companion devices expose a BLE service with the following UUIDs:</p>
 <ul>
 <li><strong>Service UUID</strong>: <code>6E400001-B5A3-F393-E0A9-E50E24DCCA9E</code></li>
-<li><strong>RX Characteristic</strong> (App → Firmware): <code>6E400002-B5A3-F393-E0A9-E50E24DCCA9E</code></li>
-<li><strong>TX Characteristic</strong> (Firmware → App): <code>6E400003-B5A3-F393-E0A9-E50E24DCCA9E</code></li>
+<li><strong>RX Characteristic</strong> (App -&gt; Firmware): <code>6E400002-B5A3-F393-E0A9-E50E24DCCA9E</code></li>
+<li><strong>TX Characteristic</strong> (Firmware -&gt; App): <code>6E400003-B5A3-F393-E0A9-E50E24DCCA9E</code></li>
 </ul>
 <h3 id="connection-steps">Connection Steps</h3>
 <ol>
@@ -1937,7 +2236,7 @@
 <li>Send one command at a time</li>
 <li>Wait for a response before sending another command</li>
 <li>Use a timeout (typically 5 seconds)</li>
-<li>Match response to command by type (e.g: <code>CMD_GET_CHANNEL</code> → <code>RESP_CODE_CHANNEL_INFO</code>)</li>
+<li>Match response to command by type (e.g: <code>CMD_GET_CHANNEL</code> -&gt; <code>RESP_CODE_CHANNEL_INFO</code>)</li>
 </ul>
 </li>
 </ol>
@@ -2045,7 +2344,7 @@ Bytes 7+: Message Text (UTF-8, variable length)
 <p><strong>Response</strong>: <code>PACKET_MSG_SENT</code> (0x06) on success</p>
 <hr />
 <h3 id="6-send-channel-data-datagram">6. Send Channel Data Datagram</h3>
-<p><strong>Purpose</strong>: Send a binary datagram to a channel. Unlike channel text messages, datagrams carry no built-in sender identity and no timestamp — applications needing either must encode them inside the binary payload.</p>
+<p><strong>Purpose</strong>: Send a binary datagram to a channel. Unlike channel text messages, datagrams carry no built-in sender identity and no timestamp - applications needing either must encode them inside the binary payload.</p>
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0:                         0x3E
 Byte 1:                         Channel Index (0-7)
@@ -2060,17 +2359,17 @@ Remaining bytes:                Binary payload (variable length)
 <p><strong>Data Type / Transport Mapping</strong>:
 - <code>0x0000</code> (<code>DATA_TYPE_RESERVED</code>) is invalid and rejected with <code>PACKET_ERROR</code>.
 - <code>0xFFFF</code> (<code>DATA_TYPE_DEV</code>) is the developer namespace for experimenting and developing apps.
-- Values <code>0x0001</code>–<code>0xFFFE</code> are available for registered application/community namespaces. See the <a href="#registered-data_type-values">Registered data_type values</a> table below.</p>
+- Values <code>0x0001</code>-<code>0xFFFE</code> are available for registered application/community namespaces. See the <a href="#registered-data_type-values">Registered data_type values</a> table below.</p>
 <p><strong>Limits</strong>:
 - Maximum payload length is <code>MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 163</code> bytes.
 - Larger payloads are rejected with <code>PACKET_ERROR</code> (<code>ERR_CODE_ILLEGAL_ARG</code>).</p>
 <p><strong>Response</strong>: <code>PACKET_OK</code> (0x00) on success, or <code>PACKET_ERROR</code> (0x01) with one of:
-- <code>ERR_CODE_NOT_FOUND</code> (2) — unknown <code>channel_idx</code>
-- <code>ERR_CODE_ILLEGAL_ARG</code> (6) — invalid <code>path_len</code>, reserved <code>data_type</code> (<code>0x0000</code>), or payload larger than <code>MAX_CHANNEL_DATA_LENGTH</code>
-- <code>ERR_CODE_TABLE_FULL</code> (3) — outbound send queue is full; retry later</p>
+- <code>ERR_CODE_NOT_FOUND</code> (2) - unknown <code>channel_idx</code>
+- <code>ERR_CODE_ILLEGAL_ARG</code> (6) - invalid <code>path_len</code>, reserved <code>data_type</code> (<code>0x0000</code>), or payload larger than <code>MAX_CHANNEL_DATA_LENGTH</code>
+- <code>ERR_CODE_TABLE_FULL</code> (3) - outbound send queue is full; retry later</p>
 <p><strong>Inbound datagrams</strong> are delivered to the host via <code>RESP_CODE_CHANNEL_DATA_RECV</code> (0x1B); see <a href="#receive-channel-data-datagram">Receive Channel Data Datagram</a>.</p>
 <h4 id="registered-data_type-values">Registered <code>data_type</code> values</h4>
-<p><code>data_type</code> is an <strong>application identifier</strong>, not a payload-format identifier. Each registered value identifies an application that owns its own internal payload schemas. The firmware does not inspect payload contents — <code>data_type</code> is transported opaquely.</p>
+<p><code>data_type</code> is an <strong>application identifier</strong>, not a payload-format identifier. Each registered value identifies an application that owns its own internal payload schemas. The firmware does not inspect payload contents - <code>data_type</code> is transported opaquely.</p>
 <table>
 <thead>
 <tr>
@@ -2086,18 +2385,18 @@ Remaining bytes:                Binary payload (variable length)
 <td>Reserved; invalid on send</td>
 </tr>
 <tr>
-<td>0x0001 – 0x00FF</td>
-<td>—</td>
+<td>0x0001 - 0x00FF</td>
+<td>-</td>
 <td>Reserved for internal use</td>
 </tr>
 <tr>
-<td>0x0100 – 0xFEFF</td>
-<td>—</td>
+<td>0x0100 - 0xFEFF</td>
+<td>-</td>
 <td>Registered application namespaces (see <a href="../number_allocations/">number_allocations.md</a>)</td>
 </tr>
 <tr>
-<td>0xFF00 – 0xFFFE</td>
-<td>—</td>
+<td>0xFF00 - 0xFFFE</td>
+<td>-</td>
 <td>Testing/development; no registration required</td>
 </tr>
 <tr>
@@ -2113,7 +2412,7 @@ Remaining bytes:                Binary payload (variable length)
 <p>Inbound group datagrams (radio-level <code>PAYLOAD_TYPE_GRP_DATA</code>, 0x06) are forwarded to the host as <code>RESP_CODE_CHANNEL_DATA_RECV</code> notifications.</p>
 <p><strong>Frame Format</strong> (<code>RESP_CODE_CHANNEL_DATA_RECV</code>, 0x1B):</p>
 <pre><code>Byte 0:                 0x1B (packet type)
-Byte 1:                 SNR (signed int8, scaled ×4 — divide by 4.0 to recover dB)
+Byte 1:                 SNR (signed int8, scaled x4 - divide by 4.0 to recover dB)
 Bytes 2-3:              Reserved (clients MUST ignore)
 Byte 4:                 Channel Index (0-7)
 Byte 5:                 Path Length (actual path length when flooded, otherwise 0xFF for direct)
@@ -2121,21 +2420,21 @@ Bytes 6-7:              Data Type (uint16 little-endian)
 Byte 8:                 Data Length
 Bytes 9 .. 8+data_len:  Payload
 </code></pre>
-<p><strong>Path bytes are not forwarded</strong>: Only <code>path_len</code> is reported in the receive frame — the path itself is not copied to the host. There are no path bytes between byte 5 and the data_type field at bytes 6–7, regardless of <code>path_len</code>.</p>
+<p><strong>Path bytes are not forwarded</strong>: Only <code>path_len</code> is reported in the receive frame - the path itself is not copied to the host. There are no path bytes between byte 5 and the data_type field at bytes 6-7, regardless of <code>path_len</code>.</p>
 <p><strong>Path Length semantics differ between send and receive</strong>:</p>
 <table>
 <thead>
 <tr>
 <th>Direction</th>
 <th><code>path_len = 0xFF</code></th>
-<th><code>path_len ≠ 0xFF</code></th>
+<th><code>path_len != 0xFF</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Send</td>
 <td>Flood the network</td>
-<td>Direct route; the encoded path follows (low 6 bits = hash count, top 2 bits + 1 = hash size; on-wire byte count = <code>hash_count × hash_size</code>)</td>
+<td>Direct route; the encoded path follows (low 6 bits = hash count, top 2 bits + 1 = hash size; on-wire byte count = <code>hash_count x hash_size</code>)</td>
 </tr>
 <tr>
 <td>Receive</td>
@@ -2144,7 +2443,7 @@ Bytes 9 .. 8+data_len:  Payload
 </tr>
 </tbody>
 </table>
-<p>In other words, the meaning of <code>0xFF</code> is inverted between the two directions, and on receive the field carries metadata only — never a routable path. <code>path_len</code> is an encoded byte (see <code>Packet::isValidPathLen</code> / <code>Packet::writePath</code> in <code>src/Packet.cpp</code>), not a raw byte count.</p>
+<p>In other words, the meaning of <code>0xFF</code> is inverted between the two directions, and on receive the field carries metadata only - never a routable path. <code>path_len</code> is an encoded byte (see <code>Packet::isValidPathLen</code> / <code>Packet::writePath</code> in <code>src/Packet.cpp</code>), not a raw byte count.</p>
 <p><strong>Note</strong>: The device may also emit <code>PACKET_MESSAGES_WAITING</code> (0x83) to notify the host that datagrams are queued; poll with <code>CMD_SYNC_NEXT_MESSAGE</code> (0x0A) to retrieve them.</p>
 <p><strong>Parsing Pseudocode</strong>:</p>
 <pre><code class="language-python">def parse_channel_data_recv(data):
@@ -2369,8 +2668,8 @@ Bytes 11+: Message Text (UTF-8)
 <h3 id="terminology">Terminology</h3>
 <p>This document uses a spec-level naming convention (<code>PACKET_*</code>) for bytes the firmware sends back to the host. In the firmware source these same values are split across two <code>#define</code> families by purpose:</p>
 <ul>
-<li><code>RESP_CODE_*</code> — direct replies to a command (e.g. <code>RESP_CODE_CHANNEL_DATA_RECV</code> = <code>PACKET_CHANNEL_DATA_RECV</code> = 0x1B).</li>
-<li><code>PUSH_CODE_*</code> — asynchronous notifications not tied to a specific command (e.g. <code>PUSH_CODE_MSG_WAITING</code> = <code>PACKET_MESSAGES_WAITING</code> = 0x83).</li>
+<li><code>RESP_CODE_*</code> - direct replies to a command (e.g. <code>RESP_CODE_CHANNEL_DATA_RECV</code> = <code>PACKET_CHANNEL_DATA_RECV</code> = 0x1B).</li>
+<li><code>PUSH_CODE_*</code> - asynchronous notifications not tied to a specific command (e.g. <code>PUSH_CODE_MSG_WAITING</code> = <code>PACKET_MESSAGES_WAITING</code> = 0x83).</li>
 </ul>
 <p>Byte values are authoritative; names are aliases. When reading firmware source, <code>RESP_CODE_X</code> / <code>PUSH_CODE_X</code> correspond to this doc's <code>PACKET_X</code> of the same numeric value.</p>
 <h3 id="packet-types">Packet Types</h3>
@@ -2654,7 +2953,7 @@ Bytes 1-6: ACK Code (6 bytes, hex)
 <tr>
 <td>3</td>
 <td><code>ERR_CODE_TABLE_FULL</code></td>
-<td>Internal queue or table is full — retry later</td>
+<td>Internal queue or table is full - retry later</td>
 </tr>
 <tr>
 <td>4</td>
@@ -2706,14 +3005,14 @@ Bytes 1-6: ACK Code (6 bytes, hex)
 <li>
 <p>Match responses to commands by expected packet type:</p>
 <ul>
-<li><code>APP_START</code> → <code>PACKET_SELF_INFO</code></li>
-<li><code>DEVICE_QUERY</code> → <code>PACKET_DEVICE_INFO</code></li>
-<li><code>GET_CHANNEL</code> → <code>PACKET_CHANNEL_INFO</code></li>
-<li><code>SET_CHANNEL</code> → <code>PACKET_OK</code> or <code>PACKET_ERROR</code></li>
-<li><code>SEND_CHANNEL_MESSAGE</code> → <code>PACKET_MSG_SENT</code></li>
-<li><code>GET_MESSAGE</code> → <code>PACKET_CHANNEL_MSG_RECV</code>, <code>PACKET_CONTACT_MSG_RECV</code>, <code>PACKET_CHANNEL_DATA_RECV</code>, or <code>PACKET_NO_MORE_MSGS</code></li>
-<li><code>SEND_CHANNEL_DATA</code> → <code>PACKET_OK</code> or <code>PACKET_ERROR</code></li>
-<li><code>GET_BATTERY</code> → <code>PACKET_BATTERY</code></li>
+<li><code>APP_START</code> -&gt; <code>PACKET_SELF_INFO</code></li>
+<li><code>DEVICE_QUERY</code> -&gt; <code>PACKET_DEVICE_INFO</code></li>
+<li><code>GET_CHANNEL</code> -&gt; <code>PACKET_CHANNEL_INFO</code></li>
+<li><code>SET_CHANNEL</code> -&gt; <code>PACKET_OK</code> or <code>PACKET_ERROR</code></li>
+<li><code>SEND_CHANNEL_MESSAGE</code> -&gt; <code>PACKET_MSG_SENT</code></li>
+<li><code>GET_MESSAGE</code> -&gt; <code>PACKET_CHANNEL_MSG_RECV</code>, <code>PACKET_CONTACT_MSG_RECV</code>, <code>PACKET_CHANNEL_DATA_RECV</code>, or <code>PACKET_NO_MORE_MSGS</code></li>
+<li><code>SEND_CHANNEL_DATA</code> -&gt; <code>PACKET_OK</code> or <code>PACKET_ERROR</code></li>
+<li><code>GET_BATTERY</code> -&gt; <code>PACKET_BATTERY</code></li>
 </ul>
 </li>
 <li>
@@ -2901,7 +3200,9 @@ response = wait_for_response(PACKET_MSG_SENT)
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
       
     
   </body>

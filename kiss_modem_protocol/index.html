@@ -10,10 +10,10 @@
       
       
       
-        <link rel="canonical" href="https://meshcore-dev.github.io/meshcore/kiss_modem_protocol/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/kiss_modem_protocol/">
       
       
-        <link rel="prev" href="../faq/">
+        <link rel="prev" href="../halo_keymind_settings/">
       
       
         <link rel="next" href="../nrf52_power_management/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -51,6 +51,8 @@
     
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -161,13 +163,13 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
       </div>
@@ -206,13 +208,13 @@
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
     </div>
@@ -234,6 +236,87 @@
     
   
     Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
   
 
     
@@ -342,6 +425,87 @@
     
   
     Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
   
 
     
@@ -487,6 +651,17 @@
     <span class="md-ellipsis">
       
         TNC to Host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-output-backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host Output Backpressure
       
     </span>
   </a>
@@ -821,6 +996,114 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../packet_format/" class="md-nav__link">
         
   
@@ -910,6 +1193,33 @@
     
   
     Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
   
 
     
@@ -1042,6 +1352,17 @@
     <span class="md-ellipsis">
       
         TNC to Host
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-output-backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host Output Backpressure
       
     </span>
   </a>
@@ -1324,7 +1645,7 @@
 
 
   
-    <a href="https://github.com/meshcore-dev/meshcore/edit/main/docs/kiss_modem_protocol.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/kiss_modem_protocol.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1369,10 +1690,10 @@
 </tr>
 </tbody>
 </table>
-<pre><code>┌──────┬───────────┬──────────────┬──────┐
-│ FEND │ Type Byte │ Data (escaped)│ FEND │
-│ 0xC0 │  1 byte   │ 0-510 bytes  │ 0xC0 │
-└──────┴───────────┴──────────────┴──────┘
+<pre><code>+------+-----------+--------------+------+
+| FEND | Type Byte | Data (escaped)| FEND |
+| 0xC0 |  1 byte   | 0-510 bytes  | 0xC0 |
++------+-----------+--------------+------+
 </code></pre>
 <h3 id="type-byte">Type Byte</h3>
 <p>The type byte is split into two nibbles:</p>
@@ -1414,7 +1735,7 @@
 <td>Data</td>
 <td><code>0x00</code></td>
 <td>Raw packet</td>
-<td>Queue packet for transmission</td>
+<td>Queue packet for transmission (one pending at a time)</td>
 </tr>
 <tr>
 <td>TXDELAY</td>
@@ -1480,6 +1801,9 @@
 </tbody>
 </table>
 <p>Data frames carry raw packet data only, with no metadata prepended. The Data command payload is limited to 255 bytes to match the MeshCore maximum transmission unit (MAX_TRANS_UNIT); frames larger than 255 bytes are silently dropped. The KISS specification recommends at least 1024 bytes for general-purpose TNCs; this modem is intended for MeshCore packets only, whose protocol MTU is 255 bytes.</p>
+<p>Only one packet may be pending for radio transmission at a time. If the host sends a second Data frame before the first has completed, the modem responds with Error (0xF1) and TxBusy (0x07).</p>
+<h3 id="host-output-backpressure">Host Output Backpressure</h3>
+<p>Outbound frames are encoded into a 2-slot queue and flushed when serial output space is available; <code>loop()</code> never blocks on writes. Radio TX state advances independently of host read speed. TxDone is retained until it can be queued. If the outbound queue is full, the modem responds with Error (0xF1) and TxBusy (0x07). Hosts should read serial promptly to avoid delayed responses.</p>
 <h3 id="csma-behavior">CSMA Behavior</h3>
 <p>The TNC implements p-persistent CSMA for half-duplex operation:</p>
 <ol>
@@ -1492,10 +1816,10 @@
 <h2 id="sethardware-extensions-0x06">SetHardware Extensions (0x06)</h2>
 <p>MeshCore-specific functionality uses the standard KISS SetHardware command. The first byte of SetHardware data is a sub-command. Standard KISS clients ignore these frames.</p>
 <h3 id="frame-format_1">Frame Format</h3>
-<pre><code>┌──────┬──────┬─────────────┬──────────────┬──────┐
-│ FEND │ 0x06 │ Sub-command  │ Data (escaped)│ FEND │
-│ 0xC0 │      │   1 byte    │   variable   │ 0xC0 │
-└──────┴──────┴─────────────┴──────────────┴──────┘
+<pre><code>+------+------+-------------+--------------+------+
+| FEND | 0x06 | Sub-command | Data (escaped)| FEND |
+| 0xC0 |      |   1 byte    |   variable   | 0xC0 |
++------+------+-------------+--------------+------+
 </code></pre>
 <h3 id="request-sub-commands-host-to-tnc">Request Sub-commands (Host to TNC)</h3>
 <table>
@@ -1825,14 +2149,14 @@
 <tr>
 <td>TxBusy</td>
 <td><code>0x07</code></td>
-<td>Transmit busy</td>
+<td>Radio TX busy, or host output queue full</td>
 </tr>
 </tbody>
 </table>
 <h3 id="unsolicited-events">Unsolicited Events</h3>
 <p>The TNC sends these SetHardware frames without a preceding request:</p>
-<p><strong>TxDone (0xF8)</strong>: Sent after a packet has been transmitted. Contains a single byte: 0x01 for success, 0x00 for failure.</p>
-<p><strong>RxMeta (0xF9)</strong>: Sent immediately after each standard data frame (type 0x00) with metadata for the received packet. Contains SNR (1 byte, signed, value x4 for 0.25 dB precision) followed by RSSI (1 byte, signed, dBm). Enabled by default; can be toggled with SetSignalReport. Standard KISS clients ignore this frame.</p>
+<p><strong>TxDone (0xF8)</strong>: Sent after radio transmission completes. Contains a single byte: 0x01 for success, 0x00 for failure. Delivery to the host may be delayed under serial backpressure but is not dropped.</p>
+<p><strong>RxMeta (0xF9)</strong>: Sent after each standard data frame (type 0x00) with SNR (1 byte, signed, value x4) and RSSI (1 byte, signed, dBm). Queued with the data frame; omitted if the data frame cannot be queued. Enabled by default; toggle with SetSignalReport. Standard KISS clients ignore this frame.</p>
 <h2 id="data-formats">Data Formats</h2>
 <h3 id="radio-parameters-setradio-radio-response">Radio Parameters (SetRadio / Radio response)</h3>
 <p>All values little-endian.</p>
@@ -2008,7 +2332,7 @@
 <tr>
 <td>Temperature</td>
 <td>2 bytes</td>
-<td>int16_t, tenths of °C (e.g., 253 = 25.3°C)</td>
+<td>int16_t, tenths of degC (e.g., 253 = 25.3degC)</td>
 </tr>
 </tbody>
 </table>
@@ -2091,7 +2415,7 @@
 </table>
 <h2 id="notes">Notes</h2>
 <ul>
-<li>Data payload limit (255 bytes) matches MeshCore MAX_TRANS_UNIT; no change needed for KISS “1024+ recommended” (that applies to general TNCs, not MeshCore)</li>
+<li>Data payload limit (255 bytes) matches MeshCore MAX_TRANS_UNIT; no change needed for KISS "1024+ recommended" (that applies to general TNCs, not MeshCore)</li>
 <li>Modem generates identity on first boot (stored in flash)</li>
 <li>All multi-byte values are little-endian unless stated otherwise</li>
 <li>SNR values in RxMeta are multiplied by 4 for 0.25 dB precision</li>
@@ -2151,7 +2475,9 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
       
     
   </body>

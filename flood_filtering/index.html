@@ -1,0 +1,2005 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/flood_filtering/">
+      
+      
+        <link rel="prev" href="../faq/">
+      
+      
+        <link rel="next" href="../gps_tracking/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Repeater Flood Filtering and Moderation - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#repeater-flood-filtering-and-moderation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Repeater Flood Filtering and Moderation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-making-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before making changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#force-floods-into-a-transport-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Force floods into a transport scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#require-valid-incoming-scopes-only-on-selected-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Require valid incoming scopes only on selected channels
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Require valid incoming scopes only on selected channels">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interaction-with-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interaction with duplicate detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filter-by-payload-type-received-hop-count-and-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter by payload type, received hop count, and path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Filter by payload type, received hop count, and path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#remote-administration-cannot-be-type-filtered-on-short-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote administration cannot be type-filtered on short paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#high-traffic-mesh-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-traffic mesh example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#moderate-group-text-by-channel-and-username" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moderate group text by channel and username
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Moderate group text by channel and username">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-user-per-channel-rate-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-user, per-channel rate limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#match-the-start-of-a-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Match the start of a path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-forwarding-controls-combine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the forwarding controls combine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delegate-filter-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delegate filter management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restore-the-factory-seeded-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restore the factory-seeded rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remove-the-custom-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove the custom rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-making-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before making changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#force-floods-into-a-transport-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Force floods into a transport scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#require-valid-incoming-scopes-only-on-selected-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Require valid incoming scopes only on selected channels
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Require valid incoming scopes only on selected channels">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#interaction-with-duplicate-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interaction with duplicate detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filter-by-payload-type-received-hop-count-and-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter by payload type, received hop count, and path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Filter by payload type, received hop count, and path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#remote-administration-cannot-be-type-filtered-on-short-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote administration cannot be type-filtered on short paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#high-traffic-mesh-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-traffic mesh example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#moderate-group-text-by-channel-and-username" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moderate group text by channel and username
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Moderate group text by channel and username">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-user-per-channel-rate-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-user, per-channel rate limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#match-the-start-of-a-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Match the start of a path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-forwarding-controls-combine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the forwarding controls combine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delegate-filter-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delegate filter management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restore-the-factory-seeded-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restore the factory-seeded rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remove-the-custom-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove the custom rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/flood_filtering.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="repeater-flood-filtering-and-moderation">Repeater Flood Filtering and Moderation</h1>
+<p>This guide explains the Keymind repeater forwarding filters. The filters decide
+whether this repeater retransmits a packet and can assign a transport scope
+before that decision. They do not stop local reception, packet logging, or MQTT
+observation.</p>
+<p>Only flood routes are filtered:</p>
+<ul>
+<li><code>0x00</code> / <code>ROUTE_TYPE_TRANSPORT_FLOOD</code> - flood routing with transport codes</li>
+<li><code>0x01</code> / <code>ROUTE_TYPE_FLOOD</code> - unscoped flood routing</li>
+</ul>
+<p>Direct routes <code>0x02</code> and <code>0x03</code> are never affected by these rules.
+The route and payload values follow the upstream
+<a href="https://docs.meshcore.io/packet_format/">packet-format reference</a> and
+<a href="https://docs.meshcore.io/payloads/">payload layouts</a>, with this fork's LoRa
+OTA assignment noted below.</p>
+<h2 id="before-making-changes">Before making changes</h2>
+<p>Show the current forwarding controls:</p>
+<pre><code class="language-text">get repeat
+get flood.max
+get flood.max.unscoped
+get flood.max.advert
+get flood.channel.data
+get flood.channel.data.hops
+get flood.channel.block
+get flood.channel.scope
+get flood.channel.scope.require
+get flood.filter
+get flood.moderation
+</code></pre>
+<p>The <code>flood.filter</code> and <code>flood.moderation</code> tables each have 16 persistent slots.
+A new <code>flood.filter</code> table starts with <code>ota all suspend=tempradio</code> in slot 1;
+<code>flood.moderation</code> starts empty. A row can opt into <code>suspend=tempradio</code>;
+temporary radio is not synonymous with OTA and can carry normal packet types
+too. A corrupt or truncated table fails open, so corrupt storage does not
+silently enable blocking.</p>
+<h2 id="force-floods-into-a-transport-scope">Force floods into a transport scope</h2>
+<p><code>flood.channel.scope</code> can add a scope to a received unscoped flood or replace
+the scope of a transport-scoped flood before this repeater forwards it:</p>
+<pre><code class="language-text">set flood.channel.scope &lt;channel|txt:*|login:*|other:*&gt; &lt;region&gt; [path=blacklist|path=bucket:1-6] [tx=slow]
+set flood.channel.scope.&lt;slot&gt; &lt;channel|txt:*|login:*|other:*&gt; &lt;region&gt; [path=blacklist|path=bucket:1-6] [tx=slow]
+get flood.channel.scope
+get flood.channel.scope.&lt;slot&gt;
+del flood.channel.scope.&lt;slot&gt;
+del flood.channel.scope all
+</code></pre>
+<p>The channel may be <code>public</code>, <code>#channel</code>, or a 128/256-bit hex key. The region
+must already exist and provide a usable transport key. Keyed rules first check
+the one-byte channel hash carried in the packet, then validate the MAC by
+decrypting with the configured channel key. A hash collision alone cannot
+force a scope.</p>
+<p>Add <code>path=blacklist</code> to make a channel-scope row eligible only when the
+received path matches the passive <code>flood.filter.blacklist</code> ID table. It does
+not require an enabled <code>flood.filter</code> drop row. With 3-byte paths, one exact
+listed ID qualifies. With 2-byte paths, two received path entries must match
+the first two bytes of listed IDs. A 1-byte path never qualifies.</p>
+<p>Use <code>path=bucket:&lt;1-6&gt;</code> to match one of the existing
+<code>flood.retry.bucket</code> tables instead. Each bridge bucket holds up to 17
+three-byte IDs and remains usable by channel scoping while
+<code>flood.retry.bridge</code> is off. Bucket matching uses the same thresholds as the
+blacklist: one exact hit for 3-byte paths, two qualifying entries for 2-byte
+paths, and no matches for 1-byte paths. Channel scoping reads the configured
+IDs directly; <code>recent.repeater</code> freshness and <code>flood.retry.ignore</code> do not
+change this match.</p>
+<p>There are three independent wildcard classes:</p>
+<ul>
+<li><code>txt:*</code> handles otherwise-unmatched <code>GRP_TXT</code> and <code>GRP_DATA</code>; plain <code>*</code> is
+  its alias.</li>
+<li><code>login:*</code> handles <code>REQ</code>, <code>RESPONSE</code>, <code>TXT_MSG</code>, <code>ANON_REQ</code>, and <code>PATH</code>.</li>
+<li><code>other:*</code> handles every remaining flood payload type except TRACE, including
+  OTA. TRACE is deliberately exempt from forced-scope wildcards.</li>
+</ul>
+<p><code>login:*</code> and <code>other:*</code> classify only the visible outer payload type; they do
+not authenticate its contents. Exact channel rows with usable target regions
+always take precedence over <code>txt:*</code>, even if that wildcard has a lower slot
+number. Within the exact class, matching path-qualified rows are tried before
+ordinary fallback rows. The same qualified-then-fallback order applies within
+each wildcard class. A missing or unusable target is skipped, so later rows
+remain eligible. The lowest usable slot wins within each priority tier.</p>
+<p>For example, this uses bridge bucket 1 to assign <code>east</code> to <code>public</code> packets
+whose received 3-byte path contains <code>7576FB</code>, and assigns <code>west</code> to all other
+authenticated <code>public</code> packets:</p>
+<pre><code class="language-text">set flood.retry.bucket 1 7576FB
+set flood.channel.scope public west
+set flood.channel.scope public east path=bucket:1
+</code></pre>
+<p>More 3-byte IDs can be added to bucket 1 later. Any one of them qualifies the
+<code>east</code> row. Replacing or clearing that bucket changes which paths qualify but
+leaves both channel-scope rows intact. Bridge retry does not need to be
+enabled.</p>
+<p>On a successful match, an unscoped route changes from <code>ROUTE_TYPE_FLOOD</code> to
+<code>ROUTE_TYPE_TRANSPORT_FLOOD</code>; an already-scoped route remains transport-flood
+but receives replacement codes. Transport code 0 is calculated with the target
+region key over the payload type and payload, and code 1 becomes zero. The
+change happens before region enforcement, forwarding filters, and
+deduplication. Consequently <code>flood.max.unscoped</code> no longer applies to a packet
+converted from unscoped, while <code>flood.max</code>, target-region permissions,
+<code>flood.filter</code>, channel blocking, loop detection, and moderation still apply
+to every rewritten packet. By default, if the selected scope differs and the
+rewritten packet passes those checks, its initial retransmission uses zero
+<code>txdelay</code> and the highest outbound queue priority so the newly scoped copy can
+win at the next hop. Add <code>tx=slow</code> to use an effective inbound <code>rxdelay</code> base
+of <code>max(2, configured rxdelay * 2)</code>, retain normal outbound queue priority, and
+force the maximum <code>txdelay</code> factor of <code>2.0</code>. The actual transmit delay is still
+randomized, from zero through ten packet airtimes.
+It does not preempt an active radio transmission or bypass CAD and
+airtime-budget limits. Selecting the scope already present is a no-op and does
+not grant special treatment.</p>
+<p>Direct routes are never rewritten. TRACE is never rewritten even in flood
+form; its existing code, if any, is preserved and it bypasses
+region/unknown-code enforcement. Scope assignment also does not override
+normal payload validation or make an otherwise non-forwardable packet type
+forwardable.</p>
+<p>LoRa OTA (<code>0x0C</code>) falls under <code>other:*</code>. A matching row adds the selected
+transport code or replaces the existing one, but OTA still operates normally
+during the temporary-radio window because the OTA handler accepts both
+unscoped and transport-scoped flood routes. The target region must allow
+flooding. A new repeater also seeds <code>ota all suspend=tempradio</code> in flood-filter
+slot 1. That visible rule blocks OTA forwarding at every received hop outside
+temporary-radio operation and is skipped while temporary radio is active.
+Independently, the OTA core refuses OTA receive, relay, and transmit outside an
+actually active temporary-radio window, even if the seeded row is deleted or
+replaced.</p>
+<p>Capacity is selected at build time:</p>
+<ul>
+<li>Roomy ESP32 builds: 255 slots, 9,180 bytes RAM, 9,185-byte file.</li>
+<li>DRAM-tight classic ESP32 LoRa-OTA repeaters, nRF52, and other normal
+  constrained builds: 31 slots, 1,116 bytes RAM, 1,121-byte file.</li>
+<li>Very-tight STM32WL builds: 15 slots, 540 bytes RAM, 545-byte file.</li>
+<li>The no-PSRAM LilyGo T-LoRa V2.1 repeater/observer: 4 slots, 144 bytes RAM,
+  149-byte file. This minimum holds the three wildcard classes and one exact
+  channel mapping.</li>
+</ul>
+<p>The region map still has 32 named-region entries. Large ESP32 tables can map
+many channels to the same targets, but cannot reference more than 32 distinct
+configured region names.</p>
+<h2 id="require-valid-incoming-scopes-only-on-selected-channels">Require valid incoming scopes only on selected channels</h2>
+<p><code>flood.channel.scope.require</code> changes region enforcement for received flood
+<code>GRP_TXT</code> and <code>GRP_DATA</code> packets from a global policy to a channel opt-in
+policy:</p>
+<pre><code class="language-text">set flood.channel.scope.require &lt;public|#channel|128/256-bit-key&gt;
+set flood.channel.scope.require.&lt;slot&gt; &lt;public|#channel|128/256-bit-key&gt;
+get flood.channel.scope.require
+get flood.channel.scope.require.&lt;slot&gt;
+del flood.channel.scope.require.&lt;slot&gt;
+del flood.channel.scope.require all
+</code></pre>
+<p>An empty table preserves the normal global region behavior. Once at least one
+row exists, a group-channel packet that authenticates against a listed key must
+arrive as <code>ROUTE_TYPE_TRANSPORT_FLOOD</code> with a transport code matching a locally
+flood-allowed region. An unscoped packet, an unknown transport code, or a code
+for a denied region is not retransmitted. The check uses the original incoming
+scope before <code>flood.channel.scope</code> or <code>flood.filter scope=</code> can rewrite it.
+Those rewrite actions are skipped for a rejected listed channel, so they
+cannot rescue it or grant special receive/transmit timing.</p>
+<p>Group-channel packets that do not authenticate against any listed key bypass
+the region/unknown-code forwarding gate. They still pass through <code>repeat</code>,
+<code>flood.max*</code>, <code>flood.filter</code>, <code>flood.channel.block</code>, loop detection, payload
+validation, and moderation. Non-channel flood payload types retain the normal
+global region behavior. A one-byte channel-hash collision is only a prefilter;
+the packet must also pass MAC validation/decryption with the configured key.</p>
+<p>Without <code>.slot</code>, setting an existing key updates its row and a new key uses the
+first empty row. Numbered <code>set</code> replaces that slot. Detail output displays only
+the first four derived hash bytes and key size, never the secret. The table has
+the same build-dependent slot count as <code>flood.channel.scope</code>; each row consumes
+34 bytes of RAM and storage, plus a five-byte file header. ACL permission <code>4</code>
+can manage it.</p>
+<p>For example, this requires an allowed incoming scope on <code>#bot</code>, while every
+other group channel bypasses region enforcement:</p>
+<pre><code class="language-text">set flood.channel.scope.require #bot
+get flood.channel.scope.require
+</code></pre>
+<h3 id="interaction-with-duplicate-detection">Interaction with duplicate detection</h3>
+<p>The seen-packet hash contains the payload type and exact payload bytes. It does
+not contain the route type, either transport code, or the ordinary flood path.
+For <code>TRACE</code> only, the encoded <code>path_len</code> byte is also included. Therefore an
+unscoped packet and the same packet after this repeater adds a transport code
+are the same duplicate. A later copy with a different scope is also the same
+duplicate; changing or adding scope cannot evade the seen table.</p>
+<p>When equivalent non-TRACE flood copies overlap in <code>rxdelay</code>, the normal
+receive-quality timing still chooses the packet to process, but that winner
+takes a scope from the queued copies whose transport code matches an allowed
+region in this repeater.
+Unknown and denied scopes are ignored. If eligible copies have different
+scopes, the shortest received path supplies the scope. Equal path lengths
+prefer the deepest matching child region (the narrowest configured scope). A
+remaining tie keeps queue order. The winner keeps its own path, SNR, and delay
+schedule; only its route and transport codes can change, including replacement
+of a less-preferred scope it already carried.</p>
+<p>Scope selection happens at dequeue so the original scopes remain available for
+comparison. It applies only while copies are queued and cannot alter a copy
+already processed into the seen table. TRACE is excluded from scope arbitration
+entirely, so rxdelay never adds or replaces a trace transport code.</p>
+<p>A packet that already matches a configured fast <code>flood.channel.scope</code> or
+<code>flood.filter scope=</code> action and needs its scope changed bypasses this inbound
+<code>rxdelay</code> queue entirely. A <code>tx=slow</code> row remains in the queue with twice the
+configured base, floored at <code>2.0</code>, and participates in normal queued-copy
+scope arbitration.</p>
+<h2 id="filter-by-payload-type-received-hop-count-and-path">Filter by payload type, received hop count, and path</h2>
+<p>Use <code>flood.filter</code> when the packet type, current path length, or listed path
+identifiers are enough to make the decision:</p>
+<pre><code class="language-text">set flood.filter.blacklist &lt;ID[,ID...]&gt;
+set flood.filter.blacklist.&lt;slot&gt; &lt;ID[,ID...]&gt;
+get flood.filter.blacklist
+get flood.filter.blacklist.&lt;slot&gt;
+del flood.filter.blacklist
+del flood.filter.blacklist.&lt;slot&gt;
+set flood.filter &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]
+set flood.filter.&lt;slot&gt; &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]
+get flood.filter
+get flood.filter.&lt;slot&gt;
+del flood.filter.&lt;slot&gt;
+del flood.filter all
+</code></pre>
+<p>The blacklist holds up to 255 unique 3-byte repeater IDs on ESP32 builds and
+18 on other builds. Each is written as six hexadecimal digits. For example:</p>
+<pre><code class="language-text">set flood.filter.blacklist A1B2C3,D4E5F6,112233
+set flood.filter.blacklist.4 445566
+set flood.filter any all path=blacklist
+</code></pre>
+<p>An unnumbered <code>set</code> replaces the list with up to 18 IDs, the largest command
+that fits every CLI transport. A numbered <code>set</code> writes a batch of up to 18 IDs
+beginning at an existing slot or the next consecutive slot. This is how an
+ESP32 list grows beyond 18. Deleting a numbered entry compacts the entries
+after it. Unnumbered <code>get</code> reports the total and prints the leading IDs that
+fit; numbered <code>get</code> retrieves one specific entry.</p>
+<p><code>path=blacklist</code> is an unordered precondition on that row. With 3-byte path
+hashes, one or more exact blacklist hits qualifies the packet. With 2-byte
+path hashes, two or more received path entries must match the first two bytes
+of listed IDs. Each received entry is counted at most once. A 1-byte path
+never qualifies. The IDs may occur anywhere in the received path; neither
+their list order nor their path order matters.</p>
+<p>Without a slot number, <code>set</code> reuses a rule with the same match, scope,
+requirement, and suspension settings, or selects the first empty slot. This
+lets <code>tx=slow</code> or <code>tx=fast</code> change that rule's timing without creating a
+duplicate. With a slot number, it replaces that slot. Omitting the hop
+expression means <code>all</code> (<code>0-63</code>).</p>
+<p>A row without <code>scope=</code> is the existing drop action. A row with <code>scope=</code> is a
+scope-setting action instead: it adds transport scope to an unscoped packet or
+replaces the codes on an already-scoped packet. The scope name is normalized
+with a leading <code>#</code>, and the 128-bit transport key is derived directly from that
+hashtag. The name does not need to exist in the region list and is not added to
+it. Public names up to 30 characters are accepted; private <code>$</code> scopes are not.</p>
+<p>Add <code>require=region</code> to a scope row when rewriting must not rescue a packet
+that the incoming-region gate would reject. The repeater evaluates the packet's
+original route before any rewrite in that receive pass. An incoming transport
+scope must match a locally allowed region; an unscoped flood must be allowed by
+the wildcard region. If the check fails, that scope row is skipped, the filter
+does not grant its region bypass, and the unchanged packet is allowed to fail
+normal region enforcement. Other independently configured scope rows still
+apply in their normal order.</p>
+<p>When multiple scope rows match, the lowest-numbered row wins. Scope rows do not
+approve a packet: any matching drop row and every remaining forwarding gate can
+still reject it. A filter-assigned scope is trusted without local region-list
+validation, but <code>repeat</code>, <code>flood.max</code>, channel blocking, loop detection, and
+moderation still apply. By default, a changed scope bypasses inbound <code>rxdelay</code>,
+then is retransmitted with zero <code>txdelay</code> and the highest outbound queue
+priority. Add <code>tx=slow</code> to use an effective inbound <code>rxdelay</code> base of
+<code>max(2, configured rxdelay * 2)</code>, retain normal queue priority, and force the
+maximum <code>txdelay</code> factor of <code>2.0</code>; the randomized transmit delay ranges from
+zero through ten packet airtimes. <code>tx=fast</code> explicitly restores the default.
+Selecting the scope already present does not grant special treatment. Active
+radio transmission, CAD, and airtime-budget limits are unchanged.</p>
+<p>The blacklist and rule table are persisted separately. Deleting the blacklist
+leaves <code>path=blacklist</code> rows in place but dormant until IDs are configured
+again. Path hashes are truncated routing identifiers and are not authenticated
+proof that a particular repeater handled a packet.</p>
+<p>On first initialization, flood-filter slot 1 is seeded with:</p>
+<pre><code class="language-text">set flood.filter.1 0x0C all suspend=tempradio
+</code></pre>
+<p>This is a normal editable row. After the table has been saved, deleting it
+remains persistent across reboot; the firmware does not recreate it. Run the
+same command to restore the exact seeded row, or omit <code>.1</code> to preserve existing
+slot assignments and use the first empty slot. Operators may add
+<code>suspend=tempradio</code> to any other row that should be skipped while the radio is
+on a temporary channel.</p>
+<p>Suspension does not approve a packet or bypass the rest of the filter table. It
+skips that row, then evaluation continues with the next row and the remaining
+forwarding gates. An ordinary drop <code>any</code> row therefore still applies during
+the temporary-radio window, subject to the short-path remote-admin protection
+below. <code>repeat</code>, <code>flood.max*</code>, region handling, loop detection, and the OTA
+subsystem's own hop limit also remain in force.</p>
+<p>Standard traceroute uses direct routing and never enters <code>flood.filter</code>. For a
+custom flood-form trace, catch-all <code>any</code> rows are deliberately ignored; only an
+explicit <code>trace</code> row can match it. The stock core does not normally
+flood-forward TRACE packets.</p>
+<h3 id="remote-administration-cannot-be-type-filtered-on-short-paths">Remote administration cannot be type-filtered on short paths</h3>
+<p><code>flood.filter</code> drop actions use two minimum filterable hop counts:</p>
+<ul>
+<li><code>anon_req</code>, <code>path</code>, and <code>response</code> cannot be blocked at received hops <code>0-6</code>;
+  configured rules begin applying at hop <code>7</code>.</li>
+<li>Flood <code>txt_msg</code> cannot be blocked at received hops <code>0-4</code>; configured rules
+  begin applying at hop <code>5</code>.</li>
+</ul>
+<p><code>req</code>, <code>ack</code>, and multipart ACK have no special floor and remain filterable from
+hop <code>0</code>. Scope-setting rows do not block traffic and may apply within the
+protected ranges.</p>
+<p>A flooded login starts as <code>ANON_REQ</code>; its reply is commonly a <code>PATH</code> packet
+carrying an encrypted <code>RESPONSE</code>. Before a direct return path is established,
+administrative replies and CLI text can also be flooded. Transit repeaters do
+not have the session key and cannot distinguish those encrypted admin exchanges
+from ordinary peer packets with the same outer type. Each hop floor therefore
+covers the complete outer packet class, not only packets that ultimately
+authenticate as administrators.</p>
+<p>This protects only against configurable <code>flood.filter</code> drop actions. It does
+not override <code>repeat</code>, <code>flood.max*</code>, loop detection, or other forwarding gates.</p>
+<p>Hop expressions are based on the path count when this repeater receives the
+packet:</p>
+<ul>
+<li><code>N</code> matches exactly <code>N</code> received hops.</li>
+<li><code>N+</code> matches <code>N</code> or more received hops.</li>
+<li><code>N-M</code> matches the inclusive range.</li>
+<li><code>all</code> matches <code>0</code> through <code>63</code> hops.</li>
+<li><code>0+</code>, <code>all</code>, and omitting the hop expression are equivalent. <code>get</code> reports
+  the stored range using the canonical spelling <code>all</code>.</li>
+</ul>
+<p>Examples:</p>
+<pre><code class="language-text"># Stop forwarding group data once it arrives with four or more path entries.
+set flood.filter grp_data 4+
+
+# Stop long adverts, while still allowing shorter adverts.
+set flood.filter.2 advert 6+
+
+# Keep LoRa OTA floods from crossing this repeater at path counts 2 through 4.
+set flood.filter.3 ota 2-4
+
+# Assign #local scope to group text without requiring #local in the region map.
+set flood.filter grp_txt all scope=local
+
+# Rewrite only packets whose incoming region was already acceptable.
+set flood.filter grp_data all scope=local require=region
+
+# Rewrite matching blacklisted paths without fast-tracking their retransmission.
+set flood.filter grp_data all path=blacklist scope=local tx=slow
+
+# Drop matching flood types after the unordered path blacklist qualifies.
+set flood.filter.blacklist A1B2C3,D4E5F6,112233
+set flood.filter any all path=blacklist
+
+# Apply a hard ceiling to flood payload types at 12 or more received hops.
+set flood.filter any 12+
+</code></pre>
+<h3 id="high-traffic-mesh-example">High-traffic mesh example</h3>
+<p>This preset limits request and group-data propagation early while allowing the
+login-capable response, anonymous-request, and path types to travel farther:</p>
+<pre><code class="language-text">set flood.filter req 3+
+set flood.filter response 9+
+set flood.filter 0x06 3+
+set flood.filter 0x07 9+
+set flood.filter path 9+
+set flood.filter control 1+
+get flood.filter
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Stops retransmission when received with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>req 3+</code></td>
+<td>3 or more path entries</td>
+</tr>
+<tr>
+<td><code>response 9+</code></td>
+<td>9 or more path entries</td>
+</tr>
+<tr>
+<td><code>0x06 3+</code> (<code>grp_data</code>)</td>
+<td>3 or more path entries</td>
+</tr>
+<tr>
+<td><code>0x07 9+</code> (<code>anon_req</code>)</td>
+<td>9 or more path entries</td>
+</tr>
+<tr>
+<td><code>path 9+</code></td>
+<td>9 or more path entries</td>
+</tr>
+<tr>
+<td><code>control 1+</code></td>
+<td>1 or more path entries</td>
+</tr>
+</tbody>
+</table>
+<p>On a new table, the factory OTA rule occupies slot 1, so these unnumbered
+commands normally fill slots 2 through 7. Existing tables may choose different
+free slots. The <code>response</code>, <code>anon_req</code>, and <code>path</code> thresholds are above their
+protected <code>0-6</code> range, so all six rules take effect at the thresholds shown.
+The Control rule allows a flood received with path count <code>0</code> to be forwarded
+once, then stops it at the next repeater. Normal node-discovery Control packets
+are direct zero-hop packets and never enter <code>flood.filter</code>. These rules affect
+only retransmission by the repeater; local reception and logging remain
+unchanged.</p>
+<p>Accepted payload names are:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Short name</th>
+<th>Full name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td><code>req</code></td>
+<td><code>PAYLOAD_TYPE_REQ</code></td>
+</tr>
+<tr>
+<td><code>0x01</code></td>
+<td><code>response</code></td>
+<td><code>PAYLOAD_TYPE_RESPONSE</code></td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>txt_msg</code></td>
+<td><code>PAYLOAD_TYPE_TXT_MSG</code></td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td><code>ack</code></td>
+<td><code>PAYLOAD_TYPE_ACK</code></td>
+</tr>
+<tr>
+<td><code>0x04</code></td>
+<td><code>advert</code></td>
+<td><code>PAYLOAD_TYPE_ADVERT</code></td>
+</tr>
+<tr>
+<td><code>0x05</code></td>
+<td><code>grp_txt</code></td>
+<td><code>PAYLOAD_TYPE_GRP_TXT</code></td>
+</tr>
+<tr>
+<td><code>0x06</code></td>
+<td><code>grp_data</code></td>
+<td><code>PAYLOAD_TYPE_GRP_DATA</code></td>
+</tr>
+<tr>
+<td><code>0x07</code></td>
+<td><code>anon_req</code></td>
+<td><code>PAYLOAD_TYPE_ANON_REQ</code></td>
+</tr>
+<tr>
+<td><code>0x08</code></td>
+<td><code>path</code></td>
+<td><code>PAYLOAD_TYPE_PATH</code></td>
+</tr>
+<tr>
+<td><code>0x09</code></td>
+<td><code>trace</code></td>
+<td><code>PAYLOAD_TYPE_TRACE</code></td>
+</tr>
+<tr>
+<td><code>0x0A</code></td>
+<td><code>multipart</code></td>
+<td><code>PAYLOAD_TYPE_MULTIPART</code></td>
+</tr>
+<tr>
+<td><code>0x0B</code></td>
+<td><code>control</code></td>
+<td><code>PAYLOAD_TYPE_CONTROL</code></td>
+</tr>
+<tr>
+<td><code>0x0C</code></td>
+<td><code>ota</code></td>
+<td><code>PAYLOAD_TYPE_OTA</code> in this fork</td>
+</tr>
+<tr>
+<td><code>0x0D</code></td>
+<td><code>13</code></td>
+<td>reserved</td>
+</tr>
+<tr>
+<td><code>0x0E</code></td>
+<td><code>14</code></td>
+<td>reserved</td>
+</tr>
+<tr>
+<td><code>0x0F</code></td>
+<td><code>raw_custom</code></td>
+<td><code>PAYLOAD_TYPE_RAW_CUSTOM</code></td>
+</tr>
+</tbody>
+</table>
+<p>Decimal values <code>0</code> through <code>15</code>, hexadecimal values <code>0x00</code> through <code>0x0F</code>, the
+full <code>PAYLOAD_TYPE_*</code> names, and <code>any</code> are also accepted. Upstream currently
+reserves <code>0x0C</code>; this fork assigns it to LoRa OTA. Rows are suspended during
+temporary-radio operation only when explicitly configured that way.</p>
+<h2 id="moderate-group-text-by-channel-and-username">Moderate group text by channel and username</h2>
+<p>Use <code>flood.moderation</code> for flood <code>GRP_TXT</code> messages. The repeater validates and
+decrypts the selected channel, extracts the display name before the first <code>:</code>,
+then applies the rule:</p>
+<pre><code class="language-text">set flood.moderation &lt;channel&gt; &lt;sender&gt; &lt;action&gt; [action...]
+set flood.moderation.&lt;slot&gt; &lt;channel&gt; &lt;sender&gt; &lt;action&gt; [action...]
+get flood.moderation
+get flood.moderation.&lt;slot&gt;
+del flood.moderation.&lt;slot&gt;
+del flood.moderation all
+</code></pre>
+<p>Channels can be specified as:</p>
+<ul>
+<li><code>public</code> for the built-in Public channel</li>
+<li><code>#name</code> for a well-known hashtag channel</li>
+<li>a 128-bit or 256-bit channel key in hexadecimal</li>
+</ul>
+<p>The key is stored locally so packets can be authenticated and decrypted. It is
+not included in <code>get flood.moderation</code> output.</p>
+<p>Available actions are:</p>
+<ul>
+<li><code>drop</code> - do not retransmit any matching message</li>
+<li><code>rate=X/min</code> - retransmit at most <code>X</code> messages per local 60-second window</li>
+<li><code>hops=N</code> - do not retransmit when the received path count is <code>N</code> or higher</li>
+<li><code>path=H1[,H2,H3]</code> - require the first one to three path hashes to match</li>
+<li><code>path=*</code> - match every path; this is the default</li>
+</ul>
+<p>At least one of <code>drop</code>, <code>rate=X/min</code>, or <code>hops=N</code> is required. Rate and hop
+limits can be combined. <code>rate=0/min</code> is equivalent to <code>drop</code>.</p>
+<h3 id="per-user-per-channel-rate-limits">Per-user, per-channel rate limits</h3>
+<p>Rate limits require an exact username; <code>*</code> is not accepted for a rate rule.
+Username comparison is ASCII case-insensitive, and names containing spaces must
+be quoted. A rule's counter is independent from rules for the same name on
+other channels, so this directly supports "X messages per minute from user X
+on channel Y." Counters are local to this repeater and reset on reboot.</p>
+<pre><code class="language-text"># At most five Public-channel messages per minute from this display name.
+set flood.moderation public &quot;Noisy User&quot; rate=5/min
+
+# A separate limit for the same name on #local.
+set flood.moderation #local &quot;Noisy User&quot; rate=10/min
+
+# Combine a rate limit with a maximum forwarding distance.
+set flood.moderation public alice rate=4/min hops=5
+</code></pre>
+<h3 id="match-the-start-of-a-path">Match the start of a path</h3>
+<p>Path matching accepts one-, two-, or three-byte hashes. Every hash in one rule
+must use the same width, and matching always starts at the beginning of the
+received path:</p>
+<pre><code class="language-text">set flood.moderation #local bot drop path=A1B2C3,D4E5F6
+set flood.moderation public alice rate=3/min path=71
+</code></pre>
+<p>A path-qualified rule cannot match a zero-hop packet and does not match until
+the packet contains all path entries listed by the rule.</p>
+<h2 id="how-the-forwarding-controls-combine">How the forwarding controls combine</h2>
+<p>A flood packet is retransmitted only if it passes every applicable control. In
+other words, the controls combine as deny rules:</p>
+<ol>
+<li><code>flood.channel.scope.require</code> evaluates a listed group channel against the
+   original incoming scope; unlisted group channels bypass the later region
+   gate while the table is active.</li>
+<li><code>flood.channel.scope</code> tries a path-qualified channel row before that
+   channel's ordinary fallback, then adds or replaces the scope.</li>
+<li>A matching <code>flood.filter scope=</code> row may replace that result; its scope does
+   not require a region-list entry.</li>
+<li><code>repeat</code>, <code>flood.max*</code>, and the channel-data gate are checked.</li>
+<li><code>flood.filter</code> drop rows check payload type and hop range, subject to the
+   login floor of <code>7</code> and flood-text floor of <code>5</code> described above.</li>
+<li><code>flood.channel.block</code> checks keyed channels.</li>
+<li>Region and loop-detection rules are checked; a filter-assigned scope is
+   already trusted when it has no region-list match, except that it cannot
+   rescue a channel rejected by <code>flood.channel.scope.require</code>.</li>
+<li><code>flood.moderation</code> checks decrypted group text, username, rate, hops, and
+   path.</li>
+</ol>
+<p>The first denial is enough to prevent retransmission. A packet that is denied
+can still appear in local logs or MQTT output. Moderation runs last because its
+rate counters are charged only for packets that pass every other forwarding
+control and will actually be retransmitted.</p>
+<h2 id="delegate-filter-management">Delegate filter management</h2>
+<p>ACL permission <code>5</code> is the filter-manager role:</p>
+<pre><code class="language-text">setperm &lt;companion-public-key-hex&gt; 5
+</code></pre>
+<p>A filter manager can read non-secret operational status and manage <code>repeat</code>,
+<code>loop.detect</code>, <code>flood.max*</code>, <code>flood.channel.data*</code>, <code>flood.channel.block*</code>,
+<code>flood.filter*</code>, and <code>flood.moderation*</code>. Delegated <code>get</code> access uses an
+explicit allowlist: it cannot retrieve guest, WiFi, MQTT, bridge, or other
+credentials, and it cannot change regions, ACL entries, radio settings, or
+unrelated administrator settings. Because <code>flood.filter scope=</code> derives a
+public hashtag key directly, a filter manager can configure that action without
+region-manager permission; it still cannot edit the region hierarchy.</p>
+<p>ACL permission <code>4</code>, the region/scope-manager role, can read, add, replace, and
+delete <code>flood.channel.scope</code> and <code>flood.channel.scope.require</code> rows and manage
+regions. This lets the same delegate create target regions, assign forced
+scopes, and select the channels that require valid incoming scopes.</p>
+<h2 id="security-limitations">Security limitations</h2>
+<p>Public and hashtag channels use shared, well-known keys. A valid channel MAC
+proves that the sender knew the channel key; it does not identify a person.
+The <code>&lt;sender&gt;</code> value is an unverified display name and can be spoofed. Path
+hashes are truncated routing hints and can collide or be manipulated; they are
+not authenticated user identities.</p>
+<p>Use username and path rules as traffic moderation, not as an authorization
+boundary. For a strict network boundary, combine these tools with region ACLs,
+private transport/channel keys, and controlled device access.</p>
+<h2 id="restore-the-factory-seeded-rows">Restore the factory-seeded rows</h2>
+<p>The repeater's factory-seeded forwarding rows can be restored through the CLI:</p>
+<pre><code class="language-text">set flood.channel.block.1 #wardriving h=4
+set flood.filter.1 0x0C all suspend=tempradio
+</code></pre>
+<p>Each command explicitly replaces slot 1 in its own table. Inspect the slot first
+if it may now contain another rule. To preserve existing slot assignments, omit
+<code>.1</code>; the command then reuses an identical row or uses the first empty slot.</p>
+<h2 id="remove-the-custom-rules">Remove the custom rules</h2>
+<p>To save both tables in an empty state:</p>
+<pre><code class="language-text">del flood.filter all
+del flood.moderation all
+get flood.filter
+get flood.moderation
+</code></pre>
+<p>This does not change the older <code>flood.max*</code>, channel-block, loop-detection, or
+region settings; inspect or reset those separately when troubleshooting.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

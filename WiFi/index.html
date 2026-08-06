@@ -1,0 +1,1722 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/WiFi/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../cli_build_matrix/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>WiFi and MQTT by Firmware Type - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#wifi-and-mqtt-by-firmware-type" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              WiFi and MQTT by Firmware Type
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-mqtt-bridge-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the MQTT bridge works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqtt-observer-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MQTT observer setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-companion-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi companion setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-companion-with-mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi companion with MQTT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webconfig-without-mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebConfig without MQTT
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="WebConfig without MQTT">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#webconfig-cli-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebConfig CLI terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-power-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi power behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recognizing-the-wrong-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recognizing the wrong firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-mqtt-bridge-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the MQTT bridge works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqtt-observer-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MQTT observer setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-companion-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi companion setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-companion-with-mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi companion with MQTT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webconfig-without-mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebConfig without MQTT
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="WebConfig without MQTT">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#webconfig-cli-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WebConfig CLI terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wifi-power-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi power behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recognizing-the-wrong-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recognizing the wrong firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/WiFi.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="wifi-and-mqtt-by-firmware-type">WiFi and MQTT by Firmware Type</h1>
+<p>MeshCore itself does not require WiFi or the internet. LoRa packet exchange,
+repeating, room servers, companions, and sensors can all operate without either.
+WiFi is added by particular ESP32 firmware targets for one or more of these
+purposes:</p>
+<ul>
+<li>a TCP connection between a WiFi companion and a phone or computer;</li>
+<li>the WebConfig browser interface;</li>
+<li>MQTT uplinking from the radio to internet or LAN brokers;</li>
+<li>WiFi-assisted OTA services on builds that include them;</li>
+<li>ESP-NOW bridging, which uses the ESP32's 2.4 GHz radio but is not a connection
+  to a WiFi access point.</li>
+</ul>
+<p>The firmware role and the build profile are separate choices. For example, a
+logging repeater is not an MQTT observer, and a WiFi companion does not publish
+to MQTT unless its target name also contains <code>mqtt</code>.</p>
+<h2 id="quick-reference">Quick reference</h2>
+<table>
+<thead>
+<tr>
+<th>Firmware target or role</th>
+<th style="text-align: right;">Infrastructure WiFi</th>
+<th style="text-align: right;">MQTT</th>
+<th>What WiFi does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>*_repeater</code></td>
+<td style="text-align: right;">Build-dependent on ESP32</td>
+<td style="text-align: right;">No</td>
+<td>FULL builds provide WebConfig, browser OTA, and the TCP 5001 LoRa-OTA seeder while WiFi is active</td>
+</tr>
+<tr>
+<td><code>*_repeater_observer_mqtt</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Uplinks heard and selected transmitted LoRa packets; repeating remains enabled by default</td>
+</tr>
+<tr>
+<td><code>*_room_server</code></td>
+<td style="text-align: right;">Build-dependent on ESP32</td>
+<td style="text-align: right;">No</td>
+<td>FULL builds provide WebConfig, browser OTA, and the TCP 5001 LoRa-OTA seeder while WiFi is active</td>
+</tr>
+<tr>
+<td><code>*_room_server_observer_mqtt</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Runs the room server and uplinks radio traffic</td>
+</tr>
+<tr>
+<td><code>*_companion_radio_wifi</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td>Exposes the MeshCore companion protocol on TCP port 5000</td>
+</tr>
+<tr>
+<td><code>*_companion_radio_wifi_mqtt</code></td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td>Runs both the TCP companion interface and the MQTT uplink</td>
+</tr>
+<tr>
+<td>USB, BLE, or serial companion</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Uses the transport named by the target instead</td>
+</tr>
+<tr>
+<td><code>*_repeater_bridge_espnow</code></td>
+<td style="text-align: right;">Build-dependent on ESP32</td>
+<td style="text-align: right;">No</td>
+<td>Uses ESP-NOW for its bridge; a FULL build also exposes the TCP 5001 LoRa-OTA seeder whenever WiFi is usable</td>
+</tr>
+<tr>
+<td>RS232 bridge</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Bridges through a serial interface</td>
+</tr>
+<tr>
+<td>Ethernet repeater/room server</td>
+<td style="text-align: right;">No WiFi</td>
+<td style="text-align: right;">No</td>
+<td>Uses wired Ethernet for its role-specific network interface</td>
+</tr>
+<tr>
+<td><code>*_sensor</code></td>
+<td style="text-align: right;">Build-dependent on ESP32</td>
+<td style="text-align: right;">No</td>
+<td>A FULL ESP32 sensor can expose the TCP 5001 LoRa-OTA seeder through its browser-OTA setup AP</td>
+</tr>
+<tr>
+<td>Terminal-chat or KISS modem</td>
+<td style="text-align: right;">No in current targets</td>
+<td style="text-align: right;">No</td>
+<td>Uses LoRa and its role-specific local interface</td>
+</tr>
+<tr>
+<td><code>*_lora_ota_no_external_sensors</code></td>
+<td style="text-align: right;">On demand on ESP32</td>
+<td style="text-align: right;">No</td>
+<td>Lean LoRa-OTA repeater image; ESP32 builds retain the compact <code>start ota</code> browser uploader</td>
+</tr>
+</tbody>
+</table>
+<p>Direct on-device WiFi and MQTT are currently ESP32 features. nRF52, STM32, and
+the currently enabled RP2040 targets do not run this MQTT bridge. An nRF52
+connected to a Raspberry Pi can still be logged or uplinked by software on the
+Pi, but that is a separate host-side bridge rather than MQTT running in the
+radio firmware.</p>
+<h2 id="how-the-mqtt-bridge-works">How the MQTT bridge works</h2>
+<p>The MQTT bridge is an outbound observer. It does not subscribe to MQTT topics
+and does not inject broker messages into LoRa.</p>
+<p>For a received packet, the flow is:</p>
+<pre><code class="language-text">LoRa radio -&gt; successful packet parse -&gt; MQTT capture queue -&gt; broker slots
+                                  \----&gt; normal MeshCore filtering/handling
+</code></pre>
+<p>Packets transmitted by the node can also be queued according to <code>mqtt.tx</code>.
+Receive capture happens before the packet is passed to the normal MeshCore
+flood filters and forwarding decision. A packet may therefore be observed on
+MQTT even when a later scope, path, region, duplicate, or repeat rule prevents
+the node from forwarding it over LoRa.</p>
+<p>MQTT publication and LoRa repetition are separate:</p>
+<ul>
+<li><code>set repeat on|off</code> controls whether an observer repeats eligible LoRa
+  packets;</li>
+<li><code>set bridge.enabled on|off</code> starts or stops the MQTT bridge;</li>
+<li><code>set mqtt.rx on|off</code> controls uplinking of received packets;</li>
+<li><code>set mqtt.tx off|advert|on</code> controls uplinking of transmitted packets.</li>
+</ul>
+<p>Fresh MQTT observer settings are:</p>
+<ul>
+<li>bridge and repeating enabled;</li>
+<li>received packet uplinking enabled;</li>
+<li>transmitted packet uplinking set to <code>advert</code>, meaning only the node's own
+  adverts are included;</li>
+<li>packet and status publishing enabled;</li>
+<li>raw publishing disabled;</li>
+<li>slot 1 set to <code>analyzer-us</code>;</li>
+<li>slot 2 set to <code>analyzer-eu</code>;</li>
+<li>slots 3 through 6 disabled;</li>
+<li>WiFi SSID and IATA code empty.</li>
+</ul>
+<p>Up to six broker configurations can be saved. The number that can be active at
+once depends on the target and available memory. A non-PSRAM ESP32 should
+normally use no more than two TLS/WSS brokers; some classic ESP32 targets are
+reliable with only one. Excess configured slots remain saved but show as
+inactive in <code>get mqtt.status</code>.</p>
+<p>The bridge has a bounded packet queue for broker or WiFi outages and reconnects
+automatically. A non-PSRAM build holds 6 packets and a PSRAM build holds 50.
+When the queue is full, the oldest item is replaced; after five minutes with no
+broker connected, stale queued packets are flushed. MQTT packet delivery is
+best effort rather than durable storage. Each enabled slot publishes
+independently, so one failed broker does not intentionally stop the other
+slots.</p>
+<p>See <a href="../MQTT_IMPLEMENTATION.md">MQTT_IMPLEMENTATION.md</a> for the complete preset
+list, custom broker configuration, topic formats, authentication, diagnostics,
+and memory limits.</p>
+<h2 id="mqtt-observer-setup">MQTT observer setup</h2>
+<p>Most full-size ESP32 MQTT observer builds have the shared WebConfig portal. On a
+fresh device with no saved SSID:</p>
+<ol>
+<li>Join the open <code>MeshCore-Setup-XXXX</code> access point.</li>
+<li>If the captive page does not open, browse to <code>http://192.168.4.1/</code>.</li>
+<li>Enter WiFi, radio, identity, and MQTT settings.</li>
+<li>Select <strong>Save &amp; Reboot</strong>.</li>
+<li>After reboot, check <code>get wifi.status</code> and <code>get mqtt.status</code>.</li>
+</ol>
+<p>The setup AP is unauthenticated unless the firmware was built with
+<code>WEBCONFIG_AP_PASSWORD</code>. It uses plain HTTP, so provision it in a trusted
+location. When WebConfig is running on the normal LAN, repeater and room-server
+builds require the node's admin password.</p>
+<p>The equivalent MQTT observer CLI setup is:</p>
+<pre><code class="language-text">set wifi.ssid Your WiFi Name
+set wifi.pwd Your WiFi Password
+set mqtt.iata SEA
+set name MyObserver
+reboot
+</code></pre>
+<p>The SSID and password values are the rest of the command line. Spaces are
+allowed and quotes must not be added. SSIDs may contain at most 31 characters
+and passwords at most 63. Leave the password value empty for an open network.</p>
+<p>Useful checks are:</p>
+<pre><code class="language-text">get wifi.ssid
+get wifi.status
+get wifi.powersave
+get wifi.cli
+get bridge.enabled
+get mqtt.rx
+get mqtt.tx
+get mqtt.status
+get mqtt1.diag
+get mqtt2.diag
+</code></pre>
+<p>To change a configured observer through WebConfig without leaving the portal
+enabled after every reboot:</p>
+<pre><code class="language-text">start webconfig
+</code></pre>
+<p>This uses the LAN when WiFi is connected. To force the setup AP, the MQTT bridge
+must release WiFi first:</p>
+<pre><code class="language-text">set bridge.enabled off
+start webconfig ap
+</code></pre>
+<p>After provisioning, use <strong>Save &amp; Reboot</strong>, or stop the temporary portal and
+restart the bridge:</p>
+<pre><code class="language-text">stop webconfig
+set bridge.enabled on
+</code></pre>
+<p>Some size-constrained, portable MQTT observer artifacts omit WebConfig so they
+fit the legacy ESP32 application slot. They retain the serial/remote CLI and a
+small WiFi updater. Configure those builds with the CLI.</p>
+<h2 id="wifi-companion-setup">WiFi companion setup</h2>
+<p>A <code>*_companion_radio_wifi</code> build replaces the BLE or USB companion link with
+the MeshCore companion protocol over TCP port 5000. The phone or computer must
+be able to reach the device on the same LAN.</p>
+<p>The companion loads runtime credentials saved in NVS. A non-placeholder
+compile-time <code>WIFI_SSID</code>/<code>WIFI_PWD</code> can be used as a first-boot fallback, but
+saved credentials take priority. With no credentials, its WebConfig portal
+starts in setup-AP mode. With credentials, the WebUI is enabled by default on
+the station IP.</p>
+<p>If the configured network remains unavailable for two minutes, the companion
+opens its setup AP so the credentials can be repaired. It continues retrying
+the saved network. WiFi modem sleep is forced off on WiFi companions because
+modem-sleep pauses can interfere with timely LoRa radio servicing.</p>
+<p>WiFi companions do not have the repeater/room-server admin CLI password model,
+so their LAN WebConfig page is intentionally unauthenticated. Use them only on
+a trusted LAN.</p>
+<p>When <code>ENABLE_OTA</code> is included, a WiFi companion also listens on:</p>
+<ul>
+<li>TCP 5001 for the OTA folder seeder used by <code>motatool serve --tcp</code>;</li>
+<li>TCP 5002 for the OTA text console.</li>
+</ul>
+<p>These ports do not replace the companion protocol on TCP 5000.</p>
+<p>FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
+role has a usable WiFi station or setup access point and stops when WiFi stops.
+For example, a FULL repeater can run <code>start webconfig</code> to join its saved
+network, then accept:</p>
+<pre><code class="language-bash">motatool serve --dir ./motas --tcp &lt;repeater-ip&gt;:5001 -v
+</code></pre>
+<p>The TCP connection supplies <code>.mota</code> files for the node to advertise and relay
+over LoRa; it is not a raw <code>.bin</code> uploader. <code>start ota</code> continues to provide the
+direct browser uploader on HTTP port 80. A FULL role without WebConfig but with
+browser OTA support can use the <code>MeshCore-OTA</code> access point raised by
+<code>start ota</code>; its seeder address is <code>192.168.4.1:5001</code>.</p>
+<p>Only one external folder link can be active. A TCP client is rejected while
+<code>ota folder on</code> is using USB serial, and disconnecting <code>motatool</code> automatically
+removes the TCP folder. Port 5001 has no login layer, so expose it only on a
+trusted LAN or temporary setup network. Firmware target and hash checks still
+apply at the receiving node, along with its configured signature/trust policy.</p>
+<p>When the shared seeder is running, <code>get wifi.status</code> appends its live state:</p>
+<pre><code class="language-text">OTA TCP 5001: listening
+OTA TCP 5001: client connected
+</code></pre>
+<p>The first state means WiFi is usable and the node is waiting for
+<code>motatool serve --tcp</code>. The second means a <code>motatool</code> folder is currently
+attached and available for LoRa OTA service.</p>
+<h2 id="wifi-companion-with-mqtt">WiFi companion with MQTT</h2>
+<p>A <code>*_companion_radio_wifi_mqtt</code> build combines both systems:</p>
+<ul>
+<li>the companion protocol remains available to the phone/computer on TCP 5000;</li>
+<li>the same WiFi station connection is shared with the MQTT bridge;</li>
+<li>received and selected transmitted LoRa packets can be published to the
+  configured MQTT slots.</li>
+</ul>
+<p>The companion owns WiFi connection and recovery in this build. The MQTT bridge
+waits for that connection rather than creating a second one. Stopping MQTT does
+not disable the TCP companion service.</p>
+<p>The same WebConfig page contains the MQTT settings. MQTT companions have no
+text admin CLI, so browser configuration is the normal setup method.</p>
+<h2 id="webconfig-without-mqtt">WebConfig without MQTT</h2>
+<p>Full-size ESP32 repeater and room-server builds can include WebConfig even when
+MQTT is absent. The portal then shows node, radio, and WiFi-related controls but
+removes the MQTT wizard step and MQTT tab.</p>
+<p>In this case WebConfig owns WiFi only while it is needed. Stopping the portal
+disconnects WiFi and turns the WiFi radio off. There is no persistent MQTT
+connection keeping WiFi active.</p>
+<p>FULL MQTT and FULL logging repeater/room-server builds both provide these CLI
+controls and status checks. FULL MQTT includes the MQTT bridge; FULL logging
+does not:</p>
+<pre><code class="language-text">get wifi.ssid
+get wifi.status
+get wifi.powersave
+get wifi.cli
+get webui
+set wifi.ssid SlowFi
+set wifi.pwd your-password
+set wifi.powersave none
+set wifi.cli on
+</code></pre>
+<p><code>get wifi.status</code> distinguishes an unconfigured node, an inactive WiFi radio, a
+station connection attempt, the setup AP, a connection failure, and a working
+LAN connection. For a LAN connection it reports the SSID, IP address, and RSSI.
+If the shared OTA seeder is active, the same reply also reports whether TCP
+port 5001 is listening or has a <code>motatool</code> client attached.
+<code>get wifi.powersave</code> reports the saved standalone WebConfig setting as <code>none</code>,
+<code>min</code>, or <code>max</code>.
+An inactive status is normal when <code>webui</code> is off: run <code>start webconfig</code> to
+connect temporarily. Standalone credentials can be changed through WebConfig
+or with the listed CLI commands. Changing the SSID or password stops an active
+WebConfig session; start it again to connect with the new values. Use
+<code>set wifi.pwd</code> with no value for an open network. The password is write-only
+and is never returned by <code>get</code>.</p>
+<p><code>get webui</code> starts with the saved boot setting, then reports the current
+session. For example, <code>&gt; off, http://192.168.1.130/</code> means automatic WebConfig
+startup is saved as off, but a temporary session started by <code>start webconfig</code>
+is currently active at that URL.</p>
+<h3 id="webconfig-cli-terminal">WebConfig CLI terminal</h3>
+<p>The terminal defaults to on. Enable or disable it from an existing admin CLI:</p>
+<pre><code class="language-text">set wifi.cli on
+set wifi.cli off
+get wifi.cli
+</code></pre>
+<p>The saved <code>on</code> setting becomes active only when the WiFi station client is
+connected and WebConfig is running in LAN mode. It is never exposed on the open
+setup access point. When active, the WebConfig page has a <strong>CLI</strong> tab for sending
+commands directly to the repeater or room server. It uses the local
+administrator command parser and displays one reply at a time. The terminal is
+protected by the WebConfig admin login and uses remote-administrator
+permissions, so commands explicitly restricted to a physical serial connection
+remain unavailable.</p>
+<p>Use <strong>Single command</strong> for the normal prompt, or select <strong>Command block</strong> to
+paste up to 100 commands with one command per line. Blank lines are ignored.
+The browser validates all lines first, then sends one command at a time and
+waits for its reply before sending the next. The block queue is kept in the
+browser only, so closing the page or losing its WiFi connection stops the
+commands that have not yet been sent. Ctrl+Enter or Command+Enter starts a
+block.</p>
+<p>The up/down arrow keys recall commands entered during the current browser
+session in single-command mode. Commands available in the terminal still
+depend on the firmware role and build profile. Commands such as
+<code>stop webconfig</code>, <code>set wifi.cli off</code>, WiFi credential changes, and reboot
+operations stop the remaining block and can disconnect the page before it
+receives their final reply.</p>
+<h2 id="build-profiles">Build profiles</h2>
+<p><code>build.sh</code> produces several profiles. A profile changes the features compiled
+into a selected target; it does not change that target into another firmware
+role.</p>
+<table>
+<thead>
+<tr>
+<th>Build profile</th>
+<th>WiFi/MQTT behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard</td>
+<td>Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi.</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td>Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink.</td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td>Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off.</td>
+</tr>
+<tr>
+<td>FULL ESP32</td>
+<td>Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254.</td>
+</tr>
+<tr>
+<td>FULL ESP32 logging</td>
+<td>Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA.</td>
+</tr>
+<tr>
+<td>LoRa-OTA no-external-sensors</td>
+<td>A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors.</td>
+</tr>
+</tbody>
+</table>
+<p>All repeater profiles use the full 254-entry neighbor table, including standard,
+logging, bridge, and LoRa-OTA builds on every supported platform. The classic
+T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
+persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.</p>
+<p>The interactive Option 1 <strong>FULL everything</strong> choice selects the FULL logging
+profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
+profile and Profile 4 of the five-profile matrix use the matching MQTT target
+instead. Both FULL profiles include LoRa OTA, WebConfig where supported, up to
+254 neighbors, and expanded dual-OTA partitions. Target-specific internal-DRAM
+limits still apply.</p>
+<p>FULL images change the ESP32 partition layout. Flash the matching
+<code>*-merged.bin</code> once when installing that layout. A partition-layout change can
+invalidate NVS, including saved WiFi, MQTT, name, and admin settings. Later
+updates using the same layout normally preserve them.</p>
+<h2 id="wifi-power-behavior">WiFi power behavior</h2>
+<p>MQTT observers and FULL standalone ESP32 repeater/room-server builds support:</p>
+<pre><code class="language-text">set wifi.powersave none
+set wifi.powersave min
+set wifi.powersave max
+</code></pre>
+<p>The default is <code>none</code>, which gives the most predictable MQTT and radio
+performance at the highest power use. <code>min</code> and <code>max</code> reduce power but may add
+latency or reduce reliability on busy nodes. WiFi companions always disable
+modem sleep regardless of this observer setting.</p>
+<p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
+the board configuration overrides <code>MQTT_WIFI_TX_POWER</code>. This setting affects
+WiFi only, not LoRa transmit power.</p>
+<h2 id="recognizing-the-wrong-firmware">Recognizing the wrong firmware</h2>
+<p><code>get wifi.status</code>, <code>get wifi.ssid</code>, <code>get wifi.powersave</code>, and <code>get wifi.cli</code>
+are available on MQTT observers and on FULL non-MQTT repeater/room-server
+builds with WebConfig.
+MQTT commands such as <code>get mqtt.status</code> and <code>set mqtt1.preset ...</code> still require
+an MQTT observer target. Unknown settings return <code>Error: unknown setting:
+&lt;name&gt;</code>. Older portable builds can instead report <code>Unsupported in this
+firmware</code> when a command was intentionally cut for space.</p>
+<p>Check the complete firmware filename and role. In particular:</p>
+<ul>
+<li><code>logging</code> does not mean MQTT;</li>
+<li><code>ota</code> does not mean MQTT;</li>
+<li><code>companion_radio_wifi</code> does not mean MQTT;</li>
+<li>the filename must contain <code>observer_mqtt</code> or <code>wifi_mqtt</code> for the corresponding
+  on-device MQTT feature.</li>
+</ul>
+<p>Rolling firmware back does not restore settings erased by a full flash or a
+partition-table change. If the correct MQTT target still has no configuration,
+provision WiFi and MQTT again.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>For an MQTT observer:</p>
+<pre><code class="language-text">get wifi.status
+get bridge.enabled
+get mqtt.status
+get mqtt1.diag
+get mqtt2.diag
+</code></pre>
+<p>Common causes are:</p>
+<ul>
+<li>no saved SSID or a changed password;</li>
+<li>blank/invalid IATA for a preset that requires it;</li>
+<li>the bridge disabled;</li>
+<li>all MQTT slots disabled;</li>
+<li>too many TLS/WSS slots for the available internal memory;</li>
+<li>WiFi power saving being too aggressive;</li>
+<li>the wrong firmware role or a portable build without the full WebConfig CLI.</li>
+</ul>
+<p>For a WiFi companion, find its station IP in the router, connect the client to
+TCP port 5000, and use the setup AP if it cannot join the saved network. MQTT
+diagnostics apply only to a <code>wifi_mqtt</code> companion target.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+    
+  </body>
+</html>

@@ -10,10 +10,10 @@
       
       
       
-        <link rel="canonical" href="https://meshcore-dev.github.io/meshcore/cli_commands/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/cli_commands/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../cli_command_availability/">
       
       
         <link rel="next" href="../companion_protocol/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -51,6 +51,8 @@
     
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -161,13 +163,13 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
       </div>
@@ -206,13 +208,13 @@
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/meshcore-dev/meshcore/" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
   </div>
   <div class="md-source__repository">
-    meshcore-dev/meshcore
+    mikecarper/MeshCore
   </div>
 </a>
     </div>
@@ -234,6 +236,87 @@
     
   
     Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
   
 
     
@@ -358,6 +441,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enter-the-uf2-bootloader-nrf52-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enter the UF2 bootloader (nRF52 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reset-the-clock-and-reboot" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -424,10 +518,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#start-an-over-the-air-ota-firmware-update" class="md-nav__link">
+  <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start an Over-The-Air (OTA) firmware update
+        Start or stop an Over-The-Air (OTA) firmware update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browser-configuration-portal-esp32-repeater-and-room-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser configuration portal (ESP32 repeater and room server)
       
     </span>
   </a>
@@ -495,6 +600,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#discover-neighbor-scopes-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discover neighbor scopes (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -550,6 +666,17 @@
     <span class="md-ellipsis">
       
         Packet stats - Packet counters: Received, Sent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-repeater-telemetry-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read repeater telemetry history
       
     </span>
   </a>
@@ -719,6 +846,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#schedule-radio-parameter-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule radio parameter changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-frequency" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -734,6 +872,17 @@
     <span class="md-ellipsis">
       
         View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-rx-duty-cycle-power-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change RX duty-cycle power saving
       
     </span>
   </a>
@@ -857,6 +1006,72 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#send-a-repeater-flood-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Send a repeater flood text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-battery-alert-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change battery alert state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-battery-alert-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change battery alert thresholds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-the-rx-inactivity-watchdog-repeater-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable the RX inactivity watchdog (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-the-nrf52-system-watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable the nRF52 system watchdog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#estimate-and-correct-repeater-time-after-startup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimate and correct repeater time after startup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-this-nodes-public-key" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -894,6 +1109,17 @@
     <span class="md-ellipsis">
       
         View or change this node's power saving flag (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#control-an-exposed-gpio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control an exposed GPIO
       
     </span>
   </a>
@@ -1039,6 +1265,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-change-the-radio-watchdog-interval-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the radio watchdog interval (MQTT observer only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#enable-or-disable-multi-acks-support" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1098,6 +1335,72 @@
     <span class="md-ellipsis">
       
         Limit the number of hops for an advert flood message
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forward-flood-group-data-packets-on-repeaters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forward flood group data packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#block-selected-flood-channel-packets-on-repeaters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Block selected flood channel packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#force-a-transport-scope-onto-floods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Force a transport scope onto floods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#require-valid-incoming-scopes-only-on-selected-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Require valid incoming scopes only on selected channels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-flood-packets-by-payload-type-hop-count-and-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter flood packets by payload type, hop count, and path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#moderate-flood-group-text-by-channel-sender-and-source-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moderate flood group text by channel, sender, and source path
       
     </span>
   </a>
@@ -1320,6 +1623,227 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#direct-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Direct Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-heard-table-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry heard-table gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-apply-a-retry-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or apply a retry preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flood-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flood Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Flood Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-path-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry path gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-group-data-flood-retry-path-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the group-data flood retry path gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-advert-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry advert handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-target-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry target prefixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-ignored-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry ignored prefixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-bridge-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry bridge mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-bridge-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry bridge buckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-base-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry base delay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-step-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry step delay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-snr-margin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry SNR margin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-adaptive-direct-retry-coding-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change adaptive direct retry coding rate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-seed-or-clear-the-recent-repeater-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View, seed, or clear the recent repeater table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gps-when-gps-support-is-compiled-in" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1391,6 +1915,17 @@
   
     <nav class="md-nav" aria-label="Sensors (When sensor support is compiled in)">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-telemetry-access-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change telemetry access mode
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-the-list-of-sensors-on-this-node" class="md-nav__link">
@@ -1469,6 +2004,72 @@
     <span class="md-ellipsis">
       
         View or change the source of packets bridged to the external interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-rx-packet-uplinking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT RX packet uplinking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-tx-packet-uplinking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT TX packet uplinking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change periodic neighbors publishing (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the neighbors publish interval (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-ntp-server-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the NTP server (MQTT observer only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-ntp-server-connectivity-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose NTP server connectivity (MQTT observer only)
       
     </span>
   </a>
@@ -1557,6 +2158,34 @@
     <span class="md-ellipsis">
       
         View the boot voltage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ethernet-when-ethernet-support-is-compiled-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ethernet (when Ethernet support is compiled in)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ethernet (when Ethernet support is compiled in)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-ethernet-connection-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View Ethernet connection status
       
     </span>
   </a>
@@ -1669,6 +2298,87 @@
   
   
     <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1731,6 +2441,114 @@
     
   
     Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
   
 
     
@@ -1858,6 +2676,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry history decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../terminal_chat_cli/" class="md-nav__link">
         
   
@@ -1950,6 +2795,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enter-the-uf2-bootloader-nrf52-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enter the UF2 bootloader (nRF52 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reset-the-clock-and-reboot" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2016,10 +2872,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#start-an-over-the-air-ota-firmware-update" class="md-nav__link">
+  <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start an Over-The-Air (OTA) firmware update
+        Start or stop an Over-The-Air (OTA) firmware update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browser-configuration-portal-esp32-repeater-and-room-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Browser configuration portal (ESP32 repeater and room server)
       
     </span>
   </a>
@@ -2087,6 +2954,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#discover-neighbor-scopes-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discover neighbor scopes (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2142,6 +3020,17 @@
     <span class="md-ellipsis">
       
         Packet stats - Packet counters: Received, Sent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-repeater-telemetry-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read repeater telemetry history
       
     </span>
   </a>
@@ -2311,6 +3200,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#schedule-radio-parameter-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule radio parameter changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-frequency" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2326,6 +3226,17 @@
     <span class="md-ellipsis">
       
         View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-rx-duty-cycle-power-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change RX duty-cycle power saving
       
     </span>
   </a>
@@ -2449,6 +3360,72 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#send-a-repeater-flood-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Send a repeater flood text
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-battery-alert-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change battery alert state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-battery-alert-thresholds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change battery alert thresholds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-the-rx-inactivity-watchdog-repeater-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable the RX inactivity watchdog (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enable-or-disable-the-nrf52-system-watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable the nRF52 system watchdog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#estimate-and-correct-repeater-time-after-startup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimate and correct repeater time after startup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-this-nodes-public-key" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2486,6 +3463,17 @@
     <span class="md-ellipsis">
       
         View or change this node's power saving flag (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#control-an-exposed-gpio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control an exposed GPIO
       
     </span>
   </a>
@@ -2631,6 +3619,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-change-the-radio-watchdog-interval-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the radio watchdog interval (MQTT observer only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#enable-or-disable-multi-acks-support" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2690,6 +3689,72 @@
     <span class="md-ellipsis">
       
         Limit the number of hops for an advert flood message
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forward-flood-group-data-packets-on-repeaters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forward flood group data packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#block-selected-flood-channel-packets-on-repeaters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Block selected flood channel packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#force-a-transport-scope-onto-floods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Force a transport scope onto floods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#require-valid-incoming-scopes-only-on-selected-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Require valid incoming scopes only on selected channels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-flood-packets-by-payload-type-hop-count-and-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter flood packets by payload type, hop count, and path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#moderate-flood-group-text-by-channel-sender-and-source-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moderate flood group text by channel, sender, and source path
       
     </span>
   </a>
@@ -2912,6 +3977,227 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#direct-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Direct Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-heard-table-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry heard-table gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-apply-a-retry-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or apply a retry preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flood-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flood Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Flood Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-path-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry path gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-group-data-flood-retry-path-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the group-data flood retry path gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-advert-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry advert handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-target-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry target prefixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-ignored-prefixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry ignored prefixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-bridge-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry bridge mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-flood-retry-bridge-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change flood retry bridge buckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-base-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry base delay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-step-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry step delay
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-direct-retry-snr-margin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change direct retry SNR margin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-adaptive-direct-retry-coding-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change adaptive direct retry coding rate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-seed-or-clear-the-recent-repeater-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View, seed, or clear the recent repeater table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#gps-when-gps-support-is-compiled-in" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2983,6 +4269,17 @@
   
     <nav class="md-nav" aria-label="Sensors (When sensor support is compiled in)">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-telemetry-access-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change telemetry access mode
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-the-list-of-sensors-on-this-node" class="md-nav__link">
@@ -3061,6 +4358,72 @@
     <span class="md-ellipsis">
       
         View or change the source of packets bridged to the external interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-rx-packet-uplinking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT RX packet uplinking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-tx-packet-uplinking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT TX packet uplinking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change periodic neighbors publishing (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the neighbors publish interval (MQTT observer, PSRAM only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-ntp-server-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the NTP server (MQTT observer only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-ntp-server-connectivity-mqtt-observer-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose NTP server connectivity (MQTT observer only)
       
     </span>
   </a>
@@ -3160,6 +4523,34 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ethernet-when-ethernet-support-is-compiled-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ethernet (when Ethernet support is compiled in)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ethernet (when Ethernet support is compiled in)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-ethernet-connection-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View Ethernet connection status
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3182,7 +4573,7 @@
 
 
   
-    <a href="https://github.com/meshcore-dev/meshcore/edit/main/docs/cli_commands.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/cli_commands.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -3192,6 +4583,14 @@
 
 <h1 id="cli-commands">CLI Commands</h1>
 <p>This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.</p>
+<p>See <a href="../cli_build_matrix/">CLI Availability by Firmware Build</a> for the role and
+profile matrix, including the commands intentionally omitted from portable
+firmware.</p>
+<p>See <a href="../cli_command_availability/">CLI Command Availability Matrix</a> for the
+command-by-command nRF52 and ESP32 build tables.</p>
+<p>The first word of a command is case-insensitive, so <code>set</code>, <code>Set</code>, and <code>SET</code>
+are equivalent, as are <code>get</code>, <code>Get</code>, and the other command verbs. The case of
+arguments such as node names, passwords, and keys is left unchanged.</p>
 <h2 id="navigation">Navigation</h2>
 <ul>
 <li><a href="#operational">Operational</a></li>
@@ -3201,8 +4600,13 @@
 <li><a href="#info">Information</a></li>
 <li><a href="#configuration">Configuration</a></li>
 <li><a href="#radio">Radio</a></li>
-<li><a href="#system">System</a></li>
+<li><a href="#system">System</a><ul>
+<li><a href="#control-an-exposed-gpio">GPIO</a></li>
+</ul>
+</li>
 <li><a href="#routing">Routing</a></li>
+<li><a href="#filter-flood-packets-by-payload-type-and-hop">Flood Filtering</a></li>
+<li><a href="#moderate-flood-group-text-by-channel-sender-and-source-path">Group Text Moderation</a></li>
 <li><a href="#acl">ACL</a></li>
 <li><a href="#region-management-v110">Region Management</a><ul>
 <li><a href="#region-examples">Region Examples</a></li>
@@ -3211,6 +4615,7 @@
 <li><a href="#gps-when-gps-support-is-compiled-in">GPS</a></li>
 <li><a href="#sensors-when-sensor-support-is-compiled-in">Sensors</a></li>
 <li><a href="#bridge-when-bridge-support-is-compiled-in">Bridge</a></li>
+<li><a href="#ethernet-when-ethernet-support-is-compiled-in">Ethernet</a></li>
 </ul>
 <hr />
 <h2 id="operational">Operational</h2>
@@ -3224,6 +4629,12 @@
 - <code>poweroff</code>, or
 - <code>shutdown</code></p>
 <p><strong>Note:</strong> No reply is sent.</p>
+<hr />
+<h3 id="enter-the-uf2-bootloader-nrf52-only">Enter the UF2 bootloader (nRF52 only)</h3>
+<p><strong>Usage:</strong>
+- <code>uf2reset</code></p>
+<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Note:</strong> Reboots directly into the UF2 bootloader on supported nRF52 boards.</p>
 <hr />
 <h3 id="reset-the-clock-and-reboot">Reset the clock and reboot</h3>
 <p><strong>Usage:</strong>
@@ -3252,9 +4663,101 @@
 <p><strong>Usage:</strong>
 - <code>advert.zerohop</code></p>
 <hr />
-<h3 id="start-an-over-the-air-ota-firmware-update">Start an Over-The-Air (OTA) firmware update</h3>
+<h3 id="start-or-stop-an-over-the-air-ota-firmware-update">Start or stop an Over-The-Air (OTA) firmware update</h3>
 <p><strong>Usage:</strong>
-- <code>start ota</code></p>
+- <code>start ota</code>
+- <code>start ota ap</code>
+- <code>stop ota</code></p>
+<p><code>start ota</code> serves the web upload page on the station IP when connected to WiFi;
+otherwise it raises the <code>MeshCore-OTA</code> access point. <code>start ota ap</code> always raises
+the access point, which is useful when the normal network uses client isolation.</p>
+<p>On an ESP32 build with WebConfig, the manual OTA uploader and WebConfig both use HTTP
+port 80 and cannot run together. Stop WebConfig before <code>start ota</code>, or stop OTA
+before <code>start webconfig</code>.</p>
+<p>FULL ESP32 builds also expose the <code>.mota</code> folder seeder on TCP port 5001
+whenever WiFi is usable. This listener is independent of port 80, so a host can
+run <code>motatool serve --dir ./motas --tcp &lt;node-ip&gt;:5001</code> while WebConfig is
+active. The TCP connection auto-attaches and detaches the folder; do not run
+<code>ota folder on</code> at the same time because that command selects the USB-serial
+folder transport.</p>
+<hr />
+<h3 id="browser-configuration-portal-esp32-repeater-and-room-server">Browser configuration portal (ESP32 repeater and room server)</h3>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>start webconfig</code></li>
+<li><code>start webconfig ap</code></li>
+<li><code>stop webconfig</code></li>
+<li><code>set webui on</code></li>
+<li><code>set webui off</code></li>
+<li><code>get webui</code></li>
+<li><code>get wifi.ssid</code></li>
+<li><code>get wifi.status</code></li>
+<li><code>get wifi.powersave</code></li>
+<li><code>get wifi.cli</code></li>
+<li><code>set wifi.ssid &lt;network name&gt;</code></li>
+<li><code>set wifi.pwd [password]</code></li>
+<li><code>set wifi.powersave &lt;none|min|max&gt;</code></li>
+<li><code>set wifi.cli &lt;on|off&gt;</code></li>
+</ul>
+<p><code>set webui on</code> is the persistent master switch. It starts the portal now and
+again after future reboots; <code>set webui off</code> closes it and disables that boot
+start. <code>get webui</code> reports the saved on/off state plus whether the portal is
+inactive, joining WiFi, serving a setup AP, or serving a LAN URL. The default is
+<code>off</code> on repeater and room-server builds. On display-equipped repeaters, an
+otherwise-unused triple click toggles the same saved setting.
+Consequently, <code>&gt; off, http://192.168.1.130/</code> means the saved boot setting is
+off while a temporary WebConfig session is currently active at that URL.</p>
+<p><code>start webconfig</code> is a temporary start that does not change the saved switch.
+It serves the shared WiFi, radio, flood, loop, and status page and reports its
+URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
+them entirely. Sign in with the node's admin password. If the node has no saved
+WiFi SSID, the command starts the open <code>MeshCore-Setup-XXXX</code> captive AP at
+<a href="http://192.168.4.1/">http://192.168.4.1/</a> instead.</p>
+<p><code>start webconfig ap</code> forces captive-AP mode. It will not interrupt an active
+MQTT bridge, so run <code>set bridge.enabled off</code> first. Use <code>stop webconfig</code> to
+close either mode for the current boot. (<code>stop webconfig</code> does not change a
+saved <code>webui on</code>.)
+LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
+with no connected client.</p>
+<p>The saved <code>wifi.cli</code> setting defaults to <code>on</code>. Use <code>set wifi.cli off</code> to disable
+the <strong>CLI</strong> tab.
+<code>get wifi.cli</code> reports <code>off</code>, <code>on, waiting for WiFi client</code>, or <code>on, active</code>.
+The saved setting becomes active only in station/LAN mode while the WiFi client
+is connected. It is deliberately unavailable on the open setup access point.
+The tab sends one command at a time through the local administrator command
+parser and displays the reply in the browser. It uses remote-administrator
+command permissions, so commands explicitly restricted to a physical serial
+connection remain unavailable.
+Select <strong>Command block</strong> to paste up to 100 commands with one command per line.
+Blank lines are ignored, and every nonblank line must fit the normal 159-byte
+CLI command limit. The browser sends the lines sequentially and waits for each
+reply before sending the next line. The queue exists only in that browser page;
+closing it stops any commands that have not yet been sent. A lost connection
+also stops the remaining block.</p>
+<p>Up/down arrow keys recall commands from the current browser session in
+single-command mode. A command that stops WebConfig, changes its WiFi
+connection, disables <code>wifi.cli</code>, or reboots the node stops the remaining block
+and can close the page before its reply is collected.</p>
+<p>On FULL MQTT and FULL logging ESP32 repeater/room-server builds,
+<code>get wifi.ssid</code> reports the saved standalone WebConfig network and
+<code>get wifi.status</code> reports whether WiFi is unconfigured, off, connecting,
+running the setup AP, failed, or connected. A connected result includes the
+SSID, LAN IP, and RSSI. When the shared OTA seeder is running, the reply appends
+<code>OTA TCP 5001: listening</code> or <code>OTA TCP 5001: client connected</code>. WiFi being off
+is normal while WebConfig is inactive; run <code>start webconfig</code> when a temporary
+connection is wanted. <code>get wifi.powersave</code> reports the saved standalone setting
+as <code>none</code>, <code>min</code>, or <code>max</code>; the default is <code>none</code>.</p>
+<p>The WiFi <code>set</code> commands work on MQTT observers and on FULL standalone
+ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
+password stops an active WebConfig session; run <code>start webconfig</code> again to use
+the new credentials. <code>set wifi.pwd</code> with no value selects an open network.
+Power-save changes are applied immediately when WiFi is running and otherwise
+take effect on the next connection. <code>get wifi.pwd</code> is intentionally unavailable
+so the standalone password is never returned by the CLI.</p>
+<p>The browser portal is not compiled into the two 4 MB
+<code>LilyGo_TLora_V2_1_1_6_*_observer_mqtt</code> targets because it does not fit while
+retaining the two app slots required for LoRa OTA. Their normal CLI settings
+remain available.</p>
 <hr />
 <h3 id="erasefactory-reset">Erase/Factory Reset</h3>
 <p><strong>Usage:</strong>
@@ -3273,12 +4776,23 @@
 <p><strong>Usage:</strong> 
 - <code>neighbor.remove &lt;pubkey_prefix&gt;</code></p>
 <p><strong>Parameters:</strong> 
-- <code>pubkey_prefix</code>: The public key of the node to remove from the neighbors list. This can be a short prefix or the full key. All neighbors matching the provided prefix will be removed.</p>
-<p><strong>Note:</strong> You can remove all neighbors by sending a space character as the prefix. The space indicates an empty prefix, which matches all existing neighbors.</p>
+- <code>pubkey_prefix</code>: The public key of the node to remove from the neighbors list</p>
 <hr />
 <h3 id="discover-zero-hop-neighbors">Discover zero hop neighbors</h3>
 <p><strong>Usage:</strong> 
 - <code>discover.neighbors</code></p>
+<p>This command is available in every repeater build profile, including portable
+MQTT, standard, logging, OTA, FULL, and FULL logging artifacts. It does not
+require MQTT or PSRAM.</p>
+<hr />
+<h3 id="discover-neighbor-scopes-mqtt-observer-psram-only">Discover neighbor scopes (MQTT observer, PSRAM only)</h3>
+<p>Refreshes the zero-hop neighbor table, then queries each neighbor for its region
+scopes and publishes the assembled table to the MQTT <code>neighbors</code> topic once.</p>
+<p><strong>Usage:</strong>
+- <code>discover.scopes</code></p>
+<p><strong>Note:</strong> Requires a PSRAM board with the MQTT bridge running. On non-PSRAM MQTT
+builds it replies <code>Err - not supported (requires PSRAM)</code>. If a <code>discover.neighbors</code>
+refresh is already in flight, the scope pass is queued behind it.</p>
 <hr />
 <h2 id="statistics">Statistics</h2>
 <h3 id="clear-stats">Clear Stats</h3>
@@ -3297,7 +4811,185 @@
 <p><strong>Usage:</strong> <code>stats-packets</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
 <hr />
+<h3 id="read-repeater-telemetry-history">Read repeater telemetry history</h3>
+<p>Repeater firmware records one UTC-aligned sample every 30 minutes. Temperature
+and battery voltage retain 336 samples (seven rolling days). GPS retains three
+days by default. Sensor builds with an onboard GPS provider request a seven-day
+default at startup. The history and any runtime retention change are held in
+RAM and reset after a reboot.</p>
+<p>The feature is omitted from flash-constrained STM32 repeater images.</p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get telemetry.temp [page]</code></li>
+<li><code>get telemetry.volt [page]</code></li>
+<li><code>get telemetry.gps [page]</code></li>
+<li><code>set telemetry.gps &lt;days&gt;</code></li>
+</ul>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>page</code>: Page <code>1</code> is always newest. Temperature and voltage pages each hold
+  24 hours and accept <code>1</code>-<code>7</code>. GPS pages each hold 12 hours and accept <code>1</code>
+  through twice the current GPS retention in days. Omitting the page selects
+  page <code>1</code>.</li>
+<li><code>days</code>: Requested GPS retention from <code>1</code> through <code>30</code> days. Retention above
+  three days uses heap memory. The allocator reduces the requested value as
+  needed to leave at least 2048 bytes free and replies with the days and pages
+  actually available. For example, a request can return
+  <code>OK - telemetry.gps days=18 pages=36 requested=30</code>.</li>
+</ul>
+<p>Local serial and remote administrator CLI sessions can read the history.
+Collection uses the MCU temperature, battery voltage, and an already-valid
+onboard GPS fix. It does not wake GPS, so an off, sleeping, or unfixed GPS
+produces a missing location sample without changing its power-saving schedule.</p>
+<p>Replies contain <code>&gt;</code> followed by standard padded Base64. After decoding, all
+multi-byte integers are little-endian. Packed fields are written most
+significant bit first, oldest sample first.</p>
+<p>Use the browser-based <a href="../telemetry_decoder/">Telemetry history decoder</a> to
+turn a reply into a timestamped table or downloadable CSV without uploading
+the data.</p>
+<p>Temperature payload (<code>0x11</code>, 61 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Format/type <code>0x11</code></td>
+</tr>
+<tr>
+<td><code>1</code>-<code>4</code></td>
+<td>First sample UTC epoch, unsigned 32-bit</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Sample interval in minutes (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Sample count (<code>48</code>)</td>
+</tr>
+<tr>
+<td><code>7</code>-<code>18</code></td>
+<td>48 packed 2-bit temperature statuses</td>
+</tr>
+<tr>
+<td><code>19</code>-<code>60</code></td>
+<td>48 packed 7-bit temperatures</td>
+</tr>
+</tbody>
+</table>
+<p>Temperature status codes are <code>0</code> none, <code>1</code> value, <code>2</code> below range, and <code>3</code>
+above range. For status <code>1</code>, the 7-bit temperature is an exact whole-degree
+integer from <code>-50 C</code> through <code>+77 C</code>; decode it as <code>code - 50</code>. Low values use
+code <code>0</code>, and high values use code <code>127</code>. The separate status map is required
+because 7 bits contain exactly 128 codes, leaving no spare code for none, low,
+or high when the complete range is represented at 1 C resolution. No
+fractional temperature is stored or transmitted.</p>
+<p>Voltage payload (<code>0x12</code>, 55 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Format/type <code>0x12</code></td>
+</tr>
+<tr>
+<td><code>1</code>-<code>4</code></td>
+<td>First sample UTC epoch, unsigned 32-bit</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Sample interval in minutes (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Sample count (<code>48</code>)</td>
+</tr>
+<tr>
+<td><code>7</code>-<code>54</code></td>
+<td>48 8-bit voltage codes</td>
+</tr>
+</tbody>
+</table>
+<p>Voltage codes reserve <code>0</code> for no reading, <code>1</code> for below <code>1.88 V</code>, and <code>255</code>
+for above <code>4.40 V</code>. Codes <code>2</code>-<code>254</code> represent <code>1.88 V</code> through <code>4.40 V</code> in
+<code>0.01 V</code> steps; decode millivolts as <code>1880 + (code - 2) * 10</code>.</p>
+<p>GPS payload (<code>0x13</code>, 101 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Format/type <code>0x13</code></td>
+</tr>
+<tr>
+<td><code>1</code>-<code>4</code></td>
+<td>First sample UTC epoch, unsigned 32-bit</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Sample interval in minutes (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Sample count (<code>24</code>)</td>
+</tr>
+<tr>
+<td><code>7</code>-<code>10</code></td>
+<td>Page origin latitude in signed degrees times <code>10^7</code></td>
+</tr>
+<tr>
+<td><code>11</code>-<code>14</code></td>
+<td>Page origin longitude in signed degrees times <code>10^7</code></td>
+</tr>
+<tr>
+<td><code>15</code></td>
+<td>Origin sample index, or <code>255</code> when the page has no GPS fix</td>
+</tr>
+<tr>
+<td><code>16</code></td>
+<td>Flags; bit 0 means at least one differential was clipped</td>
+</tr>
+<tr>
+<td><code>17</code>-<code>100</code></td>
+<td>24 records: signed 14-bit north then signed 14-bit east</td>
+</tr>
+</tbody>
+</table>
+<p>GPS differentials use signed 14-bit two's-complement values at 10-meter
+resolution and are applied to the preceding decoded valid point. The origin
+sample begins at the header coordinates. A no-fix slot encodes <code>0,0</code> and does
+not advance the reference; a stationary valid fix also quantizes to <code>0,0</code>.
+When a page has no fixes, its origin is <code>0,0</code>, origin index is <code>255</code>, and all
+differentials are <code>0,0</code>. Values outside <code>-8192</code> through <code>8191</code> are clipped and
+set flag bit 0.</p>
+<hr />
 <h2 id="logging">Logging</h2>
+<p>Builds compiled with <code>MESH_PACKET_LOGGING</code> emit one <code>RAW:</code> line for every
+received radio frame. Serial output uses backpressure: if a connected host
+temporarily stops reading, packet processing waits for USB transmit space
+instead of silently omitting the record. A disconnected host cannot retain an
+unbounded capture, so logging deployments should keep the reader attached and
+draining the serial port.</p>
+<p>Ordinary <code>-logging-</code> artifacts keep packet logging separate from LoRa OTA.
+Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
+<code>-full-logging-ota-</code> artifact is intentionally the exception: it combines
+logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
+disabled.</p>
 <h3 id="begin-capture-of-rx-log-to-node-storage">Begin capture of rx log to node storage</h3>
 <p><strong>Usage:</strong> <code>log start</code></p>
 <hr />
@@ -3326,7 +5018,7 @@
 - <code>set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>freq</code>: Frequency in MHz
-- <code>bw</code>: Bandwidth in kHz
+- <code>bw</code>: Bandwidth in kHz. Most targets allow <code>7.8</code>, <code>10.4</code>, <code>15.6</code>, <code>20.8</code>, <code>31.25</code>, <code>41.7</code>, <code>62.5</code>, <code>125</code>, <code>250</code>, <code>500</code>. LR1110 targets allow <code>62.5</code>, <code>125</code>, <code>250</code>, <code>500</code>.
 - <code>sf</code>: Spreading factor (5-12)
 - <code>cr</code>: Coding rate (5-8)</p>
 <p><strong>Set by build flag:</strong> <code>LORA_FREQ</code>, <code>LORA_BW</code>, <code>LORA_SF</code>, <code>LORA_CR</code></p>
@@ -3347,12 +5039,34 @@
 <p><strong>Usage:</strong> 
 - <code>tempradio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;timeout_mins&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>freq</code>: Frequency in MHz (300-2500)
-- <code>bw</code>: Bandwidth in kHz (7.8-500)
+- <code>freq</code>: Frequency in MHz (150-2500)
+- <code>bw</code>: Bandwidth in kHz (same allowed values as <code>set radio</code>)
 - <code>sf</code>: Spreading factor (5-12)
 - <code>cr</code>: Coding rate (5-8)
 - <code>timeout_mins</code>: Duration in minutes (must be &gt; 0)</p>
 <p><strong>Note:</strong> This is not saved to preferences and will clear on reboot</p>
+<hr />
+<h4 id="schedule-radio-parameter-changes">Schedule radio parameter changes</h4>
+<p><strong>Usage:</strong>
+- <code>set radioat &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;start_time&gt;</code>
+- <code>get radioat [n|all]</code>
+- <code>del radioat [n|all]</code>
+- <code>set tempradioat &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;start_time&gt;,&lt;end_time&gt;</code>
+- <code>get tempradioat [n|all]</code>
+- <code>del tempradioat [n|all]</code></p>
+<p><strong>Parameters:</strong>
+- <code>freq</code>: Frequency in MHz (150-2500)
+- <code>bw</code>: Bandwidth in kHz (same allowed values as <code>set radio</code>)
+- <code>sf</code>: Spreading factor (5-12)
+- <code>cr</code>: Coding rate (5-8)
+- <code>start_time</code>: Unix epoch time when the setting starts
+- <code>end_time</code>: Unix epoch time when a temporary setting reverts
+- <code>n</code>: Scheduled entry number from <code>get radioat</code> or <code>get tempradioat</code></p>
+<p><strong>Notes:</strong>
+- <code>get radioat</code> and <code>get tempradioat</code> list all entries when <code>n</code> is omitted.
+- <code>del radioat</code> and <code>del tempradioat</code> delete all entries when <code>n</code> is omitted.
+- Each queue supports 3 entries. Scheduled entries are not saved across reboot.
+- <code>radioat</code> saves the new radio preferences when it fires. <code>tempradioat</code> applies temporarily, then reverts to the saved radio preferences.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-frequency">View or change this node's frequency</h4>
 <p><strong>Usage:</strong>
@@ -3373,6 +5087,28 @@
 <p><strong>Default:</strong> <code>on</code></p>
 <p><strong>Temporary Note:</strong> If you upgraded from an older version to 1.14.1 without erasing flash, this setting is <code>off</code> because of <a href="https://github.com/meshcore-dev/MeshCore/issues/2118">#2118</a></p>
 <hr />
+<h4 id="view-or-change-rx-duty-cycle-power-saving">View or change RX duty-cycle power saving</h4>
+<p><strong>Usage:</strong>
+- <code>get radio.rxps</code>
+- <code>get rxps.wd</code>
+- <code>set radio.rxps off</code>
+- <code>set radio.rxps on</code>
+- <code>set radio.rxps conservative</code>
+- <code>set radio.rxps balanced</code>
+- <code>set radio.rxps &lt;1-10&gt;</code>
+- <code>set radio.rxps level &lt;1-10&gt;</code>
+- <code>set radio.rxps level &lt;1-10&gt; preamble &lt;16|32&gt;</code>
+- <code>set radio.rxps &lt;rx_us&gt; &lt;sleep_us&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>rx_us</code>, <code>sleep_us</code>: Receive and sleep durations in microseconds (<code>1000</code>-<code>30000000</code>).
+- <code>level</code>: A power-saving level from <code>1</code> (most conservative) to <code>10</code> (least power saving).
+- <code>preamble</code>: LoRa preamble length in symbols; <code>16</code> or <code>32</code>.</p>
+<p><strong>Notes:</strong>
+- <code>get rxps.wd</code> reports the RXPS watchdog's soft and hard recovery counts.
+- <code>on</code> and <code>conservative</code> select level <code>1</code> with a 16-symbol preamble; <code>balanced</code> selects level <code>5</code> with a 16-symbol preamble.
+- Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom <code>&lt;rx_us&gt; &lt;sleep_us&gt;</code> timings remain fixed.
+- The selected mode is applied immediately, persisted, and restored after reboot.</p>
+<hr />
 <h4 id="view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards">View or change the LoRa FEM receive-path gain state on supported boards</h4>
 <p><strong>Usage:</strong>
 - <code>get radio.fem.rxgain</code>
@@ -3392,7 +5128,7 @@
 - <code>name</code>: Node name</p>
 <p><strong>Set by build flag:</strong> <code>ADVERT_NAME</code></p>
 <p><strong>Default:</strong> Varies by board</p>
-<p><strong>Note:</strong> Max length varies. If a location is set, the max length is 24 bytes; 32 otherwise. Emoji and unicode characters may take more than one byte.</p>
+<p><strong>Note:</strong> Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-latitude">View or change this node's latitude</h4>
 <p><strong>Usage:</strong>
@@ -3461,6 +5197,220 @@
 <p><strong>Default:</strong> <code>0.0</code> (value defined by board)</p>
 <p><strong>Note:</strong> Returns "Error: unsupported by this board" if hardware doesn't support it</p>
 <hr />
+<h4 id="send-a-repeater-flood-text">Send a repeater flood text</h4>
+<p><strong>Usage:</strong>
+- <code>send text.flood &lt;message&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>message</code>: Text to send to the shared <code>#repeaters</code> flood channel, prefixed with this node's name. Any <code>:</code> in the node name is sent as <code>;</code> so the prefix delimiter stays unambiguous.</p>
+<p><strong>Example:</strong></p>
+<pre><code>send text.flood checking ridge link
+</code></pre>
+<hr />
+<h4 id="view-or-change-battery-alert-state">View or change battery alert state</h4>
+<p><strong>Usage:</strong>
+- <code>get battery.alert</code>
+- <code>get battery.alert.region</code>
+- <code>set battery.alert on [region]</code>
+- <code>set battery.alert off</code></p>
+<p><strong>Parameters:</strong>
+- <code>region</code>: Optional named region scope. When omitted, the repeater selects the single deepest (most narrow) named region in the configured hierarchy. If multiple regions tie for deepest, specify one explicitly.</p>
+<p><strong>Defaults:</strong>
+- <code>battery.alert</code>: <code>off</code>
+- <code>battery.alert.region</code>: <code>&lt;unset&gt;</code></p>
+<p><strong>Notes:</strong>
+- Enabling fails until at least one usable named region is defined. Alerts are never sent as unscoped floods. If the selected region is later removed, alerts stop until battery alerts are enabled again with a valid region.
+- Region hierarchy edits are not persistent until <code>region save</code> is run. After <code>region def west pnw wa w-wa sea</code>, run <code>region save</code> before enabling the alert if the hierarchy must survive a reboot.
+- A region must have a usable transport key. Public named regions derive one automatically; a private region without an available key is rejected.
+- The first alert is suppressed until the repeater has been up for at least 30 minutes. After that, the repeater checks every 30 minutes and sends low-battery warnings to the <code>#repeaters</code> channel in the selected region.
+- Once an alert finishes transmitting, another battery alert is suppressed for at least 12 hours. A queue rejection, stale-queue drop, or radio send failure does not start the cooldown. Battery recovery or toggling alerts off and back on does not bypass a completed alert's cooldown during the same boot.
+- With <code>region def west pnw wa w-wa sea</code>, <code>set battery.alert on</code> selects <code>sea</code>; <code>set battery.alert on w-wa</code> overrides that default.
+- <code>get battery.alert.region</code> returns the selected scope, for example <code>&gt; sea</code>.
+- The battery check never requests a wake earlier than its 30-minute deadline. If the normal loop is already awake when that deadline has elapsed, the check is effectively free of an additional wake. Time in light/event sleep counts toward the startup delay, and a pending alert keeps the repeater awake until the packet is handled.</p>
+<hr />
+<h4 id="view-or-change-battery-alert-thresholds">View or change battery alert thresholds</h4>
+<p><strong>Usage:</strong>
+- <code>get battery.alert.low</code>
+- <code>set battery.alert.low &lt;1-100&gt;</code>
+- <code>get battery.alert.critical</code>
+- <code>set battery.alert.critical &lt;0-99&gt;</code></p>
+<p><strong>Defaults:</strong>
+- <code>battery.alert.low</code>: <code>20</code>
+- <code>battery.alert.critical</code>: <code>10</code></p>
+<p><strong>Note:</strong> The low threshold must be greater than the critical threshold. Alerts at or below the critical threshold use <code>CRITICAL BATTERY</code> in the message; both severities use the same 12-hour resend cooldown.</p>
+<hr />
+<h4 id="enable-or-disable-the-rx-inactivity-watchdog-repeater-only">Enable or disable the RX inactivity watchdog (Repeater Only)</h4>
+<p><strong>Usage:</strong>
+- <code>get rx.watchdog</code>
+- <code>set rx.watchdog on</code>
+- <code>set rx.watchdog off</code></p>
+<p><strong>Default:</strong> <code>off</code></p>
+<p><strong>Notes:</strong>
+- When enabled, the first check is due after a full 12-hour observation window. The repeater then checks roughly every 12 hours and reboots if it has not successfully received a radio packet during the preceding 12 hours.
+- Enabling the watchdog starts a new 12-hour observation window. Rebooting also starts a new window, so a quiet mesh can reboot no more often than once every 12 hours.
+- The check reuses the radio driver's existing last-receive timestamp. It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake, so its actual cadence can drift around the 12-hour target. With RX power saving enabled, packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.</p>
+<hr />
+<h4 id="enable-or-disable-the-nrf52-system-watchdog">Enable or disable the nRF52 system watchdog</h4>
+<p><strong>Usage:</strong>
+- <code>get system.watchdog</code>
+- <code>set system.watchdog on</code>
+- <code>set system.watchdog off</code></p>
+<p><strong>Default:</strong> <code>on</code></p>
+<p><strong>Notes:</strong>
+- This nRF52-only hardware watchdog resets the device if the application loop stops for 60 seconds, including an indefinite SoftDevice flash-write wait.
+- Enabling takes effect without a reboot.
+- The nRF52 hardware cannot stop a watchdog after it has started. Disabling is persisted immediately, then the current firmware stops feeding it so the board performs one watchdog restart within 60 seconds. It remains off after that restart.
+- This setting is nRF52-only. The SoftDevice flash deadlock does not apply to ESP32, whose existing watchdog behavior is unchanged.</p>
+<hr />
+<h4 id="estimate-and-correct-repeater-time-after-startup">Estimate and correct repeater time after startup</h4>
+<p><strong>Usage:</strong>
+- <code>get clock.sync</code>
+- <code>get clock.sync.status</code>
+- <code>get clock.sync.status.table</code>
+- <code>get clock.sync.status.&lt;1-16&gt;</code>
+- <code>get clock.sync.mesh</code>
+- <code>set clock.sync.mesh &lt;on|off&gt;</code>
+- <code>get clock.sync.mesh.edge</code>
+- <code>set clock.sync.mesh.edge &lt;on|off&gt;</code>
+- <code>clock.sync.mesh now</code>
+- <code>get clock.sync.internet</code>
+- <code>set clock.sync.internet &lt;on|off&gt;</code>
+- <code>get clock.sync.drift</code>
+- <code>set clock.sync.drift &lt;30-86400&gt;</code>
+- <code>get clock.sync.samples</code>
+- <code>set clock.sync.samples &lt;3-16&gt;</code></p>
+<p><strong>Defaults:</strong>
+- <code>clock.sync.mesh</code>: <code>on</code> for nRF52 repeaters; <code>off</code> for other builds
+- <code>clock.sync.mesh.edge</code>: <code>on</code>
+- <code>clock.sync.internet</code>: <code>off</code>
+- <code>clock.sync.drift</code>: <code>3600</code> seconds
+- <code>clock.sync.samples</code>: <code>9</code></p>
+<p>When either source is enabled, the repeater makes its first clock-bootstrap
+attempt after 30 minutes of uptime, or immediately when the configured number
+of fresh evidence sources has been collected, whichever comes first. A
+successful estimate changes the RTC only when the absolute difference is
+<strong>greater than</strong> <code>clock.sync.drift</code>; correction can move the clock forward or
+backward. A valid estimate within the threshold counts as a successful sync
+without changing the clock. Seven days after each successful estimate, the
+repeater evaluates time again; the seven-day deadline therefore starts from the
+last successful estimate rather than from boot. This is a lazy uptime deadline:
+the check runs on the first normal loop/wake after it becomes due and does not
+wake the device by itself. If no source or consensus is available, the repeater
+retries every 30 minutes, and newly collected evidence triggers another
+immediate evaluation once the configured source count is present. Every reboot
+starts with the initial bootstrap attempt. An existing saved setting always
+overrides the platform default.</p>
+<p><code>clock.sync.mesh now</code> bypasses the startup/seven-day deadline and queues a
+LoRa-only consensus evaluation on the next normal loop, even when the internet
+source is also enabled. It uses any currently fresh samples without clearing the
+16-slot table. If there is not yet enough evidence, mesh collection remains open
+and the next attempt follows the normal 30-minute retry. The command requires
+<code>clock.sync.mesh</code> to be on and does not bypass CLI, GPS, or NTP suppression; it
+also retains the normal quorum, timestamp-validity, and drift checks.
+The separate <code>clock</code> command only displays the current RTC and does not request
+a synchronization attempt.</p>
+<p><code>clock.sync.mesh</code> collects signature-verified advert timestamps and MAC-valid,
+decrypted Public-channel plain-text timestamps. In normal path mode, collection
+occurs only after the packet passes every forwarding filter. Sources are
+deduplicated by advert public key or case-insensitive Public-channel display
+name. Every fresh sample must also have a different full received path; all
+direct, zero-hop receptions count as the same empty path. This prevents repeated
+packets or multiple names arriving over one route from increasing the vote
+count.</p>
+<p>For a node at the edge of the network where every packet arrives through one
+relay path, <code>set clock.sync.mesh.edge on</code> changes the evidence requirement from
+distinct receive paths to distinct sources. Signature-verified adverts are
+deduplicated by public key, and Public-channel timestamps are deduplicated by
+case-insensitive display name. Repeated packets from one source still count
+once. Edge mode observes this verified evidence on the receive path, independently
+of the forwarding decision, so <code>repeat off</code> and forwarding filters do not prevent
+clock collection. Other packet types are observed normally but cannot be clock
+evidence because they do not provide a suitable authenticated Unix timestamp.
+Changing edge mode clears the in-memory sample table so evidence collected under
+the other policy is not reused. The setting is persistent and defaults on.</p>
+<p>At least the configured number of distinct fresh evidence sources (nine by
+default) and a strict majority of all fresh samples must fall within ten minutes
+of the median. In normal mode each source must use a distinct receive path. In
+edge mode signed adverts are distinct by public key and Public-channel messages
+are distinct by display name, but all may use the same receive path. The
+effective quorum is therefore the larger of
+<code>clock.sync.samples</code> and half the fresh sample count plus one. For example, a
+9-vs-7 split can succeed but an 8-vs-8 split cannot. The median is used.
+<code>clock.sync.samples</code> accepts <code>3</code> through <code>16</code>; samples older than two hours are
+ignored. Status reports <code>mode=paths</code> or <code>mode=edge</code> and labels the collected
+evidence as <code>paths</code> or <code>sources</code>. It reports <code>reason=need-more-paths</code> or
+<code>reason=need-more-sources</code> when fewer than the configured number exist, and
+<code>reason=no-consensus</code> when enough evidence exists but the effective quorum does
+not agree. Mesh collection begins immediately after boot. Following a
+successful estimate, it resumes two hours before the next seven-day deadline so
+only evidence that can still be fresh at evaluation time is processed.</p>
+<p><code>get clock.sync.status</code> reports whether the clock was set and a <code>reason</code> when it
+was not. Common reasons include <code>waiting-deadline</code>, <code>need-more-sources</code>,
+<code>need-more-paths</code>, <code>no-consensus</code>, <code>within-drift</code>, <code>mesh-off</code>, and suppression
+by CLI, GPS, or internet time. It also reports whether collection is active, the
+fresh evidence count, the number of occupied table slots, and the next
+evaluation deadline.</p>
+<p><code>get clock.sync.status.table</code> shows the active sample table in compact form.
+Each item is <code>slot:type:id-prefix:age</code>, where type <code>A</code> is a signed advert and
+type <code>P</code> is a Public-channel message. A trailing <code>!</code> marks a stale sample. If
+the compact reply is truncated, query any slot with
+<code>get clock.sync.status.&lt;1-16&gt;</code>. The detail view reports the full source and path
+hashes, age-adjusted epoch, difference from the local clock, and freshness.</p>
+<p>A timestamp is eligible for a clock-sync sample only when it falls between the
+UTC build epoch embedded by <code>build.sh</code> and that time plus ten calendar years.
+Direct developer builds that bypass <code>build.sh</code> fall back to the compiler
+timestamp. Validation happens before a slot is selected or written, so an
+advert or Public-channel timestamp outside that window is not recorded as a
+clock sample.</p>
+<p>Before voting, the node advances each packet timestamp by an estimated transit
+time. The estimate sums the radio airtime at the original packet length and at
+each progressively longer relay length, plus the expected midpoint of the
+random flood-forward delay at every prior hop. The normal elapsed time since
+the radio recorded local receipt is then added when consensus is evaluated, so
+local signature/decryption/filter processing time is included too. This is
+better than using hop count alone because LoRa airtime changes with packet
+length and radio settings. Transit compensation is capped at the ten-minute
+consensus window. It cannot know sender queueing, channel contention, or a
+remote relay's non-matching <code>txdelay</code>, so the consensus window and median still
+absorb residual error.</p>
+<p>If a <code>clock sync</code> or <code>time &lt;epoch&gt;</code> CLI command successfully sets the clock, or
+a GPS provider writes a valid GPS time, LoRa-derived clock collection and
+correction are suppressed for the rest of that boot. Turning
+<code>clock.sync.mesh</code> off and back on does not clear this safety latch; only a
+reboot does. <code>get clock.sync.mesh</code> and <code>get clock.sync.status</code> report whether
+CLI or GPS time caused the suppression. On a WiFi MQTT build, a successful NTP
+sync is authoritative and also suppresses LoRa correction for the rest of that
+boot. Source selection starts fresh after a reboot, so LoRa remains the fallback
+when NTP cannot obtain internet time during that boot.</p>
+<p>Public-channel display names are not authenticated and can be spoofed. Received
+path hashes are also truncated, unauthenticated routing hints; requiring unique
+paths prevents ordinary duplicate-route inflation but is not a cryptographic
+identity check. Signed adverts authenticate the advert contents but do not
+prove that the advertising node's own clock is correct. Mesh time is therefore
+a consensus estimate, not an authoritative time service. Edge mode intentionally
+gives up receive-path diversity. Public-channel display names can be spoofed, so
+one sender can claim multiple names and inflate the edge-mode vote count.</p>
+<p><code>clock.sync.internet</code> is available on WiFi MQTT repeater-observer builds. Its
+initial and seven-day queries run on the MQTT/WiFi task and are read-only until
+the repeater applies the configured drift test. Failed queries retry after 30
+minutes. On other repeater builds, the preference can be stored but status
+reports that internet time is unavailable. MQTT builds retain their existing
+startup NTP behavior required for MQTT/TLS/JWT operation; this setting controls
+the additional delayed drift checks. Startup NTP is always preferred when it
+succeeds, regardless of this setting.</p>
+<p>Changing any <code>clock.sync.*</code> setting starts a new attempt for the current boot.
+Settings are persistent in <code>/clock_sync</code>; samples and schedule state are not.</p>
+<p>A backward correction is intentionally allowed, but peers that already recorded
+a later timestamp from this node may temporarily reject its lower timestamps as
+replays until corrected time passes the previously observed value.</p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-text">set clock.sync.drift 1800
+set clock.sync.samples 3
+set clock.sync.mesh on
+set clock.sync.mesh.edge on
+clock.sync.mesh now
+get clock.sync.status
+</code></pre>
+<hr />
 <h4 id="view-this-nodes-public-key">View this node's public key</h4>
 <p><strong>Usage:</strong> <code>get public.key</code></p>
 <hr />
@@ -3479,7 +5429,32 @@
 - <code>on</code>: enable power saving
 - <code>off</code>: disable power saving</p>
 <p><strong>Default:</strong> <code>off</code></p>
-<p><strong>Note:</strong> When enabled, device enters sleep mode between radio transmissions</p>
+<p><strong>Note:</strong> When enabled, device enters sleep mode between radio transmissions. Enabling is refused from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
+<hr />
+<h4 id="control-an-exposed-gpio">Control an exposed GPIO</h4>
+<p><strong>Availability:</strong> ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.</p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get gpio</code> — list the Arduino pin numbers this firmware build permits</li>
+<li><code>get gpio state</code>, <code>get gpio states</code>, or <code>get gpio status</code> — list every available pin currently controlled by the user (anything not in <code>reset</code>)</li>
+<li><code>get gpio state &lt;pin&gt;</code> — show one pin's state; <code>states</code> and <code>status</code> are accepted here too</li>
+<li><code>get gpio &lt;pin&gt;</code> — show <code>on</code>, <code>off</code>, or <code>reset</code>, plus any pending timed transition</li>
+<li><code>set gpio &lt;pin&gt; on</code></li>
+<li><code>set gpio &lt;pin&gt; off</code></li>
+<li><code>set gpio &lt;pin&gt; reset</code></li>
+<li><code>set gpio &lt;pin&gt; &lt;on|off&gt; &lt;duration&gt; &lt;on|off|reset&gt;</code></li>
+</ul>
+<p><strong>Examples:</strong></p>
+<ul>
+<li><code>set gpio 16 on 30 off</code> — drive GPIO16 high for 30 seconds, then drive it low</li>
+<li><code>set gpio 16 on 5ms off</code> — drive GPIO16 high for 5 milliseconds, then drive it low</li>
+<li><code>set gpio 16 off 5 reset</code> — drive GPIO16 low for 5 seconds, then return it to high impedance</li>
+</ul>
+<p>An integer duration has seconds as its default unit, so <code>5</code> means 5 seconds. Add <code>ms</code> for milliseconds (<code>5ms</code>); an explicit <code>s</code> suffix is also accepted (<code>5s</code>). The maximum duration is 24 hours (86,400 seconds or 86,400,000 milliseconds). <code>on</code> or <code>off</code> without a duration remains in that state until another command, reset, or reboot.</p>
+<p><code>reset</code> changes the pin to an input with no pull resistor (high impedance). It does not reboot the node. It also cancels any pending timer for that pin. A new timed command for the same pin cancels and replaces the previous timer. GPIOs begin in <code>reset</code>; states and timers are not saved and are lost on reboot.</p>
+<p>The immediate reply confirms the applied state and any pending transition. When a timed transition finishes, a command issued over the authenticated remote CLI receives a second report such as <code>&gt; GPIO 16 timer complete: off</code>. Retries of the same authenticated timed command are recognized and do not restart its countdown.</p>
+<p>The pin number is the Arduino pin number used by that target (the normal GPIO number on ESP32 and the board's <code>D</code>/pin index on nRF52). The available-pin list is build-specific. Radio, flash/PSRAM, USB, serial console, display, GPS, I2C, buttons, LEDs, battery measurement, power control, bridge, Ethernet, watchdog, and other pins claimed by the firmware are rejected. A pin must also be physically broken out on your board; <code>get gpio</code> cannot detect wiring or an attached peripheral that is not represented by the firmware configuration.</p>
+<p><strong>Electrical warning:</strong> GPIOs use 3.3 V logic and have limited drive current. Do not power a relay, motor, solenoid, or other load directly from a GPIO. Use a suitable transistor, MOSFET, optocoupler, or driver with the required protection components.</p>
 <hr />
 <h3 id="routing">Routing</h3>
 <h4 id="view-or-change-this-nodes-repeat-flag">View or change this node's repeat flag</h4>
@@ -3488,7 +5463,7 @@
 - <code>set repeat &lt;state&gt;</code></p>
 <p><strong>Parameters:</strong>
   - <code>state</code>: <code>on</code>|<code>off</code></p>
-<p><strong>Default:</strong> <code>on</code></p>
+<p><strong>Default:</strong> <code>flood.channel.data on</code>; <code>flood.channel.data.hops h=all</code></p>
 <hr />
 <h4 id="view-or-change-this-nodes-advert-path-hash-size">View or change this node's advert path hash size</h4>
 <p><strong>Usage:</strong>
@@ -3553,10 +5528,10 @@
 - <code>value</code>: Duty cycle percentage (1-100)</p>
 <p><strong>Default:</strong> <code>50%</code> (equivalent to airtime factor 1.0)</p>
 <p><strong>Examples:</strong>
-- <code>set dutycycle 100</code> — no duty cycle limit
-- <code>set dutycycle 50</code> — 50% duty cycle (default)
-- <code>set dutycycle 10</code> — 10% duty cycle
-- <code>set dutycycle 1</code> — 1% duty cycle (strictest EU requirement)</p>
+- <code>set dutycycle 100</code> - no duty cycle limit
+- <code>set dutycycle 50</code> - 50% duty cycle (default)
+- <code>set dutycycle 10</code> - 10% duty cycle
+- <code>set dutycycle 1</code> - 1% duty cycle (strictest EU requirement)</p>
 <blockquote>
 <p><strong>Note:</strong> Added in firmware v1.15.0</p>
 </blockquote>
@@ -3570,10 +5545,10 @@
 - <code>set af &lt;value&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>value</code>: Airtime factor (0-9). After each transmission, the repeater enforces a silent period of approximately the on-air transmission time multiplied by the value. This results in a long-term duty cycle of roughly 1 divided by (1 plus the value). For example:
-  - <code>af = 1</code> → ~50% duty
-  - <code>af = 2</code> → ~33% duty
-  - <code>af = 3</code> → ~25% duty
-  - <code>af = 9</code> → ~10% duty
+  - <code>af = 1</code> -&gt; ~50% duty
+  - <code>af = 2</code> -&gt; ~33% duty
+  - <code>af = 3</code> -&gt; ~25% duty
+  - <code>af = 9</code> -&gt; ~10% duty
   You are responsible for choosing a value that is appropriate for your jurisdiction and channel plan (for example EU 868 Mhz 10% duty cycle regulation).</p>
 <p><strong>Default:</strong> <code>1.0</code></p>
 <hr />
@@ -3589,7 +5564,17 @@
 <p><strong>Usage:</strong>
 - <code>get cad</code>
 - <code>set cad &lt;on|off&gt;</code></p>
-<p><strong>Description:</strong> When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of <code>int.thresh</code> — either, both, or none may be active.</p>
+<p><strong>Description:</strong> When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of <code>int.thresh</code> - either, both, or none may be active.</p>
+<p>The Cascade firmware profile defaults CAD to <code>on</code>; target-default builds continue to default it to <code>off</code>.
+The repeater applies the saved toggle to the radio during its periodic
+noise-floor service. With one runnable packet, a busy result uses the normal
+CAD retry delay and allows roughly four seconds of continuous busy results.
+As the runnable transmit queue grows, both delays are divided by its depth:
+retry spacing will not fall below 50 ms and the busy ceiling will not fall
+below 500 ms. Reaching the busy ceiling records a CAD-timeout error and
+attempts the next queued transmission rather than waiting indefinitely.
+Future-scheduled packets do not accelerate CAD. <code>get cad</code> includes the
+hardware busy-result count.</p>
 <p><strong>Parameters:</strong>
 - <code>on|off</code>: Enable or disable hardware CAD</p>
 <p><strong>Default:</strong> <code>off</code></p>
@@ -3601,6 +5586,17 @@
 <p><strong>Parameters:</strong>
 - <code>value</code>: Interval in seconds rounded down to a multiple of 4 (17 becomes 16). 0 to disable.</p>
 <p><strong>Default:</strong> <code>0.0</code></p>
+<hr />
+<h4 id="view-or-change-the-radio-watchdog-interval-mqtt-observer-only">View or change the radio watchdog interval (MQTT observer only)</h4>
+<p><strong>Usage:</strong>
+- <code>get radio.watchdog</code>
+- <code>set radio.watchdog &lt;minutes&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>minutes</code>: <code>0</code> to disable, or <code>1-120</code> minutes</p>
+<p><strong>Default:</strong> <code>5</code></p>
+<p><strong>Note:</strong> This watchdog belongs to the MQTT observer runtime and is not
+available on a standalone FULL repeater. On quiet meshes, increasing it can
+reduce false recoveries when no traffic is expected.</p>
 <hr />
 <h4 id="enable-or-disable-multi-acks-support">Enable or disable Multi-Acks support</h4>
 <p><strong>Usage:</strong>
@@ -3640,7 +5636,7 @@
 - <code>set flood.max.unscoped &lt;value&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>value</code>: Maximum flood hop count (0-64) for a packet without a scope (no region set)</p>
-<p><strong>Default:</strong> <code>64</code> - (<code>0xFF</code> indicates it hasn't been set, will track flood.max until it is.)</p>
+<p><strong>Default:</strong> <code>0xFF</code> - indicates it hasn't been set, will track flood.max until it is.</p>
 <p><strong>Note:</strong> An alternative to <code>region denyf *</code>, setting <code>flood.max.unscoped</code> to a lower value such as <code>3</code> would allow for local unscoped messages to propagate, while preventing noisy neighbors from flooding a local region.</p>
 <hr />
 <h4 id="limit-the-number-of-hops-for-an-advert-flood-message">Limit the number of hops for an advert flood message</h4>
@@ -3650,6 +5646,589 @@
 <p><strong>Parameters:</strong>
 - <code>value</code>: Maximum flood hop count (0-64) for an advert packet</p>
 <p><strong>Default:</strong> <code>8</code></p>
+<hr />
+<h4 id="forward-flood-group-data-packets-on-repeaters">Forward flood group data packets on repeaters</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.channel.data</code>
+- <code>get flood.channel.data.hops</code>
+- <code>set flood.channel.data &lt;on|off&gt;</code>
+- <code>set flood.channel.data.hops &lt;all|1-7&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>on</code>: Retransmit received flood <code>GRP_DATA</code> channel packets.
+- <code>off</code>: Do not retransmit received flood <code>GRP_DATA</code> channel packets.
+- <code>all</code>: When <code>flood.channel.data</code> is <code>off</code>, block <code>GRP_DATA</code> at any received flood hop count.
+- <code>1-7</code>: When <code>flood.channel.data</code> is <code>off</code>, repeat <code>GRP_DATA</code> at this hop count or lower and block longer paths.</p>
+<p><strong>Default:</strong> <code>flood.channel.data on</code>; <code>flood.channel.data.hops h=all</code></p>
+<p><strong>Forwarding behavior:</strong> Repeater firmware only. The repeater still receives and
+logs the packet when logging is enabled; this only blocks retransmission.
+This is checked before <code>flood.channel.block</code> and applies to flood <code>GRP_DATA</code>
+packets regardless of channel key. Flood group text (<code>GRP_TXT</code>) is unaffected by
+this setting.</p>
+<p><code>flood.channel.data.hops</code> is separate from <code>flood.channel.block.hops</code>.
+<code>flood.channel.block.hops</code> does not restrict unkeyed <code>GRP_DATA</code> packets. With
+the default <code>flood.channel.data on</code>, <code>GRP_DATA</code> repeats normally even when
+<code>flood.channel.block.hops</code> is set for keyed channel blocks.</p>
+<p><code>get flood.channel.data</code> includes the active hop gate as <code>h=all</code> or <code>h&gt;N</code>.</p>
+<hr />
+<h4 id="block-selected-flood-channel-packets-on-repeaters">Block selected flood channel packets on repeaters</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.channel.block</code>
+- <code>get flood.channel.block.&lt;n&gt;</code>
+- <code>get flood.channel.block &lt;name|8_hex_prefix&gt;</code>
+- <code>get flood.channel.block.hops</code>
+- <code>set flood.channel.block &lt;key&gt; &lt;name&gt; [h=&lt;all|1-7|default&gt;]</code>
+- <code>set flood.channel.block.&lt;n&gt; &lt;key&gt; &lt;name&gt; [h=&lt;all|1-7|default&gt;]</code>
+- <code>set flood.channel.block #channel [h=&lt;all|1-7|default&gt;]</code>
+- <code>set flood.channel.block.&lt;n&gt; #channel [h=&lt;all|1-7|default&gt;]</code>
+- <code>set flood.channel.block.hops &lt;all|1-7&gt;</code>
+- <code>del flood.channel.block.&lt;n&gt;</code>
+- <code>del flood.channel.block &lt;name|8_hex_prefix&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>n</code>: Slot number from <code>1</code> to <code>15</code>.
+- <code>key</code>: 128-bit or 256-bit channel key as hex.
+- <code>#channel</code>: Public hashtag channel name; derives the 128-bit channel key from the hashtag and is stored as the row name.
+- <code>name</code>: Local label for hex-key rows. Not needed for <code>#channel</code>; extra text after <code>#channel</code> is ignored unless it is a hop setting.
+- <code>8_hex_prefix</code>: First 4 bytes of the derived channel hash, shown by single-entry <code>get</code>.
+- <code>all</code>: Block matching flood channel packets at any received flood hop count.
+- <code>1-7</code>: Maximum received flood path hash count to repeat. Matching packets over this hop count are blocked.
+- <code>default</code>: Row inherits the global <code>flood.channel.block.hops</code> setting.</p>
+<p><strong>Slot behavior:</strong> Without <code>.n</code>, <code>set flood.channel.block</code> updates an existing
+row with the same derived channel prefix or name, otherwise it uses the next
+empty slot. If all 15 slots are full, the command fails. With <code>.n</code>, the command
+writes that slot.</p>
+<p><strong>Default row:</strong> Repeater firmware seeds a new block list with
+<code>#wardriving h=4</code> in slot 1. This is a normal row, so it can be changed with
+<code>set flood.channel.block #wardriving h=&lt;all|1-7|default&gt;</code> or removed with
+<code>del flood.channel.block #wardriving</code>. Once the block list has been saved, the
+firmware uses the saved list and does not recreate the default after deletion.
+Restore the exact seeded row with:</p>
+<pre><code class="language-text">set flood.channel.block.1 #wardriving h=4
+</code></pre>
+<p>This explicitly writes slot 1. Omit <code>.1</code> to update an existing wardriving row
+or use the first empty slot instead.</p>
+<p><strong>Forwarding behavior:</strong> Repeater firmware only. This only affects received
+flood <code>GRP_TXT</code> and <code>GRP_DATA</code> channel packets. The repeater still receives and
+logs the packet, but it does not retransmit it when a configured block entry can
+validate/decode it. If <code>flood.channel.data</code> is <code>off</code>, <code>GRP_DATA</code> packets are
+checked against the separate <code>flood.channel.data.hops</code> gate before this
+per-channel check runs.</p>
+<p><strong>Hop gate:</strong> <code>flood.channel.block.hops</code> defaults to <code>all</code>, which preserves the
+original behavior. When set to <code>N</code> from <code>1</code> to <code>7</code>, block rows that inherit the
+global setting only block packets whose received flood path hash count is
+greater than <code>N</code>; packets at <code>N</code> hops or lower can still repeat. For example,
+<code>set flood.channel.block.hops 1</code> repeats zero-hop and one-hop matches but blocks
+two-hop and longer matches.</p>
+<p>Each block row can override the global hop gate with <code>h=&lt;all|1-7|default&gt;</code>.
+For example, the seeded <code>#wardriving h=4</code> row blocks <code>#wardriving</code> matches
+above four hops, while <code>set flood.channel.block #bot h=7</code> blocks
+<code>#bot</code> matches above seven hops. Use <code>h=default</code> to make the row inherit the
+global setting again.</p>
+<p><code>get flood.channel.block</code> includes the global default first, then adds per-row
+overrides as <code>/h&gt;N</code> or <code>/h=all</code>; inherited rows do not show a suffix. Single-row
+<code>get</code> replies include that row's stored hop mode as <code>h=def</code>, <code>h=all</code>, or <code>h&gt;N</code>.
+List replies truncate displayed row names only when the full list would exceed
+the remote-management response limit.</p>
+<p><strong>Matching behavior:</strong> Each block entry stores the first 4 bytes of the derived
+channel hash for display and lookup. Current group packets carry only the first
+channel-hash byte, so that byte is used as a cheap prefilter. Only entries whose
+first hash byte matches the packet try MAC/decrypt with their stored key. If
+multiple blocked channels share the same first byte, the repeater tries each
+matching key until one validates; the packet is blocked only after a successful
+MAC/decrypt.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>set flood.channel.block #test
+set flood.channel.block.2 9cd8fcf22a47333b591d96a2b848b73f #test
+set flood.channel.block.hops 3
+set flood.channel.block #wardriving h=4
+set flood.channel.block #bot h=7
+get flood.channel.block
+get flood.channel.block.hops
+get flood.channel.block #test
+del flood.channel.block.2
+</code></pre>
+<hr />
+<h4 id="force-a-transport-scope-onto-floods">Force a transport scope onto floods</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.channel.scope</code>
+- <code>get flood.channel.scope.&lt;n&gt;</code>
+- <code>set flood.channel.scope &lt;channel|txt:*|login:*|other:*&gt; &lt;region&gt; [path=blacklist|path=bucket:1-6] [tx=slow]</code>
+- <code>set flood.channel.scope.&lt;n&gt; &lt;channel|txt:*|login:*|other:*&gt; &lt;region&gt; [path=blacklist|path=bucket:1-6] [tx=slow]</code>
+- <code>del flood.channel.scope.&lt;n&gt;</code>
+- <code>del flood.channel.scope all</code></p>
+<p><strong>Parameters:</strong>
+- <code>n</code>: Slot number within the table compiled for the target. Roomy ESP32 builds
+  provide <code>1-255</code>; DRAM-tight classic ESP32 LoRa-OTA repeaters and nRF52/other
+  normal constrained builds provide <code>1-31</code>; very-tight STM32WL repeaters provide
+  <code>1-15</code>; the no-PSRAM LilyGo T-LoRa V2.1 repeater/observer provides <code>1-4</code>.
+- <code>channel</code>: <code>public</code>, a public <code>#channel</code>, or a 128/256-bit channel key in hex.
+- <code>txt:*</code>: Unauthenticated fallback for otherwise-unmatched <code>GRP_TXT</code> and
+  <code>GRP_DATA</code>. Plain <code>*</code> is an alias for <code>txt:*</code>.
+- <code>login:*</code>: Type-based wildcard for the remote-login/admin family: <code>REQ</code>,
+  <code>RESPONSE</code>, <code>TXT_MSG</code>, <code>ANON_REQ</code>, and <code>PATH</code> (<code>0x00</code>, <code>0x01</code>, <code>0x02</code>,
+  <code>0x07</code>, and <code>0x08</code>). It classifies the outer type; a transit repeater cannot
+  authenticate whether a packet is actually part of a login session.
+- <code>other:*</code>: Type-based wildcard for every remaining flood payload type except
+  TRACE, including ACK, advert, multipart, control, OTA, reserved types, and
+  raw custom. TRACE is deliberately exempt from forced-scope wildcards.
+- <code>region</code>: Existing named region with a usable transport key. A unique region
+  name prefix is accepted; wildcard region <code>*</code> is not a scope target.
+- <code>path=blacklist</code>: Optional. Require the received path to match the passive
+  <code>flood.filter.blacklist</code> ID table. No <code>flood.filter</code> drop row needs to be
+  enabled. One exact listed ID qualifies a 3-byte path. A 2-byte path requires
+  two matching received path entries, while a 1-byte path never qualifies.
+- <code>path=bucket:&lt;1-6&gt;</code>: Optional alternative to <code>path=blacklist</code>. Match IDs in
+  the selected persistent <code>flood.retry.bucket</code>. Each bucket holds up to 17
+  three-byte IDs and remains usable when <code>flood.retry.bridge</code> is off. It uses
+  the same 3-byte, 2-byte, and 1-byte thresholds as <code>path=blacklist</code>.
+  <code>recent.repeater</code> freshness and <code>flood.retry.ignore</code> do not affect this
+  passive match.
+- <code>tx=slow</code>: Optional. Use an effective inbound <code>rxdelay</code> base of
+  <code>max(2, configured rxdelay * 2)</code>, keep normal outbound queue priority, and
+  schedule retransmission with the maximum supported <code>txdelay</code> factor of
+  <code>2.0</code> after changing the scope. The default is fast; <code>tx=fast</code> may be
+  supplied explicitly when replacing a slow row.</p>
+<p><strong>Default:</strong> No forced scopes.</p>
+<p>Remote ACL permission <code>4</code> (region/scope manager) can use all <code>get</code>, <code>set</code>, and
+<code>del flood.channel.scope</code> forms. Filter managers and other non-admin roles
+cannot change this table.</p>
+<p>Without <code>.n</code>, <code>set</code> updates the row for the same exact channel key or wildcard
+class with the same path selector, otherwise it uses the first empty slot.
+This permits an ordinary fallback and separate blacklist or bridge-bucket
+rows for the same channel. With <code>.n</code>, it replaces that slot. The three
+wildcard classes are independent and consume one slot each.
+<code>get flood.channel.scope</code> reports active/total slot counts; use the numbered
+form for row detail. Keyed rows are displayed by the first four bytes of their
+derived channel hash because channel secrets are never returned.</p>
+<p>This acts on received <code>ROUTE_TYPE_FLOOD</code> and
+<code>ROUTE_TYPE_TRANSPORT_FLOOD</code> packets. An unscoped packet gains the configured
+scope; an already-scoped packet has its existing transport codes replaced. For
+<code>GRP_TXT</code> and <code>GRP_DATA</code>, all exact channel-key rows are tried first and must
+validate the packet MAC/decryption. Matching path-qualified exact rows are
+tried before ordinary exact fallback rows. A row whose target region is
+missing or unusable is skipped; later exact rows and then <code>txt:*</code> are tried.
+Exact keyed rows with a usable target therefore beat <code>txt:*</code> regardless of
+slot number. Within each wildcard class, path-qualified rows similarly precede
+ordinary fallback rows. <code>login:*</code> and <code>other:*</code> select their non-overlapping
+outer-type families without decrypting the payload. The lowest usable slot
+wins within each priority tier.</p>
+<p>Standard traceroute is direct-routed and is therefore outside this flood-only
+table. A custom flood-form <code>TRACE</code> is also left unchanged: no wildcard adds a
+scope, an existing transport code is preserved, and region/unknown-code gates
+do not block it.</p>
+<p>On a match, the repeater sets the route to <code>ROUTE_TYPE_TRANSPORT_FLOOD</code>,
+computes transport code 0 from the selected region key and packet payload, and
+sets transport code 1 to zero. This occurs before region enforcement,
+forwarding filters, and the seen-packet lookup. For an already-scoped packet,
+the selected code replaces both incoming transport-code fields. Direct routes
+are never rewritten. A packet converted from unscoped is no longer subject to
+<code>flood.max.unscoped</code>; all rewritten packets remain subject to normal payload
+handling, <code>flood.max</code>, region allow/deny, <code>flood.filter</code>,
+<code>flood.channel.block</code>, loop detection, and moderation. Assigning a scope does
+not make a packet type forwardable if the core would otherwise reject it. By
+default, if the selected scope differs and the rewritten packet is accepted
+for forwarding, its initial retransmission uses zero <code>txdelay</code> and the highest
+outbound queue priority so the newly scoped copy can win at the next hop.
+Adding <code>tx=slow</code> uses an effective inbound <code>rxdelay</code> base of
+<code>max(2, configured rxdelay * 2)</code>, keeps the ordinary queue priority, and uses
+the maximum <code>txdelay</code> factor of <code>2.0</code> for the retransmission. As with ordinary
+<code>txdelay</code>, the actual transmit delay is randomized from zero through the
+resulting window; factor <code>2.0</code> gives a maximum of ten packet airtimes.
+Neither mode preempts an active radio transmission or bypasses CAD and
+airtime-budget limits. Selecting the scope already carried by the packet is a
+no-op and does not grant special transmit treatment.</p>
+<p>If a row's target region has been removed or has no usable key, the repeater
+tries the next applicable row. For group packets this means later authenticated
+exact rows followed by <code>txt:*</code>; wildcard duplicates likewise fall through to
+the next usable slot. When no usable mapping exists, the packet retains its
+original unscoped or scoped route.</p>
+<p>LoRa OTA remains functional when <code>other:*</code> is configured. OTA packets are
+given that region's transport code, replacing an existing code when necessary,
+but the OTA handler still accepts and re-floods them during the temporary-radio
+window. The target region must allow flooding. The OTA core itself is dormant
+outside that window; no default flood filter row is needed for that behavior.
+Forced scope does not make OTA operate outside the window.</p>
+<p><strong>Capacity cost:</strong> Each slot uses 36 bytes of runtime RAM and persistent
+storage, plus a 5-byte file header. The four-slot minimum uses 144 bytes RAM and
+a 149-byte file; it has room for the three wildcard classes plus one exact
+channel mapping. Very-tight 15-slot builds use 540 bytes RAM and a 545-byte
+file. The 31-slot table uses 1,116 bytes RAM and a 1,121-byte file. Roomy ESP32
+builds use a 255-slot table: 9,180 bytes RAM and a 9,185-byte file. Classic
+ESP32 LoRa-OTA builds that cannot afford that RAM use 31 slots instead. The
+existing region table still permits 32 named regions, so a 255-slot channel
+table may reuse targets but cannot name more than 32 distinct configured region
+scopes.</p>
+<p><strong>Duplicate behavior:</strong> Mesh dedup hashes payload type and payload bytes; it
+does not hash route type, transport codes, or the ordinary flood path. Adding
+a transport scope therefore does not create a new duplicate identity. If the
+same payload later arrives scoped, unscoped, or through a different region, it
+is still the same seen packet. <code>TRACE</code> is the exception only in that its
+encoded <code>path_len</code> byte is also hashed.</p>
+<p>While equivalent non-TRACE flood copies are waiting in <code>rxdelay</code>, the normal
+receive-quality timing still selects the packet to process, but that winner
+receives a scope from the queued scoped copies with the same dedupe identity. If the copies
+carry different locally allowed scopes, the scope from the shortest received
+path wins. Unknown and denied transport codes are not candidates and therefore
+cannot overwrite an unscoped winner. With equal path lengths, the deeper child
+region wins because it is narrower. A remaining tie keeps queue order. The
+winner's own path, SNR reading, and scheduled time are not changed, and an
+already-scoped winner may have its code replaced by the better queued scope.</p>
+<p>The comparison is deferred until dequeue so each copy retains its original
+scope and path for arbitration. It can only use copies still present in
+<code>rxdelay</code>; it cannot replace a packet that already won the dedupe race. TRACE
+is excluded from scope arbitration entirely, so rxdelay never adds or replaces
+a trace transport code.</p>
+<p>A packet that matches a fast <code>flood.channel.scope</code> or <code>flood.filter scope=</code>
+action and needs its scope changed bypasses the inbound <code>rxdelay</code> queue. A
+<code>tx=slow</code> row remains in that queue with twice the configured base, floored at
+<code>2.0</code>, and participates in normal queued-copy scope arbitration.</p>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-text">region put west
+region save
+set flood.channel.scope #local west
+set flood.channel.scope.2 txt:* west tx=slow
+set flood.channel.scope.3 login:* west
+set flood.channel.scope.4 other:* west
+get flood.channel.scope
+get flood.channel.scope.1
+del flood.channel.scope.2
+</code></pre>
+<p>To use bridge bucket 1 to assign <code>east</code> to <code>public</code> packets whose received
+3-byte path contains <code>7576FB</code>, while assigning <code>west</code> to every other
+authenticated <code>public</code> packet:</p>
+<pre><code class="language-text">set flood.retry.bucket 1 7576FB
+set flood.channel.scope public west
+set flood.channel.scope public east path=bucket:1
+</code></pre>
+<p>Additional 3-byte IDs may be added to bucket 1 later; any one exact hit
+qualifies the <code>east</code> row. This use is passive and does not require
+<code>flood.retry.bridge</code> to be enabled. The separate blacklist selector remains
+available for tables shared with <code>flood.filter path=blacklist</code> rules.</p>
+<hr />
+<h4 id="require-valid-incoming-scopes-only-on-selected-channels">Require valid incoming scopes only on selected channels</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.channel.scope.require</code>
+- <code>get flood.channel.scope.require.&lt;n&gt;</code>
+- <code>set flood.channel.scope.require &lt;public|#channel|128/256-bit-key&gt;</code>
+- <code>set flood.channel.scope.require.&lt;n&gt; &lt;public|#channel|128/256-bit-key&gt;</code>
+- <code>del flood.channel.scope.require.&lt;n&gt;</code>
+- <code>del flood.channel.scope.require all</code></p>
+<p><strong>Default:</strong> Empty; normal global region enforcement remains active.</p>
+<p>Once this table contains a row, received flood <code>GRP_TXT</code> and <code>GRP_DATA</code>
+packets use selective region enforcement. A packet authenticating against a
+listed channel key must already carry a transport scope matching a locally
+flood-allowed region. Listed channels arriving unscoped, with an unknown code,
+or with a denied region are not retransmitted. This tests the original
+incoming scope before any <code>flood.channel.scope</code> or <code>flood.filter scope=</code>
+rewrite. Those rewrite actions are skipped for a rejected listed channel, so
+they cannot rescue it or grant special receive/transmit timing.</p>
+<p>Other group channels bypass the region/unknown-code gate while the table is
+active. They remain subject to every other forwarding control, including
+<code>repeat</code>, <code>flood.max*</code>, packet filters, channel blocks, loop detection, payload
+validation, and moderation. Non-channel flood payload types retain normal
+global region enforcement.</p>
+<p>Channel matching validates the packet MAC/decryption with the configured key;
+the visible one-byte channel hash is only a prefilter. Public hashtag channels
+use their derived public key. Without <code>.n</code>, setting an existing key updates it
+and a new key uses the first empty slot. Numbered <code>set</code> replaces that slot.
+<code>get ...&lt;n&gt;</code> reports a four-byte derived prefix and key size without exposing
+the key. The table uses the same build-dependent slot count as
+<code>flood.channel.scope</code>.</p>
+<p>Remote ACL permission <code>4</code> can manage this table. Deleting its final row
+restores normal global region enforcement for group channels.</p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-text">set flood.channel.scope.require #bot
+get flood.channel.scope.require
+get flood.channel.scope.require.1
+</code></pre>
+<hr />
+<h4 id="filter-flood-packets-by-payload-type-hop-count-and-path">Filter flood packets by payload type, hop count, and path</h4>
+<p>For setup guidance, interactions with the existing forwarding controls, and
+worked moderation examples, see <a href="../flood_filtering/">Repeater Flood Filtering and Moderation</a>.</p>
+<p><strong>Usage:</strong>
+- <code>get flood.filter</code>
+- <code>get flood.filter.&lt;n&gt;</code>
+- <code>get flood.filter.blacklist</code>
+- <code>get flood.filter.blacklist.&lt;n&gt;</code>
+- <code>set flood.filter.blacklist &lt;ID[,ID...]&gt;</code>
+- <code>set flood.filter.blacklist.&lt;n&gt; &lt;ID[,ID...]&gt;</code>
+- <code>del flood.filter.blacklist</code>
+- <code>del flood.filter.blacklist.&lt;n&gt;</code>
+- <code>set flood.filter &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>
+- <code>set flood.filter.&lt;n&gt; &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>
+- <code>del flood.filter.&lt;n&gt;</code>
+- <code>del flood.filter all</code></p>
+<p><strong>Parameters:</strong>
+- <code>n</code>: Rule slot from <code>1</code> to <code>16</code>.
+- <code>type</code>: Payload type name, full <code>PAYLOAD_TYPE_*</code> name, decimal value <code>0-15</code>,
+  hexadecimal value <code>0x00-0x0F</code>, or <code>any</code>.
+- <code>hops</code>: Optional; omitted means <code>all</code>.
+  - <code>N</code>: Block only at received hop count <code>N</code>.
+  - <code>N+</code>: Block at received hop count <code>N</code> and higher.
+  - <code>N-M</code>: Block the inclusive received-hop range.
+  - <code>all</code>: Block at every received hop count (<code>0-63</code>).
+  - <code>0+</code>, <code>all</code>, and an omitted hop expression are equivalent. The CLI displays
+    the saved range as <code>all</code>.
+- <code>suspend=tempradio</code>: Optional. Skip this row only while the temporary radio
+  is actually active.
+- <code>scope=&lt;name&gt;</code>: Optional scope-setting action. The name is normalized with a
+  leading <code>#</code> and its 128-bit transport key is derived directly from that
+  hashtag. It does not need to exist in the region list. Public names up to 30
+  characters are accepted; private <code>$</code> scopes are not.
+- <code>require=region</code>: Optional and valid only with <code>scope=</code>. Apply the scope
+  rewrite only if the original incoming packet already passes this repeater's
+  region gate. An incoming transport scope must resolve to a locally allowed
+  region; an unscoped flood must be allowed by the wildcard region. The check
+  occurs before any scope rewrite during this receive pass.
+- <code>tx=slow</code>: Optional and valid only with <code>scope=</code>. Use an effective inbound
+  <code>rxdelay</code> base of <code>max(2, configured rxdelay * 2)</code>, keep normal outbound
+  queue priority, and retransmit with the maximum supported <code>txdelay</code> factor
+  of <code>2.0</code>. Scope rows default to fast; <code>tx=fast</code> explicitly restores that
+  default when replacing a slow row.
+- <code>path=blacklist</code>: Optional unordered path condition. The persistent blacklist
+  contains up to 255 unique 3-byte repeater IDs on ESP32 builds and 18 on other
+  builds, each written as six hexadecimal digits. A packet with 3-byte path
+  hashes matches after one exact ID hit. A packet with 2-byte path hashes
+  matches after two path entries match the first two bytes of listed IDs.
+  Packets with 1-byte path hashes never match this condition. Each received
+  path entry is counted at most once.</p>
+<p>The payload names follow the <a href="https://docs.meshcore.io/packet_format/">MeshCore packet-format allocation</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Short name</th>
+<th>Full name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x00</code></td>
+<td><code>req</code></td>
+<td><code>PAYLOAD_TYPE_REQ</code></td>
+</tr>
+<tr>
+<td><code>0x01</code></td>
+<td><code>response</code></td>
+<td><code>PAYLOAD_TYPE_RESPONSE</code></td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>txt_msg</code></td>
+<td><code>PAYLOAD_TYPE_TXT_MSG</code></td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td><code>ack</code></td>
+<td><code>PAYLOAD_TYPE_ACK</code></td>
+</tr>
+<tr>
+<td><code>0x04</code></td>
+<td><code>advert</code></td>
+<td><code>PAYLOAD_TYPE_ADVERT</code></td>
+</tr>
+<tr>
+<td><code>0x05</code></td>
+<td><code>grp_txt</code></td>
+<td><code>PAYLOAD_TYPE_GRP_TXT</code></td>
+</tr>
+<tr>
+<td><code>0x06</code></td>
+<td><code>grp_data</code></td>
+<td><code>PAYLOAD_TYPE_GRP_DATA</code></td>
+</tr>
+<tr>
+<td><code>0x07</code></td>
+<td><code>anon_req</code></td>
+<td><code>PAYLOAD_TYPE_ANON_REQ</code></td>
+</tr>
+<tr>
+<td><code>0x08</code></td>
+<td><code>path</code></td>
+<td><code>PAYLOAD_TYPE_PATH</code></td>
+</tr>
+<tr>
+<td><code>0x09</code></td>
+<td><code>trace</code></td>
+<td><code>PAYLOAD_TYPE_TRACE</code></td>
+</tr>
+<tr>
+<td><code>0x0A</code></td>
+<td><code>multipart</code></td>
+<td><code>PAYLOAD_TYPE_MULTIPART</code></td>
+</tr>
+<tr>
+<td><code>0x0B</code></td>
+<td><code>control</code></td>
+<td><code>PAYLOAD_TYPE_CONTROL</code></td>
+</tr>
+<tr>
+<td><code>0x0C</code></td>
+<td><code>ota</code></td>
+<td><code>PAYLOAD_TYPE_OTA</code> (this fork's LoRa OTA extension; reserved upstream)</td>
+</tr>
+<tr>
+<td><code>0x0D</code></td>
+<td><code>13</code></td>
+<td>reserved</td>
+</tr>
+<tr>
+<td><code>0x0E</code></td>
+<td><code>14</code></td>
+<td>reserved</td>
+</tr>
+<tr>
+<td><code>0x0F</code></td>
+<td><code>raw_custom</code></td>
+<td><code>PAYLOAD_TYPE_RAW_CUSTOM</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Route scope:</strong> Rules are evaluated only for the two flood route values:
+<code>ROUTE_TYPE_TRANSPORT_FLOOD</code> (<code>0x00</code>, flood plus transport codes) and
+<code>ROUTE_TYPE_FLOOD</code> (<code>0x01</code>, unscoped flood). Direct routes <code>0x02</code> and <code>0x03</code>
+are never affected.</p>
+<p><strong>Behavior:</strong> A row with <code>path=blacklist</code> must meet the path condition as well
+as its payload-type and hop-range conditions. Blacklist IDs can occur anywhere
+in the received path and their configured order is irrelevant. A matching row
+without <code>scope=</code> prevents retransmission by this
+repeater. A matching row with <code>scope=</code> instead sets or replaces the packet's
+transport scope and does not block it. The lowest-numbered matching scope row
+wins; matching drop rows remain independent and can still block the rewritten
+packet. Scope rewriting happens before region enforcement and is trusted even
+when its name is absent from the local region list. It does not bypass
+<code>repeat</code>, <code>flood.max</code>, other drop rows, channel blocking, loop detection, or
+moderation.</p>
+<p>With <code>require=region</code>, a failed check makes that scope row ineligible. It leaves
+the packet unchanged and does not set the filter-scope trust bypass, so an
+unknown or denied incoming region is rejected normally unless another
+independent scope rule rewrites it. Later eligible filter scope rows may still
+match.</p>
+<p>By default, when a scope row will change the packet's transport codes, the
+packet bypasses inbound <code>rxdelay</code>; its retransmission then uses zero <code>txdelay</code>
+and the highest outbound queue priority. With <code>tx=slow</code>, the rewrite instead
+uses an effective inbound <code>rxdelay</code> base of
+<code>max(2, configured rxdelay * 2)</code>, normal queue priority, and the maximum
+<code>txdelay</code> factor of <code>2.0</code>. The actual randomized transmit wait ranges from zero
+to ten packet airtimes. Selecting the scope already carried is a no-op and
+does not grant special treatment. An active radio transmission is not
+preempted, and CAD and airtime-budget limits still apply.</p>
+<p>The packet is still received and can still be logged. Rules are persistent.
+While the temporary radio is active, only rows explicitly marked
+<code>suspend=tempradio</code> are skipped. <code>tempradio</code> is a radio state, not an OTA mode;
+normal payload types can also use the temporary channel. Other rows remain in
+force. A malformed persisted table fails open (no general rules are applied).</p>
+<p><strong>Default row:</strong> Repeater firmware seeds a new flood-filter table with
+<code>ota all suspend=tempradio</code> in slot 1. This blocks repeated LoRa OTA (<code>0x0C</code>)
+floods at every received hop unless temporary radio is actually active. The OTA
+core independently refuses OTA receive, relay, and transmit outside temporary
+radio. The row is editable and deletable; once the table is saved, deletion is
+persistent. Restore the exact seeded row with:</p>
+<pre><code class="language-text">set flood.filter.1 0x0C all suspend=tempradio
+</code></pre>
+<p>Omitting <code>all</code> is equivalent. Omit <code>.1</code> as well to reuse an identical rule or
+the first empty slot instead of replacing slot 1.</p>
+<p><strong>Remote-admin protection:</strong> Drop rows cannot block <code>anon_req</code>, <code>path</code>, or
+<code>response</code> at received hop counts <code>0-6</code>; those login-capable types become
+blockable at hop <code>7</code>. Flood <code>txt_msg</code> cannot be blocked at hops <code>0-4</code> and
+becomes blockable at hop <code>5</code>. Scope-setting rows are non-blocking and may apply
+inside these protected ranges. <code>req</code>, <code>ack</code>, and multipart ACK have no special
+protection. Transit repeaters cannot decrypt these packets to distinguish an
+admin exchange from ordinary peer traffic, so each floor necessarily covers
+all flood packets of that outer type. These exceptions apply only to
+<code>flood.filter</code> drop actions; <code>repeat</code>, <code>flood.max*</code>, loop-detection, and other
+forwarding gates remain authoritative.</p>
+<p>Without <code>.n</code>, <code>set</code> reuses an existing rule with the same match, scope,
+requirement, and suspension settings, or uses the first empty slot. This lets
+<code>tx=slow</code> or <code>tx=fast</code> change that rule's timing without creating a duplicate.
+With <code>.n</code>, it replaces that slot.
+<code>get flood.filter</code> gives a compact list. Use <code>get flood.filter.&lt;n&gt;</code> for full
+details, including <code>path=blacklist</code>, <code>scope=</code>, and <code>suspend=tempradio</code>.
+The detail output also includes <code>require=region</code> and <code>tx=slow</code> when enabled.</p>
+<p>The blacklist and filter rows are persisted separately. Replacing or deleting
+the blacklist does not delete rows containing <code>path=blacklist</code>; such rows
+remain dormant while the list is empty. Path hashes are truncated routing
+identifiers, not authenticated identities, so this is a forwarding signal
+rather than proof that a particular repeater handled a packet.</p>
+<p>The unnumbered blacklist <code>set</code> replaces the whole list and accepts up to 18 IDs
+so it fits every CLI transport. Numbered <code>set</code> writes up to 18 consecutive
+entries beginning at an existing slot or exactly the next slot, allowing an
+ESP32 list to grow to 255 entries in batches. Numbered deletion compacts
+subsequent slots. The unnumbered <code>get</code> reports the total and as many leading
+IDs as fit in one reply; use numbered <code>get</code> to inspect entries beyond that
+reply.</p>
+<p>Standard traceroute is direct-routed and therefore outside <code>flood.filter</code>
+entirely. For a custom flood-form trace, catch-all <code>any</code> rows are deliberately
+ignored; only a deliberately explicit <code>set flood.filter trace ...</code> row can
+match it.</p>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-text">set flood.filter grp_data 4+
+set flood.filter.2 PAYLOAD_TYPE_ADVERT 6+
+set flood.filter ota 2-4
+set flood.filter.1 0x0C all suspend=tempradio
+set flood.filter grp_data all suspend=tempradio
+set flood.filter grp_txt all scope=local
+set flood.filter grp_data all scope=local require=region
+set flood.filter grp_data all path=blacklist scope=local tx=slow
+set flood.filter.blacklist A1B2C3,D4E5F6,112233
+set flood.filter.blacklist.4 445566
+set flood.filter.blacklist.19 778899,AABBCC,DDEEFF
+set flood.filter any all path=blacklist
+get flood.filter.blacklist
+get flood.filter.blacklist.4
+set flood.filter any 12+
+get flood.filter
+get flood.filter.2
+del flood.filter.2
+</code></pre>
+<hr />
+<h4 id="moderate-flood-group-text-by-channel-sender-and-source-path">Moderate flood group text by channel, sender, and source path</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.moderation</code>
+- <code>get flood.moderation.&lt;n&gt;</code>
+- <code>set flood.moderation &lt;channel&gt; &lt;sender&gt; &lt;action&gt; [action...]</code>
+- <code>set flood.moderation.&lt;n&gt; &lt;channel&gt; &lt;sender&gt; &lt;action&gt; [action...]</code>
+- <code>del flood.moderation.&lt;n&gt;</code>
+- <code>del flood.moderation all</code></p>
+<p><strong>Parameters:</strong>
+- <code>n</code>: Moderation slot from <code>1</code> to <code>16</code>.
+- <code>channel</code>:
+  - <code>public</code>: Built-in Public channel.
+  - <code>#channel</code>: Derive the well-known hashtag-channel key.
+  - A 128-bit or 256-bit channel key in hex, for any other/private channel.
+- <code>sender</code>: Exact group-text display name. Matching is ASCII case-insensitive.
+  Quote names containing spaces, for example <code>"Field User"</code>.
+- <code>drop</code>: Do not forward matching messages. Equivalent to <code>rate=0/min</code>.
+- <code>rate=X/min</code>: Forward at most <code>X</code> matching messages per 60-second local
+  window. This option requires an exact sender rather than <code>*</code>.
+- <code>hops=N</code>: Do not forward a matching message whose received flood path count
+  is <code>N</code> or higher. <code>hops=all</code> removes this constraint.
+- <code>path=H1[,H2,H3]</code>: Match the start of the flood path. One to three hashes are
+  accepted; every hash must have the same 1-, 2-, or 3-byte width.
+- <code>path=*</code>: Match any source path (the default).</p>
+<p>At least one of <code>drop</code>, <code>rate=X/min</code>, or <code>hops=N</code> is required. Rate and hop
+limits can be combined. Rate counters are local to this repeater and rule, use a
+60-second window beginning with the first matching message, and reset on reboot.</p>
+<p><strong>Decode and identity behavior:</strong> Moderation applies only to flood
+<code>PAYLOAD_TYPE_GRP_TXT</code>. The repeater first checks the packet's channel-hash byte,
+then validates and decrypts with the configured key. It extracts the text before
+the first <code>:</code> from the standard <code>&lt;sender&gt;: &lt;message&gt;</code> plaintext. The channel key
+is stored locally but is never printed by <code>get</code>.</p>
+<p>The group-text sender is an <strong>unverified display name</strong>, not a public key. It can
+be spoofed. Combining it with the first one to three path hashes makes a more
+useful moderation signal, but path hashes are truncated and are not proof of the
+originating user. A path-qualified rule begins matching only after the packet
+contains all configured starting hops; it cannot identify a first hop on a
+zero-hop packet.</p>
+<p>As with general filtering, matching messages are still received/logged; only
+retransmission is denied. There are no moderation rules by default.</p>
+<p><strong>Examples:</strong></p>
+<pre><code class="language-text">set flood.moderation public &quot;Noisy User&quot; rate=5/min
+set flood.moderation #local bot drop path=A1B2C3,D4E5F6
+set flood.moderation.3 00112233445566778899AABBCCDDEEFF alice rate=10/min hops=4 path=71CE82
+get flood.moderation
+get flood.moderation.3
+del flood.moderation.3
+</code></pre>
 <hr />
 <h3 id="acl">ACL</h3>
 <h4 id="add-update-or-remove-permissions-for-a-companion">Add, update or remove permissions for a companion</h4>
@@ -3661,7 +6240,19 @@
   - <code>0</code>: Guest
   - <code>1</code>: Read-only
   - <code>2</code>: Read-write
-  - <code>3</code>: Admin</p>
+  - <code>3</code>: Admin
+  - <code>4</code>: Region/scope manager (repeater delegated region and forced-scope management)
+  - <code>5</code>: Filter manager (repeater delegated forwarding-filter management)</p>
+<p><strong>Filter manager scope:</strong> Permission <code>5</code> can use an explicit allowlist of
+non-secret operational/filter status commands and can change the forwarding
+controls <code>repeat</code>, <code>loop.detect</code>, <code>flood.max*</code>, <code>flood.channel.data*</code>,
+<code>flood.channel.block*</code>, <code>flood.filter*</code>, and <code>flood.moderation*</code>. It cannot read
+guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
+ACL entries, radio settings, or other admin configuration. Permission <code>4</code>
+is limited to region commands, <code>flood.channel.scope*</code>, and the same non-secret
+status allowlist.
+Both delegated manager roles are protected from least-recently-active ACL
+eviction like administrators.</p>
 <p><strong>Note:</strong> Removes the entry when <code>permissions</code> is omitted</p>
 <hr />
 <h4 id="view-the-current-acl">View the current ACL</h4>
@@ -3732,31 +6323,32 @@
 <p><strong>Parameters:</strong>
 - <code>name</code>: Region name
 - <code>parent_name</code>: Parent region name (optional, defaults to wildcard)</p>
+<p><strong>Note:</strong> In firmware <strong>v1.15.0</strong> and later, <code>region put</code> enables flooding for that region by default (you do not need a separate <code>region allowf &lt;name&gt;</code> after each <code>put</code>). On <strong>v1.14.0</strong> and earlier, new regions may still require <code>region allowf</code> for flooding-see <a href="#allow-a-region"><code>region allowf</code></a>.</p>
 <hr />
 <h4 id="define-region-hierarchy-single-line">Define region hierarchy (single line)</h4>
 <p><strong>Usage:</strong>
 - <code>region def &lt;token&gt; [&lt;token&gt; ...]</code></p>
 <p><strong>Parameters (tokens):</strong> Space-separated. A logical <strong>cursor</strong> starts at the wildcard <code>*</code>.</p>
 <ul>
-<li><strong><code>name</code></strong> — Create <code>name</code> as a child of the current cursor (equivalent to <code>region put name</code> with the cursor as parent). Cursor moves to <code>name</code>.</li>
-<li><strong><code>name|jump</code></strong> <em>(or <code>name,jump</code>)</em> — Create <code>name</code> as a child of the current cursor, then move the cursor to <code>jump</code> (must already exist on the node, or have been created earlier in this command). <code>jump</code> is <strong>not</strong> the parent of <code>name</code>; use this form to pop back up and start another branch.</li>
+<li><strong><code>name</code></strong> - Create <code>name</code> as a child of the current cursor (equivalent to <code>region put name</code> with the cursor as parent). Cursor moves to <code>name</code>.</li>
+<li><strong><code>name|jump</code></strong> <em>(or <code>name,jump</code>)</em> - Create <code>name</code> as a child of the current cursor, then move the cursor to <code>jump</code> (must already exist on the node, or have been created earlier in this command). <code>jump</code> is <strong>not</strong> the parent of <code>name</code>; use this form to pop back up and start another branch.</li>
 </ul>
-<p><strong>Behavior:</strong> Each created region defaults to flood-allowed (same as <code>region put</code>). The reply is the resulting region tree (same format as bare <code>region</code>); review it before running <code>region save</code> to persist. On error, the reply is <code>Err - ...</code> and any regions placed before the failure remain on the node, just like a partial chain of <code>region put</code>.</p>
-<p><strong>Existing regions:</strong> <code>region def</code> does not clear the existing tree — if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, <code>region remove</code> the unwanted regions first.</p>
-<p><strong>Limits:</strong> Repeater serial accepts one line up to <strong>160 characters</strong>. For larger trees, split across multiple <code>region def</code> commands; the cursor resets to <code>*</code> between commands, so lead the next command with <code>child|ancestor</code> to reposition. Each token splits at most once on <code>|</code> — <code>region def a|b|c|d</code> is not a flat-list shorthand; see the flat-list example below.</p>
-<p><strong>Example — linear chain</strong> (each token becomes a child of the previous):</p>
+<p><strong>Behavior:</strong> Each created region defaults to flood-allowed (same as <code>region put</code>). The reply is the resulting region tree (same format as bare <code>region</code>); review it before running <code>region save</code> to persist. The command is transactional: invalid names, unknown or ambiguous jumps, table overflow, and hierarchy cycles return <code>Err - ...</code> without changing the existing tree.</p>
+<p><strong>Existing regions:</strong> <code>region def</code> does not clear the existing tree - if a name already exists, its parent is updated to the current cursor; otherwise a new region is created. To start from scratch, <code>region remove</code> the unwanted regions first.</p>
+<p><strong>Limits:</strong> Repeater serial accepts one line up to <strong>160 characters</strong>. For larger trees, split across multiple <code>region def</code> commands; the cursor resets to <code>*</code> between commands, so lead the next command with <code>child|ancestor</code> to reposition. Each token splits at most once on <code>|</code> - <code>region def a|b|c|d</code> is not a flat-list shorthand; see the flat-list example below.</p>
+<p><strong>Example - linear chain</strong> (each token becomes a child of the previous):</p>
 <pre><code>region def a b c d e
 region save
 </code></pre>
-<p><strong>Example — branched tree</strong> (equivalent to <code>region put a</code>, <code>region put b a</code>, <code>region put c b</code>, <code>region put d c</code>, <code>region put e b</code>, <code>region put f e</code>):</p>
+<p><strong>Example - branched tree</strong> (equivalent to <code>region put a</code>, <code>region put b a</code>, <code>region put c b</code>, <code>region put d c</code>, <code>region put e b</code>, <code>region put f e</code>):</p>
 <pre><code>region def a b c d|b e f
 region save
 </code></pre>
-<p><strong>Example — error and partial state:</strong></p>
+<p><strong>Example - transactional error:</strong></p>
 <pre><code>region def a b c|nope d
 </code></pre>
-<p>The reply is <code>Err - unknown jump: nope</code>. <code>a</code>, <code>b</code>, and <code>c</code> were placed before the failure; <code>d</code> was not. Run <code>region</code> to inspect, then re-run with a corrected jump or repair with <code>region remove</code> / <code>region put</code>.</p>
-<p><strong>Example — flat list</strong> (each region a child of <code>*</code>). Use <code>|*</code> after each token to pop the cursor back to the root before the next token:</p>
+<p>The reply is <code>Err - unknown or ambiguous jump: nope</code>. The existing tree is unchanged; re-run with a corrected jump.</p>
+<p><strong>Example - flat list</strong> (each region a child of <code>*</code>). Use <code>|*</code> after each token to pop the cursor back to the root before the next token:</p>
 <pre><code>region def a|* b|* c|* d|* e|* f
 region save
 </code></pre>
@@ -3850,6 +6442,376 @@ region save
 - Enables flooding for all child regions automatically
 - Useful for global networks with specific regional rules</p>
 <hr />
+<h3 id="direct-retry">Direct Retry</h3>
+<p>Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages, ACK packets, multipart packets carrying ACK payloads, and TRACE packets.</p>
+<p>The shared state, count, base, and step controls work on repeater, room-server,
+and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
+other roles do not keep the repeater reachability table they require.</p>
+<h4 id="view-or-change-direct-retry-state">View or change direct retry state</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry</code>
+- <code>set direct.retry &lt;state&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>state</code>: <code>on</code>|<code>off</code></p>
+<p><strong>Default:</strong> <code>on</code></p>
+<p><strong>Notes:</strong>
+- New installs and older preference files without direct retry settings default to <code>on</code> with the <code>rooftop</code> preset.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry
+set direct.retry on
+set direct.retry off
+</code></pre>
+<hr />
+<h4 id="view-or-change-direct-retry-heard-table-gate">View or change direct retry heard-table gate</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.heard</code>
+- <code>set direct.retry.heard &lt;state&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>state</code>: <code>on</code>|<code>off</code></p>
+<p><strong>Default:</strong> <code>on</code></p>
+<p><strong>Note:</strong> This command is repeater-only. When enabled, the recent repeater table is the direct retry eligibility
+gate. Prefixes missing from the table are assumed reachable; prefixes in the
+table below the active SNR gate are blocked.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.heard
+set direct.retry.heard on
+set direct.retry.heard off
+</code></pre>
+<hr />
+<h4 id="view-or-apply-a-retry-preset">View or apply a retry preset</h4>
+<p><strong>Usage:</strong>
+- <code>get retry.preset</code>
+- <code>set retry.preset &lt;preset&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>preset</code>: <code>infra</code>|<code>rooftop</code>|<code>mobile</code></p>
+<p><strong>Notes:</strong>
+- Applies shared direct retry and flood retry defaults.
+- <code>infra</code>: fewer, slower retries for stable fixed infrastructure.
+- <code>rooftop</code>: default long retry window for weak rooftop links.
+- <code>mobile</code>: long retry count with shorter spacing for moving or changing links; flood retry count is <code>15</code>.
+- Changing <code>direct.retry.count</code>, <code>direct.retry.base</code>, <code>direct.retry.step</code>, <code>direct.retry.margin</code>, <code>flood.retry.count</code>, <code>flood.retry.path</code>, or <code>flood.retry.group.path</code> makes the preset report as <code>custom</code>.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get retry.preset
+set retry.preset infra
+set retry.preset rooftop
+set retry.preset mobile
+</code></pre>
+<hr />
+<h3 id="flood-retry">Flood Retry</h3>
+<p>Flood retry resends flood-routed packets when the same packet is not heard from
+another qualifying repeater.</p>
+<p>The count, path, group-data path, and advert controls work on repeater, room-server, and sensor
+firmware. Flood forwarding must also be enabled for retries to run. Prefix,
+ignore, bridge, and bucket controls are repeater-only.</p>
+<h4 id="view-or-change-flood-retry-count">View or change flood retry count</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.count</code>
+- <code>set flood.retry.count &lt;count&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>count</code>: Base retry attempts after the original send, from <code>0</code> to <code>15</code>. <code>0</code> disables flood retry.</p>
+<p><strong>Note:</strong> The role first calculates its retry count: path count 0 uses <code>count * 2</code>, path count 1 uses <code>count * 1.5</code> rounded up, and path count 2 and higher uses the configured base count, with a hard cap of <code>15</code>. A shared payload policy then applies to every build: <code>REQ</code> never retries; <code>GRP_TXT</code> keeps the role-calculated count; remote-login-critical <code>RESPONSE</code>, <code>TXT_MSG</code>, <code>ANON_REQ</code>, and <code>PATH</code> packets keep up to <code>15</code> at the originating node (path count 0) and cap at <code>2</code> after entering the path; all other flood payload types cap at <code>1</code>. These caps never raise a lower role-calculated count. Setting <code>count</code> to <code>0</code> immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.</p>
+<p>Forwarded neighbor adverts have an additional loop guard independent of the advert retry setting. After this node completes an advert transmission and hears a downstream copy with a longer path, it does not forward that same advert again while the advert's signed timestamp is less than six hours old. Self-originated adverts, adverts without a heard echo, and adverts six hours old or older are unaffected.</p>
+<p>An enabled self-originated advert retry waits at least one additional minute beyond the normal airtime-aware retry delay. Once a newer self advert has successfully entered the outbound queue, its retry sequence replaces queued or future retries for older self adverts; an older advert already transmitting is allowed to finish. Companion firmware permits this single slow retry for its own adverts while continuing to block retry attempts for neighbor adverts it forwards.</p>
+<p><strong>Defaults:</strong>
+- <code>infra</code>: <code>1</code>
+- <code>rooftop</code>: <code>3</code>
+- <code>mobile</code>: <code>15</code></p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.count
+set flood.retry.count 0
+set flood.retry.count 15
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-path-gate">View or change flood retry path gate</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.path</code>
+- <code>set flood.retry.path &lt;count|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>count</code>: Maximum flood path hash count eligible for retry, from <code>0</code> to <code>63</code>.
+- <code>off</code>: Disable the path-length gate.</p>
+<p><strong>Defaults:</strong>
+- <code>infra</code>: <code>1</code>
+- <code>rooftop</code>: <code>2</code>
+- <code>mobile</code>: <code>1</code></p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.path
+set flood.retry.path 1
+set flood.retry.path off
+</code></pre>
+<hr />
+<h4 id="view-or-change-the-group-data-flood-retry-path-gate">View or change the group-data flood retry path gate</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.group.path</code>
+- <code>set flood.retry.group.path &lt;count|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>count</code>: Maximum flood path hash count eligible for retry for group data packets (<code>PAYLOAD_TYPE_GRP_DATA</code>/type 6), from <code>0</code> to <code>63</code>.
+- <code>off</code>: Disable only the group-data-specific gate. The general <code>flood.retry.path</code> gate still applies.</p>
+<p><strong>Default:</strong> <code>1</code> for <code>infra</code>, <code>rooftop</code>, and <code>mobile</code> presets.</p>
+<p><strong>Note:</strong> The stricter of <code>flood.retry.path</code> and <code>flood.retry.group.path</code> is used. A value of <code>1</code> allows retry sequences at path counts <code>0</code> and <code>1</code>; group data at path count <code>2</code> or higher is still forwarded normally but does not start a flood retry sequence. A value of <code>0</code> allows retries only at the originating sender.</p>
+<p>Setting <code>flood.retry.path</code> to <code>0</code> also sets <code>flood.retry.group.path</code> to <code>off</code> because the general zero-hop gate is already stricter. While the general gate remains <code>0</code>, attempts to set the group-data gate keep it <code>off</code>. Applying a named retry preset restores the group-data default of <code>1</code>.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.group.path
+set flood.retry.group.path 1
+set flood.retry.group.path off
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-advert-handling">View or change flood retry advert handling</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.advert</code>
+- <code>set flood.retry.advert &lt;on|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>on</code>: Retry node advert floods.
+- <code>off</code>: Do not retry node advert floods.</p>
+<p><strong>Default:</strong> <code>off</code></p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.advert
+set flood.retry.advert off
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-target-prefixes">View or change flood retry target prefixes</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.prefixes</code>
+- <code>set flood.retry.prefixes &lt;prefixes|none|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>prefixes</code>: Comma-separated 3-byte path hash prefixes, up to 8 entries.
+- <code>none</code> or <code>off</code>: Clear the list.</p>
+<p><strong>Note:</strong> When set, non-bridge flood retry only accepts same-packet echoes whose
+last hop matches one of these prefixes. When unset, any non-ignored last hop can
+cancel the retry.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.prefixes
+set flood.retry.prefixes A58296,860CCA,425E5C
+set flood.retry.prefixes none
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-ignored-prefixes">View or change flood retry ignored prefixes</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.ignore</code>
+- <code>set flood.retry.ignore &lt;prefixes|none|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>prefixes</code>: Comma-separated 3-byte path hash prefixes, up to 8 entries.
+- <code>none</code> or <code>off</code>: Clear the list.</p>
+<p><strong>Note:</strong> Non-bridge flood retry does not cancel on same-packet echoes whose
+last hop matches this list. Bridge mode also excludes these prefixes from bucket
+and <code>other</code> hits.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.ignore
+set flood.retry.ignore 71CE82,C7618C
+set flood.retry.ignore none
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-bridge-mode">View or change flood retry bridge mode</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.bridge</code>
+- <code>set flood.retry.bridge &lt;on|off&gt;</code></p>
+<p><strong>Note:</strong> Bridge mode retries until each configured fresh bucket, plus the non-source <code>other</code> bucket, has been heard or the retry count is exhausted. If prefixes in different buckets share their first byte, configuration commands return a warning because a 1-byte path cannot distinguish those buckets. The configuration remains valid: an ambiguous source is treated as belonging to every matching source bucket, and an ambiguous echo credits every matching target bucket so it cannot force retry exhaustion.</p>
+<p>Flood retry timing retains its fixed maximum-frame plus 20 packet-airtime wait, then adds a random <code>0-200%</code> of one additional packet airtime on every attempt. This de-synchronizes repeaters that may have missed the same echo while capping the added wait at two frames.</p>
+<p>Only one active retry sequence is kept for a given logical flood packet. An identical flood can still transmit normally, but it does not create a second sequence of extra attempts. Retry state is released if a queued packet is evicted, and the final echo window retains metadata without reserving a packet-pool entry.</p>
+<p>Bridge reachability learned from earlier hops in a successful echo is cached separately from <code>recent.repeater</code>. Only the final RF hop updates <code>recent.repeater</code> and its SNR, so indirect path entries cannot affect direct-retry SNR gating or coding-rate selection.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.bridge
+set flood.retry.bridge on
+</code></pre>
+<hr />
+<h4 id="view-or-change-flood-retry-bridge-buckets">View or change flood retry bridge buckets</h4>
+<p><strong>Usage:</strong>
+- <code>get flood.retry.bucket.&lt;n&gt;</code>
+- <code>set flood.retry.bucket &lt;n&gt; &lt;prefixes|none|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>n</code>: Bucket number from <code>1</code> to <code>6</code>.
+- <code>prefixes</code>: Comma-separated 3-byte path hash prefixes, up to 17 entries per bucket.
+- <code>none</code> or <code>off</code>: Clear the bucket.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get flood.retry.bucket.1
+set flood.retry.bucket 1 71CE82,C7618C
+set flood.retry.bucket 2 none
+</code></pre>
+<hr />
+<h4 id="view-or-change-direct-retry-count">View or change direct retry count</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.count</code>
+- <code>set direct.retry.count &lt;count&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>count</code>: Maximum retry attempts after the original send, from <code>1</code> to <code>15</code>.</p>
+<p><strong>Default:</strong> <code>15</code> with the <code>rooftop</code> preset</p>
+<p><strong>Note:</strong> Direct-routed type 2 text packets always use 21 retry attempts in the
+shared retry logic, regardless of this setting or the repeater short-path cap.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.count
+set direct.retry.count 1
+set direct.retry.count 4
+set direct.retry.count 15
+</code></pre>
+<hr />
+<h4 id="view-or-change-direct-retry-base-delay">View or change direct retry base delay</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.base</code>
+- <code>set direct.retry.base &lt;ms&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>ms</code>: First retry wait in milliseconds, from <code>10</code> to <code>5000</code>.</p>
+<p><strong>Default:</strong> <code>175</code> with the <code>rooftop</code> preset</p>
+<p><strong>Explanation:</strong>
+- The first retry waits for <code>base + packet-length add-on + random forwarding jitter</code>
+  after the preceding transmission completes.
+- TRACE and
+  ANON_REQ/type 7 packets use a 3x line-time add-on. TXT_MSG/type 2
+  packets use 7x. Other direct retry packets use 6x.
+- Room-server and sensor firmware use this configured base with the same
+  packet-type add-ons.
+- Larger values reduce channel pressure and give slow repeaters more time.
+- Smaller values recover faster but create tighter retry bursts.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.base
+set direct.retry.base 175
+set direct.retry.base 275
+set direct.retry.base 500
+</code></pre>
+<hr />
+<h4 id="view-or-change-direct-retry-step-delay">View or change direct retry step delay</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.step</code>
+- <code>set direct.retry.step &lt;ms&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>ms</code>: Extra milliseconds added for each subsequent retry, from <code>0</code> to <code>5000</code>.</p>
+<p><strong>Default:</strong> <code>100</code> with the <code>rooftop</code> preset</p>
+<p><strong>Explanation:</strong>
+- Retry delay is <code>base + packet-length add-on + random forwarding jitter + attempt_index * step</code>.
+- TRACE and ANON_REQ/type 7 packets
+  use a 3x packet-length add-on. TXT_MSG/type 2 packets use 7x.
+  Other direct retry packets use 6x.
+- Room-server and sensor firmware use this configured step with the same
+  packet-type add-ons.
+- With <code>base=175</code> and <code>step=100</code>, the fixed portion is <code>175</code>, <code>275</code>, <code>375</code>,
+  <code>475</code> ms, and so on, before the packet-length add-on and random jitter.
+- <code>step=0</code> keeps every retry at the same delay.
+- Larger steps spread retries over time and are safer on busy channels.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.step
+set direct.retry.step 0
+set direct.retry.step 50
+set direct.retry.step 100
+set direct.retry.step 250
+</code></pre>
+<hr />
+<h4 id="view-or-change-direct-retry-snr-margin">View or change direct retry SNR margin</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.margin</code>
+- <code>set direct.retry.margin &lt;snr_db&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>snr_db</code>: Extra SNR margin above the SF receive floor, from <code>0</code> to <code>40</code>.</p>
+<p><strong>Default:</strong> <code>5.00</code> with the <code>rooftop</code> preset</p>
+<p><strong>Notes:</strong>
+- This command is repeater-only.
+- Unknown repeaters are still retried.
+- Known repeaters below the receive floor plus this margin are skipped.
+- Failed attempts lower the recent repeater SNR estimate by <code>0.25 dB</code>.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.margin
+set direct.retry.margin 0
+set direct.retry.margin 2.5
+set direct.retry.margin 5
+set direct.retry.margin 10
+</code></pre>
+<hr />
+<h4 id="view-or-change-adaptive-direct-retry-coding-rate">View or change adaptive direct retry coding rate</h4>
+<p><strong>Usage:</strong>
+- <code>get direct.retry.cr</code>
+- <code>set direct.retry.cr off</code>
+- <code>set direct.retry.cr on</code> (room-server and sensor)
+- <code>set direct.retry.cr &lt;cr4_min&gt;,&lt;cr5_min&gt;,&lt;cr7_min&gt;,&lt;cr8_max&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>cr4_min</code>: Minimum SNR in dB to retry at CR4.
+- <code>cr5_min</code>: Minimum SNR in dB to retry at CR5.
+- <code>cr7_min</code>: Minimum SNR in dB to retry at CR7.
+- <code>cr8_max</code>: Maximum SNR in dB that forces CR8.</p>
+<p><strong>Default:</strong> <code>10.00,7.50,2.50,2.50</code></p>
+<p><strong>Explanation:</strong>
+- Higher SNR uses faster coding rates.
+- Lower SNR uses more robust coding rates.
+- Repeater retry attempts escalate from the adaptive starting CR. CR4 starts as CR4, CR5, CR7, CR7, then CR8. CR5 starts as CR5, CR7, CR7, then CR8. CR7 gets two attempts, then CR8.
+- Repeater adaptive CR selection intentionally skips CR6.
+- Non-repeater retry packets start at the current radio CR and follow the same escalation pattern, clamped at CR8. With the normal CR5 radio setting this is CR5, CR7, CR7, then CR8.
+- Room-server and sensor firmware accept <code>on</code> or <code>off</code>; numeric SNR thresholds
+  are repeater-only because those roles do not keep recent-repeater SNR data.
+- <code>off</code> disables per-packet retry CR overrides and uses the current radio CR.
+- Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
+- Unknown repeaters start at <code>+3.00 dB</code> for adaptive CR selection.
+- A failed unknown repeater is seeded at <code>+2.75 dB</code>.
+- Each later failure lowers the SNR estimate by <code>0.25 dB</code>.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get direct.retry.cr
+set direct.retry.cr off
+set direct.retry.cr on
+set direct.retry.cr 10.0,7.5,2.5,2.5
+set direct.retry.cr 12.0,8.0,4.0,1.0
+set direct.retry.cr 8.0,5.0,1.5,0
+set direct.retry.cr 6.0,3.0,0,-2.0
+set direct.retry.cr 20.0,12.0,6.0,2.0
+set direct.retry.cr 4.0,2.0,0,-4.0
+</code></pre>
+<p><strong>Example profiles:</strong>
+- Conservative weak-link profile:</p>
+<pre><code>set direct.retry.cr 12.0,8.0,4.0,1.0
+</code></pre>
+<ul>
+<li>Balanced rooftop profile:</li>
+</ul>
+<pre><code>set direct.retry.cr 10.0,7.5,2.5,2.5
+</code></pre>
+<ul>
+<li>Faster strong-link profile:</li>
+</ul>
+<pre><code>set direct.retry.cr 6.0,3.0,0,-2.0
+</code></pre>
+<ul>
+<li>Very cautious noisy-link profile:</li>
+</ul>
+<pre><code>set direct.retry.cr 20.0,12.0,6.0,2.0
+</code></pre>
+<hr />
+<h4 id="view-seed-or-clear-the-recent-repeater-table">View, seed, or clear the recent repeater table</h4>
+<p><strong>Usage:</strong>
+- <code>get recent.repeater</code>
+- <code>get recent.repeater &lt;page&gt;</code>
+- <code>get recent.repeaters &lt;page&gt;</code>
+- <code>get recent.repeaters search &lt;prefix&gt; [page]</code>
+- <code>set recent.repeater &lt;prefix&gt; [snr_db]</code>
+- <code>clear recent.repeater</code></p>
+<p><strong>Parameters:</strong>
+- <code>prefix</code>: Repeater path-hash prefix as 2, 4, or 6 hex characters.
+- <code>snr_db</code>: Optional SNR in dB. If omitted or invalid, defaults to <code>3.0</code>.
+- <code>page</code>: 1-based result page.</p>
+<p><strong>Note:</strong> These commands are repeater-only.</p>
+<p><strong>Output order:</strong>
+- <code>get recent.repeater</code> lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
+- Within each prefix length, entries are sorted from highest SNR to lowest SNR.
+- <code>search</code> returns every overlapping path-hash entry. For example, searching
+  <code>860C</code> can return <code>86</code>, <code>860C</code>, and <code>860CCA</code>; it does not return a different
+  branch such as <code>86D0</code>.
+- Search rows include the monotonic age of the entry's most recent recording,
+  compacted to a whole <code>s</code>, <code>m</code>, or <code>h</code> field. Search pages contain up to six
+  rows so the result remains within the remote CLI reply limit.</p>
+<p><strong>SNR details:</strong>
+- Recent repeater SNR is stored internally in quarter-dB units.
+- Heard repeater samples update an existing table entry with a weighted blend: <code>75%</code> existing SNR and <code>25%</code> new heard SNR, rounded up.
+- Direct retry success also feeds the heard echo SNR back into the same weighted table.
+- Direct retry failure is not weighted: each final echo-timeout failure lowers that repeater's SNR by <code>0.25 dB</code>.
+- Unknown repeaters start at <code>+3.00 dB</code> for adaptive CR selection.
+- If an unknown repeater fails, it is seeded into the table at <code>+2.75 dB</code>.
+- <code>set recent.repeater &lt;prefix&gt; [snr_db]</code> seeds a missing prefix or adds another weighted sample for an existing prefix.
+- Successful <code>set recent.repeater</code> replies include the stored prefix and SNR, for example <code>OK - set A1B2C3 at 3.0 SNR</code>.
+- Entries strictly older than 24 hours are removed during a sweep every three hours, so an entry can remain for at most approximately 27 hours.</p>
+<p><strong>Examples:</strong></p>
+<pre><code>get recent.repeater
+get recent.repeater 2
+get recent.repeaters search 86
+get recent.repeaters search 860C page 2
+set recent.repeater A1B2C3 8.5
+set recent.repeater 71CE82 -3.25
+set recent.repeater A1B2C3
+clear recent.repeater
+</code></pre>
+<hr />
 <h3 id="gps-when-gps-support-is-compiled-in">GPS (When GPS support is compiled in)</h3>
 <h4 id="view-or-change-gps-state">View or change GPS state</h4>
 <p><strong>Usage:</strong>
@@ -3865,6 +6827,9 @@ region save
 <h4 id="sync-this-nodes-clock-with-gps-time">Sync this node's clock with GPS time</h4>
 <p><strong>Usage:</strong> 
 - <code>gps sync</code></p>
+<p>The GPS must be enabled. When GPS power saving has put an enabled receiver to
+sleep, this command schedules a sync and wakes it; after <code>gps off</code>, it reports
+<code>gps is off</code> without scheduling work.</p>
 <hr />
 <h4 id="set-this-nodes-location-based-on-the-gps-coordinates">Set this node's location based on the GPS coordinates</h4>
 <p><strong>Usage:</strong> 
@@ -3882,6 +6847,17 @@ region save
 <p><strong>Default:</strong> <code>prefs</code></p>
 <hr />
 <h3 id="sensors-when-sensor-support-is-compiled-in">Sensors (When sensor support is compiled in)</h3>
+<h4 id="view-or-change-telemetry-access-mode">View or change telemetry access mode</h4>
+<p><strong>Usage:</strong>
+- <code>get telemetry.access</code>
+- <code>set telemetry.access &lt;mode&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>mode</code>: <code>all</code>|<code>acl</code>
+  - <code>all</code>: allow telemetry requests using the requester-provided telemetry mask
+  - <code>acl</code>: require ACL read-only or higher for telemetry, including GPS</p>
+<p><strong>Default:</strong> <code>all</code></p>
+<p><strong>Note:</strong> <code>all</code> matches the previous sensor telemetry behavior.</p>
+<hr />
 <h4 id="view-the-list-of-sensors-on-this-node">View the list of sensors on this node</h4>
 <p><strong>Usage:</strong> <code>sensor list [start]</code></p>
 <p><strong>Parameters:</strong>
@@ -3921,10 +6897,81 @@ region save
 - <code>get bridge.source</code>
 - <code>set bridge.source &lt;source&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>source</code>: 
+- <code>source</code>:
   - <code>logRx</code>: bridges received packets
   - <code>logTx</code>: bridges transmitted packets</p>
 <p><strong>Default:</strong> <code>logTx</code></p>
+<blockquote>
+<p><strong>Note:</strong> For MQTT bridges, use <code>mqtt.rx</code> and <code>mqtt.tx</code> instead of <code>bridge.source</code>. These provide independent per-direction control and support both RX and TX simultaneously. <code>bridge.source</code> still works as a convenience alias for MQTT (setting <code>bridge.source rx</code> sets <code>mqtt.rx on</code> + <code>mqtt.tx off</code>, and vice versa), but <code>mqtt.rx</code>/<code>mqtt.tx</code> are preferred.</p>
+</blockquote>
+<hr />
+<h4 id="view-or-change-mqtt-rx-packet-uplinking">View or change MQTT RX packet uplinking</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.rx</code>
+- <code>set mqtt.rx &lt;on|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>on</code>: uplink received (RX) packets to MQTT brokers
+- <code>off</code>: disable RX packet uplinking</p>
+<p><strong>Default:</strong> <code>on</code></p>
+<hr />
+<h4 id="view-or-change-mqtt-tx-packet-uplinking">View or change MQTT TX packet uplinking</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.tx</code>
+- <code>set mqtt.tx &lt;on|off|advert&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>on</code>: uplink all transmitted (TX) packets to MQTT brokers
+- <code>advert</code>: uplink only this node's own advert packets (self-originated advertisements only - forwarded adverts from other nodes are filtered out)
+- <code>off</code>: disable TX packet uplinking</p>
+<p><strong>Default:</strong> <code>advert</code></p>
+<blockquote>
+<p><strong>Note:</strong> <code>mqtt.rx</code> and <code>mqtt.tx</code> take effect immediately - no restart required. Both can be enabled simultaneously.</p>
+</blockquote>
+<hr />
+<h4 id="view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only">View or change periodic neighbors publishing (MQTT observer, PSRAM only)</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.neighbors</code>
+- <code>set mqtt.neighbors &lt;on|off&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>on</code>: periodically discover neighbor scopes and publish the neighbor table to the <code>neighbors</code> topic
+- <code>off</code>: disable periodic neighbors publishing</p>
+<p><strong>Default:</strong> <code>off</code></p>
+<blockquote>
+<p><strong>Note:</strong> Requires a PSRAM board. On non-PSRAM MQTT builds this replies
+<code>Err - not supported (requires PSRAM)</code>. The setting is read live by the mesh
+loop -- no restart required; enabling it triggers a discovery on the next pass.
+While enabled, <code>get mqtt.status</code> gains a trailing <code>nbr: &lt;next&gt;/&lt;last&gt;</code> field
+(time to next publish, and how the last publish went).</p>
+</blockquote>
+<hr />
+<h4 id="view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only">View or change the neighbors publish interval (MQTT observer, PSRAM only)</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.neighbors.interval</code>
+- <code>set mqtt.neighbors.interval &lt;hours&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>hours</code>: how often to publish the neighbor table (12-336, default 24)</p>
+<p><strong>Default:</strong> <code>24</code> (hours)</p>
+<blockquote>
+<p><strong>Note:</strong> Out-of-range values are rejected (not clamped). Requires a PSRAM board.</p>
+</blockquote>
+<hr />
+<h4 id="view-or-change-the-ntp-server-mqtt-observer-only">View or change the NTP server (MQTT observer only)</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.ntp</code>
+- <code>set mqtt.ntp &lt;hostname&gt;</code>
+- <code>set mqtt.ntp none</code></p>
+<p><strong>Description:</strong> Sets the primary NTP server used for clock sync (required for JWT MQTT auth). On <code>set</code>, the device attempts an immediate sync of the just-configured server (primary only, so a typo fails fast) when WiFi is connected and the MQTT bridge is running.</p>
+<p><strong>Fallbacks:</strong> If the primary fails, the firmware tries <code>pool.ntp.org</code>, <code>time.google.com</code>, <code>time.cloudflare.com</code>, <code>time.aws.com</code>, and <code>time.nist.gov</code> in order (skipping duplicates).</p>
+<p><strong>Default:</strong> <code>pool.ntp.org</code> (when unset or <code>none</code>)</p>
+<hr />
+<h4 id="diagnose-ntp-server-connectivity-mqtt-observer-only">Diagnose NTP server connectivity (MQTT observer only)</h4>
+<p><strong>Usage:</strong>
+- <code>get mqtt.ntp.diag</code></p>
+<p><strong>Description:</strong> Probes every configured NTP server (the custom primary, if set, plus the built-in fallbacks) and reports whether each responds. This is a pure connectivity diagnostic - it does <strong>not</strong> change the system clock.</p>
+<ul>
+<li><strong>Serial console:</strong> prints a detailed table with each server's reported UTC time (or <code>FAIL</code>).</li>
+<li><strong>Over LoRa:</strong> returns a compact <code>&lt;server&gt; ok|fail</code> list, one per line.</li>
+</ul>
+<p>Requires WiFi connected and the MQTT bridge running.</p>
 <hr />
 <h4 id="view-or-change-the-speed-of-the-bridge-rs-232-only">View or change the speed of the bridge (RS-232 only)</h4>
 <p><strong>Usage:</strong>
@@ -3946,7 +6993,7 @@ region save
 - <code>get bridge.secret</code>
 - <code>set bridge.secret &lt;secret&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>secret</code>: ESP-NOW bridge secret, up to 15 characters</p>
+- <code>secret</code>: ESP-NOW bridge secret, 1-15 characters</p>
 <p><strong>Default:</strong> Varies by board</p>
 <hr />
 <h4 id="view-the-bootloader-version-nrf52-only">View the bootloader version (nRF52 only)</h4>
@@ -3966,6 +7013,21 @@ region save
 <h4 id="view-the-boot-voltage">View the boot voltage</h4>
 <p><strong>Usage:</strong> <code>get pwrmgt.bootmv</code></p>
 <p><strong>Note:</strong> Returns an error on boards without power management support.</p>
+<hr />
+<h3 id="ethernet-when-ethernet-support-is-compiled-in">Ethernet (when Ethernet support is compiled in)</h3>
+<p>Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Ethernet module. Use the <code>_ethernet</code> firmware variants (e.g. <code>RAK_4631_repeater_ethernet</code>) to enable this feature.</p>
+<hr />
+<h4 id="view-ethernet-connection-status">View Ethernet connection status</h4>
+<p><strong>Usage:</strong>
+- <code>eth.status</code></p>
+<p><strong>Output:</strong>
+- <code>ETH: &lt;ip&gt;:&lt;port&gt;</code> when connected (e.g. <code>ETH: 192.168.1.50:23</code>)
+- <code>ETH: not connected</code> when Ethernet is not active</p>
+<p><strong>Notes:</strong>
+- Available on repeater and room server firmware only. Companion radio ethernet firmware does not expose a CLI.
+- The Ethernet interface obtains an IP address via DHCP automatically on boot.
+- A TCP server listens on port 23 (default) for CLI connections.
+- Connect with any TCP client (e.g. <code>nc</code>, PuTTY) to access the same CLI available over serial.</p>
 <hr />
 
 
@@ -4019,7 +7081,9 @@ region save
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
       
     
   </body>

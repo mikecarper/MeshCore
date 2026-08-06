@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/docs/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/cli_build_matrix/">
       
       
-        <link rel="prev" href="../companion_protocol/">
+        <link rel="prev" href="../WiFi/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../cli_command_availability/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Local Documentation - MeshCore Docs</title>
+        <title>CLI Availability by Firmware Build - MeshCore Docs</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#local-documentation" class="md-skip">
+        <a href="#cli-availability-by-firmware-build" class="md-skip">
           Skip to content
         </a>
       
@@ -107,7 +107,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Local Documentation
+              CLI Availability by Firmware Build
             
           </span>
         </div>
@@ -279,10 +279,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../cli_build_matrix/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -298,6 +325,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#role-comes-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Role comes first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#profile-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Profile matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#portable-mqtt-observer-retained-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Portable MQTT observer retained surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovery-invariant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery invariant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-dependent-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature-dependent commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -387,37 +489,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Local Documentation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -433,37 +508,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building and viewing Docs
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -954,10 +998,54 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
+  <a href="#role-comes-first" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building and viewing Docs
+        Role comes first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#profile-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Profile matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#portable-mqtt-observer-retained-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Portable MQTT observer retained surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovery-invariant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery invariant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-dependent-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature-dependent commands
       
     </span>
   </a>
@@ -981,7 +1069,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/docs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/cli_build_matrix.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -989,16 +1077,167 @@
   
 
 
-<h1 id="local-documentation">Local Documentation</h1>
-<p>This document explains how to build and view the MeshCore documentation locally.</p>
-<h2 id="building-and-viewing-docs">Building and viewing Docs</h2>
-<pre><code>pip install mkdocs
-pip install mkdocs-material
-</code></pre>
+<h1 id="cli-availability-by-firmware-build">CLI Availability by Firmware Build</h1>
+<p>MeshCore command availability is determined in three layers:</p>
+<ol>
+<li><strong>Role</strong> - repeater, room server, sensor, companion, bridge, or KISS modem.</li>
+<li><strong>Build profile</strong> - standard, portable, logging, OTA, or FULL.</li>
+<li><strong>Compiled hardware features</strong> - WiFi, MQTT, GPS, external sensors, PSRAM,
+   Ethernet, and similar optional support.</li>
+</ol>
+<p>The complete command descriptions are in <a href="../cli_commands/">CLI Commands</a>. This
+page describes the commands intentionally omitted or limited by build profile.
+The <a href="../cli_command_availability/">CLI Command Availability Matrix</a> expands this
+summary into separate nRF52 and ESP32 command tables.</p>
+<h2 id="role-comes-first">Role comes first</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Text administration CLI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Repeater</td>
+<td>Full repeater administration surface, subject to the profile differences below</td>
+</tr>
+<tr>
+<td>Room server</td>
+<td>Room-server administration surface, subject to the profile differences below</td>
+</tr>
+<tr>
+<td>Sensor</td>
+<td>Sensor command surface; it does not acquire the repeater administration tree</td>
+</tr>
+<tr>
+<td>Serial, USB, BLE, or WiFi companion</td>
+<td>Uses the companion protocol; any serial diagnostics are target-specific</td>
+</tr>
+<tr>
+<td>KISS modem</td>
+<td>Uses the KISS/TNC frame interface, not the repeater text CLI</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td>Uses its base role plus commands for the bridge transport compiled into that target</td>
+</tr>
+</tbody>
+</table>
+<p>A command belonging to a different role is not considered a profile cut. For
+example, adding FULL features to a sensor does not turn it into a repeater
+administrator.</p>
+<p>Repeater profiles use 254 neighbor entries across supported platforms. The
+classic T-Beam SX1262 and SX1276 MQTT observer repeaters are the exception and
+retain 50 because their MQTT discovery tables are constrained by internal DRAM.</p>
+<h2 id="profile-matrix">Profile matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Build/profile</th>
+<th>Command availability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard non-MQTT repeater or room server</td>
+<td>Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable.</td>
+</tr>
+<tr>
+<td>Standard logging</td>
+<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds the compiled logging behavior.</td>
+</tr>
+<tr>
+<td>LoRa-OTA (<code>-ota-</code>)</td>
+<td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader and use a 254-entry neighbor table. A portable OTA artifact can still have the other portable restrictions described below.</td>
+</tr>
+<tr>
+<td>Portable MQTT observer</td>
+<td>Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, <code>neighbors</code>, <code>discover.neighbors</code>, <code>outpath</code>, and <code>altpath</code>. The large repeater administration tree is omitted to fit the legacy ESP32 application slot.</td>
+</tr>
+<tr>
+<td>Portable ESP-NOW bridge</td>
+<td>Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials, including <code>rxdelay</code>, <code>txdelay</code>, <code>outpath</code>, and <code>altpath</code>.</td>
+</tr>
+<tr>
+<td>FULL ESP32</td>
+<td>Uses the matching MQTT target with logging off, removes size-based CLI cuts, and restores the complete command surface supported by that role and hardware.</td>
+</tr>
+<tr>
+<td>FULL ESP32 logging</td>
+<td>Uses the matching non-MQTT target with debug and packet logging enabled and the complete command surface supported by that role and hardware.</td>
+</tr>
+<tr>
+<td><code>no_external_sensors</code></td>
+<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands.</td>
+</tr>
+</tbody>
+</table>
+<p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features. Do not infer
+that a command is missing merely because <code>logging</code> appears in the filename.</p>
+<h2 id="portable-mqtt-observer-retained-surface">Portable MQTT observer retained surface</h2>
+<p>The portable MQTT observer keeps these command groups:</p>
 <ul>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
+<li>lifecycle and identity: <code>reboot</code>, <code>poweroff</code>, <code>shutdown</code>, <code>ver</code>, <code>board</code>,
+  <code>password</code>, and <code>erase</code> on the local console;</li>
+<li>radio operation: <code>advert</code>, <code>advert.zerohop</code>, <code>clock</code>, <code>clock sync</code>, <code>time</code>,
+  <code>memory</code>, <code>neighbors</code>, <code>discover.neighbors</code>, and the remote-client routing
+  controls <code>outpath</code> and <code>altpath</code>;</li>
+<li>browser/update control when compiled: <code>start ota</code>, <code>stop ota</code>, <code>ota check</code>,
+  and <code>ota update</code>;</li>
+<li>radio essentials through <code>get</code>/<code>set</code>: radio parameters, TX power, CAD,
+  interference threshold, AGC reset interval, RX gain, <code>rxdelay</code>, <code>txdelay</code>,
+  repeat state, and applicable FEM controls;</li>
+<li>MQTT, WiFi, NTP, bridge, and alert commands implemented by the observer
+  feature set;</li>
+<li>region and onboard-GPS commands that fit and are compiled into the selected
+  target.</li>
 </ul>
+<p>Everything in the repeater-only administration tree that is not listed above is
+intentionally cut from this portable profile. The main omissions include ACL
+editing, flood filter/moderation/scope administration, advanced mesh-clock
+controls, recent-repeater/path administration, battery-alert/RX-watchdog
+controls, stored-log management, and external-sensor administration. Use the
+matching FULL ESP32 build when those commands are required.</p>
+<p>Some observer commands have their own hardware limit:</p>
+<ul>
+<li>MQTT neighbor-table publishing requires PSRAM. <code>discover.scopes</code> also
+  requires PSRAM and the FULL MQTT parser; the portable MQTT profile omits it.</li>
+<li><code>discover.neighbors</code> does <strong>not</strong> require MQTT or PSRAM.</li>
+<li>full NTP connectivity diagnostics are omitted from the portable profile.</li>
+</ul>
+<h2 id="discovery-invariant">Discovery invariant</h2>
+<p><code>discover.neighbors</code> sends the zero-hop node-discovery request used to refresh
+the repeater neighbor table. It is available in every repeater build profile,
+including portable MQTT, standard, logging, OTA, FULL, and FULL logging builds.</p>
+<p>The exact command is:</p>
+<pre><code class="language-text">discover.neighbors
+</code></pre>
+<p>It accepts no options and returns:</p>
+<pre><code class="language-text">OK - Discover sent
+</code></pre>
+<p>Some MQTT room-server targets also expose the command as part of their compiled
+neighbor-table feature. It is not a cross-role guarantee: companion, KISS,
+sensor, and ordinary room-server firmware use different interfaces or do not
+maintain the repeater administrator neighbor table.</p>
+<h2 id="feature-dependent-commands">Feature-dependent commands</h2>
+<p>Even in a FULL build, a command can be unavailable when its underlying feature
+does not exist on that target:</p>
+<ul>
+<li>WebConfig and the <code>wifi.ssid</code>, <code>wifi.status</code>, <code>wifi.powersave</code>, and <code>wifi.cli</code> command
+  family require an ESP32 WebConfig build. FULL standalone repeater and
+  room-server builds support the corresponding WiFi setters and status
+  commands.</li>
+<li>MQTT commands require an MQTT observer target.</li>
+<li><code>discover.scopes</code> requires a FULL MQTT build, MQTT neighbor support, and
+  PSRAM.</li>
+<li>GPS and external-sensor commands require their drivers and pins.</li>
+<li>Ethernet and bridge commands require the corresponding transport.</li>
+<li>LoRa OTA commands require an artifact with OTA enabled.</li>
+<li><code>uf2reset</code> applies only to nRF52.</li>
+</ul>
+<p>When diagnosing an unavailable command, check the role first, then the filename
+profile, and finally the target's compiled hardware features.</p>
 
 
 
