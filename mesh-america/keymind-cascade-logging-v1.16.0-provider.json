@@ -67,6 +67,9 @@
     "uniteng": {
       "name": "UnitEng"
     },
+    "waveshare": {
+      "name": "Waveshare"
+    },
     "wehooper4": {
       "name": "SolarXiao / wehooper4"
     },
@@ -2253,7 +2256,7 @@
     },
     {
       "maker": "heltec",
-      "name": "Heltec LoRa 32 V2",
+      "name": "Heltec v2",
       "type": "esp32",
       "firmware": [
         {
@@ -2513,7 +2516,7 @@
     },
     {
       "maker": "heltec",
-      "name": "Heltec LoRa 32 V3",
+      "name": "Heltec v3",
       "type": "esp32",
       "firmware": [
         {
@@ -6125,7 +6128,7 @@
     },
     {
       "maker": "heltec",
-      "name": "Heltec Wireless Stick Lite V3",
+      "name": "Heltec WSL3",
       "type": "esp32",
       "firmware": [
         {
@@ -12742,7 +12745,7 @@
     },
     {
       "maker": "raspberry",
-      "name": "Raspberry Pi Pico W",
+      "name": "RPI Pico 2040 + WaveShare SX1262",
       "type": "noflash",
       "firmware": [
         {
@@ -12858,8 +12861,8 @@
       ]
     },
     {
-      "maker": "raspberry",
-      "name": "RPI Pico 2040 + WaveShare SX1262",
+      "maker": "waveshare",
+      "name": "Waveshare RP2040-LoRa-HF/LF",
       "type": "noflash",
       "firmware": [
         {
