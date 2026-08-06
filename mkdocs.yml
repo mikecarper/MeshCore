@@ -1,10 +1,10 @@
 site_name: MeshCore Docs
-site_url: https://meshcore-dev.github.io/meshcore/
+site_url: !ENV [MKDOCS_SITE_URL, 'https://meshcore-dev.github.io/meshcore/']
 site_description: Documentation for the open source MeshCore firmware
 
-repo_name: meshcore-dev/meshcore
-repo_url: https://github.com/meshcore-dev/meshcore/
-edit_uri: edit/main/docs/
+repo_name: !ENV [MKDOCS_REPO_NAME, 'meshcore-dev/meshcore']
+repo_url: !ENV [MKDOCS_REPO_URL, 'https://github.com/meshcore-dev/meshcore/']
+edit_uri: !ENV [MKDOCS_EDIT_URI, 'edit/main/docs/']
 
 theme:
   name: material
@@ -17,3 +17,7 @@ theme:
 
 extra_css:
   - _stylesheets/extra.css
+  - _stylesheets/telemetry_decoder.css
+
+extra_javascript:
+  - _javascript/telemetry_decoder.js

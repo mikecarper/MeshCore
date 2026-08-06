@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - keymindCascade
 
 permissions:
   contents: write
@@ -23,6 +24,11 @@ jobs:
           python-version: '3.13'
 
       - name: Build
+        env:
+          MKDOCS_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          MKDOCS_REPO_NAME: ${{ github.repository }}
+          MKDOCS_REPO_URL: https://github.com/${{ github.repository }}/
+          MKDOCS_EDIT_URI: edit/${{ github.ref_name }}/docs/
         run: |
           pip install mkdocs-material
           mkdocs build
@@ -31,6 +37,8 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          cname: docs.meshcore.io
+          # Preserve the upstream custom domain, but let forks publish at their
+          # normal <owner>.github.io/<repo>/ URL without claiming that domain.
+          cname: ${{ github.repository_owner == 'meshcore-dev' && 'docs.meshcore.io' || '' }}
           publish_dir: ./site
           publish_branch: 'gh-pages'

@@ -341,6 +341,10 @@ Replies contain `> ` followed by standard padded Base64. After decoding, all
 multi-byte integers are little-endian. Packed fields are written most
 significant bit first, oldest sample first.
 
+Use the browser-based [Telemetry history decoder](telemetry_decoder.md) to
+turn a reply into a timestamped table or downloadable CSV without uploading
+the data.
+
 Temperature payload (`0x11`, 61 bytes):
 
 | Bytes | Meaning |

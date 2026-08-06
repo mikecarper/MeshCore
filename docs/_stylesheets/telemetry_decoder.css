@@ -1,0 +1,243 @@
+.telemetry-tool {
+  --telemetry-border: color-mix(in srgb, var(--md-default-fg-color) 18%, transparent);
+  --telemetry-soft-bg: color-mix(in srgb, var(--md-default-fg-color) 5%, transparent);
+  --telemetry-accent-bg: color-mix(in srgb, var(--md-primary-fg-color) 12%, transparent);
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--telemetry-border);
+  border-radius: 0.65rem;
+  background: var(--md-default-bg-color);
+  box-shadow: 0 0.15rem 0.6rem color-mix(in srgb, #000 10%, transparent);
+}
+
+.telemetry-tool [hidden] {
+  display: none !important;
+}
+
+.telemetry-tool label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.telemetry-tool textarea {
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 0.8rem;
+  border: 1px solid var(--telemetry-border);
+  border-radius: 0.4rem;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  font: 0.82rem/1.55 var(--md-code-font-family);
+  overflow-wrap: anywhere;
+}
+
+.telemetry-tool textarea:focus-visible,
+.telemetry-tool button:focus-visible,
+.telemetry-tool input:focus-visible {
+  outline: 0.15rem solid var(--md-accent-fg-color);
+  outline-offset: 0.12rem;
+}
+
+.telemetry-tool-help {
+  margin: 0.4rem 0 0;
+  color: color-mix(in srgb, var(--md-default-fg-color) 70%, transparent);
+  font-size: 0.82rem;
+}
+
+.telemetry-actions,
+.telemetry-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin-top: 0.8rem;
+}
+
+.telemetry-tool button {
+  appearance: none;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.75rem;
+  border: 1px solid var(--telemetry-border);
+  border-radius: 0.35rem;
+  color: var(--md-default-fg-color);
+  background: var(--telemetry-soft-bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.telemetry-tool button:hover {
+  border-color: var(--md-primary-fg-color);
+  background: var(--telemetry-accent-bg);
+}
+
+.telemetry-tool .telemetry-primary-action {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+
+.telemetry-tool .telemetry-primary-action:hover {
+  filter: brightness(1.12);
+  background: var(--md-primary-fg-color);
+}
+
+.telemetry-local-time {
+  display: inline-flex !important;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0 0 0 auto !important;
+  font-size: 0.82rem;
+  font-weight: 500 !important;
+}
+
+.telemetry-local-time input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.telemetry-error,
+.telemetry-warnings {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid;
+  border-radius: 0.25rem;
+}
+
+.telemetry-error {
+  border-color: #d32f2f;
+  color: color-mix(in srgb, #d32f2f 82%, var(--md-default-fg-color));
+  background: color-mix(in srgb, #d32f2f 10%, transparent);
+}
+
+.telemetry-warnings {
+  border-color: #ed9b00;
+  background: color-mix(in srgb, #ed9b00 11%, transparent);
+}
+
+.telemetry-warnings strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.telemetry-warnings ul {
+  margin: 0.25rem 0 0 1rem;
+}
+
+.telemetry-results {
+  margin-top: 1.35rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--telemetry-border);
+}
+
+.telemetry-results-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.telemetry-results-header h2 {
+  margin: 0.8rem 0 0 !important;
+}
+
+.telemetry-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.telemetry-summary > div {
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--telemetry-border);
+  border-radius: 0.4rem;
+  background: var(--telemetry-soft-bg);
+}
+
+.telemetry-summary dt {
+  color: color-mix(in srgb, var(--md-default-fg-color) 70%, transparent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.telemetry-summary dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.telemetry-table-wrap {
+  max-height: 35rem;
+  overflow: auto;
+  border: 1px solid var(--telemetry-border);
+  border-radius: 0.4rem;
+}
+
+.telemetry-tool .telemetry-table {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-tool .telemetry-table th,
+.telemetry-tool .telemetry-table td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--telemetry-border);
+  text-align: left;
+}
+
+.telemetry-tool .telemetry-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+}
+
+.telemetry-tool .telemetry-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.telemetry-tool .telemetry-table tbody tr:nth-child(even) {
+  background: var(--telemetry-soft-bg);
+}
+
+.telemetry-tool .telemetry-row-muted td {
+  color: color-mix(in srgb, var(--md-default-fg-color) 55%, transparent);
+}
+
+.telemetry-example-replies code {
+  display: block;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: normal;
+}
+
+@media (max-width: 44rem) {
+  .telemetry-tool {
+    padding: 0.75rem;
+  }
+
+  .telemetry-local-time {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .telemetry-tool button {
+    flex: 1 1 auto;
+  }
+}
