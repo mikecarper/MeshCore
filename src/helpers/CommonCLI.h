@@ -163,8 +163,8 @@ struct NodePrefs { // persisted to file
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
   uint8_t cad_enabled;      // hardware Channel Activity Detection before TX (boolean)
-  // LR2021 side-detector SFs are runtime-only in upstream/dev. Keep the field
-  // here without shifting the established /com_prefs binary layout.
+  // LR2021 side-detector SFs are appended at /com_prefs offset 856. Their
+  // in-memory placement here does not shift the established binary layout.
   uint8_t extra_sf[4] = {};
   uint8_t retry_preset;
   uint8_t direct_retry_attempts;

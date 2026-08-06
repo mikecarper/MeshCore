@@ -5,6 +5,14 @@
 
 class CustomLR2021 : public LR2021 {
   bool _rx_boosted = false;
+  uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS] = {};
+  const Module::RfSwitchMode_t* _rf_switch_table = nullptr;
+
+  void restoreRfSwitchTable() {
+    if (_rf_switch_table != nullptr) {
+      LR2021::setRfSwitchTable(_rf_switch_pins, _rf_switch_table);
+    }
+  }
 
   public:
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
@@ -58,7 +66,31 @@ class CustomLR2021 : public LR2021 {
       setRxBoostedGainMode(LR2021_RX_BOOSTED_GAIN);
     #endif
 
+      // LR2021::begin() performs a hardware reset. Preserve the board-specific
+      // DIO/FEM routing across watchdog and SPI-timeout recovery resets.
+      restoreRfSwitchTable();
+
       return true;  // success
+    }
+
+    void setRfSwitchTable(const uint32_t (&pins)[Module::RFSWITCH_MAX_PINS],
+                          const Module::RfSwitchMode_t table[]) {
+      for (size_t i = 0; i < Module::RFSWITCH_MAX_PINS; i++) {
+        _rf_switch_pins[i] = pins[i];
+      }
+      _rf_switch_table = table;
+      LR2021::setRfSwitchTable(pins, table);
+    }
+
+    int16_t setSideDetector(const LR2021LoRaSideDetector_t* cfg, size_t numDetectors) {
+      if (numDetectors > 0 && cfg == nullptr) return RADIOLIB_ERR_INVALID_SIDE_DETECT;
+      if (numDetectors == 0) {
+        // RadioLib 7.7.1 returns success without issuing this command for a
+        // zero-length list. The LR2021 command encodes detector count in its
+        // payload length, so the empty command is the actual disable operation.
+        return setLoRaSideDetConfig(nullptr, 0);
+      }
+      return LR2021::setSideDetector(cfg, numDetectors);
     }
 
     float getFreqMHz() const { return freqMHz; }
@@ -70,6 +102,7 @@ class CustomLR2021 : public LR2021 {
     }
 
     bool getRxBoostedGainMode() const { return _rx_boosted; }
+    float getBandwidthKhz() const { return bandwidthKhz; }
 
     bool isChipBusy() {
       uint32_t busy = this->mod->getGpio();

@@ -88,6 +88,7 @@ protected:
     const float bw = _params_valid ? _cur_bw : static_cast<float>(LORA_BW);
     return mesh::calculateCadScanTimeoutMillis(sf, bw);
   }
+  int16_t performChannelScanWithTimeout(unsigned long timeout_ms);
   virtual int startReceiveMode();
   virtual void stopReceiveDutyCycle();
   virtual bool isPacketReady();

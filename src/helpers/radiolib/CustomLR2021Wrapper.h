@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CustomLR2021.h"
+#include "LR2021SideDetectorConfig.h"
 #include "RadioLibWrappers.h"
 
 #ifndef USE_LR2021
@@ -24,7 +25,7 @@ protected:
         && ((CustomLR2021 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf)
-        && applySideDetectorConfig();
+        && applySideDetectorConfig(sf, bw);
   }
 
 public:
@@ -33,37 +34,36 @@ public:
   }
 
   bool configSideDetectors(const uint8_t* sideDetSFs, uint8_t num, float bw) override {
-    if (num > 3 || (num > 0 && sideDetSFs == nullptr)) return false;
-
-    LR2021LoRaSideDetector_t tmp[3];
-    uint8_t sf = getSpreadingFactor();
-
-    if (sf >= 10 && num > 1) { return false; }  // only 1 side detector allowed when primary SF >= 10
-    for (int i = 0; i < num; i++) {
-      if (sideDetSFs[i] > 12 || sideDetSFs[i] < 5) { return false; }  // must be valid SF
-      if (sideDetSFs[i] <= sf) { return false; }  // must be greater than the primary SF
-      if (sideDetSFs[i] > sf + 4) { return false; }  // span must not be > 4
-
-      tmp[i].sf = sideDetSFs[i];
-      float tSym = calcTsym(tmp[i].sf, bw);
-      if (tSym >= 16.0f) {
-        tmp[i].ldro = true;
-      } else {
-        tmp[i].ldro = false;
-      }
-      tmp[i].invertIQ = false;
-      tmp[i].syncWord = RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE;
+    const uint8_t primary_sf = getSpreadingFactor();
+    float active_bw = _params_valid ? _cur_bw : ((CustomLR2021 *)_radio)->getBandwidthKhz();
+    if (active_bw <= 0.0f) active_bw = bw;
+    if (!mesh::lr2021::validateSideDetectorSFs(sideDetSFs, num, primary_sf, active_bw)) {
+      return false;
     }
+
+    LR2021LoRaSideDetector_t tmp[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
+    buildSideDetectorConfig(sideDetSFs, num, active_bw, tmp);
 
     uint8_t resume_rx = beginReconfigure();
     if (resume_rx > 1) return false;
 
-    int16_t status = ((CustomLR2021 *)_radio)->setSideDetector(tmp, num);
+    int16_t status = ((CustomLR2021 *)_radio)->setSideDetector(num > 0 ? tmp : nullptr, num);
     MESH_DEBUG_PRINTLN("setSideDetector() returned %d", status);
 
     if (status == RADIOLIB_ERR_NONE) {
-      for (int i = 0; i < num; i++) { _sideDet[i] = tmp[i]; }
+      for (uint8_t i = 0; i < mesh::lr2021::MAX_SIDE_DETECTORS; i++) {
+        _sideDetSFs[i] = i < num ? sideDetSFs[i] : 0;
+      }
       _numSideDet = num;
+    } else {
+      // Setting side detectors writes the detector bytes and sync words in two
+      // separate commands. If the second command fails, restore the cached
+      // configuration so a rejected CLI change cannot leave partial hardware state.
+      bool restored = applySideDetectorConfig(primary_sf, active_bw);
+      if (!restored) restored = restoreAfterDeepInit();
+      if (!restored) {
+        MESH_DEBUG_PRINTLN("LR2021: failed to restore side detectors after config error");
+      }
     }
 
     endReconfigure(resume_rx);
@@ -71,13 +71,81 @@ public:
   }
 
 protected:
-  bool applySideDetectorConfig() {
-    return ((CustomLR2021 *)_radio)->setSideDetector(_sideDet, _numSideDet)
-        == RADIOLIB_ERR_NONE;
+  static void buildSideDetectorConfig(const uint8_t* sideDetSFs, size_t num, float bw,
+                                      LR2021LoRaSideDetector_t* config) {
+    for (size_t i = 0; i < num; i++) {
+      config[i].sf = sideDetSFs[i];
+      config[i].ldro = mesh::lr2021::sideDetectorLDRO(sideDetSFs[i], bw);
+      config[i].invertIQ = false;
+      config[i].syncWord = RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE;
+    }
   }
 
-  float calcTsym(uint8_t sf, float bw) {
-    return (float)(uint32_t(1) << sf) / bw;
+  bool applySideDetectorConfig(uint8_t primary_sf, float bw) {
+    if (!mesh::lr2021::validateSideDetectorSFs(_sideDetSFs, _numSideDet, primary_sf, bw)) {
+      return false;
+    }
+    LR2021LoRaSideDetector_t config[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
+    buildSideDetectorConfig(_sideDetSFs, _numSideDet, bw, config);
+    return ((CustomLR2021 *)_radio)->setSideDetector(_numSideDet > 0 ? config : nullptr,
+                                                     _numSideDet) == RADIOLIB_ERR_NONE;
+  }
+
+  int16_t performChannelScan() override {
+    if (_numSideDet == 0) return RadioLibWrapper::performChannelScan();
+
+    CustomLR2021* radio = (CustomLR2021 *)_radio;
+    const uint8_t rx_primary_sf = getSpreadingFactor();
+    float bw = _params_valid ? _cur_bw : radio->getBandwidthKhz();
+    if (bw <= 0.0f) bw = static_cast<float>(LORA_BW);
+
+    int16_t status = radio->standby();
+    if (status != RADIOLIB_ERR_NONE) return status;
+
+    // RadioLib's LR2021 multi-SF CAD support is unfinished and CAD requires
+    // the inverse primary/side-SF ordering from RX. Scan every configured SF
+    // through the supported primary detector instead, then restore RX atomically.
+    status = radio->setSideDetector(nullptr, 0);
+    if (status != RADIOLIB_ERR_NONE) {
+      bool restored = applySideDetectorConfig(rx_primary_sf, bw);
+      if (!restored) restored = restoreAfterDeepInit();
+      return restored ? status : RADIOLIB_ERR_UNKNOWN;
+    }
+
+    uint8_t scan_sfs[mesh::lr2021::STORED_SIDE_DETECTOR_BYTES] = {};
+    scan_sfs[0] = rx_primary_sf;
+    for (size_t i = 0; i < _numSideDet; i++) scan_sfs[i + 1] = _sideDetSFs[i];
+
+    int16_t scan_result = RADIOLIB_CHANNEL_FREE;
+    for (size_t i = 0; i <= _numSideDet; i++) {
+      if (i > 0) {
+        status = radio->standby();
+        if (status != RADIOLIB_ERR_NONE) {
+          scan_result = status;
+          break;
+        }
+      }
+      status = radio->setSpreadingFactor(scan_sfs[i]);
+      if (status != RADIOLIB_ERR_NONE) {
+        scan_result = status;
+        break;
+      }
+      scan_result = performChannelScanWithTimeout(
+          mesh::calculateCadScanTimeoutMillis(scan_sfs[i], bw));
+      // Each individual CAD can finish inside the helper's one-second service
+      // cadence while the combined multi-SF pass still exceeds it.
+      _board->serviceWatchdog();
+      if (scan_result != RADIOLIB_CHANNEL_FREE) break;
+    }
+
+    bool restored = radio->standby() == RADIOLIB_ERR_NONE
+        && radio->setSpreadingFactor(rx_primary_sf) == RADIOLIB_ERR_NONE
+        && applySideDetectorConfig(rx_primary_sf, bw);
+    if (!restored && !restoreAfterDeepInit()) {
+      MESH_DEBUG_PRINTLN("LR2021: failed to restore RX side detectors after CAD");
+      return RADIOLIB_ERR_UNKNOWN;
+    }
+    return scan_result;
   }
 
 public:
@@ -126,7 +194,7 @@ protected:
         == RADIOLIB_ERR_NONE;
   }
 
-  LR2021LoRaSideDetector_t _sideDet[3];
+  uint8_t _sideDetSFs[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
   size_t _numSideDet = 0;
 
 };

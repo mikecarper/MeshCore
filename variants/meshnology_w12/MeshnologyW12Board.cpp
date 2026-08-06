@@ -3,6 +3,8 @@
 void MeshnologyW12Board::begin() {
     ESP32Board::begin();
 
+    rtc_gpio_hold_dis((gpio_num_t)P_LORA_LF_PA_POWER);
+    rtc_gpio_hold_dis((gpio_num_t)P_LORA_HF_PA_POWER);
     pinMode(PIN_ADC_CTRL, OUTPUT);
     digitalWrite(PIN_ADC_CTRL, LOW); // Disable battery sense until required
 
@@ -59,7 +61,14 @@ void MeshnologyW12Board::begin() {
   }
 
   void MeshnologyW12Board::powerOff()  {
-    enterDeepSleep(0);
+    // A shutdown must not retain the packet-wake deep-sleep behavior above.
+    // Disable both external FEM rails, then use the base shutdown path so the
+    // display, GPS, radio, serial buffers, and stale wake sources are handled.
+    digitalWrite(P_LORA_LF_PA_POWER, LOW);
+    digitalWrite(P_LORA_HF_PA_POWER, LOW);
+    rtc_gpio_hold_en((gpio_num_t)P_LORA_LF_PA_POWER);
+    rtc_gpio_hold_en((gpio_num_t)P_LORA_HF_PA_POWER);
+    ESP32Board::powerOff();
   }
 
   uint16_t MeshnologyW12Board::getBattMilliVolts()  {

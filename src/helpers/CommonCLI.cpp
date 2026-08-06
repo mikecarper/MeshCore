@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
 #include "CLICommandUtils.h"
+#include "radiolib/LR2021SideDetectorConfig.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
@@ -872,6 +873,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   // The hardware main-loop watchdog is opt-out. Older preference files do not
   // contain its appended byte, so they safely inherit the enabled default.
   _prefs->system_watchdog_enabled = 1;
+  memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
 
 #ifdef WITH_MQTT_BRIDGE
   bool node_prefs_needs_migration = false;
@@ -1068,6 +1070,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // Build-profile defaults - overwritten below when the saved field is present.
     _prefs->radio_fem_rxgain = 1;
     _prefs->cad_enabled = DEFAULT_CAD_ENABLED;
+    memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
     _prefs->rx_powersaving_enabled = 0;
     _prefs->rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
     _prefs->rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
@@ -1347,6 +1350,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       file.read((uint8_t *)&_prefs->system_watchdog_enabled,
                 sizeof(_prefs->system_watchdog_enabled));
     }
+    if (file.available() >= (int)sizeof(_prefs->extra_sf)) {
+      file.read((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));
+    } else if (file.available() > 0) {
+      // Never accept a torn append as a partial detector list.
+      _com_prefs_needs_upgrade = true;
+    }
     }
 
     // Sanitize non-finite values before constrain(), whose comparisons leave
@@ -1383,6 +1392,13 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->bw = isValidLoRaBandwidth(_prefs->bw) ? _prefs->bw : defaultLoRaBandwidth();
     _prefs->sf = constrain(_prefs->sf, 5, 12);
     _prefs->cr = constrain(_prefs->cr, 5, 8);
+    uint8_t extra_sf_count = 0;
+    if (!mesh::lr2021::storedSideDetectorCount(_prefs->extra_sf, extra_sf_count)
+        || !mesh::lr2021::validateSideDetectorSFs(
+            _prefs->extra_sf, extra_sf_count, _prefs->sf, _prefs->bw)) {
+      memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
+      _com_prefs_needs_upgrade = true;
+    }
     _prefs->tx_power_dbm = constrain(_prefs->tx_power_dbm, -9, 30);
     _prefs->multi_acks = constrain(_prefs->multi_acks, 0, 1);
     _prefs->adc_multiplier = constrain(_prefs->adc_multiplier, 0.0f, 10.0f);
@@ -1608,6 +1624,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->flood_retry_group_max_path);      // 853
   WRITE_COMMON_PREFS(&prefs->rx_watchdog_enabled);             // 854
   WRITE_COMMON_PREFS(&prefs->system_watchdog_enabled);         // 855
+  WRITE_COMMON_PREFS(&prefs->extra_sf);                        // 856
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1753,7 +1770,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, bool save_mqtt) {
                sizeof(_prefs->rx_watchdog_enabled));                                               // 854
     file.write((uint8_t *)&_prefs->system_watchdog_enabled,
                sizeof(_prefs->system_watchdog_enabled));                                           // 855
-    // next: 856
+    file.write((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));                              // 856
+    // next: 860
 
 #if defined(NRF52_PLATFORM)
     if (!file.commit()) {
@@ -4327,22 +4345,20 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
     }
 #if defined(USE_LR2021)
-  } else if (memcmp(config, "extra.sf ", 9) == 0) {
-    strcpy(tmp, &config[9]);
-    const char *parts[4];
-    uint8_t sideDetSFs[4];
-    int num = mesh::Utils::parseTextParts(tmp, parts, 4);
-    if (num > 3) {
-      sprintf(reply, "Invalid extra SF config");
+  } else if (strcmp(config, "extra.sf") == 0 || memcmp(config, "extra.sf ", 9) == 0) {
+    uint8_t sideDetSFs[mesh::lr2021::STORED_SIDE_DETECTOR_BYTES] = {};
+    uint8_t num = 0;
+    const char* value = config[8] == '\0' ? "" : &config[9];
+    if (strcmp(value, "none") == 0 || strcmp(value, "off") == 0) value = "";
+    if (!mesh::lr2021::parseSideDetectorSFList(value, sideDetSFs, num)
+        || !mesh::lr2021::validateSideDetectorSFs(
+            sideDetSFs, num, _prefs->sf, _prefs->bw)) {
+      strcpy(reply, "Invalid extra SF config");
     } else {
-      for (int i = 0; i < num; i++) {
-        sideDetSFs[i] = atoi(parts[i]);
-      }
-      sideDetSFs[num] = 0;
       if (_callbacks->configSideDetectors(sideDetSFs, num, _prefs->bw)) {
-        for (int i = 0; i <= num; i++) _prefs->extra_sf[i] = sideDetSFs[i];
+        memcpy(_prefs->extra_sf, sideDetSFs, sizeof(_prefs->extra_sf));
         savePrefs();
-        strcpy(reply, "OK - extra SFs set");
+        strcpy(reply, num == 0 ? "OK - extra SFs cleared" : "OK - extra SFs set");
       } else {
         strcpy(reply, "Invalid extra SF config");
       }
@@ -4770,7 +4786,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       sprintf(reply, "> %d", (uint8_t)_prefs->reboot_interval);
     }
-  } else if (memcmp(config, "extra.sf", 8) == 0) {
+  } else if (strcmp(config, "extra.sf") == 0) {
     char* tmp = reply;
     for (int i = 0; i < 3 && _prefs->extra_sf[i] != 0; i++) {
       tmp += sprintf(tmp, "%s%d", (i == 0) ? "" : ",", _prefs->extra_sf[i]);

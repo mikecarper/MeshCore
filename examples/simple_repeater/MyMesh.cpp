@@ -4,6 +4,9 @@
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/FloodFilterPolicy.h>
+#if defined(USE_LR2021)
+#include <helpers/radiolib/LR2021SideDetectorConfig.h>
+#endif
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/RxReservePacketManager.h>
 #ifdef WITH_WEBCONFIG
@@ -3418,7 +3421,30 @@ bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
 }
 
 bool MyMesh::applySavedRadioParams() {
-  return applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+#if defined(USE_LR2021)
+  uint8_t extra_sf_count = 0;
+  const bool extra_sf_valid = mesh::lr2021::storedSideDetectorCount(
+      _prefs.extra_sf, extra_sf_count)
+      && mesh::lr2021::validateSideDetectorSFs(
+          _prefs.extra_sf, extra_sf_count, _prefs.sf, _prefs.bw);
+  if (!extra_sf_valid) {
+    // A permanent radio-profile change can make the old detector list invalid.
+    // Clear the live/cache state before applying the new primary modulation so
+    // the radio is not trapped retrying an impossible combination forever.
+    if (!radio_driver.configSideDetectors(nullptr, 0, _prefs.bw)) return false;
+    memset(_prefs.extra_sf, 0, sizeof(_prefs.extra_sf));
+    extra_sf_count = 0;
+    savePrefs();
+  }
+#endif
+
+  if (!applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr)) return false;
+
+#if defined(USE_LR2021)
+  return radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw);
+#else
+  return true;
+#endif
 }
 
 void MyMesh::queueSavedRadioApply() {

@@ -675,13 +675,16 @@ void RadioLibWrapper::onSendFinished() {
 }
 
 int16_t RadioLibWrapper::performChannelScan() {
+  return performChannelScanWithTimeout(cadScanTimeoutMillis());
+}
+
+int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms) {
   // RadioLib's blocking scanChannel() waits forever if the radio never raises
   // its CAD-done IRQ. Keep CAD bounded so a missing IRQ cannot starve the main
   // loop until the MCU watchdog resets the node.
   int16_t result = _radio->startChannelScan();
   if (result != RADIOLIB_ERR_NONE) return result;
 
-  const unsigned long timeout_ms = cadScanTimeoutMillis();
   const unsigned long started = millis();
   unsigned long last_watchdog_service = started;
   while (millis() - started < timeout_ms) {
