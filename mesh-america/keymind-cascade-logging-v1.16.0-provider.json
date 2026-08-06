@@ -4168,10 +4168,10 @@
         {
           "role": "companionUsb",
           "title": "Companion USB",
-          "subTitle": "FEM on",
+          "subTitle": "v4.2/v4.3, FEM on",
           "version": {
             "logging-v1.16.09-halo-keymind-cascade-dev-eed65812": {
-              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion USB: bridges a computer or host app to LoRa over USB serial. Choose it for a wired companion connection, not for an unattended repeater.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
+              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion USB: bridges a computer or host app to LoRa over USB serial. Choose it for a wired companion connection, not for an unattended repeater.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — v4.2/v4.3, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
               "files": [
                 {
                   "type": "flash-wipe",
@@ -4192,10 +4192,10 @@
         {
           "role": "companionUsb",
           "title": "Companion USB",
-          "subTitle": "TFT, FEM on",
+          "subTitle": "v4.2/v4.3, TFT, FEM on",
           "version": {
             "logging-v1.16.09-halo-keymind-cascade-dev-eed65812": {
-              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion USB: bridges a computer or host app to LoRa over USB serial. Choose it for a wired companion connection, not for an unattended repeater.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
+              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion USB: bridges a computer or host app to LoRa over USB serial. Choose it for a wired companion connection, not for an unattended repeater.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — v4.2/v4.3, TFT, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
                   "type": "flash-wipe",
@@ -4264,10 +4264,10 @@
         {
           "role": "companionWifi",
           "title": "Companion WiFi MQTT",
-          "subTitle": "FEM on, OTA",
+          "subTitle": "v4.2/v4.3, FEM on, OTA",
           "version": {
             "v1.16.09-halo-keymind-cascade-dev-eed65812": {
-              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Wi-Fi companion MQTT + LoRa OTA: provides the LAN companion interface, an MQTT bridge, and LoRa OTA folder/self-update support. A trusted Wi-Fi LAN and MQTT broker settings are required. This is not a FULL expanded-partition build.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nLORA OTA — This page installs the base firmware, not a .mota package. Obtain and apply exact board-and-role .mota updates separately through the MeshCore LoRa OTA workflow; .mota files cannot be web flashed here.\n\nSELECTION — FEM on, OTA.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
+              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Wi-Fi companion MQTT + LoRa OTA: provides the LAN companion interface, an MQTT bridge, and LoRa OTA folder/self-update support. A trusted Wi-Fi LAN and MQTT broker settings are required. This is not a FULL expanded-partition build.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nLORA OTA — This page installs the base firmware, not a .mota package. Obtain and apply exact board-and-role .mota updates separately through the MeshCore LoRa OTA workflow; .mota files cannot be web flashed here.\n\nSELECTION — v4.2/v4.3, FEM on, OTA.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
               "files": [
                 {
                   "type": "flash-wipe",
@@ -4312,10 +4312,10 @@
         {
           "role": "companionWifi",
           "title": "Companion WiFi",
-          "subTitle": "FEM on",
+          "subTitle": "v4.2/v4.3, FEM on",
           "version": {
             "logging-v1.16.09-halo-keymind-cascade-dev-eed65812": {
-              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
+              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — v4.2/v4.3, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
               "files": [
                 {
                   "type": "flash-wipe",
@@ -4336,10 +4336,10 @@
         {
           "role": "companionWifi",
           "title": "Companion WiFi",
-          "subTitle": "TFT, FEM on",
+          "subTitle": "v4.2/v4.3, TFT, FEM on",
           "version": {
             "logging-v1.16.09-halo-keymind-cascade-dev-eed65812": {
-              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
+              "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Diagnostic logging: keeps the selected role/profile and enables debug and packet logging. Expect substantial serial output. It cannot install LoRa OTA unless the filename/profile explicitly says LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — v4.2/v4.3, TFT, FEM on.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
                   "type": "flash-wipe",
