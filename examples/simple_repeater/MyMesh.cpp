@@ -2174,70 +2174,75 @@ static void formatLocalSnrX4(char* dest, size_t dest_len, int16_t snr_x4) {
   }
 }
 
-static bool parseRecentRepeatersPageCommand(const char* command, int& page) {
-  if (strncmp(command, "get ", 4) != 0) {
-    return false;
-  }
-
-  const char* cursor = command + 4;
-  if (strncmp(cursor, "recent.repeater", 15) != 0) {
-    return false;
-  }
-  cursor += 15;
-
-  if (*cursor == 's') {
-    cursor++;
-  }
-  if (*cursor == 0) {
-    return false;
-  }
-  if (*cursor != ' ') {
-    return false;
-  }
-
-  while (*cursor == ' ') cursor++;
-  if (strncmp(cursor, "page", 4) == 0 && (cursor[4] == 0 || cursor[4] == ' ')) {
-    cursor += 4;
-    while (*cursor == ' ') cursor++;
-  }
-
-  page = 1;
-  if (*cursor) page = atoi(cursor);
-  if (page < 1) page = 1;
-  return true;
-}
-
-void MyMesh::formatRecentRepeatersReply(char *reply, int page) {
+void MyMesh::formatRecentRepeatersReply(char *reply, int page,
+                                        const uint8_t* search_prefix,
+                                        uint8_t search_prefix_len) {
   const SimpleMeshTables* tables = static_cast<const SimpleMeshTables*>(getTables());
   if (tables == NULL) {
     strcpy(reply, "Error: unsupported");
     return;
   }
-  int count = tables->getRecentRepeaterCount();
+  const bool is_search = search_prefix != NULL && search_prefix_len > 0;
+  int count = is_search
+      ? tables->getRecentRepeaterMatchingCount(search_prefix, search_prefix_len)
+      : tables->getRecentRepeaterCount();
   if (count <= 0) {
-    strcpy(reply, "> -none-");
+    if (is_search) {
+      char search_hex[MAX_ROUTE_HASH_BYTES * 2 + 1];
+      mesh::Utils::toHex(search_hex, search_prefix, search_prefix_len);
+      search_hex[search_prefix_len * 2] = 0;
+      snprintf(reply, 160, "> %s -none-", search_hex);
+    } else {
+      strcpy(reply, "> -none-");
+    }
     return;
   }
 
-  const int page_size = 10;
+  // Search rows include their compact recorded age. Six worst-case rows plus the
+  // page header still fit the 160-byte remote CLI reply buffer.
+  const int page_size = is_search ? 6 : 10;
   int pages = (count + page_size - 1) / page_size;
   if (page < 1) page = 1;
   if (page > pages) page = pages;
 
-  int len = snprintf(reply, 160, "> %d/%d", page, pages);
+  int len;
+  if (is_search) {
+    char search_hex[MAX_ROUTE_HASH_BYTES * 2 + 1];
+    mesh::Utils::toHex(search_hex, search_prefix, search_prefix_len);
+    search_hex[search_prefix_len * 2] = 0;
+    len = snprintf(reply, 160, "> %s %d/%d (%d matches)",
+                   search_hex, page, pages, count);
+  } else {
+    len = snprintf(reply, 160, "> %d/%d", page, pages);
+  }
   int start = (page - 1) * page_size;
   for (int i = 0; i < page_size && len < 150; i++) {
-    const SimpleMeshTables::RecentRepeaterInfo* info = tables->getRecentRepeaterBySortedIdx(start + i);
+    const SimpleMeshTables::RecentRepeaterInfo* info = is_search
+        ? tables->getRecentRepeaterMatchingBySortedIdx(
+              search_prefix, search_prefix_len, start + i)
+        : tables->getRecentRepeaterBySortedIdx(start + i);
     if (info == NULL) break;
     char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
     char snr[12];
     mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
     prefix[info->prefix_len * 2] = 0;
     formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
-    len += snprintf(&reply[len], 160 - len, "\n%s,%s%s",
-                    prefix,
-                    snr[0] == '-' ? "" : " ",
-                    snr);
+    if (is_search) {
+      const uint32_t age_seconds =
+          (uint32_t)(millis() - info->last_heard_millis) / 1000UL;
+      char age[12];
+      mesh::cli::formatRecentRepeaterAge(age, sizeof(age), age_seconds);
+      len += snprintf(&reply[len], 160 - len, "\n%s,%s%s,%s",
+                      prefix,
+                      snr[0] == '-' ? "" : " ",
+                      snr,
+                      age);
+    } else {
+      len += snprintf(&reply[len], 160 - len, "\n%s,%s%s",
+                      prefix,
+                      snr[0] == '-' ? "" : " ",
+                      snr);
+    }
   }
 }
 
@@ -8153,7 +8158,6 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
                                    sender == NULL ? NULL : sender->id.pub_key);
 #endif
   char* reply_start = reply;
-  int recent_page = 1;
 
   // Remote admin clients may include a line ending in the command payload.
   // Normalize it here so exact-match commands such as `get outpath` behave the
@@ -8528,8 +8532,6 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         strcpy(reply, "Err - bad pubkey");
       }
     }
-  } else if (sender_timestamp == 0 && sender == NULL && parseRecentRepeatersPageCommand(command, recent_page)) {
-    formatRecentRepeatersReply(reply, recent_page);
   } else if (sender_timestamp == 0 && sender == NULL
       && (strcmp(command, "get recent.repeater") == 0 || strcmp(command, "get recent.repeaters") == 0)) {
     printRecentRepeatersSerial();

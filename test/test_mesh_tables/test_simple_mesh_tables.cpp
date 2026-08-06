@@ -233,6 +233,45 @@ TEST(RouteHashPrefixes, MatchesSharedOneTwoOrThreeBytes) {
     EXPECT_FALSE(routeHashPrefixesOverlap(configured, 3, mismatch, 2));
 }
 
+TEST(SimpleMeshTables, RecentRepeaterSearchReturnsAllOverlappingPrefixesInDisplayOrder) {
+    SimpleMeshTables::RecentRepeaterInfo storage[6];
+    SimpleMeshTables t(storage, 6);
+    const uint8_t one_byte[] = {0x86};
+    const uint8_t two_bytes[] = {0x86, 0x0c};
+    const uint8_t three_bytes[] = {0x86, 0x0c, 0xca};
+    const uint8_t other_branch[] = {0x86, 0xd0};
+    const uint8_t unrelated[] = {0x71, 0xce, 0x82};
+
+    ASSERT_TRUE(t.setRecentRepeater(one_byte, 1, 20));
+    ASSERT_TRUE(t.setRecentRepeater(two_bytes, 2, 4));
+    ASSERT_TRUE(t.setRecentRepeater(three_bytes, 3, 8));
+    ASSERT_TRUE(t.setRecentRepeater(other_branch, 2, 12));
+    ASSERT_TRUE(t.setRecentRepeater(unrelated, 3, 16));
+
+    EXPECT_EQ(3, t.getRecentRepeaterMatchingCount(two_bytes, 2));
+    const auto* first = t.getRecentRepeaterMatchingBySortedIdx(two_bytes, 2, 0);
+    const auto* second = t.getRecentRepeaterMatchingBySortedIdx(two_bytes, 2, 1);
+    const auto* third = t.getRecentRepeaterMatchingBySortedIdx(two_bytes, 2, 2);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    ASSERT_NE(nullptr, third);
+    EXPECT_EQ(3, first->prefix_len);
+    EXPECT_EQ(0, memcmp(three_bytes, first->prefix, 3));
+    EXPECT_EQ(2, second->prefix_len);
+    EXPECT_EQ(0, memcmp(two_bytes, second->prefix, 2));
+    EXPECT_EQ(1, third->prefix_len);
+    EXPECT_EQ(0, memcmp(one_byte, third->prefix, 1));
+    EXPECT_EQ(nullptr,
+              t.getRecentRepeaterMatchingBySortedIdx(two_bytes, 2, 3));
+
+    // A one-byte search also includes both two-byte branches sharing it.
+    EXPECT_EQ(4, t.getRecentRepeaterMatchingCount(one_byte, 1));
+    const auto* branch =
+        t.getRecentRepeaterMatchingBySortedIdx(one_byte, 1, 1);
+    ASSERT_NE(nullptr, branch);
+    EXPECT_EQ(0, memcmp(other_branch, branch->prefix, 2));
+}
+
 TEST(SimpleMeshTables, ShortFailurePrefixUpdatesOverlappingLongEntry) {
     SimpleMeshTables::RecentRepeaterInfo storage[MAX_RECENT_REPEATERS];
     SimpleMeshTables t(storage, MAX_RECENT_REPEATERS);

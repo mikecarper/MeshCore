@@ -782,7 +782,9 @@ public:
   void formatRadioStatsReply(char *reply) override;
   void formatRadioDiagReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
-  void formatRecentRepeatersReply(char *reply, int page) override;
+  void formatRecentRepeatersReply(char *reply, int page,
+                                  const uint8_t* search_prefix,
+                                  uint8_t search_prefix_len) override;
   bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) override;
   void clearRecentRepeaters() override;
   void startRegionsLoad() override;

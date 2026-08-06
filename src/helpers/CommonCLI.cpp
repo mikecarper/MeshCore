@@ -158,31 +158,6 @@ static bool otaCommandNeedsTempRadio(const char* command) {
 }
 #endif
 
-static bool parseRecentRepeaterGet(const char* config, int& page) {
-  if (strncmp(config, "recent.repeater", 15) != 0) {
-    return false;
-  }
-
-  const char* cursor = &config[15];
-  if (*cursor == 's') {
-    cursor++;
-  }
-  if (*cursor != 0 && *cursor != ' ') {
-    return false;
-  }
-
-  while (*cursor == ' ') cursor++;
-  if (strncmp(cursor, "page", 4) == 0 && (cursor[4] == 0 || cursor[4] == ' ')) {
-    cursor += 4;
-    while (*cursor == ' ') cursor++;
-  }
-
-  page = 1;
-  if (*cursor) page = _atoi(cursor);
-  if (page < 1) page = 1;
-  return true;
-}
-
 static bool isValidName(const char *n) {
   while (*n) {
     if (*n == '[' || *n == ']' || *n == '/' || *n == '\\' || *n == ':' || *n == ',' || *n == '?' || *n == '*') return false;
@@ -4506,7 +4481,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(reply, "Error, retry configuration unsupported on this role");
     return;
   }
-  int recent_page = 1;
+  mesh::cli::RecentRepeaterGetQuery recent_query;
+  const mesh::cli::RecentRepeaterGetMatch recent_query_match =
+      mesh::cli::parseRecentRepeaterGet(config, recent_query);
   if (memcmp(config, "dutycycle", 9) == 0) {
     float dc = 100.0f / (_prefs->airtime_factor + 1.0f);
     int dc_int = (int)dc;
@@ -4677,8 +4654,13 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       formatSnrDbX4(cr8, sizeof(cr8), _prefs->direct_retry_cr8_snr_x4);
       sprintf(reply, "> %s,%s,%s,%s", cr4, cr5, cr7, cr8);
     }
-  } else if (parseRecentRepeaterGet(config, recent_page)) {
-    _callbacks->formatRecentRepeatersReply(reply, recent_page);
+  } else if (recent_query_match == mesh::cli::RecentRepeaterGetMatch::Valid) {
+    _callbacks->formatRecentRepeatersReply(
+        reply, recent_query.page,
+        recent_query.search_prefix_len == 0 ? NULL : recent_query.search_prefix,
+        recent_query.search_prefix_len);
+  } else if (recent_query_match == mesh::cli::RecentRepeaterGetMatch::Invalid) {
+    strcpy(reply, "Error, use: get recent.repeaters [page] | search <2|4|6 hex> [page]");
   } else if (memcmp(config, "owner.info", 10) == 0) {
     *reply++ = '>';
     *reply++ = ' ';

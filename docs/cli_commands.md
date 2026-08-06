@@ -2655,11 +2655,12 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - `get recent.repeater`
 - `get recent.repeater <page>`
 - `get recent.repeaters <page>`
+- `get recent.repeaters search <prefix> [page]`
 - `set recent.repeater <prefix> [snr_db]`
 - `clear recent.repeater`
 
 **Parameters:**
-- `prefix`: Repeater path-hash prefix as hex.
+- `prefix`: Repeater path-hash prefix as 2, 4, or 6 hex characters.
 - `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
 - `page`: 1-based result page.
 
@@ -2668,6 +2669,12 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 **Output order:**
 - `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
 - Within each prefix length, entries are sorted from highest SNR to lowest SNR.
+- `search` returns every overlapping path-hash entry. For example, searching
+  `860C` can return `86`, `860C`, and `860CCA`; it does not return a different
+  branch such as `86D0`.
+- Search rows include the monotonic age of the entry's most recent recording,
+  compacted to a whole `s`, `m`, or `h` field. Search pages contain up to six
+  rows so the result remains within the remote CLI reply limit.
 
 **SNR details:**
 - Recent repeater SNR is stored internally in quarter-dB units.
@@ -2684,6 +2691,8 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 ```
 get recent.repeater
 get recent.repeater 2
+get recent.repeaters search 86
+get recent.repeaters search 860C page 2
 set recent.repeater A1B2C3 8.5
 set recent.repeater 71CE82 -3.25
 set recent.repeater A1B2C3

@@ -79,7 +79,7 @@ set flood.retry.ignore none
 | `battery.alert` | Sends opt-in, region-scoped low-battery warnings to `#repeaters` after 30 minutes of uptime. | `get battery.alert`, `get battery.alert.region`, `set battery.alert on [region]`, `set battery.alert off` | `set battery.alert on sea` |
 | `battery.alert.low` | Warning threshold percentage. Must be greater than `battery.alert.critical`. | `get battery.alert.low`, `set battery.alert.low <1-100>` | `set battery.alert.low 20` |
 | `battery.alert.critical` | Critical threshold percentage. Critical and warning alerts use the same 12-hour resend cooldown. | `get battery.alert.critical`, `set battery.alert.critical <0-99>` | `set battery.alert.critical 10` |
-| `recent.repeater` | Shows, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. Entries older than 24 hours are removed by a three-hour sweep. | `get recent.repeater`, `get recent.repeater <page>`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `set recent.repeater A1B2C3 -8.5` |
+| `recent.repeater` | Shows, searches, seeds, or clears the recent repeater prefix/SNR table used by direct retry and bridge freshness checks. Search results include the last-recorded age. Entries older than 24 hours are removed by a three-hour sweep. | `get recent.repeater [page]`, `get recent.repeaters search <2|4|6 hex> [page]`, `set recent.repeater <prefix> <snr_db>`, `clear recent.repeater` | `get recent.repeaters search A1B2` |
 | `flood.channel.data` | Turns forwarding of flood `GRP_DATA` channel packets on or off. With the default `on`, `GRP_DATA` repeats normally even when `flood.channel.block.hops` is set. | `get flood.channel.data`, `set flood.channel.data on/off` | `set flood.channel.data off` |
 | `flood.channel.data.hops` | Separate hop gate used only when `flood.channel.data` is `off`; `all` blocks `GRP_DATA` at any hop count, `1`-`7` repeats at that hop count or lower and blocks longer paths. | `get flood.channel.data.hops`, `set flood.channel.data.hops <all|1-7>` | `set flood.channel.data.hops 7` |
 | `flood.channel.block` | Blocks selected flood `GRP_TXT`/`GRP_DATA` channels when the key validates the packet. New repeater block lists start with editable/deletable `#wardriving h=4`. Add `h=<all|1-7|default>` for a per-channel hop override. | `get flood.channel.block`, `set flood.channel.block[.n] <key|#channel> [name] [h=...]`, `del flood.channel.block[.n]` | `set flood.channel.block #wardriving h=4` |
@@ -160,7 +160,13 @@ get recent.repeater
 get recent.repeater 2
 get recent.repeaters 2
 get recent.repeater page 3
+get recent.repeaters search A1
+get recent.repeaters search A1B2 page 2
 ```
+
+Search matches overlapping 1-, 2-, and 3-byte path hashes. Each matching row
+shows its stored SNR and a whole `s`, `m`, or `h` age measured from the most
+recent recording. Search pages contain up to six rows.
 
 Seed or correct a prefix:
 
@@ -175,10 +181,8 @@ clear recent.repeater
 ```
 
 Rows are sorted by prefix width, then SNR. A full direct retry failure lowers
-the matching row by `0.25 dB`.
-
-Serial CLI pages contain up to `128` rows. Remote LoRa CLI pages contain up to
-`7` rows.
+the matching row by `0.25 dB`. Unfiltered paged replies contain up to `10`
+rows; an unpaged local serial query prints the full table.
 
 ## Direct Path Overrides
 

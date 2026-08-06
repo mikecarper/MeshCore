@@ -189,6 +189,50 @@ private:
     return a_idx < b_idx;
   }
 
+  bool recentRepeaterMatchesFilter(const RecentRepeaterInfo& info,
+                                   const uint8_t* search_prefix,
+                                   uint8_t search_prefix_len) const {
+    if (search_prefix_len == 0) return true;
+    return search_prefix != NULL && search_prefix_len <= MAX_ROUTE_HASH_BYTES
+        && routeHashPrefixesOverlap(info.prefix, info.prefix_len,
+                                    search_prefix, search_prefix_len);
+  }
+
+  const RecentRepeaterInfo* getRecentRepeaterBySortedIdxFiltered(
+      int idx_wanted, const uint8_t* search_prefix,
+      uint8_t search_prefix_len) const {
+    if (_max_recent_repeaters == 0 || idx_wanted < 0
+        || search_prefix_len > MAX_ROUTE_HASH_BYTES
+        || (search_prefix_len > 0 && search_prefix == NULL)) {
+      return NULL;
+    }
+
+    const RecentRepeaterInfo* last = NULL;
+    int last_idx = -1;
+    for (int rank = 0; rank <= idx_wanted; rank++) {
+      const RecentRepeaterInfo* best = NULL;
+      int best_idx = -1;
+      for (int i = 0; i < _recent_repeater_count; i++) {
+        const RecentRepeaterInfo* info = &_recent_repeaters[i];
+        if (!recentRepeaterMatchesFilter(*info, search_prefix,
+                                         search_prefix_len)) {
+          continue;
+        }
+        if (last != NULL && !recentRepeaterComesBefore(*last, last_idx, *info, i)) {
+          continue;
+        }
+        if (best == NULL || recentRepeaterComesBefore(*info, i, *best, best_idx)) {
+          best = info;
+          best_idx = i;
+        }
+      }
+      if (best == NULL) return NULL;
+      last = best;
+      last_idx = best_idx;
+    }
+    return last;
+  }
+
   void recordRecentRepeater(const mesh::Packet* packet) {
     if (_max_recent_repeaters == 0) {
       return;
@@ -419,35 +463,30 @@ public:
     return _recent_repeater_count;
   }
   const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
-    if (_max_recent_repeaters == 0) {
-      return NULL;
+    return getRecentRepeaterBySortedIdxFiltered(idx_wanted, NULL, 0);
+  }
+  int getRecentRepeaterMatchingCount(const uint8_t* search_prefix,
+                                     uint8_t search_prefix_len) const {
+    if (_max_recent_repeaters == 0 || search_prefix == NULL
+        || search_prefix_len == 0
+        || search_prefix_len > MAX_ROUTE_HASH_BYTES) {
+      return 0;
     }
-    if (idx_wanted < 0) {
-      return NULL;
-    }
-
-    const RecentRepeaterInfo* last = NULL;
-    int last_idx = -1;
-    for (int rank = 0; rank <= idx_wanted; rank++) {
-      const RecentRepeaterInfo* best = NULL;
-      int best_idx = -1;
-      for (int i = 0; i < _recent_repeater_count; i++) {
-        const RecentRepeaterInfo* info = &_recent_repeaters[i];
-        if (last != NULL && !recentRepeaterComesBefore(*last, last_idx, *info, i)) {
-          continue;
-        }
-        if (best == NULL || recentRepeaterComesBefore(*info, i, *best, best_idx)) {
-          best = info;
-          best_idx = i;
-        }
+    int count = 0;
+    for (int i = 0; i < _recent_repeater_count; i++) {
+      if (recentRepeaterMatchesFilter(_recent_repeaters[i], search_prefix,
+                                      search_prefix_len)) {
+        count++;
       }
-      if (best == NULL) {
-        return NULL;
-      }
-      last = best;
-      last_idx = best_idx;
     }
-    return last;
+    return count;
+  }
+  const RecentRepeaterInfo* getRecentRepeaterMatchingBySortedIdx(
+      const uint8_t* search_prefix, uint8_t search_prefix_len,
+      int idx_wanted) const {
+    if (search_prefix == NULL || search_prefix_len == 0) return NULL;
+    return getRecentRepeaterBySortedIdxFiltered(
+        idx_wanted, search_prefix, search_prefix_len);
   }
 
   const RecentRepeaterInfo* findRecentRepeaterByHash(const uint8_t* hash, uint8_t hash_len) const {

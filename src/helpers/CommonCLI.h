@@ -279,8 +279,12 @@ public:
   virtual void formatRadioStatsReply(char *reply) = 0;
   virtual void formatRadioDiagReply(char *reply) { strcpy(reply, "Not supported"); }
   virtual void formatPacketStatsReply(char *reply) = 0;
-  virtual void formatRecentRepeatersReply(char *reply, int page) {
+  virtual void formatRecentRepeatersReply(char *reply, int page,
+                                          const uint8_t* search_prefix = NULL,
+                                          uint8_t search_prefix_len = 0) {
     (void)page;
+    (void)search_prefix;
+    (void)search_prefix_len;
     if (reply != NULL) reply[0] = 0;
   }
   virtual bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {

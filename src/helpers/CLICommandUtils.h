@@ -23,6 +23,123 @@ enum class NoArgCommandMatch : uint8_t {
   HasArguments,
 };
 
+enum class RecentRepeaterGetMatch : uint8_t {
+  NoMatch = 0,
+  Valid,
+  Invalid,
+};
+
+struct RecentRepeaterGetQuery {
+  int page;
+  uint8_t search_prefix[3];
+  uint8_t search_prefix_len;
+};
+
+inline const char* skipRecentRepeaterSpaces(const char* text) {
+  while (text != nullptr && (*text == ' ' || *text == '\t')) text++;
+  return text;
+}
+
+inline int recentRepeaterHexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+inline bool parseRecentRepeaterPage(const char* text, int& page) {
+  text = skipRecentRepeaterSpaces(text);
+  if (text == nullptr || *text == 0) {
+    page = 1;
+    return true;
+  }
+
+  uint32_t parsed = 0;
+  bool saw_digit = false;
+  while (*text >= '0' && *text <= '9') {
+    saw_digit = true;
+    const uint8_t digit = static_cast<uint8_t>(*text++ - '0');
+    // The formatter clamps the requested page to the available page count.
+    // Saturating here avoids signed overflow from hostile remote CLI input.
+    if (parsed <= 65535UL) {
+      parsed = parsed * 10UL + digit;
+      if (parsed > 65535UL) parsed = 65535UL;
+    }
+  }
+  text = skipRecentRepeaterSpaces(text);
+  if (!saw_digit || *text != 0) return false;
+  page = parsed == 0 ? 1 : static_cast<int>(parsed);
+  return true;
+}
+
+inline void formatRecentRepeaterAge(char* output, size_t output_size,
+                                    uint32_t age_seconds) {
+  if (output == nullptr || output_size == 0) return;
+  if (age_seconds >= 3600UL) {
+    snprintf(output, output_size, "%luh",
+             static_cast<unsigned long>(age_seconds / 3600UL));
+  } else if (age_seconds >= 60UL) {
+    snprintf(output, output_size, "%lum",
+             static_cast<unsigned long>(age_seconds / 60UL));
+  } else {
+    snprintf(output, output_size, "%lus",
+             static_cast<unsigned long>(age_seconds));
+  }
+}
+
+// Parse the portion after `get `. Besides the existing list/page forms, this
+// accepts `recent.repeaters search <2|4|6 hex> [page [N]|N]`.
+inline RecentRepeaterGetMatch parseRecentRepeaterGet(
+    const char* config, RecentRepeaterGetQuery& query) {
+  query.page = 1;
+  memset(query.search_prefix, 0, sizeof(query.search_prefix));
+  query.search_prefix_len = 0;
+  if (config == nullptr || strncmp(config, "recent.repeater", 15) != 0) {
+    return RecentRepeaterGetMatch::NoMatch;
+  }
+
+  const char* cursor = config + 15;
+  if (*cursor == 's') cursor++;
+  if (*cursor != 0 && *cursor != ' ' && *cursor != '\t') {
+    return RecentRepeaterGetMatch::NoMatch;
+  }
+  cursor = skipRecentRepeaterSpaces(cursor);
+  if (*cursor == 0) return RecentRepeaterGetMatch::Valid;
+
+  if (strncmp(cursor, "search", 6) == 0
+      && (cursor[6] == 0 || cursor[6] == ' ' || cursor[6] == '\t')) {
+    cursor = skipRecentRepeaterSpaces(cursor + 6);
+    const char* hex = cursor;
+    while (*cursor != 0 && *cursor != ' ' && *cursor != '\t') cursor++;
+    const size_t hex_len = static_cast<size_t>(cursor - hex);
+    if (hex_len != 2 && hex_len != 4 && hex_len != 6) {
+      return RecentRepeaterGetMatch::Invalid;
+    }
+    for (size_t i = 0; i < hex_len; i += 2) {
+      const int hi = recentRepeaterHexNibble(hex[i]);
+      const int lo = recentRepeaterHexNibble(hex[i + 1]);
+      if (hi < 0 || lo < 0) return RecentRepeaterGetMatch::Invalid;
+      query.search_prefix[i / 2] = static_cast<uint8_t>((hi << 4) | lo);
+    }
+    query.search_prefix_len = static_cast<uint8_t>(hex_len / 2);
+
+    cursor = skipRecentRepeaterSpaces(cursor);
+    if (strncmp(cursor, "page", 4) == 0
+        && (cursor[4] == 0 || cursor[4] == ' ' || cursor[4] == '\t')) {
+      cursor = skipRecentRepeaterSpaces(cursor + 4);
+    }
+    return parseRecentRepeaterPage(cursor, query.page)
+        ? RecentRepeaterGetMatch::Valid : RecentRepeaterGetMatch::Invalid;
+  }
+
+  if (strncmp(cursor, "page", 4) == 0
+      && (cursor[4] == 0 || cursor[4] == ' ' || cursor[4] == '\t')) {
+    cursor = skipRecentRepeaterSpaces(cursor + 4);
+  }
+  return parseRecentRepeaterPage(cursor, query.page)
+      ? RecentRepeaterGetMatch::Valid : RecentRepeaterGetMatch::Invalid;
+}
+
 inline StandaloneWiFiKey classifyStandaloneWiFiGet(const char* config) {
   if (config == nullptr) return StandaloneWiFiKey::None;
   if (strcmp(config, "wifi.ssid") == 0) return StandaloneWiFiKey::SSID;

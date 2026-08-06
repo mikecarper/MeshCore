@@ -151,6 +151,96 @@ TEST(CLICommandUtils, MatchesDiscoverNeighborsWithoutPrefixCollisions) {
                 "discover.neighbors.extra", "discover.neighbors"));
 }
 
+TEST(CLICommandUtils, ParsesRecentRepeaterListAndPageQueries) {
+  using mesh::cli::RecentRepeaterGetMatch;
+  mesh::cli::RecentRepeaterGetQuery query;
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet("recent.repeater", query));
+  EXPECT_EQ(1, query.page);
+  EXPECT_EQ(0, query.search_prefix_len);
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters page 17", query));
+  EXPECT_EQ(17, query.page);
+  EXPECT_EQ(0, query.search_prefix_len);
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet("recent.repeaters 0", query));
+  EXPECT_EQ(1, query.page);
+}
+
+TEST(CLICommandUtils, ParsesRecentRepeaterHexSearchesAndOptionalPages) {
+  using mesh::cli::RecentRepeaterGetMatch;
+  mesh::cli::RecentRepeaterGetQuery query;
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search 86", query));
+  ASSERT_EQ(1, query.search_prefix_len);
+  EXPECT_EQ(0x86, query.search_prefix[0]);
+  EXPECT_EQ(1, query.page);
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search 860c 2", query));
+  ASSERT_EQ(2, query.search_prefix_len);
+  EXPECT_EQ(0x86, query.search_prefix[0]);
+  EXPECT_EQ(0x0c, query.search_prefix[1]);
+  EXPECT_EQ(2, query.page);
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Valid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeater search 860CCA page 3", query));
+  ASSERT_EQ(3, query.search_prefix_len);
+  EXPECT_EQ(0x86, query.search_prefix[0]);
+  EXPECT_EQ(0x0c, query.search_prefix[1]);
+  EXPECT_EQ(0xca, query.search_prefix[2]);
+  EXPECT_EQ(3, query.page);
+}
+
+TEST(CLICommandUtils, RejectsMalformedRecentRepeaterSearches) {
+  using mesh::cli::RecentRepeaterGetMatch;
+  mesh::cli::RecentRepeaterGetQuery query;
+
+  EXPECT_EQ(RecentRepeaterGetMatch::Invalid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search", query));
+  EXPECT_EQ(RecentRepeaterGetMatch::Invalid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search 860", query));
+  EXPECT_EQ(RecentRepeaterGetMatch::Invalid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search 8G", query));
+  EXPECT_EQ(RecentRepeaterGetMatch::Invalid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters search 860C extra", query));
+  EXPECT_EQ(RecentRepeaterGetMatch::Invalid,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters nope", query));
+  EXPECT_EQ(RecentRepeaterGetMatch::NoMatch,
+            mesh::cli::parseRecentRepeaterGet(
+                "recent.repeaters.extra", query));
+}
+
+TEST(CLICommandUtils, FormatsRecentRepeaterAgeWithCompactSuffix) {
+  char age[12];
+
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 0);
+  EXPECT_STREQ("0s", age);
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 59);
+  EXPECT_STREQ("59s", age);
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 60);
+  EXPECT_STREQ("1m", age);
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 3599);
+  EXPECT_STREQ("59m", age);
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 3600);
+  EXPECT_STREQ("1h", age);
+  mesh::cli::formatRecentRepeaterAge(age, sizeof(age), 26UL * 3600UL);
+  EXPECT_STREQ("26h", age);
+}
+
 TEST(CLICommandUtils, FormatsUsefulUnknownSettingErrors) {
   char reply[64] = "";
 
