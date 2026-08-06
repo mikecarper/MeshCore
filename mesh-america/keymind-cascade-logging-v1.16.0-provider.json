@@ -220,7 +220,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -556,7 +556,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -892,7 +892,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -1853,7 +1853,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -2018,7 +2018,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -2473,7 +2473,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -2544,7 +2544,7 @@
           "title": "Companion WiFi MQTT",
           "subTitle": "MQTT, OTA",
           "version": {
-            "wifi-companion-device-mqtt-on-usb-packet-logging-off-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "wifi-companion-mqtt-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Wi-Fi companion + on-device MQTT + LoRa OTA: provides the LAN companion interface, publishes directly from the device to an MQTT broker, keeps USB debug/packet logging OFF, and supports LoRa OTA folder/self-update. A trusted Wi-Fi LAN and MQTT broker settings are required.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nLORA OTA — This page installs the base firmware, not a .mota package. Obtain and apply exact board-and-role .mota updates separately through the MeshCore LoRa OTA workflow; .mota files cannot be web flashed here.\n\nSELECTION — MQTT, OTA.",
               "files": [
                 {
@@ -2733,7 +2733,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -2804,7 +2804,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -2828,7 +2828,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -2893,7 +2893,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -3058,7 +3058,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -3797,7 +3797,7 @@
           "title": "Sensor",
           "subTitle": "With display, Sensor telemetry node",
           "version": {
-            "with-display-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "with-display-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — With display, Sensor telemetry node.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -3862,7 +3862,7 @@
           "title": "Sensor",
           "subTitle": "Without display, Sensor telemetry node",
           "version": {
-            "without-display-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "without-display-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Without display, Sensor telemetry node.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -3927,7 +3927,7 @@
           "title": "Terminal Chat",
           "subTitle": "With display, Serial terminal chat",
           "version": {
-            "with-display-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "with-display-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — With display, Serial terminal chat.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -4266,7 +4266,7 @@
           "title": "Companion WiFi MQTT",
           "subTitle": "v4.2/v4.3, FEM on, OTA",
           "version": {
-            "v4.2-v4.3-fem-on-wifi-companion-device-mqtt-on-usb-packet-logging-off-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "v4.2-v4.3-fem-on-wifi-companion-mqtt-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Wi-Fi companion + on-device MQTT + LoRa OTA: provides the LAN companion interface, publishes directly from the device to an MQTT broker, keeps USB debug/packet logging OFF, and supports LoRa OTA folder/self-update. A trusted Wi-Fi LAN and MQTT broker settings are required.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nLORA OTA — This page installs the base firmware, not a .mota package. Obtain and apply exact board-and-role .mota updates separately through the MeshCore LoRa OTA workflow; .mota files cannot be web flashed here.\n\nSELECTION — v4.2/v4.3, FEM on, OTA.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
               "files": [
                 {
@@ -4290,7 +4290,7 @@
           "title": "Companion WiFi MQTT",
           "subTitle": "v4.3, FEM off, OTA",
           "version": {
-            "v4.3-fem-off-wifi-companion-device-mqtt-on-usb-packet-logging-off-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "v4.3-fem-off-wifi-companion-mqtt-lora-ota-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Companion WiFi: bridges a MeshCore companion app to LoRa over a trusted local Wi-Fi network on TCP port 5000. First-time setup uses the MeshCore setup access point; this custom role may not show the standard Configure step.\n\nPROFILE — Wi-Fi companion + on-device MQTT + LoRa OTA: provides the LAN companion interface, publishes directly from the device to an MQTT broker, keeps USB debug/packet logging OFF, and supports LoRa OTA folder/self-update. A trusted Wi-Fi LAN and MQTT broker settings are required.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nLORA OTA — This page installs the base firmware, not a .mota package. Obtain and apply exact board-and-role .mota updates separately through the MeshCore LoRa OTA workflow; .mota files cannot be web flashed here.\n\nSELECTION — v4.3, FEM off, OTA.\n\nHARDWARE — FEM on/off must match the exact board revision and RF front-end; those images are not interchangeable.",
               "files": [
                 {
@@ -4552,7 +4552,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -4671,7 +4671,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -4743,7 +4743,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -4808,7 +4808,7 @@
           "title": "Sensor",
           "subTitle": "TFT, Sensor telemetry node",
           "version": {
-            "tft-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "tft-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, Sensor telemetry node.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -4873,7 +4873,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -4914,7 +4914,7 @@
           "title": "Terminal Chat",
           "subTitle": "TFT, Serial terminal chat",
           "version": {
-            "tft-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "tft-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, Serial terminal chat.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5010,7 +5010,7 @@
           "title": "Repeater",
           "subTitle": "Expansion Kit, Observer MQTT",
           "version": {
-            "expansion-kit-device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "expansion-kit-mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Expansion Kit, Observer MQTT.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5034,7 +5034,7 @@
           "title": "Room Server",
           "subTitle": "Expansion Kit, Observer MQTT",
           "version": {
-            "expansion-kit-device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "expansion-kit-mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Expansion Kit, Observer MQTT.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5353,7 +5353,7 @@
           "title": "Sensor",
           "subTitle": "OLED, Sensor telemetry node",
           "version": {
-            "oled-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "oled-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — OLED, Sensor telemetry node.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5418,7 +5418,7 @@
           "title": "Sensor",
           "subTitle": "TFT, Sensor telemetry node",
           "version": {
-            "tft-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "tft-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, Sensor telemetry node.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5483,7 +5483,7 @@
           "title": "Terminal Chat",
           "subTitle": "OLED, Serial terminal chat",
           "version": {
-            "oled-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "oled-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — OLED, Serial terminal chat.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -5524,7 +5524,7 @@
           "title": "Terminal Chat",
           "subTitle": "TFT, Serial terminal chat",
           "version": {
-            "tft-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "tft-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — TFT, Serial terminal chat.\n\nHARDWARE — Match the display/accessory variant to the hardware actually installed.",
               "files": [
                 {
@@ -6031,7 +6031,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6102,7 +6102,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6321,7 +6321,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6392,7 +6392,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6416,7 +6416,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -6659,7 +6659,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6683,7 +6683,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6904,7 +6904,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6975,7 +6975,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -6999,7 +6999,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -7064,7 +7064,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -7927,7 +7927,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -7998,7 +7998,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8022,7 +8022,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -8164,7 +8164,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8235,7 +8235,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8360,7 +8360,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8431,7 +8431,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8606,7 +8606,7 @@
           "title": "Repeater",
           "subTitle": "1W PA pins: DIO1 1, NSS 15, BUSY 38, Observer MQTT",
           "version": {
-            "1w-pa-pins-dio1-1-nss-15-busy-38-device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "1w-pa-pins-dio1-1-nss-15-busy-38-mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — 1W PA pins: DIO1 1, NSS 15, BUSY 38, Observer MQTT.\n\nHARDWARE — Match the listed radio module, output stage, and pin map to the exact board; a similarly named radio variant is not a safe substitute.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
               "files": [
                 {
@@ -8678,7 +8678,7 @@
           "title": "Room Server",
           "subTitle": "1W PA pins: DIO1 1, NSS 15, BUSY 38, Observer MQTT",
           "version": {
-            "1w-pa-pins-dio1-1-nss-15-busy-38-device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "1w-pa-pins-dio1-1-nss-15-busy-38-mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — 1W PA pins: DIO1 1, NSS 15, BUSY 38, Observer MQTT.\n\nHARDWARE — Match the listed radio module, output stage, and pin map to the exact board; a similarly named radio variant is not a safe substitute.\n\nBoard selection note: Use this only for the LilyGo T-Beam 1W high-power PA board. It is not the standard T-Beam SX1262 target: this build uses LoRa DIO1=1, NSS=15, RESET=3, BUSY=38, SCLK/MISO/MOSI=13/12/11, RXEN=21, and GPS TX/RX=5/6. The standard T-Beam SX1262 target uses DIO1=33, NSS=18, RESET=23, SCLK/MISO/MOSI=5/19/27, and GPS RX/TX=12/34.",
               "files": [
                 {
@@ -8827,7 +8827,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -8898,7 +8898,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -9607,7 +9607,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -9678,7 +9678,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -9702,7 +9702,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -9914,7 +9914,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -10462,7 +10462,7 @@
           "title": "Terminal Chat - SX1262",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -10503,7 +10503,7 @@
           "title": "Terminal Chat - SX1268",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -10704,7 +10704,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -10821,7 +10821,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -10862,7 +10862,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -11098,7 +11098,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -11334,7 +11334,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -11475,7 +11475,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -11516,7 +11516,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -11656,7 +11656,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -11750,7 +11750,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -11987,7 +11987,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -12028,7 +12028,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -12264,7 +12264,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -12335,7 +12335,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -12359,7 +12359,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -12424,7 +12424,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -12541,7 +12541,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -12582,7 +12582,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -12702,7 +12702,7 @@
           "title": "Sensor",
           "subTitle": "WisMesh Tag, Sensor telemetry node",
           "version": {
-            "wismesh-tag-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "wismesh-tag-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Browser flashing uses the Serial DFU .zip. The .uf2 is provided for manual drag-and-drop through a compatible UF2 bootloader volume. A normal firmware flash does not erase saved settings.\n\nSELECTION — WisMesh Tag, Sensor telemetry node.",
               "files": [
                 {
@@ -12819,7 +12819,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -12959,7 +12959,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -13421,7 +13421,7 @@
           "title": "Sensor - Wio-E5 mini",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -13816,7 +13816,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -14032,7 +14032,7 @@
           "title": "Sensor",
           "subTitle": "SX1262 pins: DIO1 2, NSS 5, BUSY 4, Sensor telemetry node",
           "version": {
-            "sx1262-pins-dio1-2-nss-5-busy-4-standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "sx1262-pins-dio1-2-nss-5-busy-4-standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — SX1262 pins: DIO1 2, NSS 5, BUSY 4, Sensor telemetry node.\n\nHARDWARE — Match the listed radio module, output stage, and pin map to the exact board; a similarly named radio variant is not a safe substitute.\n\nBoard selection note: Use this for a Seeed XIAO ESP32S3 with an external SX1262 wired to DIO1=2, NSS=5, RESET=3, BUSY=4, SCLK/MISO/MOSI=7/8/9, and RXEN=6. Do not use it for the XIAO S3 WIO board, which uses DIO1=39, NSS=41, RESET=42, BUSY=40, and RXEN=38.",
               "files": [
                 {
@@ -14269,7 +14269,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -14340,7 +14340,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -14364,7 +14364,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -14429,7 +14429,7 @@
           "title": "Terminal Chat",
           "subTitle": "Serial terminal chat",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Terminal Chat: standalone text chat operated from a serial terminal. It does not expose the standard companion-app interface, and this custom role may not show the standard Configure step.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Serial terminal chat.",
               "files": [
                 {
@@ -14917,7 +14917,7 @@
           "title": "Sensor",
           "subTitle": "Sensor telemetry node",
           "version": {
-            "standard-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "standard-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Sensor: publishes telemetry from sensors compiled for and detected on this board. It is not a general companion or repeater, and unsupported external sensors will not become available by flashing it.\n\nPROFILE — Standard/utility: normal features for the selected role and hardware, with USB debug/packet logging and LoRa self-update OFF.\n\nINSTALL — Mesh America provides downloads only for this target. Use the board’s native bootloader or programmer with the matching .uf2, .hex, or .bin; web flashing is unavailable.\n\nSELECTION — Sensor telemetry node.",
               "files": [
                 {
@@ -15278,7 +15278,7 @@
           "title": "Repeater",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-59dec09d": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Repeater: always-on infrastructure that relays mesh traffic. Configure its name/location, radio settings, and admin password. A repeater does not need an OTA-capable build merely to relay OTA traffic for other nodes.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
@@ -15349,7 +15349,7 @@
           "title": "Room Server",
           "subTitle": "Observer MQTT",
           "version": {
-            "device-mqtt-observer-on-usb-packet-logging-off-v1.16.09-halo-keymind-cascade-dev-eed65812": {
+            "mqtt-observer-v1.16.09-halo-keymind-cascade-dev-eed65812": {
               "notes": "Keymind Cascade MeshCore v1.16.09 with Halo/Keymind retry tuning and Cascade defaults.\n\nROLE — Room Server: hosts a MeshCore room and its message service. Configure the room identity/password and administrator credentials; choose Repeater when only packet forwarding is needed.\n\nPROFILE — Portable on-device MQTT observer: publishes observed mesh traffic directly from the device to a configured MQTT broker over Wi-Fi, keeps USB debug/packet logging OFF, uses a reduced admin CLI to fit the standard ESP32 app slot, and cannot install LoRa OTA.\n\nINSTALL — First-time setup uses Full install (the merged bootloader + firmware image). Routine upgrades use Update (the app-only image) and normally preserve settings. Enable Erase all flash only when you intentionally want a clean reset.\n\nSELECTION — Observer MQTT.",
               "files": [
                 {
