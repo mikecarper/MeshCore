@@ -139,7 +139,7 @@
     const channel = clean(value);
     if (!channel) {
       if (optional) return "";
-      throw new FilterToolError("Authenticated channel is required.");
+      throw new FilterToolError("Channel is required.");
     }
     if (channel.toLowerCase() === "public") return "public";
     if (channel[0] === "#") {
@@ -279,7 +279,7 @@
       }
     }
     if (rule.channel && !["any", "class:group", "grp_txt", "grp_data"].includes(rule.type)) {
-      throw new FilterToolError("Authenticated channel matching requires a group-capable payload type or class.");
+      throw new FilterToolError("Channel matching requires a group-capable payload type or class.");
     }
     if (rule.targetKind === "scope") rule.target = normalizeScopeName(input.target);
     if (rule.targetKind === "region") rule.target = normalizeRegionName(input.target);
@@ -523,9 +523,9 @@
   }
 
   function channelDescription(channel) {
-    if (channel === "public") return "authenticated Public channel";
-    if (channel.startsWith("#")) return `authenticated ${channel}`;
-    return `authenticated key ${channel.slice(0, 8)}...`;
+    if (channel === "public") return "the Public channel";
+    if (channel.startsWith("#")) return `the ${channel} channel`;
+    return `channel key ${channel.slice(0, 8)}...`;
   }
 
   function actionPhrases(rule) {
@@ -595,7 +595,7 @@
         : "Remote-management reach warning: this rule intentionally limits relayed login/admin floods at its hop or path condition. Direct routes and local delivery stay outside this policy.");
     }
     if (rule.type === "class:other") warnings.push("class:other intentionally includes current and future types outside group and login classes, including OTA.");
-    if (rule.channel && rule.type === "any") warnings.push("A channel condition narrows type=any to authenticated group text/data packets.");
+    if (rule.channel && rule.type === "any") warnings.push("A channel condition narrows type=any to group text/data packets on that channel.");
     if (rule.sender) warnings.push("Displayed sender names are spoofable and are moderation signals, not identities.");
     if (rule.pathKind !== "none") warnings.push("Pbyte and path-table matches use truncated routing hints, not authenticated identities.");
     if (rule.pathKind.startsWith("bucket:")) warnings.push("The selected bucket must exist on the target node; the policy stores a reference, not its IDs.");
@@ -892,7 +892,7 @@
       notes.push("Transport codes are on the wire, but a local region/scope table is required to resolve their names and allow status.");
     }
     if (GROUP_TYPES.includes(type)) {
-      notes.push("The raw channel hash does not authenticate a channel; the matching channel key is required.");
+      notes.push("A raw channel hash alone is insufficient to identify a channel; the matching channel key is required.");
     }
     if (["req", "response", "txt_msg", "path", "grp_txt", "grp_data", "anon_req"].includes(type)) {
       notes.push("Encrypted content, including a displayed sender, cannot be recovered without the appropriate key.");
@@ -934,7 +934,7 @@
     const channel = clean(input.channel) ? normalizeChannel(input.channel, false) : "";
     const sender = clean(input.sender);
     if (channel && !GROUP_TYPES.includes(type)) {
-      throw new FilterToolError("Only group text/data packet facts can include an authenticated channel.");
+      throw new FilterToolError("Only group text/data packet facts can include a channel.");
     }
     if (sender && type !== "grp_txt") {
       throw new FilterToolError("Only a decrypted group-text packet can include a displayed sender.");
@@ -990,7 +990,7 @@
     if (!typeMatches(rule.type, packet.type)) misses.push(`payload type ${packet.type} is outside ${rule.type}`);
     const [minimum, maximum] = hopBounds(rule.hops);
     if (packet.hops < minimum || packet.hops > maximum) misses.push(`hop ${packet.hops} is outside ${rule.hops}`);
-    if (rule.channel && rule.channel !== packet.channel) misses.push("authenticated channel differs or is unavailable");
+    if (rule.channel && rule.channel !== packet.channel) misses.push("channel differs or is unavailable");
     if (!incomingMatches(rule.incoming, packet)) misses.push(`original scope does not satisfy ${rule.incoming}`);
     if (rule.pathKind === "prefix") {
       const wanted = rule.pathPrefix.split(",");
@@ -1125,9 +1125,9 @@
     ]),
     blackhole: Object.freeze([
       {
-        ...defaultRule("blackhole-after-hop-3"),
+        ...defaultRule("blackhole-unscoped-rgdata"),
         type: "grp_data",
-        hops: "4+",
+        hops: "all",
         channel: "#rgdata",
         incoming: "none",
         priority: 100,
@@ -1150,14 +1150,6 @@
         verdict: "continue",
         rate: 10,
         burst: 10,
-      },
-    ]),
-    channel_stop: Object.freeze([
-      {
-        ...documentedDropRule("rgdata-short-hop-stop", "grp_data", "0-2", 200),
-        channel: "#rgdata",
-        verdict: "continue",
-        stop: "policy",
       },
     ]),
     high_traffic: Object.freeze([
