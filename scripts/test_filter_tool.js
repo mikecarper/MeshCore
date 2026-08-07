@@ -34,6 +34,56 @@ function packet(overrides) {
   };
 }
 
+const RAW_PACKET_SAMPLE = "014e912ceebb98918b86772df5dacf1bcba9e4127ffffaa8665596aa3e2903a3b1901fdc53497dfca6b5d7df2d771bea68de";
+
+test("decodes the supplied raw MeshCore packet into simulator facts", () => {
+  const decoded = tool.decodeRawPacketHex(RAW_PACKET_SAMPLE);
+  assert.strictEqual(decoded.rawLength, 50);
+  assert.strictEqual(decoded.headerHex, "01");
+  assert.strictEqual(decoded.routeName, "flood");
+  assert.strictEqual(decoded.simulatorRoute, "unscoped_flood");
+  assert.strictEqual(decoded.filterEligible, true);
+  assert.strictEqual(decoded.type, "req");
+  assert.strictEqual(decoded.payloadVersion, 1);
+  assert.strictEqual(decoded.pathLengthHex, "4E");
+  assert.strictEqual(decoded.pathHashBytes, 2);
+  assert.strictEqual(decoded.hops, 14);
+  assert.deepStrictEqual(decoded.pathIds, [
+    "912C", "EEBB", "9891", "8B86", "772D", "F5DA", "CF1B",
+    "CBA9", "E412", "7FFF", "FAA8", "6655", "96AA", "3E29",
+  ]);
+  assert.strictEqual(decoded.payloadLength, 20);
+  assert.deepStrictEqual(decoded.payloadFields, [
+    { label: "Destination hash", value: "03" },
+    { label: "Source hash", value: "A3" },
+    { label: "Cipher MAC", value: "B190" },
+    { label: "Encrypted body", value: "1FDC53497DFCA6B5D7DF2D771BEA68DE" },
+  ]);
+});
+
+test("decodes transport codes and keeps direct packets out of flood simulation", () => {
+  const scoped = tool.decodeRawPacketHex("00 34 12 00 00 02 AA BB");
+  assert.strictEqual(scoped.routeName, "transport_flood");
+  assert.strictEqual(scoped.simulatorRoute, "scoped_flood");
+  assert.deepStrictEqual(scoped.transportCodes, [0x1234, 0]);
+  assert.deepStrictEqual(scoped.pathIds, ["AA", "BB"]);
+
+  const direct = tool.decodeRawPacketHex("0200");
+  assert.strictEqual(direct.routeName, "direct");
+  assert.strictEqual(direct.filterEligible, false);
+  assert.strictEqual(direct.simulatorRoute, "");
+  assert.ok(direct.notes.some((note) => /outside the flood-policy simulator/.test(note)));
+});
+
+test("rejects raw packets current firmware would reject", () => {
+  assertToolError(() => tool.decodeRawPacketHex("01"), /at least a header and path-length byte/);
+  assertToolError(() => tool.decodeRawPacketHex("01Z0"), /only hexadecimal bytes/);
+  assertToolError(() => tool.decodeRawPacketHex("014"), /complete two-character bytes/);
+  assertToolError(() => tool.decodeRawPacketHex("01C0"), /mode 3 is reserved/);
+  assertToolError(() => tool.decodeRawPacketHex("0142AA"), /encoded path is complete/);
+  assertToolError(() => tool.decodeRawPacketHex("41 00"), /Payload version 2 is not supported/);
+});
+
 test("builds and parses the BlackHole86 policy definition", () => {
   const definition = "policy set blackhole-rewrite phase=rewrite owner=scope priority=160 when route=flood type=grp_data hops=4+ channel=#rgdata rx.scope=none path=prefix:860C do scope=#BlackHole86 timing=fast stop=phase";
   const rule = tool.parseDefinition(definition);

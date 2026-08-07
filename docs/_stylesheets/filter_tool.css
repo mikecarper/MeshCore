@@ -483,6 +483,104 @@
   margin-top: 0.85rem;
 }
 
+.filter-packet-reader {
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid var(--filter-border-strong);
+  border-radius: 0.48rem;
+  background:
+    linear-gradient(135deg, var(--filter-accent), transparent 68%),
+    var(--filter-softer);
+}
+
+.filter-packet-reader-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.filter-packet-reader-heading h3 {
+  margin: 0;
+}
+
+.filter-packet-reader-heading .filter-field-help {
+  margin-bottom: 0.7rem;
+}
+
+.filter-packet-reader-heading > span {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.42rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--md-default-fg-color) 65%, transparent);
+  background: var(--md-default-bg-color);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.filter-packet-reader textarea {
+  min-height: 5.2rem;
+}
+
+.filter-packet-decode {
+  margin-top: 0.85rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--filter-border);
+}
+
+.filter-packet-decode > h3 {
+  margin-top: 0;
+}
+
+.filter-packet-load-status {
+  margin: 0.7rem 0;
+  padding: 0.58rem 0.65rem;
+  border-left: 0.22rem solid #2e7d32;
+  border-radius: 0.28rem;
+  background: var(--filter-soft);
+  font-size: 0.72rem;
+  line-height: 1.42;
+}
+
+.filter-packet-load-status[data-loaded="false"] {
+  border-left-color: var(--filter-warning);
+}
+
+.filter-packet-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.7rem 0 0;
+}
+
+.filter-packet-fields > div {
+  min-width: 0;
+  padding: 0.58rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.35rem;
+  background: var(--md-code-bg-color);
+}
+
+.filter-packet-fields dt {
+  color: color-mix(in srgb, var(--md-default-fg-color) 58%, transparent);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.filter-packet-fields dd {
+  margin: 0.22rem 0 0;
+  font: 0.7rem/1.45 var(--md-code-font-family);
+  overflow-wrap: anywhere;
+}
+
+.filter-packet-notes {
+  margin-top: 0.7rem;
+}
+
 .filter-tool .filter-simulator-check {
   display: flex;
   gap: 0.55rem;
@@ -646,9 +744,18 @@
   }
 
   .filter-panel-heading,
+  .filter-packet-reader-heading,
   .filter-rule-card-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .filter-packet-reader-heading > span {
+    align-self: flex-start;
+  }
+
+  .filter-packet-fields {
+    grid-template-columns: 1fr;
   }
 
   .filter-rule-meta {

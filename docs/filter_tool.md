@@ -378,6 +378,29 @@ The presets below reproduce common examples from
       </div>
       <button type="button" data-role="reset-packet">Reset packet</button>
     </div>
+    <div class="filter-packet-reader">
+      <div class="filter-packet-reader-heading">
+        <div>
+          <h3>Read a raw MeshCore packet</h3>
+          <p class="filter-field-help">
+            Paste an on-air packet as hexadecimal. The decoder follows the
+            <a href="../packet_format/">MeshCore wire format</a>, displays its
+            header, route, pbyte path, and clear payload envelope, then loads
+            only facts actually present on the wire into the simulator.
+          </p>
+        </div>
+        <span>Runs locally</span>
+      </div>
+      <label>
+        Raw packet hex
+        <textarea data-role="raw-packet-input" rows="3" spellcheck="false">014e912ceebb98918b86772df5dacf1bcba9e4127ffffaa8665596aa3e2903a3b1901fdc53497dfca6b5d7df2d771bea68de</textarea>
+      </label>
+      <div class="filter-builder-actions">
+        <button class="filter-primary-action" type="button" data-role="decode-packet">Decode and load packet</button>
+      </div>
+      <div class="filter-error" data-role="packet-decode-error" role="alert" hidden></div>
+      <div class="filter-packet-decode" data-role="packet-decode-result" aria-live="polite" hidden></div>
+    </div>
     <div class="filter-form-grid filter-simulator-facts">
       <label>
         Received route
