@@ -1802,6 +1802,42 @@
       URL.revokeObjectURL(url);
     });
 
+    const policyPanel = root.querySelector(".filter-policy");
+    const policyGrid = policyPanel ? policyPanel.parentElement : null;
+    const policyMarker = document.createComment("policy-draft-home");
+    const widePolicyLayout = global.matchMedia("(min-width: 90rem)");
+    let policyRail = null;
+    let policySidebar = null;
+
+    if (policyPanel && policyGrid) policyGrid.insertBefore(policyMarker, policyPanel);
+
+    function placePolicyDraft() {
+      if (!policyPanel || !policyGrid) return;
+      const sidebar = document.querySelector(".md-sidebar--secondary");
+      const sidebarInner = sidebar ? sidebar.querySelector(".md-sidebar__inner") : null;
+      if (widePolicyLayout.matches && sidebarInner) {
+        if (!policyRail) {
+          policyRail = document.createElement("div");
+          policyRail.className = "filter-tool filter-policy-rail";
+          policyRail.setAttribute("aria-label", "Policy draft");
+        }
+        policySidebar = sidebar;
+        policySidebar.classList.add("filter-policy-sidebar");
+        sidebarInner.appendChild(policyRail);
+        policyRail.appendChild(policyPanel);
+        root.classList.add("filter-policy-detached");
+        return;
+      }
+      policyMarker.parentNode.insertBefore(policyPanel, policyMarker.nextSibling);
+      root.classList.remove("filter-policy-detached");
+      if (policySidebar) policySidebar.classList.remove("filter-policy-sidebar");
+      if (policyRail) policyRail.remove();
+      policySidebar = null;
+    }
+
+    widePolicyLayout.addEventListener("change", placePolicyDraft);
+    placePolicyDraft();
+
     const requestedExample = new URLSearchParams(global.location.search).get("example");
     if (requestedExample && COMPLETE_EXAMPLES[requestedExample]) assignRules(clone(COMPLETE_EXAMPLES[requestedExample]));
     resetForm();

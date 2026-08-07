@@ -50,11 +50,11 @@ in the simulator below. The examples draw from
             <tr><th><code>type=</code> value</th><th>Matches</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>grp_data</code></td><td>Only the named payload type</td></tr>
+            <tr><td><a href="#payload-type-reference"><code>grp_data</code></a></td><td>Only the named payload type; see every exact type below</td></tr>
             <tr><td><code>any</code></td><td>Every payload type</td></tr>
             <tr><td><code>class:group</code></td><td>GRP_TXT and GRP_DATA</td></tr>
             <tr><td><code>class:login</code></td><td>REQ, RESPONSE, TXT_MSG, ANON_REQ, and PATH</td></tr>
-            <tr><td><code>class:other</code></td><td>Every remaining payload type</td></tr>
+            <tr><td><code>class:other</code></td><td>Every remaining payload type that is not group or login</td></tr>
           </tbody>
         </table>
         <table class="filter-primer-table">
@@ -578,6 +578,30 @@ in the simulator below. The examples draw from
     </div>
   </section>
 </div>
+
+## Payload type reference
+
+Use an exact `type=` value when a rule should match only one payload type.
+The class column shows which broader selector also matches it.
+
+| `type=` value | Payload | Class |
+| --- | --- | --- |
+| `req` | Request | `class:login` |
+| `response` | Response | `class:login` |
+| `txt_msg` | Peer text message | `class:login` |
+| `ack` | Acknowledgment | `class:other` |
+| `advert` | Node advertisement | `class:other` |
+| `grp_txt` | Group-channel text | `class:group` |
+| `grp_data` | Group-channel datagram | `class:group` |
+| `anon_req` | Anonymous request | `class:login` |
+| `path` | Returned path | `class:login` |
+| `trace` | Path trace | `class:other` |
+| `multipart` | One frame in a multipart sequence | `class:other` |
+| `control` | Control or discovery data | `class:other` |
+| `ota` | OTA-over-LoRa data | `class:other` |
+| `13` | Reserved payload type 13 | `class:other` |
+| `14` | Reserved payload type 14 | `class:other` |
+| `raw_custom` | Application-defined raw data | `class:other` |
 
 ## Proposed evaluation contract
 
