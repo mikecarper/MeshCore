@@ -18,6 +18,8 @@ theme:
 extra_css:
   - _stylesheets/extra.css
   - _stylesheets/telemetry_decoder.css
+  - _stylesheets/filter_tool.css
 
 extra_javascript:
   - _javascript/telemetry_decoder.js
+  - _javascript/filter_tool.js
