@@ -27,6 +27,12 @@
     "req", "response", "txt_msg", "ack", "advert", "grp_txt", "grp_data", "anon_req",
     "path", "trace", "multipart", "control", "ota", "13", "14", "raw_custom",
   ]);
+  const RAW_ROUTE_INFO = Object.freeze([
+    Object.freeze({ name: "transport_flood", label: "Transport-scoped flood", simulatorRoute: "scoped_flood", flood: true }),
+    Object.freeze({ name: "flood", label: "Unscoped flood", simulatorRoute: "unscoped_flood", flood: true }),
+    Object.freeze({ name: "direct", label: "Direct route", simulatorRoute: "", flood: false }),
+    Object.freeze({ name: "transport_direct", label: "Transport-scoped direct route", simulatorRoute: "", flood: false }),
+  ]);
   const TYPE_CLASSES = Object.freeze(["class:group", "class:login", "class:other"]);
   const LOGIN_TYPES = Object.freeze(["req", "response", "txt_msg", "anon_req", "path"]);
   const GROUP_TYPES = Object.freeze(["grp_txt", "grp_data"]);
@@ -746,6 +752,182 @@
     return normalizePathPrefix(value, 63);
   }
 
+  function bytesToHex(bytes, start, end) {
+    return bytes.slice(start == null ? 0 : start, end == null ? bytes.length : end)
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("")
+      .toUpperCase();
+  }
+
+  function readLittleEndian16(bytes, offset) {
+    return bytes[offset] | (bytes[offset + 1] << 8);
+  }
+
+  function readLittleEndian32(bytes, offset) {
+    return (bytes[offset]
+      | (bytes[offset + 1] << 8)
+      | (bytes[offset + 2] << 16)
+      | (bytes[offset + 3] << 24)) >>> 0;
+  }
+
+  function decodePayloadEnvelope(type, payload) {
+    const fields = [];
+    const warnings = [];
+    const addHex = (label, start, length) => {
+      fields.push({ label, value: bytesToHex(payload, start, start + length) || "empty" });
+    };
+
+    if (["req", "response", "txt_msg", "path"].includes(type)) {
+      if (payload.length < 4) {
+        warnings.push(`${type.toUpperCase()} normally needs a 4-byte destination/source/MAC prefix.`);
+      } else {
+        addHex("Destination hash", 0, 1);
+        addHex("Source hash", 1, 1);
+        addHex("Cipher MAC", 2, 2);
+        addHex("Encrypted body", 4, payload.length - 4);
+      }
+    } else if (["grp_txt", "grp_data"].includes(type)) {
+      if (payload.length < 3) {
+        warnings.push(`${type.toUpperCase()} normally needs a 3-byte channel-hash/MAC prefix.`);
+      } else {
+        addHex("Channel hash", 0, 1);
+        addHex("Cipher MAC", 1, 2);
+        addHex("Encrypted body", 3, payload.length - 3);
+      }
+    } else if (type === "anon_req") {
+      if (payload.length < 35) {
+        warnings.push("ANON_REQ normally needs a 35-byte destination/public-key/MAC prefix.");
+      } else {
+        addHex("Destination hash", 0, 1);
+        addHex("Ephemeral public key", 1, 32);
+        addHex("Cipher MAC", 33, 2);
+        addHex("Encrypted body", 35, payload.length - 35);
+      }
+    } else if (type === "ack") {
+      if (payload.length < 4) warnings.push("ACK normally contains a 4-byte checksum.");
+      else addHex("Message checksum", 0, 4);
+    } else if (type === "advert") {
+      if (payload.length < 100) {
+        warnings.push("ADVERT normally needs at least 100 bytes for its public key, timestamp, and signature.");
+      } else {
+        addHex("Public key", 0, 32);
+        const timestamp = readLittleEndian32(payload, 32);
+        fields.push({ label: "Timestamp", value: `${timestamp} (0x${timestamp.toString(16).padStart(8, "0").toUpperCase()})` });
+        addHex("Signature", 36, 64);
+        addHex("Application data", 100, payload.length - 100);
+      }
+    } else if (type === "control" && payload.length) {
+      fields.push({ label: "Control subtype", value: `0x${(payload[0] >> 4).toString(16).toUpperCase()}` });
+      addHex("Control flags", 0, 1);
+      addHex("Control data", 1, payload.length - 1);
+    }
+
+    return { fields, warnings };
+  }
+
+  function decodeRawPacketHex(value) {
+    const original = clean(value);
+    if (!original) throw new FilterToolError("Raw packet hex is required.");
+    const withoutPrefixes = original.replace(/(^|[\s,:_-])0x(?=[0-9a-f])/gi, "$1");
+    const compact = withoutPrefixes.replace(/[\s,:_-]/g, "");
+    if (/[^0-9a-f]/i.test(compact)) {
+      throw new FilterToolError("Raw packet may contain only hexadecimal bytes and spaces, commas, colons, underscores, or dashes.");
+    }
+    if (compact.length % 2) throw new FilterToolError("Raw packet hex must contain complete two-character bytes.");
+    if (compact.length < 4) throw new FilterToolError("Raw packet must contain at least a header and path-length byte.");
+    if (compact.length > 510) throw new FilterToolError("Raw packet exceeds MeshCore's 255-byte transmission limit.");
+
+    const bytes = [];
+    for (let offset = 0; offset < compact.length; offset += 2) {
+      bytes.push(Number.parseInt(compact.slice(offset, offset + 2), 16));
+    }
+
+    let cursor = 0;
+    const header = bytes[cursor++];
+    const routeCode = header & 0x03;
+    const typeCode = (header >> 2) & 0x0F;
+    const payloadVersionCode = (header >> 6) & 0x03;
+    const route = RAW_ROUTE_INFO[routeCode];
+    if (payloadVersionCode !== 0) {
+      throw new FilterToolError(`Payload version ${payloadVersionCode + 1} is not supported by current MeshCore firmware.`);
+    }
+
+    const transportCodes = [];
+    if (routeCode === 0 || routeCode === 3) {
+      if (cursor + 5 > bytes.length) {
+        throw new FilterToolError("Transport-scoped packet is missing transport codes or its path-length byte.");
+      }
+      transportCodes.push(readLittleEndian16(bytes, cursor), readLittleEndian16(bytes, cursor + 2));
+      cursor += 4;
+    }
+
+    if (cursor >= bytes.length) throw new FilterToolError("Raw packet is missing its path-length byte.");
+    const pathLengthByte = bytes[cursor++];
+    const pathMode = pathLengthByte >> 6;
+    if (pathMode === 3) throw new FilterToolError("Path hash-size mode 3 is reserved and rejected by current firmware.");
+    const hops = pathLengthByte & 0x3F;
+    const pathHashBytes = pathMode + 1;
+    const pathByteLength = hops * pathHashBytes;
+    if (pathByteLength > 64) throw new FilterToolError("Encoded path exceeds MeshCore's 64-byte path limit.");
+    if (cursor + pathByteLength > bytes.length) {
+      throw new FilterToolError(`Packet ends before its ${pathByteLength}-byte encoded path is complete.`);
+    }
+
+    const pathBytes = bytes.slice(cursor, cursor + pathByteLength);
+    cursor += pathByteLength;
+    const payload = bytes.slice(cursor);
+    if (payload.length > 184) throw new FilterToolError("Decoded payload exceeds MeshCore's 184-byte payload limit.");
+    const pathIds = [];
+    for (let offset = 0; offset < pathBytes.length; offset += pathHashBytes) {
+      pathIds.push(bytesToHex(pathBytes, offset, offset + pathHashBytes));
+    }
+
+    const type = TYPE_NAMES[typeCode];
+    const envelope = decodePayloadEnvelope(type, payload);
+    const notes = envelope.warnings.slice();
+    if (!route.flood) {
+      notes.push("Direct packets can be decoded here but remain outside the flood-policy simulator.");
+    }
+    if (transportCodes.length) {
+      notes.push("Transport codes are on the wire, but a local region/scope table is required to resolve their names and allow status.");
+    }
+    if (GROUP_TYPES.includes(type)) {
+      notes.push("The raw channel hash does not authenticate a channel; the matching channel key is required.");
+    }
+    if (["req", "response", "txt_msg", "path", "grp_txt", "grp_data", "anon_req"].includes(type)) {
+      notes.push("Encrypted content, including a displayed sender, cannot be recovered without the appropriate key.");
+    }
+    notes.push("Radio signal measurements, blacklist, path-bucket, loop, and temporary-radio results are receiver-local facts and are not encoded in this packet.");
+
+    return {
+      rawHex: bytesToHex(bytes),
+      rawLength: bytes.length,
+      header,
+      headerHex: bytesToHex([header]),
+      routeCode,
+      routeName: route.name,
+      routeLabel: route.label,
+      simulatorRoute: route.simulatorRoute,
+      filterEligible: route.flood,
+      typeCode,
+      type,
+      payloadVersionCode,
+      payloadVersion: payloadVersionCode + 1,
+      transportCodes,
+      pathLengthByte,
+      pathLengthHex: bytesToHex([pathLengthByte]),
+      pathHashBytes,
+      hops,
+      pathByteLength,
+      pathIds,
+      pathHex: bytesToHex(pathBytes),
+      payloadLength: payload.length,
+      payloadHex: bytesToHex(payload),
+      payloadFields: envelope.fields,
+      notes,
+    };
+  }
+
   function normalizePacket(input) {
     const scopeStatus = enumValue(input.scopeStatus, ["none", "allowed", "unknown"], "Packet scope status", "none");
     const type = normalizePacketType(input.type);
@@ -1069,6 +1251,9 @@
     const importInput = root.querySelector("[data-role='import-input']");
     const importError = root.querySelector("[data-role='import-error']");
     const explainResults = root.querySelector("[data-role='explain-results']");
+    const rawPacketInput = root.querySelector("[data-role='raw-packet-input']");
+    const packetDecodeError = root.querySelector("[data-role='packet-decode-error']");
+    const packetDecodeResult = root.querySelector("[data-role='packet-decode-result']");
     const simulationError = root.querySelector("[data-role='simulation-error']");
     const simulationResult = root.querySelector("[data-role='simulation-result']");
     const exportDsl = root.querySelector("[data-role='export-dsl']");
@@ -1376,6 +1561,24 @@
       });
     }
 
+    function loadDecodedPacket(decoded) {
+      if (!decoded.filterEligible) return false;
+      packetField("route").value = decoded.simulatorRoute;
+      packetField("type").value = decoded.type;
+      packetField("hops").value = String(decoded.hops);
+      packetField("path").value = decoded.pathIds.join(",");
+      packetField("channel").value = "";
+      packetField("scope-status").value = decoded.routeCode === 0 ? "unknown" : "none";
+      packetField("scope-name").value = "";
+      packetField("region-name").value = "";
+      packetField("sender").value = "";
+      packetField("blacklist").value = "no";
+      packetField("buckets").value = "";
+      packetField("loop-level").value = "0";
+      packetField("temp-radio").checked = false;
+      return true;
+    }
+
     function decisionValue(label, value) {
       const item = document.createElement("div");
       const term = document.createElement("span");
@@ -1384,6 +1587,76 @@
       content.textContent = value;
       item.append(term, content);
       return item;
+    }
+
+    function renderPacketDecode(decoded, loaded) {
+      packetDecodeResult.replaceChildren();
+      const heading = document.createElement("h3");
+      heading.textContent = "Decoded packet";
+      const summary = document.createElement("div");
+      summary.className = "filter-decision-grid";
+      summary.append(
+        decisionValue("Route", decoded.routeLabel),
+        decisionValue("Payload", `${decoded.type.toUpperCase()} (0x${decoded.typeCode.toString(16).padStart(2, "0").toUpperCase()})`),
+        decisionValue("Version", String(decoded.payloadVersion)),
+        decisionValue("Frame size", `${decoded.rawLength} bytes`),
+        decisionValue("Received hops", String(decoded.hops)),
+        decisionValue("Pbyte width", `${decoded.pathHashBytes} byte${decoded.pathHashBytes === 1 ? "" : "s"}`),
+        decisionValue("Path size", `${decoded.pathByteLength} bytes`),
+        decisionValue("Payload size", `${decoded.payloadLength} bytes`)
+      );
+      const status = document.createElement("p");
+      status.className = "filter-packet-load-status";
+      status.dataset.loaded = loaded ? "true" : "false";
+      status.textContent = loaded
+        ? "Loaded the route, exact payload type, hop count, and pbyte path into the simulator. Fields requiring decryption or local receiver state were cleared."
+        : "Decoded successfully, but it was not loaded because direct routes stay outside this flood-policy simulator.";
+
+      const fields = [
+        ["Raw frame", decoded.rawHex],
+        ["Header", `0x${decoded.headerHex}`],
+      ];
+      decoded.transportCodes.forEach((code, index) => {
+        fields.push([`Transport code ${index}`, `0x${code.toString(16).padStart(4, "0").toUpperCase()} (${code})`]);
+      });
+      fields.push(
+        ["Path-length byte", `0x${decoded.pathLengthHex}`],
+        ["Pbyte path", decoded.pathIds.join(",") || "empty"],
+        ["Payload", decoded.payloadHex || "empty"]
+      );
+      decoded.payloadFields.forEach((fieldValue) => fields.push([fieldValue.label, fieldValue.value]));
+      const fieldList = document.createElement("dl");
+      fieldList.className = "filter-packet-fields";
+      fields.forEach(([label, value]) => {
+        const row = document.createElement("div");
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const detail = document.createElement("dd");
+        detail.textContent = value;
+        row.append(term, detail);
+        fieldList.appendChild(row);
+      });
+      const notes = document.createElement("ul");
+      notes.className = "filter-inline-warnings filter-packet-notes";
+      renderWarnings(notes, decoded.notes);
+      packetDecodeResult.append(heading, summary, status, fieldList, notes);
+      packetDecodeResult.hidden = false;
+    }
+
+    function decodePacketInput() {
+      packetDecodeError.hidden = true;
+      packetDecodeError.textContent = "";
+      try {
+        const decoded = decodeRawPacketHex(rawPacketInput.value);
+        const loaded = loadDecodedPacket(decoded);
+        renderPacketDecode(decoded, loaded);
+        simulationResult.hidden = true;
+        simulationError.hidden = true;
+      } catch (error) {
+        packetDecodeResult.hidden = true;
+        packetDecodeError.textContent = error.message;
+        packetDecodeError.hidden = false;
+      }
     }
 
     function renderSimulation(result) {
@@ -1488,7 +1761,9 @@
         simulationError.hidden = false;
       }
     });
+    root.querySelector("[data-role='decode-packet']").addEventListener("click", decodePacketInput);
     root.querySelector("[data-role='reset-packet']").addEventListener("click", () => {
+      rawPacketInput.value = rawPacketInput.defaultValue;
       packetField("route").value = "unscoped_flood";
       packetField("type").value = "grp_data";
       packetField("hops").value = "4";
@@ -1502,6 +1777,8 @@
       packetField("buckets").value = "";
       packetField("loop-level").value = "0";
       packetField("temp-radio").checked = false;
+      packetDecodeResult.hidden = true;
+      packetDecodeError.hidden = true;
       simulationResult.hidden = true;
       simulationError.hidden = true;
     });
@@ -1545,6 +1822,7 @@
     FilterToolError,
     buildDefinition,
     decodeBundle,
+    decodeRawPacketHex,
     encodeBundle,
     estimateRuleBytes,
     explainRule,
