@@ -22,7 +22,7 @@
   });
   const MODES = Object.freeze(["active", "shadow", "disabled"]);
   const STOPS = Object.freeze(["none", "phase", "policy"]);
-  const ROUTES = Object.freeze(["flood", "unscoped_flood", "scoped_flood", "direct", "any"]);
+  const ROUTES = Object.freeze(["flood", "unscoped_flood", "scoped_flood"]);
   const TYPE_NAMES = Object.freeze([
     "req", "response", "txt_msg", "ack", "advert", "grp_txt", "grp_data", "anon_req",
     "path", "trace", "multipart", "control", "ota", "13", "14", "raw_custom",
@@ -80,16 +80,6 @@
     const parsed = nullableInteger(value, minimum, maximum, label);
     if (parsed == null) throw new FilterToolError(`${label} is required.`);
     return parsed;
-  }
-
-  function nullableNumber(value, minimum, maximum, label) {
-    const text = clean(value);
-    if (!text) return null;
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
-      throw new FilterToolError(`${label} must be ${minimum}-${maximum}.`);
-    }
-    return Math.round(parsed * 100) / 100;
   }
 
   function enumValue(value, allowed, label, fallback) {
@@ -215,8 +205,6 @@
       pathPrefix: "",
       sender: "",
       tempRadio: "any",
-      snrMin: null,
-      snrMax: null,
       verdict: "continue",
       scopeGate: "unchanged",
       targetKind: "scope",
@@ -261,8 +249,6 @@
       pathPrefix: "",
       sender: clean(input.sender),
       tempRadio: enumValue(input.tempRadio, ["any", "active", "inactive"], "Temporary-radio matcher", "any"),
-      snrMin: nullableNumber(input.snrMin, -30, 30, "Minimum SNR"),
-      snrMax: nullableNumber(input.snrMax, -30, 30, "Maximum SNR"),
       verdict: enumValue(input.verdict, ["continue", "drop"], "Forwarding verdict", "continue"),
       scopeGate: enumValue(input.scopeGate, ["unchanged", "require_allowed", "bypass_global"], "Scope-gate action", "unchanged"),
       targetKind: enumValue(input.targetKind, ["none", "scope", "region"], "Scope target", "none"),
@@ -289,10 +275,6 @@
     if (rule.channel && !["any", "class:group", "grp_txt", "grp_data"].includes(rule.type)) {
       throw new FilterToolError("Authenticated channel matching requires a group-capable payload type or class.");
     }
-    if (rule.snrMin != null && rule.snrMax != null && rule.snrMin > rule.snrMax) {
-      throw new FilterToolError("Minimum SNR cannot exceed maximum SNR.");
-    }
-
     if (rule.targetKind === "scope") rule.target = normalizeScopeName(input.target);
     if (rule.targetKind === "region") rule.target = normalizeRegionName(input.target);
     if (rule.rate != null) {
@@ -366,9 +348,6 @@
     else if (rule.pathKind !== "none") matches.push(`path=${rule.pathKind}`);
     if (rule.sender) matches.push(`sender=${quoteDsl(rule.sender)}`);
     if (rule.tempRadio !== "any") matches.push(`tempradio=${rule.tempRadio}`);
-    if (rule.snrMin != null || rule.snrMax != null) {
-      matches.push(`snr=${rule.snrMin == null ? "" : rule.snrMin}..${rule.snrMax == null ? "" : rule.snrMax}`);
-    }
     const actions = [];
     if (rule.verdict === "drop") actions.push("drop");
     if (rule.scopeGate === "require_allowed") actions.push("scope-gate=require");
@@ -442,8 +421,6 @@
     rule.pathPrefix = "";
     rule.sender = "";
     rule.tempRadio = "any";
-    rule.snrMin = null;
-    rule.snrMax = null;
     rule.verdict = "continue";
     rule.scopeGate = "unchanged";
     rule.targetKind = "none";
@@ -479,12 +456,7 @@
         } else rule.pathKind = value;
       } else if (name === "sender") rule.sender = value;
       else if (name === "tempradio") rule.tempRadio = value;
-      else if (name === "snr") {
-        const match = value.match(/^(-?\d+(?:\.\d+)?)?\.\.(-?\d+(?:\.\d+)?)?$/);
-        if (!match || (!match[1] && !match[2])) throw new FilterToolError("SNR matcher must use min..max, min.., or ..max.");
-        rule.snrMin = match[1] || null;
-        rule.snrMax = match[2] || null;
-      } else throw new FilterToolError(`Unsupported receive-time matcher: ${token}`);
+      else throw new FilterToolError(`Unsupported receive-time matcher: ${token}`);
     });
     tokens.slice(doIndex + 1).forEach((token) => {
       const [name, value] = splitOption(token);
@@ -534,8 +506,6 @@
       flood: "either flood route",
       unscoped_flood: "an unscoped flood",
       scoped_flood: "a transport-scoped flood",
-      direct: "a direct route",
-      any: "any route",
     }[route];
   }
 
@@ -585,11 +555,6 @@
     else if (rule.pathKind.startsWith("loop:")) conditions.push(`the ${rule.pathKind.slice(5)} own-ID loop threshold`);
     if (rule.sender) conditions.push(`decrypted sender "${rule.sender}"`);
     if (rule.tempRadio !== "any") conditions.push(`temporary radio ${rule.tempRadio}`);
-    if (rule.snrMin != null || rule.snrMax != null) {
-      if (rule.snrMin != null && rule.snrMax != null) conditions.push(`SNR ${rule.snrMin} through ${rule.snrMax} dB`);
-      else if (rule.snrMin != null) conditions.push(`SNR at least ${rule.snrMin} dB`);
-      else conditions.push(`SNR at most ${rule.snrMax} dB`);
-    }
     const mode = rule.mode === "shadow"
       ? "In shadow mode, report that it would "
       : rule.mode === "disabled"
@@ -598,23 +563,36 @@
     return `${PHASE_LABELS[rule.phase]} rule ${rule.id}, owned by ${OWNER_LABELS[rule.owner]}, matches ${conditions.join(", ")}. ${mode}${actionPhrases(rule).join(" and ")}. Priority ${rule.priority}; every condition reads immutable receive-time facts.`;
   }
 
+  function limitsRemoteManagement(rule) {
+    const matchesLoginType = rule.type === "any"
+      || rule.type === "class:login"
+      || LOGIN_TYPES.includes(rule.type);
+    const canRestrict = rule.verdict === "drop"
+      || rule.rate != null
+      || rule.scopeGate === "require_allowed";
+    return !rule.channel && matchesLoginType && canRestrict;
+  }
+
   function ruleWarnings(input) {
     const rule = normalizeRule(input);
     const warnings = [];
     const [minimumHops] = hopBounds(rule.hops);
-    if (rule.verdict === "drop" && rule.route === "any" && rule.type === "any" && rule.hops === "all") {
-      warnings.push("This is a global drop rule across flood and direct traffic.");
+    if (rule.verdict === "drop" && rule.route === "flood" && rule.type === "any"
+        && rule.hops === "all" && !rule.channel && rule.incoming === "any"
+        && rule.pathKind === "none" && rule.tempRadio === "any") {
+      warnings.push("This is a global drop rule across both flood route types.");
     }
-    if (rule.verdict === "drop" && minimumHops === 0
-        && ["any", "class:login", "req", "response", "txt_msg", "anon_req", "path"].includes(rule.type)) {
-      warnings.push("This rule can block remote administration traffic at hop 0. Keep a serial recovery path.");
+    if (limitsRemoteManagement(rule)) {
+      const zeroHop = minimumHops === 0 && rule.pathKind === "none";
+      warnings.push(zeroHop
+        ? "Remote-management relay risk: this rule can restrict zero-hop login/admin floods. Direct routes and local delivery stay outside this policy, but multi-hop login reach can still be lost."
+        : "Remote-management reach warning: this rule intentionally limits relayed login/admin floods at its hop or path condition. Direct routes and local delivery stay outside this policy.");
     }
     if (rule.type === "class:other") warnings.push("class:other intentionally includes current and future types outside group and login classes, including OTA.");
     if (rule.channel && rule.type === "any") warnings.push("A channel condition narrows type=any to authenticated group text/data packets.");
     if (rule.sender) warnings.push("Displayed sender names are spoofable and are moderation signals, not identities.");
     if (rule.pathKind !== "none") warnings.push("Pbyte and path-table matches use truncated routing hints, not authenticated identities.");
     if (rule.pathKind.startsWith("bucket:")) warnings.push("The selected bucket must exist on the target node; the policy stores a reference, not its IDs.");
-    if (rule.snrMin != null || rule.snrMax != null) warnings.push("Signal-based policy can produce different decisions at neighboring nodes hearing the same packet.");
     if (rule.stop === "policy") warnings.push("stop=policy skips every later configurable phase when this rule matches, but not mandatory protocol/radio safety.");
     if (rule.mode === "shadow") warnings.push("Shadow mode records the match but applies no action and does not stop processing.");
     if (rule.targetKind === "region") warnings.push("The configured region must exist, allow flooding, and have a usable transport key at evaluation time.");
@@ -631,7 +609,6 @@
     else if (rule.pathKind !== "none") bytes += 3;
     if (rule.sender) bytes += 3 + rule.sender.length;
     if (rule.tempRadio !== "any") bytes += 3;
-    if (rule.snrMin != null || rule.snrMax != null) bytes += 6;
     if (rule.verdict === "drop") bytes += 2;
     if (rule.scopeGate !== "unchanged") bytes += 3;
     if (rule.targetKind !== "none") bytes += 3 + rule.target.length;
@@ -673,6 +650,10 @@
       });
     });
     const estimated = rules.reduce((total, rule) => total + estimateRuleBytes(rule), 16);
+    const managementRules = rules.filter((rule) => rule.mode === "active" && limitsRemoteManagement(rule));
+    if (managementRules.length) {
+      warnings.push(`${managementRules.length} active rule${managementRules.length === 1 ? "" : "s"} can limit relayed remote-login traffic. Direct routes and local packet delivery remain outside the policy, but end-to-end flood login reach is not guaranteed.`);
+    }
     const budget = PROFILE_BUDGETS[profile] || PROFILE_BUDGETS.nrf52;
     if (estimated > budget) warnings.push(`Approximate packed size ${estimated} bytes exceeds the selected ${budget}-byte target budget.`);
     if (rules.length > 255) warnings.push("The draft exceeds the proposed 255 stable rule-ID limit.");
@@ -780,7 +761,7 @@
       ? clean(input.buckets).split(",").map((value) => requiredInteger(value, 1, 6, "Path bucket"))
       : [];
     return {
-      route: enumValue(input.route, ["unscoped_flood", "scoped_flood", "direct"], "Packet route", "unscoped_flood"),
+      route: enumValue(input.route, ["unscoped_flood", "scoped_flood"], "Packet route", "unscoped_flood"),
       type,
       hops: requiredInteger(input.hops, 0, 63, "Packet hops"),
       channel,
@@ -790,7 +771,6 @@
       regionName: clean(input.regionName),
       sender,
       tempRadio: Boolean(input.tempRadio),
-      snr: nullableNumber(input.snr, -30, 30, "Packet SNR"),
       blacklist: Boolean(input.blacklist),
       buckets: Array.from(new Set(buckets)),
       loopLevel: requiredInteger(input.loopLevel == null ? 0 : input.loopLevel, 0, 3, "Loop result"),
@@ -824,7 +804,7 @@
     const packet = normalizePacket(inputPacket);
     const misses = [];
     if (rule.route === "flood" && !["unscoped_flood", "scoped_flood"].includes(packet.route)) misses.push("route is not flood");
-    else if (rule.route !== "any" && rule.route !== "flood" && rule.route !== packet.route) misses.push(`route is ${packet.route}`);
+    else if (rule.route !== "flood" && rule.route !== packet.route) misses.push(`route is ${packet.route}`);
     if (!typeMatches(rule.type, packet.type)) misses.push(`payload type ${packet.type} is outside ${rule.type}`);
     const [minimum, maximum] = hopBounds(rule.hops);
     if (packet.hops < minimum || packet.hops > maximum) misses.push(`hop ${packet.hops} is outside ${rule.hops}`);
@@ -844,8 +824,6 @@
     if (rule.sender && rule.sender.toLowerCase() !== packet.sender.toLowerCase()) misses.push("decrypted sender differs or is unavailable");
     if (rule.tempRadio === "active" && !packet.tempRadio) misses.push("temporary radio is inactive");
     if (rule.tempRadio === "inactive" && packet.tempRadio) misses.push("temporary radio is active");
-    if (rule.snrMin != null && (packet.snr == null || packet.snr < rule.snrMin)) misses.push(`SNR is below ${rule.snrMin} dB`);
-    if (rule.snrMax != null && (packet.snr == null || packet.snr > rule.snrMax)) misses.push(`SNR is above ${rule.snrMax} dB`);
     return { matched: misses.length === 0, misses };
   }
 
@@ -936,39 +914,77 @@
     return { packet, decision, trace };
   }
 
+  function documentedDropRule(id, type, hops, priority) {
+    return {
+      ...defaultRule(id),
+      phase: "forward",
+      owner: "filter",
+      priority: priority == null ? 100 : priority,
+      type,
+      hops,
+      channel: "",
+      incoming: "any",
+      targetKind: "none",
+      target: "",
+      timing: "inherit",
+      verdict: "drop",
+    };
+  }
+
   const EXAMPLES = Object.freeze({
+    channel_scope: Object.freeze([
+      {
+        ...defaultRule("rgdata-scope"),
+        type: "class:group",
+        channel: "#rgdata",
+        incoming: "any",
+        priority: 100,
+      },
+    ]),
     blackhole: Object.freeze([
       {
-        ...defaultRule("blackhole-rewrite"),
-        priority: 160,
+        ...defaultRule("blackhole-after-hop-3"),
         type: "grp_data",
         hops: "4+",
         channel: "#rgdata",
         incoming: "none",
-        pathKind: "prefix",
-        pathPrefix: "860C",
-        stop: "phase",
+        priority: 100,
       },
     ]),
-    wildcards: Object.freeze([
+    scope_rewrite: Object.freeze([
       {
-        ...defaultRule("login-scope"),
-        type: "class:login",
-        channel: "",
-        incoming: "any",
-        target: "BlackHole86",
-        priority: 140,
+        ...defaultRule("usa-to-blackhole"),
+        type: "grp_data",
+        channel: "#rgdata",
+        incoming: "scope:usa",
+        priority: 100,
       },
+    ]),
+    prefix_rate: Object.freeze([
       {
-        ...defaultRule("other-scope-bucket2"),
-        type: "class:other",
-        channel: "",
-        incoming: "any",
-        pathKind: "bucket:2",
-        target: "BlackHole86",
-        timing: "slow",
-        priority: 130,
+        ...documentedDropRule("prefix-860c-rate", "any", "all"),
+        pathKind: "prefix",
+        pathPrefix: "860C",
+        verdict: "continue",
+        rate: 10,
+        burst: 10,
       },
+    ]),
+    channel_stop: Object.freeze([
+      {
+        ...documentedDropRule("rgdata-short-hop-stop", "grp_data", "0-2", 200),
+        channel: "#rgdata",
+        verdict: "continue",
+        stop: "policy",
+      },
+    ]),
+    high_traffic: Object.freeze([
+      documentedDropRule("limit-req", "req", "3+"),
+      documentedDropRule("limit-response", "response", "9+"),
+      documentedDropRule("limit-group-data", "grp_data", "3+"),
+      documentedDropRule("limit-anon-request", "anon_req", "9+"),
+      documentedDropRule("limit-path", "path", "9+"),
+      documentedDropRule("limit-control", "control", "1+"),
     ]),
     moderation: Object.freeze([
       {
@@ -984,123 +1000,55 @@
         timing: "inherit",
         rate: 5,
         burst: 5,
-        tag: "public-rate",
-      },
-      {
-        ...defaultRule("local-bot-path"),
-        phase: "content",
-        owner: "filter",
-        type: "grp_txt",
-        channel: "#local",
-        incoming: "any",
-        pathKind: "prefix",
-        pathPrefix: "A1B2C3,D4E5F6",
-        sender: "bot",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        verdict: "drop",
-        priority: 180,
       },
     ]),
-    system: Object.freeze([
+    blacklist: Object.freeze([
       {
-        ...defaultRule("system-flood-max"),
-        phase: "forward",
-        owner: "system",
-        type: "any",
+        ...documentedDropRule("drop-blacklisted-path", "any", "all"),
+        pathKind: "blacklist",
+      },
+    ]),
+    wildcards: Object.freeze([
+      {
+        ...defaultRule("login-scope"),
+        type: "class:login",
         channel: "",
         incoming: "any",
-        hops: "9+",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        verdict: "drop",
-        priority: 220,
+        priority: 140,
       },
       {
-        ...defaultRule("system-loop-minimal"),
-        phase: "forward",
-        owner: "system",
-        type: "any",
+        ...defaultRule("other-scope-bucket2"),
+        type: "class:other",
         channel: "",
         incoming: "any",
-        pathKind: "loop:minimal",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        verdict: "drop",
-        priority: 230,
+        pathKind: "bucket:2",
+        timing: "slow",
+        priority: 130,
       },
+    ]),
+    factory: Object.freeze([
       {
-        ...defaultRule("ota-outside-temp-radio"),
-        phase: "forward",
+        ...documentedDropRule("ota-outside-temp-radio", "ota", "all", 250),
         owner: "system",
-        type: "ota",
-        channel: "",
-        incoming: "any",
         tempRadio: "inactive",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        verdict: "drop",
-        priority: 250,
+      },
+      {
+        ...documentedDropRule("wardriving-after-hop-4", "any", "5+", 220),
+        owner: "system",
+        channel: "#wardriving",
       },
     ]),
   });
 
   const COMPLETE_EXAMPLES = Object.freeze({
-    blackhole: EXAMPLES.blackhole,
-    wildcards: EXAMPLES.wildcards,
-    moderation: EXAMPLES.moderation,
-    system: EXAMPLES.system,
+    ...EXAMPLES,
+    system: EXAMPLES.factory,
     mixed: Object.freeze([
-      {
-        ...defaultRule("group-gate-default"),
-        phase: "scope_gate",
-        owner: "scope",
-        type: "class:group",
-        channel: "",
-        incoming: "any",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        scopeGate: "bypass_global",
-        priority: 1,
-      },
-      {
-        ...defaultRule("bot-requires-region"),
-        phase: "scope_gate",
-        owner: "scope",
-        type: "class:group",
-        channel: "#bot",
-        incoming: "any",
-        targetKind: "none",
-        target: "",
-        timing: "inherit",
-        scopeGate: "require_allowed",
-        stop: "phase",
-        priority: 200,
-      },
-      ...clone(EXAMPLES.blackhole),
+      ...clone(EXAMPLES.channel_scope),
+      ...clone(EXAMPLES.prefix_rate),
       ...clone(EXAMPLES.moderation),
-      ...clone(EXAMPLES.system),
-      {
-        ...defaultRule("weak-signal-slow-queue"),
-        phase: "schedule",
-        owner: "filter",
-        type: "any",
-        channel: "",
-        incoming: "any",
-        snrMax: -8,
-        targetKind: "none",
-        target: "",
-        timing: "slow",
-        queue: "low",
-        retryBucket: "bucket:3",
-        retryAttempts: 2,
-        priority: 80,
-      },
+      ...clone(EXAMPLES.high_traffic),
+      ...clone(EXAMPLES.factory),
     ]),
   });
 
@@ -1160,8 +1108,6 @@
         pathPrefix: field("path-prefix").value,
         sender: field("sender").value,
         tempRadio: field("temp-radio").value,
-        snrMin: field("snr-min").value,
-        snrMax: field("snr-max").value,
         verdict: field("verdict").value,
         scopeGate: field("scope-gate").value,
         targetKind: field("target-kind").value,
@@ -1195,8 +1141,6 @@
         "path-prefix": rule.pathPrefix,
         sender: rule.sender,
         "temp-radio": rule.tempRadio,
-        "snr-min": rule.snrMin,
-        "snr-max": rule.snrMax,
         verdict: rule.verdict,
         "scope-gate": rule.scopeGate,
         "target-kind": rule.targetKind,
@@ -1223,6 +1167,43 @@
       field("target").disabled = field("target-kind").value === "none";
       field("burst").disabled = clean(field("rate").value) === "";
       field("retry-attempts").disabled = field("retry-bucket").value === "none";
+    }
+
+    function suggestCompatibleExecution(element) {
+      const name = element.getAttribute("data-field");
+      if (name === "scope-gate" && field("scope-gate").value !== "unchanged") {
+        setValue("phase", "scope_gate");
+        setValue("owner", "scope");
+        setValue("target-kind", "none");
+        setValue("retry-bucket", "none");
+        setValue("sender", "");
+      } else if (name === "target-kind" && field("target-kind").value !== "none") {
+        setValue("phase", "rewrite");
+        setValue("scope-gate", "unchanged");
+        setValue("retry-bucket", "none");
+        setValue("sender", "");
+        if (field("target-kind").value === "region" && field("owner").value === "filter") {
+          setValue("owner", "scope");
+        }
+      } else if (name === "retry-bucket" && field("retry-bucket").value !== "none") {
+        setValue("phase", "schedule");
+        setValue("owner", "filter");
+        setValue("scope-gate", "unchanged");
+        setValue("target-kind", "none");
+        setValue("sender", "");
+      } else if (name === "sender" && clean(field("sender").value)) {
+        setValue("phase", "content");
+        setValue("owner", "filter");
+        setValue("scope-gate", "unchanged");
+        setValue("target-kind", "none");
+        setValue("retry-bucket", "none");
+      } else if ((name === "verdict" && field("verdict").value === "drop")
+          || (name === "rate" && clean(field("rate").value))) {
+        if (field("target-kind").value === "none") setValue("phase", "forward");
+        if (field("owner").value === "scope") {
+          setValue("owner", field("target-kind").value === "region" ? "admin" : "filter");
+        }
+      }
     }
 
     function renderWarnings(container, warnings) {
@@ -1389,7 +1370,6 @@
         regionName: packetField("region-name").value,
         sender: packetField("sender").value,
         tempRadio: packetField("temp-radio").checked,
-        snr: packetField("snr").value,
         blacklist: packetField("blacklist").value === "yes",
         buckets: packetField("buckets").value,
         loopLevel: packetField("loop-level").value,
@@ -1442,8 +1422,14 @@
     }
 
     root.querySelectorAll("[data-field]").forEach((element) => {
-      element.addEventListener("input", updateLive);
-      element.addEventListener("change", updateLive);
+      element.addEventListener("input", () => {
+        suggestCompatibleExecution(element);
+        updateLive();
+      });
+      element.addEventListener("change", () => {
+        suggestCompatibleExecution(element);
+        updateLive();
+      });
     });
     root.querySelector("[data-role='reset-form']").addEventListener("click", resetForm);
     saveButton.addEventListener("click", () => {
@@ -1512,7 +1498,6 @@
       packetField("scope-name").value = "";
       packetField("region-name").value = "";
       packetField("sender").value = "";
-      packetField("snr").value = "6";
       packetField("blacklist").value = "no";
       packetField("buckets").value = "";
       packetField("loop-level").value = "0";
