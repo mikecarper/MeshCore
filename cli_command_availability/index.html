@@ -698,7 +698,7 @@
   <span class="md-ellipsis">
     
   
-    Repeater Flood Filtering and Moderation
+    Flood Filtering and Moderation
   
 
     
@@ -1968,14 +1968,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Routing</td>
-<td><a href="../cli_commands/#block-selected-flood-channel-packets-on-repeaters"><code>get/set/del flood.channel.block*</code></a></td>
-<td>Repeater</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Routing</td>
 <td><a href="../cli_commands/#force-a-transport-scope-onto-floods"><code>get/set/del flood.channel.scope*</code></a></td>
 <td>Repeater</td>
 <td>Yes</td>
@@ -1992,8 +1984,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Routing</td>
-<td><a href="../cli_commands/#filter-flood-packets-by-payload-type-hop-count-and-path"><code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
-<td>Repeater</td>
+<td><a href="../cli_commands/#change-persistent-flood-rules-in-the-field"><code>get/set/del flood.rule*</code>; <code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
+<td>Repeater; <code>flood.rule</code>/<code>flood.filter</code> also on FULL ESP32 room server (no blacklist)</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3483,18 +3475,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Routing</td>
-<td><a href="../cli_commands/#block-selected-flood-channel-packets-on-repeaters"><code>get/set/del flood.channel.block*</code></a></td>
-<td>Repeater, full common parser</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>No</td>
-<td>No</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Routing</td>
 <td><a href="../cli_commands/#force-a-transport-scope-onto-floods"><code>get/set/del flood.channel.scope*</code></a></td>
 <td>Repeater role handler</td>
 <td>Yes</td>
@@ -3519,8 +3499,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Routing</td>
-<td><a href="../cli_commands/#filter-flood-packets-by-payload-type-hop-count-and-path"><code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
-<td>Repeater role handler</td>
+<td><a href="../cli_commands/#change-persistent-flood-rules-in-the-field"><code>get/set/del flood.rule*</code>; <code>get/set/del flood.filter*</code>; <code>get/set/del flood.filter.blacklist*</code></a></td>
+<td>Repeater role handler; <code>flood.rule</code>/<code>flood.filter</code> also on FULL ESP32 room server (no blacklist)</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
