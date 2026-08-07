@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "../BleTxStallWatchdog.h"
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -20,8 +21,12 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   bool _isEnabled;
   uint16_t last_conn_id;
   uint32_t _pin_code;
-  unsigned long _last_write;
-  unsigned long adv_restart_time;
+  uint32_t _last_write;
+  uint32_t _adv_restart_started;
+  bool _adv_restart_pending;
+  mesh::BleTxStallWatchdog _tx_stall_watchdog;
+  mesh::BleDisconnectRecovery _tx_disconnect_recovery;
+  std::atomic<bool> _tx_reset_pending{false};
   std::atomic<bool> _pairingRequestPending{false};
 
   struct Frame {
@@ -37,6 +42,10 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   Frame send_queue[FRAME_QUEUE_SIZE];
 
   void clearBuffers();
+  void servicePendingTxReset();
+  void scheduleAdvertisingRestart(uint32_t now);
+  void recoverStalledTx(const char* cause);
+  void serviceTxRecovery(uint32_t now);
 
 protected:
   // BLESecurityCallbacks methods
@@ -65,7 +74,8 @@ public:
     deviceConnected = false;
     oldDeviceConnected = false;
     notifySucceeded = false;
-    adv_restart_time = 0;
+    _adv_restart_started = 0;
+    _adv_restart_pending = false;
     _isEnabled = false;
     _last_write = 0;
     last_conn_id = 0;

@@ -110,6 +110,8 @@ extern "C" caddr_t _sbrk(int increment);
 #define LEGACY_FLOOD_CHANNEL_BLOCK_NAME_LEN 32
 #define LEGACY_FLOOD_CHANNEL_BLOCK_HOPS_INHERIT 0xFE
 #define FLOOD_PACKET_FILTER_FILE      "/flood_filter"
+#define FLOOD_PACKET_FILTER_TEMP_FILE "/flood_filter.tmp"
+#define FLOOD_PACKET_FILTER_BACKUP_FILE "/flood_filter.bak"
 #define FLOOD_PACKET_FILTER_BLACKLIST_FILE "/flood_filter_bl"
 #define FLOOD_CHANNEL_SCOPE_FILE      "/flood_ch_scope"
 #define FLOOD_CHANNEL_SCOPE_TEMP_FILE "/flood_ch_scope.tmp"
@@ -371,6 +373,39 @@ static File openFloodSettingsWrite(FILESYSTEM* fs, const char* filename) {
 #else
   return fs->open(filename, "w", true);
 #endif
+}
+
+static uint32_t updateFloodSettingsHash(uint32_t hash,
+                                        const uint8_t* data, size_t len) {
+  while (len-- > 0) {
+    hash ^= *data++;
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+static bool verifyFloodSettingsWrite(FILESYSTEM* fs, const char* filename,
+                                     size_t expected_size,
+                                     uint32_t expected_hash) {
+  File file = openFloodSettingsRead(fs, filename);
+  if (!file || file.size() != expected_size) {
+    if (file) file.close();
+    return false;
+  }
+  uint32_t hash = 2166136261UL;
+  uint8_t buffer[64];
+  size_t remaining = expected_size;
+  while (remaining > 0) {
+    size_t amount = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+    if (file.read(buffer, amount) != amount) {
+      file.close();
+      return false;
+    }
+    hash = updateFloodSettingsHash(hash, buffer, amount);
+    remaining -= amount;
+  }
+  file.close();
+  return hash == expected_hash;
 }
 
 static uint8_t batteryPercentFromMilliVolts(uint16_t batt_mv) {
@@ -2546,11 +2581,14 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
       char *command = (char *)&data[5];
       size_t command_len = strlen(command);
+      uint32_t request_id = sender_timestamp;
+      mesh::RemoteCliRequest::parse(data, len, 5, request_id);
       uint32_t command_fingerprint =
           mesh::RemoteCliReplyCache::fingerprint(command, command_len);
-      const bool cached_retry =
-          remote_cli_reply_cache.matches(client->id.pub_key, sender_timestamp,
-                                         command_fingerprint);
+      const char* cached_response = NULL;
+      const bool cached_retry = remote_cli_reply_cache.lookup(
+          client->id.pub_key, request_id, command_fingerprint,
+          &cached_response);
 
       // An old exact match may only replay its stored response. Any stale
       // mismatch remains blocked by the normal timestamp replay guard.
@@ -2581,17 +2619,24 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         if (cached_retry) {
           MESH_DEBUG_PRINTLN("onPeerDataRecv: replaying cached remote CLI reply");
           sendRemoteCliReply(client, secret, packet->getPathHashSize(),
-                             sender_timestamp, remote_cli_reply_cache.response(),
+                             sender_timestamp, cached_response,
                              reply_scoped ? &reply_scope : NULL);
+        } else if (deferred_cli_command.matches(i, request_id, command,
+                                                command_len)) {
+          // The original request is already queued. Let it produce the one
+          // authoritative result instead of turning an in-flight retry into a
+          // spurious busy error.
+          MESH_DEBUG_PRINTLN("onPeerDataRecv: remote CLI request is already pending");
         } else if (repeated_timestamp) {
           MESH_DEBUG_PRINTLN("onPeerDataRecv: duplicate remote CLI request has no cached reply");
         } else if (!deferred_cli_command.enqueue(i, sender_timestamp,
                                                  packet->getPathHashSize(), secret,
-                                                 command, command_len)) {
+                                                 command, command_len,
+                                                 request_id)) {
           const char* error = deferred_cli_command.pending
               ? "Err - another remote command is still running"
               : "Err - remote command is too long";
-          remote_cli_reply_cache.remember(client->id.pub_key, sender_timestamp,
+          remote_cli_reply_cache.remember(client->id.pub_key, request_id,
                                           command_fingerprint, error);
           sendRemoteCliReply(client, secret, packet->getPathHashSize(),
                              sender_timestamp, error,
@@ -2612,7 +2657,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 void MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
                                 uint8_t path_hash_size, uint32_t sender_timestamp,
                                 const char* reply, const TransportKey* fallback_scope) {
-  if (client == NULL || secret == NULL || reply == NULL || reply[0] == 0) return;
+  if (client == NULL || secret == NULL || reply == NULL) return;
+  if (reply[0] == 0) reply = "OK";
 
   size_t text_len = strlen(reply);
   const size_t max_text_len =
@@ -2697,7 +2743,7 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
                 deferred_cli_command.command, reply, client_index,
                 deferred_cli_command.path_hash_size);
   remote_cli_reply_cache.remember(client->id.pub_key,
-                                  deferred_cli_command.sender_timestamp,
+                                  deferred_cli_command.request_id,
                                   command_fingerprint, reply);
   sendRemoteCliReply(client, deferred_cli_command.secret,
                      deferred_cli_command.path_hash_size,
@@ -4774,20 +4820,20 @@ void MyMesh::seedDefaultFloodPacketFilters() {
 
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
 bool MyMesh::loadFloodPacketFilters() {
-  memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
   if (_fs == NULL) {
     seedDefaultFloodPacketFilters();
     return true;
   }
-  if (!_fs->exists(FLOOD_PACKET_FILTER_FILE)) {
-    seedDefaultFloodPacketFilters();
-    return saveFloodPacketFilters();
-  }
 
-  File file = openFloodSettingsRead(_fs, FLOOD_PACKET_FILTER_FILE);
-  if (!file) return false;
+  enum class FileState : uint8_t { Missing, Valid, Invalid, Unreadable };
+  auto loadFile = [this](const char* filename) -> FileState {
+    memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+    if (!_fs->exists(filename)) return FileState::Missing;
 
-  FloodPacketFilterEntry* loaded = flood_packet_filters;
+    File file = openFloodSettingsRead(_fs, filename);
+    if (!file) return FileState::Unreadable;
+
+    FloodPacketFilterEntry* loaded = flood_packet_filters;
   uint8_t magic[4];
   uint8_t count = 0;
   bool success = file.read(magic, sizeof(magic)) == sizeof(magic);
@@ -4987,11 +5033,72 @@ bool MyMesh::loadFloodPacketFilters() {
       success = false;
     }
   }
-  file.close();
+    file.close();
+    if (!success) memset(flood_packet_filters, 0,
+                         sizeof(flood_packet_filters));
+    return success ? FileState::Valid : FileState::Invalid;
+  };
 
-  // A truncated or invalid file fails open; filtering must never be enabled by corrupt bytes.
-  if (!success) memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
-  return success;
+  FileState primary = loadFile(FLOOD_PACKET_FILTER_FILE);
+  if (primary == FileState::Valid) {
+    // A valid primary is already committed. Transaction remnants are stale.
+    if (_fs->exists(FLOOD_PACKET_FILTER_TEMP_FILE))
+      _fs->remove(FLOOD_PACKET_FILTER_TEMP_FILE);
+    if (_fs->exists(FLOOD_PACKET_FILTER_BACKUP_FILE))
+      _fs->remove(FLOOD_PACKET_FILTER_BACKUP_FILE);
+    return true;
+  }
+  if (primary == FileState::Unreadable) {
+    // The primary name is authoritative. Do not replace a file that the
+    // filesystem reported but could not open.
+    return false;
+  }
+
+  FileState temp = loadFile(FLOOD_PACKET_FILTER_TEMP_FILE);
+  if (temp == FileState::Valid) {
+    // A complete temp is the newest transaction image. Never destroy an
+    // unreadable primary, but still use the verified temp in RAM this boot.
+    if (primary != FileState::Unreadable) {
+      if (primary == FileState::Invalid)
+        _fs->remove(FLOOD_PACKET_FILTER_FILE);
+      if (!_fs->exists(FLOOD_PACKET_FILTER_FILE)
+          && _fs->rename(FLOOD_PACKET_FILTER_TEMP_FILE,
+                         FLOOD_PACKET_FILTER_FILE)) {
+        if (_fs->exists(FLOOD_PACKET_FILTER_BACKUP_FILE))
+          _fs->remove(FLOOD_PACKET_FILTER_BACKUP_FILE);
+      }
+    }
+    return true;
+  }
+
+  FileState backup = loadFile(FLOOD_PACKET_FILTER_BACKUP_FILE);
+  if (backup == FileState::Valid) {
+    if (primary != FileState::Unreadable) {
+      if (primary == FileState::Invalid)
+        _fs->remove(FLOOD_PACKET_FILTER_FILE);
+      if (!_fs->exists(FLOOD_PACKET_FILTER_FILE)
+          && _fs->rename(FLOOD_PACKET_FILTER_BACKUP_FILE,
+                         FLOOD_PACKET_FILTER_FILE)) {
+        if (temp != FileState::Unreadable
+            && _fs->exists(FLOOD_PACKET_FILTER_TEMP_FILE))
+          _fs->remove(FLOOD_PACKET_FILTER_TEMP_FILE);
+      }
+    }
+    return true;
+  }
+
+  // No complete image survived. Install the normal safe defaults in RAM and
+  // replace only files proven malformed; unreadable files are preserved.
+  seedDefaultFloodPacketFilters();
+  if (primary == FileState::Invalid) _fs->remove(FLOOD_PACKET_FILTER_FILE);
+  if (temp == FileState::Invalid) _fs->remove(FLOOD_PACKET_FILTER_TEMP_FILE);
+  if (backup == FileState::Invalid)
+    _fs->remove(FLOOD_PACKET_FILTER_BACKUP_FILE);
+  if (primary == FileState::Unreadable || temp == FileState::Unreadable
+      || backup == FileState::Unreadable) {
+    return false;
+  }
+  return saveFloodPacketFilters();
 }
 
 void MyMesh::migrateLegacyFloodChannelBlocks() {
@@ -5138,13 +5245,30 @@ void MyMesh::migrateLegacyFloodChannelBlocks() {
 
 bool MyMesh::saveFloodPacketFilters() {
   if (_fs == NULL) return false;
-  File file = openFloodSettingsWrite(_fs, FLOOD_PACKET_FILTER_FILE);
+  // Recovery owns transaction remnants; overwriting one could erase the only
+  // complete image after a failed publish boundary.
+  if (_fs->exists(FLOOD_PACKET_FILTER_TEMP_FILE)
+      || _fs->exists(FLOOD_PACKET_FILTER_BACKUP_FILE)) {
+    return false;
+  }
+  File file = openFloodSettingsWrite(_fs, FLOOD_PACKET_FILTER_TEMP_FILE);
   if (!file) return false;
+
+  size_t bytes_written = 0;
+  uint32_t write_hash = 2166136261UL;
+  auto writeExact = [&file, &bytes_written, &write_hash](
+      const void* source, size_t len) {
+    const uint8_t* data = (const uint8_t*)source;
+    if (file.write(data, len) != len) return false;
+    bytes_written += len;
+    write_hash = updateFloodSettingsHash(write_hash, data, len);
+    return true;
+  };
 
   const uint8_t magic[4] = {'F', 'P', 'F', '7'};
   uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
-  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
-      && file.write(&count, sizeof(count)) == sizeof(count);
+  bool success = writeExact(magic, sizeof(magic))
+      && writeExact(&count, sizeof(count));
   for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
@@ -5158,63 +5282,57 @@ bool MyMesh::saveFloodPacketFilters() {
     uint8_t drop_on_match = entry.drop_on_match ? 1 : 0;
     uint8_t rate_limit_enabled = entry.rate_limit_enabled ? 1 : 0;
     uint8_t stop_on_match = entry.stop_on_match ? 1 : 0;
-    success = file.write(&active, sizeof(active)) == sizeof(active);
-    success = success && file.write(&entry.payload_type, sizeof(entry.payload_type)) == sizeof(entry.payload_type);
-    success = success && file.write(&entry.min_hops, sizeof(entry.min_hops)) == sizeof(entry.min_hops);
-    success = success && file.write(&entry.max_hops, sizeof(entry.max_hops)) == sizeof(entry.max_hops);
-    success = success && file.write(&suspend_on_temp_radio, sizeof(suspend_on_temp_radio)) == sizeof(suspend_on_temp_radio);
-    success = success && file.write((const uint8_t*)entry.scope_name,
-                                    sizeof(entry.scope_name)) == sizeof(entry.scope_name);
-    success = success && file.write(&match_blacklisted_path,
-                                    sizeof(match_blacklisted_path))
-        == sizeof(match_blacklisted_path);
-    success = success && file.write(&scope_requires_region_match,
-                                    sizeof(scope_requires_region_match))
-        == sizeof(scope_requires_region_match);
-    success = success && file.write(&scope_uses_slow_timing,
-                                    sizeof(scope_uses_slow_timing))
-        == sizeof(scope_uses_slow_timing);
-    success = success && file.write(&entry.incoming_scope_kind,
-                                    sizeof(entry.incoming_scope_kind))
-        == sizeof(entry.incoming_scope_kind);
-    success = success && file.write(
-        (const uint8_t*)entry.incoming_scope_name,
-        sizeof(entry.incoming_scope_name)) == sizeof(entry.incoming_scope_name);
-    success = success && file.write(&entry.channel_key_len,
-                                    sizeof(entry.channel_key_len))
-        == sizeof(entry.channel_key_len);
-    success = success && file.write(entry.channel_secret,
-                                    sizeof(entry.channel_secret))
-        == sizeof(entry.channel_secret);
-    success = success && file.write((const uint8_t*)entry.channel_name,
-                                    sizeof(entry.channel_name))
-        == sizeof(entry.channel_name);
-    success = success && file.write(&entry.path_hash_size,
-                                    sizeof(entry.path_hash_size))
-        == sizeof(entry.path_hash_size);
-    success = success && file.write(&entry.path_hops,
-                                    sizeof(entry.path_hops))
-        == sizeof(entry.path_hops);
-    success = success && file.write(entry.path, sizeof(entry.path))
-        == sizeof(entry.path);
-    success = success && file.write(&drop_on_match, sizeof(drop_on_match))
-        == sizeof(drop_on_match);
-    success = success && file.write(&rate_limit_enabled,
-                                    sizeof(rate_limit_enabled))
-        == sizeof(rate_limit_enabled);
-    success = success && file.write((const uint8_t*)&entry.rate_per_minute,
-                                    sizeof(entry.rate_per_minute))
-        == sizeof(entry.rate_per_minute);
-    success = success && file.write(
-        (const uint8_t*)entry.target_region_name,
-        sizeof(entry.target_region_name)) == sizeof(entry.target_region_name);
-    success = success && file.write(&entry.priority, sizeof(entry.priority))
-        == sizeof(entry.priority);
-    success = success && file.write(&stop_on_match, sizeof(stop_on_match))
-        == sizeof(stop_on_match);
+    success = writeExact(&active, sizeof(active))
+        && writeExact(&entry.payload_type, sizeof(entry.payload_type))
+        && writeExact(&entry.min_hops, sizeof(entry.min_hops))
+        && writeExact(&entry.max_hops, sizeof(entry.max_hops))
+        && writeExact(&suspend_on_temp_radio, sizeof(suspend_on_temp_radio))
+        && writeExact(entry.scope_name, sizeof(entry.scope_name))
+        && writeExact(&match_blacklisted_path,
+                      sizeof(match_blacklisted_path))
+        && writeExact(&scope_requires_region_match,
+                      sizeof(scope_requires_region_match))
+        && writeExact(&scope_uses_slow_timing,
+                      sizeof(scope_uses_slow_timing))
+        && writeExact(&entry.incoming_scope_kind,
+                      sizeof(entry.incoming_scope_kind))
+        && writeExact(entry.incoming_scope_name,
+                      sizeof(entry.incoming_scope_name))
+        && writeExact(&entry.channel_key_len, sizeof(entry.channel_key_len))
+        && writeExact(entry.channel_secret, sizeof(entry.channel_secret))
+        && writeExact(entry.channel_name, sizeof(entry.channel_name))
+        && writeExact(&entry.path_hash_size, sizeof(entry.path_hash_size))
+        && writeExact(&entry.path_hops, sizeof(entry.path_hops))
+        && writeExact(entry.path, sizeof(entry.path))
+        && writeExact(&drop_on_match, sizeof(drop_on_match))
+        && writeExact(&rate_limit_enabled, sizeof(rate_limit_enabled))
+        && writeExact(&entry.rate_per_minute, sizeof(entry.rate_per_minute))
+        && writeExact(entry.target_region_name,
+                      sizeof(entry.target_region_name))
+        && writeExact(&entry.priority, sizeof(entry.priority))
+        && writeExact(&stop_on_match, sizeof(stop_on_match));
   }
   file.close();
-  return success;
+  if (!success || !verifyFloodSettingsWrite(
+          _fs, FLOOD_PACKET_FILTER_TEMP_FILE, bytes_written, write_hash)) {
+    _fs->remove(FLOOD_PACKET_FILTER_TEMP_FILE);
+    return false;
+  }
+
+  if (_fs->exists(FLOOD_PACKET_FILTER_FILE)
+      && !_fs->rename(FLOOD_PACKET_FILTER_FILE,
+                      FLOOD_PACKET_FILTER_BACKUP_FILE)) {
+    _fs->remove(FLOOD_PACKET_FILTER_TEMP_FILE);
+    return false;
+  }
+  if (!_fs->rename(FLOOD_PACKET_FILTER_TEMP_FILE,
+                   FLOOD_PACKET_FILTER_FILE)) {
+    // Keep both the verified new image and the old backup for boot recovery.
+    return false;
+  }
+  if (_fs->exists(FLOOD_PACKET_FILTER_BACKUP_FILE))
+    _fs->remove(FLOOD_PACKET_FILTER_BACKUP_FILE);
+  return true;
 }
 #else
 bool MyMesh::loadFloodPacketFilters() {
@@ -5434,12 +5552,37 @@ int MyMesh::nextFloodPacketFilterMatch(uint32_t match_mask,
       match_mask, visited_mask, priorities, FLOOD_PACKET_FILTER_SLOTS);
 }
 
-uint32_t MyMesh::applyFloodPacketFilterStop(uint32_t match_mask) const {
+bool MyMesh::resolveFloodPacketFilterTargetRegion(
+    const char* name, TransportKey& scope,
+    const char*& canonical_name) {
+  if (name == NULL || name[0] == 0) return false;
+  RegionEntry* region = region_map.findByName(name);
+  if (region == NULL || region->isWildcard()
+      || (region->flags & REGION_DENY_FLOOD) != 0
+      || region_map.getTransportKeysFor(*region, &scope, 1) <= 0
+      || scope.isNull()) {
+    return false;
+  }
+  canonical_name = region->name;
+  return true;
+}
+
+uint32_t MyMesh::applyFloodPacketFilterStop(uint32_t match_mask) {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t stop_flags[FLOOD_PACKET_FILTER_SLOTS];
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     priorities[i] = flood_packet_filters[i].priority;
-    stop_flags[i] = flood_packet_filters[i].stop_on_match ? 1 : 0;
+    const auto& entry = flood_packet_filters[i];
+    bool region_usable = true;
+    if (entry.target_region_name[0] != 0) {
+      TransportKey scope;
+      const char* canonical_name = NULL;
+      region_usable = resolveFloodPacketFilterTargetRegion(
+          entry.target_region_name, scope, canonical_name);
+    }
+    stop_flags[i] = FloodFilterPolicy::stopActionApplies(
+        entry.stop_on_match, entry.target_region_name[0] != 0,
+        region_usable) ? 1 : 0;
   }
   return FloodFilterPolicy::truncateRulesAtStop(
       match_mask, priorities, stop_flags, FLOOD_PACKET_FILTER_SLOTS);
@@ -5447,7 +5590,7 @@ uint32_t MyMesh::applyFloodPacketFilterStop(uint32_t match_mask) const {
 
 uint32_t MyMesh::evaluateFloodPacketFilterMatches(
     const mesh::Packet* packet, bool incoming_region_allowed,
-    const RegionEntry* incoming_region) const {
+    const RegionEntry* incoming_region) {
   static_assert(FLOOD_PACKET_FILTER_SLOTS <= 32,
                 "flood filter match mask supports at most 32 slots");
   if (packet == NULL || !packet->isRouteFlood()) return 0;
@@ -5514,14 +5657,10 @@ bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
     if (entry.scope_name[0] != 0) {
       deriveFloodFilterScopeKey(entry.scope_name, scope);
     } else {
-      RegionEntry* region = region_map.findByName(entry.target_region_name);
-      if (region == NULL || region->isWildcard()
-          || (region->flags & REGION_DENY_FLOOD) != 0
-          || region_map.getTransportKeysFor(*region, &scope, 1) <= 0
-          || scope.isNull()) {
+      if (!resolveFloodPacketFilterTargetRegion(
+              entry.target_region_name, scope, target_name)) {
         continue;
       }
-      target_name = region->name;
     }
     uint16_t transport_code = scope.calcTransportCode(packet);
     bool scope_changed =
@@ -5612,7 +5751,7 @@ bool MyMesh::floodPacketFilterFieldsMatch(
 
 uint32_t MyMesh::evaluateFloodPacketFilterMatches(
     const mesh::Packet* packet, bool incoming_region_allowed,
-    const RegionEntry* incoming_region) const {
+    const RegionEntry* incoming_region) {
   (void)incoming_region;
   uint32_t matches = 0;
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {

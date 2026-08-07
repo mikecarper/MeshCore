@@ -11,6 +11,8 @@
 namespace {
 
 static const char RULE_FILE[] = "/flood_filter";
+static const char RULE_TEMP_FILE[] = "/flood_filter.tmp";
+static const char RULE_BACKUP_FILE[] = "/flood_filter.bak";
 static const char RULE_USAGE[] =
     "Err - use: set flood.rule[.n] type=<type> [hops=<range>] [...]";
 static const char DUPLICATE_OPTION[] = "Err - duplicate filter option";
@@ -345,6 +347,39 @@ static File openWrite(FILESYSTEM* fs, const char* path) {
   return fs->open(path, "w", true);
 }
 
+static uint32_t updateFileHash(uint32_t hash,
+                               const uint8_t* data, size_t len) {
+  while (len-- > 0) {
+    hash ^= *data++;
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+static bool verifyWrittenFile(FILESYSTEM* fs, const char* path,
+                              size_t expected_size,
+                              uint32_t expected_hash) {
+  File file = openRead(fs, path);
+  if (!file || file.size() != expected_size) {
+    if (file) file.close();
+    return false;
+  }
+  uint32_t hash = 2166136261UL;
+  uint8_t buffer[64];
+  size_t remaining = expected_size;
+  while (remaining > 0) {
+    size_t amount = remaining < sizeof(buffer) ? remaining : sizeof(buffer);
+    if (file.read(buffer, amount) != amount) {
+      file.close();
+      return false;
+    }
+    hash = updateFileHash(hash, buffer, amount);
+    remaining -= amount;
+  }
+  file.close();
+  return hash == expected_hash;
+}
+
 }  // namespace
 
 FloodRuleEngine::FloodRuleEngine() : _fs(NULL), _regions(NULL) {
@@ -369,24 +404,22 @@ void FloodRuleEngine::seedDefaults() {
 }
 
 void FloodRuleEngine::load() {
-  memset(_entries, 0, sizeof(_entries));
   if (_fs == NULL) {
     seedDefaults();
     return;
   }
-  if (!_fs->exists(RULE_FILE)) {
-    seedDefaults();
-    save();
-    return;
-  }
 
-  File file = openRead(_fs, RULE_FILE);
-  if (!file) return;
+  enum class FileState : uint8_t { Missing, Valid, Invalid, Unreadable };
+  auto loadFile = [this](const char* path) -> FileState {
+    memset(_entries, 0, sizeof(_entries));
+    if (!_fs->exists(path)) return FileState::Missing;
+    File file = openRead(_fs, path);
+    if (!file) return FileState::Unreadable;
 
-  Entry* loaded = _entries;
-  auto readExact = [&file](void* dest, size_t len) {
-    return file.read((uint8_t*)dest, len) == len;
-  };
+    Entry* loaded = _entries;
+    auto readExact = [&file](void* dest, size_t len) {
+      return file.read((uint8_t*)dest, len) == len;
+    };
 
   uint8_t magic[4];
   uint8_t count = 0;
@@ -557,19 +590,72 @@ void FloodRuleEngine::load() {
       success = false;
     }
   }
-  file.close();
+    file.close();
+    if (!success) memset(_entries, 0, sizeof(_entries));
+    return success ? FileState::Valid : FileState::Invalid;
+  };
 
-  // Invalid or truncated persistence fails open. Corrupt bytes must never
-  // enable a forwarding block.
-  if (!success) memset(_entries, 0, sizeof(_entries));
+  FileState primary = loadFile(RULE_FILE);
+  if (primary == FileState::Valid) {
+    if (_fs->exists(RULE_TEMP_FILE)) _fs->remove(RULE_TEMP_FILE);
+    if (_fs->exists(RULE_BACKUP_FILE)) _fs->remove(RULE_BACKUP_FILE);
+    return;
+  }
+  if (primary == FileState::Unreadable) {
+    return;
+  }
+
+  FileState temp = loadFile(RULE_TEMP_FILE);
+  if (temp == FileState::Valid) {
+    if (primary != FileState::Unreadable) {
+      if (primary == FileState::Invalid) _fs->remove(RULE_FILE);
+      if (!_fs->exists(RULE_FILE)
+          && _fs->rename(RULE_TEMP_FILE, RULE_FILE)) {
+        if (_fs->exists(RULE_BACKUP_FILE)) _fs->remove(RULE_BACKUP_FILE);
+      }
+    }
+    return;
+  }
+
+  FileState backup = loadFile(RULE_BACKUP_FILE);
+  if (backup == FileState::Valid) {
+    if (primary != FileState::Unreadable) {
+      if (primary == FileState::Invalid) _fs->remove(RULE_FILE);
+      if (!_fs->exists(RULE_FILE)
+          && _fs->rename(RULE_BACKUP_FILE, RULE_FILE)
+          && temp != FileState::Unreadable
+          && _fs->exists(RULE_TEMP_FILE)) {
+        _fs->remove(RULE_TEMP_FILE);
+      }
+    }
+    return;
+  }
+
+  seedDefaults();
+  if (primary == FileState::Invalid) _fs->remove(RULE_FILE);
+  if (temp == FileState::Invalid) _fs->remove(RULE_TEMP_FILE);
+  if (backup == FileState::Invalid) _fs->remove(RULE_BACKUP_FILE);
+  if (primary != FileState::Unreadable && temp != FileState::Unreadable
+      && backup != FileState::Unreadable) {
+    save();
+  }
 }
 
 bool FloodRuleEngine::save() {
   if (_fs == NULL) return false;
-  File file = openWrite(_fs, RULE_FILE);
+  if (_fs->exists(RULE_TEMP_FILE) || _fs->exists(RULE_BACKUP_FILE))
+    return false;
+  File file = openWrite(_fs, RULE_TEMP_FILE);
   if (!file) return false;
-  auto writeExact = [&file](const void* src, size_t len) {
-    return file.write((const uint8_t*)src, len) == len;
+  size_t bytes_written = 0;
+  uint32_t write_hash = 2166136261UL;
+  auto writeExact = [&file, &bytes_written, &write_hash](
+      const void* src, size_t len) {
+    const uint8_t* data = (const uint8_t*)src;
+    if (file.write(data, len) != len) return false;
+    bytes_written += len;
+    write_hash = updateFileHash(write_hash, data, len);
+    return true;
   };
 
   const uint8_t magic[4] = {'F', 'P', 'F', '7'};
@@ -621,7 +707,21 @@ bool FloodRuleEngine::save() {
         && writeExact(&stop_on_match, sizeof(stop_on_match));
   }
   file.close();
-  return success;
+  if (!success || !verifyWrittenFile(
+          _fs, RULE_TEMP_FILE, bytes_written, write_hash)) {
+    _fs->remove(RULE_TEMP_FILE);
+    return false;
+  }
+  if (_fs->exists(RULE_FILE)
+      && !_fs->rename(RULE_FILE, RULE_BACKUP_FILE)) {
+    _fs->remove(RULE_TEMP_FILE);
+    return false;
+  }
+  if (!_fs->rename(RULE_TEMP_FILE, RULE_FILE)) {
+    return false;
+  }
+  if (_fs->exists(RULE_BACKUP_FILE)) _fs->remove(RULE_BACKUP_FILE);
+  return true;
 }
 
 bool FloodRuleEngine::fieldsMatch(
@@ -699,12 +799,37 @@ int FloodRuleEngine::nextMatch(uint32_t match_mask,
       match_mask, visited_mask, priorities, RULE_SLOTS);
 }
 
-uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) const {
+bool FloodRuleEngine::resolveTargetRegion(
+    const char* name, TransportKey& scope,
+    const char*& canonical_name) {
+  if (_regions == NULL || name == NULL || name[0] == 0) return false;
+  RegionEntry* region = _regions->findByName(name);
+  if (region == NULL || region->isWildcard()
+      || (region->flags & REGION_DENY_FLOOD) != 0
+      || _regions->getTransportKeysFor(*region, &scope, 1) <= 0
+      || scope.isNull()) {
+    return false;
+  }
+  canonical_name = region->name;
+  return true;
+}
+
+uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) {
   uint8_t priorities[RULE_SLOTS];
   uint8_t stop_flags[RULE_SLOTS];
   for (int i = 0; i < RULE_SLOTS; i++) {
     priorities[i] = _entries[i].priority;
-    stop_flags[i] = _entries[i].stop_on_match ? 1 : 0;
+    const Entry& entry = _entries[i];
+    bool region_usable = true;
+    if (entry.target_region_name[0] != 0) {
+      TransportKey scope;
+      const char* canonical_name = NULL;
+      region_usable = resolveTargetRegion(
+          entry.target_region_name, scope, canonical_name);
+    }
+    stop_flags[i] = FloodFilterPolicy::stopActionApplies(
+        entry.stop_on_match, entry.target_region_name[0] != 0,
+        region_usable) ? 1 : 0;
   }
   return FloodFilterPolicy::truncateRulesAtStop(
       match_mask, priorities, stop_flags, RULE_SLOTS);
@@ -713,7 +838,7 @@ uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) const {
 uint32_t FloodRuleEngine::evaluate(
     const mesh::Packet* packet, bool temp_radio_active,
     bool incoming_region_allowed,
-    const RegionEntry* incoming_region) const {
+    const RegionEntry* incoming_region) {
   static_assert(RULE_SLOTS <= 32,
                 "flood rule match mask supports at most 32 slots");
   if (packet == NULL || !packet->isRouteFlood()) return 0;
@@ -777,15 +902,10 @@ bool FloodRuleEngine::applyScope(mesh::Packet* packet, uint32_t match_mask,
     if (entry.scope_name[0] != 0) {
       deriveScopeKey(entry.scope_name, scope);
     } else {
-      RegionEntry* region = _regions == NULL ? NULL
-          : _regions->findByName(entry.target_region_name);
-      if (region == NULL || region->isWildcard()
-          || (region->flags & REGION_DENY_FLOOD) != 0
-          || _regions->getTransportKeysFor(*region, &scope, 1) <= 0
-          || scope.isNull()) {
+      if (!resolveTargetRegion(
+              entry.target_region_name, scope, target_name)) {
         continue;
       }
-      target_name = region->name;
     }
 
     bool changed = FloodFilterPolicy::setTransportScope(

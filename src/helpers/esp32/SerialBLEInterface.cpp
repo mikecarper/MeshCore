@@ -109,7 +109,7 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
 
     deviceConnected = false;
     pServer->disconnect(pServer->getConnId());
-    adv_restart_time = millis() + ADVERT_RESTART_DELAY;
+    scheduleAdvertisingRestart((uint32_t)millis());
   }
 }
 
@@ -122,7 +122,14 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t 
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
   deviceConnected = false;  // becomes usable only after authentication completes
+  oldDeviceConnected = false;
   notifySucceeded = false;
+  // BLE callbacks run outside the Arduino loop. FreeRTOS owns the RX queue,
+  // so it is safe to reset here; defer the plain-array TX queue reset to the
+  // loop to avoid racing a notification completion.
+  xQueueReset(recv_queue);
+  _tx_reset_pending.store(true, std::memory_order_release);
+  _adv_restart_pending = false;
   if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
 }
 
@@ -134,15 +141,22 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   BLE_DEBUG_PRINTLN("onDisconnect()");
   deviceConnected = false;
   notifySucceeded = false;
+  xQueueReset(recv_queue);
+  _tx_reset_pending.store(true, std::memory_order_release);
   if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
   if (_isEnabled) {
-    adv_restart_time = millis() + ADVERT_RESTART_DELAY;
+    scheduleAdvertisingRestart((uint32_t)millis());
   }
 }
 
 // -------- BLECharacteristicCallbacks methods
 
 void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) {
+  if (_tx_disconnect_recovery.pending()) {
+    BLE_DEBUG_PRINTLN("onWrite(): dropping frame while BLE reconnect is pending");
+    return;
+  }
+
   uint8_t* rxValue = pCharacteristic->getData();
   int len = pCharacteristic->getLength();
 
@@ -173,6 +187,58 @@ void SerialBLEInterface::onStatus(BLECharacteristic* pCharacteristic, Status sta
 void SerialBLEInterface::clearBuffers() {
   xQueueReset(recv_queue);
   send_queue_len = 0;
+  notifySucceeded = false;
+  _tx_stall_watchdog.reset();
+  _tx_disconnect_recovery.complete();
+  _tx_reset_pending.store(false, std::memory_order_release);
+}
+
+void SerialBLEInterface::servicePendingTxReset() {
+  if (!_tx_reset_pending.exchange(false, std::memory_order_acq_rel)) return;
+  send_queue_len = 0;
+  notifySucceeded = false;
+  _tx_stall_watchdog.reset();
+  _tx_disconnect_recovery.complete();
+}
+
+void SerialBLEInterface::scheduleAdvertisingRestart(uint32_t now) {
+  _adv_restart_started = now;
+  _adv_restart_pending = true;
+}
+
+void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
+  if (!_tx_disconnect_recovery.pending()) return;
+
+  if (pServer == NULL || pServer->getConnectedCount() == 0) {
+    BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX link is already closed");
+    deviceConnected = false;
+    clearBuffers();
+    if (_isEnabled) scheduleAdvertisingRestart(now);
+    return;
+  }
+
+  if (!_tx_disconnect_recovery.shouldAttempt(now)) return;
+
+  // BLEServer::disconnect() does not expose the controller return code. Keep
+  // recovery pending and issue another bounded request until onDisconnect() or
+  // getConnectedCount() confirms that the link actually closed.
+  pServer->disconnect(last_conn_id);
+  BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX disconnect requested");
+}
+
+void SerialBLEInterface::recoverStalledTx(const char* cause) {
+  if (_tx_disconnect_recovery.pending()) return;
+
+  BLE_DEBUG_PRINTLN("SerialBLEInterface: %s; forcing reconnect", cause);
+
+  // Preserve the controller's physical state until the disconnect callback,
+  // while the recovery state makes isConnected() false to callers.
+  xQueueReset(recv_queue);
+  notifySucceeded = false;
+  send_queue_len = 0;
+  _tx_stall_watchdog.reset();
+  _tx_disconnect_recovery.begin();
+  serviceTxRecovery((uint32_t)millis());
 }
 
 void SerialBLEInterface::enable() { 
@@ -190,7 +256,7 @@ void SerialBLEInterface::enable() {
   //pServer->getAdvertising()->setMaxInterval(1000);
 
   pServer->getAdvertising()->start();
-  adv_restart_time = 0;
+  _adv_restart_pending = false;
 }
 
 void SerialBLEInterface::disable() {
@@ -202,16 +268,18 @@ void SerialBLEInterface::disable() {
   pServer->disconnect(last_conn_id);
   pService->stop();
   oldDeviceConnected = deviceConnected = false;
-  adv_restart_time = 0;
+  clearBuffers();
+  _adv_restart_pending = false;
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
+  servicePendingTxReset();
   if (len > MAX_FRAME_SIZE) {
     BLE_DEBUG_PRINTLN("writeFrame(), frame too big, len=%d", len);
     return 0;
   }
 
-  if (deviceConnected && len > 0) {
+  if (isConnected() && len > 0) {
     if (!mesh::enqueueCompanionFrame(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
                                      src, len)) {
       BLE_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
@@ -229,22 +297,33 @@ bool SerialBLEInterface::isReadBusy() const {
 }
 
 bool SerialBLEInterface::isWriteBusy() const {
-  return millis() < _last_write + BLE_WRITE_MIN_INTERVAL;   // still too soon to start another write?
+  return !mesh::bleElapsedAtLeast((uint32_t)millis(), _last_write,
+                                  BLE_WRITE_MIN_INTERVAL);
 }
 
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
+  const uint32_t now = (uint32_t)millis();
+  servicePendingTxReset();
+  if (_tx_disconnect_recovery.pending()) {
+    serviceTxRecovery(now);
+    return 0;
+  }
+
   if (send_queue_len > 0   // first, check send queue
-    && millis() >= _last_write + BLE_WRITE_MIN_INTERVAL    // space the writes apart
+    && mesh::bleElapsedAtLeast(now, _last_write,
+                               BLE_WRITE_MIN_INTERVAL)    // space the writes apart
   ) {
     const uint16_t peer_mtu = pServer->getPeerMTU(last_conn_id);
     const bool notifications_ready = pTxDescriptor != NULL && pTxDescriptor->getNotifications();
     const bool frame_fits = peer_mtu > 3 && send_queue[0].len <= peer_mtu - 3;
+    const bool delivery_required = mesh::companionFrameRequiresDelivery(
+        send_queue[0].buf, send_queue[0].len);
 
     // A fresh pairing can deliver the app's first command before its CCCD
     // subscription or MTU exchange completes. Keep the response queued until
     // both are ready instead of silently dropping/truncating device info.
     if (notifications_ready && frame_fits) {
-      _last_write = millis();
+      _last_write = now;
       notifySucceeded = false;
       pTxCharacteristic->setValue(send_queue[0].buf, send_queue[0].len);
       pTxCharacteristic->notify();
@@ -256,8 +335,21 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
         for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
           send_queue[i] = send_queue[i + 1];
         }
+        _tx_stall_watchdog.reset();
+      } else if (delivery_required
+                 && _tx_stall_watchdog.noteBlocked(now)) {
+        recoverStalledTx("command reply notification blocked for 10 seconds");
+        return 0;
       }
+    } else if (delivery_required
+               && _tx_stall_watchdog.noteBlocked(now)) {
+      recoverStalledTx("command reply waiting for notifications or MTU for 10 seconds");
+      return 0;
+    } else if (!delivery_required) {
+      _tx_stall_watchdog.reset();
     }
+  } else if (send_queue_len == 0) {
+    _tx_stall_watchdog.reset();
   }
 
   Frame frame;
@@ -276,28 +368,35 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
       //pServer->getAdvertising()->setMinInterval(500);
       //pServer->getAdvertising()->setMaxInterval(1000);
 
-      adv_restart_time = millis() + ADVERT_RESTART_DELAY;
+      scheduleAdvertisingRestart(now);
     } else {
       BLE_DEBUG_PRINTLN("SerialBLEInterface -> stopping advertising");
       BLE_DEBUG_PRINTLN("SerialBLEInterface -> connecting...");
       // connecting
       // do stuff here on connecting
       pServer->getAdvertising()->stop();
-      adv_restart_time = 0;
+      _adv_restart_pending = false;
     }
     oldDeviceConnected = deviceConnected;
   }
 
-  if (adv_restart_time && millis() >= adv_restart_time) {
+  if (_adv_restart_pending &&
+      mesh::bleElapsedAtLeast(now, _adv_restart_started,
+                              ADVERT_RESTART_DELAY)) {
     if (pServer->getConnectedCount() == 0) {
       BLE_DEBUG_PRINTLN("SerialBLEInterface -> re-starting advertising");
       pServer->getAdvertising()->start();  // re-Start advertising
+      _adv_restart_pending = false;
+    } else {
+      // A disconnect can take longer than the normal restart delay. Keep the
+      // restart armed instead of losing it while the controller still reports
+      // the old connection.
+      _adv_restart_started = now;
     }
-    adv_restart_time = 0;
   }
   return 0;
 }
 
 bool SerialBLEInterface::isConnected() const {
-  return deviceConnected;  //pServer != NULL && pServer->getConnectedCount() > 0;
+  return !_tx_disconnect_recovery.pending() && deviceConnected;
 }

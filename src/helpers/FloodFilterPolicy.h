@@ -315,6 +315,15 @@ inline uint32_t truncateRulesAtStop(uint32_t match_mask,
   return effective;
 }
 
+inline bool stopActionApplies(bool stop_on_match, bool has_region_target,
+                              bool region_target_usable) {
+  // A direct scope= target is derived from its public name and is always
+  // usable. A region= target is configuration-backed; if it disappeared or
+  // can no longer carry floods, its rewrite and its terminal stop are inert.
+  return stop_on_match
+      && (!has_region_target || region_target_usable);
+}
+
 inline bool scopeRuleAllowed(bool requires_region_match,
                              bool incoming_region_allowed) {
   return !requires_region_match || incoming_region_allowed;

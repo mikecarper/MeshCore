@@ -7,6 +7,7 @@
 #include "OtaStore.h"
 #include "MotaContainer.h"
 #include "OtaSource.h"
+#include "MerkleTree.h"
 
 // Transport-agnostic OTA session engine (docs/ota_protocol.md Section 5/Section 8). It SERVES a complete `.mota`
 // (answering GET_MANIFEST / REQ) and/or FETCHES one into an OtaStore (verifying every block against
@@ -146,7 +147,10 @@ public:
   // PAUSED: a folder-destination write failed mid-transfer (the seeder link dropped). Progress is held on
   // the host; the manager stops requesting and does NOT fall back to RAM/flash. resumeStaged() (called on
   // reconnect) re-STATs the host file, recomputes which blocks are missing, and resumes.
-  enum FetchState : uint8_t { IDLE, WANT_MANIFEST, WANT_LEAVES, FETCHING, COMPLETE, FAILED, PAUSED };
+  enum FetchState : uint8_t {
+    IDLE, WANT_MANIFEST, WANT_LEAVES, VERIFYING_STAGED, FETCHING,
+    COMPLETE, FAILED, PAUSED
+  };
 
   // Sentinel for "no block" in the reassembly / peer-REQ / recently-served slots (a real block index is
   // a small uint16, so 0xFFFFFFFF is never valid).
@@ -219,8 +223,9 @@ public:
 
   // Resume a fetch from a container already persisted in the store (after a reboot). want_mid=nullptr
   // accepts whatever is staged; otherwise only resumes if the staged manifest_id matches. Re-parses the
-  // stored manifest, recomputes geometry, counts present blocks, and continues FETCHING the holes (or goes
-  // straight to COMPLETE if all blocks are present). Returns true if it adopted a staged container.
+  // stored manifest, recomputes geometry, then incrementally rehashes every staged payload block before
+  // continuing FETCHING the holes. A fully staged image also has to reproduce the manifest Merkle root
+  // before it can become COMPLETE. Returns true if it adopted a staged container.
   bool resumeStaged(const uint8_t* want_mid);
 
   // Manual cross-target override (decision: deliberate role switch, e.g. companion -> repeater on the
@@ -314,6 +319,8 @@ public:
     _mf_total = 0; _mf_mask = 0; _mf_len = 0; _loop_last_mfmask = 0;
     freeLeaves(); _validate = false; _archive_fetch = false;
     _lv_retries = 0; _loop_last_lvmask = 0;
+    _resume_verify_idx = 0; _resume_invalidated = false;
+    _resume_merkle.reset();
   }
 
   FetchState fetchState() const { return _fstate; }
@@ -389,6 +396,9 @@ private:
   }
   void setDigest(uint8_t out[4]) const;                   // sha2-256:4 over our served mids
   bool blockPresent(uint32_t i) const;
+  bool storedLeavesRootMatches() const;
+  void beginStagedVerification();
+  void verifyStagedStep();
   void requestMissing();
   uint32_t blockLen(uint32_t i) const;
 
@@ -423,6 +433,9 @@ private:
   uint8_t    _froot[4] = {0};
   uint32_t   _ftotal = 0, _fpoff = 0, _floff = 0, _fpsize = 0, _fbc = 0, _fbs = 0;
   uint32_t   _have = 0;
+  uint32_t   _resume_verify_idx = 0;
+  bool       _resume_invalidated = false;
+  MerkleAccumulator _resume_merkle;
   uint32_t   _req_start = 0, _req_count = 0;   // last block requested (per-block serial flow; telemetry)
   uint32_t   _loop_last_have = 0;              // for stall detection in loop()
   uint32_t   _desired_target = 0;              // manual cross-target override (0 = auto / own target)

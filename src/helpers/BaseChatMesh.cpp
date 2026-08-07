@@ -1,4 +1,5 @@
 #include <helpers/BaseChatMesh.h>
+#include <helpers/RemoteCliRequest.h>
 #include <Utils.h>
 
 #ifndef SERVER_RESPONSE_DELAY
@@ -486,16 +487,28 @@ int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, 
   return rc;
 }
 
-int  BaseChatMesh::sendCommandData(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char* text, uint32_t& est_timeout) {
+int BaseChatMesh::sendCommandData(const ContactInfo& recipient,
+                                  uint32_t timestamp, uint8_t attempt,
+                                  const char* text, uint32_t& est_timeout,
+                                  uint32_t logical_request_id) {
   int text_len = strlen(text);
   if (text_len > MAX_TEXT_LEN) return MSG_SEND_FAILED;
 
-  uint8_t temp[5+MAX_TEXT_LEN+1];
+  uint8_t temp[5 + MAX_TEXT_LEN + mesh::RemoteCliRequest::EXTENSION_SIZE];
   memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
   temp[4] = (attempt & 3) | (TXT_TYPE_CLI_DATA << 2);
-  memcpy(&temp[5], text, text_len + 1);
+  memcpy(&temp[5], text, text_len);
 
-  auto pkt = createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id, recipient.getSharedSecret(self_id), temp, 5 + text_len);
+  size_t payload_len = 5 + text_len;
+  if (logical_request_id != 0) {
+    payload_len = mesh::RemoteCliRequest::append(
+        temp, sizeof(temp), 5, text_len, logical_request_id);
+    if (payload_len == 0) return MSG_SEND_FAILED;
+  }
+
+  auto pkt = createDatagram(PAYLOAD_TYPE_TXT_MSG, recipient.id,
+                            recipient.getSharedSecret(self_id), temp,
+                            payload_len);
   if (pkt == NULL) return MSG_SEND_FAILED;
 
   uint32_t t = _radio->getEstAirtimeFor(pkt->getRawLength());

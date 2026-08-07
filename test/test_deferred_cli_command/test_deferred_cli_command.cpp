@@ -8,13 +8,19 @@ TEST(DeferredCliCommand, CopiesAuthenticatedCommandContext) {
   memset(secret, 0x5A, sizeof(secret));
   const char command[] = "del flood.moderation.all";
 
-  ASSERT_TRUE(deferred.enqueue(7, 123456U, 2, secret, command, strlen(command)));
+  ASSERT_TRUE(deferred.enqueue(7, 123456U, 2, secret, command,
+                               strlen(command), 654321U));
   EXPECT_TRUE(deferred.pending);
   EXPECT_EQ(7, deferred.client_index);
   EXPECT_EQ(123456U, deferred.sender_timestamp);
+  EXPECT_EQ(654321U, deferred.request_id);
   EXPECT_EQ(2, deferred.path_hash_size);
   EXPECT_EQ(0, memcmp(secret, deferred.secret, sizeof(secret)));
   EXPECT_STREQ(command, deferred.command);
+  EXPECT_TRUE(deferred.matches(7, 654321U, command, strlen(command)));
+  EXPECT_FALSE(deferred.matches(6, 654321U, command, strlen(command)));
+  EXPECT_FALSE(deferred.matches(7, 654322U, command, strlen(command)));
+  EXPECT_FALSE(deferred.matches(7, 654321U, "region save", 11));
 
   secret[0] = 0;
   EXPECT_EQ(0x5A, deferred.secret[0]);
@@ -33,7 +39,9 @@ TEST(DeferredCliCommand, RejectsSecondCommandUntilCleared) {
 
   deferred.clear();
   EXPECT_FALSE(deferred.pending);
+  EXPECT_FALSE(deferred.matches(1, 10U, first, strlen(first)));
   EXPECT_EQ(0, deferred.secret[0]);
+  EXPECT_EQ(0U, deferred.request_id);
   EXPECT_EQ(0, deferred.command[0]);
   ASSERT_TRUE(deferred.enqueue(2, 11U, 3, secret, second, strlen(second)));
   EXPECT_STREQ(second, deferred.command);

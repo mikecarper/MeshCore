@@ -44,6 +44,8 @@ uint8_t* OtaManager::ensureScratch() {
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
   _fstate = IDLE; _have = 0; _fbc = 0;
+  _resume_verify_idx = 0; _resume_invalidated = false;
+  _resume_merkle.reset();
   _n_serve = 0; _n_src_obj = 0; _view0.valid = false; _srcv.valid = false;
   _n_src = 0; _n_cat = 0;
 }
@@ -591,7 +593,9 @@ void OtaManager::deferCatalog(const uint8_t mid[4], uint32_t until_ms) {
 }
 
 bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const {
-  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST || _fstate == PAUSED) return false;  // busy
+  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
+      || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED
+      || _fstate == PAUSED) return false;  // busy
   if (_fstate == COMPLETE && memcmp(mid, _fid, 4) == 0) return false;             // already have it
   if (!_archive_fetch && !codecOk(codec)) return false;                           // can't apply this codec
   if (_have_desired_mid)                                                          // manual pull of a specific mid
@@ -612,7 +616,9 @@ void OtaManager::clearReassembly() {
 // Begin (or resume) fetching a chosen mid: try a staged-partial resume first, else request the manifest.
 void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) {
   (void)target;
-  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST || _fstate == WANT_LEAVES || _fstate == PAUSED) return;
+  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
+      || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED
+      || _fstate == PAUSED) return;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
@@ -777,14 +783,18 @@ void OtaManager::diffStep() {
   OTA_DBG("OTA: leaf-diff %u/%u already valid; fetching the rest\n", (unsigned)_have, (unsigned)_fbc);
   freeLeaves();                                                            // clears _diffing + frees the buffer
   if (_have >= _fbc) {                                                      // seed covered the whole image
-    _fstate = _fetch->finalize() ? COMPLETE : FAILED;
+    _fstate = storedLeavesRootMatches() && _fetch->finalize()
+        ? COMPLETE : FAILED;
     return;
   }
   _fstate = FETCHING; requestMissing();
 }
 
 bool OtaManager::resumeStaged(const uint8_t* want_mid) {
-  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST) return false;
+  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
+      || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED) {
+    return false;
+  }
   if (!_fetch->reopen()) return false;                  // nothing persisted in the store
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
@@ -801,6 +811,7 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   uint32_t bs = m.block_size();
   if (bs == 0 || bs > OTA_MAX_BLOCK) return false;
   uint32_t bc = m.block_count;
+  if (bc == 0 || bc > 0xFFFFu) return false;
   if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) return false;
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
@@ -811,25 +822,11 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   _fflags = m.flags;
   _fpoff = payload_off; _floff = leaves_off; _fpsize = m.payload_size; _fbc = bc; _fbs = bs;
   _ftotal = total;
-  _have = 0;
-  for (uint32_t i = 0; i < bc; i++) if (blockPresent(i)) _have++;   // count blocks whose leaf survived
   clearReassembly();
   _loop_last_have = 0; _loop_last_mask = 0;
-  OTA_DBG("OTA: RESUME have=%u/%u total=%u\n", (unsigned)_have, (unsigned)bc, (unsigned)total);
-
-  if (_have >= bc) {                                  // already complete -> verify root + finalize
-    uint8_t* scratch = bc * 4 <= OTA_PROOFGEN_SCRATCH ? ensureScratch() : nullptr;
-    if (scratch && _fetch->read(_floff, scratch, bc * 4)) {
-      uint8_t root[4]; merkle_root(root, scratch, bc);
-      _fstate = (memcmp(root, _froot, 4) == 0) ? COMPLETE : FAILED;
-    } else {
-      _fstate = COMPLETE;
-    }
-    if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
-    return true;
-  }
-  _fstate = FETCHING;                                 // resume fetching the holes
-  _loop_last_have = _have; _loop_last_mask = _reasm_mask;
+  beginStagedVerification();
+  OTA_DBG("OTA: RESUME verifying %u blocks total=%u\n",
+          (unsigned)bc, (unsigned)total);
   return true;
 }
 
@@ -842,6 +839,92 @@ bool OtaManager::blockPresent(uint32_t i) const {
   uint8_t leaf[4];
   if (!_fetch->read(_floff + i * 4, leaf, 4)) return false;
   return !(leaf[0]==0xFF && leaf[1]==0xFF && leaf[2]==0xFF && leaf[3]==0xFF);
+}
+
+bool OtaManager::storedLeavesRootMatches() const {
+  if (!_fetch || _fbc == 0) return false;
+  MerkleAccumulator accumulator;
+  for (uint32_t i = 0; i < _fbc; ++i) {
+    uint8_t leaf[4];
+    if (!_fetch->read(_floff + i * 4, leaf, sizeof(leaf))
+        || (leaf[0] == 0xFF && leaf[1] == 0xFF
+            && leaf[2] == 0xFF && leaf[3] == 0xFF)
+        || !accumulator.add(leaf)) {
+      return false;
+    }
+  }
+  uint8_t root[4];
+  return accumulator.finish(root) && memcmp(root, _froot, 4) == 0;
+}
+
+void OtaManager::beginStagedVerification() {
+  _have = 0;
+  _resume_verify_idx = 0;
+  _resume_invalidated = false;
+  _resume_merkle.reset();
+  _fstate = VERIFYING_STAGED;
+}
+
+void OtaManager::verifyStagedStep() {
+  if (_fstate != VERIFYING_STAGED || !_fetch) return;
+  static const uint8_t missing_leaf[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+
+  for (uint32_t checked = 0;
+       checked < OTA_DIFF_BATCH && _resume_verify_idx < _fbc;
+       ++checked, ++_resume_verify_idx) {
+    uint8_t stored_leaf[4];
+    const uint32_t index = _resume_verify_idx;
+    if (!_fetch->read(_floff + index * 4,
+                      stored_leaf, sizeof(stored_leaf))) {
+      _fstate = FAILED;
+      return;
+    }
+    if (memcmp(stored_leaf, missing_leaf, sizeof(stored_leaf)) == 0) {
+      continue;
+    }
+
+    const uint32_t length = blockLen(index);
+    if (!_fetch->read(_fpoff + index * _fbs, _reasm_buf, length)) {
+      _fstate = FAILED;
+      return;
+    }
+    uint8_t computed_leaf[4];
+    merkle_leaf(computed_leaf, _reasm_buf, length);
+    if (memcmp(computed_leaf, stored_leaf, sizeof(stored_leaf)) != 0) {
+      // Payload and marker disagree. Clear the marker so the normal fetch path
+      // requests this block again; a stale marker must never bless bad bytes.
+      if (!_fetch->write(_floff + index * 4,
+                         missing_leaf, sizeof(missing_leaf))) {
+        _fstate = FAILED;
+        return;
+      }
+      _resume_invalidated = true;
+      continue;
+    }
+    if (!_resume_merkle.add(computed_leaf)) {
+      _fstate = FAILED;
+      return;
+    }
+    _have++;
+  }
+
+  if (_resume_verify_idx < _fbc) return;
+  clearReassembly();
+  if (_resume_invalidated) _fetch->checkpoint();
+
+  if (_have == _fbc) {
+    uint8_t root[4];
+    _fstate = _resume_merkle.finish(root)
+            && memcmp(root, _froot, sizeof(root)) == 0
+            && _fetch->finalize()
+        ? COMPLETE : FAILED;
+  } else {
+    _fstate = FETCHING;
+    _loop_last_have = _have;
+    _loop_last_mask = 0;
+    requestMissing();
+  }
+  _resume_merkle.reset();
 }
 
 void OtaManager::handleData(const uint8_t* m, uint16_t n) {
@@ -895,14 +978,9 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   // cadence is runtime-tunable via `ota config checkpoint <N>` (0 = never)
   if (_checkpoint_blocks && _have % _checkpoint_blocks == 0) _fetch->checkpoint();
   if (_have < _fbc) { requestMissing(); return; }            // next block
-  // all blocks present -> final root cross-check + finalize
-  uint8_t* scratch = _fbc * 4 <= OTA_PROOFGEN_SCRATCH ? ensureScratch() : nullptr;
-  if (scratch && _fetch->read(_floff, scratch, _fbc * 4)) {
-    uint8_t root[4]; merkle_root(root, scratch, _fbc);
-    _fstate = (memcmp(root, _froot, 4) == 0) ? COMPLETE : FAILED;
-  } else {
-    _fstate = COMPLETE;   // per-block proofs already guaranteed integrity vs the root
-  }
+  // Every leaf must be readable and collectively match the manifest root.
+  // A scratch allocation/read failure is an integrity failure, never success.
+  _fstate = storedLeavesRootMatches() ? COMPLETE : FAILED;
   if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
   OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");
 }
@@ -974,6 +1052,10 @@ void OtaManager::loop() {
       sendQuery(s.seeder, s.digest, 0, want);
       s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
     }
+  }
+  if (_fstate == VERIFYING_STAGED) {
+    verifyStagedStep();
+    return;
   }
   if (_fstate == WANT_MANIFEST) {
     // Retry GET_MANIFEST ONLY when a tick passed with no new fragment - re-bursting every tick would congest

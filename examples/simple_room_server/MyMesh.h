@@ -25,6 +25,8 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/ClientACL.h>
 #include <helpers/LogicalMessageCache.h>
+#include <helpers/RemoteCliReplyCache.h>
+#include <helpers/RemoteCliRequest.h>
 #include <helpers/RegionMap.h>
 #include "FloodRuleEngine.h"
 #include <RTClib.h>
@@ -141,6 +143,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #endif
   ClientACL acl;
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
+  mesh::RemoteCliReplyCache remote_cli_reply_cache;
   CommonCLI _cli;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   UserGpioReplyTracker _gpio_reply_tracker;

@@ -41,8 +41,9 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_telemetry_history` | `src/helpers/TelemetryHistory.h` | 30-minute rings; seven-day temperature/voltage and dynamically sized GPS retention; exact 1 C temperature/status encoding; separate Base64 series payloads; 14-bit GPS differentials; resize preservation, heap budgets, and 1-based paging bounds |
 | `test_flood_filter_policy` | `src/helpers/FloodFilterPolicy.h` | unordered blacklist matching; ordered 1/2/3-byte pbyte rule prefixes; original incoming scope classes and canonical region-name identity; channel-authentication cache key comparison; priority ordering and terminal stop masks; bridge-bucket and regionless channel-target selector encoding; `require=region` and per-channel scope-gate truth tables; fast/slow timing; adding, replacing, and preserving packet scope |
 | `test_logical_message_cache` | `src/helpers/LogicalMessageCache.h` | bounded logical-message mapping; stable retry timestamps; exact older retries after newer messages; stale and same-timestamp mismatch rejection |
-| `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h` | authenticated sender/timestamp/command matching; owned response storage; empty-response completion; on-air truncation; replacement and clearing |
-| `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | reserved reply capacity; response priority; push eviction under saturation; response preservation |
+| `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; empty-response completion; on-air truncation and clearing |
+| `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing |
+| `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 
 ## Conventions (and how to add a suite)

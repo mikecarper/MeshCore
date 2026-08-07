@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "../BleTxStallWatchdog.h"
 #include "SecuritySessionTimer.h"
 #include <bluefruit.h>
 
@@ -20,6 +21,8 @@ class SerialBLEInterface : public BaseSerialInterface {
   bool _peer_address_valid;
   bool _bond_removed_for_connection;
   SecuritySessionTimer _security_timer;
+  mesh::BleTxStallWatchdog _tx_stall_watchdog;
+  mesh::BleDisconnectRecovery _tx_disconnect_recovery;
 
   struct Frame {
     uint8_t len;
@@ -37,6 +40,9 @@ class SerialBLEInterface : public BaseSerialInterface {
   void clearBuffers();
   void shiftSendQueueLeft();
   void shiftRecvQueueLeft();
+  size_t writeBleUartFrame(const Frame& frame);
+  void recoverStalledTx(const char* cause);
+  void serviceTxRecovery(uint32_t now);
   bool removeStoredBondForPeer(const char* cause);
   bool isValidConnection(uint16_t handle, bool requireWaitingForSecurity = false) const;
   bool isAdvertising() const;

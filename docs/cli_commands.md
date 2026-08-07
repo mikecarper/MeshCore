@@ -1665,9 +1665,11 @@ compile this table.
   - `all`: Match every received hop count (`0-63`).
   - `0+`, `all`, and an omitted hop expression are equivalent. The CLI displays
     the saved range as `all`.
-- `channel=*|public|#name|128-bit-key|256-bit-key`: Optional authenticated
-  group-channel match. It applies only to `GRP_TXT`/`GRP_DATA`; `type=any`
-  plus a channel condition therefore matches only those group types.
+- `channel=*|public|#name|128-bit-key|256-bit-key`: Optional channel match.
+  `channel=*` means no channel condition at all, so the row matches everything
+  selected by `type=` (including all flood payload types with `type=any`). It
+  does not authenticate a packet. `public`, `#name`, and raw keys authenticate
+  one channel and therefore narrow the row to `GRP_TXT`/`GRP_DATA`.
 - `prefix=<ID[,ID...]>`: Optional ordered source-path prefix of one to three
   pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
   1-, 2-, or 3-byte pbyte width. `path=<prefix>` is an alias.
@@ -1678,7 +1680,12 @@ compile this table.
 - `drop`: Explicit drop action. The `flood.rule` form requires an explicit
   action. For compatibility, a legacy `flood.filter` row with no rewrite,
   rate, or stop action is treated as drop.
-- `region=<name>`: Rewrite action using an existing locally allowed region.
+- `scope=<name>`: Direct public-name scope rewrite. It derives a transport key
+  from the name and does not require a configured region. For example,
+  `scope=BlackHole86` is a regionless sink scope; `region=BlackHole86` would
+  instead require a real configured, flood-allowed region with that name.
+- `region=<name>`: Rewrite using an existing locally allowed region and one of
+  that region's transport keys.
 - `rate=N/min`: Per-node, per-row fixed one-minute forwarding limit. It can be
   the only action or accompany `scope=`/`region=`. Counters are charged only
   for packets that pass all forwarding gates.
@@ -1687,12 +1694,12 @@ compile this table.
 - `stop` or `action=stop`: Apply this matching row, then stop lower-order FPF7
   rows from processing. It can stand alone or accompany drop, rewrite, or
   rate. A stop-only row acts as an exception to lower-priority FPF7 rules.
+  If the same row uses `region=` and that configured region is missing, denied,
+  wildcard, or has no usable transport key, both the rewrite and its `stop`
+  are inert so lower-order safety rows still run. A direct `scope=` target does
+  not depend on region configuration.
 - `suspend=tempradio`: Optional. Skip this row only while the temporary radio
   is actually active.
-- `scope=<name>`: Optional scope-setting action. The name is normalized with a
-  leading `#` and its 128-bit transport key is derived directly from that
-  hashtag. It does not need to exist in the region list. Public names up to 30
-  characters are accepted; private `$` scopes are not.
 - `require=region`: Legacy alias for `in=allowed`. Apply the row only if the
   original incoming packet already passes this repeater's
   region gate. An incoming transport scope must resolve to a locally allowed

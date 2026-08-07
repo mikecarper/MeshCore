@@ -74,6 +74,7 @@
 #include <helpers/CommonCLI.h>
 #include <helpers/DeferredCliCommand.h>
 #include <helpers/RemoteCliReplyCache.h>
+#include <helpers/RemoteCliRequest.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpioReplyTracker.h>
 #endif
@@ -601,10 +602,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
       const mesh::Packet* packet) const;
   int nextFloodPacketFilterMatch(uint32_t match_mask,
                                  uint32_t visited_mask) const;
-  uint32_t applyFloodPacketFilterStop(uint32_t match_mask) const;
+  bool resolveFloodPacketFilterTargetRegion(
+      const char* name, TransportKey& scope,
+      const char*& canonical_name);
+  uint32_t applyFloodPacketFilterStop(uint32_t match_mask);
   uint32_t evaluateFloodPacketFilterMatches(
       const mesh::Packet* packet, bool incoming_region_allowed,
-      const RegionEntry* incoming_region) const;
+      const RegionEntry* incoming_region);
   bool applyFloodPacketFilterScope(mesh::Packet* packet, uint32_t match_mask,
                                    bool& scope_set, bool& fast_track,
                                    bool log_change = true);

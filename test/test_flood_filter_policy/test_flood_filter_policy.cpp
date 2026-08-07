@@ -269,6 +269,22 @@ TEST(FloodRuleOrder, NoStopPreservesEveryMatch) {
                        0x0B, priorities, stop_flags, 4));
 }
 
+TEST(FloodRuleOrder, MissingRegionTargetDoesNotStopLowerSafetyRules) {
+  EXPECT_TRUE(FloodFilterPolicy::stopActionApplies(true, false, false));
+  EXPECT_TRUE(FloodFilterPolicy::stopActionApplies(true, true, true));
+  EXPECT_FALSE(FloodFilterPolicy::stopActionApplies(true, true, false));
+  EXPECT_FALSE(FloodFilterPolicy::stopActionApplies(false, true, true));
+
+  const uint8_t priorities[] = {200, 100};
+  const uint8_t stop_flags[] = {
+      (uint8_t)(FloodFilterPolicy::stopActionApplies(true, true, false)
+                    ? 1 : 0),
+      0,
+  };
+  EXPECT_EQ(0x03U, FloodFilterPolicy::truncateRulesAtStop(
+                       0x03, priorities, stop_flags, 2));
+}
+
 TEST(FloodRuleOrder, ThirtyOneSlotTableIncludesTheLastSlot) {
   uint8_t priorities[31] = {0};
   uint8_t stop_flags[31] = {0};

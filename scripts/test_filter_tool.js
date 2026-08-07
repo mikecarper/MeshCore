@@ -92,6 +92,18 @@ test("builds and parses the BlackHole86 policy definition", () => {
   assert.strictEqual(tool.buildDefinition(rule), definition);
 });
 
+test("treats channel star as no channel condition", () => {
+  const rule = tool.parseDefinition(
+    "policy set everything phase=forward owner=filter priority=1 when route=flood type=any hops=all channel=* do drop"
+  );
+  assert.strictEqual(rule.channel, "");
+  assert.strictEqual(tool.matchRule(rule, packet({ type: "grp_data" })).matched, true);
+  assert.strictEqual(tool.matchRule(
+    rule, packet({ type: "ota", channel: "" })
+  ).matched, true);
+  assert.doesNotMatch(tool.buildDefinition(rule), /channel=/);
+});
+
 test("keeps a payload class and path bucket in one rule", () => {
   const definition = "policy set other-bucket phase=rewrite owner=scope priority=130 when route=flood type=class:other hops=all path=bucket:2 do scope=#BlackHole86 timing=slow";
   const rule = tool.parseDefinition(definition);

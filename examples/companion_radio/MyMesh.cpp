@@ -2017,8 +2017,10 @@ void MyMesh::handleCmdFrame(size_t len) {
       int result;
       uint32_t expected_ack;
       if (txt_type == TXT_TYPE_CLI_DATA) {
+        const uint32_t logical_request_id = msg_timestamp;
         msg_timestamp = getRTCClock()->getCurrentTimeUnique(); // Use node's RTC instead of app timestamp to avoid tripping replay protection
-        result = sendCommandData(*recipient, msg_timestamp, attempt, text, est_timeout);
+        result = sendCommandData(*recipient, msg_timestamp, attempt, text,
+                                 est_timeout, logical_request_id);
         expected_ack = 0; // no Ack expected
       } else {
         const uint32_t app_timestamp = msg_timestamp;

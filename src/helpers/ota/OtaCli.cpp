@@ -43,6 +43,7 @@ static char fstate_char(OtaManager::FetchState s) {
     case OtaManager::IDLE: return 'I';
     case OtaManager::WANT_MANIFEST: return 'W';
     case OtaManager::WANT_LEAVES: return 'L';
+    case OtaManager::VERIFYING_STAGED: return 'V';
     case OtaManager::FETCHING: return 'F';
     case OtaManager::COMPLETE: return 'C';
     case OtaManager::PAUSED: return 'P';
@@ -59,6 +60,7 @@ static const char* state_word(OtaManager::FetchState s) {
     case OtaManager::IDLE:          return "idle";
     case OtaManager::WANT_MANIFEST: return "starting";
     case OtaManager::WANT_LEAVES:   return "validating seed";
+    case OtaManager::VERIFYING_STAGED: return "verifying staged blocks";
     case OtaManager::FETCHING:      return "downloading";
     case OtaManager::COMPLETE:      return "ready to install";
     case OtaManager::FAILED:        return "failed";
@@ -72,6 +74,7 @@ static const char* state_short(OtaManager::FetchState s) {
   switch (s) {
     case OtaManager::WANT_MANIFEST: return "manifest";
     case OtaManager::WANT_LEAVES:   return "leaves";
+    case OtaManager::VERIFYING_STAGED: return "verify";
     case OtaManager::FETCHING:      return "dl";
     case OtaManager::COMPLETE:      return "done";
     case OtaManager::FAILED:        return "failed";

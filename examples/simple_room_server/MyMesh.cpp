@@ -740,7 +740,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     const char* text = (const char*)&data[5];
     const size_t text_len = strlen(text);
 
-    uint8_t temp[166];
+    uint8_t temp[5 + mesh::RemoteCliReplyCache::MAX_REPLY_TEXT + 1];
     temp[5] = 0;
     bool send_ack = false;
 
@@ -776,17 +776,52 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         send_ack = true;
       }
     } else { // TXT_TYPE_CLI_DATA
-      if (sender_timestamp < client->last_timestamp) {
+      uint32_t request_id = sender_timestamp;
+      mesh::RemoteCliRequest::parse(data, len, 5, request_id);
+      const uint32_t command_fingerprint =
+          mesh::RemoteCliReplyCache::fingerprint(text, text_len);
+      const char* cached_response = NULL;
+      const bool cached_retry = remote_cli_reply_cache.lookup(
+          client->id.pub_key, request_id, command_fingerprint,
+          &cached_response);
+
+      if (sender_timestamp < client->last_timestamp && !cached_retry) {
         MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
         return;
       }
 
-      const bool is_retry = sender_timestamp == client->last_timestamp;
-      client->last_timestamp = sender_timestamp;
-      if (client->isAdmin() && !is_retry) {
+      const bool repeated_timestamp = sender_timestamp == client->last_timestamp;
+      if (sender_timestamp > client->last_timestamp) {
+        client->last_timestamp = sender_timestamp;
+      }
+
+      if (cached_retry) {
+        MESH_DEBUG_PRINTLN("onPeerDataRecv: replaying cached remote CLI reply");
+        size_t cached_len = strlen(cached_response);
+        if (cached_len > mesh::RemoteCliReplyCache::MAX_REPLY_TEXT) {
+          cached_len = mesh::RemoteCliReplyCache::MAX_REPLY_TEXT;
+        }
+        memcpy(&temp[5], cached_response, cached_len);
+        temp[5 + cached_len] = 0;
+        temp[4] = (TXT_TYPE_CLI_DATA << 2);
+      } else if (repeated_timestamp) {
+        MESH_DEBUG_PRINTLN("onPeerDataRecv: duplicate remote CLI request has no cached reply");
+        return;
+      } else if (client->isAdmin()) {
         handleCommand(sender_timestamp, (char*)text, (char*)&temp[5],
                       i, packet->getPathHashSize());
-        temp[4] = (TXT_TYPE_CLI_DATA << 2); // attempt and flags,  (NOTE: legacy was: TXT_TYPE_PLAIN)
+        temp[5 + mesh::RemoteCliReplyCache::MAX_REPLY_TEXT] = 0;
+        if (temp[5] == 0) strcpy((char*)&temp[5], "OK");
+        remote_cli_reply_cache.remember(client->id.pub_key, request_id,
+                                        command_fingerprint,
+                                        (char*)&temp[5]);
+        temp[4] = (TXT_TYPE_CLI_DATA << 2);
+      } else {
+        const char* error = "Err - admin permission required";
+        strcpy((char*)&temp[5], error);
+        remote_cli_reply_cache.remember(client->id.pub_key, request_id,
+                                        command_fingerprint, error);
+        temp[4] = (TXT_TYPE_CLI_DATA << 2);
       }
       // CLI_DATA replies are the result signal; no separate ACK is expected.
     }

@@ -277,6 +277,8 @@ void SerialBLEInterface::clearBuffers() {
   send_queue_len = 0;
   recv_queue_len = 0;
   _last_retry_attempt = 0;
+  _tx_stall_watchdog.reset();
+  _tx_disconnect_recovery.complete();
   bleuart.flush();
 }
 
@@ -296,6 +298,80 @@ void SerialBLEInterface::shiftRecvQueueLeft() {
       recv_queue[i] = recv_queue[i + 1];
     }
   }
+}
+
+size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
+  BLEConnection* conn = Bluefruit.Connection(_conn_handle);
+  if (conn == nullptr || !conn->connected() ||
+      !bleuart.notifyEnabled(_conn_handle)) {
+    return 0;
+  }
+
+  const uint16_t mtu = conn->getMtu();
+  if (mtu <= 3) return 0;
+
+  // BLEUart::write() reports either the full requested length or zero, even
+  // when its internal multi-notification loop queued an earlier fragment
+  // before a later fragment failed. Submit one ATT payload at a time so a
+  // non-zero return accurately tells us that part of the protocol frame is
+  // already on the stream and must never be followed by a whole-frame retry.
+  return mesh::writeBleFrameInChunks(
+      frame.buf, frame.len, mtu - 3,
+      [this](const uint8_t* data, size_t len) {
+        return bleuart.write(_conn_handle, data, len);
+      });
+}
+
+void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
+  if (!_tx_disconnect_recovery.pending()) return;
+
+  BLEConnection* conn = _conn_handle == BLE_CONN_HANDLE_INVALID
+                            ? nullptr
+                            : Bluefruit.Connection(_conn_handle);
+  if (_conn_handle == BLE_CONN_HANDLE_INVALID || conn == nullptr ||
+      !conn->connected()) {
+    BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX link is already closed");
+    _conn_handle = BLE_CONN_HANDLE_INVALID;
+    _isDeviceConnected = false;
+    _peer_address_valid = false;
+    _security_timer.cancel();
+    clearBuffers();
+    if (_isEnabled && !isAdvertising()) {
+      Bluefruit.Advertising.start(0);
+    }
+    return;
+  }
+
+  if (!_tx_disconnect_recovery.shouldAttempt(now)) return;
+
+  const uint32_t result = sd_ble_gap_disconnect(
+      _conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+  if (result == NRF_SUCCESS) {
+    BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX disconnect requested");
+  } else if (result == NRF_ERROR_INVALID_STATE) {
+    BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX disconnect already in progress");
+  } else {
+    BLE_DEBUG_PRINTLN(
+        "SerialBLEInterface: stalled TX disconnect failed, err=0x%08lX; will retry",
+        (unsigned long)result);
+  }
+}
+
+void SerialBLEInterface::recoverStalledTx(const char* cause) {
+  if (_tx_disconnect_recovery.pending()) return;
+
+  BLE_DEBUG_PRINTLN("SerialBLEInterface: %s; forcing reconnect", cause);
+
+  // Keep the physical connection state intact until the SoftDevice confirms
+  // disconnection, but make isConnected() false through the recovery state so
+  // no more companion frames enter this damaged stream.
+  send_queue_len = 0;
+  recv_queue_len = 0;
+  _last_retry_attempt = 0;
+  _tx_stall_watchdog.reset();
+  bleuart.flush();
+  _tx_disconnect_recovery.begin();
+  serviceTxRecovery((uint32_t)millis());
 }
 
 bool SerialBLEInterface::isValidConnection(uint16_t handle, bool requireWaitingForSecurity) const {
@@ -365,38 +441,68 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
+  const uint32_t check_now = (uint32_t)millis();
+  if (_tx_disconnect_recovery.pending()) {
+    serviceTxRecovery(check_now);
+    return 0;
+  }
+
   if (send_queue_len > 0) {
     if (!isConnected()) {
       BLE_DEBUG_PRINTLN("writeBytes: connection invalid, clearing send queue");
       send_queue_len = 0;
+      _last_retry_attempt = 0;
+      _tx_stall_watchdog.reset();
     } else {
-      unsigned long now = millis();
+      uint32_t now = check_now;
       bool throttle_active = (_last_retry_attempt > 0 && (now - _last_retry_attempt) < BLE_RETRY_THROTTLE_MS);
 
       if (!throttle_active) {
         Frame frame_to_send = send_queue[0];
+        const bool delivery_required = mesh::companionFrameRequiresDelivery(
+            frame_to_send.buf, frame_to_send.len);
 
-        size_t written = bleuart.write(frame_to_send.buf, frame_to_send.len);
+        size_t written = writeBleUartFrame(frame_to_send);
         if (written == frame_to_send.len) {
           BLE_DEBUG_PRINTLN("writeBytes: sz=%u, hdr=%u", (unsigned)frame_to_send.len, (unsigned)frame_to_send.buf[0]);
           _last_retry_attempt = 0;
+          _tx_stall_watchdog.reset();
           shiftSendQueueLeft();
         } else if (written > 0) {
-          BLE_DEBUG_PRINTLN("writeBytes: partial write, sent=%u of %u, dropping corrupted frame", (unsigned)written, (unsigned)frame_to_send.len);
-          _last_retry_attempt = 0;
-          shiftSendQueueLeft();
+          BLE_DEBUG_PRINTLN("writeBytes: partial write, sent=%u of %u",
+                            (unsigned)written,
+                            (unsigned)frame_to_send.len);
+          // The app cannot recover framing after receiving only part of one
+          // protocol frame. Reconnect instead of following it with another
+          // frame on the same BLE UART stream.
+          recoverStalledTx("partial BLE UART frame");
+          return 0;
         } else {
           if (!isConnected()) {
             BLE_DEBUG_PRINTLN("writeBytes failed: connection lost, dropping frame");
             _last_retry_attempt = 0;
+            _tx_stall_watchdog.reset();
             shiftSendQueueLeft();
           } else {
             BLE_DEBUG_PRINTLN("writeBytes failed (buffer full), keeping frame for retry");
             _last_retry_attempt = now;
+            if (delivery_required) {
+              if (_tx_stall_watchdog.noteBlocked((uint32_t)now)) {
+                recoverStalledTx("command reply blocked for 10 seconds");
+                return 0;
+              }
+            } else {
+              // Best-effort pushes do not make an otherwise healthy but idle
+              // app reconnect. A later response is inserted ahead of them and
+              // starts its own bounded watchdog window.
+              _tx_stall_watchdog.reset();
+            }
           }
         }
       }
     }
+  } else {
+    _tx_stall_watchdog.reset();
   }
   
   if (recv_queue_len > 0) {
@@ -478,7 +584,8 @@ void SerialBLEInterface::onBleUartRX(uint16_t conn_handle) {
 }
 
 bool SerialBLEInterface::isConnected() const {
-  return _isDeviceConnected && Bluefruit.connected() > 0;
+  return !_tx_disconnect_recovery.pending() && _isDeviceConnected &&
+         Bluefruit.connected() > 0;
 }
 
 bool SerialBLEInterface::isReadBusy() const {

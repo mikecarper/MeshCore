@@ -325,10 +325,12 @@ Match fields:
   `flood.filter`. The positional form remains accepted.
 - `hops=` accepts `all`, `N`, `N+`, or `N-M`. The positional form remains
   accepted. Received hops over 3 are written as `hops=4+`.
-- `channel=*|public|#name|128-bit-key|256-bit-key` authenticates a `GRP_TXT` or
-  `GRP_DATA` packet with that channel key before the row can match. With
-  `type=any`, this condition naturally limits the row to those two group
-  packet types.
+- `channel=*|public|#name|128-bit-key|256-bit-key` optionally narrows by
+  channel. `channel=*` is an unconstrained wildcard: it performs no channel
+  authentication and matches every payload selected by `type=`. Thus
+  `type=any channel=*` means every flood payload type. `public`, `#name`, and
+  raw keys authenticate one channel and narrow the row to `GRP_TXT` or
+  `GRP_DATA`.
 - `prefix=` is a source-path prefix containing one to three comma-separated
   pbyte IDs. Every ID must use the packet's pbyte width: 2, 4, or 6 hex
   characters for 1-, 2-, or 3-byte paths. Order matters and matching begins at
@@ -348,10 +350,13 @@ Actions:
   `flood.rule` form requires an explicit action. For backward compatibility,
   only a legacy `flood.filter` row with no rewrite, rate, or stop action means
   drop implicitly.
-- `scope=<name>` assigns a direct public hashtag scope without requiring a
-  region-list entry.
-- `region=<name>` assigns an existing locally allowed region and its transport
-  key.
+- `scope=<name>` derives a public transport scope directly from the name; no
+  region entry is consulted. `scope=BlackHole86` is therefore a valid
+  regionless sink. `region=<name>` is different: it resolves a configured,
+  flood-allowed region and one of that region's transport keys.
+- A `stop` on a row whose `region=` target is currently unusable is also inert,
+  allowing lower-priority safety rules to run. Direct `scope=` targets do not
+  have this configuration dependency.
 - `rate=N/min` is a per-node, per-row fixed one-minute forwarding limit. It can
   stand alone or accompany a scope/region rewrite. Quota is charged only after
   every other forwarding gate, including moderation, accepts the packet. It is

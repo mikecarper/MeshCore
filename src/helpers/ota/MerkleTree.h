@@ -15,6 +15,24 @@
 namespace mesh {
 namespace ota {
 
+// O(log n) streaming root builder. It accepts leaves in index order and keeps
+// only one four-byte peak per tree level, so flash-backed verification never
+// needs a block_count*4 scratch buffer.
+class MerkleAccumulator {
+public:
+  MerkleAccumulator() { reset(); }
+
+  void reset();
+  bool add(const uint8_t leaf[4]);
+  bool finish(uint8_t out[4]) const;
+  uint32_t count() const { return _count; }
+
+private:
+  uint8_t _peaks[32][4];
+  uint32_t _valid_mask;
+  uint32_t _count;
+};
+
 // leaf digest of one payload block
 void merkle_leaf(uint8_t out[4], const uint8_t* block, uint32_t block_len);
 

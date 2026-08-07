@@ -24,7 +24,7 @@ public:
 
   uint32_t evaluate(const mesh::Packet* packet, bool temp_radio_active,
                     bool incoming_region_allowed,
-                    const RegionEntry* incoming_region) const;
+                    const RegionEntry* incoming_region);
   bool applyScope(mesh::Packet* packet, uint32_t match_mask,
                   bool& scope_set, bool& fast_track,
                   bool log_change = true);
@@ -80,7 +80,9 @@ private:
   bool authenticateChannel(const Entry& entry,
                            const mesh::Packet* packet) const;
   int nextMatch(uint32_t match_mask, uint32_t visited_mask) const;
-  uint32_t applyStop(uint32_t match_mask) const;
+  bool resolveTargetRegion(const char* name, TransportKey& scope,
+                           const char*& canonical_name);
+  uint32_t applyStop(uint32_t match_mask);
   void format(const char* args, char* reply) const;
   void formatDetail(int index, char* reply, size_t reply_len) const;
   void set(const char* args, char* reply,

@@ -29,6 +29,51 @@ TEST(CompanionFrameQueue, PushTrafficLeavesOneResponseSlot) {
   EXPECT_EQ(0x00, queue[0].buf[0]);
 }
 
+TEST(CompanionFrameQueue, RequiredPushEvictsBestEffortTraffic) {
+  TestFrame queue[4] = {
+      {1, {0x06}}, {1, {0x82}}, {1, {0x88}}, {1, {0x84}}};
+  size_t count = 4;
+
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x8B));
+  ASSERT_EQ(4U, count);
+  EXPECT_EQ(0x06, queue[0].buf[0]);
+  EXPECT_EQ(0x82, queue[1].buf[0]);
+  EXPECT_EQ(0x8B, queue[2].buf[0]);
+  EXPECT_EQ(0x88, queue[3].buf[0]);
+}
+
+TEST(CompanionFrameQueue, RequiredPushesRemainFifoAheadOfLogs) {
+  TestFrame queue[6] = {};
+  size_t count = 0;
+
+  ASSERT_TRUE(enqueue(queue, count, 6, 0x88));
+  ASSERT_TRUE(enqueue(queue, count, 6, 0x82));
+  ASSERT_TRUE(enqueue(queue, count, 6, 0x84));
+  ASSERT_TRUE(enqueue(queue, count, 6, 0x85));
+
+  ASSERT_EQ(4U, count);
+  EXPECT_EQ(0x82, queue[0].buf[0]);
+  EXPECT_EQ(0x85, queue[1].buf[0]);
+  EXPECT_EQ(0x88, queue[2].buf[0]);
+  EXPECT_EQ(0x84, queue[3].buf[0]);
+}
+
+TEST(CompanionFrameQueue, MessageWaitingCoalesces) {
+  TestFrame queue[4] = {};
+  size_t count = 0;
+
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x83));
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x83));
+  EXPECT_EQ(1U, count);
+}
+
+TEST(CompanionFrameQueue, UnknownPushDefaultsToRequired) {
+  uint8_t unknown = 0xF1;
+  EXPECT_TRUE(mesh::companionFrameRequiresDelivery(&unknown, 1));
+  uint8_t packet_log = 0x88;
+  EXPECT_FALSE(mesh::companionFrameRequiresDelivery(&packet_log, 1));
+}
+
 TEST(CompanionFrameQueue, ResponsesRunBeforeQueuedPushesAndRemainFifo) {
   TestFrame queue[5] = {};
   size_t count = 0;

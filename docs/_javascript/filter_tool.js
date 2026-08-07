@@ -141,6 +141,7 @@
       if (optional) return "";
       throw new FilterToolError("Channel is required.");
     }
+    if (channel === "*") return "";
     if (channel.toLowerCase() === "public") return "public";
     if (channel[0] === "#") {
       if (channel.length < 2 || channel.length > 31 || /\s/.test(channel)) {
@@ -149,7 +150,7 @@
       return channel;
     }
     if (/^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{64})$/.test(channel)) return channel.toUpperCase();
-    throw new FilterToolError("Channel must be public, #channel, or a 128/256-bit hexadecimal key.");
+    throw new FilterToolError("Channel must be *, public, #channel, or a 128/256-bit hexadecimal key.");
   }
 
   function normalizeScopeName(value) {

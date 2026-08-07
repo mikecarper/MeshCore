@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/RemoteCliReplyCache.h>
+#include <helpers/RemoteCliRequest.h>
 
 TEST(RemoteCliReplyCache, ReplaysOnlyTheSameAuthenticatedRequest) {
   mesh::RemoteCliReplyCache cache;
@@ -25,7 +26,7 @@ TEST(RemoteCliReplyCache, ReplaysOnlyTheSameAuthenticatedRequest) {
       mesh::RemoteCliReplyCache::fingerprint("set repeat on", 13)));
 }
 
-TEST(RemoteCliReplyCache, OwnsAndReplacesTheRememberedResponse) {
+TEST(RemoteCliReplyCache, OwnsAndRetainsRecentResponses) {
   mesh::RemoteCliReplyCache cache;
   uint8_t first_sender[PUB_KEY_SIZE] = {};
   uint8_t sender[PUB_KEY_SIZE] = {};
@@ -39,9 +40,25 @@ TEST(RemoteCliReplyCache, OwnsAndReplacesTheRememberedResponse) {
   EXPECT_STREQ("first", cache.response());
 
   ASSERT_TRUE(cache.remember(sender, 2U, 20U, "second"));
-  EXPECT_FALSE(cache.matches(first_sender, 1U, 10U));
+  const char* first_response = nullptr;
+  EXPECT_TRUE(cache.lookup(first_sender, 1U, 10U, &first_response));
+  EXPECT_STREQ("first", first_response);
   EXPECT_TRUE(cache.matches(sender, 2U, 20U));
   EXPECT_STREQ("second", cache.response());
+}
+
+TEST(RemoteCliReplyCache, RoundRobinEvictionIsBounded) {
+  mesh::RemoteCliReplyCache cache;
+  uint8_t sender[PUB_KEY_SIZE] = {};
+  for (size_t i = 0; i < mesh::RemoteCliReplyCache::ENTRY_COUNT; ++i) {
+    ASSERT_TRUE(cache.remember(sender, (uint32_t)i + 1,
+                               (uint32_t)i + 100, "OK"));
+  }
+  EXPECT_TRUE(cache.matches(sender, 1U, 100U));
+  ASSERT_TRUE(cache.remember(sender, 999U, 999U, "new"));
+  EXPECT_FALSE(cache.matches(sender, 1U, 100U));
+  EXPECT_TRUE(cache.matches(sender, 2U, 101U));
+  EXPECT_TRUE(cache.matches(sender, 999U, 999U));
 }
 
 TEST(RemoteCliReplyCache, EmptyResponseStillMarksRequestComplete) {
@@ -77,6 +94,26 @@ TEST(RemoteCliReplyCache, ClearForgetsTheRequestAndResponse) {
   EXPECT_FALSE(cache.isValid());
   EXPECT_FALSE(cache.matches(sender, 1U, 2U));
   EXPECT_STREQ("", cache.response());
+}
+
+TEST(RemoteCliRequest, LogicalIdExtensionIsBackwardCompatible) {
+  uint8_t payload[64] = {};
+  const char command[] = "get stats";
+  memcpy(payload + 5, command, strlen(command));
+  const size_t length = mesh::RemoteCliRequest::append(
+      payload, sizeof(payload), 5, strlen(command), 0x12345678U);
+  ASSERT_GT(length, 0U);
+  EXPECT_STREQ(command, (const char*)payload + 5);
+
+  uint32_t logical_id = 0;
+  EXPECT_TRUE(mesh::RemoteCliRequest::parse(
+      payload, length, 5, logical_id));
+  EXPECT_EQ(0x12345678U, logical_id);
+
+  uint8_t legacy[32] = {};
+  memcpy(legacy + 5, command, strlen(command));
+  EXPECT_FALSE(mesh::RemoteCliRequest::parse(
+      legacy, sizeof(legacy), 5, logical_id));
 }
 
 int main(int argc, char** argv) {
