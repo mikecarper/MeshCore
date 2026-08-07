@@ -1,9 +1,8 @@
 # Filter policy playground
 
-Design and test policies for the proposed ground-up MeshCore forwarding engine.
-The playground models phased evaluation, immutable receive-time matches,
-explicit priority and stop behavior, ACL ownership, compact typed conditions,
-and accumulated forwarding decisions.
+Build a forwarding policy, see its readable definition, and simulate how a
+repeater handles a packet. Rules match received packet facts, then apply actions
+such as dropping, scoping, rate-limiting, or retrying a flood.
 
 Everything runs locally in this browser. Channel keys, packet facts, and policy
 drafts are not uploaded anywhere.
@@ -20,68 +19,83 @@ drafts are not uploaded anywhere.
 
 ## Build a policy
 
-The presets below reproduce common examples from
-[Flood Filtering and Moderation](flood_filtering.md) in the proposed rule model.
+Start with an example or build a rule, then test the draft against packet facts
+in the simulator below. The examples draw from
+[Flood Filtering and Moderation](flood_filtering.md).
 
 <div class="filter-tool" data-filter-tool>
   <div class="filter-management-safety" role="note">
     <strong>Remote login and direct routes</strong>
     <p>
-      This policy controls flood retransmission only. Direct packets carry a
-      supplied route and stay outside the filter, matching today's firmware.
-      Local packet delivery also happens independently of the relay decision.
-      Rules that can limit relayed REQ, RESPONSE, TXT_MSG, ANON_REQ, or PATH
-      traffic receive a prominent warning because they can still reduce
-      multi-hop remote-login reach. The analyzer warns instead of silently
-      exempting those floods, because an exemption would make the documented
-      high-traffic rules behave differently.
+      This policy only decides whether a relay retransmits a flood. Direct
+      packets and local delivery are unaffected. Rules matching the login/admin
+      family can still reduce multi-hop remote-login reach, so the analyzer
+      flags them.
     </p>
   </div>
   <div class="filter-tool-toolbar" aria-label="Policy examples">
     <div class="filter-example-heading">
-      <strong>Drop-in replacements for documented settings</strong>
-      <span>Choose one to load its proposed-engine equivalent.</span>
+      <strong>Example policies</strong>
+      <span>Choose one to load its full rules into the builder and draft.</span>
+    </div>
+    <div class="filter-example-primer" role="note">
+      <p>
+        Read each summary as <code>when</code> all conditions match,
+        <code>do</code> the actions. A match alone does not stop forwarding.
+        <code>hops=3+</code> means the rule applies at a received hop count of
+        three or more.
+      </p>
+      <p>
+        <code>type=grp_data</code> matches one payload type.
+        <code>type=any</code> matches every payload.
+        <code>type=class:group</code> matches group text and data;
+        <code>type=class:login</code> matches REQ, RESPONSE, TXT_MSG, ANON_REQ,
+        and PATH; <code>type=class:other</code> matches everything else.
+      </p>
+      <p>
+        <code>channel=</code>, <code>rx.scope=</code>, <code>path=</code>, and
+        <code>tempradio=</code> further narrow a match. After <code>do</code>,
+        <code>drop</code> prevents retransmission, <code>scope=</code> sets the
+        outgoing transport scope, <code>rate=</code> limits matches per minute,
+        and <code>timing=</code> selects the schedule.
+      </p>
     </div>
     <div class="filter-example-grid">
       <button type="button" data-example="channel_scope">
-        <span>Scope all authenticated #rgdata</span>
-        <code>set flood.channel.scope #rgdata scope=BlackHole86</code>
+        <span>Set #BlackHole86 scope on all #rgdata group traffic</span>
+        <code>when type=class:group hops=all channel=#rgdata do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="blackhole">
-        <span>Scope unscoped #rgdata after hop 3</span>
-        <code>type=grp_data hops=4+ channel=#rgdata in=none scope=BlackHole86</code>
+        <span>Add #BlackHole86 scope to unscoped #rgdata data</span>
+        <code>when type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="scope_rewrite">
-        <span>Rewrite #usa to #BlackHole86</span>
-        <code>channel=#rgdata in=scope:usa scope=BlackHole86</code>
+        <span>Replace #usa with #BlackHole86 on #rgdata data</span>
+        <code>when type=grp_data hops=all channel=#rgdata rx.scope=scope:usa do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="prefix_rate">
-        <span>Rate-limit source path 860C</span>
-        <code>type=any prefix=860C rate=10/min</code>
-      </button>
-      <button type="button" data-example="channel_stop">
-        <span>Stop lower rules for short-hop #rgdata</span>
-        <code>hops=0-2 channel=#rgdata priority=200 stop</code>
+        <span>Rate-limit packets whose path starts with 860C</span>
+        <code>when type=any hops=all path=prefix:860C do rate=10/min burst=10</code>
       </button>
       <button type="button" data-example="high_traffic">
-        <span>Six-rule high-traffic mesh preset</span>
-        <code>req 3+ | response 9+ | grp_data 3+ | login paths 9+</code>
+        <span>Drop selected flood types at their hop limits</span>
+        <code>when type=control hops=1+ do drop<br>when type=req hops=3+ do drop; same for type=grp_data<br>when type=response hops=9+ do drop; same for type=anon_req and type=path</code>
       </button>
       <button type="button" data-example="moderation">
-        <span>Limit a Public display name</span>
-        <code>public "Noisy User" rate=5/min</code>
+        <span>Rate-limit Public messages from “Noisy User”</span>
+        <code>when type=grp_txt hops=all channel=public sender="Noisy User" do rate=5/min burst=5</code>
       </button>
       <button type="button" data-example="blacklist">
-        <span>Drop a passive-blacklist path</span>
-        <code>set flood.filter any all path=blacklist</code>
+        <span>Drop packets whose path matches the passive blacklist</span>
+        <code>when type=any hops=all path=blacklist do drop</code>
       </button>
       <button type="button" data-example="factory">
-        <span>Factory OTA and #wardriving rows</span>
-        <code>ota suspend=tempradio | #wardriving hops=5+</code>
+        <span>Drop OTA outside temporary-radio mode and distant #wardriving</span>
+        <code>when type=ota hops=all tempradio=inactive do drop<br>when type=any channel=#wardriving hops=5+ do drop</code>
       </button>
       <button type="button" data-example="wildcards">
-        <span>Login and other wildcard scopes</span>
-        <code>login:* | other:* path=bucket:2</code>
+        <span>Set #BlackHole86 scope on login and bucket-matched other traffic</span>
+        <code>when type=class:login hops=all do scope=#BlackHole86 timing=fast<br>when type=class:other hops=all path=bucket:2 do scope=#BlackHole86 timing=slow</code>
       </button>
     </div>
   </div>
@@ -128,7 +142,7 @@ The presets below reproduce common examples from
           <input data-field="hops" value="all" placeholder="all, 5+, 2-6, or 3">
         </label>
         <label>
-          Authenticated channel (optional)
+          Channel (optional)
           <input data-field="channel" placeholder="#rgdata, public, or key">
         </label>
         <label>
@@ -305,11 +319,11 @@ The presets below reproduce common examples from
             </select>
           </label>
           <label>
-            Stop behavior after a match
+            Rule processing after a match
             <select data-field="stop">
-              <option value="none">Continue processing</option>
-              <option value="phase">Stop this phase</option>
-              <option value="policy">Stop later policy phases</option>
+              <option value="none">Continue to later rules</option>
+              <option value="phase">Skip later rules in this phase</option>
+              <option value="policy">Skip all later policy rules</option>
             </select>
           </label>
           <label>
@@ -435,7 +449,7 @@ The presets below reproduce common examples from
         <input data-packet="hops" type="number" min="0" max="63" inputmode="numeric" value="4">
       </label>
       <label>
-        Authenticated channel
+        Channel
         <input data-packet="channel" value="#rgdata" placeholder="blank if none">
       </label>
       <label>
@@ -505,7 +519,7 @@ The presets below reproduce common examples from
       Accepts one-line <code>policy set ... when ... do ...</code> definitions,
       playground JSON, or a playground Base64 bundle.
     </p>
-    <textarea data-role="import-input" spellcheck="false" placeholder="policy set blackhole phase=rewrite owner=scope priority=150 when route=flood type=grp_data hops=4+ channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast stop=phase"></textarea>
+    <textarea data-role="import-input" spellcheck="false" placeholder="policy set rgdata-scope phase=rewrite owner=scope priority=150 when route=flood type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"></textarea>
     <div class="filter-builder-actions">
       <button class="filter-primary-action" type="button" data-role="explain-input">Explain input</button>
       <button type="button" data-role="load-input">Load into builder</button>
@@ -561,7 +575,7 @@ The simulator uses these rules:
    configurable rules, but never mandatory packet validation or radio safety.
 8. Shadow rules report what they would do without changing the decision or
    stopping other rules.
-9. Expensive facts such as channel authentication, decryption, and path-table
+9. Expensive facts such as channel-key matching, decryption, and path-table
    lookup are resolved once per packet and reused by every matching rule.
 
 The byte-budget display is deliberately approximate until the packed firmware

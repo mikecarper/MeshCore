@@ -167,16 +167,19 @@ test("imports JSON and multiple readable definitions", () => {
   assert.strictEqual(tool.parsePolicyInput(readable).length, 2);
 });
 
-test("loads proposed replacements for the documented commands", () => {
+test("loads the playground policy examples", () => {
   Object.values(tool.EXAMPLES).forEach((rules) => rules.forEach(tool.normalizeRule));
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.channel_scope[0]),
     "policy set rgdata-scope phase=rewrite owner=scope priority=100 when route=flood type=class:group hops=all channel=#rgdata do scope=#BlackHole86 timing=fast"
   );
+  assert.match(tool.explainRule(tool.EXAMPLES.channel_scope[0]), /the #rgdata channel/);
+  assert.doesNotMatch(tool.explainRule(tool.EXAMPLES.channel_scope[0]), /authenticated/i);
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.blackhole[0]),
-    "policy set blackhole-after-hop-3 phase=rewrite owner=scope priority=100 when route=flood type=grp_data hops=4+ channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"
+    "policy set blackhole-unscoped-rgdata phase=rewrite owner=scope priority=100 when route=flood type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"
   );
+  assert.strictEqual(tool.EXAMPLES.channel_stop, undefined);
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.prefix_rate[0]),
     "policy set prefix-860c-rate phase=forward owner=filter priority=100 when route=flood type=any hops=all path=prefix:860C do rate=10/min burst=10"
@@ -272,7 +275,7 @@ test("matches login and future-safe other payload classes", () => {
   assert.strictEqual(tool.matchRule(other, packet({ type: "ota", channel: "" })).matched, true);
   assert.strictEqual(tool.matchRule(other, packet({ type: "grp_data" })).matched, false);
   assertToolError(() => tool.normalizePacket(packet({ type: "class:group", channel: "" })), /exact known type/);
-  assertToolError(() => tool.normalizePacket(packet({ type: "req" })), /authenticated channel/);
+  assertToolError(() => tool.normalizePacket(packet({ type: "req" })), /include a channel/);
 });
 
 test("keeps direct routes and SNR outside the flood policy schema", () => {
