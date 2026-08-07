@@ -517,6 +517,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#payload-type-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Payload type reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#proposed-evaluation-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1005,6 +1016,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#payload-type-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Payload type reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#proposed-evaluation-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1087,11 +1109,11 @@ in the simulator below. The examples draw from
             <tr><th><code>type=</code> value</th><th>Matches</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>grp_data</code></td><td>Only the named payload type</td></tr>
+            <tr><td><a href="#payload-type-reference"><code>grp_data</code></a></td><td>Only the named payload type; see every exact type below</td></tr>
             <tr><td><code>any</code></td><td>Every payload type</td></tr>
             <tr><td><code>class:group</code></td><td>GRP_TXT and GRP_DATA</td></tr>
             <tr><td><code>class:login</code></td><td>REQ, RESPONSE, TXT_MSG, ANON_REQ, and PATH</td></tr>
-            <tr><td><code>class:other</code></td><td>Every remaining payload type</td></tr>
+            <tr><td><code>class:other</code></td><td>Every remaining payload type that is not group or login</td></tr>
           </tbody>
         </table>
         <table class="filter-primer-table">
@@ -1616,6 +1638,100 @@ in the simulator below. The examples draw from
   </section>
 </div>
 
+<h2 id="payload-type-reference">Payload type reference</h2>
+<p>Use an exact <code>type=</code> value when a rule should match only one payload type.
+The class column shows which broader selector also matches it.</p>
+<table>
+<thead>
+<tr>
+<th><code>type=</code> value</th>
+<th>Payload</th>
+<th>Class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>req</code></td>
+<td>Request</td>
+<td><code>class:login</code></td>
+</tr>
+<tr>
+<td><code>response</code></td>
+<td>Response</td>
+<td><code>class:login</code></td>
+</tr>
+<tr>
+<td><code>txt_msg</code></td>
+<td>Peer text message</td>
+<td><code>class:login</code></td>
+</tr>
+<tr>
+<td><code>ack</code></td>
+<td>Acknowledgment</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>advert</code></td>
+<td>Node advertisement</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>grp_txt</code></td>
+<td>Group-channel text</td>
+<td><code>class:group</code></td>
+</tr>
+<tr>
+<td><code>grp_data</code></td>
+<td>Group-channel datagram</td>
+<td><code>class:group</code></td>
+</tr>
+<tr>
+<td><code>anon_req</code></td>
+<td>Anonymous request</td>
+<td><code>class:login</code></td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>Returned path</td>
+<td><code>class:login</code></td>
+</tr>
+<tr>
+<td><code>trace</code></td>
+<td>Path trace</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>multipart</code></td>
+<td>One frame in a multipart sequence</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>control</code></td>
+<td>Control or discovery data</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>ota</code></td>
+<td>OTA-over-LoRa data</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>13</code></td>
+<td>Reserved payload type 13</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>14</code></td>
+<td>Reserved payload type 14</td>
+<td><code>class:other</code></td>
+</tr>
+<tr>
+<td><code>raw_custom</code></td>
+<td>Application-defined raw data</td>
+<td><code>class:other</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="proposed-evaluation-contract">Proposed evaluation contract</h2>
 <p>The simulator uses these rules:</p>
 <ol>

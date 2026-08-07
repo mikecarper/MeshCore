@@ -177,6 +177,24 @@
   align-items: start;
 }
 
+.filter-tool.filter-policy-detached .filter-tool-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.filter-policy-rail {
+  margin: 1rem 0 2rem;
+}
+
+.filter-policy-rail .filter-policy {
+  width: 100%;
+}
+
+@media (min-width: 90rem) {
+  .md-sidebar--secondary.filter-policy-sidebar {
+    width: 20rem;
+  }
+}
+
 .filter-panel {
   min-width: 0;
   padding: 1rem;
