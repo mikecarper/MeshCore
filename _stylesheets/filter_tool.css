@@ -191,7 +191,16 @@
 
 @media (min-width: 90rem) {
   .md-sidebar--secondary.filter-policy-sidebar {
-    width: 20rem;
+    width: calc(20rem + (100vw - 61rem) / 2);
+    margin-inline-end: calc((61rem - 100vw) / 2);
+  }
+
+  [dir="ltr"] .md-sidebar--secondary.filter-policy-sidebar .md-sidebar__inner {
+    padding-right: 0;
+  }
+
+  [dir="rtl"] .md-sidebar--secondary.filter-policy-sidebar .md-sidebar__inner {
+    padding-left: 0;
   }
 }
 
