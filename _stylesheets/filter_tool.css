@@ -1,0 +1,585 @@
+.filter-tool {
+  --filter-border: color-mix(in srgb, var(--md-default-fg-color) 18%, transparent);
+  --filter-border-strong: color-mix(in srgb, var(--md-primary-fg-color) 46%, transparent);
+  --filter-soft: color-mix(in srgb, var(--md-default-fg-color) 5%, transparent);
+  --filter-softer: color-mix(in srgb, var(--md-default-fg-color) 2.5%, transparent);
+  --filter-accent: color-mix(in srgb, var(--md-primary-fg-color) 12%, transparent);
+  --filter-warning: #ed9b00;
+  --filter-danger: #d32f2f;
+  margin: 1.5rem 0 2rem;
+  color: var(--md-default-fg-color);
+}
+
+.filter-design-warning {
+  margin: 1rem 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid #ed9b00;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, #ed9b00 11%, transparent);
+}
+
+.filter-design-warning strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.filter-design-warning p {
+  margin: 0;
+}
+
+.filter-tool [hidden] {
+  display: none !important;
+}
+
+.filter-tool-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.65rem;
+  background:
+    linear-gradient(120deg, var(--filter-accent), transparent 56%),
+    var(--md-default-bg-color);
+}
+
+.filter-tool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.filter-panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.65rem;
+  background: var(--md-default-bg-color);
+  box-shadow: 0 0.15rem 0.65rem color-mix(in srgb, #000 9%, transparent);
+}
+
+.filter-panel + .filter-panel,
+.filter-tool-grid + .filter-panel {
+  margin-top: 1rem;
+}
+
+.filter-tool-grid .filter-panel + .filter-panel {
+  margin-top: 0;
+}
+
+.filter-panel-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--filter-border);
+}
+
+.filter-panel-heading h2 {
+  margin: 0.12rem 0 0 !important;
+  font-size: 1.22rem;
+  line-height: 1.25;
+}
+
+.filter-eyebrow {
+  margin: 0;
+  color: color-mix(in srgb, var(--md-default-fg-color) 62%, transparent);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.filter-tool h3 {
+  margin: 1rem 0 0.55rem;
+  font-size: 0.88rem;
+  letter-spacing: 0.015em;
+}
+
+.filter-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.filter-tool label {
+  display: block;
+  min-width: 0;
+  color: color-mix(in srgb, var(--md-default-fg-color) 82%, transparent);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.filter-tool input,
+.filter-tool select,
+.filter-tool textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.3rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.38rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-code-bg-color);
+  font: inherit;
+}
+
+.filter-tool input,
+.filter-tool select {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.filter-tool textarea {
+  min-height: 9rem;
+  padding: 0.72rem;
+  resize: vertical;
+  font: 0.76rem/1.5 var(--md-code-font-family);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.filter-tool input:focus-visible,
+.filter-tool select:focus-visible,
+.filter-tool textarea:focus-visible,
+.filter-tool button:focus-visible {
+  outline: 0.15rem solid var(--md-accent-fg-color);
+  outline-offset: 0.12rem;
+}
+
+.filter-tool input::placeholder,
+.filter-tool textarea::placeholder {
+  color: color-mix(in srgb, var(--md-code-fg-color) 48%, transparent);
+}
+
+.filter-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-top: 0.8rem;
+  padding: 0.68rem 0.75rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.4rem;
+  background: var(--filter-soft);
+}
+
+.filter-check-row label {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0;
+  cursor: pointer;
+}
+
+.filter-check-row input {
+  width: 1rem;
+  min-height: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+}
+
+.filter-tool button {
+  appearance: none;
+  min-height: 2.2rem;
+  padding: 0.4rem 0.72rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.35rem;
+  color: var(--md-default-fg-color);
+  background: var(--filter-soft);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filter-tool button:hover:not(:disabled) {
+  border-color: var(--filter-border-strong);
+  background: var(--filter-accent);
+}
+
+.filter-tool button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.filter-tool .filter-primary-action {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+
+.filter-tool .filter-primary-action:hover:not(:disabled) {
+  filter: brightness(1.12);
+  background: var(--md-primary-fg-color);
+}
+
+.filter-tool .filter-danger-action {
+  color: color-mix(in srgb, var(--filter-danger) 82%, var(--md-default-fg-color));
+}
+
+.filter-field-help {
+  margin: 0.65rem 0;
+  color: color-mix(in srgb, var(--md-default-fg-color) 67%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.48;
+}
+
+.filter-live-preview {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--filter-border-strong);
+  border-radius: 0.48rem;
+  background:
+    linear-gradient(135deg, var(--filter-accent), transparent 62%),
+    var(--filter-softer);
+}
+
+.filter-live-preview > div {
+  min-width: 0;
+}
+
+.filter-preview-label {
+  display: block;
+  margin-bottom: 0.32rem;
+  color: color-mix(in srgb, var(--md-default-fg-color) 62%, transparent);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.filter-live-preview code,
+.filter-rule-command,
+.filter-explain-results code {
+  display: block;
+  max-width: 100%;
+  padding: 0.58rem 0.65rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.35rem;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.filter-live-preview p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.48;
+}
+
+.filter-builder-actions,
+.filter-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.filter-rule-list {
+  display: grid;
+  gap: 0.72rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-rule-list > li {
+  margin: 0;
+}
+
+.filter-rule-card {
+  padding: 0.75rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.48rem;
+  background: var(--filter-softer);
+}
+
+.filter-rule-card-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+}
+
+.filter-rule-labels {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.filter-rule-labels strong {
+  font-size: 0.81rem;
+}
+
+.filter-rule-labels span,
+.filter-rule-meta {
+  color: color-mix(in srgb, var(--md-default-fg-color) 62%, transparent);
+  font-size: 0.66rem;
+}
+
+.filter-rule-meta {
+  text-align: right;
+}
+
+.filter-rule-card p {
+  margin: 0.62rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.48;
+}
+
+.filter-rule-actions {
+  margin-top: 0.62rem;
+}
+
+.filter-rule-actions button {
+  min-height: 1.9rem;
+  padding: 0.26rem 0.55rem;
+  font-size: 0.7rem;
+}
+
+.filter-empty-state {
+  margin-top: 0.85rem;
+  padding: 2.2rem 1rem;
+  border: 1px dashed var(--filter-border-strong);
+  border-radius: 0.48rem;
+  color: color-mix(in srgb, var(--md-default-fg-color) 58%, transparent);
+  background: var(--filter-softer);
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.filter-policy-summary {
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--filter-border);
+  color: color-mix(in srgb, var(--md-default-fg-color) 68%, transparent);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.filter-policy-target {
+  margin-top: 0.85rem;
+}
+
+.filter-policy-target label {
+  max-width: 18rem;
+}
+
+.filter-inline-warnings {
+  margin: 0.58rem 0 0 1rem;
+  padding: 0;
+  color: color-mix(in srgb, var(--filter-warning) 80%, var(--md-default-fg-color));
+  font-size: 0.71rem;
+  line-height: 1.42;
+}
+
+.filter-inline-warnings li + li {
+  margin-top: 0.2rem;
+}
+
+.filter-import textarea,
+.filter-export textarea {
+  min-height: 10rem;
+}
+
+.filter-error {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.8rem;
+  border-left: 0.25rem solid var(--filter-danger);
+  border-radius: 0.25rem;
+  color: color-mix(in srgb, var(--filter-danger) 82%, var(--md-default-fg-color));
+  background: color-mix(in srgb, var(--filter-danger) 10%, transparent);
+  font-size: 0.76rem;
+}
+
+.filter-simulator-facts {
+  margin-top: 0.85rem;
+}
+
+.filter-tool .filter-simulator-check {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  align-self: end;
+  min-height: 2.35rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.38rem;
+  background: var(--filter-soft);
+  cursor: pointer;
+}
+
+.filter-tool .filter-simulator-check input {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  min-height: 1rem;
+  margin: 0;
+  padding: 0;
+}
+
+.filter-decision {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--filter-border-strong);
+  border-radius: 0.48rem;
+  background: var(--filter-softer);
+}
+
+.filter-decision > h3:first-child {
+  margin-top: 0;
+}
+
+.filter-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.55rem;
+}
+
+.filter-decision-grid > div {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.58rem;
+  border: 1px solid var(--filter-border);
+  border-radius: 0.35rem;
+  background: var(--md-code-bg-color);
+}
+
+.filter-decision-grid span {
+  color: color-mix(in srgb, var(--md-default-fg-color) 58%, transparent);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.filter-decision-grid strong {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.filter-trace {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-trace li {
+  display: grid;
+  gap: 0.18rem;
+  margin: 0;
+  padding: 0.58rem 0.65rem;
+  border-left: 0.22rem solid var(--filter-border-strong);
+  border-radius: 0.28rem;
+  background: var(--filter-soft);
+  font-size: 0.72rem;
+  line-height: 1.42;
+}
+
+.filter-trace li strong {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.filter-trace-match {
+  border-left-color: #2e7d32 !important;
+}
+
+.filter-trace-shadow {
+  border-left-color: var(--filter-warning) !important;
+}
+
+.filter-trace-miss,
+.filter-trace-disabled,
+.filter-trace-stopped {
+  opacity: 0.72;
+}
+
+.filter-explain-results {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--filter-border);
+}
+
+.filter-explain-results h3 {
+  margin-top: 0;
+}
+
+.filter-explain-results ol {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.filter-explain-results li {
+  padding-left: 0.2rem;
+}
+
+.filter-explain-results p {
+  margin: 0.45rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.48;
+}
+
+.filter-export-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.85rem 0;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--filter-border);
+}
+
+.filter-export-tabs button[aria-selected="true"] {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+
+@media (max-width: 62rem) {
+  .filter-tool-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-tool-grid .filter-panel + .filter-panel {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 44rem) {
+  .filter-panel {
+    padding: 0.75rem;
+  }
+
+  .filter-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-panel-heading,
+  .filter-rule-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-rule-meta {
+    text-align: left;
+  }
+
+  .filter-tool-toolbar button,
+  .filter-builder-actions button {
+    flex: 1 1 auto;
+  }
+}
