@@ -28,6 +28,7 @@ struct ClientInfo {
   union  {
     struct {
       uint32_t sync_since;  // sync messages SINCE this timestamp (by OUR clock)
+      uint32_t last_post_timestamp; // sender timestamp for room posts only (transient)
       uint32_t pending_ack;
       uint32_t push_post_timestamp;
       unsigned long ack_timeout;

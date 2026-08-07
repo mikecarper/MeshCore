@@ -23,6 +23,16 @@ static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_BASE = 2;
 static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_COUNT = 6;
 static constexpr uint8_t SCOPE_PATH_INVALID_BUCKET = 0xFF;
 
+enum RuleIncomingScope : uint8_t {
+  RULE_IN_ANY = 0,
+  RULE_IN_NONE = 1,
+  RULE_IN_SCOPED = 2,
+  RULE_IN_ALLOWED = 3,
+  RULE_IN_UNKNOWN = 4,
+  RULE_IN_SCOPE = 5,
+  RULE_IN_REGION = 6,
+};
+
 enum ChannelScopeGate {
   CHANNEL_SCOPE_USE_GLOBAL,
   CHANNEL_SCOPE_BYPASS,
@@ -64,6 +74,49 @@ inline uint8_t encodeScopeSelector(uint8_t selector, bool slow,
 inline uint8_t scopeSelectorValue(uint8_t stored_selector) {
   return stored_selector
       & (uint8_t)~(SLOW_SCOPE_FLAG | SCOPE_PATH_MASK);
+}
+
+// Regionless channel-scope rows use alternate base selector values so the
+// existing 16-bit target field can hold a one-based direct-scope table index.
+// Region-backed rows retain their original on-disk selector values.
+static constexpr uint8_t CHANNEL_SCOPE_DIRECT_KEY_128 = 17;
+static constexpr uint8_t CHANNEL_SCOPE_DIRECT_KEY_256 = 18;
+static constexpr uint8_t CHANNEL_SCOPE_DIRECT_TXT_ANY = 33;
+static constexpr uint8_t CHANNEL_SCOPE_DIRECT_LOGIN_ANY = 34;
+static constexpr uint8_t CHANNEL_SCOPE_DIRECT_OTHER_ANY = 35;
+static constexpr uint8_t CHANNEL_SCOPE_INVALID_SELECTOR = 0xFF;
+
+inline uint8_t encodeChannelScopeTargetSelector(uint8_t match_selector,
+                                                bool direct_target) {
+  if (!direct_target) return match_selector;
+  if (match_selector <= 2) {
+    return (uint8_t)(CHANNEL_SCOPE_DIRECT_TXT_ANY + match_selector);
+  }
+  if (match_selector == 16 || match_selector == 32) {
+    return (uint8_t)(16 + match_selector / 16);
+  }
+  return CHANNEL_SCOPE_INVALID_SELECTOR;
+}
+
+inline bool channelScopeUsesDirectTarget(uint8_t stored_selector) {
+  uint8_t selector = scopeSelectorValue(stored_selector);
+  return (selector >= CHANNEL_SCOPE_DIRECT_KEY_128
+          && selector <= CHANNEL_SCOPE_DIRECT_KEY_256)
+      || (selector >= CHANNEL_SCOPE_DIRECT_TXT_ANY
+          && selector <= CHANNEL_SCOPE_DIRECT_OTHER_ANY);
+}
+
+inline uint8_t channelScopeMatchSelectorValue(uint8_t stored_selector) {
+  uint8_t selector = scopeSelectorValue(stored_selector);
+  if (selector >= CHANNEL_SCOPE_DIRECT_KEY_128
+      && selector <= CHANNEL_SCOPE_DIRECT_KEY_256) {
+    return (uint8_t)((selector - 16) * 16);
+  }
+  if (selector >= CHANNEL_SCOPE_DIRECT_TXT_ANY
+      && selector <= CHANNEL_SCOPE_DIRECT_OTHER_ANY) {
+    return (uint8_t)(selector - CHANNEL_SCOPE_DIRECT_TXT_ANY);
+  }
+  return selector;
 }
 
 inline bool scopeUsesSlowTiming(uint8_t stored_selector) {
@@ -174,6 +227,92 @@ inline bool pathMatchesConfiguredIds(const mesh::Packet* packet,
                                      uint8_t maximum_count) {
   return pathMatchesBlacklist(
       packet, ids, configuredIdCount(ids, maximum_count));
+}
+
+inline bool pathStartsWith(const mesh::Packet* packet,
+                           uint8_t hash_size,
+                           uint8_t prefix_hops,
+                           const uint8_t* prefix) {
+  if (prefix_hops == 0) return true;
+  if (packet == NULL || prefix == NULL || hash_size < 1 || hash_size > 3
+      || packet->getPathHashSize() != hash_size
+      || packet->getPathHashCount() < prefix_hops) {
+    return false;
+  }
+  return memcmp(packet->path, prefix, hash_size * prefix_hops) == 0;
+}
+
+inline bool ruleIncomingScopeMatches(uint8_t kind,
+                                     bool incoming_is_scoped,
+                                     uint16_t incoming_transport_code,
+                                     bool incoming_region_allowed,
+                                     uint16_t wanted_transport_code) {
+  switch (kind) {
+    case RULE_IN_ANY:
+      return true;
+    case RULE_IN_NONE:
+      return !incoming_is_scoped;
+    case RULE_IN_SCOPED:
+      return incoming_is_scoped;
+    case RULE_IN_ALLOWED:
+      return incoming_region_allowed;
+    case RULE_IN_UNKNOWN:
+      return incoming_is_scoped && !incoming_region_allowed;
+    case RULE_IN_SCOPE:
+      return incoming_is_scoped
+          && incoming_transport_code == wanted_transport_code;
+    case RULE_IN_REGION:
+      // Region rules are name-bound and must be evaluated by the caller with
+      // RegionNameUtils. Numeric region IDs are deliberately not rule identity.
+      return false;
+    default:
+      return false;
+  }
+}
+
+inline bool rateLimitReached(bool window_active, uint32_t now,
+                             uint32_t window_started, uint16_t window_count,
+                             uint16_t rate_per_minute) {
+  uint16_t effective_count = (!window_active
+          || now - window_started >= 60000UL)
+      ? 0 : window_count;
+  return effective_count >= rate_per_minute;
+}
+
+inline bool sameChannelKey(uint8_t left_len, const uint8_t left[],
+                           uint8_t right_len, const uint8_t right[]) {
+  return left != NULL && right != NULL && left_len != 0
+      && left_len == right_len && memcmp(left, right, left_len) == 0;
+}
+
+inline int nextOrderedRule(uint32_t match_mask, uint32_t visited_mask,
+                           const uint8_t priorities[], uint8_t count) {
+  if (priorities == NULL || count > 32) return -1;
+  int best = -1;
+  for (uint8_t i = 0; i < count; i++) {
+    uint32_t bit = (uint32_t)1U << i;
+    if ((match_mask & bit) == 0 || (visited_mask & bit) != 0) continue;
+    if (best < 0 || priorities[i] > priorities[best]) best = i;
+  }
+  return best;
+}
+
+inline uint32_t truncateRulesAtStop(uint32_t match_mask,
+                                    const uint8_t priorities[],
+                                    const uint8_t stop_flags[],
+                                    uint8_t count) {
+  if (stop_flags == NULL) return match_mask;
+  uint32_t effective = 0;
+  uint32_t visited = 0;
+  while (true) {
+    int index = nextOrderedRule(match_mask, visited, priorities, count);
+    if (index < 0) break;
+    uint32_t bit = (uint32_t)1U << index;
+    visited |= bit;
+    effective |= bit;
+    if (stop_flags[index] != 0) break;
+  }
+  return effective;
 }
 
 inline bool scopeRuleAllowed(bool requires_region_match,

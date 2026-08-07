@@ -25,7 +25,7 @@ arguments such as node names, passwords, and keys is left unchanged.
   - [System](#system)
     - [GPIO](#control-an-exposed-gpio)
   - [Routing](#routing)
-  - [Flood Filtering](#filter-flood-packets-by-payload-type-and-hop)
+  - [Flood Rules](#change-persistent-flood-rules-in-the-field)
   - [Group Text Moderation](#moderate-flood-group-text-by-channel-sender-and-source-path)
   - [ACL](#acl)
   - [Region Management](#region-management-v110)
@@ -1016,10 +1016,10 @@ get clock.sync.status
 
 **Usage:**
 
-- `get gpio` — list the Arduino pin numbers this firmware build permits
-- `get gpio state`, `get gpio states`, or `get gpio status` — list every available pin currently controlled by the user (anything not in `reset`)
-- `get gpio state <pin>` — show one pin's state; `states` and `status` are accepted here too
-- `get gpio <pin>` — show `on`, `off`, or `reset`, plus any pending timed transition
+- `get gpio` - list the Arduino pin numbers this firmware build permits
+- `get gpio state`, `get gpio states`, or `get gpio status` - list every available pin currently controlled by the user (anything not in `reset`)
+- `get gpio state <pin>` - show one pin's state; `states` and `status` are accepted here too
+- `get gpio <pin>` - show `on`, `off`, or `reset`, plus any pending timed transition
 - `set gpio <pin> on`
 - `set gpio <pin> off`
 - `set gpio <pin> reset`
@@ -1027,9 +1027,9 @@ get clock.sync.status
 
 **Examples:**
 
-- `set gpio 16 on 30 off` — drive GPIO16 high for 30 seconds, then drive it low
-- `set gpio 16 on 5ms off` — drive GPIO16 high for 5 milliseconds, then drive it low
-- `set gpio 16 off 5 reset` — drive GPIO16 low for 5 seconds, then return it to high impedance
+- `set gpio 16 on 30 off` - drive GPIO16 high for 30 seconds, then drive it low
+- `set gpio 16 on 5ms off` - drive GPIO16 high for 5 milliseconds, then drive it low
+- `set gpio 16 off 5 reset` - drive GPIO16 low for 5 seconds, then return it to high impedance
 
 An integer duration has seconds as its default unit, so `5` means 5 seconds. Add `ms` for milliseconds (`5ms`); an explicit `s` suffix is also accepted (`5s`). The maximum duration is 24 hours (86,400 seconds or 86,400,000 milliseconds). `on` or `off` without a duration remains in that state until another command, reset, or reboot.
 
@@ -1334,108 +1334,36 @@ reduce false recoveries when no traffic is expected.
 
 **Forwarding behavior:** Repeater firmware only. The repeater still receives and
 logs the packet when logging is enabled; this only blocks retransmission.
-This is checked before `flood.channel.block` and applies to flood `GRP_DATA`
-packets regardless of channel key. Flood group text (`GRP_TXT`) is unaffected by
-this setting.
-
-`flood.channel.data.hops` is separate from `flood.channel.block.hops`.
-`flood.channel.block.hops` does not restrict unkeyed `GRP_DATA` packets. With
-the default `flood.channel.data on`, `GRP_DATA` repeats normally even when
-`flood.channel.block.hops` is set for keyed channel blocks.
+This is checked before FPF7 and applies to flood `GRP_DATA` packets regardless
+of channel key. Flood group text (`GRP_TXT`) is unaffected by this setting.
 
 `get flood.channel.data` includes the active hop gate as `h=all` or `h>N`.
 
 ---
 
-#### Block selected flood channel packets on repeaters
-**Usage:**
-- `get flood.channel.block`
-- `get flood.channel.block.<n>`
-- `get flood.channel.block <name|8_hex_prefix>`
-- `get flood.channel.block.hops`
-- `set flood.channel.block <key> <name> [h=<all|1-7|default>]`
-- `set flood.channel.block.<n> <key> <name> [h=<all|1-7|default>]`
-- `set flood.channel.block #channel [h=<all|1-7|default>]`
-- `set flood.channel.block.<n> #channel [h=<all|1-7|default>]`
-- `set flood.channel.block.hops <all|1-7>`
-- `del flood.channel.block.<n>`
-- `del flood.channel.block <name|8_hex_prefix>`
+#### Block selected flood channels with FPF7
 
-**Parameters:**
-- `n`: Slot number from `1` to `15`.
-- `key`: 128-bit or 256-bit channel key as hex.
-- `#channel`: Public hashtag channel name; derives the 128-bit channel key from the hashtag and is stored as the row name.
-- `name`: Local label for hex-key rows. Not needed for `#channel`; extra text after `#channel` is ignored unless it is a hop setting.
-- `8_hex_prefix`: First 4 bytes of the derived channel hash, shown by single-entry `get`.
-- `all`: Block matching flood channel packets at any received flood hop count.
-- `1-7`: Maximum received flood path hash count to repeat. Matching packets over this hop count are blocked.
-- `default`: Row inherits the global `flood.channel.block.hops` setting.
-
-**Slot behavior:** Without `.n`, `set flood.channel.block` updates an existing
-row with the same derived channel prefix or name, otherwise it uses the next
-empty slot. If all 15 slots are full, the command fails. With `.n`, the command
-writes that slot.
-
-**Default row:** Repeater firmware seeds a new block list with
-`#wardriving h=4` in slot 1. This is a normal row, so it can be changed with
-`set flood.channel.block #wardriving h=<all|1-7|default>` or removed with
-`del flood.channel.block #wardriving`. Once the block list has been saved, the
-firmware uses the saved list and does not recreate the default after deletion.
-Restore the exact seeded row with:
+The separate `flood.channel.block` command and 15-row table have been retired.
+Generalized repeaters use the 31-row FPF7 table for authenticated channel
+blocks:
 
 ```text
-set flood.channel.block.1 #wardriving h=4
+set flood.rule type=any channel=#test hops=all drop
+set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule type=any channel=9cd8fcf22a47333b591d96a2b848b73f hops=4+ drop
+get flood.rule
+del flood.rule.2
 ```
 
-This explicitly writes slot 1. Omit `.1` to update an existing wardriving row
-or use the first empty slot instead.
+`type=any` with a channel condition can authenticate only `GRP_TXT` and
+`GRP_DATA`, so it does not match other payload types. Use `hops=all` to block
+at every received hop count. To preserve the old `h=N` meaning of repeating
+through `N` hops and blocking longer paths, use `hops=N+1+`; old `h=4` is
+therefore `hops=5+`.
 
-**Forwarding behavior:** Repeater firmware only. This only affects received
-flood `GRP_TXT` and `GRP_DATA` channel packets. The repeater still receives and
-logs the packet, but it does not retransmit it when a configured block entry can
-validate/decode it. If `flood.channel.data` is `off`, `GRP_DATA` packets are
-checked against the separate `flood.channel.data.hops` gate before this
-per-channel check runs.
-
-**Hop gate:** `flood.channel.block.hops` defaults to `all`, which preserves the
-original behavior. When set to `N` from `1` to `7`, block rows that inherit the
-global setting only block packets whose received flood path hash count is
-greater than `N`; packets at `N` hops or lower can still repeat. For example,
-`set flood.channel.block.hops 1` repeats zero-hop and one-hop matches but blocks
-two-hop and longer matches.
-
-Each block row can override the global hop gate with `h=<all|1-7|default>`.
-For example, the seeded `#wardriving h=4` row blocks `#wardriving` matches
-above four hops, while `set flood.channel.block #bot h=7` blocks
-`#bot` matches above seven hops. Use `h=default` to make the row inherit the
-global setting again.
-
-`get flood.channel.block` includes the global default first, then adds per-row
-overrides as `/h>N` or `/h=all`; inherited rows do not show a suffix. Single-row
-`get` replies include that row's stored hop mode as `h=def`, `h=all`, or `h>N`.
-List replies truncate displayed row names only when the full list would exceed
-the remote-management response limit.
-
-**Matching behavior:** Each block entry stores the first 4 bytes of the derived
-channel hash for display and lookup. Current group packets carry only the first
-channel-hash byte, so that byte is used as a cheap prefilter. Only entries whose
-first hash byte matches the packet try MAC/decrypt with their stored key. If
-multiple blocked channels share the same first byte, the repeater tries each
-matching key until one validates; the packet is blocked only after a successful
-MAC/decrypt.
-
-**Examples:**
-```
-set flood.channel.block #test
-set flood.channel.block.2 9cd8fcf22a47333b591d96a2b848b73f #test
-set flood.channel.block.hops 3
-set flood.channel.block #wardriving h=4
-set flood.channel.block #bot h=7
-get flood.channel.block
-get flood.channel.block.hops
-get flood.channel.block #test
-del flood.channel.block.2
-```
+New generalized repeater tables seed slot 2 with the second example. Existing
+FCB2 rows are imported once into free FPF7 slots and the retired file is then
+removed. The fixed-size STM32WL FPF6 build cannot match authenticated channels.
 
 ---
 
@@ -1443,8 +1371,8 @@ del flood.channel.block.2
 **Usage:**
 - `get flood.channel.scope`
 - `get flood.channel.scope.<n>`
-- `set flood.channel.scope <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]`
-- `set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region> [path=blacklist|path=bucket:1-6] [tx=slow]`
+- `set flood.channel.scope <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]`
+- `set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]`
 - `del flood.channel.scope.<n>`
 - `del flood.channel.scope all`
 
@@ -1460,11 +1388,16 @@ del flood.channel.block.2
   `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` (`0x00`, `0x01`, `0x02`,
   `0x07`, and `0x08`). It classifies the outer type; a transit repeater cannot
   authenticate whether a packet is actually part of a login session.
-- `other:*`: Type-based wildcard for every remaining flood payload type except
-  TRACE, including ACK, advert, multipart, control, OTA, reserved types, and
-  raw custom. TRACE is deliberately exempt from forced-scope wildcards.
+- `other:*`: Type-based wildcard for every remaining flood payload type,
+  including flood-form TRACE, ACK, advert, multipart, control, OTA, reserved
+  types, and raw custom.
 - `region`: Existing named region with a usable transport key. A unique region
   name prefix is accepted; wildcard region `*` is not a scope target.
+- `scope=<name>`: Regionless alternative to `region`. The public name is
+  normalized with a leading `#`, and its 128-bit transport key is derived
+  directly from that hashtag exactly as for `flood.filter scope=<name>`. It
+  does not need to exist in the region list. Public names up to 30 characters
+  are accepted; private `$` scopes are not.
 - `path=blacklist`: Optional. Require the received path to match the passive
   `flood.filter.blacklist` ID table. No `flood.filter` drop row needs to be
   enabled. One exact listed ID qualifies a 3-byte path. A 2-byte path requires
@@ -1494,15 +1427,16 @@ rows for the same channel. With `.n`, it replaces that slot. The three
 wildcard classes are independent and consume one slot each.
 `get flood.channel.scope` reports active/total slot counts; use the numbered
 form for row detail. Keyed rows are displayed by the first four bytes of their
-derived channel hash because channel secrets are never returned.
+derived channel hash because channel secrets are never returned. Regionless
+targets are displayed with their normalized leading `#`.
 
 This acts on received `ROUTE_TYPE_FLOOD` and
 `ROUTE_TYPE_TRANSPORT_FLOOD` packets. An unscoped packet gains the configured
 scope; an already-scoped packet has its existing transport codes replaced. For
 `GRP_TXT` and `GRP_DATA`, all exact channel-key rows are tried first and must
 validate the packet MAC/decryption. Matching path-qualified exact rows are
-tried before ordinary exact fallback rows. A row whose target region is
-missing or unusable is skipped; later exact rows and then `txt:*` are tried.
+  tried before ordinary exact fallback rows. A region-backed row whose target
+  is missing or unusable is skipped; later exact rows and then `txt:*` are tried.
 Exact keyed rows with a usable target therefore beat `txt:*` regardless of
 slot number. Within each wildcard class, path-qualified rows similarly precede
 ordinary fallback rows. `login:*` and `other:*` select their non-overlapping
@@ -1510,19 +1444,18 @@ outer-type families without decrypting the payload. The lowest usable slot
 wins within each priority tier.
 
 Standard traceroute is direct-routed and is therefore outside this flood-only
-table. A custom flood-form `TRACE` is also left unchanged: no wildcard adds a
-scope, an existing transport code is preserved, and region/unknown-code gates
-do not block it.
+table. A custom flood-form `TRACE` is treated like every other flood: an
+applicable wildcard may rewrite it and region/unknown-code gates still apply.
 
 On a match, the repeater sets the route to `ROUTE_TYPE_TRANSPORT_FLOOD`,
-computes transport code 0 from the selected region key and packet payload, and
-sets transport code 1 to zero. This occurs before region enforcement,
-forwarding filters, and the seen-packet lookup. For an already-scoped packet,
-the selected code replaces both incoming transport-code fields. Direct routes
-are never rewritten. A packet converted from unscoped is no longer subject to
-`flood.max.unscoped`; all rewritten packets remain subject to normal payload
-handling, `flood.max`, region allow/deny, `flood.filter`,
-`flood.channel.block`, loop detection, and moderation. Assigning a scope does
+computes transport code 0 from the selected region or direct hashtag key and
+packet payload, and sets transport code 1 to zero. This occurs before region
+enforcement, forwarding filters, and the seen-packet lookup. For an
+already-scoped packet, the selected code replaces both incoming transport-code
+fields. Direct routes are never rewritten. A packet converted from unscoped is
+no longer subject to `flood.max.unscoped`; all rewritten packets remain subject
+to normal payload handling, `flood.max`, `flood.filter`,
+loop detection, and moderation. Assigning a scope does
 not make a packet type forwardable if the core would otherwise reject it. By
 default, if the selected scope differs and the rewritten packet is accepted
 for forwarding, its initial retransmission uses zero `txdelay` and the highest
@@ -1536,29 +1469,39 @@ Neither mode preempts an active radio transmission or bypasses CAD and
 airtime-budget limits. Selecting the scope already carried by the packet is a
 no-op and does not grant special transmit treatment.
 
-If a row's target region has been removed or has no usable key, the repeater
+A region-backed target must be locally flood-allowed and remains subject to
+the normal region gate. A `scope=<name>` target is trusted for this matched
+receive pass even though it has no region-list entry, matching the behavior of
+`flood.filter scope=<name>`. It does not create a region, consume a region
+slot, or change the allow/deny state for unrelated packets carrying the same
+transport code.
+
+If a region-backed row's target has been removed or has no usable key, the repeater
 tries the next applicable row. For group packets this means later authenticated
 exact rows followed by `txt:*`; wildcard duplicates likewise fall through to
 the next usable slot. When no usable mapping exists, the packet retains its
 original unscoped or scoped route.
 
 LoRa OTA remains functional when `other:*` is configured. OTA packets are
-given that region's transport code, replacing an existing code when necessary,
+given that target's transport code, replacing an existing code when necessary,
 but the OTA handler still accepts and re-floods them during the temporary-radio
-window. The target region must allow flooding. The OTA core itself is dormant
-outside that window; no default flood filter row is needed for that behavior.
-Forced scope does not make OTA operate outside the window.
+window. A region target must allow flooding; a direct target follows the
+regionless trust behavior above. The OTA core itself is dormant outside that
+window; no default flood filter row is needed for that behavior. Forced scope
+does not make OTA operate outside the window.
 
-**Capacity cost:** Each slot uses 36 bytes of runtime RAM and persistent
-storage, plus a 5-byte file header. The four-slot minimum uses 144 bytes RAM and
-a 149-byte file; it has room for the three wildcard classes plus one exact
-channel mapping. Very-tight 15-slot builds use 540 bytes RAM and a 545-byte
-file. The 31-slot table uses 1,116 bytes RAM and a 1,121-byte file. Roomy ESP32
-builds use a 255-slot table: 9,180 bytes RAM and a 9,185-byte file. Classic
-ESP32 LoRa-OTA builds that cannot afford that RAM use 31 slots instead. The
-existing region table still permits 32 named regions, so a 255-slot channel
-table may reuse targets but cannot name more than 32 distinct configured region
-scopes.
+**Capacity cost:** Each rule slot retains its 36-byte runtime and persistent
+record. A separate 32-byte-name table holds up to the smaller of the rule count
+or 32 distinct regionless targets; very-tight STM32WL builds hold one reusable
+direct target. Region-backed targets do not consume this table.
+The four-slot minimum uses 272 bytes RAM and a 278-byte file; it has room for
+the three wildcard classes plus one exact channel mapping. Very-tight 15-slot
+builds use 572 bytes RAM and a 578-byte file. The 31-slot table uses 2,108
+bytes RAM and a 2,114-byte file. Roomy ESP32 builds use 255 rule slots and 32
+direct-target slots: 10,204 bytes RAM and a 10,210-byte file. Classic ESP32
+LoRa-OTA builds that cannot afford the 255-rule table use 31 slots instead.
+Both configured regions and regionless targets can be reused by any number of
+rules.
 
 **Duplicate behavior:** Mesh dedup hashes payload type and payload bytes; it
 does not hash route type, transport codes, or the ordinary flood path. Adding
@@ -1579,9 +1522,9 @@ already-scoped winner may have its code replaced by the better queued scope.
 
 The comparison is deferred until dequeue so each copy retains its original
 scope and path for arbitration. It can only use copies still present in
-`rxdelay`; it cannot replace a packet that already won the dedupe race. TRACE
-is excluded from scope arbitration entirely, so rxdelay never adds or replaces
-a trace transport code.
+`rxdelay`; it cannot replace a packet that already won the dedupe race.
+Flood-form TRACE participates in this arbitration; direct traceroute does not
+enter the flood queue.
 
 A packet that matches a fast `flood.channel.scope` or `flood.filter scope=`
 action and needs its scope changed bypasses the inbound `rxdelay` queue. A
@@ -1600,6 +1543,19 @@ get flood.channel.scope
 get flood.channel.scope.1
 del flood.channel.scope.2
 ```
+
+A regionless exact mapping needs no `region` command:
+
+```text
+set flood.channel.scope #rgdata scope=BlackHole86
+get flood.channel.scope
+get flood.channel.scope.1
+```
+
+For example, if an authenticated `#rgdata` packet arrives carrying scope
+`#usa`, that rule replaces `#usa` with `#BlackHole86` before forwarding. The
+rule also assigns `#BlackHole86` when the packet is unscoped or carries any
+other scope; it is a channel-to-target mapping, not an incoming-scope filter.
 
 To use bridge bucket 1 to assign `east` to `public` packets whose received
 3-byte path contains `7576FB`, while assigning `west` to every other
@@ -1641,7 +1597,7 @@ they cannot rescue it or grant special receive/transmit timing.
 
 Other group channels bypass the region/unknown-code gate while the table is
 active. They remain subject to every other forwarding control, including
-`repeat`, `flood.max*`, packet filters, channel blocks, loop detection, payload
+`repeat`, `flood.max*`, packet filters, loop detection, payload
 validation, and moderation. Non-channel flood payload types retain normal
 global region enforcement.
 
@@ -1665,12 +1621,17 @@ get flood.channel.scope.require.1
 
 ---
 
-#### Filter flood packets by payload type, hop count, and path
+#### Change persistent flood rules in the field
 
 For setup guidance, interactions with the existing forwarding controls, and
-worked moderation examples, see [Repeater Flood Filtering and Moderation](flood_filtering.md).
+worked moderation examples, see [Flood Filtering and Moderation](flood_filtering.md).
 
 **Usage:**
+- `get flood.rule`
+- `get flood.rule.<n>`
+- `set flood.rule[.<n>] type=<type> [hops=<range>] [channel=<channel>] [prefix=<path-prefix>] [in=<input-scope>] <drop|scope=<name>|region=<name>|rate=<N>/min|stop> [priority=<0-255>] [tx=slow] [suspend=tempradio]`
+- `del flood.rule.<n>`
+- `del flood.rule all`
 - `get flood.filter`
 - `get flood.filter.<n>`
 - `get flood.filter.blacklist`
@@ -1684,40 +1645,71 @@ worked moderation examples, see [Repeater Flood Filtering and Moderation](flood_
 - `del flood.filter.<n>`
 - `del flood.filter all`
 
+The extended table is available on repeaters with the rule engine enabled and
+on FULL-profile ESP32 room servers. A FULL room server exposes both
+`flood.rule` and `flood.filter`, has 31 slots, and requires an administrator
+for remote changes. It does not have the repeater's passive path blacklist, so
+`flood.filter.blacklist*` and `path=blacklist` are repeater-only; use the
+ordered `prefix=` match on a room server. Standard room-server profiles do not
+compile this table.
+
 **Parameters:**
-- `n`: Rule slot from `1` to `16`.
+- `n`: Rule slot in the build's compiled table (normally `1-31`; some
+  constrained profiles use fewer slots).
 - `type`: Payload type name, full `PAYLOAD_TYPE_*` name, decimal value `0-15`,
   hexadecimal value `0x00-0x0F`, or `any`.
 - `hops`: Optional; omitted means `all`.
-  - `N`: Block only at received hop count `N`.
-  - `N+`: Block at received hop count `N` and higher.
-  - `N-M`: Block the inclusive received-hop range.
-  - `all`: Block at every received hop count (`0-63`).
+  - `N`: Match only at received hop count `N`.
+  - `N+`: Match at received hop count `N` and higher.
+  - `N-M`: Match the inclusive received-hop range.
+  - `all`: Match every received hop count (`0-63`).
   - `0+`, `all`, and an omitted hop expression are equivalent. The CLI displays
     the saved range as `all`.
+- `channel=*|public|#name|128-bit-key|256-bit-key`: Optional authenticated
+  group-channel match. It applies only to `GRP_TXT`/`GRP_DATA`; `type=any`
+  plus a channel condition therefore matches only those group types.
+- `prefix=<ID[,ID...]>`: Optional ordered source-path prefix of one to three
+  pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
+  1-, 2-, or 3-byte pbyte width. `path=<prefix>` is an alias.
+- `in=any|none|scoped|allowed|unknown|scope:<name>|region:<name>`: Optional
+  condition on the original incoming scope, before any rule rewrites it.
+  `none` is an unscoped flood. `scope:name` is the exact public
+  hashtag-derived scope. `region:name` is an exact allowed region match.
+- `drop`: Explicit drop action. The `flood.rule` form requires an explicit
+  action. For compatibility, a legacy `flood.filter` row with no rewrite,
+  rate, or stop action is treated as drop.
+- `region=<name>`: Rewrite action using an existing locally allowed region.
+- `rate=N/min`: Per-node, per-row fixed one-minute forwarding limit. It can be
+  the only action or accompany `scope=`/`region=`. Counters are charged only
+  for packets that pass all forwarding gates.
+- `priority=0-255`: Optional processing order. Higher values run first and
+  lower slot number breaks a tie. The default is `0`; `pri=` is an alias.
+- `stop` or `action=stop`: Apply this matching row, then stop lower-order FPF7
+  rows from processing. It can stand alone or accompany drop, rewrite, or
+  rate. A stop-only row acts as an exception to lower-priority FPF7 rules.
 - `suspend=tempradio`: Optional. Skip this row only while the temporary radio
   is actually active.
 - `scope=<name>`: Optional scope-setting action. The name is normalized with a
   leading `#` and its 128-bit transport key is derived directly from that
   hashtag. It does not need to exist in the region list. Public names up to 30
   characters are accepted; private `$` scopes are not.
-- `require=region`: Optional and valid only with `scope=`. Apply the scope
-  rewrite only if the original incoming packet already passes this repeater's
+- `require=region`: Legacy alias for `in=allowed`. Apply the row only if the
+  original incoming packet already passes this repeater's
   region gate. An incoming transport scope must resolve to a locally allowed
   region; an unscoped flood must be allowed by the wildcard region. The check
   occurs before any scope rewrite during this receive pass.
-- `tx=slow`: Optional and valid only with `scope=`. Use an effective inbound
+- `tx=slow`: Optional and valid with `scope=` or `region=`. Use an effective inbound
   `rxdelay` base of `max(2, configured rxdelay * 2)`, keep normal outbound
   queue priority, and retransmit with the maximum supported `txdelay` factor
   of `2.0`. Scope rows default to fast; `tx=fast` explicitly restores that
   default when replacing a slow row.
 - `path=blacklist`: Optional unordered path condition. The persistent blacklist
-  contains up to 255 unique 3-byte repeater IDs on ESP32 builds and 18 on other
-  builds, each written as six hexadecimal digits. A packet with 3-byte path
-  hashes matches after one exact ID hit. A packet with 2-byte path hashes
-  matches after two path entries match the first two bytes of listed IDs.
-  Packets with 1-byte path hashes never match this condition. Each received
-  path entry is counted at most once.
+  is repeater-only. It contains up to 255 unique 3-byte repeater IDs on ESP32
+  builds and 18 on other builds, each written as six hexadecimal digits. A
+  packet with 3-byte path hashes matches after one exact ID hit. A packet with
+  2-byte path hashes matches after two path entries match the first two bytes
+  of listed IDs. Packets with 1-byte path hashes never match this condition.
+  Each received path entry is counted at most once.
 
 The payload names follow the [MeshCore packet-format allocation](https://docs.meshcore.io/packet_format/):
 
@@ -1745,16 +1737,21 @@ The payload names follow the [MeshCore packet-format allocation](https://docs.me
 `ROUTE_TYPE_FLOOD` (`0x01`, unscoped flood). Direct routes `0x02` and `0x03`
 are never affected.
 
-**Behavior:** A row with `path=blacklist` must meet the path condition as well
-as its payload-type and hop-range conditions. Blacklist IDs can occur anywhere
-in the received path and their configured order is irrelevant. A matching row
-without `scope=` prevents retransmission by this
-repeater. A matching row with `scope=` instead sets or replaces the packet's
-transport scope and does not block it. The lowest-numbered matching scope row
-wins; matching drop rows remain independent and can still block the rewritten
-packet. Scope rewriting happens before region enforcement and is trusted even
+**Behavior:** Match fields within one row are ANDed. Every FPF7 row is matched
+against the same immutable receive-time packet, before any rule changes its
+scope. Matching rows are processed in descending `priority`, with lower slot
+number winning a tie. The first matching `stop` row is included and all
+lower-order FPF7 matches are discarded. A stop cannot undo an earlier drop or
+bypass hard forwarding gates and separate forwarding tables. A row with
+`path=blacklist` must meet the path condition as well as its other conditions;
+blacklist IDs can occur anywhere in the received path and their configured
+order is irrelevant. In contrast, `prefix=` begins at the first received path
+entry and preserves order. A matching drop row prevents retransmission. The
+highest-order remaining matching scope/region row wins; matching drop and rate
+rows remain independent and can still block the rewritten packet. Scope rewriting
+happens before region enforcement and is trusted even
 when its name is absent from the local region list. It does not bypass
-`repeat`, `flood.max`, other drop rows, channel blocking, loop detection, or
+`repeat`, `flood.max`, other drop rows, loop detection, or
 moderation.
 
 With `require=region`, a failed check makes that scope row ineligible. It leaves
@@ -1773,13 +1770,26 @@ to ten packet airtimes. Selecting the scope already carried is a no-op and
 does not grant special treatment. An active radio transmission is not
 preempted, and CAD and airtime-budget limits still apply.
 
-The packet is still received and can still be logged. Rules are persistent.
+The packet is still received and can still be logged. Rules are persistent
+data and can be changed over serial or authenticated remote CLI without an OTA
+or reboot. `flood.rule` and `flood.filter` address the same table on extended
+builds; FPF6 files are migrated in memory and the next save writes FPF7.
+FPF1-FPF5 files are rejected and filtering fails open. FPF7 stores canonical
+region names rather than transient numeric region
+IDs. Removing, reordering, or reusing a region ID therefore cannot silently
+retarget a rule. If a saved input or target region name is absent, that input
+match or rewrite is inert; restoring the same region name reactivates it.
 While the temporary radio is active, only rows explicitly marked
 `suspend=tempradio` are skipped. `tempradio` is a radio state, not an OTA mode;
 normal payload types can also use the temporary channel. Other rows remain in
 force. A malformed persisted table fails open (no general rules are applied).
 
-**Default row:** Repeater firmware seeds a new flood-filter table with
+Within one receive evaluation, rows that use the same channel key share one
+authentication result. The cache is discarded after that packet and stores
+neither plaintext nor passwords; different keys are authenticated separately.
+
+**Default row:** Repeater firmware and FULL ESP32 room-server firmware seed a
+new flood-filter table with
 `ota all suspend=tempradio` in slot 1. This blocks repeated LoRa OTA (`0x0C`)
 floods at every received hop unless temporary radio is actually active. The OTA
 core independently refuses OTA receive, relay, and transmit outside temporary
@@ -1793,24 +1803,28 @@ set flood.filter.1 0x0C all suspend=tempradio
 Omitting `all` is equivalent. Omit `.1` as well to reuse an identical rule or
 the first empty slot instead of replacing slot 1.
 
-**Remote-admin protection:** Drop rows cannot block `anon_req`, `path`, or
-`response` at received hop counts `0-6`; those login-capable types become
-blockable at hop `7`. Flood `txt_msg` cannot be blocked at hops `0-4` and
-becomes blockable at hop `5`. Scope-setting rows are non-blocking and may apply
-inside these protected ranges. `req`, `ack`, and multipart ACK have no special
-protection. Transit repeaters cannot decrypt these packets to distinguish an
-admin exchange from ordinary peer traffic, so each floor necessarily covers
-all flood packets of that outer type. These exceptions apply only to
-`flood.filter` drop actions; `repeat`, `flood.max*`, loop-detection, and other
-forwarding gates remain authoritative.
+**Remote-admin lockout warning:** There are no hidden payload-type or short-hop
+exceptions. FPF7 drop and rate rows may block `req`, `response`, `txt_msg`,
+`anon_req`, `path`, ACK, and multipart traffic beginning at hop `0` when their
+match fields say so. Transit repeaters cannot decrypt these outer types to
+distinguish an admin exchange from ordinary peer traffic. Keep a serial or
+other recovery path and stage broad deny/rate rules carefully.
 
-Without `.n`, `set` reuses an existing rule with the same match, scope,
-requirement, and suspension settings, or uses the first empty slot. This lets
-`tx=slow` or `tx=fast` change that rule's timing without creating a duplicate.
-With `.n`, it replaces that slot.
-`get flood.filter` gives a compact list. Use `get flood.filter.<n>` for full
-details, including `path=blacklist`, `scope=`, and `suspend=tempradio`.
-The detail output also includes `require=region` and `tx=slow` when enabled.
+Without `.n`, `set` reuses an identical rule or uses the first empty slot. With
+`.n`, it replaces that slot, which is the intended way to change a row's match
+or action.
+`get flood.filter` or `get flood.rule` gives a compact list. Use the numbered
+form for full details, including channel, prefix, original-scope condition,
+action, timing, rate, and temporary-radio suspension.
+
+If all of those fields plus long names would exceed one CLI reply, the
+numbered form automatically switches to a non-truncating compact spelling.
+The compact aliases are also accepted by `set`: `c=` means `channel=`, `p=`
+means `prefix=`, `i=*|n|s|a|u|s:<scope>|r:<region>` means the corresponding
+`in=` condition, `q=N` means `rate=N/min`, `pri=N` means priority, and `f=st`
+combines slow timing
+(`s`) with temporary-radio suspension (`t`). Packet type is shown numerically
+in that fallback. Normal-sized rows keep the descriptive spelling above.
 
 The blacklist and filter rows are persisted separately. Replacing or deleting
 the blacklist does not delete rows containing `path=blacklist`; such rows
@@ -1827,12 +1841,16 @@ IDs as fit in one reply; use numbered `get` to inspect entries beyond that
 reply.
 
 Standard traceroute is direct-routed and therefore outside `flood.filter`
-entirely. For a custom flood-form trace, catch-all `any` rows are deliberately
-ignored; only a deliberately explicit `set flood.filter trace ...` row can
-match it.
+entirely. A custom flood-form trace participates normally: `type=any`, explicit
+`trace`, rewrite, rate, drop, and stop rows can all apply.
 
 **Examples:**
 ```text
+set flood.rule.2 type=grp_data hops=4+ channel=#rgdata in=none scope=BlackHole86
+set flood.rule.3 type=grp_data channel=#rgdata in=scope:usa scope=BlackHole86
+set flood.rule.4 type=any prefix=860C rate=10/min
+set flood.rule.5 type=grp_data hops=0-2 channel=#rgdata priority=200 stop
+get flood.rule.2
 set flood.filter grp_data 4+
 set flood.filter.2 PAYLOAD_TYPE_ADVERT 6+
 set flood.filter ota 2-4
@@ -1852,6 +1870,19 @@ get flood.filter
 get flood.filter.2
 del flood.filter.2
 ```
+
+The first rule authenticates `#rgdata`, requires more than three received hops,
+and adds `#BlackHole86` only when no scope was present. The second rewrites the
+exact incoming `#usa` scope. The third demonstrates a two-byte pbyte source
+prefix and a global per-row rate cap. The fourth authenticates `#rgdata` at
+zero through two hops, applies no FPF7 action of its own, and stops lower-order
+FPF7 rows; hard gates and separate tables still apply.
+
+The fixed 240 KB STM32WL profiles leave
+`MESH_ENABLE_FLOOD_RULE_ENGINE=0` and retain the compact, persistent FPF6
+`flood.filter` and blacklist commands. They still filter floods, but do not
+expose the `flood.rule` alias or its extended channel, prefix, input-scope,
+region-action, or rate fields. No partition size changes are required.
 
 ---
 
@@ -1933,7 +1964,8 @@ del flood.moderation.3
 **Filter manager scope:** Permission `5` can use an explicit allowlist of
 non-secret operational/filter status commands and can change the forwarding
 controls `repeat`, `loop.detect`, `flood.max*`, `flood.channel.data*`,
-`flood.channel.block*`, `flood.filter*`, and `flood.moderation*`. It cannot read
+`flood.filter*`, `flood.rule*`, and
+`flood.moderation*`. It cannot read
 guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
 ACL entries, radio settings, or other admin configuration. Permission `4`
 is limited to region commands, `flood.channel.scope*`, and the same non-secret

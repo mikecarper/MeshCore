@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/FloodFilterPolicy.h>
+#include <helpers/RegionNameUtils.h>
 
 static mesh::Packet makeFloodPacket(uint8_t hash_size,
                                     const uint8_t* path,
@@ -127,6 +128,161 @@ TEST(FloodFilterBlacklist, ConfiguredBucketStopsAtEmptyTrailingIds) {
       &packet, &bucket[0][0], 17));
 }
 
+TEST(FloodRulePrefix, SupportsOneTwoAndThreeBytePathPrefixes) {
+  const uint8_t one_byte_path[] = {0x11, 0x22, 0x33};
+  const uint8_t two_byte_path[] = {0x11, 0x22, 0x33, 0x44};
+  const uint8_t three_byte_path[] = {
+    0x11, 0x22, 0x33,
+    0x44, 0x55, 0x66,
+  };
+  mesh::Packet one = makeFloodPacket(1, one_byte_path, 3);
+  mesh::Packet two = makeFloodPacket(2, two_byte_path, 2);
+  mesh::Packet three = makeFloodPacket(3, three_byte_path, 2);
+
+  EXPECT_TRUE(FloodFilterPolicy::pathStartsWith(
+      &one, 1, 2, one_byte_path));
+  EXPECT_TRUE(FloodFilterPolicy::pathStartsWith(
+      &two, 2, 2, two_byte_path));
+  EXPECT_TRUE(FloodFilterPolicy::pathStartsWith(
+      &three, 3, 2, three_byte_path));
+}
+
+TEST(FloodRulePrefix, RequiresTheExactPathWidthAndStartingSequence) {
+  const uint8_t path[] = {
+    0x11, 0x22,
+    0x33, 0x44,
+  };
+  const uint8_t wrong_start[] = {0x33, 0x44};
+  mesh::Packet packet = makeFloodPacket(2, path, 2);
+
+  EXPECT_FALSE(FloodFilterPolicy::pathStartsWith(
+      &packet, 1, 1, path));
+  EXPECT_FALSE(FloodFilterPolicy::pathStartsWith(
+      &packet, 2, 1, wrong_start));
+  EXPECT_FALSE(FloodFilterPolicy::pathStartsWith(
+      &packet, 2, 3, path));
+}
+
+TEST(FloodRuleIncomingScope, MatchesOriginalScopeClasses) {
+  using namespace FloodFilterPolicy;
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_ANY, false, 0, false, 0));
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_NONE, false, 0, true, 0));
+  EXPECT_FALSE(ruleIncomingScopeMatches(
+      RULE_IN_NONE, true, 0x1234, true, 0));
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_SCOPED, true, 0x1234, false, 0));
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_ALLOWED, true, 0x1234, true, 0));
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_UNKNOWN, true, 0x1234, false, 0));
+}
+
+TEST(FloodRuleIncomingScope, ExactScopeDoesNotCrossMatch) {
+  using namespace FloodFilterPolicy;
+  EXPECT_TRUE(ruleIncomingScopeMatches(
+      RULE_IN_SCOPE, true, 0x1234, true, 0x1234));
+  EXPECT_FALSE(ruleIncomingScopeMatches(
+      RULE_IN_SCOPE, true, 0x1235, true, 0x1234));
+  EXPECT_FALSE(ruleIncomingScopeMatches(
+      RULE_IN_REGION, true, 0x1234, true, 0));
+}
+
+TEST(FloodRuleIncomingScope, RegionIdentityUsesCanonicalNames) {
+  EXPECT_TRUE(RegionNameUtils::equivalent("usa", "#usa"));
+  EXPECT_TRUE(RegionNameUtils::equivalent("BlackHole86", "BlackHole86"));
+  EXPECT_FALSE(RegionNameUtils::equivalent("usa", "BlackHole86"));
+}
+
+TEST(FloodRuleRate, BlocksAtTheConfiguredPerMinuteLimit) {
+  EXPECT_FALSE(FloodFilterPolicy::rateLimitReached(
+      false, 1000, 0, 500, 2));
+  EXPECT_FALSE(FloodFilterPolicy::rateLimitReached(
+      true, 2000, 1000, 1, 2));
+  EXPECT_TRUE(FloodFilterPolicy::rateLimitReached(
+      true, 2000, 1000, 2, 2));
+  EXPECT_TRUE(FloodFilterPolicy::rateLimitReached(
+      true, 2000, 1000, 0, 0));
+}
+
+TEST(FloodRuleRate, StartsANewWindowAfterSixtySeconds) {
+  EXPECT_FALSE(FloodFilterPolicy::rateLimitReached(
+      true, 61000, 1000, 2, 2));
+  EXPECT_TRUE(FloodFilterPolicy::rateLimitReached(
+      true, 999, 0xFFFFFF00U, 2, 2));
+  EXPECT_FALSE(FloodFilterPolicy::rateLimitReached(
+      true, 60000, 0xFFFFFF00U, 2, 2));
+}
+
+TEST(FloodRuleAuthentication, CacheKeysCompareOnlyTheirActiveBytes) {
+  uint8_t first[32] = {0};
+  uint8_t same[32] = {0};
+  uint8_t different[32] = {0};
+  first[0] = same[0] = different[0] = 0xA5;
+  first[15] = same[15] = different[15] = 0x5A;
+  first[31] = 0x11;
+  same[31] = 0x22;
+  different[15] = 0x5B;
+
+  EXPECT_TRUE(FloodFilterPolicy::sameChannelKey(16, first, 16, same));
+  EXPECT_FALSE(FloodFilterPolicy::sameChannelKey(
+      16, first, 16, different));
+  EXPECT_FALSE(FloodFilterPolicy::sameChannelKey(16, first, 32, first));
+  EXPECT_FALSE(FloodFilterPolicy::sameChannelKey(0, first, 0, same));
+}
+
+TEST(FloodRuleOrder, HighestPriorityWinsAndSlotBreaksTies) {
+  const uint8_t priorities[] = {10, 30, 30, 5};
+  uint32_t matches = 0x0F;
+  uint32_t visited = 0;
+
+  int first = FloodFilterPolicy::nextOrderedRule(
+      matches, visited, priorities, 4);
+  ASSERT_EQ(1, first);
+  visited |= (uint32_t)1U << first;
+  EXPECT_EQ(2, FloodFilterPolicy::nextOrderedRule(
+                   matches, visited, priorities, 4));
+}
+
+TEST(FloodRuleOrder, StopRemovesOnlyLowerOrderedMatches) {
+  const uint8_t priorities[] = {10, 30, 20, 5};
+  const uint8_t stop_flags[] = {0, 0, 1, 0};
+
+  EXPECT_EQ(0x06U, FloodFilterPolicy::truncateRulesAtStop(
+                       0x0F, priorities, stop_flags, 4));
+}
+
+TEST(FloodRuleOrder, StopAtEqualPriorityUsesLowerSlotFirst) {
+  const uint8_t priorities[] = {40, 40, 50};
+  const uint8_t stop_flags[] = {1, 0, 0};
+
+  EXPECT_EQ(0x05U, FloodFilterPolicy::truncateRulesAtStop(
+                       0x07, priorities, stop_flags, 3));
+}
+
+TEST(FloodRuleOrder, NoStopPreservesEveryMatch) {
+  const uint8_t priorities[] = {1, 200, 3, 99};
+  const uint8_t stop_flags[] = {0, 0, 0, 0};
+
+  EXPECT_EQ(0x0BU, FloodFilterPolicy::truncateRulesAtStop(
+                       0x0B, priorities, stop_flags, 4));
+}
+
+TEST(FloodRuleOrder, ThirtyOneSlotTableIncludesTheLastSlot) {
+  uint8_t priorities[31] = {0};
+  uint8_t stop_flags[31] = {0};
+  priorities[30] = 200;
+  stop_flags[30] = 1;
+  const uint32_t matches = ((uint32_t)1U << 30) | 1U;
+
+  EXPECT_EQ(30, FloodFilterPolicy::nextOrderedRule(
+                    matches, 0, priorities, 31));
+  EXPECT_EQ((uint32_t)1U << 30,
+            FloodFilterPolicy::truncateRulesAtStop(
+                matches, priorities, stop_flags, 31));
+}
+
 TEST(FloodFilterScope, RegionRequirementHasTheExpectedTruthTable) {
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, false));
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, true));
@@ -191,6 +347,42 @@ TEST(FloodFilterScope, EveryBridgeBucketRoundTripsWithoutChangingSelector) {
     EXPECT_FALSE(FloodFilterPolicy::scopeRequiresBlacklistPath(stored));
     EXPECT_TRUE(FloodFilterPolicy::scopeUsesSlowTiming(stored));
   }
+}
+
+TEST(FloodFilterScope, DirectChannelTargetsRoundTripEveryMatcherClass) {
+  const uint8_t selectors[] = {0, 1, 2, 16, 32};
+  for (uint8_t selector : selectors) {
+    uint8_t direct = FloodFilterPolicy::encodeChannelScopeTargetSelector(
+        selector, true);
+    uint8_t stored = FloodFilterPolicy::encodeScopeSelector(
+        direct, true, FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE + 5);
+
+    EXPECT_NE(FloodFilterPolicy::CHANNEL_SCOPE_INVALID_SELECTOR, direct);
+    EXPECT_TRUE(FloodFilterPolicy::channelScopeUsesDirectTarget(stored));
+    EXPECT_EQ(selector,
+              FloodFilterPolicy::channelScopeMatchSelectorValue(stored));
+    EXPECT_TRUE(FloodFilterPolicy::scopeUsesSlowTiming(stored));
+    EXPECT_EQ(FloodFilterPolicy::SCOPE_PATH_BRIDGE_BUCKET_BASE + 5,
+              FloodFilterPolicy::scopePathSelectorValue(stored));
+  }
+}
+
+TEST(FloodFilterScope, RegionChannelTargetsKeepLegacySelectorValues) {
+  const uint8_t selectors[] = {0, 1, 2, 16, 32};
+  for (uint8_t selector : selectors) {
+    uint8_t region = FloodFilterPolicy::encodeChannelScopeTargetSelector(
+        selector, false);
+
+    EXPECT_EQ(selector, region);
+    EXPECT_FALSE(FloodFilterPolicy::channelScopeUsesDirectTarget(region));
+    EXPECT_EQ(selector,
+              FloodFilterPolicy::channelScopeMatchSelectorValue(region));
+  }
+}
+
+TEST(FloodFilterScope, DirectChannelTargetRejectsUnknownMatcher) {
+  EXPECT_EQ(FloodFilterPolicy::CHANNEL_SCOPE_INVALID_SELECTOR,
+            FloodFilterPolicy::encodeChannelScopeTargetSelector(7, true));
 }
 
 TEST(FloodFilterScope, OnlyChangedFastRulesReceiveFastTrackTreatment) {

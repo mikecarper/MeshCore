@@ -1,4 +1,5 @@
 #include "SerialBLEInterface.h"
+#include "../CompanionFrameQueue.h"
 #include <stdio.h>
 #include <string.h>
 #include "ble_gap.h"
@@ -353,15 +354,11 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
 
   bool connected = isConnected();
   if (connected && len > 0) {
-    if (send_queue_len >= FRAME_QUEUE_SIZE) {
+    if (!mesh::enqueueCompanionFrame(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
+                                     src, len)) {
       BLE_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
       return 0;
     }
-
-    send_queue[send_queue_len].len = len;
-    memcpy(send_queue[send_queue_len].buf, src, len);
-    send_queue_len++;
-    
     return len;
   }
   return 0;

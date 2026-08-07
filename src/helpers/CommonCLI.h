@@ -90,17 +90,10 @@
   #define COMMON_CLI_TMP_LEN              ((FLOOD_RETRY_LIST_TEXT_MAX > (PRV_KEY_SIZE * 2 + 4)) ? FLOOD_RETRY_LIST_TEXT_MAX : (PRV_KEY_SIZE * 2 + 4))
 #endif
 
-#ifndef FLOOD_CHANNEL_BLOCK_SLOTS
-  #define FLOOD_CHANNEL_BLOCK_SLOTS       15
+#ifndef FLOOD_CHANNEL_KEY_PREFIX_LEN
+  #define FLOOD_CHANNEL_KEY_PREFIX_LEN    4
 #endif
-#ifndef FLOOD_CHANNEL_BLOCK_NAME_LEN
-  #define FLOOD_CHANNEL_BLOCK_NAME_LEN    32
-#endif
-#ifndef FLOOD_CHANNEL_BLOCK_PREFIX_LEN
-  #define FLOOD_CHANNEL_BLOCK_PREFIX_LEN  4
-#endif
-#define FLOOD_CHANNEL_BLOCK_HOPS_ALL      0xFF
-#define FLOOD_CHANNEL_BLOCK_HOPS_INHERIT  0xFE
+#define FLOOD_CHANNEL_HOPS_ALL            0xFF
 
 #define DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT  40
 #define DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT  30
@@ -191,7 +184,9 @@ struct NodePrefs { // persisted to file
   uint8_t battery_alert_critical_percent;
   uint8_t direct_retry_recent_enabled;
   uint8_t flood_channel_data_enabled;
-  uint8_t flood_channel_block_max_hops;
+  // Retains the removed flood.channel.block byte at its established file
+  // offset so every following preference remains upgrade-compatible.
+  uint8_t legacy_flood_channel_block_max_hops;
   uint8_t flood_channel_data_max_hops;
   uint8_t telemetry_access;
 
@@ -334,24 +329,6 @@ public:
     (void)selector;
     strcpy(reply, "Error: unsupported");
   }
-  virtual void setFloodChannelBlock(int index, const uint8_t* secret, uint8_t key_len,
-                                    const char* name, uint8_t max_hops, char* reply) {
-    (void)index;
-    (void)secret;
-    (void)key_len;
-    (void)name;
-    (void)max_hops;
-    strcpy(reply, "Error: unsupported");
-  }
-  virtual void formatFloodChannelBlocks(const char* selector, char* reply) {
-    (void)selector;
-    strcpy(reply, "Error: unsupported");
-  }
-  virtual void deleteFloodChannelBlock(const char* selector, char* reply) {
-    (void)selector;
-    strcpy(reply, "Error: unsupported");
-  }
-
   virtual void startRegionsLoad() {
     // no op by default
   }

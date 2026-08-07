@@ -24,7 +24,9 @@
 #endif
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/ClientACL.h>
+#include <helpers/LogicalMessageCache.h>
 #include <helpers/RegionMap.h>
+#include "FloodRuleEngine.h"
 #include <RTClib.h>
 #include <target.h>
 
@@ -87,6 +89,10 @@
   #define MAX_UNSYNCED_POSTS    32
 #endif
 
+#ifndef ROOM_MESSAGE_CACHE_SIZE
+  #define ROOM_MESSAGE_CACHE_SIZE 32
+#endif
+
 #ifndef SERVER_RESPONSE_DELAY
   #define SERVER_RESPONSE_DELAY   300
 #endif
@@ -128,7 +134,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   NodePrefs _prefs;
   TransportKeyStore key_store;
   RegionMap region_map, temp_map;
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  FloodRuleEngine flood_rules;
+  uint32_t recv_pkt_rule_match_mask;
+  bool recv_pkt_regionless_scope_set;
+#endif
   ClientACL acl;
+  mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
   CommonCLI _cli;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   UserGpioReplyTracker _gpio_reply_tracker;
@@ -218,6 +230,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::Packet* createSelfAdvert();
   File openAppend(const char* fname);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  bool evaluateFloodRuleTiming(const mesh::Packet* packet,
+                               bool& fast_track);
+  bool isLooped(const mesh::Packet* packet,
+                const uint8_t max_counters[]) const;
+  uint32_t getSlowFloodRuleRetransmitDelay(
+      const mesh::Packet* packet);
+#endif
 
 protected:
   bool isTempRadioActive() const override {
@@ -233,6 +253,10 @@ protected:
   void logTxFail(mesh::Packet* pkt, int len) override;
 
   int calcRxDelay(float score, uint32_t air_time) const override;
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  int calcRxDelayForPacket(const mesh::Packet* packet, float score,
+                           uint32_t air_time) override;
+#endif
   const char* getLogDateTime() override;
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;

@@ -1,5 +1,8 @@
 #include "MyMesh.h"
 #include <helpers/CLICommandUtils.h>
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#include <helpers/FloodFilterPolicy.h>
+#endif
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <algorithm>
 #include <helpers/RxReservePacketManager.h>
@@ -317,6 +320,69 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
 }
 
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+bool MyMesh::evaluateFloodRuleTiming(const mesh::Packet* packet,
+                                     bool& fast_track) {
+  fast_track = false;
+  if (packet == NULL || !packet->isRouteFlood()) return false;
+
+  bool incoming_region_allowed = false;
+  RegionEntry* incoming_region = NULL;
+  if (packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
+    incoming_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
+    incoming_region_allowed = incoming_region != NULL;
+  } else if (packet->getRouteType() == ROUTE_TYPE_FLOOD) {
+    incoming_region_allowed =
+        (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
+  }
+
+  mesh::Packet candidate = *packet;
+  uint32_t match_mask = flood_rules.evaluate(
+      packet, isTempRadioActive(), incoming_region_allowed, incoming_region);
+  bool scope_set = false;
+  return flood_rules.applyScope(&candidate, match_mask, scope_set,
+                                fast_track, false);
+}
+
+static const uint8_t ROOM_MAX_LOOP_MINIMAL[] = { 0, 4, 2, 1 };
+static const uint8_t ROOM_MAX_LOOP_MODERATE[] = { 0, 2, 1, 1 };
+static const uint8_t ROOM_MAX_LOOP_STRICT[] = { 0, 1, 1, 1 };
+
+bool MyMesh::isLooped(const mesh::Packet* packet,
+                      const uint8_t max_counters[]) const {
+  uint8_t hash_size = packet->getPathHashSize();
+  uint8_t hash_count = packet->getPathHashCount();
+  uint8_t occurrences = 0;
+  const uint8_t* path = packet->path;
+  while (hash_count > 0) {
+    if (self_id.isHashMatch(path, hash_size)) occurrences++;
+    hash_count--;
+    path += hash_size;
+  }
+  return occurrences >= max_counters[hash_size];
+}
+
+int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
+                                 uint32_t air_time) {
+  bool fast_track = false;
+  if (!evaluateFloodRuleTiming(packet, fast_track)) {
+    return calcRxDelay(score, air_time);
+  }
+  if (fast_track) return 0;
+  float slow_base =
+      FloodFilterPolicy::slowScopeRxDelayBase(_prefs.rx_delay_base);
+  return (int)((powf(slow_base, 0.85f - score) - 1.0f) * air_time);
+}
+
+uint32_t MyMesh::getSlowFloodRuleRetransmitDelay(
+    const mesh::Packet* packet) {
+  uint32_t airtime = _radio->getEstAirtimeFor(
+      packet->getPathByteLen() + packet->payload_len + 2);
+  uint32_t max_delay = FloodFilterPolicy::slowScopeMaxDelay(airtime);
+  return getRNG()->nextInt(0, max_delay + 1);
+}
+#endif
+
 const char *MyMesh::getLogDateTime() {
   static char tmp[32];
   uint32_t now = getRTCClock()->getCurrentTime();
@@ -409,11 +475,62 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     if (packet->getPathHashCount() >= _prefs.flood_max) return false;
     if (packet->getRouteType() == ROUTE_TYPE_FLOOD && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
     if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->getPathHashCount() >= _prefs.flood_max_advert) return false;
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+    if (flood_rules.shouldBlock(packet, recv_pkt_rule_match_mask,
+                                _ms->getMillis())) {
+      return false;
+    }
+#endif
   }
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  if (packet->isRouteFlood()) {
+    if (recv_pkt_region == NULL && !recv_pkt_regionless_scope_set) {
+      MESH_DEBUG_PRINTLN(
+          "allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
+      return false;
+    }
+    if (_prefs.loop_detect != LOOP_DETECT_OFF) {
+      const uint8_t* maximums = _prefs.loop_detect == LOOP_DETECT_MINIMAL
+          ? ROOM_MAX_LOOP_MINIMAL
+          : (_prefs.loop_detect == LOOP_DETECT_MODERATE
+              ? ROOM_MAX_LOOP_MODERATE : ROOM_MAX_LOOP_STRICT);
+      if (isLooped(packet, maximums)) {
+        MESH_DEBUG_PRINTLN(
+            "allowPacketForward: FLOOD packet loop detected!");
+        return false;
+      }
+    }
+    flood_rules.commitRates(packet, recv_pkt_rule_match_mask,
+                            _ms->getMillis());
+  }
+#endif
   return true;
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  bool scope_changed = false;
+  bool fast_track_scope_change = false;
+  recv_pkt_regionless_scope_set = false;
+  recv_pkt_rule_match_mask = 0;
+  if (pkt->isRouteFlood()) {
+    bool incoming_region_allowed = false;
+    RegionEntry* incoming_region = NULL;
+    if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
+      incoming_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
+      incoming_region_allowed = incoming_region != NULL;
+    } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
+      incoming_region_allowed =
+          (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
+    }
+    recv_pkt_rule_match_mask = flood_rules.evaluate(
+        pkt, isTempRadioActive(), incoming_region_allowed, incoming_region);
+    bool scope_set = false;
+    scope_changed = flood_rules.applyScope(
+        pkt, recv_pkt_rule_match_mask, scope_set, fast_track_scope_change);
+    recv_pkt_regionless_scope_set = scope_set;
+  }
+#endif
   if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
     recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
   } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
@@ -425,7 +542,20 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   } else {
     recv_pkt_region = NULL;
   }
-  return Mesh::onRecvPacket(pkt);
+  mesh::DispatcherAction action = Mesh::onRecvPacket(pkt);
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  if (scope_changed && action != ACTION_RELEASE
+      && action != ACTION_MANUAL_HOLD) {
+    if (fast_track_scope_change) {
+      action = ACTION_RETRANSMIT(0);
+    } else {
+      uint8_t priority = (action >> 24) - 1;
+      action = ACTION_RETRANSMIT_DELAYED(
+          priority, getSlowFloodRuleRetransmitDelay(pkt));
+    }
+  }
+#endif
+  return action;
 }
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
@@ -602,96 +732,118 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
     if (!(flags == TXT_TYPE_PLAIN || flags == TXT_TYPE_CLI_DATA)) {
       MESH_DEBUG_PRINTLN("onPeerDataRecv: unsupported command flags received: flags=%02x", (uint32_t)flags);
-    } else if (sender_timestamp >= client->last_timestamp) { // prevent replay attacks, but send Acks for retries
-      bool is_retry = (sender_timestamp == client->last_timestamp);
-      client->last_timestamp = sender_timestamp;
+      return;
+    }
 
-      uint32_t now = getRTCClock()->getCurrentTimeUnique();
-      client->last_activity = now;
-      client->extra.room.push_failures = 0; // reset so push can resume (if prev failed)
+    // len can be > original length, but 'text' will be padded with zeroes
+    data[len] = 0; // need to make a C string again, with null terminator
+    const char* text = (const char*)&data[5];
+    const size_t text_len = strlen(text);
 
-      // len can be > original length, but 'text' will be padded with zeroes
-      data[len] = 0; // need to make a C string again, with null terminator
+    uint8_t temp[166];
+    temp[5] = 0;
+    bool send_ack = false;
 
-      uint32_t ack_hash; // calc truncated hash of the message timestamp + text + sender pub_key, to prove to
-                         // sender that we got it
-      mesh::Utils::sha256((uint8_t *)&ack_hash, 4, data, 5 + strlen((char *)&data[5]), client->id.pub_key,
-                          PUB_KEY_SIZE);
-
-      uint8_t temp[166];
-      bool send_ack;
-      if (flags == TXT_TYPE_CLI_DATA) {
-        if (client->isAdmin()) {
-          if (is_retry) {
-            temp[5] = 0; // no reply
-          } else {
-            handleCommand(sender_timestamp, (char *)&data[5], (char *)&temp[5],
-                          i, packet->getPathHashSize());
-            temp[4] = (TXT_TYPE_CLI_DATA << 2); // attempt and flags,  (NOTE: legacy was: TXT_TYPE_PLAIN)
-          }
-          send_ack = false;
-        } else {
-          temp[5] = 0;      // no reply
-          send_ack = false; // and no ACK...  user shoudn't be sending these
+    if (flags == TXT_TYPE_PLAIN) {
+      const bool is_guest =
+          (client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST;
+      if (is_guest) {
+        if (sender_timestamp < client->extra.room.last_post_timestamp) {
+          MESH_DEBUG_PRINTLN("onPeerDataRecv: stale room post detected");
+          return;
         }
-      } else { // TXT_TYPE_PLAIN
-        if ((client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) {
-          temp[5] = 0;      // no reply
-          send_ack = false; // no ACK
-        } else {
-          if (!is_retry) {
-            addPost(client, (const char *)&data[5]);
-          }
-          temp[5] = 0; // no reply (ACK is enough)
-          send_ack = true;
-        }
-      }
-
-      uint32_t delay_millis;
-      if (send_ack) {
-        if (client->out_path_len == OUT_PATH_UNKNOWN) {
-          mesh::Packet *ack = createAck(ack_hash);
-          if (ack) sendFloodReply(ack, TXT_ACK_DELAY, packet->getPathHashSize());
-          delay_millis = TXT_ACK_DELAY + REPLY_DELAY_MILLIS;
-        } else {
-          uint32_t d = TXT_ACK_DELAY;
-          if (getExtraAckTransmitCount() > 0) {
-            mesh::Packet *a1 = createMultiAck(ack_hash, 1);
-            if (a1) sendDirect(a1, client->out_path, client->out_path_len, d);
-            d += 300;
-          }
-
-          mesh::Packet *a2 = createAck(ack_hash);
-          if (a2) sendDirect(a2, client->out_path, client->out_path_len, d);
-          delay_millis = d + REPLY_DELAY_MILLIS;
-        }
+        client->extra.room.last_post_timestamp = sender_timestamp;
       } else {
-        delay_millis = 0;
+        uint8_t message_fingerprint[MAX_HASH_SIZE];
+        mesh::Utils::sha256(message_fingerprint, sizeof(message_fingerprint),
+                            client->id.pub_key, PUB_KEY_SIZE,
+                            (const uint8_t*)text, text_len);
+        const auto replay_decision = recent_room_posts.classifyAndRemember(
+            message_fingerprint, sender_timestamp,
+            client->extra.room.last_post_timestamp);
+
+        using ReplayDecision =
+            mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE>::ReplayDecision;
+        if (replay_decision == ReplayDecision::StaleOrMismatched) {
+          MESH_DEBUG_PRINTLN("onPeerDataRecv: stale or mismatched room post detected");
+          return;
+        }
+        if (replay_decision == ReplayDecision::NewMessage) {
+          addPost(client, text);
+        }
+        // Exact retries are ACKed again regardless of whether newer posts have
+        // advanced this client's room-post replay timestamp.
+        send_ack = true;
+      }
+    } else { // TXT_TYPE_CLI_DATA
+      if (sender_timestamp < client->last_timestamp) {
+        MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
+        return;
       }
 
-      int text_len = strlen((char *)&temp[5]);
-      if (text_len > 0) {
-        if (now == sender_timestamp) {
-          // WORKAROUND: the two timestamps need to be different, in the CLI view
-          now++;
-        }
-        memcpy(temp, &now, 4); // mostly an extra blob to help make packet_hash unique
+      const bool is_retry = sender_timestamp == client->last_timestamp;
+      client->last_timestamp = sender_timestamp;
+      if (client->isAdmin() && !is_retry) {
+        handleCommand(sender_timestamp, (char*)text, (char*)&temp[5],
+                      i, packet->getPathHashSize());
+        temp[4] = (TXT_TYPE_CLI_DATA << 2); // attempt and flags,  (NOTE: legacy was: TXT_TYPE_PLAIN)
+      }
+      // CLI_DATA replies are the result signal; no separate ACK is expected.
+    }
 
-        // calc expected ACK reply
-        // mesh::Utils::sha256((uint8_t *)&expected_ack_crc, 4, temp, 5 + text_len, self_id.pub_key,
-        // PUB_KEY_SIZE);
+    uint32_t now = getRTCClock()->getCurrentTimeUnique();
+    client->last_activity = now;
+    client->extra.room.push_failures = 0; // reset so push can resume (if prev failed)
 
-        auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret, temp, 5 + text_len);
-        if (reply) {
-          if (client->out_path_len == OUT_PATH_UNKNOWN) {
-            sendFloodReply(reply, delay_millis + SERVER_RESPONSE_DELAY, packet->getPathHashSize());
-          } else {
-            sendDirect(reply, client->out_path, client->out_path_len, delay_millis + SERVER_RESPONSE_DELAY);
-          }
+    uint32_t delay_millis;
+    if (send_ack) {
+      uint32_t ack_hash; // prove receipt of this timestamp, attempt, text, and sender
+      mesh::Utils::sha256((uint8_t*)&ack_hash, 4, data, 5 + text_len,
+                          client->id.pub_key, PUB_KEY_SIZE);
+
+      if (client->out_path_len == OUT_PATH_UNKNOWN) {
+        mesh::Packet *ack = createAck(ack_hash);
+        if (ack) sendFloodReply(ack, TXT_ACK_DELAY, packet->getPathHashSize());
+        delay_millis = TXT_ACK_DELAY + REPLY_DELAY_MILLIS;
+      } else {
+        uint32_t d = TXT_ACK_DELAY;
+        if (getExtraAckTransmitCount() > 0) {
+          mesh::Packet *a1 = createMultiAck(ack_hash, 1);
+          if (a1) sendDirect(a1, client->out_path, client->out_path_len, d);
+          d += 300;
         }
+
+        mesh::Packet *a2 = createAck(ack_hash);
+        if (a2) sendDirect(a2, client->out_path, client->out_path_len, d);
+        delay_millis = d + REPLY_DELAY_MILLIS;
       }
     } else {
-      MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
+      delay_millis = 0;
+    }
+
+    int reply_text_len = strlen((char*)&temp[5]);
+    if (reply_text_len > 0) {
+      if (now == sender_timestamp) {
+        // WORKAROUND: the two timestamps need to be different, in the CLI view
+        now++;
+      }
+      memcpy(temp, &now, 4); // mostly an extra blob to help make packet_hash unique
+
+      // calc expected ACK reply
+      // mesh::Utils::sha256((uint8_t *)&expected_ack_crc, 4, temp, 5 + reply_text_len, self_id.pub_key,
+      // PUB_KEY_SIZE);
+
+      auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret,
+                                  temp, 5 + reply_text_len);
+      if (reply) {
+        if (client->out_path_len == OUT_PATH_UNKNOWN) {
+          sendFloodReply(reply, delay_millis + SERVER_RESPONSE_DELAY,
+                         packet->getPathHashSize());
+        } else {
+          sendDirect(reply, client->out_path, client->out_path_len,
+                     delay_millis + SERVER_RESPONSE_DELAY);
+        }
+      }
     }
   } else if (type == PAYLOAD_TYPE_REQ && len >= 5) {
     uint32_t sender_timestamp;
@@ -909,6 +1061,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
   recv_pkt_region = NULL;
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  recv_pkt_rule_match_mask = 0;
+  recv_pkt_regionless_scope_set = false;
+#endif
 
   // defaults
   memset(&_prefs, 0, sizeof(_prefs));
@@ -998,6 +1154,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   acl.load(_fs, self_id);
   region_map.load(_fs);
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  flood_rules.begin(_fs, &region_map);
+#endif
 
   // establish default-scope
   {
@@ -1818,7 +1977,13 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       addSystemPost(msg);
       snprintf(reply, MAX_POST_TEXT_LEN, "OK");
     }
-  } else{
+  }
+#if defined(MESHCORE_ESP32_FULL_PROFILE)
+  else if (flood_rules.handleCommand(command, reply)) {
+    // handled by the FULL-profile persistent flood rule engine
+  }
+#endif
+  else {
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
 }

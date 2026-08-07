@@ -2021,9 +2021,23 @@ void MyMesh::handleCmdFrame(size_t len) {
         result = sendCommandData(*recipient, msg_timestamp, attempt, text, est_timeout);
         expected_ack = 0; // no Ack expected
       } else {
+        const uint32_t app_timestamp = msg_timestamp;
+        const bool is_room_post = recipient->type == ADV_TYPE_ROOM;
+        if (is_room_post
+            && !room_message_timestamps.find(text_fingerprint, app_timestamp,
+                                             &msg_timestamp)) {
+          // Room login/control packets already use the node's monotonic clock.
+          // Give a new post that same clock source, then preserve the mapping
+          // so application retries keep one logical server-side timestamp.
+          msg_timestamp = getRTCClock()->getCurrentTimeUnique();
+        }
         result = sendMessage(*recipient, msg_timestamp, attempt, text, expected_ack, est_timeout,
                              packet_retry_key,
                              replacement_entry != NULL ? replacement_entry->retry_key : NULL);
+        if (result != MSG_SEND_FAILED && is_room_post) {
+          room_message_timestamps.remember(text_fingerprint, app_timestamp,
+                                           msg_timestamp);
+        }
       }
       if (result == MSG_SEND_FAILED) {
         writeErrFrame(ERR_CODE_TABLE_FULL);

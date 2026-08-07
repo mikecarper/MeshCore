@@ -59,7 +59,15 @@ Appdata Flags
 
 ## Acknowledgement
 
-An acknowledgement that a message was received. Note that for returned path messages, an acknowledgement can be sent in the "extra" payload (see [Returned Path](#returned-path)) instead of as a separate acknowledgement packet. CLI commands do not cause acknowledgement responses, neither discrete nor extra.
+An acknowledgement that a message was received. Note that for returned path messages, an acknowledgement can be sent in the "extra" payload (see [Returned Path](#returned-path)) instead of as a separate acknowledgement packet. Current `CLI_DATA` commands do not cause acknowledgement responses, neither discrete nor extra; their text reply is the application-level result. Repeaters still ACK the legacy plain-text form before processing it.
+
+Repeater remote CLI keeps one volatile copy of the most recently completed
+reply, keyed by the authenticated sender, request timestamp, and command text.
+Repeating that same logical request re-sends the text reply without executing
+the command again. A retry must therefore preserve the original timestamp and
+command text. The cache is cleared by reboot and replaced by the next completed
+remote command; commands that intentionally produce no text reply remain
+silent.
 
 | Field    | Size (bytes) | Description                                                |
 |----------|--------------|------------------------------------------------------------|
@@ -173,6 +181,13 @@ txt_type
 | `0x00` | plain text message        | the plain text of the message                                            |
 | `0x01` | CLI command               | the command text of the message                                          |
 | `0x02` | signed plain text message | first four bytes is sender pubkey prefix, followed by plain text message |
+
+For a room post, companion firmware uses its own monotonic clock for the
+on-air timestamp and preserves that timestamp across application retries. Room
+servers track post timestamps separately from login, request, and CLI traffic.
+They also remember recent accepted posts by sender, timestamp, and text: an
+exact retry is ACKed again without storing a duplicate, while stale or
+same-timestamp mismatches are rejected.
 
 ## Anonymous request
 

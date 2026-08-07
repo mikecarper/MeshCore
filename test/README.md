@@ -39,7 +39,10 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_prefs_save_routing` | `src/helpers/PrefsSaveRouting.h` | runtime common/observer setters write only their owning preference image; mixed-owner setters and migrations can deliberately write both |
 | `test_mqtt_payload_builder` | `src/helpers/MQTTPayloadBuilder.cpp` | status/packet/raw JSON contracts; optional fields; escaping; RX metrics and path; score handling; exact buffer bounds; maximum representative payloads |
 | `test_telemetry_history` | `src/helpers/TelemetryHistory.h` | 30-minute rings; seven-day temperature/voltage and dynamically sized GPS retention; exact 1 C temperature/status encoding; separate Base64 series payloads; 14-bit GPS differentials; resize preservation, heap budgets, and 1-based paging bounds |
-| `test_flood_filter_policy` | `src/helpers/FloodFilterPolicy.h` | unordered 3-byte and 2-byte-prefix path matching; match thresholds; repeated path-entry semantics; blacklist and bridge-bucket channel-scope selection; `require=region` and per-channel scope-gate truth tables; fast/slow scope timing; adding, replacing, and preserving packet scope |
+| `test_flood_filter_policy` | `src/helpers/FloodFilterPolicy.h` | unordered blacklist matching; ordered 1/2/3-byte pbyte rule prefixes; original incoming scope classes and canonical region-name identity; channel-authentication cache key comparison; priority ordering and terminal stop masks; bridge-bucket and regionless channel-target selector encoding; `require=region` and per-channel scope-gate truth tables; fast/slow timing; adding, replacing, and preserving packet scope |
+| `test_logical_message_cache` | `src/helpers/LogicalMessageCache.h` | bounded logical-message mapping; stable retry timestamps; exact older retries after newer messages; stale and same-timestamp mismatch rejection |
+| `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h` | authenticated sender/timestamp/command matching; owned response storage; empty-response completion; on-air truncation; replacement and clearing |
+| `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | reserved reply capacity; response priority; push eviction under saturation; response preservation |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 
 ## Conventions (and how to add a suite)

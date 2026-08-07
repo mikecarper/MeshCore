@@ -1,4 +1,5 @@
 #include "SerialEthernetInterface.h"
+#include "../CompanionFrameQueue.h"
 
 #define RECV_STATE_IDLE        0
 #define RECV_STATE_HDR_FOUND   1
@@ -27,15 +28,11 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
   }
 
   if (isConnected() && len > 0) {
-    if (send_queue_len >= FRAME_QUEUE_SIZE) {
+    if (!mesh::enqueueCompanionFrame(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
+                                     src, len)) {
       ETHERNET_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
       return 0;
     }
-
-    send_queue[send_queue_len].len = len;  // add to send queue
-    memcpy(send_queue[send_queue_len].buf, src, len);
-    send_queue_len++;
-
     return len;
   }
   return 0;

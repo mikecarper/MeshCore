@@ -73,6 +73,7 @@
 #include <helpers/ClientACL.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/DeferredCliCommand.h>
+#include <helpers/RemoteCliReplyCache.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpioReplyTracker.h>
 #endif
@@ -138,8 +139,22 @@ struct NeighbourInfo {
 
 #define MAX_SCHEDULED_RADIO_SETTINGS (MAX_SCHEDULED_RADIO_SETTINGS_PER_TYPE * 2)
 
+#ifndef MESH_ENABLE_FLOOD_RULE_ENGINE
+  // STM32WL repeater images have only 240 KB of application flash. They keep
+  // the established dynamic flood.filter table unless a larger target profile
+  // explicitly opts into the generalized rule parser and persistence format.
+  #if defined(STM32_PLATFORM)
+    #define MESH_ENABLE_FLOOD_RULE_ENGINE 0
+  #else
+    #define MESH_ENABLE_FLOOD_RULE_ENGINE 1
+  #endif
+#endif
 #ifndef FLOOD_PACKET_FILTER_SLOTS
-  #define FLOOD_PACKET_FILTER_SLOTS 16
+  #if MESH_ENABLE_FLOOD_RULE_ENGINE
+    #define FLOOD_PACKET_FILTER_SLOTS 31
+  #else
+    #define FLOOD_PACKET_FILTER_SLOTS 16
+  #endif
 #endif
 #define FLOOD_PACKET_FILTER_ANY_TYPE  0xFF
 #define FLOOD_PACKET_FILTER_MAX_HOPS  63
@@ -151,6 +166,9 @@ struct NeighbourInfo {
 #endif
 #define FLOOD_PACKET_FILTER_BLACKLIST_REPLACE_MAX 18
 #define FLOOD_PACKET_FILTER_PATH_ID_SIZE 3
+#define FLOOD_PACKET_FILTER_PATH_PREFIX_HOPS_MAX 3
+#define FLOOD_PACKET_FILTER_PATH_PREFIX_BYTES_MAX \
+    (FLOOD_PACKET_FILTER_PATH_PREFIX_HOPS_MAX * 3)
 
 #ifndef FLOOD_CHANNEL_SCOPE_SLOTS
   #if defined(ESP32)
@@ -164,6 +182,18 @@ struct NeighbourInfo {
 #define FLOOD_CHANNEL_SCOPE_TXT_ANY    0
 #define FLOOD_CHANNEL_SCOPE_LOGIN_ANY  1
 #define FLOOD_CHANNEL_SCOPE_OTHER_ANY  2
+#ifndef FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS
+  // STM32WL repeater images and RAM are both exceptionally tight. Keep one
+  // reusable regionless target there; other platforms scale with the rule
+  // table up to the region-map capacity.
+  #if defined(STM32_PLATFORM)
+    #define FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS 1
+  #elif FLOOD_CHANNEL_SCOPE_SLOTS < MAX_REGION_ENTRIES
+    #define FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS FLOOD_CHANNEL_SCOPE_SLOTS
+  #else
+    #define FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS MAX_REGION_ENTRIES
+  #endif
+#endif
 #ifndef FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS
   #define FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS FLOOD_CHANNEL_SCOPE_SLOTS
 #endif
@@ -234,6 +264,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
   mesh::DeferredCliCommand deferred_cli_command;
+  mesh::RemoteCliReplyCache remote_cli_reply_cache;
   TransportKey deferred_cli_reply_scope;
   bool deferred_cli_reply_scoped;
   uint32_t pending_self_advert_delay;
@@ -259,7 +290,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   RegionMap region_map, temp_map;
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
-  bool recv_pkt_filter_scope_set;
+  bool recv_pkt_regionless_scope_set;
   bool recv_pkt_channel_scope_bypass;
   bool recv_pkt_channel_scope_rejected;
   TransportKey default_scope;
@@ -277,14 +308,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint8_t prefix_len;
     uint32_t last_heard_millis;
   };
-  struct FloodChannelBlockEntry {
-    bool active;
-    uint8_t key_len;
-    uint8_t max_hops;
-    uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
-    uint8_t secret[PUB_KEY_SIZE];
-    char name[FLOOD_CHANNEL_BLOCK_NAME_LEN];
-  };
   struct FloodPacketFilterEntry {
     bool active;
     uint8_t payload_type;
@@ -293,12 +316,37 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     bool suspend_on_temp_radio;
     char scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
     bool match_blacklisted_path;
+#if !MESH_ENABLE_FLOOD_RULE_ENGINE
     bool scope_requires_region_match;
+#endif
     bool scope_uses_slow_timing;
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+    uint8_t incoming_scope_kind;
+    char incoming_scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
+    uint8_t channel_key_len;
+    uint8_t channel_hash;
+    uint8_t channel_secret[PUB_KEY_SIZE];
+    char channel_name[FLOOD_GROUP_MODERATION_NAME_LEN];
+    uint8_t path_hash_size;
+    uint8_t path_hops;
+    uint8_t path[FLOOD_PACKET_FILTER_PATH_PREFIX_BYTES_MAX];
+    char target_region_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
+    bool drop_on_match;
+    bool rate_limit_enabled;
+    uint16_t rate_per_minute;
+    uint8_t priority;
+    bool stop_on_match;
+    uint32_t rate_window_started;
+    uint16_t rate_window_count;
+    bool rate_window_active;
+#endif
   };
   struct FloodChannelScopeEntry {
-    uint16_t region_id;  // zero means unused
-    // Low bits select txt:*/login:*/other:* or an exact channel-key length.
+    // Zero means unused. Otherwise this is either a region ID or a one-based
+    // flood_channel_direct_scopes index, as selected by selector.
+    uint16_t target_id;
+    // Encodes txt:*/login:*/other:* or an exact key length, target kind,
+    // optional path selector, and fast/slow timing.
     uint8_t selector;
     uint8_t channel_hash;
     uint8_t secret[PUB_KEY_SIZE];
@@ -311,7 +359,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   struct FloodGroupModerationEntry {
     bool active;
     uint8_t key_len;
-    uint8_t hash_prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN];
+    uint8_t hash_prefix[FLOOD_CHANNEL_KEY_PREFIX_LEN];
     uint8_t secret[PUB_KEY_SIZE];
     char channel_name[FLOOD_GROUP_MODERATION_NAME_LEN];
     char sender[FLOOD_GROUP_MODERATION_NAME_LEN];
@@ -334,15 +382,17 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
   mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
-  FloodChannelBlockEntry flood_channel_blocks[FLOOD_CHANNEL_BLOCK_SLOTS];
   FloodPacketFilterEntry flood_packet_filters[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t flood_packet_filter_blacklist_count;
   uint8_t flood_packet_filter_blacklist[FLOOD_PACKET_FILTER_BLACKLIST_MAX]
                                        [FLOOD_PACKET_FILTER_PATH_ID_SIZE];
   FloodChannelScopeEntry flood_channel_scopes[FLOOD_CHANNEL_SCOPE_SLOTS];
+  char flood_channel_direct_scopes[FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS]
+                                  [FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
   FloodChannelScopeRequireEntry
       flood_channel_scope_requirements[FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS];
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
+  uint32_t recv_pkt_filter_match_mask;
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
   bool clock_sync_mesh_enabled;
   bool clock_sync_mesh_edge_enabled;
@@ -530,32 +580,40 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void refreshScheduledRadioState();
   void processScheduledRadioSettings();
   bool isMillisTimerDue(unsigned long timestamp) const;
-  void loadFloodChannelBlocks();
-  bool saveFloodChannelBlocks();
-  void seedDefaultFloodChannelBlocks();
-  void clearFloodChannelBlockEntry(FloodChannelBlockEntry& entry);
-  void deriveFloodChannelBlockPrefix(const uint8_t* secret, uint8_t key_len,
-                                     uint8_t prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN]) const;
-  uint8_t resolveFloodChannelBlockHops(uint8_t max_hops) const;
-  bool floodChannelBlockHopApplies(const mesh::Packet* packet, uint8_t max_hops) const;
   bool floodChannelDataHopApplies(const mesh::Packet* packet) const;
-  bool floodChannelBlockMatches(const FloodChannelBlockEntry& entry, const mesh::Packet* packet) const;
-  bool shouldBlockFloodChannelForward(const mesh::Packet* packet) const;
-  void loadFloodPacketFilters();
+  bool loadFloodPacketFilters();
   bool saveFloodPacketFilters();
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+  void migrateLegacyFloodChannelBlocks();
+#endif
   void loadFloodPacketFilterBlacklist();
   bool saveFloodPacketFilterBlacklist();
   void seedDefaultFloodPacketFilters();
   bool floodPacketFilterBlacklistMatches(const mesh::Packet* packet) const;
-  bool floodPacketFilterMatches(const FloodPacketFilterEntry& entry,
-                                const mesh::Packet* packet) const;
-  bool applyFloodPacketFilterScope(mesh::Packet* packet, bool incoming_region_allowed,
+  bool floodPacketFilterFieldsMatch(const FloodPacketFilterEntry& entry,
+                                    const mesh::Packet* packet,
+                                    bool incoming_is_scoped,
+                                    uint16_t incoming_transport_code,
+                                    bool incoming_region_allowed,
+                                    const RegionEntry* incoming_region) const;
+  bool authenticateFloodPacketFilterChannel(
+      const FloodPacketFilterEntry& entry,
+      const mesh::Packet* packet) const;
+  int nextFloodPacketFilterMatch(uint32_t match_mask,
+                                 uint32_t visited_mask) const;
+  uint32_t applyFloodPacketFilterStop(uint32_t match_mask) const;
+  uint32_t evaluateFloodPacketFilterMatches(
+      const mesh::Packet* packet, bool incoming_region_allowed,
+      const RegionEntry* incoming_region) const;
+  bool applyFloodPacketFilterScope(mesh::Packet* packet, uint32_t match_mask,
                                    bool& scope_set, bool& fast_track,
                                    bool log_change = true);
   bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
+  void commitFloodPacketFilterRates(const mesh::Packet* packet);
   void formatFloodPacketFilters(const char* args, char* reply) const;
   void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
-  void setFloodPacketFilter(const char* args, char* reply);
+  void setFloodPacketFilter(const char* args, char* reply,
+                            bool require_explicit_action = false);
   void deleteFloodPacketFilter(const char* args, char* reply);
   void formatFloodPacketFilterBlacklist(const char* args, char* reply) const;
   void setFloodPacketFilterBlacklist(const char* args, char* reply);
@@ -564,8 +622,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool saveFloodChannelScopes(bool empty_table = false);
   bool applyFloodChannelScopeTarget(mesh::Packet* packet, const FloodChannelScopeEntry& entry,
                                     bool& scope_changed, bool& fast_track,
+                                    bool& regionless_scope_set,
                                     bool log_change = true);
   bool applyFloodChannelScope(mesh::Packet* packet, bool& fast_track,
+                              bool& regionless_scope_set,
                               bool log_change = true);
   static uint8_t scoreFloodTransportScope(const mesh::Packet* packet, void* context);
   uint8_t getFloodTransportScopeDepth(const mesh::Packet* packet);
@@ -609,9 +669,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void formatClockSyncStatus(const char* args, char* reply, size_t reply_len) const;
   void formatClockSyncTable(char* reply, size_t reply_len) const;
   void formatClockSyncSampleDetail(int index, char* reply, size_t reply_len) const;
-  int findFloodChannelBlockBySelector(const char* selector) const;
-  int findFloodChannelBlockSlot(const uint8_t prefix[FLOOD_CHANNEL_BLOCK_PREFIX_LEN], const char* name) const;
-  void formatFloodChannelBlockDetail(char* reply, int idx) const;
   bool hasScheduledRadioWorkDue() const;
   uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const;
   uint32_t limitSleepToScheduledRadioWork(uint32_t sleep_secs) const;
@@ -791,11 +848,6 @@ public:
   void startRegionsLoad() override;
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;
-  void setFloodChannelBlock(int index, const uint8_t* secret, uint8_t key_len,
-                            const char* name, uint8_t max_hops, char* reply) override;
-  void formatFloodChannelBlocks(const char* selector, char* reply) override;
-  void deleteFloodChannelBlock(const char* selector, char* reply) override;
-
   mesh::LocalIdentity& getSelfId() override { return self_id; }
 
   void saveIdentity(const mesh::LocalIdentity& new_id) override;

@@ -117,10 +117,9 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Routing | [`get/set flood.max.unscoped`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set flood.max.advert`](cli_commands.md#limit-the-number-of-hops-for-an-advert-flood-message) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set flood.channel.data`; `get/set flood.channel.data.hops`](cli_commands.md#forward-flood-group-data-packets-on-repeaters) | Repeater | Yes | Yes | Yes |
-| Routing | [`get/set/del flood.channel.block*`](cli_commands.md#block-selected-flood-channel-packets-on-repeaters) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope*`](cli_commands.md#force-a-transport-scope-onto-floods) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope.require*`](cli_commands.md#require-valid-incoming-scopes-only-on-selected-channels) | Repeater | Yes | Yes | Yes |
-| Routing | [`get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#filter-flood-packets-by-payload-type-hop-count-and-path) | Repeater | Yes | Yes | Yes |
+| Routing | [`get/set/del flood.rule*`; `get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#change-persistent-flood-rules-in-the-field) | Repeater; `flood.rule`/`flood.filter` also on FULL ESP32 room server (no blacklist) | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.moderation*`](cli_commands.md#moderate-flood-group-text-by-channel-sender-and-source-path) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
 | Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
@@ -273,10 +272,9 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Routing | [`get/set flood.max.unscoped`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater, full common parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | Routing | [`get/set flood.max.advert`](cli_commands.md#limit-the-number-of-hops-for-an-advert-flood-message) | Repeater, full common parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | Routing | [`get/set flood.channel.data`; `get/set flood.channel.data.hops`](cli_commands.md#forward-flood-group-data-packets-on-repeaters) | Repeater, full common parser | Yes | Yes | Yes | No | No | Yes | Yes |
-| Routing | [`get/set/del flood.channel.block*`](cli_commands.md#block-selected-flood-channel-packets-on-repeaters) | Repeater, full common parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope*`](cli_commands.md#force-a-transport-scope-onto-floods) | Repeater role handler | Yes | Yes | Yes | No | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope.require*`](cli_commands.md#require-valid-incoming-scopes-only-on-selected-channels) | Repeater role handler | Yes | Yes | Yes | No | Yes | Yes | Yes |
-| Routing | [`get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#filter-flood-packets-by-payload-type-hop-count-and-path) | Repeater role handler | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| Routing | [`get/set/del flood.rule*`; `get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#change-persistent-flood-rules-in-the-field) | Repeater role handler; `flood.rule`/`flood.filter` also on FULL ESP32 room server (no blacklist) | Yes | Yes | Yes | No | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.moderation*`](cli_commands.md#moderate-flood-group-text-by-channel-sender-and-source-path) | Repeater role handler | Yes | Yes | Yes | No | Yes | Yes | Yes |
 | Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes | Yes | Yes |

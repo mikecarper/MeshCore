@@ -1907,7 +1907,7 @@ apply_esp32_full_size_profile() {
   # The FULL artifact uses expanded dual-OTA slots, so restore features that
   # target or portable profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1 -DMESHCORE_ESP32_FULL_PROFILE=1"
 
   # Keep ordinary builds at their board-defined neighbor capacity. FULL builds
   # normally use the largest table supported by the one-byte neighbor discovery
