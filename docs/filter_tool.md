@@ -20,14 +20,70 @@ drafts are not uploaded anywhere.
 
 ## Build a policy
 
+The presets below reproduce common examples from
+[Flood Filtering and Moderation](flood_filtering.md) in the proposed rule model.
+
 <div class="filter-tool" data-filter-tool>
+  <div class="filter-management-safety" role="note">
+    <strong>Remote login and direct routes</strong>
+    <p>
+      This policy controls flood retransmission only. Direct packets carry a
+      supplied route and stay outside the filter, matching today's firmware.
+      Local packet delivery also happens independently of the relay decision.
+      Rules that can limit relayed REQ, RESPONSE, TXT_MSG, ANON_REQ, or PATH
+      traffic receive a prominent warning because they can still reduce
+      multi-hop remote-login reach. The analyzer warns instead of silently
+      exempting those floods, because an exemption would make the documented
+      high-traffic rules behave differently.
+    </p>
+  </div>
   <div class="filter-tool-toolbar" aria-label="Policy examples">
-    <strong>Load an example:</strong>
-    <button type="button" data-example="blackhole">BlackHole86 rewrite</button>
-    <button type="button" data-example="wildcards">Login and other classes</button>
-    <button type="button" data-example="moderation">Content moderation</button>
-    <button type="button" data-example="system">System forwarding gates</button>
-    <button type="button" data-example="mixed">Full mixed policy</button>
+    <div class="filter-example-heading">
+      <strong>Drop-in replacements for documented settings</strong>
+      <span>Choose one to load its proposed-engine equivalent.</span>
+    </div>
+    <div class="filter-example-grid">
+      <button type="button" data-example="channel_scope">
+        <span>Scope all authenticated #rgdata</span>
+        <code>set flood.channel.scope #rgdata scope=BlackHole86</code>
+      </button>
+      <button type="button" data-example="blackhole">
+        <span>Scope unscoped #rgdata after hop 3</span>
+        <code>type=grp_data hops=4+ channel=#rgdata in=none scope=BlackHole86</code>
+      </button>
+      <button type="button" data-example="scope_rewrite">
+        <span>Rewrite #usa to #BlackHole86</span>
+        <code>channel=#rgdata in=scope:usa scope=BlackHole86</code>
+      </button>
+      <button type="button" data-example="prefix_rate">
+        <span>Rate-limit source path 860C</span>
+        <code>type=any prefix=860C rate=10/min</code>
+      </button>
+      <button type="button" data-example="channel_stop">
+        <span>Stop lower rules for short-hop #rgdata</span>
+        <code>hops=0-2 channel=#rgdata priority=200 stop</code>
+      </button>
+      <button type="button" data-example="high_traffic">
+        <span>Six-rule high-traffic mesh preset</span>
+        <code>req 3+ | response 9+ | grp_data 3+ | login paths 9+</code>
+      </button>
+      <button type="button" data-example="moderation">
+        <span>Limit a Public display name</span>
+        <code>public "Noisy User" rate=5/min</code>
+      </button>
+      <button type="button" data-example="blacklist">
+        <span>Drop a passive-blacklist path</span>
+        <code>set flood.filter any all path=blacklist</code>
+      </button>
+      <button type="button" data-example="factory">
+        <span>Factory OTA and #wardriving rows</span>
+        <code>ota suspend=tempradio | #wardriving hops=5+</code>
+      </button>
+      <button type="button" data-example="wildcards">
+        <span>Login and other wildcard scopes</span>
+        <code>login:* | other:* path=bucket:2</code>
+      </button>
+    </div>
   </div>
 
   <div class="filter-tool-grid">
@@ -40,65 +96,8 @@ drafts are not uploaded anywhere.
         <button type="button" data-role="reset-form">Reset form</button>
       </div>
 
-      <h3>Identity and execution</h3>
+      <h3>Common match settings</h3>
       <div class="filter-form-grid">
-        <label>
-          Stable rule ID
-          <input data-field="id" value="rule-1" maxlength="32" placeholder="blackhole-rewrite">
-        </label>
-        <label>
-          Processing phase
-          <select data-field="phase">
-            <option value="scope_gate">1 - Incoming scope gate</option>
-            <option value="rewrite">2 - Scope rewrite</option>
-            <option value="forward">3 - Forwarding decision</option>
-            <option value="content">4 - Decrypted content</option>
-            <option value="schedule">5 - Scheduling and retry</option>
-          </select>
-        </label>
-        <label>
-          Rule owner / capability
-          <select data-field="owner">
-            <option value="scope">ACL 4 - Region/scope manager</option>
-            <option value="filter">ACL 5 - Filter manager</option>
-            <option value="admin">Administrator</option>
-            <option value="system">Firmware-managed system rule</option>
-          </select>
-        </label>
-        <label>
-          Priority
-          <input data-field="priority" type="number" min="0" max="255" inputmode="numeric" value="100">
-        </label>
-        <label>
-          Mode
-          <select data-field="mode">
-            <option value="active">Active</option>
-            <option value="shadow">Shadow - observe only</option>
-            <option value="disabled">Disabled</option>
-          </select>
-        </label>
-        <label>
-          Stop behavior after a match
-          <select data-field="stop">
-            <option value="none">Continue processing</option>
-            <option value="phase">Stop this phase</option>
-            <option value="policy">Stop later policy phases</option>
-          </select>
-        </label>
-      </div>
-
-      <h3>Match immutable receive-time facts</h3>
-      <div class="filter-form-grid">
-        <label>
-          Route class
-          <select data-field="route">
-            <option value="flood">Any flood route</option>
-            <option value="unscoped_flood">Unscoped flood only</option>
-            <option value="scoped_flood">Transport-scoped flood only</option>
-            <option value="direct">Direct routes</option>
-            <option value="any">Any route</option>
-          </select>
-        </label>
         <label>
           Payload type or class
           <select data-field="type">
@@ -178,17 +177,14 @@ drafts are not uploaded anywhere.
             <option value="active">Active</option>
           </select>
         </label>
-        <label>
-          Minimum SNR dB (optional)
-          <input data-field="snr-min" type="number" min="-30" max="30" step="0.25" placeholder="no minimum">
-        </label>
-        <label>
-          Maximum SNR dB (optional)
-          <input data-field="snr-max" type="number" min="-30" max="30" step="0.25" placeholder="no maximum">
-        </label>
       </div>
 
-      <h3>Accumulate forwarding actions</h3>
+      <h3>Common actions</h3>
+      <p class="filter-field-help">
+        Choosing a phase-specific action automatically selects a compatible
+        phase and ACL owner. Open the advanced section to inspect or override
+        those choices.
+      </p>
       <div class="filter-form-grid">
         <label>
           Forwarding verdict
@@ -265,6 +261,68 @@ drafts are not uploaded anywhere.
         </label>
       </div>
 
+      <details class="filter-advanced">
+        <summary>Advanced execution, ownership, and flood route</summary>
+        <p class="filter-field-help">
+          Direct packets already carry a supplied path and are intentionally
+          outside this engine. The route condition below only distinguishes
+          unscoped floods from transport-scoped floods.
+        </p>
+        <div class="filter-form-grid">
+          <label>
+            Stable rule ID
+            <input data-field="id" value="rule-1" maxlength="32" placeholder="blackhole-rewrite">
+          </label>
+          <label>
+            Processing phase
+            <select data-field="phase">
+              <option value="scope_gate">1 - Incoming scope gate</option>
+              <option value="rewrite">2 - Scope rewrite</option>
+              <option value="forward">3 - Forwarding decision</option>
+              <option value="content">4 - Decrypted content</option>
+              <option value="schedule">5 - Scheduling and retry</option>
+            </select>
+          </label>
+          <label>
+            Rule owner / capability
+            <select data-field="owner">
+              <option value="scope">ACL 4 - Region/scope manager</option>
+              <option value="filter">ACL 5 - Filter manager</option>
+              <option value="admin">Administrator</option>
+              <option value="system">Firmware-managed system rule</option>
+            </select>
+          </label>
+          <label>
+            Priority
+            <input data-field="priority" type="number" min="0" max="255" inputmode="numeric" value="100">
+          </label>
+          <label>
+            Mode
+            <select data-field="mode">
+              <option value="active">Active</option>
+              <option value="shadow">Shadow - observe only</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </label>
+          <label>
+            Stop behavior after a match
+            <select data-field="stop">
+              <option value="none">Continue processing</option>
+              <option value="phase">Stop this phase</option>
+              <option value="policy">Stop later policy phases</option>
+            </select>
+          </label>
+          <label>
+            Flood route
+            <select data-field="route">
+              <option value="flood">Either flood route</option>
+              <option value="unscoped_flood">Unscoped flood only</option>
+              <option value="scoped_flood">Transport-scoped flood only</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
       <div class="filter-live-preview">
         <div>
           <span class="filter-preview-label">Readable policy definition</span>
@@ -326,7 +384,6 @@ drafts are not uploaded anywhere.
         <select data-packet="route">
           <option value="unscoped_flood">Unscoped flood</option>
           <option value="scoped_flood">Transport-scoped flood</option>
-          <option value="direct">Direct route</option>
         </select>
       </label>
       <label>
@@ -381,10 +438,6 @@ drafts are not uploaded anywhere.
       <label>
         Decrypted sender
         <input data-packet="sender" placeholder="Noisy User">
-      </label>
-      <label>
-        Received SNR dB
-        <input data-packet="snr" type="number" min="-30" max="30" step="0.25" value="6">
       </label>
       <label>
         Passive blacklist result
@@ -473,17 +526,19 @@ drafts are not uploaded anywhere.
 
 The simulator uses these rules:
 
-1. Every matcher reads the same immutable receive-time packet facts.
-2. Rules run by phase, descending priority, then stable rule ID.
-3. A drop decision is sticky and cannot be undone by a later rule.
-4. The first matching scope, timing, queue, and retry action in execution order
+1. Only flood retransmission enters the policy. Direct routing and local packet
+   delivery remain outside it.
+2. Every matcher reads the same immutable receive-time packet facts.
+3. Rules run by phase, descending priority, then stable rule ID.
+4. A drop decision is sticky and cannot be undone by a later rule.
+5. The first matching scope, timing, queue, and retry action in execution order
    wins.
-5. All matching token-bucket rate constraints remain attached to the decision.
-6. `stop=phase` skips later rules in that phase. `stop=policy` skips later
+6. All matching token-bucket rate constraints remain attached to the decision.
+7. `stop=phase` skips later rules in that phase. `stop=policy` skips later
    configurable rules, but never mandatory packet validation or radio safety.
-7. Shadow rules report what they would do without changing the decision or
+8. Shadow rules report what they would do without changing the decision or
    stopping other rules.
-8. Expensive facts such as channel authentication, decryption, and path-table
+9. Expensive facts such as channel authentication, decryption, and path-table
    lookup are resolved once per packet and reused by every matching rule.
 
 The byte-budget display is deliberately approximate until the packed firmware

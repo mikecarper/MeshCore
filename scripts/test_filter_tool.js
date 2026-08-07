@@ -27,7 +27,6 @@ function packet(overrides) {
     regionName: "",
     sender: "",
     tempRadio: false,
-    snr: 6,
     blacklist: false,
     buckets: [],
     loopLevel: 0,
@@ -118,6 +117,26 @@ test("imports JSON and multiple readable definitions", () => {
   assert.strictEqual(tool.parsePolicyInput(readable).length, 2);
 });
 
+test("loads proposed replacements for the documented commands", () => {
+  Object.values(tool.EXAMPLES).forEach((rules) => rules.forEach(tool.normalizeRule));
+  assert.strictEqual(
+    tool.buildDefinition(tool.EXAMPLES.channel_scope[0]),
+    "policy set rgdata-scope phase=rewrite owner=scope priority=100 when route=flood type=class:group hops=all channel=#rgdata do scope=#BlackHole86 timing=fast"
+  );
+  assert.strictEqual(
+    tool.buildDefinition(tool.EXAMPLES.blackhole[0]),
+    "policy set blackhole-after-hop-3 phase=rewrite owner=scope priority=100 when route=flood type=grp_data hops=4+ channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"
+  );
+  assert.strictEqual(
+    tool.buildDefinition(tool.EXAMPLES.prefix_rate[0]),
+    "policy set prefix-860c-rate phase=forward owner=filter priority=100 when route=flood type=any hops=all path=prefix:860C do rate=10/min burst=10"
+  );
+  assert.deepStrictEqual(
+    tool.EXAMPLES.high_traffic.map((rule) => `${rule.type}:${rule.hops}`),
+    ["req:3+", "response:9+", "grp_data:3+", "anon_req:9+", "path:9+", "control:1+"]
+  );
+});
+
 test("orders by phase, descending priority, and stable ASCII ID", () => {
   const definitions = [
     "policy set z-last phase=forward owner=filter priority=20 when route=flood type=any hops=all do tag=z",
@@ -206,6 +225,18 @@ test("matches login and future-safe other payload classes", () => {
   assertToolError(() => tool.normalizePacket(packet({ type: "req" })), /authenticated channel/);
 });
 
+test("keeps direct routes and SNR outside the flood policy schema", () => {
+  assertToolError(
+    () => tool.parseDefinition("policy set direct-drop phase=forward owner=filter priority=1 when route=direct type=any hops=all do drop"),
+    /Route matcher is invalid/
+  );
+  assertToolError(() => tool.normalizePacket(packet({ route: "direct" })), /Packet route is invalid/);
+  assertToolError(
+    () => tool.parseDefinition("policy set signal-drop phase=forward owner=filter priority=1 when route=flood type=any hops=all snr=..-8 do drop"),
+    /Unsupported receive-time matcher/
+  );
+});
+
 test("matches ordered pbyte prefixes, buckets, and loop thresholds", () => {
   const prefix = tool.parseDefinition("policy set path-prefix phase=forward owner=filter priority=1 when route=flood type=any hops=all path=prefix:86,0C do drop");
   const bucket = tool.parseDefinition("policy set path-bucket phase=forward owner=filter priority=1 when route=flood type=any hops=all path=bucket:2 do drop");
@@ -233,11 +264,16 @@ test("reports duplicate IDs, rewrite conflicts, and target overflow", () => {
   assert.ok(tool.policyWarnings(large, "stm32").some((warning) => /exceeds/.test(warning)));
 });
 
-test("flags lockout, future-type, spoofing, and policy-stop risks", () => {
-  const broad = tool.parseDefinition("policy set broad phase=forward owner=admin priority=255 when route=any type=any hops=all do drop stop=policy");
+test("flags remote-login reach, future-type, spoofing, and policy-stop risks", () => {
+  const broad = tool.parseDefinition("policy set broad phase=forward owner=admin priority=255 when route=flood type=any hops=all do drop stop=policy");
   const other = tool.parseDefinition("policy set future phase=forward owner=filter priority=1 when route=flood type=class:other hops=all do drop");
   const sender = tool.parseDefinition('policy set sender phase=content owner=filter priority=1 when route=flood type=grp_txt hops=all sender="Noisy User" do drop');
-  assert.ok(tool.ruleWarnings(broad).some((warning) => /remote administration/.test(warning)));
+  const channelOnly = tool.parseDefinition("policy set channel-only phase=forward owner=filter priority=1 when route=flood type=any hops=all channel=#wardriving do drop");
+  assert.ok(tool.ruleWarnings(broad).some((warning) => /Remote-management relay risk/.test(warning)));
+  assert.ok(tool.policyWarnings([broad], "nrf52").some((warning) => /end-to-end flood login reach is not guaranteed/.test(warning)));
+  assert.ok(tool.ruleWarnings(tool.EXAMPLES.high_traffic[0]).some((warning) => /Remote-management reach warning/.test(warning)));
+  assert.ok(!tool.ruleWarnings(channelOnly).some((warning) => /Remote-management/.test(warning)));
+  assert.ok(!tool.ruleWarnings(tool.EXAMPLES.blacklist[0]).some((warning) => /global drop/.test(warning)));
   assert.ok(tool.ruleWarnings(broad).some((warning) => /mandatory protocol/.test(warning)));
   assert.ok(tool.ruleWarnings(other).some((warning) => /future types/.test(warning)));
   assert.ok(tool.ruleWarnings(sender).some((warning) => /spoofable/.test(warning)));
