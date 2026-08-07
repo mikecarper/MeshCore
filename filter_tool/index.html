@@ -1123,7 +1123,7 @@ in the simulator below. The examples draw from
           </thead>
           <tbody>
             <tr><td><code>hops=</code></td><td>Received hop count: <code>all</code>, <code>3+</code>, <code>2-6</code>, or <code>3</code></td></tr>
-            <tr><td><code>channel=</code></td><td>Group channel</td></tr>
+            <tr><td><code>channel=</code></td><td><code>*</code> means no channel condition; a name or key authenticates one group channel</td></tr>
             <tr><td><code>rx.scope=</code></td><td>Original incoming transport scope</td></tr>
             <tr><td><code>path=</code></td><td>Path prefix, blacklist, bucket, or loop match</td></tr>
             <tr><td><code>tempradio=</code></td><td>Temporary-radio state</td></tr>
@@ -1222,7 +1222,7 @@ in the simulator below. The examples draw from
         </label>
         <label>
           Channel (optional)
-          <input data-field="channel" placeholder="#rgdata, public, or key">
+          <input data-field="channel" placeholder="*, #rgdata, public, or key">
         </label>
         <label>
           Original incoming scope

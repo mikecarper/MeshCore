@@ -1636,10 +1636,12 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   <code>flood.filter</code>. The positional form remains accepted.</li>
 <li><code>hops=</code> accepts <code>all</code>, <code>N</code>, <code>N+</code>, or <code>N-M</code>. The positional form remains
   accepted. Received hops over 3 are written as <code>hops=4+</code>.</li>
-<li><code>channel=*|public|#name|128-bit-key|256-bit-key</code> authenticates a <code>GRP_TXT</code> or
-  <code>GRP_DATA</code> packet with that channel key before the row can match. With
-  <code>type=any</code>, this condition naturally limits the row to those two group
-  packet types.</li>
+<li><code>channel=*|public|#name|128-bit-key|256-bit-key</code> optionally narrows by
+  channel. <code>channel=*</code> is an unconstrained wildcard: it performs no channel
+  authentication and matches every payload selected by <code>type=</code>. Thus
+  <code>type=any channel=*</code> means every flood payload type. <code>public</code>, <code>#name</code>, and
+  raw keys authenticate one channel and narrow the row to <code>GRP_TXT</code> or
+  <code>GRP_DATA</code>.</li>
 <li><code>prefix=</code> is a source-path prefix containing one to three comma-separated
   pbyte IDs. Every ID must use the packet's pbyte width: 2, 4, or 6 hex
   characters for 1-, 2-, or 3-byte paths. Order matters and matching begins at
@@ -1659,10 +1661,13 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   <code>flood.rule</code> form requires an explicit action. For backward compatibility,
   only a legacy <code>flood.filter</code> row with no rewrite, rate, or stop action means
   drop implicitly.</li>
-<li><code>scope=&lt;name&gt;</code> assigns a direct public hashtag scope without requiring a
-  region-list entry.</li>
-<li><code>region=&lt;name&gt;</code> assigns an existing locally allowed region and its transport
-  key.</li>
+<li><code>scope=&lt;name&gt;</code> derives a public transport scope directly from the name; no
+  region entry is consulted. <code>scope=BlackHole86</code> is therefore a valid
+  regionless sink. <code>region=&lt;name&gt;</code> is different: it resolves a configured,
+  flood-allowed region and one of that region's transport keys.</li>
+<li>A <code>stop</code> on a row whose <code>region=</code> target is currently unusable is also inert,
+  allowing lower-priority safety rules to run. Direct <code>scope=</code> targets do not
+  have this configuration dependency.</li>
 <li><code>rate=N/min</code> is a per-node, per-row fixed one-minute forwarding limit. It can
   stand alone or accompany a scope/region rewrite. Quota is charged only after
   every other forwarding gate, including moderation, accepts the packet. It is

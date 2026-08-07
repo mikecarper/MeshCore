@@ -5970,9 +5970,11 @@ compile this table.</p>
   - <code>all</code>: Match every received hop count (<code>0-63</code>).
   - <code>0+</code>, <code>all</code>, and an omitted hop expression are equivalent. The CLI displays
     the saved range as <code>all</code>.
-- <code>channel=*|public|#name|128-bit-key|256-bit-key</code>: Optional authenticated
-  group-channel match. It applies only to <code>GRP_TXT</code>/<code>GRP_DATA</code>; <code>type=any</code>
-  plus a channel condition therefore matches only those group types.
+- <code>channel=*|public|#name|128-bit-key|256-bit-key</code>: Optional channel match.
+  <code>channel=*</code> means no channel condition at all, so the row matches everything
+  selected by <code>type=</code> (including all flood payload types with <code>type=any</code>). It
+  does not authenticate a packet. <code>public</code>, <code>#name</code>, and raw keys authenticate
+  one channel and therefore narrow the row to <code>GRP_TXT</code>/<code>GRP_DATA</code>.
 - <code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
   pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
   1-, 2-, or 3-byte pbyte width. <code>path=&lt;prefix&gt;</code> is an alias.
@@ -5983,7 +5985,12 @@ compile this table.</p>
 - <code>drop</code>: Explicit drop action. The <code>flood.rule</code> form requires an explicit
   action. For compatibility, a legacy <code>flood.filter</code> row with no rewrite,
   rate, or stop action is treated as drop.
-- <code>region=&lt;name&gt;</code>: Rewrite action using an existing locally allowed region.
+- <code>scope=&lt;name&gt;</code>: Direct public-name scope rewrite. It derives a transport key
+  from the name and does not require a configured region. For example,
+  <code>scope=BlackHole86</code> is a regionless sink scope; <code>region=BlackHole86</code> would
+  instead require a real configured, flood-allowed region with that name.
+- <code>region=&lt;name&gt;</code>: Rewrite using an existing locally allowed region and one of
+  that region's transport keys.
 - <code>rate=N/min</code>: Per-node, per-row fixed one-minute forwarding limit. It can be
   the only action or accompany <code>scope=</code>/<code>region=</code>. Counters are charged only
   for packets that pass all forwarding gates.
@@ -5992,12 +5999,12 @@ compile this table.</p>
 - <code>stop</code> or <code>action=stop</code>: Apply this matching row, then stop lower-order FPF7
   rows from processing. It can stand alone or accompany drop, rewrite, or
   rate. A stop-only row acts as an exception to lower-priority FPF7 rules.
+  If the same row uses <code>region=</code> and that configured region is missing, denied,
+  wildcard, or has no usable transport key, both the rewrite and its <code>stop</code>
+  are inert so lower-order safety rows still run. A direct <code>scope=</code> target does
+  not depend on region configuration.
 - <code>suspend=tempradio</code>: Optional. Skip this row only while the temporary radio
   is actually active.
-- <code>scope=&lt;name&gt;</code>: Optional scope-setting action. The name is normalized with a
-  leading <code>#</code> and its 128-bit transport key is derived directly from that
-  hashtag. It does not need to exist in the region list. Public names up to 30
-  characters are accepted; private <code>$</code> scopes are not.
 - <code>require=region</code>: Legacy alias for <code>in=allowed</code>. Apply the row only if the
   original incoming packet already passes this repeater's
   region gate. An incoming transport scope must resolve to a locally allowed
