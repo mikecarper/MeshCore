@@ -82,15 +82,63 @@
   background: var(--filter-soft);
 }
 
-.filter-example-primer p {
+.filter-example-primer > p {
   margin: 0;
   color: color-mix(in srgb, var(--md-default-fg-color) 76%, transparent);
   font-size: 0.72rem;
   line-height: 1.45;
 }
 
-.filter-example-primer p + p {
-  margin-top: 0.35rem;
+.filter-primer-tables {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 0.6rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+.filter-primer-table {
+  width: 100%;
+  margin: 0 !important;
+  border-collapse: collapse;
+  border: 1px solid var(--filter-border);
+  background: var(--md-default-bg-color);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.filter-primer-table caption {
+  padding: 0 0 0.3rem;
+  color: var(--md-default-fg-color);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.filter-primer-table th,
+.filter-primer-table td {
+  padding: 0.32rem 0.4rem;
+  border: 1px solid var(--filter-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.filter-primer-table th {
+  background: var(--filter-soft);
+  font-weight: 800;
+}
+
+.filter-primer-table th:first-child,
+.filter-primer-table td:first-child {
+  width: 38%;
+}
+
+.filter-primer-table code {
+  white-space: nowrap;
+}
+
+.filter-example-primer > .filter-primer-note {
+  margin-top: 0.45rem;
 }
 
 .filter-example-grid {
@@ -743,6 +791,10 @@
 }
 
 @media (max-width: 62rem) {
+  .filter-primer-tables {
+    grid-template-columns: 1fr;
+  }
+
   .filter-tool-grid {
     grid-template-columns: 1fr;
   }

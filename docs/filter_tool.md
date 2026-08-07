@@ -42,22 +42,42 @@ in the simulator below. The examples draw from
       <p>
         Read each summary as <code>when</code> all conditions match,
         <code>do</code> the actions. A match alone does not stop forwarding.
-        <code>hops=3+</code> means the rule applies at a received hop count of
-        three or more.
       </p>
-      <p>
-        <code>type=grp_data</code> matches one payload type.
-        <code>type=any</code> matches every payload.
-        <code>type=class:group</code> matches group text and data;
-        <code>type=class:login</code> matches REQ, RESPONSE, TXT_MSG, ANON_REQ,
-        and PATH; <code>type=class:other</code> matches everything else.
-      </p>
-      <p>
-        <code>channel=</code>, <code>rx.scope=</code>, <code>path=</code>, and
-        <code>tempradio=</code> further narrow a match. After <code>do</code>,
-        <code>drop</code> prevents retransmission, <code>scope=</code> sets the
-        outgoing transport scope, <code>rate=</code> limits matches per minute,
-        and <code>timing=</code> selects the schedule.
+      <div class="filter-primer-tables">
+        <table class="filter-primer-table">
+          <caption>Payload selectors</caption>
+          <thead>
+            <tr><th><code>type=</code> value</th><th>Matches</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>grp_data</code></td><td>Only the named payload type</td></tr>
+            <tr><td><code>any</code></td><td>Every payload type</td></tr>
+            <tr><td><code>class:group</code></td><td>GRP_TXT and GRP_DATA</td></tr>
+            <tr><td><code>class:login</code></td><td>REQ, RESPONSE, TXT_MSG, ANON_REQ, and PATH</td></tr>
+            <tr><td><code>class:other</code></td><td>Every remaining payload type</td></tr>
+          </tbody>
+        </table>
+        <table class="filter-primer-table">
+          <caption>Other conditions and actions</caption>
+          <thead>
+            <tr><th>Field</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>hops=</code></td><td>Received hop count: <code>all</code>, <code>3+</code>, <code>2-6</code>, or <code>3</code></td></tr>
+            <tr><td><code>channel=</code></td><td>Group channel</td></tr>
+            <tr><td><code>rx.scope=</code></td><td>Original incoming transport scope</td></tr>
+            <tr><td><code>path=</code></td><td>Path prefix, blacklist, bucket, or loop match</td></tr>
+            <tr><td><code>tempradio=</code></td><td>Temporary-radio state</td></tr>
+            <tr><td><code>do drop</code></td><td>Do not retransmit</td></tr>
+            <tr><td><code>do scope=</code></td><td>Set the outgoing transport scope</td></tr>
+            <tr><td><code>do rate=</code></td><td>Apply a per-minute rate and burst</td></tr>
+            <tr><td><code>do timing=</code></td><td>Select fast, normal, or slow scheduling</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="filter-primer-note">
+        There is no <code>class:txt</code>. Use <code>type=grp_txt</code> for
+        channel text or <code>type=txt_msg</code> for peer text.
       </p>
     </div>
     <div class="filter-example-grid">
