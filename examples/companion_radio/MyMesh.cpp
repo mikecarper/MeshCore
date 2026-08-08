@@ -346,7 +346,7 @@ float MyMesh::getAirtimeBudgetFactor() const {
 }
 
 bool MyMesh::getCADEnabled() const {
-  return true; // hardware CAD before TX (no CLI toggle on companion; enabled by default)
+  return true; // tuned branch behavior: hardware CAD before every companion TX
 }
 
 int MyMesh::getInterferenceThreshold() const {
@@ -1309,6 +1309,7 @@ void MyMesh::begin(bool has_display) {
   _prefs.tx_power_dbm = constrain(_prefs.tx_power_dbm, -9, MAX_LORA_TX_POWER);
   _prefs.multi_acks = constrain(_prefs.multi_acks, 0, 1);
   _prefs.manual_add_contacts = constrain(_prefs.manual_add_contacts, 0, 1);
+  _prefs.vibe_quiet = constrain(_prefs.vibe_quiet, 0, 1);
   _prefs.gps_enabled = constrain(_prefs.gps_enabled, 0, 1);  // Ensure boolean 0 or 1
   _prefs.gps_interval = constrain(_prefs.gps_interval, 0, 86400);  // Max 24 hours
   _prefs.autoadd_config &= AUTO_ADD_OVERWRITE_OLDEST | AUTO_ADD_CHAT | AUTO_ADD_REPEATER | AUTO_ADD_ROOM_SERVER | AUTO_ADD_SENSOR;
