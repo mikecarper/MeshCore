@@ -175,7 +175,9 @@ static RAK12035_SoilMoisture RAK12035;
 #endif
 
 #ifdef RAK_WISBLOCK_GPS
-static uint32_t gpsResetPin = 0;
+// -1 = no enable pin; out-of-range values are no-ops in pinMode/digitalWrite,
+// while 0 would be a real GPIO (P0.00 = LFXO crystal on nRF52)
+static uint32_t gpsResetPin = -1;
 static bool i2cGPSFlag = false;
 static bool serialGPSFlag = false;
 #ifndef TELEM_RAK12500_ADDRESS
@@ -874,11 +876,7 @@ void EnvironmentSensorManager::rakGPSInit() {
 
   // search for the correct IO standby pin depending on socket used
   if (gpsIsAwake(WB_IO2)) {
-    _location->setPinEn(WB_IO2);
-  } else if (gpsIsAwake(WB_IO4)) {
-    _location->setPinEn(WB_IO4);
-  } else if (gpsIsAwake(WB_IO5)) {
-    _location->setPinEn(WB_IO5);
+    _location->setPinEn(WB_IO2); // WB_IO2 is the power switch for all sensor and IO slots
   } else {
     MESH_DEBUG_PRINTLN("No GPS found");
     gps_active = false;
@@ -931,11 +929,7 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin) {
     return true;
   } else if (Serial1.available()) { // RAK12501 (L76K) on UART
     MESH_DEBUG_PRINTLN("Serial GPS init correctly and is turned on");
-#ifdef PIN_GPS_EN
-    if (PIN_GPS_EN) {
-      gpsResetPin = PIN_GPS_EN;
-    }
-#endif
+    gpsResetPin = ioPin;
     serialGPSFlag = true;
     gps_active = true;
     gps_detected = true;
@@ -960,13 +954,7 @@ void EnvironmentSensorManager::start_gps() {
   gps_active = true;
 #ifdef RAK_WISBLOCK_GPS
   pinMode(gpsResetPin, OUTPUT);
-  digitalWrite(gpsResetPin, HIGH);
-  int pin_en = _location->getPinEn();
-  if (pin_en >= 0 && !gpsIsAwake(pin_en)) {
-    gps_active = false;
-    MESH_DEBUG_PRINTLN("GPS wake failed");
-    return;
-  }
+  digitalWrite(gpsResetPin, HIGH); // WB_IO2 is the shared sensor power rail
 #else
   _location->begin();
   _location->reset();
@@ -990,10 +978,10 @@ void EnvironmentSensorManager::stop_gps() {
   }
 
 #ifdef RAK_WISBLOCK_GPS
+#ifndef FORCE_GPS_ALIVE
   pinMode(gpsResetPin, OUTPUT);
-  digitalWrite(gpsResetPin, LOW);
-  int pin_en = _location->getPinEn();
-  if (pin_en >= 0) digitalWrite(pin_en, LOW);
+  digitalWrite(gpsResetPin, LOW); // WB_IO2
+#endif
 #else
   _location->stop();
 #endif
