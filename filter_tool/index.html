@@ -528,6 +528,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#current-fpf7-command-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current FPF7 command mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#proposed-evaluation-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1027,6 +1038,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#current-fpf7-command-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current FPF7 command mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#proposed-evaluation-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1069,12 +1091,13 @@ such as dropping, scoping, rate-limiting, or retrying a flood.</p>
 <p>Everything runs locally in this browser. Channel keys, packet facts, and policy
 drafts are not uploaded anywhere.</p>
 <div class="filter-design-warning" role="note">
-  <strong>Engine design preview</strong>
+  <strong>Policy design preview</strong>
   <p>
-    This page targets the new policy-engine idea, not today's FPF7 file or
-    existing <code>set flood.*</code> commands. Its readable policy language,
-    JSON, and Base64 bundle are a prototype for design testing. Current
-    firmware cannot install these policies yet.
+    The phases and core conditions model current FPF7 behavior, including its
+    forward rows, scope rewrites, and shared blacklist. The readable policy
+    language, JSON, and Base64 bundle are still a prototype: current firmware
+    is configured with <code>set flood.*</code> commands and cannot install a
+    bundle from this page.
   </p>
 </div>
 
@@ -1165,7 +1188,7 @@ in the simulator below. The examples draw from
         <code>when type=grp_txt hops=all channel=public sender="Noisy User" do rate=5/min burst=5</code>
       </button>
       <button type="button" data-example="blacklist">
-        <span>Drop packets whose path matches the passive blacklist</span>
+        <span>Stop forwarding traffic from blacklisted internet gateways</span>
         <code>when type=any hops=all path=blacklist do drop</code>
       </button>
       <button type="button" data-example="factory">
@@ -1732,6 +1755,37 @@ The class column shows which broader selector also matches it.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="current-fpf7-command-mapping">Current FPF7 command mapping</h2>
+<table>
+<thead>
+<tr>
+<th>Firmware command</th>
+<th>FPF7 role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flood.rule</code> / <code>flood.filter</code></td>
+<td>Forward-phase match and action rows</td>
+</tr>
+<tr>
+<td><code>flood.channel.data</code></td>
+<td>Compatibility view over one visible <code>type=grp_data</code> forward drop row</td>
+</tr>
+<tr>
+<td><code>flood.channel.scope</code></td>
+<td>Scope-rewrite phase rows</td>
+</tr>
+<tr>
+<td><code>flood.filter.blacklist</code></td>
+<td>One shared unordered path-ID set referenced by <code>path=blacklist</code> rows</td>
+</tr>
+</tbody>
+</table>
+<p>Generalized repeaters commit those sections together. The blacklist is useful
+for refusing to retransmit floods associated with internet gateways dumping
+bulk traffic, but a path ID is truncated and unauthenticated; it identifies a
+routing pattern, not a person.</p>
 <h2 id="proposed-evaluation-contract">Proposed evaluation contract</h2>
 <p>The simulator uses these rules:</p>
 <ol>

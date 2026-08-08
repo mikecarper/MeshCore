@@ -1366,8 +1366,8 @@
 <p>This guide explains the Keymind forwarding filters. Repeaters expose the full
 set of channel, rule, blacklist, and moderation controls described here.
 FULL-profile ESP32 room servers expose the generalized <code>flood.rule</code> table (and
-its <code>flood.filter</code> alias) with 31 slots, but not the repeater's channel tables,
-passive blacklist, or text-moderation table. Standard room-server profiles do
+its <code>flood.filter</code> alias) with 31 forward-rule slots, but not the repeater's
+scope-rewrite, passive-blacklist, or text-moderation phases. Standard room-server profiles do
 not compile the rule table. Filters decide whether the node retransmits a
 packet and can assign a transport scope before that decision. They do not stop
 local reception, packet logging, or MQTT observation.</p>
@@ -1393,11 +1393,14 @@ get flood.channel.scope
 get flood.channel.scope.require
 get flood.filter
 get flood.rule
+get flood.filter.blacklist
 get flood.moderation
 </code></pre>
-<p><code>flood.rule</code> is an alias for <code>flood.filter</code>, not another table. The
-The generalized FPF7 table has 31 persistent slots; compact target profiles
-may compile fewer FPF6 filter slots. <code>flood.moderation</code> has 16 slots. A new
+<p><code>flood.rule</code> is an alias for <code>flood.filter</code>, not another table. Generalized
+repeater FPF7 has 32 forward-rule slots plus scope-rewrite and shared-blacklist
+sections in the same atomic policy file. FULL room servers have 31 forward
+slots and empty repeater-only sections. Compact target profiles retain their
+separate FPF6-era controls. <code>flood.moderation</code> has 16 slots. A new
 repeater FPF7 table starts with <code>ota all suspend=tempradio</code> in slot 1 and an
 authenticated <code>#wardriving hops=5+</code> drop in slot 2; FULL room servers seed only
 the OTA row. <code>flood.moderation</code> starts empty. A row can opt into
@@ -1513,15 +1516,14 @@ actually active temporary-radio window, even if the seeded row is deleted or
 replaced.</p>
 <p>Capacity is selected at build time:</p>
 <ul>
-<li>Roomy ESP32 builds: 255 rule slots and 32 regionless-target slots, 10,204
-  bytes RAM, 10,210-byte file.</li>
+<li>Roomy ESP32 builds: 255 rewrite slots and 32 regionless-target slots, 10,204
+  bytes RAM.</li>
 <li>DRAM-tight classic ESP32 LoRa-OTA repeaters, nRF52, and other normal
-  constrained builds: 31 rule and regionless-target slots, 2,108 bytes RAM,
-  2,114-byte file.</li>
-<li>Very-tight STM32WL builds: 15 rule slots and one reusable regionless-target
-  slot, 572 bytes RAM, 578-byte file.</li>
-<li>The no-PSRAM LilyGo T-LoRa V2.1 repeater/observer: 4 rule and
-  regionless-target slots, 272 bytes RAM, 278-byte file. This minimum holds the
+  constrained builds: 31 rewrite and regionless-target slots, 2,108 bytes RAM.</li>
+<li>Very-tight STM32WL builds: 15 rewrite slots and one reusable regionless-target
+  slot, 572 bytes RAM.</li>
+<li>The no-PSRAM LilyGo T-LoRa V2.1 repeater/observer: 4 rewrite and
+  regionless-target slots, 272 bytes RAM. This minimum holds the
   three wildcard classes and one exact channel mapping.</li>
 </ul>
 <p>Each rule retains its 36-byte record. A separate table holds 32-byte normalized
@@ -1529,6 +1531,9 @@ names for up to the smaller of the rule count or 32 distinct regionless
 targets, except that very-tight STM32WL builds retain one reusable direct
 target. Both configured regions and regionless targets can be reused by any
 number of rules.</p>
+<p>On generalized builds these records are the FPF7 rewrite phase, and the file
+stores only through the highest occupied slot. Compact FPF6 builds retain the
+standalone FCS5 file and the file sizes described by their build profile.</p>
 <h2 id="require-valid-incoming-scopes-only-on-selected-channels">Require valid incoming scopes only on selected channels</h2>
 <p><code>flood.channel.scope.require</code> changes region enforcement for received flood
 <code>GRP_TXT</code> and <code>GRP_DATA</code> packets from a global policy to a channel opt-in
@@ -1602,9 +1607,17 @@ open. A row saved by the extended engine uses FPF7.</p>
 <p>The former <code>flood.channel.block</code> table is now represented by ordinary FPF7
 rows. On a generalized repeater, an existing FCB2 file is imported once into
 free FPF7 slots and then removed. For example, an old <code>#wardriving h=4</code> row
-becomes <code>type=any channel=#wardriving hops=5+ drop</code>. The 31 FPF7 slots replace
-the former 16 general-filter plus 15 channel-block slots. Compact STM32WL FPF6
-builds cannot match authenticated channels.</p>
+becomes <code>type=any channel=#wardriving hops=5+ drop</code>. The 32nd forward slot
+guarantees room to migrate the old global <code>flood.channel.data</code> gate even when
+all 31 former general/channel slots were occupied. Compact STM32WL FPF6 builds
+cannot match authenticated channels and retain the older separate gate.</p>
+<p>On generalized repeaters, <code>flood.channel.data*</code> is a compatibility view over
+one ordinary visible FPF7 <code>type=grp_data ... drop</code> row. Turning it off creates
+or updates that row; turning it on removes the row. Its hop setting maps to
+<code>hops=all</code> or <code>hops=N+1+</code>. There is no hidden GRP_DATA forwarding check ahead
+of FPF7. Normal ordering applies, so a matching higher-priority <code>stop</code> row can
+exempt selected traffic. The compact rule list marks the managed row with
+<code>~data</code>.</p>
 <p>FPF7 binds <code>in=region:&lt;name&gt;</code> and <code>region=&lt;name&gt;</code> to canonical region names,
 not numeric region IDs. Removing, reordering, or reusing a region ID cannot
 silently redirect a rule. If the saved name is missing, an input-region match
@@ -1624,11 +1637,11 @@ Every row is matched against the same immutable packet state captured on
 receive, before any rule rewrites its scope. Matching rows are then processed
 by descending <code>priority</code>; lower slot number wins a priority tie. Priority
 defaults to <code>0</code>.</p>
-<p>The first matching <code>stop</code> row ends FPF7 processing after that row. Higher-order
+<p>The first matching <code>stop</code> row ends the FPF7 forward phase after that row. Higher-order
 matches and the stop row still apply; lower-order matches do not. A stop-only
 row is therefore an exception to lower-priority FPF7 rows. It cannot undo a
-higher-priority drop and it does not bypass hard forwarding gates or separate
-forwarding tables. Without a stop row, matching drop and rate rows remain
+higher-priority drop and it does not bypass hard forwarding gates or the
+scope-rewrite and moderation phases. Without a stop row, matching drop and rate rows remain
 independent and the highest-order matching scope or region rewrite wins.</p>
 <p>Match fields:</p>
 <ul>
@@ -1725,6 +1738,10 @@ del flood.filter all
 set flood.filter.blacklist.4 445566
 set flood.filter any all path=blacklist
 </code></pre>
+<p>This is intended for abuse containment, such as refusing to retransmit floods
+that repeatedly enter the mesh through known internet gateways dumping bulk
+traffic. The list is shared by every FPF7 row and scope-rewrite row that uses
+<code>path=blacklist</code>; it is not copied into each rule.</p>
 <p>An unnumbered <code>set</code> replaces the list with up to 18 IDs, the largest command
 that fits every CLI transport. A numbered <code>set</code> writes a batch of up to 18 IDs
 beginning at an existing slot or the next consecutive slot. This is how an
@@ -1773,13 +1790,15 @@ maximum <code>txdelay</code> factor of <code>2.0</code>; the randomized transmit
 zero through ten packet airtimes. <code>tx=fast</code> explicitly restores the default.
 Selecting the scope already present does not grant special treatment. Active
 radio transmission, CAD, and airtime-budget limits are unchanged.</p>
-<p>On repeaters, the blacklist and rule table are persisted separately. FPF7
-stores compiled match/action fields and canonical region names, not executable
-code, a script, or numeric region references. Deleting the blacklist leaves
-<code>path=blacklist</code> rows in place but dormant until IDs are configured again.
-Path hashes are truncated routing identifiers and are not authenticated proof
-that a particular repeater handled a packet. FULL room servers have only the
-rule table and reject blacklist commands.</p>
+<p>On generalized repeaters, forward rules, <code>flood.channel.scope</code> rewrite rows,
+the shared blacklist, and the <code>flood.channel.data</code> compatibility state are one
+atomic FPF7 policy image. Existing <code>/flood_ch_scope</code>, <code>/flood_filter_bl</code>, FPF6,
+and FCB2 data is imported once; the old files are removed only after the new
+image verifies and commits. Compact FPF6 repeaters retain separate files.
+Deleting the blacklist leaves <code>path=blacklist</code> rows in place but dormant until
+IDs are configured again. Path hashes are truncated routing identifiers and
+are not authenticated proof that a particular repeater—or a particular
+person—handled a packet. FULL room servers reject blacklist commands.</p>
 <p>On first initialization, flood-filter slot 1 is seeded with:</p>
 <pre><code class="language-text">set flood.filter.1 0x0C all suspend=tempradio
 </code></pre>
@@ -2065,8 +2084,9 @@ other words, the controls combine as deny rules:</p>
    then ascending slot. The first matching <code>stop</code> row removes every later FPF7
    match. The highest-order remaining <code>scope=</code> or <code>region=</code> row may replace the
    channel-scope result; a direct scope does not require a region-list entry.</li>
-<li><code>repeat</code>, <code>flood.max*</code>, and the channel-data gate are checked.</li>
-<li>Remaining <code>flood.filter</code>/<code>flood.rule</code> drop and rate rows use that saved
+<li><code>repeat</code> and <code>flood.max*</code> are checked.</li>
+<li>The FPF7 forward phase, including any row managed through
+   <code>flood.channel.data*</code>, applies drop and rate decisions using that saved
    match result. No packet type or short-hop range is silently exempted.</li>
 <li>Region and loop-detection rules are checked; a regionless scope assigned by
    either table is already trusted when it has no region-list match, except
