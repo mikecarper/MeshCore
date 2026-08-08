@@ -11,8 +11,10 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 import lora_ota as ota
@@ -45,13 +47,14 @@ def mota_blob(
     base_hash: bytes = b"\0" * 8,
     payload: bytes | None = None,
     codec: int | None = None,
+    block_size_log2: int = 10,
 ) -> bytes:
     if payload is None:
         payload = image if full else b"synthetic delta payload" * 100
     codec = ota.MOTA_CODEC_FULL if codec is None and full else (
         ota.MOTA_CODEC_SEQUENTIAL if codec is None else codec
     )
-    block_size = 1024
+    block_size = 1 << block_size_log2
     leaves = [
         hashlib.sha256(payload[offset:offset + block_size]).digest()[:4]
         for offset in range(0, len(payload), block_size)
@@ -60,7 +63,7 @@ def mota_blob(
     manifest += struct.pack(
         "<IIII", target, version, len(image), len(payload)
     )
-    manifest.append(10)
+    manifest.append(block_size_log2)
     manifest += ota.merkle_root(leaves)
     manifest += hashlib.sha256(image).digest()
     manifest.append(codec)
@@ -119,6 +122,11 @@ class FormatTests(unittest.TestCase):
         blob[-10] ^= 0x01
         with self.assertRaisesRegex(ota.OtaError, "block hashes"):
             ota.parse_mota(bytes(blob))
+
+    def test_block_larger_than_firmware_buffer_is_rejected(self) -> None:
+        image = firmware(b"C" * 5000, VERSION_NEW)
+        with self.assertRaisesRegex(ota.OtaError, "at most 1024 bytes"):
+            ota.parse_mota(mota_blob(image, block_size_log2=11))
 
     def test_manifest_endf_identity_mismatch_is_rejected(self) -> None:
         wrong_image = firmware(b"B" * 5000, VERSION_NEW, target=TARGET + 1)
@@ -247,13 +255,16 @@ class CompatibilityTests(unittest.TestCase):
 
 class DownloadSessionTests(unittest.TestCase):
     class Controller:
-        def __init__(self, replies: list[str]):
+        def __init__(self, replies: list[str | Exception]):
             self.replies = iter(replies)
             self.commands: list[str] = []
 
-        def remote_command(self, _target: str, command: str) -> str:
+        def remote_command(self, _target: str, command: str, **_kwargs: object) -> str:
             self.commands.append(command)
-            return next(self.replies)
+            reply = next(self.replies)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
 
     def setUp(self) -> None:
         image = firmware(b"download" * 900, VERSION_NEW)
@@ -283,13 +294,335 @@ class DownloadSessionTests(unittest.TestCase):
             "OTA | download: downloading 3/9 id=DEADBEEF 2s",
             "OK dropped session",
             "Updates 1/1",
-            "OK pulling mid=12345678 -> flash (low priority)",
+            f"OK pulling mid={self.package.manifest_id} -> flash (low priority)",
         ])
         ota.find_and_start_pull(controller, self.args(replace=True), self.package)
         self.assertEqual(
             controller.commands,
             ["ota status", "ota cancel", "ota ls", f"ota pull {self.package.manifest_id} flash"],
         )
+
+    def test_monitor_rejects_ready_session_for_another_package(self) -> None:
+        controller = self.Controller([
+            "OTA | download: ready to install 9/9 id=DEADBEEF 2s"
+        ])
+        args = argparse.Namespace(
+            target="remote", transfer_timeout_minutes=1, poll_seconds=1,
+        )
+        with self.assertRaisesRegex(ota.OtaError, "switched to mOTA"):
+            ota.monitor_download(controller, args, self.package)
+
+    def test_monitor_accepts_only_the_expected_ready_session(self) -> None:
+        controller = self.Controller([
+            f"OTA | download: ready to install 9/9 id={self.package.manifest_id} 2s"
+        ])
+        args = argparse.Namespace(
+            target="remote", transfer_timeout_minutes=1, poll_seconds=1,
+        )
+        status = ota.monitor_download(controller, args, self.package)
+        self.assertIn(self.package.manifest_id, status)
+
+    def test_monitor_stops_immediately_when_seeder_exits(self) -> None:
+        controller = self.Controller([])
+        args = argparse.Namespace(
+            target="remote", transfer_timeout_minutes=1, poll_seconds=1,
+        )
+
+        class Seeder:
+            def ensure_running(self, _context: str) -> None:
+                raise ota.OtaError("seeder exited")
+
+        with self.assertRaisesRegex(ota.OtaError, "seeder exited"):
+            ota.monitor_download(controller, args, self.package, Seeder())
+        self.assertEqual(controller.commands, [])
+
+    def test_lost_pull_reply_is_resolved_without_blind_replay(self) -> None:
+        controller = self.Controller([
+            "OTA | no download",
+            "Updates 1/1",
+            ota.TransmissionError("reply lost"),
+            f"OTA | download: downloading 1/9 id={self.package.manifest_id} 2s",
+        ])
+        ota.find_and_start_pull(controller, self.args(), self.package)
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status", "ota ls",
+                f"ota pull {self.package.manifest_id} flash", "ota status",
+            ],
+        )
+
+
+class ReliabilityTests(unittest.TestCase):
+    def test_target_version_falls_back_to_ver(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=TestBoard",
+                    "self body=1 image=2 base_hash=0011223344556677",
+                    "Unknown command",
+                    "v1.16.9 (Build: test)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        result = ota.query_target(
+            Controller(), argparse.Namespace(target="remote")
+        )
+        self.assertEqual(result.current_version, "v1.16.9")
+
+    def test_unattended_prompt_waits_ten_seconds_and_continues(self) -> None:
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "stdin", io.StringIO()),
+            mock.patch.object(ota.time, "sleep") as sleep,
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertTrue(ota.prompt_after_transmission_failure(
+                "test", ota.TransmissionError("lost")
+            ))
+        sleep.assert_called_once_with(10)
+        self.assertIn("continuing in 10s", output.getvalue())
+
+    def test_retry_prompt_continues_by_default_choice(self) -> None:
+        calls = 0
+
+        def action() -> str:
+            nonlocal calls
+            calls += 1
+            if calls <= 4:
+                raise ota.TransmissionError("lost")
+            return "done"
+
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            mock.patch.object(
+                ota, "prompt_after_transmission_failure", return_value=True
+            ) as prompt,
+        ):
+            self.assertEqual(ota.retry_transmission(action, "test command"), "done")
+        self.assertEqual(calls, 5)
+        prompt.assert_called_once()
+
+    def test_ninety_second_limit_can_prompt_before_three_retries(self) -> None:
+        calls = 0
+
+        def action() -> str:
+            nonlocal calls
+            calls += 1
+            raise ota.TransmissionError("lost")
+
+        with (
+            mock.patch.object(ota.time, "monotonic", side_effect=[0, 91]),
+            mock.patch.object(
+                ota, "prompt_after_transmission_failure", return_value=False
+            ) as prompt,
+            self.assertRaises(ota.TransmissionStopped),
+        ):
+            ota.retry_transmission(action, "test command")
+        self.assertEqual(calls, 1)
+        prompt.assert_called_once()
+
+    def test_retry_prompt_can_stop(self) -> None:
+        calls = 0
+
+        def action() -> str:
+            nonlocal calls
+            calls += 1
+            raise ota.TransmissionError("lost")
+
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            mock.patch.object(
+                ota, "prompt_after_transmission_failure", return_value=False
+            ),
+            self.assertRaisesRegex(ota.OtaError, "stopped after transmission"),
+        ):
+            ota.retry_transmission(action, "test command")
+        self.assertEqual(calls, 4)
+
+    def test_marked_output_excludes_queued_messages(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller._execute = lambda _commands, _label: subprocess.CompletedProcess(
+            [], 0,
+            stdout=(
+                '{"text":"stale","txt_type":1}\n'
+                'UNIQUE_MARKER\n'
+                '{"text":"fresh","txt_type":1}\n'
+            ),
+            stderr="",
+        )
+        all_objects, post_objects = controller._run_marked(
+            ["unused"], "test", "UNIQUE_MARKER"
+        )
+        self.assertEqual(len(all_objects), 2)
+        self.assertEqual([item["text"] for item in post_objects], ["fresh"])
+
+    def test_remote_command_ignores_unrelated_post_marker_reply(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        key = "A1" * 32
+        controller._run_marked = lambda _commands, _label, _marker: (
+            [
+                {"adv_name": "remote", "public_key": key},
+                {"login_success": True},
+            ],
+            [
+                {
+                    "txt_type": 1, "text": "OK dropped session",
+                    "pubkey_prefix": key[:12],
+                },
+                {
+                    "txt_type": 1,
+                    "text": "OTA | no download | target:1234ABCD",
+                    "pubkey_prefix": key[:12],
+                },
+            ],
+        )
+        reply = controller._remote_command_once("remote", "ota status", "secret")
+        self.assertTrue(reply.startswith("OTA |"))
+
+    def test_generic_retry_rejects_state_changing_ota_commands(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.password = "secret"
+        with self.assertRaisesRegex(ota.OtaError, "state-aware"):
+            controller.remote_command("remote", "ota install")
+
+    def test_unknown_contact_is_not_retried_as_packet_loss(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        controller._run_marked = lambda _commands, _label, _marker: (
+            [{"error": "contact unknown", "name": "missing"}], []
+        )
+        with self.assertRaisesRegex(ota.OtaError, "no contact"):
+            controller._remote_command_once("missing", "ota status", "secret")
+
+    def test_empty_json_radio_result_is_an_error(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller._execute = lambda _commands, _label: subprocess.CompletedProcess(
+            [], 0, stdout="Error: radio rejected\n", stderr=""
+        )
+        with self.assertRaisesRegex(ota.OtaError, "radio rejected"):
+            controller._run(["set", "radio", "bad"], "set radio")
+
+    def test_set_radio_requires_matching_readback(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller._run = lambda *_args: [{}]
+        controller.get_radio = lambda: ota.RadioSettings(915, 250, 7, 5, False)
+        requested = ota.RadioSettings(909.95, 250, 7, 5, False)
+        with self.assertRaisesRegex(ota.OtaError, "read back"):
+            controller.set_radio(requested, "set radio")
+
+    def test_install_retries_only_after_still_ready_is_confirmed(self) -> None:
+        image = firmware(b"install" * 900, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies: list[str | Exception] = [
+                    f"OTA | download: ready to install 9/9 id={package.manifest_id} 2s",
+                    "OK - temp params for 3 mins",
+                    ota.TransmissionError("install reply lost"),
+                    f"OTA | download: ready to install 9/9 id={package.manifest_id} 8s",
+                    "OK - temp params for 3 mins",
+                    "OK | verified; applying",
+                ]
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                reply = self.replies.pop(0)
+                if isinstance(reply, Exception):
+                    raise reply
+                return reply
+
+        controller = Controller()
+        args = argparse.Namespace(
+            target="remote", temp_values=(909.95, 250.0, 7, 5, 120)
+        )
+        with mock.patch.object(ota.time, "sleep"):
+            self.assertTrue(ota.request_install(controller, args, package))
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status", "tempradio 909.95,250,7,5,3", "ota install",
+                "ota status", "tempradio 909.95,250,7,5,3", "ota install",
+            ],
+        )
+
+    def test_post_install_verification_requires_exact_version(self) -> None:
+        image = firmware(b"verify" * 900, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        expected_hash = ota.parse_endf(image).body_hash
+
+        class Controller:
+            def __init__(self, version: str) -> None:
+                self.replies = iter([
+                    f"self body=1 image=2 base_hash={expected_hash.hex()}",
+                    version,
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        args = argparse.Namespace(target="remote")
+        ota.verify_installed(
+            Controller("v1.17.0 (Build: test)"), args, package, expected_hash
+        )
+        with self.assertRaisesRegex(ota.OtaError, "expected v1.17.0"):
+            ota.verify_installed(
+                Controller("v1.16.9 (Build: old)"), args, package, expected_hash
+            )
+
+    def test_unknown_new_hash_must_differ_from_pre_install_hash(self) -> None:
+        image = firmware(b"delta-result" * 700, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(
+            image,
+            full=False,
+            base_hash=b"B" * 8,
+            codec=ota.MOTA_CODEC_SEQUENTIAL,
+        ))
+        old_hash = bytes.fromhex("0011223344556677")
+
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    f"self body=1 image=2 base_hash={old_hash.hex()}",
+                    "v1.17.0 (Build: test)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        with self.assertRaisesRegex(ota.OtaError, "pre-install firmware hash"):
+            ota.verify_installed(
+                Controller(), argparse.Namespace(target="remote"),
+                package, None, old_hash,
+            )
+
+    def test_temp_window_includes_setup_and_discovery_budget(self) -> None:
+        parser = ota.build_parser()
+        default_args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-serial", "/dev/source",
+        ])
+        ota.validate_args(default_args, parser)
+
+        args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-serial", "/dev/source",
+            "--temp-radio", "909.950,250,7,5,114",
+        ])
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            ota.validate_args(args, parser)
 
 
 class MotatoolIntegrationTests(unittest.TestCase):

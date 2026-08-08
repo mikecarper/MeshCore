@@ -340,14 +340,50 @@ the destination.
    hash, version, and nRF52 bootloader capabilities.
 3. Select or build one compatible mOTA and verify all block hashes, Merkle
    root, full-image hash where applicable, identity fields, signature, codec,
-   and base.
+   base, and the firmware's 1024-byte maximum block size.
 4. Save the controller's normal radio tuple and show the confirmation prompt.
 5. Start TempRadio on the target, then far-to-near relays, then the source;
-   finally switch the controller to the same tuple.
+   finally switch the controller to the same tuple and read it back. The runner
+   rejects a TempRadio window that cannot cover setup, seeder startup,
+   discovery, the transfer timeout, final polling, and install checks.
 6. Start `motatool serve`, discover the exact eight-hex manifest ID, request
-   `ota pull <id> flash`, and poll until the target reports ready.
-7. Request `ota install`, restore the controller's original radio, wait for
-   reboot, then query the new running identity and version.
+   `ota pull <id> flash`, and poll until that same ID reports ready. A seeder
+   process exit stops the run immediately.
+7. Recheck that exact ID, give the target a short final TempRadio safety window,
+   and request `ota install`. Then shorten each relay's TempRadio window so the
+   normal multi-hop route returns, restore the controller, wait for reboot, and
+   require the new running identity and exact package version.
+   `--leave-controller-radio` moves the controller back to TempRadio only after
+   this normal-channel verification.
+
+Remote replies are matched only after queued messages have been drained and
+only when they come from the intended contact and fit the command. A ready
+status for another manifest ID is an error, never permission to install it.
+
+## Transmission loss and retries
+
+Read-only and replay-safe transmissions retry up to three times. Three retries
+or 90 seconds, whichever comes first, opens a 10-second stop-or-continue
+prompt. Continue is the default on timeout, Enter, and unattended input, so a
+temporary outage does not silently abandon a resumable transfer. Enter `s` or
+`stop` to end the run; Ctrl-C also remains immediate.
+
+Commands that change OTA state are reconciled before replay:
+
+- After a lost `ota pull` reply, `ota status` must show the requested manifest
+  ID before the runner treats the pull as started. Otherwise the safe retry
+  policy applies.
+- A lost `ota install` reply is not blindly resent. After a short wait, it is
+  sent again only if the target replies that the same manifest is still ready.
+  If the target has stopped replying because it may be rebooting, the runner
+  restores the normal path and lets post-reboot identity resolve the outcome.
+  The target's final three-minute safety window also returns a non-rebooting
+  target to the normal channel promptly.
+
+Retries and operator-selected continuation can outlast the original TempRadio
+budget. If a bounded window expires, rerun the same package after the nodes
+return to their normal channel; the manifest-ID check resumes its partial
+download without replacing it.
 
 The working directory is retained and printed at exit. It contains the exact
 served mOTA, `motatool-serve.log`, extracted build inputs when needed, and
@@ -376,10 +412,12 @@ $radio = (Get-Content '.\meshcore-lora-ota-...\controller-radio.txt' -Raw).Trim(
 meshcli -s COM7 set radio $radio
 ```
 
-If installation was accepted but the final confirmation timed out, reconnect
-on the node's normal channel and run `ota self` and `ver`. Do not immediately
-replace a staged image: the default active-download guard preserves it until
-you explicitly use `--replace-active-download` or run `ota cancel`.
+If you stop during final confirmation, reconnect on the node's normal channel
+and run `ota self` and `ver`. A completed run returns success only when
+`ota self` reports a valid new body hash and `ver` exactly matches the package;
+an unverified install returns status 2. Do not immediately replace a staged
+image: the default active-download guard preserves it until you explicitly use
+`--replace-active-download` or run `ota cancel`.
 
 Exit status is `0` for success, `2` for a validation or operational error, and
 `130` for Ctrl-C.

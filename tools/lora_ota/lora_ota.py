@@ -21,6 +21,7 @@ import math
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -31,6 +32,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable, TypeVar
 import zipfile
 
 
@@ -46,10 +48,32 @@ ENDF_MAGIC = b"EndF"
 ENDF_SIZE = 56
 MAX_ARCHIVE_MEMBER_SIZE = 64 * 1024 * 1024
 MAX_FIRMWARE_IMAGE_SIZE = 64 * 1024 * 1024
+MOTA_MAX_BLOCK_SIZE = 1024
+TRANSMISSION_RETRY_LIMIT = 3
+TRANSMISSION_RETRY_WINDOW_SECONDS = 90
+TRANSMISSION_RETRY_DELAY_SECONDS = 1
+TRANSMISSION_PROMPT_SECONDS = 10
+TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
+POST_INSTALL_RELAY_MINUTES = 1
+POST_INSTALL_RELAY_MARGIN_SECONDS = 15
+INSTALL_TARGET_WINDOW_MINUTES = 3
+# Firmware may hold the apply reboot for up to 15 seconds while its reply
+# drains. Do not interpret "still ready" as a failed install before that cap.
+INSTALL_RECONCILE_WAIT_SECONDS = 20
+
+T = TypeVar("T")
 
 
 class OtaError(RuntimeError):
     """Expected, actionable operator error."""
+
+
+class TransmissionError(OtaError):
+    """A command may not have reached its destination or returned a reply."""
+
+
+class TransmissionStopped(OtaError):
+    """The operator chose to stop an otherwise continuing retry loop."""
 
 
 @dataclass(frozen=True)
@@ -128,6 +152,105 @@ class RadioSettings:
                 f"{format_decimal(self.bandwidth)},"
                 f"{self.spreading_factor},{self.coding_rate},{repeat}")
 
+    def matches(self, other: "RadioSettings") -> bool:
+        return (
+            abs(self.frequency - other.frequency) <= 0.001
+            and abs(self.bandwidth - other.bandwidth) <= 0.001
+            and self.spreading_factor == other.spreading_factor
+            and self.coding_rate == other.coding_rate
+            and self.repeat == other.repeat
+        )
+
+
+def prompt_after_transmission_failure(
+    label: str,
+    error: TransmissionError,
+    timeout: int = TRANSMISSION_PROMPT_SECONDS,
+) -> bool:
+    """Return True to continue; timeout and blank input deliberately continue."""
+    prompt = (
+        f"\n[transmission] {label} is still failing after "
+        f"{TRANSMISSION_RETRY_LIMIT} retries or "
+        f"{TRANSMISSION_RETRY_WINDOW_SECONDS} seconds: {error}\n"
+        f"Stop or continue? [s/C] (continuing in {timeout}s): "
+    )
+    print(prompt, end="", flush=True)
+
+    if not sys.stdin.isatty():
+        time.sleep(timeout)
+        print("continue")
+        return True
+
+    answer = ""
+    if os.name == "nt":
+        import msvcrt
+
+        deadline = time.monotonic() + timeout
+        chars: list[str] = []
+        while time.monotonic() < deadline:
+            if not msvcrt.kbhit():
+                time.sleep(0.05)
+                continue
+            char = msvcrt.getwch()
+            if char == "\x03":
+                raise KeyboardInterrupt
+            if char in ("\r", "\n"):
+                print()
+                answer = "".join(chars)
+                break
+            if char == "\b":
+                if chars:
+                    chars.pop()
+                    print("\b \b", end="", flush=True)
+                continue
+            if char.isprintable():
+                chars.append(char)
+                print(char, end="", flush=True)
+        else:
+            print("continue")
+    else:
+        import select
+
+        try:
+            readable, _, _ = select.select([sys.stdin], [], [], timeout)
+        except (OSError, ValueError):
+            time.sleep(timeout)
+            readable = []
+        if readable:
+            answer = sys.stdin.readline().strip()
+        else:
+            print("continue")
+
+    return answer.strip().lower() not in ("s", "stop", "q", "quit", "n", "no")
+
+
+def retry_transmission(action: Callable[[], T], label: str) -> T:
+    """Retry a replay-safe transmission and let the operator stop prolonged loss."""
+    cycle_started = time.monotonic()
+    retries = 0
+    while True:
+        try:
+            return action()
+        except TransmissionError as exc:
+            elapsed = time.monotonic() - cycle_started
+            if (
+                retries < TRANSMISSION_RETRY_LIMIT
+                and elapsed < TRANSMISSION_RETRY_WINDOW_SECONDS
+            ):
+                retries += 1
+                print(
+                    f"[transmission] {label} failed; retry "
+                    f"{retries}/{TRANSMISSION_RETRY_LIMIT}: {exc}"
+                )
+                time.sleep(TRANSMISSION_RETRY_DELAY_SECONDS)
+                continue
+            if not prompt_after_transmission_failure(label, exc):
+                raise TransmissionStopped(
+                    f"stopped after transmission failure during {label}"
+                ) from exc
+            cycle_started = time.monotonic()
+            retries = 0
+
 
 def format_decimal(value: float) -> str:
     return f"{value:.6f}".rstrip("0").rstrip(".")
@@ -191,8 +314,11 @@ def parse_mota(blob: bytes, path: Path | None = None) -> MotaInfo:
     flags = blob[9]
     target_id, fw_version, image_size, payload_size = struct.unpack_from("<IIII", blob, 11)
     block_size_log2 = blob[27]
-    if block_size_log2 > 20:
-        raise OtaError("invalid mOTA block size")
+    if block_size_log2 == 0 or block_size_log2 > 10:
+        raise OtaError(
+            f"invalid mOTA block size; firmware supports at most "
+            f"{MOTA_MAX_BLOCK_SIZE} bytes"
+        )
     block_size = 1 << block_size_log2
     root = blob[28:32]
     image_hash = blob[32:64]
@@ -699,6 +825,78 @@ def json_objects(text: str) -> list[dict]:
     return objects
 
 
+def reply_matches_command(command_text: str, reply: str) -> bool:
+    """Reject unrelated queued CLI messages before treating one as a reply."""
+    command = command_text.strip().lower()
+    text = reply.strip()
+    lowered = text.lower()
+    if not text:
+        return False
+    is_unknown = lowered.startswith(("unknown command", "command not found"))
+    is_error = bool(re.match(r"^(?:err(?:or)?\b|\(err)", lowered))
+    needs_temp = lowered.startswith("lora ota needs temp radio")
+    if command == "ota status":
+        return text.startswith("OTA |") or "not included" in lowered or is_unknown
+    if command == "ota self":
+        return (
+            lowered.startswith("self ")
+            or is_unknown
+            or (is_error and ("endf" in lowered or "ota" in lowered))
+        )
+    if command == "ota stats":
+        return text.startswith("OTA | fw ") or is_unknown or needs_temp
+    if command == "ota ls":
+        return (
+            text.startswith("Updates ")
+            or text.startswith("No updates ")
+            or is_unknown
+            or needs_temp
+            or (is_error and ("update" in lowered or "page" in lowered))
+        )
+    if command.startswith("ota pull "):
+        return (
+            lowered.startswith(("ok pulling ", "usage: ota pull", "choose a destination"))
+            or is_unknown
+            or needs_temp
+            or (
+                is_error
+                and any(
+                    word in lowered
+                    for word in ("update", "destination", "pull", "fetch", "busy", "folder")
+                )
+            )
+        )
+    if command == "ota cancel":
+        return lowered.startswith("ok dropped ") or is_unknown or needs_temp
+    if command == "ota install":
+        return (
+            lowered.startswith(("ok |", "err |"))
+            or is_unknown
+            or needs_temp
+            or (
+                is_error
+                and any(
+                    word in lowered
+                    for word in ("update", "fetch", "apply", "archive", "signature")
+                )
+            )
+        )
+    if command.startswith("tempradio "):
+        return (
+            lowered.startswith("ok - temp params ")
+            or is_unknown
+            or (is_error and ("param" in lowered or "radio" in lowered))
+        )
+    if command == "ver":
+        return extract_reply_version(text) is not None or is_unknown
+    return True
+
+
+def extract_reply_version(reply: str) -> int | None:
+    match = re.search(r"\b[vV]?(\d+\.\d+\.\d+(?:\.\d+)?)\b", reply)
+    return parse_version(match.group(1)) if match else None
+
+
 class Controller:
     def __init__(self, args: argparse.Namespace, password: str):
         self.meshcli = args.meshcli
@@ -716,7 +914,9 @@ class Controller:
         else:
             self.connection = ["-a", args.controller_ble]
 
-    def _run(self, commands: list[str], label: str) -> list[dict]:
+    def _execute(
+        self, commands: list[str], label: str
+    ) -> subprocess.CompletedProcess[str]:
         # Keep admin passwords out of the child process command line. meshcli's
         # script parser uses POSIX shlex on every platform, so shlex.join gives
         # us one safely quoted command line. The temporary file is removed even
@@ -744,10 +944,35 @@ class Controller:
         finally:
             if script_path is not None:
                 script_path.unlink(missing_ok=True)
+        return result
+
+    @staticmethod
+    def _no_json_error(result: subprocess.CompletedProcess[str], label: str) -> OtaError:
+        detail = "\n".join(
+            part.strip() for part in (result.stdout, result.stderr) if part.strip()
+        )
+        return OtaError(f"{label} returned no JSON: {detail or 'no output'}")
+
+    def _run(self, commands: list[str], label: str) -> list[dict]:
+        result = self._execute(commands, label)
         objects = json_objects(result.stdout)
-        if not objects and result.stderr.strip():
-            raise OtaError(f"{label} returned no JSON: {result.stderr.strip()}")
+        if not objects:
+            raise self._no_json_error(result, label)
         return objects
+
+    def _run_marked(
+        self, commands: list[str], label: str, marker: str
+    ) -> tuple[list[dict], list[dict]]:
+        result = self._execute(commands, label)
+        before, found, after = result.stdout.partition(marker)
+        if not found:
+            detail = "\n".join(
+                part.strip() for part in (result.stdout, result.stderr) if part.strip()
+            )
+            raise TransmissionError(
+                f"meshcli did not reach the command marker ({detail or 'no output'})"
+            )
+        return json_objects(before + after), json_objects(after)
 
     def get_radio(self) -> RadioSettings:
         objects = self._run(["get", "radio"], "read controller radio")
@@ -765,34 +990,71 @@ class Controller:
         raise OtaError("meshcli did not return the controller radio settings")
 
     def set_radio(self, settings: RadioSettings, label: str) -> None:
-        objects = self._run(
-            ["set", "radio", settings.meshcli_value()], label
-        )
-        for value in objects:
-            if "error" in value or "error_code" in value:
-                raise OtaError(f"{label} failed: {value}")
+        command_error: OtaError | None = None
+        try:
+            objects = self._run(
+                ["set", "radio", settings.meshcli_value()], label
+            )
+            for value in objects:
+                if "error" in value or "error_code" in value:
+                    command_error = OtaError(f"{label} failed: {value}")
+                    break
+        except OtaError as exc:
+            command_error = exc
 
-    def remote_command(
+        try:
+            actual = self.get_radio()
+        except OtaError as verify_error:
+            if command_error is not None:
+                raise OtaError(
+                    f"{command_error}; controller radio could not be verified: {verify_error}"
+                ) from command_error
+            raise
+        if not settings.matches(actual):
+            detail = f"requested {settings.meshcli_value()}, read back {actual.meshcli_value()}"
+            if command_error is not None:
+                detail = f"{command_error}; {detail}"
+            raise OtaError(f"{label} failed: {detail}")
+        print(f"[controller] verified radio {actual.meshcli_value()}")
+
+    def _remote_command_once(
         self,
         target: str,
         command_text: str,
-        *,
-        password: str | None = None,
+        password: str,
     ) -> str:
-        login_password = self.password if password is None else password
-        objects = self._run(
-            [
-                "contact_info", target,
-                "login", target, login_password,
-                "cmd", target, command_text,
-                "trywait_msg", str(self.reply_timeout),
-                "sync_msgs",
-            ],
-            f"remote command on {target}",
-        )
+        marker = f"MESHCORE_OTA_{secrets.token_hex(16)}"
+        try:
+            objects, post_objects = self._run_marked(
+                [
+                    "contact_info", target,
+                    "login", target, password,
+                    "sync_msgs",
+                    "echo", marker,
+                    "cmd", target, command_text,
+                    "trywait_msg", str(self.reply_timeout),
+                    "sync_msgs",
+                ],
+                f"remote command on {target}",
+                marker,
+            )
+        except TransmissionError:
+            raise
+        except OtaError as exc:
+            raise TransmissionError(f"meshcli could not contact {target}: {exc}") from exc
+
+        if any(
+            item.get("error") == "contact unknown"
+            and item.get("name") == target
+            for item in objects
+        ):
+            raise OtaError(f"controller has no contact named {target!r}")
         login_results = [item for item in objects if "login_success" in item]
-        if not login_results or not login_results[-1].get("login_success"):
+        if login_results and not login_results[-1].get("login_success"):
             raise OtaError(f"admin login failed for {target}")
+        if not login_results:
+            raise TransmissionError(f"no admin-login result from {target}")
+
         target_key = None
         for item in objects:
             if (
@@ -801,23 +1063,50 @@ class Controller:
             ):
                 target_key = item["public_key"].lower()
                 break
+        if target_key is None:
+            raise TransmissionError(f"meshcli did not return contact identity for {target}")
+
         messages = [
-            item for item in objects
+            item for item in post_objects
             if item.get("txt_type") == 1
             and isinstance(item.get("text"), str)
-            and (
-                target_key is None
-                or not isinstance(item.get("pubkey_prefix"), str)
-                or target_key.startswith(item["pubkey_prefix"].lower())
-            )
+            and isinstance(item.get("pubkey_prefix"), str)
+            and target_key.startswith(item["pubkey_prefix"].lower())
+            and reply_matches_command(command_text, item["text"])
         ]
         if not messages:
-            raise OtaError(
-                f"no CLI reply from {target} for {command_text!r}; check its path and timeout"
+            raise TransmissionError(
+                f"no matching CLI reply from {target} for {command_text!r}; "
+                "check its path and reply timeout"
             )
         reply = messages[-1]["text"]
         print(f"[{target}] {reply}")
         return reply
+
+    def remote_command(
+        self,
+        target: str,
+        command_text: str,
+        *,
+        password: str | None = None,
+        retry: bool = True,
+    ) -> str:
+        login_password = self.password if password is None else password
+        normalized = command_text.strip().lower()
+        if retry and (
+            normalized == "ota install" or normalized.startswith("ota pull ")
+        ):
+            raise OtaError(
+                f"{command_text!r} requires state-aware retry handling"
+            )
+        action = lambda: self._remote_command_once(
+            target, command_text, login_password
+        )
+        if retry:
+            return retry_transmission(
+                action, f"{command_text!r} on {target}"
+            )
+        return action()
 
 
 def split_host_port(value: str, default_port: int) -> tuple[str, int]:
@@ -884,8 +1173,18 @@ def query_target(
         version_match = re.search(r"\bfw (v\d+\.\d+\.\d+(?:\.\d+)?)\b", stats)
         if version_match:
             current_version = version_match.group(1)
+    except TransmissionStopped:
+        raise
     except OtaError as exc:
         print(f"[warn] could not query current OTA version: {exc}")
+    if current_version is None:
+        version_reply = controller.remote_command(args.target, "ver")
+        version_value = extract_reply_version(version_reply)
+        if version_value is None:
+            raise OtaError(
+                f"could not read destination firmware version from `ver`: {version_reply}"
+            )
+        current_version = format_version(version_value)
     return TargetInfo(
         args.target, target_id, base_hash, platform, nrf_sd, hw_id,
         bootloader_abi, bootloader_codecs, status, self_status, current_version,
@@ -930,23 +1229,37 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
         "-b", str(args.source_baud),
         command_text,
     ]
+
+    def run_once() -> str:
+        try:
+            result = run_checked(
+                command,
+                label=f"source command {command_text.split()[0]}",
+                timeout=30,
+            )
+        except OtaError as exc:
+            raise TransmissionError(f"source CLI link failed: {exc}") from exc
+        output = f"{result.stdout}\n{result.stderr}".strip()
+        lowered = output.lower()
+        if "error" in lowered or "unknown command" in lowered or "err " in lowered:
+            raise OtaError(f"source rejected {command_text!r}: {output}")
+        if (
+            command_text.startswith("tempradio ")
+            and "ok - temp params " not in lowered
+        ):
+            raise OtaError(
+                f"source did not confirm {command_text!r}: {output or 'no output'}"
+            )
+        if output:
+            print(f"[source] {output}")
+        return output
+
+    if check:
+        return retry_transmission(run_once, f"{command_text!r} on OTA source")
     try:
-        result = run_checked(
-            command,
-            label=f"source command {command_text.split()[0]}",
-            timeout=30,
-        )
+        return run_once()
     except OtaError:
-        if check:
-            raise
         return ""
-    output = f"{result.stdout}\n{result.stderr}".strip()
-    lowered = output.lower()
-    if check and ("error" in lowered or "unknown command" in lowered or "err " in lowered):
-        raise OtaError(f"source rejected {command_text!r}: {output}")
-    if output:
-        print(f"[source] {output}")
-    return output
 
 
 def preflight_source_cli(args: argparse.Namespace) -> None:
@@ -995,11 +1308,28 @@ class SeederProcess:
             self.log_file.close()
             raise OtaError(f"required command was not found: {self.args.motatool}") from exc
         time.sleep(self.args.seeder_start_wait)
-        if self.process.poll() is not None:
-            self.log_file.close()
-            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
-            raise OtaError(f"motatool seeder exited during startup:\n{detail}")
+        self.ensure_running("during startup")
         print("[seeder] running")
+
+    def _log_tail(self) -> str:
+        if self.log_file is not None and not self.log_file.closed:
+            self.log_file.flush()
+        try:
+            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return f"could not read seeder log: {exc}"
+        return detail[-4096:].strip() or "no seeder log output"
+
+    def ensure_running(self, context: str = "") -> None:
+        if self.process is None:
+            raise OtaError("motatool seeder is not running")
+        return_code = self.process.poll()
+        if return_code is not None:
+            suffix = f" {context}" if context else ""
+            raise OtaError(
+                f"motatool seeder exited with status {return_code}{suffix}:\n"
+                f"{self._log_tail()}"
+            )
 
     def stop(self) -> None:
         if self.process is None:
@@ -1063,21 +1393,79 @@ def confirm_update(
         raise OtaError("cancelled by operator")
 
 
+def download_manifest_id(status: str) -> str | None:
+    match = re.search(r"\bid=([0-9A-Fa-f]{8})\b", status)
+    return match.group(1).upper() if match else None
+
+
+def require_package_session(
+    status: str,
+    package: MotaInfo,
+    *,
+    ready: bool = False,
+) -> None:
+    lowered = status.lower()
+    if "no download" in lowered:
+        raise OtaError(f"destination lost its download session: {status}")
+    active_id = download_manifest_id(status)
+    if active_id is None:
+        raise OtaError(f"destination download status has no manifest ID: {status}")
+    if active_id != package.manifest_id:
+        raise OtaError(
+            f"destination switched to mOTA {active_id}; expected {package.manifest_id}"
+        )
+    if "download: failed" in lowered:
+        raise OtaError(f"destination reports failed download: {status}")
+    if ready and "ready to install" not in lowered:
+        raise OtaError(f"destination is not ready to install {package.manifest_id}: {status}")
+
+
+def ensure_seeder_running(
+    seeder: SeederProcess | None,
+    context: str,
+) -> None:
+    if seeder is not None:
+        seeder.ensure_running(context)
+
+
+def remote_command_with_seeder(
+    controller: Controller,
+    target: str,
+    command: str,
+    seeder: SeederProcess | None,
+    context: str,
+) -> str:
+    if seeder is None:
+        return controller.remote_command(target, command)
+
+    def run_once() -> str:
+        ensure_seeder_running(seeder, context)
+        return controller.remote_command(target, command, retry=False)
+
+    return retry_transmission(run_once, f"{command!r} on {target}")
+
+
 def find_and_start_pull(
     controller: Controller,
     args: argparse.Namespace,
     package: MotaInfo,
+    seeder: SeederProcess | None = None,
 ) -> None:
-    status = controller.remote_command(args.target, "ota status")
-    active_match = re.search(r"\bid=([0-9A-Fa-f]{8})\b", status)
-    if active_match:
-        active_id = active_match.group(1).upper()
+    status = remote_command_with_seeder(
+        controller, args.target, "ota status", seeder, "before discovery"
+    )
+    active_id = download_manifest_id(status)
+    if active_id:
         if active_id == package.manifest_id:
             if "download: failed" not in status.lower():
                 print(f"[download] resuming existing session {active_id}")
                 return
             print(f"[download] resetting failed session {active_id}")
-            controller.remote_command(args.target, "ota cancel")
+            cancel_reply = controller.remote_command(args.target, "ota cancel")
+            if not cancel_reply.startswith("OK"):
+                raise OtaError(
+                    f"could not reset failed destination download: {cancel_reply}"
+                )
         elif not args.replace_active_download:
             raise OtaError(
                 f"destination already has mOTA {active_id} staged or downloading; "
@@ -1089,15 +1477,62 @@ def find_and_start_pull(
                 raise OtaError(
                     f"could not discard active destination download: {cancel_reply}"
                 )
+    elif "download:" in status.lower():
+        raise OtaError(f"destination download status has no manifest ID: {status}")
 
     deadline = time.monotonic() + args.discovery_timeout
     last_reply = ""
     while time.monotonic() < deadline:
-        last_reply = controller.remote_command(args.target, "ota ls")
-        pull_reply = controller.remote_command(
-            args.target, f"ota pull {package.manifest_id} flash"
+        last_reply = remote_command_with_seeder(
+            controller, args.target, "ota ls", seeder, "during discovery"
         )
-        if "OK pulling" in pull_reply:
+
+        def attempt_pull() -> bool:
+            try:
+                pull_reply = controller.remote_command(
+                    args.target,
+                    f"ota pull {package.manifest_id} flash",
+                    retry=False,
+                )
+            except TransmissionError as exc:
+                resolved = remote_command_with_seeder(
+                    controller, args.target, "ota status", seeder,
+                    "while resolving a lost pull reply",
+                )
+                resolved_id = download_manifest_id(resolved)
+                if resolved_id == package.manifest_id:
+                    require_package_session(resolved, package)
+                    print(
+                        f"[download] pull reply was lost, but session "
+                        f"{package.manifest_id} is active"
+                    )
+                    return True
+                if resolved_id is not None:
+                    raise OtaError(
+                        f"destination has mOTA {resolved_id} after the pull attempt; "
+                        f"expected {package.manifest_id}"
+                    )
+                if "download:" in resolved.lower():
+                    raise OtaError(
+                        f"destination download status has no manifest ID: {resolved}"
+                    )
+                raise exc
+
+            if pull_reply.startswith("OK pulling"):
+                reply_id = download_manifest_id(pull_reply.replace("mid=", "id="))
+                if reply_id != package.manifest_id:
+                    raise OtaError(
+                        f"destination confirmed pull {reply_id or '?'}; "
+                        f"expected {package.manifest_id}"
+                    )
+                return True
+            if "no such update" in pull_reply.lower():
+                return False
+            raise OtaError(f"destination refused the pull: {pull_reply}")
+
+        if retry_transmission(
+            attempt_pull, f"start mOTA {package.manifest_id} on {args.target}"
+        ):
             return
         time.sleep(args.discovery_interval)
     raise OtaError(
@@ -1105,23 +1540,181 @@ def find_and_start_pull(
     )
 
 
-def monitor_download(controller: Controller, args: argparse.Namespace) -> str:
+def monitor_download(
+    controller: Controller,
+    args: argparse.Namespace,
+    package: MotaInfo,
+    seeder: SeederProcess | None = None,
+) -> str:
     deadline = time.monotonic() + args.transfer_timeout_minutes * 60
-    previous = ""
     while time.monotonic() < deadline:
-        status = controller.remote_command(args.target, "ota status")
-        if status != previous:
-            previous = status
+        status = remote_command_with_seeder(
+            controller, args.target, "ota status", seeder, "during transfer"
+        )
+        require_package_session(status, package)
         lowered = status.lower()
         if "ready to install" in lowered:
             return status
-        if "download: failed" in lowered:
-            raise OtaError(f"destination reports failed download: {status}")
-        if "no download" in lowered:
-            raise OtaError(f"destination lost its download session: {status}")
         time.sleep(args.poll_seconds)
     raise OtaError(
         "transfer timeout; the partial download remains staged and can resume when the same mOTA is served again"
+    )
+
+
+def require_temp_radio_reply(node: str, reply: str) -> None:
+    if not reply.lower().startswith("ok - temp params for "):
+        raise OtaError(f"{node} did not accept TempRadio: {reply}")
+
+
+def temp_radio_command_for_minutes(
+    args: argparse.Namespace,
+    minutes: int,
+) -> str:
+    freq, bandwidth, sf, cr, _configured_minutes = args.temp_values
+    return (
+        f"tempradio {format_decimal(freq)},{format_decimal(bandwidth)},"
+        f"{sf},{cr},{minutes}"
+    )
+
+
+def arm_target_install_window(
+    controller: Controller,
+    args: argparse.Namespace,
+) -> None:
+    reply = controller.remote_command(
+        args.target,
+        temp_radio_command_for_minutes(args, INSTALL_TARGET_WINDOW_MINUTES),
+    )
+    require_temp_radio_reply(args.target, reply)
+
+
+def confirm_ready_to_install(
+    controller: Controller,
+    args: argparse.Namespace,
+    package: MotaInfo,
+) -> str:
+    status = controller.remote_command(args.target, "ota status")
+    require_package_session(status, package, ready=True)
+    return status
+
+
+def request_install(
+    controller: Controller,
+    args: argparse.Namespace,
+    package: MotaInfo,
+) -> bool:
+    """Request install without ever blindly replaying an uncertain command."""
+    cycle_started = time.monotonic()
+    retries = 0
+    confirm_ready_to_install(controller, args, package)
+    while True:
+        # If an install reply is lost and the target also stops replying, this
+        # short window gets it back onto the normal channel for verification.
+        arm_target_install_window(controller, args)
+        try:
+            reply = controller.remote_command(args.target, "ota install", retry=False)
+        except TransmissionError as exc:
+            print(
+                "[install] reply was lost; waiting before checking whether the "
+                "destination is still staged"
+            )
+            time.sleep(INSTALL_RECONCILE_WAIT_SECONDS)
+            try:
+                status = controller.remote_command(
+                    args.target, "ota status", retry=False
+                )
+            except TransmissionError:
+                print(
+                    "[install] destination stopped replying. The install command "
+                    "will not be replayed; post-reboot identity will resolve it."
+                )
+                return False
+            require_package_session(status, package, ready=True)
+
+            elapsed = time.monotonic() - cycle_started
+            if (
+                retries < TRANSMISSION_RETRY_LIMIT
+                and elapsed < TRANSMISSION_RETRY_WINDOW_SECONDS
+            ):
+                retries += 1
+                print(
+                    f"[install] destination is still staged; safe retry "
+                    f"{retries}/{TRANSMISSION_RETRY_LIMIT}"
+                )
+                time.sleep(TRANSMISSION_RETRY_DELAY_SECONDS)
+                continue
+            if not prompt_after_transmission_failure(
+                f"'ota install' on {args.target}", exc
+            ):
+                raise TransmissionStopped(
+                    "stopped after an unacknowledged install request"
+                ) from exc
+            cycle_started = time.monotonic()
+            retries = 0
+            continue
+
+        if not reply.startswith("OK |"):
+            raise OtaError(f"destination refused installation: {reply}")
+        return True
+
+
+def shorten_relay_temp_windows(
+    controller: Controller,
+    args: argparse.Namespace,
+) -> None:
+    if not args.relay_values:
+        return
+    command = temp_radio_command_for_minutes(args, POST_INSTALL_RELAY_MINUTES)
+    print(
+        f"[relays] scheduling return to the normal channel in "
+        f"{POST_INSTALL_RELAY_MINUTES} minute"
+    )
+    for relay_name, relay_password in args.relay_values:
+        reply = controller.remote_command(
+            relay_name, command, password=relay_password
+        )
+        require_temp_radio_reply(relay_name, reply)
+
+
+def verify_installed(
+    controller: Controller,
+    args: argparse.Namespace,
+    package: MotaInfo,
+    expected_body_hash: bytes | None,
+    previous_body_hash: bytes | None = None,
+) -> None:
+    identity_reply = controller.remote_command(args.target, "ota self")
+    hash_match = re.search(r"\bbase_hash=([0-9A-Fa-f]{16})\b", identity_reply)
+    if not hash_match:
+        raise OtaError("post-reboot `ota self` did not report a running body hash")
+    installed_hash = bytes.fromhex(hash_match.group(1))
+    if expected_body_hash is not None and installed_hash != expected_body_hash:
+        raise OtaError(
+            "destination rebooted, but its running firmware hash is not the expected new image"
+        )
+    if expected_body_hash is None:
+        if previous_body_hash is None:
+            raise OtaError(
+                "the package does not expose its new body hash, so installation "
+                "cannot be distinguished from the old firmware"
+            )
+        if installed_hash == previous_body_hash:
+            raise OtaError(
+                "destination still reports its pre-install firmware hash"
+            )
+
+    version_reply = controller.remote_command(args.target, "ver")
+    installed_version = extract_reply_version(version_reply)
+    if installed_version is None:
+        raise OtaError(f"post-reboot `ver` returned no firmware version: {version_reply}")
+    if installed_version != package.fw_version:
+        raise OtaError(
+            f"destination reports {format_version(installed_version)} after reboot; "
+            f"expected {package.version}"
+        )
+    print(
+        f"[verified] {args.target}: {package.version} "
+        f"body={installed_hash.hex().upper()}"
     )
 
 
@@ -1261,10 +1854,28 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     ):
         if getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
-    if not args.prepare_only and args.transfer_timeout_minutes >= args.temp_values[4]:
-        parser.error(
-            "--transfer-timeout-minutes must be shorter than the TempRadio window"
+    if not args.prepare_only:
+        remote_setup_seconds = (1 + len(args.relay)) * args.reply_timeout
+        source_setup_seconds = 0 if args.source_already_temp else 30
+        final_reply_count = 1 if args.no_install else 4 + len(args.relay)
+        required_temp_seconds = (
+            remote_setup_seconds
+            + source_setup_seconds
+            + TEMP_RADIO_SWITCH_DELAY_SECONDS
+            + args.seeder_start_wait
+            + args.discovery_timeout
+            + args.transfer_timeout_minutes * 60
+            + args.poll_seconds
+            + args.reply_timeout * final_reply_count
         )
+        temp_seconds = args.temp_values[4] * 60
+        if required_temp_seconds >= temp_seconds:
+            minimum_minutes = required_temp_seconds // 60 + 1
+            parser.error(
+                f"TempRadio must last at least {minimum_minutes} minutes for "
+                "remote setup, seeder startup, discovery, transfer, and one "
+                "final poll plus install checks"
+            )
 
 
 def require_command(command: str, label: str) -> None:
@@ -1370,56 +1981,67 @@ def main(argv: list[str] | None = None) -> int:
 
         # Move far nodes first while the controller is still on the normal
         # channel. Relays are supplied in farthest-to-nearest order.
-        controller.remote_command(args.target, temp_command)
+        temp_reply = controller.remote_command(args.target, temp_command)
+        require_temp_radio_reply(args.target, temp_reply)
         for relay_name, relay_password in args.relay_values:
-            controller.remote_command(
+            temp_reply = controller.remote_command(
                 relay_name, temp_command, password=relay_password
             )
+            require_temp_radio_reply(relay_name, temp_reply)
         if not args.source_already_temp:
             source_cli_command(args, temp_command)
 
         temp_radio = RadioSettings(
             freq, bandwidth, sf, cr, original_radio.repeat
         )
-        controller.set_radio(temp_radio, "switch controller to TempRadio")
         controller_changed = True
-        time.sleep(3)
+        controller.set_radio(temp_radio, "switch controller to TempRadio")
+        time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
 
         seeder = SeederProcess(args, package_path.parent, work_dir)
         seeder_attempted = True
         seeder.start()
-        find_and_start_pull(controller, args, package)
-        monitor_download(controller, args)
+        find_and_start_pull(controller, args, package, seeder)
+        monitor_download(controller, args, package, seeder)
 
         if args.no_install:
             print(f"{args.target} is ready to install; leaving the verified update staged.")
             return 0
 
-        install_reply = controller.remote_command(args.target, "ota install")
-        if not install_reply.startswith("OK"):
-            raise OtaError(f"destination refused installation: {install_reply}")
-        print(f"[install] {args.target} accepted the image and is rebooting")
+        install_confirmed = request_install(controller, args, package)
+        if install_confirmed:
+            print(f"[install] {args.target} accepted the image and is rebooting")
+        else:
+            print(
+                "[install] outcome is uncertain; post-reboot identity must "
+                "prove whether the command arrived"
+            )
+
+        # Once the target has accepted (or may have accepted) installation,
+        # the relays are no longer needed on TempRadio. Give each a short,
+        # bounded window, then verify through the restored normal route.
+        shorten_relay_temp_windows(controller, args)
 
         # Stop seeding before returning the controller to its ordinary channel.
         seeder.stop()
         seeder = None
-        if not args.leave_controller_radio:
-            controller.set_radio(original_radio, "restore controller radio")
-            controller_changed = False
-        time.sleep(args.reboot_wait)
+        controller.set_radio(original_radio, "restore controller radio for verification")
+        controller_changed = False
+        relay_wait = (
+            POST_INSTALL_RELAY_MINUTES * 60 + POST_INSTALL_RELAY_MARGIN_SECONDS
+            if args.relay_values else 0
+        )
+        time.sleep(max(args.reboot_wait, relay_wait))
         try:
-            post = controller.remote_command(args.target, "ota self")
-            match = re.search(r"base_hash=([0-9A-Fa-f]{16})", post)
-            if expected_body_hash is not None and match:
-                installed_hash = bytes.fromhex(match.group(1))
-                if installed_hash != expected_body_hash:
-                    raise OtaError(
-                        "destination rebooted, but its running firmware hash is not the expected new image"
-                    )
-            version_reply = controller.remote_command(args.target, "ver")
-            print(f"[verified] {args.target}: {version_reply}")
-        except OtaError as exc:
-            print(f"[warn] install was accepted, but post-reboot confirmation failed: {exc}")
+            verify_installed(
+                controller, args, package, expected_body_hash, target.base_hash
+            )
+        finally:
+            if args.leave_controller_radio:
+                controller.set_radio(
+                    temp_radio, "return controller to TempRadio after verification"
+                )
+                controller_changed = True
         return 0
     except KeyboardInterrupt:
         print("\nInterrupted; any partial target download remains resumable.", file=sys.stderr)
