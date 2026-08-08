@@ -1542,8 +1542,8 @@ while its raw USB CLI is used to start TempRadio:</p>
 </code></pre>
 <p>If the source is already on the exact TempRadio tuple through a scheduled or
 manual operation, <code>--source-already-temp</code> lets a TCP source run without a raw
-CLI link. The script cannot verify or extend that source window, so leave a
-comfortable time margin.</p>
+CLI link. The script cannot verify, extend, or shorten that source window, so
+leave a comfortable time margin.</p>
 <p>Use <code>--controller-baud</code> or <code>--source-baud</code> only for a build whose corresponding
 interface is genuinely configured to another speed.</p>
 <h2 id="package-selection-and-safety-gates">Package selection and safety gates</h2>
@@ -1557,13 +1557,17 @@ files differ, select one explicitly:</p>
 <p>If no ready mOTA is usable, it searches <code>.bin</code> and <code>.hex</code> members for a valid,
 matching <code>EndF</code>, then builds the platform-appropriate container. Every result
 is structurally checked by the runner and independently passed through
-<code>motatool verify</code> before any radio changes.</p>
+<code>motatool verify</code> before any radio changes. Direct firmware and mOTA inputs, as
+well as individual ZIP members, are rejected above 64 MiB before being loaded.</p>
 <p>Useful controls:</p>
 <ul>
 <li><code>--public-key signer.key.pub</code> requires a particular Ed25519 signer during
   verification.</li>
 <li><code>--sign-key signer.key</code> signs a newly built container.</li>
-<li><code>--no-install</code> downloads and verifies the image but leaves it staged.</li>
+<li><code>--no-install</code> downloads and verifies the image but leaves it staged. By
+  default the runner then schedules the target, relays, and a script-configured
+  source back to their normal radios. Combining it with
+  <code>--leave-controller-radio</code> deliberately preserves the TempRadio topology.</li>
 <li><code>--allow-non-upgrade</code> deliberately permits the same or an older version.</li>
 <li><code>--replace-active-download</code> deliberately discards a different update already
   downloading or staged on the target. Without it, that update is preserved.</li>
@@ -1597,11 +1601,15 @@ the destination.</p>
    discovery, the transfer timeout, final polling, and install checks.</li>
 <li>Start <code>motatool serve</code>, discover the exact eight-hex manifest ID, request
    <code>ota pull &lt;id&gt; flash</code>, and poll until that same ID reports ready. A seeder
-   process exit stops the run immediately.</li>
+   process exit stops the run immediately. For <code>--no-install</code>, schedule all
+   script-controlled nodes back to their normal radios before restoring the
+   controller, unless <code>--leave-controller-radio</code> was requested.</li>
 <li>Recheck that exact ID, give the target a short final TempRadio safety window,
    and request <code>ota install</code>. Then shorten each relay's TempRadio window so the
-   normal multi-hop route returns, restore the controller, wait for reboot, and
-   require the new running identity and exact package version.
+   normal multi-hop route returns, stop the seeder, shorten the source window,
+   restore the controller, wait for reboot, and require the new running identity
+   and exact package version. A source supplied with <code>--source-already-temp</code> is
+   never modified.
    <code>--leave-controller-radio</code> moves the controller back to TempRadio only after
    this normal-channel verification.</li>
 </ol>
@@ -1634,10 +1642,11 @@ download without replacing it.</p>
 served mOTA, <code>motatool-serve.log</code>, extracted build inputs when needed, and
 <code>controller-radio.txt</code>. It contains no saved admin password.</p>
 <h2 id="interruption-and-recovery">Interruption and recovery</h2>
-<p>Ctrl-C stops the seeder, detaches its serial folder, and attempts to restore
-the controller. The target and relays remain on TempRadio only until their
-bounded windows end; rebooting also restores their saved radio settings. A
-partial download remains safe. Once the target is reachable again (after its
+<p>Ctrl-C stops the seeder, detaches its serial folder, makes one best-effort
+request to shorten a source TempRadio window started by the script, and attempts
+to restore the controller. The target and relays remain on TempRadio only until
+their bounded windows end; rebooting also restores their saved radio settings.
+A partial download remains safe. Once the target is reachable again (after its
 TempRadio window ends, or after putting the controller back on that tuple),
 rerunning the same package recognizes its manifest ID and resumes the existing
 session instead of clearing it.</p>
