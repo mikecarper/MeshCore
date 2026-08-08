@@ -15,7 +15,9 @@ SensorManager sensors;
 
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display;
-  MomentaryButton user_btn(PIN_USER_BTN, 1000, true);
+  // active-low button on GPIO1: enable the internal pull-up (4th arg) so a
+  // floating input can't read as a phantom long-press → spurious CLI rescue at boot.
+  MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true);
 #endif
 
 #ifndef LORA_CR
