@@ -179,6 +179,19 @@ class FormatTests(unittest.TestCase):
         with self.assertRaisesRegex(ota.OtaError, "address span"):
             ota.parse_intel_hex(raw)
 
+    def test_oversized_direct_file_is_rejected_before_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oversized.mota"
+            path.write_bytes(b"1234")
+            with (
+                mock.patch.object(
+                    Path, "read_bytes",
+                    side_effect=AssertionError("oversized file was read"),
+                ),
+                self.assertRaisesRegex(ota.OtaError, "unexpectedly large"),
+            ):
+                ota.read_bounded_file(path, 3, "mOTA file")
+
 
 class CompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -623,6 +636,52 @@ class ReliabilityTests(unittest.TestCase):
             self.assertRaises(SystemExit),
         ):
             ota.validate_args(args, parser)
+
+    def test_stage_cleanup_shortens_target_and_relays(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[tuple[str, str, str | None]] = []
+
+            def remote_command(
+                self, target_name: str, command: str, **kwargs: object
+            ) -> str:
+                password = kwargs.get("password")
+                self.commands.append((target_name, command, password))
+                return "OK - temp params for 1 mins"
+
+        controller = Controller()
+        args = argparse.Namespace(
+            target="remote",
+            relay_values=[("relay", "relay-secret")],
+            temp_values=(909.95, 250.0, 7, 5, 120),
+        )
+        ota.shorten_target_temp_window(controller, args)
+        ota.shorten_relay_temp_windows(controller, args)
+        self.assertEqual(
+            controller.commands,
+            [
+                ("remote", "tempradio 909.95,250,7,5,1", None),
+                ("relay", "tempradio 909.95,250,7,5,1", "relay-secret"),
+            ],
+        )
+
+    def test_source_cleanup_only_changes_a_script_owned_window(self) -> None:
+        args = argparse.Namespace(
+            source_already_temp=False,
+            temp_values=(909.95, 250.0, 7, 5, 120),
+        )
+        with mock.patch.object(
+            ota, "source_cli_command", return_value="OK - temp params for 1 mins"
+        ) as source_command:
+            self.assertTrue(ota.shorten_source_temp_window(args))
+        source_command.assert_called_once_with(
+            args, "tempradio 909.95,250,7,5,1", check=True
+        )
+
+        args.source_already_temp = True
+        with mock.patch.object(ota, "source_cli_command") as source_command:
+            self.assertTrue(ota.shorten_source_temp_window(args))
+        source_command.assert_not_called()
 
 
 class MotatoolIntegrationTests(unittest.TestCase):

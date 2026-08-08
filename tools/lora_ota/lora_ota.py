@@ -54,8 +54,8 @@ TRANSMISSION_RETRY_WINDOW_SECONDS = 90
 TRANSMISSION_RETRY_DELAY_SECONDS = 1
 TRANSMISSION_PROMPT_SECONDS = 10
 TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
-POST_INSTALL_RELAY_MINUTES = 1
-POST_INSTALL_RELAY_MARGIN_SECONDS = 15
+TEMP_RADIO_RETURN_MINUTES = 1
+TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
 INSTALL_TARGET_WINDOW_MINUTES = 3
 # Firmware may hold the apply reboot for up to 15 seconds while its reply
 # drains. Do not interpret "still ready" as a failed install before that cap.
@@ -446,8 +446,25 @@ def parse_intel_hex(raw: bytes) -> bytes:
     return bytes(image)
 
 
+def read_bounded_file(path: Path, max_size: int, description: str) -> bytes:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise OtaError(f"cannot inspect {description} {path}: {exc}") from exc
+    if size > max_size:
+        raise OtaError(f"{description} is unexpectedly large: {path}")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise OtaError(f"cannot read {description} {path}: {exc}") from exc
+    # Check again after reading in case the file changed between stat and read.
+    if len(raw) > max_size:
+        raise OtaError(f"{description} is unexpectedly large: {path}")
+    return raw
+
+
 def read_firmware_file(path: Path) -> bytes:
-    raw = path.read_bytes()
+    raw = read_bounded_file(path, MAX_FIRMWARE_IMAGE_SIZE, "firmware file")
     return parse_intel_hex(raw) if path.suffix.lower() == ".hex" else raw
 
 
@@ -594,7 +611,9 @@ def select_firmware_from_zip(
 def load_base_image(path: Path, target: TargetInfo) -> EndFInfo:
     suffix = path.suffix.lower()
     if suffix == ".mota":
-        info = parse_mota(path.read_bytes(), path)
+        info = parse_mota(
+            read_bounded_file(path, MAX_ARCHIVE_MEMBER_SIZE, "mOTA file"), path
+        )
         if not info.is_full:
             raise OtaError("--base mOTA must be a full-image container")
         identity = parse_endf(info.payload)
@@ -723,7 +742,9 @@ def prepare_package(
     new_identity: EndFInfo | None = None
 
     if source.suffix.lower() == ".mota":
-        selected_blob = source.read_bytes()
+        selected_blob = read_bounded_file(
+            source, MAX_ARCHIVE_MEMBER_SIZE, "mOTA file"
+        )
         selected = parse_mota(selected_blob, source)
     elif source.suffix.lower() == ".zip":
         try:
@@ -751,7 +772,9 @@ def prepare_package(
             raise OtaError(f"package is not installable on {target.name}: {reason}")
         output = served_dir / f"{selected.manifest_id.lower()}.mota"
         output.write_bytes(selected_blob if selected_blob is not None else selected.blob)
-        selected = parse_mota(output.read_bytes(), output)
+        selected = parse_mota(
+            read_bounded_file(output, MAX_ARCHIVE_MEMBER_SIZE, "mOTA file"), output
+        )
     else:
         if new_identity is None:
             raise OtaError("could not obtain firmware from the input package")
@@ -789,7 +812,9 @@ def prepare_package(
             command.extend(["--sign", str(args.sign_key.resolve())])
         result = run_checked(command, label="build mOTA", timeout=600)
         print(result.stdout.strip())
-        selected = parse_mota(output.read_bytes(), output)
+        selected = parse_mota(
+            read_bounded_file(output, MAX_ARCHIVE_MEMBER_SIZE, "mOTA file"), output
+        )
         good, reason = compatible_mota(selected, target)
         if not good:
             raise OtaError(f"newly built package is not installable: {reason}")
@@ -1664,16 +1689,52 @@ def shorten_relay_temp_windows(
 ) -> None:
     if not args.relay_values:
         return
-    command = temp_radio_command_for_minutes(args, POST_INSTALL_RELAY_MINUTES)
+    command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
     print(
         f"[relays] scheduling return to the normal channel in "
-        f"{POST_INSTALL_RELAY_MINUTES} minute"
+        f"{TEMP_RADIO_RETURN_MINUTES} minute"
     )
     for relay_name, relay_password in args.relay_values:
         reply = controller.remote_command(
             relay_name, command, password=relay_password
         )
         require_temp_radio_reply(relay_name, reply)
+
+
+def shorten_target_temp_window(
+    controller: Controller,
+    args: argparse.Namespace,
+) -> None:
+    command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
+    print(
+        f"[destination] scheduling return to the normal channel in "
+        f"{TEMP_RADIO_RETURN_MINUTES} minute"
+    )
+    reply = controller.remote_command(args.target, command)
+    require_temp_radio_reply(args.target, reply)
+
+
+def shorten_source_temp_window(
+    args: argparse.Namespace,
+    *,
+    check: bool = True,
+) -> bool:
+    if args.source_already_temp:
+        return True
+    command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
+    print(
+        f"[source] scheduling return to the normal channel in "
+        f"{TEMP_RADIO_RETURN_MINUTES} minute"
+    )
+    output = source_cli_command(args, command, check=check)
+    if not output and not check:
+        print(
+            "[warn] could not shorten the OTA source TempRadio window; "
+            "it will return when its original bounded window ends",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def verify_installed(
@@ -1937,6 +1998,7 @@ def main(argv: list[str] | None = None) -> int:
     controller_changed = False
     seeder: SeederProcess | None = None
     seeder_attempted = False
+    source_temp_owned = False
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
     try:
         preflight_inputs(args)
@@ -1990,6 +2052,7 @@ def main(argv: list[str] | None = None) -> int:
             require_temp_radio_reply(relay_name, temp_reply)
         if not args.source_already_temp:
             source_cli_command(args, temp_command)
+            source_temp_owned = True
 
         temp_radio = RadioSettings(
             freq, bandwidth, sf, cr, original_radio.repeat
@@ -2006,6 +2069,19 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.no_install:
             print(f"{args.target} is ready to install; leaving the verified update staged.")
+            if args.leave_controller_radio:
+                print(
+                    "[cleanup] preserving TempRadio windows because "
+                    "--leave-controller-radio was requested"
+                )
+            else:
+                shorten_target_temp_window(controller, args)
+                shorten_relay_temp_windows(controller, args)
+                seeder.stop()
+                seeder = None
+                if source_temp_owned:
+                    shorten_source_temp_window(args)
+                    source_temp_owned = False
             return 0
 
         install_confirmed = request_install(controller, args, package)
@@ -2025,10 +2101,13 @@ def main(argv: list[str] | None = None) -> int:
         # Stop seeding before returning the controller to its ordinary channel.
         seeder.stop()
         seeder = None
+        if source_temp_owned and not args.leave_controller_radio:
+            shorten_source_temp_window(args)
+            source_temp_owned = False
         controller.set_radio(original_radio, "restore controller radio for verification")
         controller_changed = False
         relay_wait = (
-            POST_INSTALL_RELAY_MINUTES * 60 + POST_INSTALL_RELAY_MARGIN_SECONDS
+            TEMP_RADIO_RETURN_MINUTES * 60 + TEMP_RADIO_RETURN_MARGIN_SECONDS
             if args.relay_values else 0
         )
         time.sleep(max(args.reboot_wait, relay_wait))
@@ -2057,6 +2136,8 @@ def main(argv: list[str] | None = None) -> int:
             # this is harmless on TCP and explicitly cleans the serial case.
             if seeder_attempted and args.source_serial:
                 source_cli_command(args, "ota folder off", check=False)
+            if source_temp_owned and not args.leave_controller_radio:
+                shorten_source_temp_window(args, check=False)
             if (
                 controller is not None
                 and controller_changed

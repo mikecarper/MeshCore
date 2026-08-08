@@ -3212,10 +3212,18 @@ ContactInfo* MyMesh::getTerminalRecipient() {
 void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
                                  uint32_t message_timestamp, uint32_t expected_ack,
                                  uint32_t est_timeout,
-                                 const uint8_t packet_retry_key[MAX_HASH_SIZE]) {
-  if (expected_ack == 0) return;
+                                 const uint8_t packet_retry_key[MAX_HASH_SIZE],
+                                 AckTableEntry* replacement_entry) {
+  if (expected_ack == 0) {
+    if (replacement_entry != NULL) {
+      clearExpectedAck(*replacement_entry, false);
+    }
+    return;
+  }
 
-  AckTableEntry& entry = expected_ack_table[next_ack_idx];
+  AckTableEntry& entry = replacement_entry != NULL
+      ? *replacement_entry
+      : expected_ack_table[next_ack_idx];
   clearExpectedAck(entry, false);
   entry.msg_sent = _ms->getMillis();
   entry.expires_at = futureMillis(est_timeout);
@@ -3227,7 +3235,9 @@ void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
                       (const uint8_t*)text, strlen(text));
   memcpy(entry.retry_key, packet_retry_key, sizeof(entry.retry_key));
   entry.terminal_origin = true;
-  next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+  if (replacement_entry == NULL) {
+    next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+  }
   expireExpectedAcks();
 }
 
@@ -3289,11 +3299,8 @@ void MyMesh::handleTerminalCommand(char* command) {
       if (result == MSG_SEND_FAILED) {
         Serial.print("  ERROR: unable to send\r\n");
       } else {
-        if (replacement_entry != NULL) {
-          clearExpectedAck(*replacement_entry, false);
-        }
         rememberTerminalAck(*recipient, text, message_timestamp, expected_ack,
-                            est_timeout, packet_retry_key);
+                            est_timeout, packet_retry_key, replacement_entry);
         Serial.printf("  message sent - %s\r\n",
                       result == MSG_SEND_SENT_FLOOD ? "FLOOD" : "DIRECT");
       }

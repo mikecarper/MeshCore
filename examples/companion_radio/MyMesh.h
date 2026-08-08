@@ -263,10 +263,6 @@ private:
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();
   void importTerminalCard(char* command);
-  void rememberTerminalAck(ContactInfo& recipient, const char* text,
-                           uint32_t message_timestamp, uint32_t expected_ack,
-                           uint32_t est_timeout,
-                           const uint8_t packet_retry_key[MAX_HASH_SIZE]);
 #endif
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
@@ -369,6 +365,13 @@ private:
   void expireExpectedAcks();
   AckTableEntry* findPendingTextMessage(
       const uint8_t text_fingerprint[MAX_HASH_SIZE], uint32_t message_timestamp);
+#ifdef ENABLE_USB_INTERFACE
+  void rememberTerminalAck(ContactInfo& recipient, const char* text,
+                           uint32_t message_timestamp, uint32_t expected_ack,
+                           uint32_t est_timeout,
+                           const uint8_t packet_retry_key[MAX_HASH_SIZE],
+                           AckTableEntry* replacement_entry);
+#endif
 
   #define ADVERT_PATH_TABLE_SIZE   16
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table

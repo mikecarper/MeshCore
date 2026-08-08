@@ -282,8 +282,8 @@ while its raw USB CLI is used to start TempRadio:
 
 If the source is already on the exact TempRadio tuple through a scheduled or
 manual operation, `--source-already-temp` lets a TCP source run without a raw
-CLI link. The script cannot verify or extend that source window, so leave a
-comfortable time margin.
+CLI link. The script cannot verify, extend, or shorten that source window, so
+leave a comfortable time margin.
 
 Use `--controller-baud` or `--source-baud` only for a build whose corresponding
 interface is genuinely configured to another speed.
@@ -303,14 +303,18 @@ files differ, select one explicitly:
 If no ready mOTA is usable, it searches `.bin` and `.hex` members for a valid,
 matching `EndF`, then builds the platform-appropriate container. Every result
 is structurally checked by the runner and independently passed through
-`motatool verify` before any radio changes.
+`motatool verify` before any radio changes. Direct firmware and mOTA inputs, as
+well as individual ZIP members, are rejected above 64 MiB before being loaded.
 
 Useful controls:
 
 - `--public-key signer.key.pub` requires a particular Ed25519 signer during
   verification.
 - `--sign-key signer.key` signs a newly built container.
-- `--no-install` downloads and verifies the image but leaves it staged.
+- `--no-install` downloads and verifies the image but leaves it staged. By
+  default the runner then schedules the target, relays, and a script-configured
+  source back to their normal radios. Combining it with
+  `--leave-controller-radio` deliberately preserves the TempRadio topology.
 - `--allow-non-upgrade` deliberately permits the same or an older version.
 - `--replace-active-download` deliberately discards a different update already
   downloading or staged on the target. Without it, that update is preserved.
@@ -348,11 +352,15 @@ the destination.
    discovery, the transfer timeout, final polling, and install checks.
 6. Start `motatool serve`, discover the exact eight-hex manifest ID, request
    `ota pull <id> flash`, and poll until that same ID reports ready. A seeder
-   process exit stops the run immediately.
+   process exit stops the run immediately. For `--no-install`, schedule all
+   script-controlled nodes back to their normal radios before restoring the
+   controller, unless `--leave-controller-radio` was requested.
 7. Recheck that exact ID, give the target a short final TempRadio safety window,
    and request `ota install`. Then shorten each relay's TempRadio window so the
-   normal multi-hop route returns, restore the controller, wait for reboot, and
-   require the new running identity and exact package version.
+   normal multi-hop route returns, stop the seeder, shorten the source window,
+   restore the controller, wait for reboot, and require the new running identity
+   and exact package version. A source supplied with `--source-already-temp` is
+   never modified.
    `--leave-controller-radio` moves the controller back to TempRadio only after
    this normal-channel verification.
 
@@ -391,10 +399,11 @@ served mOTA, `motatool-serve.log`, extracted build inputs when needed, and
 
 ## Interruption and recovery
 
-Ctrl-C stops the seeder, detaches its serial folder, and attempts to restore
-the controller. The target and relays remain on TempRadio only until their
-bounded windows end; rebooting also restores their saved radio settings. A
-partial download remains safe. Once the target is reachable again (after its
+Ctrl-C stops the seeder, detaches its serial folder, makes one best-effort
+request to shorten a source TempRadio window started by the script, and attempts
+to restore the controller. The target and relays remain on TempRadio only until
+their bounded windows end; rebooting also restores their saved radio settings.
+A partial download remains safe. Once the target is reachable again (after its
 TempRadio window ends, or after putting the controller back on that tuple),
 rerunning the same package recognizes its manifest ID and resumes the existing
 session instead of clearing it.
