@@ -613,7 +613,8 @@ The class column shows which broader selector also matches it.
 | `flood.channel.scope` | Scope-rewrite phase rows |
 | `flood.filter.blacklist` | One shared unordered path-ID set referenced by `path=blacklist` rows |
 
-Generalized repeaters commit those sections together. The blacklist is useful
+Generalized repeaters expose 63 forward rows and commit those sections
+together. The blacklist is useful
 for refusing to retransmit floods associated with internet gateways dumping
 bulk traffic, but a path ID is truncated and unauthenticated; it identifies a
 routing pattern, not a person.

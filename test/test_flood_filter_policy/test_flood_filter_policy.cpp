@@ -293,7 +293,7 @@ TEST(FloodRuleOrder, ThirtyOneSlotTableIncludesTheLastSlot) {
   const uint32_t matches = ((uint32_t)1U << 30) | 1U;
 
   EXPECT_EQ(30, FloodFilterPolicy::nextOrderedRule(
-                    matches, 0, priorities, 31));
+                    matches, (uint32_t)0, priorities, 31));
   EXPECT_EQ((uint32_t)1U << 30,
             FloodFilterPolicy::truncateRulesAtStop(
                 matches, priorities, stop_flags, 31));
@@ -307,10 +307,24 @@ TEST(FloodRuleOrder, ThirtyTwoSlotTableIncludesTheLastSlot) {
   const uint32_t matches = ((uint32_t)1U << 31) | 1U;
 
   EXPECT_EQ(31, FloodFilterPolicy::nextOrderedRule(
-                    matches, 0, priorities, 32));
+                    matches, (uint32_t)0, priorities, 32));
   EXPECT_EQ((uint32_t)1U << 31,
             FloodFilterPolicy::truncateRulesAtStop(
                 matches, priorities, stop_flags, 32));
+}
+
+TEST(FloodRuleOrder, SixtyThreeSlotTableIncludesTheLastSlot) {
+  uint8_t priorities[63] = {0};
+  uint8_t stop_flags[63] = {0};
+  priorities[62] = 200;
+  stop_flags[62] = 1;
+  const uint64_t matches = ((uint64_t)1U << 62) | 1U;
+
+  EXPECT_EQ(62, FloodFilterPolicy::nextOrderedRule(
+                    matches, (uint64_t)0, priorities, 63));
+  EXPECT_EQ((uint64_t)1U << 62,
+            FloodFilterPolicy::truncateRulesAtStop(
+                matches, priorities, stop_flags, 63));
 }
 
 TEST(FloodFilterScope, RegionRequirementHasTheExpectedTruthTable) {

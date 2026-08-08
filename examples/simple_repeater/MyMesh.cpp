@@ -1120,7 +1120,7 @@ bool MyMesh::evaluateScopeRewriteTiming(const mesh::Packet* packet,
   }
 
   mesh::Packet candidate = *packet;
-  uint32_t filter_match_mask = evaluateFloodPacketFilterMatches(
+  uint64_t filter_match_mask = evaluateFloodPacketFilterMatches(
       packet, incoming_region_allowed, incoming_region);
   bool channel_regionless_scope_set = false;
   bool scope_changed = applyFloodChannelScope(
@@ -5601,7 +5601,8 @@ bool MyMesh::migrateLegacyFloodChannelBlocks() {
   return true;
 }
 
-bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
+bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
+                                    bool empty_forward_phase) {
   if (_fs == NULL) return false;
   // Recovery owns transaction remnants; overwriting one could erase the only
   // complete image after a failed publish boundary.
@@ -5627,8 +5628,11 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
   uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
   bool success = writeExact(magic, sizeof(magic))
       && writeExact(&count, sizeof(count));
+  FloodPacketFilterEntry empty_entry;
+  memset(&empty_entry, 0, sizeof(empty_entry));
   for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
-    const auto& entry = flood_packet_filters[i];
+    const auto& entry = empty_forward_phase
+        ? empty_entry : flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
     uint8_t suspend_on_temp_radio = entry.suspend_on_temp_radio ? 1 : 0;
     uint8_t match_blacklisted_path = entry.match_blacklisted_path ? 1 : 0;
@@ -5677,6 +5681,8 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
   static_assert(sizeof(FloodChannelScopeEntry) == 36,
                 "channel scope persistence requires 36-byte entries");
   const uint8_t section_magic[4] = {'F', 'P', 'S', '1'};
+  const uint8_t channel_data_slot = empty_forward_phase
+      ? 0xFF : flood_channel_data_rule_slot;
   uint8_t scope_count = 0;
   uint8_t direct_count = 0;
   if (!empty_scope_phase) {
@@ -5693,8 +5699,7 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
   }
   success = success
       && writeExact(section_magic, sizeof(section_magic))
-      && writeExact(&flood_channel_data_rule_slot,
-                    sizeof(flood_channel_data_rule_slot))
+      && writeExact(&channel_data_slot, sizeof(channel_data_slot))
       && writeExact(&flood_channel_data_rule_max_hops,
                     sizeof(flood_channel_data_rule_max_hops))
       && writeExact(&scope_count, sizeof(scope_count));
@@ -5831,7 +5836,8 @@ bool MyMesh::loadFloodPacketFilters() {
   return success;
 }
 
-bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
+bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
+                                    bool empty_forward_phase) {
   (void)empty_scope_phase;
   if (_fs == NULL) return false;
   File file = openFloodSettingsWrite(_fs, FLOOD_PACKET_FILTER_FILE);
@@ -5841,8 +5847,11 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase) {
   uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&count, sizeof(count)) == sizeof(count);
+  FloodPacketFilterEntry empty_entry;
+  memset(&empty_entry, 0, sizeof(empty_entry));
   for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
-    const auto& entry = flood_packet_filters[i];
+    const auto& entry = empty_forward_phase
+        ? empty_entry : flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
     uint8_t suspend_on_temp_radio = entry.suspend_on_temp_radio ? 1 : 0;
     uint8_t match_blacklisted_path = entry.match_blacklisted_path ? 1 : 0;
@@ -5949,8 +5958,8 @@ bool MyMesh::authenticateFloodPacketFilterChannel(
       packet->payload_len - PATH_HASH_SIZE) > 0;
 }
 
-int MyMesh::nextFloodPacketFilterMatch(uint32_t match_mask,
-                                       uint32_t visited_mask) const {
+int MyMesh::nextFloodPacketFilterMatch(uint64_t match_mask,
+                                       uint64_t visited_mask) const {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     priorities[i] = flood_packet_filters[i].priority;
@@ -5974,7 +5983,7 @@ bool MyMesh::resolveFloodPacketFilterTargetRegion(
   return true;
 }
 
-uint32_t MyMesh::applyFloodPacketFilterStop(uint32_t match_mask) {
+uint64_t MyMesh::applyFloodPacketFilterStop(uint64_t match_mask) {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t stop_flags[FLOOD_PACKET_FILTER_SLOTS];
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
@@ -5995,11 +6004,11 @@ uint32_t MyMesh::applyFloodPacketFilterStop(uint32_t match_mask) {
       match_mask, priorities, stop_flags, FLOOD_PACKET_FILTER_SLOTS);
 }
 
-uint32_t MyMesh::evaluateFloodPacketFilterMatches(
+uint64_t MyMesh::evaluateFloodPacketFilterMatches(
     const mesh::Packet* packet, bool incoming_region_allowed,
     const RegionEntry* incoming_region) {
-  static_assert(FLOOD_PACKET_FILTER_SLOTS <= 32,
-                "flood filter match mask supports at most 32 slots");
+  static_assert(FLOOD_PACKET_FILTER_SLOTS <= 64,
+                "flood filter match mask supports at most 64 slots");
   if (packet == NULL || !packet->isRouteFlood()) return 0;
   bool incoming_is_scoped =
       packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD;
@@ -6007,7 +6016,7 @@ uint32_t MyMesh::evaluateFloodPacketFilterMatches(
       ? packet->transport_codes[0] : 0;
   bool channel_auth_checked[FLOOD_PACKET_FILTER_SLOTS] = { false };
   bool channel_auth_valid[FLOOD_PACKET_FILTER_SLOTS] = { false };
-  uint32_t matches = 0;
+  uint64_t matches = 0;
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
     if (!floodPacketFilterFieldsMatch(
@@ -6034,13 +6043,13 @@ uint32_t MyMesh::evaluateFloodPacketFilterMatches(
       channel_auth_checked[i] = true;
       channel_auth_valid[i] = authenticated;
     }
-    if (authenticated) matches |= (uint32_t)1U << i;
+    if (authenticated) matches |= (uint64_t)1U << i;
   }
   return applyFloodPacketFilterStop(matches);
 }
 
 bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
-                                         uint32_t match_mask,
+                                         uint64_t match_mask,
                                          bool& scope_set,
                                          bool& fast_track,
                                          bool log_change) {
@@ -6048,11 +6057,11 @@ bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
   fast_track = false;
   if (packet == NULL || !packet->isRouteFlood()) return false;
 
-  uint32_t visited = 0;
+  uint64_t visited = 0;
   while (true) {
     int i = nextFloodPacketFilterMatch(match_mask, visited);
     if (i < 0) break;
-    visited |= (uint32_t)1U << i;
+    visited |= (uint64_t)1U << i;
     const auto& entry = flood_packet_filters[i];
     if (entry.scope_name[0] == 0
         && entry.target_region_name[0] == 0) {
@@ -6092,11 +6101,11 @@ bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
   uint8_t type = packet->getPayloadType();
   uint8_t hops = packet->getPathHashCount();
 
-  uint32_t visited = 0;
+  uint64_t visited = 0;
   while (true) {
     int i = nextFloodPacketFilterMatch(recv_pkt_filter_match_mask, visited);
     if (i < 0) break;
-    visited |= (uint32_t)1U << i;
+    visited |= (uint64_t)1U << i;
     const auto& entry = flood_packet_filters[i];
     bool blocked = entry.drop_on_match;
     if (entry.rate_limit_enabled) {
@@ -6121,7 +6130,7 @@ void MyMesh::commitFloodPacketFilterRates(const mesh::Packet* packet) {
   uint32_t now = _ms->getMillis();
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     auto& entry = flood_packet_filters[i];
-    if ((recv_pkt_filter_match_mask & ((uint32_t)1U << i)) == 0
+    if ((recv_pkt_filter_match_mask & ((uint64_t)1U << i)) == 0
         || !entry.rate_limit_enabled) {
       continue;
     }
@@ -6156,25 +6165,25 @@ bool MyMesh::floodPacketFilterFieldsMatch(
       && hops >= entry.min_hops && hops <= entry.max_hops;
 }
 
-uint32_t MyMesh::evaluateFloodPacketFilterMatches(
+uint64_t MyMesh::evaluateFloodPacketFilterMatches(
     const mesh::Packet* packet, bool incoming_region_allowed,
     const RegionEntry* incoming_region) {
   (void)incoming_region;
-  uint32_t matches = 0;
+  uint64_t matches = 0;
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
     if (floodPacketFilterFieldsMatch(entry, packet, false, 0,
                                      incoming_region_allowed, NULL)
         && (!entry.scope_requires_region_match
             || incoming_region_allowed)) {
-      matches |= (uint32_t)1U << i;
+      matches |= (uint64_t)1U << i;
     }
   }
   return matches;
 }
 
 bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
-                                         uint32_t match_mask,
+                                         uint64_t match_mask,
                                          bool& scope_set,
                                          bool& fast_track,
                                          bool log_change) {
@@ -6183,7 +6192,7 @@ bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
   if (packet == NULL || !packet->isRouteFlood()) return false;
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
-    if ((match_mask & ((uint32_t)1U << i)) == 0
+    if ((match_mask & ((uint64_t)1U << i)) == 0
         || entry.scope_name[0] == 0) continue;
 
     TransportKey scope;
@@ -6210,7 +6219,7 @@ bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
   uint8_t hops = packet->getPathHashCount();
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     const auto& entry = flood_packet_filters[i];
-    if ((recv_pkt_filter_match_mask & ((uint32_t)1U << i)) != 0
+    if ((recv_pkt_filter_match_mask & ((uint64_t)1U << i)) != 0
         && entry.scope_name[0] == 0) {
       MESH_DEBUG_PRINTLN("allowPacketForward: flood.filter matched slot=%d type=%d hops=%d range=%d-%d",
                          i + 1, type, hops, entry.min_hops,
@@ -7167,20 +7176,13 @@ void MyMesh::deleteFloodPacketFilter(const char* args, char* reply) {
   const char* selector = skipFloodFilterSpaces(args);
   if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
   if (floodFilterAsciiEqual(selector, "all")) {
-    FloodPacketFilterEntry previous[FLOOD_PACKET_FILTER_SLOTS];
-    memcpy(previous, flood_packet_filters, sizeof(previous));
-#if MESH_ENABLE_FLOOD_RULE_ENGINE
-    uint8_t previous_channel_data_slot = flood_channel_data_rule_slot;
-    flood_channel_data_rule_slot = 0xFF;
-#endif
-    memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
-    if (!saveFloodPacketFilters()) {
-      memcpy(flood_packet_filters, previous, sizeof(flood_packet_filters));
-#if MESH_ENABLE_FLOOD_RULE_ENGINE
-      flood_channel_data_rule_slot = previous_channel_data_slot;
-#endif
+    if (!saveFloodPacketFilters(false, true)) {
       strcpy(reply, "Err - unable to save flood filter");
     } else {
+      memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+      flood_channel_data_rule_slot = 0xFF;
+#endif
       strcpy(reply, "OK - all flood filters removed");
     }
     return;

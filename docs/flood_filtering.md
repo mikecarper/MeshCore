@@ -40,7 +40,7 @@ get flood.moderation
 ```
 
 `flood.rule` is an alias for `flood.filter`, not another table. Generalized
-repeater FPF7 has 32 forward-rule slots plus scope-rewrite and shared-blacklist
+repeater FPF7 has 63 forward-rule slots plus scope-rewrite and shared-blacklist
 sections in the same atomic policy file. FULL room servers have 31 forward
 slots and empty repeater-only sections. Compact target profiles retain their
 separate FPF6-era controls. `flood.moderation` has 16 slots. A new
@@ -290,10 +290,10 @@ open. A row saved by the extended engine uses FPF7.
 The former `flood.channel.block` table is now represented by ordinary FPF7
 rows. On a generalized repeater, an existing FCB2 file is imported once into
 free FPF7 slots and then removed. For example, an old `#wardriving h=4` row
-becomes `type=any channel=#wardriving hops=5+ drop`. The 32nd forward slot
-guarantees room to migrate the old global `flood.channel.data` gate even when
-all 31 former general/channel slots were occupied. Compact STM32WL FPF6 builds
-cannot match authenticated channels and retain the older separate gate.
+becomes `type=any channel=#wardriving hops=5+ drop`. The 63-row table can hold
+all 31 former general filter rows, all 15 legacy channel-block rows, and the
+migrated global `flood.channel.data` gate. Compact STM32WL FPF6 builds cannot
+match authenticated channels and retain the older separate gate.
 
 On generalized repeaters, `flood.channel.data*` is a compatibility view over
 one ordinary visible FPF7 `type=grp_data ... drop` row. Turning it off creates

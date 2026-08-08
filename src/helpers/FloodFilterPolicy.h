@@ -285,29 +285,31 @@ inline bool sameChannelKey(uint8_t left_len, const uint8_t left[],
       && left_len == right_len && memcmp(left, right, left_len) == 0;
 }
 
-inline int nextOrderedRule(uint32_t match_mask, uint32_t visited_mask,
+template<typename RuleMask>
+inline int nextOrderedRule(RuleMask match_mask, RuleMask visited_mask,
                            const uint8_t priorities[], uint8_t count) {
-  if (priorities == NULL || count > 32) return -1;
+  if (priorities == NULL || count > sizeof(RuleMask) * 8U) return -1;
   int best = -1;
   for (uint8_t i = 0; i < count; i++) {
-    uint32_t bit = (uint32_t)1U << i;
+    RuleMask bit = (RuleMask)1U << i;
     if ((match_mask & bit) == 0 || (visited_mask & bit) != 0) continue;
     if (best < 0 || priorities[i] > priorities[best]) best = i;
   }
   return best;
 }
 
-inline uint32_t truncateRulesAtStop(uint32_t match_mask,
+template<typename RuleMask>
+inline RuleMask truncateRulesAtStop(RuleMask match_mask,
                                     const uint8_t priorities[],
                                     const uint8_t stop_flags[],
                                     uint8_t count) {
   if (stop_flags == NULL) return match_mask;
-  uint32_t effective = 0;
-  uint32_t visited = 0;
+  RuleMask effective = 0;
+  RuleMask visited = 0;
   while (true) {
     int index = nextOrderedRule(match_mask, visited, priorities, count);
     if (index < 0) break;
-    uint32_t bit = (uint32_t)1U << index;
+    RuleMask bit = (RuleMask)1U << index;
     visited |= bit;
     effective |= bit;
     if (stop_flags[index] != 0) break;

@@ -1349,7 +1349,7 @@ setting.
 #### Block selected flood channels with FPF7
 
 The separate `flood.channel.block` command and 15-row table have been retired.
-Generalized repeaters use the 32-row FPF7 forward phase for authenticated channel
+Generalized repeaters use the 63-row FPF7 forward phase for authenticated channel
 blocks:
 
 ```text
@@ -1659,7 +1659,7 @@ ordered `prefix=` match on a room server. Standard room-server profiles do not
 compile this table.
 
 **Parameters:**
-- `n`: Forward-rule slot in the build's compiled table (`1-32` on generalized
+- `n`: Forward-rule slot in the build's compiled table (`1-63` on generalized
   repeaters and `1-31` on FULL room servers; compact profiles may use fewer).
 - `type`: Payload type name, full `PAYLOAD_TYPE_*` name, decimal value `0-15`,
   hexadecimal value `0x00-0x0F`, or `any`.

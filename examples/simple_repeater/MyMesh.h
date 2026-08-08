@@ -152,9 +152,7 @@ struct NeighbourInfo {
 #endif
 #ifndef FLOOD_PACKET_FILTER_SLOTS
   #if MESH_ENABLE_FLOOD_RULE_ENGINE
-    // Keep one extra forward-phase row available when the legacy
-    // flood.channel.data gate is upgraded into an ordinary FPF7 rule.
-    #define FLOOD_PACKET_FILTER_SLOTS 32
+    #define FLOOD_PACKET_FILTER_SLOTS 63
   #else
     #define FLOOD_PACKET_FILTER_SLOTS 16
   #endif
@@ -395,7 +393,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FloodChannelScopeRequireEntry
       flood_channel_scope_requirements[FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS];
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
-  uint32_t recv_pkt_filter_match_mask;
+  uint64_t recv_pkt_filter_match_mask;
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   bool flood_policy_has_embedded_sections;
   // Zero-based forward-row slot owned by the flood.channel.data compatibility
@@ -592,7 +590,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool isMillisTimerDue(unsigned long timestamp) const;
   bool floodChannelDataHopApplies(const mesh::Packet* packet) const;
   bool loadFloodPacketFilters();
-  bool saveFloodPacketFilters(bool empty_scope_phase = false);
+  bool saveFloodPacketFilters(bool empty_scope_phase = false,
+                              bool empty_forward_phase = false);
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   bool migrateLegacyFloodChannelBlocks();
   bool migrateLegacyFloodChannelData();
@@ -617,16 +616,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool authenticateFloodPacketFilterChannel(
       const FloodPacketFilterEntry& entry,
       const mesh::Packet* packet) const;
-  int nextFloodPacketFilterMatch(uint32_t match_mask,
-                                 uint32_t visited_mask) const;
+  int nextFloodPacketFilterMatch(uint64_t match_mask,
+                                 uint64_t visited_mask) const;
   bool resolveFloodPacketFilterTargetRegion(
       const char* name, TransportKey& scope,
       const char*& canonical_name);
-  uint32_t applyFloodPacketFilterStop(uint32_t match_mask);
-  uint32_t evaluateFloodPacketFilterMatches(
+  uint64_t applyFloodPacketFilterStop(uint64_t match_mask);
+  uint64_t evaluateFloodPacketFilterMatches(
       const mesh::Packet* packet, bool incoming_region_allowed,
       const RegionEntry* incoming_region);
-  bool applyFloodPacketFilterScope(mesh::Packet* packet, uint32_t match_mask,
+  bool applyFloodPacketFilterScope(mesh::Packet* packet, uint64_t match_mask,
                                    bool& scope_set, bool& fast_track,
                                    bool log_change = true);
   bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
