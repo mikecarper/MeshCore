@@ -100,6 +100,9 @@ struct AdvertPath {
 };
 
 class MyMesh : public BaseChatMesh, public DataStoreHost
+#ifdef ENABLE_USB_INTERFACE
+             , public ContactVisitor
+#endif
 #ifdef WITH_WEBCONFIG
              , public WebConfigServer::Callbacks
 #endif
@@ -139,6 +142,13 @@ public:
   bool advert();
   void enterCLIRescue();
 
+#ifdef ENABLE_USB_INTERFACE
+  void enterTerminalMode();
+  void exitTerminalMode();
+  bool isTerminalMode() const { return _terminal_mode; }
+  void handleTerminalCommand(char* command);
+#endif
+
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
 protected:
@@ -175,6 +185,9 @@ protected:
   bool onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path_len, const uint8_t* path) override;
   void onContactPathUpdated(const ContactInfo &contact) override;
+#ifdef ENABLE_USB_INTERFACE
+  void onContactVisit(const ContactInfo& contact) override;
+#endif
   ContactInfo* processAck(const uint8_t *data) override;
   void queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
                     const uint8_t *extra, int extra_len, const char *text);
@@ -247,6 +260,13 @@ private:
 
   void checkCLIRescueCmd();
   void checkSerialInterface();
+#ifdef ENABLE_USB_INTERFACE
+  ContactInfo* getTerminalRecipient();
+  void importTerminalCard(char* command);
+  void rememberTerminalAck(ContactInfo& recipient, const char* text,
+                           uint32_t expected_ack, uint32_t est_timeout,
+                           const uint8_t packet_retry_key[MAX_HASH_SIZE]);
+#endif
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
   void updateGpsTelemetryPolicy();
@@ -287,6 +307,12 @@ private:
   uint32_t _active_ble_pin;
   bool _iter_started;
   bool _cli_rescue;
+#ifdef ENABLE_USB_INTERFACE
+  bool _terminal_mode;
+  bool _terminal_recipient_set;
+  uint8_t _terminal_recipient_key[PUB_KEY_SIZE];
+  uint8_t _terminal_tmp_buf[MAX_TRANS_UNIT];
+#endif
   bool saved_radio_apply_pending;
   unsigned long radio_apply_retry_at;
   uint8_t radio_apply_failures;
@@ -326,6 +352,9 @@ private:
     ContactInfo* contact;
     uint8_t text_fingerprint[MAX_HASH_SIZE];
     uint8_t retry_key[MAX_HASH_SIZE];
+#ifdef ENABLE_USB_INTERFACE
+    bool terminal_origin;
+#endif
   };
   #define EXPECTED_ACK_TABLE_SIZE 8
   AckTableEntry expected_ack_table[EXPECTED_ACK_TABLE_SIZE]; // circular table

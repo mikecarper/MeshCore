@@ -3,6 +3,9 @@
 This guide shows the shortest manual path for sending firmware from a computer to a MeshCore node over
 LoRa. Choose the package type for the **destination** node:
 
+For an end-to-end controller that accepts a release ZIP or ready mOTA, see
+[Scripted LoRa OTA from start to finish](lora_ota_automation.md).
+
 | Destination | Update type | Files needed to build the `.mota` | Installer |
 | --- | --- | --- | --- |
 | ESP32 | Full firmware | New non-merged application `.bin` | ESP32 A/B firmware slots |

@@ -2,6 +2,41 @@
 
 Below are the commands you can enter into the Terminal Chat clients:
 
+## Companion USB mode
+
+A Companion USB build starts in the normal binary Companion protocol at
+115200 baud. To use this terminal from the same firmware image, connect a
+serial terminal and send this exact sequence:
+
+```
++++MESHCORE-TERM-START
+```
+
+Send the following exact sequence to return to the binary protocol:
+
+```
++++MESHCORE-TERM-STOP
+```
+
+Closing the serial connection also returns native-USB devices to binary mode.
+Boards whose USB connector is implemented by a USB-to-UART bridge cannot
+observe the host closing the port; on those boards, use the stop sequence or
+reboot the device.
+
+Both modes use the same port at 115200. Selecting 57600 is not a portable mode
+switch: native USB CDC devices ignore the requested baud, while USB-to-UART
+devices really change the UART timing and receive corrupt data. Binary mode is
+the framed Companion API used by apps and `meshcli`; close the terminal before
+opening that port from an app.
+
+For example:
+
+```sh
+picocom --baud 115200 /dev/ttyACM0
+```
+
+## Commands
+
 ```
 set freq {frequency}
 ```

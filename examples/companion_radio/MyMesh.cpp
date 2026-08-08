@@ -172,6 +172,16 @@ static bool save_filter(const ContactInfo& c);
 
 #define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRXNcg=="
 
+#ifdef ENABLE_USB_INTERFACE
+static const char* terminalContactTypeName(uint8_t type) {
+  if (type == ADV_TYPE_CHAT) return "Chat";
+  if (type == ADV_TYPE_REPEATER) return "Repeater";
+  if (type == ADV_TYPE_ROOM) return "Room";
+  if (type == ADV_TYPE_SENSOR) return "Sensor";
+  return "Unknown";
+}
+#endif
+
 // these are _pushed_ to client app at any time
 #define PUSH_CODE_ADVERT                0x80
 #define PUSH_CODE_PATH_UPDATED          0x81
@@ -511,6 +521,16 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 #endif
   }
 
+#ifdef ENABLE_USB_INTERFACE
+  if (_terminal_mode) {
+    Serial.printf("\r\nADVERT from -> %s\r\n", contact.name);
+    Serial.printf("  type: %s\r\n", terminalContactTypeName(contact.type));
+    Serial.print("  public key: ");
+    mesh::Utils::printHex(Serial, contact.id.pub_key, PUB_KEY_SIZE);
+    Serial.print("\r\n> ");
+  }
+#endif
+
   // add inbound-path to mem cache
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
     AdvertPath* p = advert_paths;
@@ -551,12 +571,30 @@ int MyMesh::getRecentlyHeard(AdvertPath dest[], int max_num) {
   return max_num;
 }
 
+#ifdef ENABLE_USB_INTERFACE
+void MyMesh::onContactVisit(const ContactInfo& contact) {
+  if (contact.type == ADV_TYPE_NONE) return;
+
+  Serial.printf("  %s (%s) - ", contact.name, terminalContactTypeName(contact.type));
+  char relative_time[40];
+  int32_t seconds_from_now = contact.last_advert_timestamp - getRTCClock()->getCurrentTime();
+  AdvertTimeHelper::formatRelativeTimeDiff(relative_time, seconds_from_now, false);
+  Serial.println(relative_time);
+}
+#endif
+
 void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   out_frame[0] = PUSH_CODE_PATH_UPDATED;
   memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
   _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE); // NOTE: app may not be connected
 
   scheduleContactWrite(contact);
+
+#ifdef ENABLE_USB_INTERFACE
+  if (_terminal_mode) {
+    Serial.printf("\r\nPATH updated -> %s\r\n> ", contact.name);
+  }
+#endif
 }
 
 void MyMesh::clearExpectedAck(AckTableEntry& entry, bool cancel_retries) {
@@ -579,6 +617,11 @@ void MyMesh::expireExpectedAcks() {
 
     if (entry.expires_at == now || millisHasNowPassed(entry.expires_at)) {
       if (!hasActiveRetries(entry.retry_key)) {
+#ifdef ENABLE_USB_INTERFACE
+        if (entry.terminal_origin && _terminal_mode) {
+          Serial.print("\r\n  ERROR: timed out, no ACK.\r\n> ");
+        }
+#endif
         clearExpectedAck(entry, false);
         continue;
       }
@@ -625,6 +668,13 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       memcpy(&out_frame[5], &trip_time, 4);
       _serial->writeFrame(out_frame, 9);
 
+#ifdef ENABLE_USB_INTERFACE
+      if (expected_ack_table[i].terminal_origin && _terminal_mode) {
+        Serial.printf("\r\n  Got ACK! (round trip: %lu ms)\r\n> ",
+                      (unsigned long)trip_time);
+      }
+#endif
+
       // NOTE: the same ACK can be received multiple times!
       ContactInfo* contact = expected_ack_table[i].contact;
       clearExpectedAck(expected_ack_table[i]);
@@ -669,6 +719,15 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     frame[0] = PUSH_CODE_MSG_WAITING; // send push 'tickle'
     _serial->writeFrame(frame, 1);
   }
+
+#ifdef ENABLE_USB_INTERFACE
+  if (_terminal_mode) {
+    const char* kind = txt_type == TXT_TYPE_CLI_DATA ? "CLI" : "MSG";
+    Serial.printf("\r\n(%s) %s -> from %s\r\n  %s\r\n> ",
+                  pkt->isRouteDirect() ? "DIRECT" : "FLOOD", kind,
+                  from.name, text);
+  }
+#endif
 
 #ifdef DISPLAY_CLASS
   // we only want to show text messages on display, not cli data
@@ -815,6 +874,15 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     if (_ui) _ui->notify(UIEventType::channelMessage);
 #endif
   }
+
+#ifdef ENABLE_USB_INTERFACE
+  if (_terminal_mode) {
+    ChannelDetails details;
+    const char* channel_name = getChannel(channel_idx, details) ? details.name : "Unknown";
+    Serial.printf("\r\nPUBLIC CHANNEL MSG -> %s (%s)\r\n  %s\r\n> ",
+                  channel_name, pkt->isRouteDirect() ? "DIRECT" : "FLOOD", text);
+  }
+#endif
 #ifdef DISPLAY_CLASS
   // Get the channel name from the channel index
   const char *channel_name = "Unknown";
@@ -1127,6 +1195,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
       _serial(NULL), telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
   _iter_started = false;
   _cli_rescue = false;
+#ifdef ENABLE_USB_INTERFACE
+  _terminal_mode = false;
+  _terminal_recipient_set = false;
+  memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
+#endif
   saved_radio_apply_pending = false;
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
@@ -3089,6 +3162,242 @@ void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
     dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
   }
 }
+
+#ifdef ENABLE_USB_INTERFACE
+void MyMesh::enterTerminalMode() {
+  _terminal_mode = true;
+  _terminal_recipient_set = false;
+  memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
+
+  Serial.print("\r\n===== MeshCore Chat Terminal =====\r\n\r\n");
+  Serial.printf("WELCOME  %s\r\n", _prefs.node_name);
+  mesh::Utils::printHex(Serial, self_id.pub_key, PUB_KEY_SIZE);
+  Serial.printf("\r\nCompanion %s\r\n", FIRMWARE_VERSION);
+  Serial.print("  (enter 'help' for commands)\r\n");
+  Serial.print("  (+++MESHCORE-TERM-STOP returns to Binary mode)\r\n\r\n> ");
+}
+
+void MyMesh::exitTerminalMode() {
+  _terminal_mode = false;
+  _terminal_recipient_set = false;
+  memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
+}
+
+ContactInfo* MyMesh::getTerminalRecipient() {
+  if (!_terminal_recipient_set) return NULL;
+
+  ContactInfo* recipient = lookupContactByPubKey(_terminal_recipient_key, PUB_KEY_SIZE);
+  if (recipient == NULL) {
+    _terminal_recipient_set = false;
+    memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
+  }
+  return recipient;
+}
+
+void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
+                                 uint32_t expected_ack, uint32_t est_timeout,
+                                 const uint8_t packet_retry_key[MAX_HASH_SIZE]) {
+  if (expected_ack == 0) return;
+
+  AckTableEntry& entry = expected_ack_table[next_ack_idx];
+  clearExpectedAck(entry, false);
+  entry.msg_sent = _ms->getMillis();
+  entry.expires_at = futureMillis(est_timeout);
+  entry.ack = expected_ack;
+  entry.contact = &recipient;
+  mesh::Utils::sha256(entry.text_fingerprint, sizeof(entry.text_fingerprint),
+                      recipient.id.pub_key, PUB_KEY_SIZE,
+                      (const uint8_t*)text, strlen(text));
+  memcpy(entry.retry_key, packet_retry_key, sizeof(entry.retry_key));
+  entry.terminal_origin = true;
+  next_ack_idx = (next_ack_idx + 1) % EXPECTED_ACK_TABLE_SIZE;
+  expireExpectedAcks();
+}
+
+void MyMesh::importTerminalCard(char* command) {
+  while (*command == ' ') command++;
+  if (strncmp(command, "meshcore://", 11) != 0) {
+    Serial.print("  ERROR: invalid card format\r\n");
+    return;
+  }
+
+  char* encoded = command + 11;
+  char* end = encoded + strlen(encoded);
+  while (end > encoded && !mesh::Utils::isHexChar(end[-1])) {
+    *--end = 0;
+  }
+
+  size_t encoded_len = strlen(encoded);
+  if (encoded_len == 0 || (encoded_len & 1) != 0
+      || encoded_len / 2 > sizeof(_terminal_tmp_buf)) {
+    Serial.print("  ERROR: invalid card format\r\n");
+    return;
+  }
+
+  size_t raw_len = encoded_len / 2;
+  if (!mesh::Utils::fromHex(_terminal_tmp_buf, raw_len, encoded)
+      || !importContact(_terminal_tmp_buf, raw_len)) {
+    Serial.print("  ERROR: invalid card\r\n");
+    return;
+  }
+
+  Serial.print("  OK - contact import queued\r\n");
+}
+
+void MyMesh::handleTerminalCommand(char* command) {
+  while (*command == ' ') command++;
+  if (*command == 0) return;
+
+  if (strncmp(command, "send ", 5) == 0) {
+    ContactInfo* recipient = getTerminalRecipient();
+    const char* text = command + 5;
+    if (recipient == NULL) {
+      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+    } else if (*text == 0 || strlen(text) > MAX_TEXT_LEN) {
+      Serial.printf("  ERROR: message must be 1-%u characters\r\n", (unsigned)MAX_TEXT_LEN);
+    } else {
+      uint32_t expected_ack = 0;
+      uint32_t est_timeout = 0;
+      uint8_t packet_retry_key[MAX_HASH_SIZE] = { 0 };
+      int result = sendMessage(*recipient, getRTCClock()->getCurrentTimeUnique(), 0,
+                               text, expected_ack, est_timeout, packet_retry_key);
+      if (result == MSG_SEND_FAILED) {
+        Serial.print("  ERROR: unable to send\r\n");
+      } else {
+        rememberTerminalAck(*recipient, text, expected_ack, est_timeout, packet_retry_key);
+        Serial.printf("  message sent - %s\r\n",
+                      result == MSG_SEND_SENT_FLOOD ? "FLOOD" : "DIRECT");
+      }
+    }
+  } else if (strncmp(command, "public ", 7) == 0) {
+    ChannelDetails channel;
+    const char* text = command + 7;
+    if (*text == 0) {
+      Serial.print("  ERROR: message is empty\r\n");
+    } else if (!getChannel(0, channel)) {
+      Serial.print("  ERROR: Public channel is unavailable\r\n");
+    } else if (sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), channel.channel,
+                                _prefs.node_name, text, strlen(text))) {
+      Serial.print("  Sent.\r\n");
+    } else {
+      Serial.print("  ERROR: unable to send\r\n");
+    }
+  } else if (strcmp(command, "list") == 0 || strncmp(command, "list ", 5) == 0) {
+    int count = command[4] == ' ' ? atoi(command + 5) : 0;
+    scanRecentContacts(count, this);
+  } else if (strcmp(command, "clock") == 0) {
+    DateTime dt(getRTCClock()->getCurrentTime());
+    Serial.printf("%02d:%02d - %d/%d/%d UTC\r\n",
+                  dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
+  } else if (strncmp(command, "time ", 5) == 0) {
+    uint32_t timestamp = strtoul(command + 5, NULL, 10);
+    uint32_t current = getRTCClock()->getCurrentTime();
+    if (timestamp >= current) {
+      getRTCClock()->setCurrentTime(timestamp);
+      Serial.print("  OK - clock set\r\n");
+    } else {
+      Serial.print("  ERROR: clock cannot go backwards\r\n");
+    }
+  } else if (strncmp(command, "to ", 3) == 0) {
+    const char* prefix = command + 3;
+    ContactInfo* recipient = NULL;
+    if (*prefix != 0 && strlen(prefix) < sizeof(ContactInfo::name)) {
+      recipient = searchContactsByPrefix(prefix);
+    }
+    if (recipient == NULL || recipient->type == ADV_TYPE_NONE) {
+      Serial.print("  ERROR: name prefix not found\r\n");
+    } else {
+      memcpy(_terminal_recipient_key, recipient->id.pub_key, PUB_KEY_SIZE);
+      _terminal_recipient_set = true;
+      Serial.printf("  Recipient %s selected\r\n", recipient->name);
+    }
+  } else if (strcmp(command, "to") == 0) {
+    ContactInfo* recipient = getTerminalRecipient();
+    if (recipient != NULL) {
+      Serial.printf("  Current recipient: %s\r\n", recipient->name);
+    } else {
+      Serial.print("  No recipient selected\r\n");
+    }
+  } else if (strcmp(command, "advert") == 0) {
+    Serial.print(advert() ? "  advert sent (zero hop)\r\n"
+                          : "  ERROR: unable to send advert\r\n");
+  } else if (strcmp(command, "reset path") == 0) {
+    ContactInfo* recipient = getTerminalRecipient();
+    if (recipient == NULL) {
+      Serial.print("  ERROR: no recipient selected\r\n");
+    } else {
+      resetPathTo(*recipient);
+      scheduleContactWrite(*recipient);
+      Serial.print("  Done.\r\n");
+    }
+  } else if (strcmp(command, "card") == 0) {
+    mesh::Packet* packet = _prefs.advert_loc_policy == ADVERT_LOC_NONE
+        ? createSelfAdvert(_prefs.node_name)
+        : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+    if (packet == NULL) {
+      Serial.print("  ERROR: unable to create card\r\n");
+    } else {
+      packet->header |= ROUTE_TYPE_FLOOD;
+      uint8_t raw_len = packet->writeTo(_terminal_tmp_buf);
+      releasePacket(packet);
+      Serial.print("meshcore://");
+      mesh::Utils::printHex(Serial, _terminal_tmp_buf, raw_len);
+      Serial.print("\r\n");
+    }
+  } else if (strncmp(command, "import ", 7) == 0) {
+    importTerminalCard(command + 7);
+  } else if (strncmp(command, "set ", 4) == 0) {
+    const char* config = command + 4;
+    if (strncmp(config, "af ", 3) == 0) {
+      _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
+      savePrefs();
+      Serial.print("  OK\r\n");
+    } else if (strncmp(config, "name ", 5) == 0 && config[5] != 0) {
+      StrHelper::strncpy(_prefs.node_name, config + 5, sizeof(_prefs.node_name));
+      savePrefs();
+      Serial.print("  OK\r\n");
+    } else if (strncmp(config, "lat ", 4) == 0) {
+      sensors.node_lat = constrain(atof(config + 4), -90.0, 90.0);
+      savePrefs();
+      Serial.print("  OK\r\n");
+    } else if (strncmp(config, "lon ", 4) == 0) {
+      sensors.node_lon = constrain(atof(config + 4), -180.0, 180.0);
+      savePrefs();
+      Serial.print("  OK\r\n");
+    } else if (strncmp(config, "tx ", 3) == 0) {
+      _prefs.tx_power_dbm = constrain(atoi(config + 3), -9, MAX_LORA_TX_POWER);
+      savePrefs();
+      Serial.print("  OK - reboot to apply\r\n");
+    } else if (strncmp(config, "freq ", 5) == 0) {
+      _prefs.freq = constrain((float)atof(config + 5), 150.0f, 2500.0f);
+      savePrefs();
+      Serial.print("  OK - reboot to apply\r\n");
+    } else {
+      Serial.printf("  ERROR: unknown setting: %s\r\n", config);
+    }
+  } else if (strcmp(command, "ver") == 0) {
+    Serial.printf("Companion %s (protocol %u, build %s)\r\n",
+                  FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE, FIRMWARE_BUILD_DATE);
+  } else if (strcmp(command, "help") == 0) {
+    Serial.print("Commands:\r\n");
+    Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    Serial.print("  card\r\n");
+    Serial.print("  import <meshcore://card>\r\n");
+    Serial.print("  clock\r\n");
+    Serial.print("  time <epoch-seconds>\r\n");
+    Serial.print("  list [n]\r\n");
+    Serial.print("  to [recipient name or prefix]\r\n");
+    Serial.print("  send <text>\r\n");
+    Serial.print("  advert\r\n");
+    Serial.print("  reset path\r\n");
+    Serial.print("  public <text>\r\n");
+    Serial.print("  ver\r\n");
+    Serial.print("  +++MESHCORE-TERM-STOP\r\n");
+  } else {
+    Serial.printf("  ERROR: unknown command: %s\r\n", command);
+  }
+}
+#endif
 
 void MyMesh::enterCLIRescue() {
   _cli_rescue = true;

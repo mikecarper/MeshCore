@@ -1,0 +1,385 @@
+# Scripted LoRa OTA from start to finish
+
+[`tools/lora_ota/lora_ota.sh`](../tools/lora_ota/lora_ota.sh) and
+[`tools/lora_ota/lora_ota.ps1`](../tools/lora_ota/lora_ota.ps1) automate a
+MeshCore LoRa firmware update from a release `.zip` or ready `.mota`. They
+identify the destination, validate the hardware and running firmware, prepare
+the right container, move the participating nodes to a temporary radio
+channel, serve and monitor the download, request installation, restore the
+controller, and check the rebooted node.
+
+The script cannot install the destination's first OTA-capable firmware or its
+nRF52 bootloader. Do those one-time jobs over USB before using LoRa OTA.
+
+## Required topology
+
+The reliable serial topology uses two local radios:
+
+```text
+                                      authenticated admin commands
+computer -- MeshCore binary API --> controller Companion -------------------+
+   |                                                                         |
+   +-- raw text CLI + mOTA seeder --> OTA source ---- LoRa OTA blocks ----> target
+                                                        |                    ^
+                                                        +-- relay(s) --------+
+```
+
+- **Controller:** a Companion connected through serial, TCP, or BLE. The
+  script uses `meshcli` to send remote admin commands to the target and changes
+  the controller's live radio parameters during the transfer. A serial
+  Companion stays in its normal **Binary** USB mode at 115200 baud.
+- **OTA source:** a separate OTA-enabled repeater or FULL node whose USB port
+  is a raw text CLI and supports `ota folder on`. `motatool` uses that same
+  link for its binary seeder frames after enabling the folder.
+- **Target:** an OTA-enabled ESP32 or nRF52 node present in the controller's
+  contact list. Its admin password is required.
+- **Relays:** optional. They do not need to install OTA themselves, but every
+  relay on the path must be running current firmware and have an overlapping
+  TempRadio window.
+
+One serial port cannot serve both controller roles: `meshcli` must keep
+reopening the controller while `motatool` owns the source port. The script
+rejects an attempt to use the same port for both.
+
+The Companion USB ASCII switch (`+++MESHCORE-TERM-START`) is an interactive
+chat terminal, not the raw repeater/FULL management CLI expected by
+`motatool`. It does not make a Companion's serial port an OTA seeder. For a
+WiFi seeder, use a FULL/repeater source's port 5001 plus its raw USB CLI, as
+shown below.
+
+## Destination requirements
+
+| Destination | Package installed | One-time prerequisite | Raw ZIP handling |
+| --- | --- | --- | --- |
+| ESP32 | Full application image | OTA-enabled image with an A/B partition table | Builds a full mOTA from the matching non-merged application `.bin` |
+| nRF52, internal flash | In-place delta | Exact-board OTAFIX bootloader with mOTA apply support | Requires `--base` with the exact image currently running |
+| MeshTower V2 nRF52, microSD | Full image or in-place delta | SD-aware exact-board OTAFIX bootloader and compatible card | Builds a full mOTA; adding `--base` requests a delta |
+
+The firmware inside a raw ZIP must have a valid MeshCore `EndF` trailer. An
+ESP32 merged/factory image is not an application image and is rejected. A
+generic vendor DFU ZIP may also be unusable if it does not contain the raw
+EndF-bearing `.hex` or `.bin`.
+
+For an internal-flash nRF52, the exact base image is irreducible information.
+The node reports its eight-byte body hash, but that hash cannot reconstruct the
+firmware bytes needed to create a delta. Keep the `.pio/build/ENV/firmware.hex`
+that was actually flashed. A matching filename or version alone is not enough.
+
+## 1. Install the host tools
+
+Install Python 3.10 or newer, [Rust](https://rustup.rs/), Git, the official
+[`meshcore-cli`](https://github.com/meshcore-dev/meshcore-cli), and the official
+[`motatool`](https://github.com/vk496/motatool).
+
+On Bash:
+
+```bash
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+pipx install meshcore-cli
+
+git clone https://github.com/vk496/motatool.git
+cargo install --path ./motatool
+
+meshcli -v
+motatool --version
+```
+
+On PowerShell:
+
+```powershell
+py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install meshcore-cli
+
+git clone https://github.com/vk496/motatool.git
+cargo install --path .\motatool
+
+meshcli -v
+motatool --version
+```
+
+Restart the shell if `pipx` or Cargo reports that it changed `PATH`.
+
+## 2. Identify and test both local links
+
+List serial devices:
+
+```bash
+meshcli -l
+```
+
+The examples below assume `/dev/ttyACM0` is the controller and
+`/dev/ttyACM1` is the OTA source. On Windows they might be `COM7` and `COM8`.
+Close picocom, a serial monitor, the phone app, and any other program holding
+either link.
+
+Test the controller's binary API:
+
+```bash
+meshcli -s /dev/ttyACM0 -b 115200 ver
+```
+
+Test the source's raw text CLI and OTA support:
+
+```bash
+meshcli -r -s /dev/ttyACM1 -b 115200 "ota status"
+```
+
+The second command must print an `OTA | ... target:XXXXXXXX` status. The
+automation repeats this preflight and stops before changing any radios if the
+source is the wrong build or interface.
+
+Changing a terminal to 57600 baud does not select ASCII mode. USB Companion
+builds and the normal raw management CLI use 115200 unless a particular build
+was explicitly configured otherwise.
+
+## 3. Check the destination once
+
+The destination must be in the controller's contacts and remotely reachable
+on the normal channel. The script runs these authenticated checks itself:
+
+```text
+ota status
+ota self
+ota stats
+```
+
+For nRF52, `ota self` must report `bootloader: apply OK` or
+`bootloader: SD apply OK`. The script also checks the reported bootloader ABI
+and codec mask against the selected package.
+
+The default TempRadio tuple is:
+
+```text
+909.950,250,7,5,120
+```
+
+The 250 kHz bandwidth, SF7, and CR5 combination is supported by every current
+sub-GHz radio family used in USB Companion builds, including older SX127x
+controllers (which do not support SF5). The frequency is only a North American
+example: choose a legal frequency supported by every participating radio and
+appropriate to your location. Pass the complete replacement tuple with
+`--temp-radio`.
+
+## 4. Run an ESP32 update
+
+The ZIP can contain a compatible ready `.mota` or the exact board-and-role
+non-merged application `.bin`:
+
+```bash
+export MESHCORE_ADMIN_PASSWORD='target-admin-password'
+
+./tools/lora_ota/lora_ota.sh ./release.zip "Roof ESP32" \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+```
+
+The script shows the detected target, hardware, running hash, chosen package,
+version, manifest ID, and action before asking for confirmation. For an
+unattended job, add `--yes`:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.mota "Roof ESP32" \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1 \
+  --yes
+```
+
+PowerShell equivalents:
+
+```powershell
+$env:MESHCORE_ADMIN_PASSWORD = 'target-admin-password'
+
+& .\tools\lora_ota\lora_ota.ps1 '.\release.zip' 'Roof ESP32' `
+  --controller-serial COM7 `
+  --source-serial COM8
+
+& .\tools\lora_ota\lora_ota.ps1 '.\release.mota' 'Roof ESP32' `
+  --controller-serial COM7 `
+  --source-serial COM8 `
+  --yes
+```
+
+Prefer the environment variable or the interactive password prompt. Passing
+`--password` works, but the wrapper's own command line may be visible to other
+local processes. The runner keeps the password out of child `meshcli` command
+lines and removes its protected temporary command file after each call.
+
+## 5. Run an internal-flash nRF52 update
+
+If the input ZIP already contains a compatible in-place delta `.mota`, no
+base argument is needed: its embedded base hash is compared with the live
+node. If the ZIP contains raw new firmware, supply the exact running image:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./nrf52-new-release.zip "Hill nRF52" \
+  --base ./firmware-that-is-running.hex \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+```
+
+```powershell
+& .\tools\lora_ota\lora_ota.ps1 '.\nrf52-new-release.zip' 'Hill nRF52' `
+  --base '.\firmware-that-is-running.hex' `
+  --controller-serial COM7 `
+  --source-serial COM8
+```
+
+Before building the delta, the runner proves that the base's target ID,
+hardware identity, firmware version when available, and `EndF` body hash match
+the live destination. It then asks `motatool` for codec 2, the nRF52 in-place
+format. The normal workspace is `0x98000`.
+
+For the SD-backed MeshTower V2 target, a raw ZIP becomes a full image without
+`--base`. Supplying an exact base requests a smaller in-place delta and
+automatically selects its `0xC7000` workspace. An explicit
+`--inplace-memory` overrides the automatic value.
+
+## 6. Add intermediate relays
+
+List relays from farthest to nearest so each command is sent before its route
+moves to TempRadio. A bare relay name uses the destination password; use
+`NAME=PASSWORD` when it differs:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.mota "Remote Target" \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1 \
+  --relay "Far Relay=far-password" \
+  --relay "Near Relay=near-password"
+```
+
+PowerShell uses the same arguments:
+
+```powershell
+& .\tools\lora_ota\lora_ota.ps1 '.\release.mota' 'Remote Target' `
+  --controller-serial COM7 `
+  --source-serial COM8 `
+  --relay 'Far Relay=far-password' `
+  --relay 'Near Relay=near-password'
+```
+
+## Other connection choices
+
+The controller can use any one of:
+
+```text
+--controller-serial PORT
+--controller-tcp HOST[:PORT]       # default port 5000
+--controller-ble ADDRESS_OR_NAME
+```
+
+An ESP32 FULL/repeater source can serve over its dedicated WiFi seeder port
+while its raw USB CLI is used to start TempRadio:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.mota "Remote Target" \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.50:5001 \
+  --source-cli-serial /dev/ttyACM1
+```
+
+If the source is already on the exact TempRadio tuple through a scheduled or
+manual operation, `--source-already-temp` lets a TCP source run without a raw
+CLI link. The script cannot verify or extend that source window, so leave a
+comfortable time margin.
+
+Use `--controller-baud` or `--source-baud` only for a build whose corresponding
+interface is genuinely configured to another speed.
+
+## Package selection and safety gates
+
+For a ZIP, the runner first examines every `.mota` without extracting paths.
+It keeps only packages matching the live target, hardware, base, platform,
+codec, and bootloader capabilities. It chooses the newest compatible version
+and prefers a delta over a full image at the same version. If equally suitable
+files differ, select one explicitly:
+
+```text
+--zip-member path/inside/archive/update.mota
+```
+
+If no ready mOTA is usable, it searches `.bin` and `.hex` members for a valid,
+matching `EndF`, then builds the platform-appropriate container. Every result
+is structurally checked by the runner and independently passed through
+`motatool verify` before any radio changes.
+
+Useful controls:
+
+- `--public-key signer.key.pub` requires a particular Ed25519 signer during
+  verification.
+- `--sign-key signer.key` signs a newly built container.
+- `--no-install` downloads and verifies the image but leaves it staged.
+- `--allow-non-upgrade` deliberately permits the same or an older version.
+- `--replace-active-download` deliberately discards a different update already
+  downloading or staged on the target. Without it, that update is preserved.
+- `--work-dir PATH` chooses a new, non-existent work directory.
+- `--meshcli PATH` and `--motatool PATH` select binaries not on `PATH`.
+
+For offline package preparation only:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.zip offline \
+  --prepare-only \
+  --platform nrf52 \
+  --target-id 1234ABCD \
+  --target-base-hash 0011223344556677 \
+  --target-hw Heltec_T114 \
+  --base ./firmware-that-is-running.hex
+```
+
+Live operation is safer because the script obtains these values directly from
+the destination.
+
+## What happens during a run
+
+1. Validate the input paths and host tools, then prove the source is an
+   OTA-enabled raw CLI.
+2. Authenticate to the target and query its target ID, hardware, running body
+   hash, version, and nRF52 bootloader capabilities.
+3. Select or build one compatible mOTA and verify all block hashes, Merkle
+   root, full-image hash where applicable, identity fields, signature, codec,
+   and base.
+4. Save the controller's normal radio tuple and show the confirmation prompt.
+5. Start TempRadio on the target, then far-to-near relays, then the source;
+   finally switch the controller to the same tuple.
+6. Start `motatool serve`, discover the exact eight-hex manifest ID, request
+   `ota pull <id> flash`, and poll until the target reports ready.
+7. Request `ota install`, restore the controller's original radio, wait for
+   reboot, then query the new running identity and version.
+
+The working directory is retained and printed at exit. It contains the exact
+served mOTA, `motatool-serve.log`, extracted build inputs when needed, and
+`controller-radio.txt`. It contains no saved admin password.
+
+## Interruption and recovery
+
+Ctrl-C stops the seeder, detaches its serial folder, and attempts to restore
+the controller. The target and relays remain on TempRadio only until their
+bounded windows end; rebooting also restores their saved radio settings. A
+partial download remains safe. Once the target is reachable again (after its
+TempRadio window ends, or after putting the controller back on that tuple),
+rerunning the same package recognizes its manifest ID and resumes the existing
+session instead of clearing it.
+
+A hard process kill or host power loss cannot run cleanup. Recover a serial
+controller using the tuple saved in the printed work directory:
+
+```bash
+radio=$(tr -d '\r\n' < ./meshcore-lora-ota-20260807-123456-1234/controller-radio.txt)
+meshcli -s /dev/ttyACM0 set radio "$radio"
+```
+
+```powershell
+$radio = (Get-Content '.\meshcore-lora-ota-...\controller-radio.txt' -Raw).Trim()
+meshcli -s COM7 set radio $radio
+```
+
+If installation was accepted but the final confirmation timed out, reconnect
+on the node's normal channel and run `ota self` and `ver`. Do not immediately
+replace a staged image: the default active-download guard preserves it until
+you explicitly use `--replace-active-download` or run `ota cancel`.
+
+Exit status is `0` for success, `2` for a validation or operational error, and
+`130` for Ctrl-C.

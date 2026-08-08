@@ -5,12 +5,52 @@
 #define RECV_STATE_LEN1_FOUND  2
 #define RECV_STATE_LEN2_FOUND  3
 
-void ArduinoSerialInterface::enable() { 
-  _isEnabled = true;
+void ArduinoSerialInterface::resetReceiveState() {
   _state = RECV_STATE_IDLE;
+  _controlSequencePos = 0;
+  _frame_len = 0;
+  rx_len = 0;
+}
+
+bool ArduinoSerialInterface::checkControlSequence(uint8_t c) {
+  if (_controlSequence == nullptr || _controlSequence[0] == 0) return false;
+
+  if (c == (uint8_t)_controlSequence[_controlSequencePos]) {
+    _controlSequencePos++;
+    if (_controlSequence[_controlSequencePos] == 0) {
+      _controlSequencePos = 0;
+      _controlSequenceReceived = true;
+      return true;
+    }
+  } else {
+    // Preserve a possible new match when this byte is also the first byte of
+    // the sequence (notably useful for sequences beginning with "+++").
+    _controlSequencePos = c == (uint8_t)_controlSequence[0] ? 1 : 0;
+  }
+  return false;
+}
+
+void ArduinoSerialInterface::setPassthroughMode(bool enabled) {
+  _passthroughMode = enabled;
+  _controlSequenceReceived = false;
+  resetReceiveState();
+}
+
+bool ArduinoSerialInterface::takeControlSequence() {
+  bool received = _controlSequenceReceived;
+  _controlSequenceReceived = false;
+  return received;
+}
+
+void ArduinoSerialInterface::enable() {
+  _isEnabled = true;
+  _controlSequenceReceived = false;
+  resetReceiveState();
 }
 void ArduinoSerialInterface::disable() {
   _isEnabled = false;
+  _controlSequenceReceived = false;
+  resetReceiveState();
 }
 
 bool ArduinoSerialInterface::isConnected() const { 
@@ -30,6 +70,7 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
     // frame is too big!
     return 0;
   }
+  if (_passthroughMode) return len;
 
   uint8_t hdr[3];
   hdr[0] = '>';
@@ -41,12 +82,18 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
+  if (_passthroughMode) return 0;
+
   while (_serial->available()) {
     int c = _serial->read();
     if (c < 0) break;
 
     switch (_state) {
       case RECV_STATE_IDLE:
+        if (checkControlSequence((uint8_t)c)) {
+          // Leave any following bytes buffered for the passthrough consumer.
+          return 0;
+        }
         if (c == '<') {
           _state = RECV_STATE_HDR_FOUND;
         }

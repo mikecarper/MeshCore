@@ -43,6 +43,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_logical_message_cache` | `src/helpers/LogicalMessageCache.h` | bounded logical-message mapping; stable retry timestamps; exact older retries after newer messages; stale and same-timestamp mismatch rejection |
 | `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; empty-response completion; on-air truncation and clearing |
 | `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing |
+| `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp` | exact terminal control-sequence recognition across reads and binary-frame boundaries; passthrough ownership of USB input and suppression of binary output |
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 

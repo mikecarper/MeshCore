@@ -58,6 +58,8 @@ MultiSerialInterface interface_manager;
 // include usb interface
 #if defined(ENABLE_USB_INTERFACE)
   #include <helpers/ArduinoSerialInterface.h>
+  static const char USB_TERMINAL_START_TOKEN[] = "+++MESHCORE-TERM-START";
+  static const char USB_TERMINAL_STOP_TOKEN[] = "+++MESHCORE-TERM-STOP";
   ArduinoSerialInterface usb_serial_interface;
 #endif
 
@@ -112,6 +114,105 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 );
 
 /* END GLOBAL OBJECTS */
+
+#if defined(ENABLE_USB_INTERFACE)
+static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
+static size_t usb_terminal_line_len = 0;
+static bool usb_terminal_discard_line = false;
+static bool usb_terminal_disconnect_armed = false;
+
+static bool isUsbTerminalDataConnected() {
+#if defined(RP2040_PLATFORM)
+  return (bool)Serial;
+#else
+  return board.isUsbDataConnected();
+#endif
+}
+
+static void enterUsbTerminalMode() {
+  usb_serial_interface.setPassthroughMode(true);
+  usb_terminal_line_len = 0;
+  usb_terminal_line[0] = 0;
+  usb_terminal_discard_line = false;
+  usb_terminal_disconnect_armed = isUsbTerminalDataConnected();
+  the_mesh.enterTerminalMode();
+}
+
+static void leaveUsbTerminalMode(bool acknowledge) {
+  if (acknowledge) {
+    Serial.print("\r\nOK - Binary mode\r\n");
+  }
+  the_mesh.exitTerminalMode();
+  usb_serial_interface.setPassthroughMode(false);
+  usb_terminal_line_len = 0;
+  usb_terminal_line[0] = 0;
+  usb_terminal_discard_line = false;
+  usb_terminal_disconnect_armed = false;
+}
+
+static void serviceUsbTerminal() {
+  if (!the_mesh.isTerminalMode()) {
+    if (usb_serial_interface.takeControlSequence()) enterUsbTerminalMode();
+    return;
+  }
+
+  if (isUsbTerminalDataConnected()) {
+    usb_terminal_disconnect_armed = true;
+  } else if (usb_terminal_disconnect_armed) {
+    leaveUsbTerminalMode(false);
+    return;
+  }
+
+  while (Serial.available()) {
+    int value = Serial.read();
+    if (value < 0) break;
+    char c = (char)value;
+
+    if (usb_terminal_discard_line) {
+      if (c == '\r' || c == '\n') {
+        usb_terminal_discard_line = false;
+        Serial.print("> ");
+      }
+      continue;
+    }
+
+    if (c == '\b' || c == 0x7F) {
+      if (usb_terminal_line_len > 0) {
+        usb_terminal_line[--usb_terminal_line_len] = 0;
+        Serial.print("\b \b");
+      }
+      continue;
+    }
+
+    if (c == '\r' || c == '\n') {
+      if (usb_terminal_line_len == 0) continue;
+      Serial.print("\r\n");
+      the_mesh.handleTerminalCommand(usb_terminal_line);
+      usb_terminal_line_len = 0;
+      usb_terminal_line[0] = 0;
+      Serial.print("> ");
+      return; // service at most one command per mesh loop
+    }
+
+    if (usb_terminal_line_len >= sizeof(usb_terminal_line) - 1) {
+      usb_terminal_line_len = 0;
+      usb_terminal_line[0] = 0;
+      usb_terminal_discard_line = true;
+      Serial.print("\r\n  ERROR: command too long\r\n");
+      continue;
+    }
+
+    usb_terminal_line[usb_terminal_line_len++] = c;
+    usb_terminal_line[usb_terminal_line_len] = 0;
+    Serial.print(c);
+
+    if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {
+      leaveUsbTerminalMode(true);
+      return;
+    }
+  }
+}
+#endif
 
 void halt() {
   while (1) ;
@@ -388,7 +489,7 @@ void setup() {
 
 // add usb interface
 #if defined(ENABLE_USB_INTERFACE)
-  usb_serial_interface.begin(Serial);
+  usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN);
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
 #endif
 
@@ -464,6 +565,9 @@ void loop() {
   board.feedWatchdog();
 #endif
   the_mesh.loop();
+#if defined(ENABLE_USB_INTERFACE)
+  serviceUsbTerminal();
+#endif
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
