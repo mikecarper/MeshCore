@@ -331,7 +331,8 @@ public:
     _cli.savePrefs(_fs, scope);
   }
 
-  void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
+  bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt,
+                       uint32_t delay_millis, uint8_t path_hash_size);
 
   // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;

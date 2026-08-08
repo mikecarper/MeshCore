@@ -162,7 +162,8 @@ public:
   mesh::Packet* createSelfAdvert(const char* name, double lat, double lon);
   int  sendMessage(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char* text,
                    uint32_t& expected_ack, uint32_t& est_timeout, uint8_t* packet_hash = NULL,
-                   const uint8_t* replace_retry_key = NULL);
+                   const uint8_t* replace_retry_key = NULL,
+                   const uint8_t* message_retry_key = NULL);
   int  sendCommandData(const ContactInfo& recipient, uint32_t timestamp,
                        uint8_t attempt, const char* text,
                        uint32_t& est_timeout,

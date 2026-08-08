@@ -171,6 +171,8 @@ static bool save_filter(const ContactInfo& c);
 #endif
 
 #define PUBLIC_GROUP_PSK                "izOH6cXN6mrJ5e26oRXNcg=="
+// First 16 bytes of SHA-256("#testing"), encoded as base64.
+#define TESTING_GROUP_PSK               "zeXoLPUVZH3LVHp5pPBl0Q=="
 
 #ifdef ENABLE_USB_INTERFACE
 static const char* terminalContactTypeName(uint8_t type) {
@@ -643,12 +645,15 @@ void MyMesh::expireExpectedAcks() {
   }
 }
 
-MyMesh::AckTableEntry* MyMesh::findPendingTextMessage(const uint8_t text_fingerprint[MAX_HASH_SIZE]) {
+MyMesh::AckTableEntry* MyMesh::findPendingTextMessage(
+    const uint8_t text_fingerprint[MAX_HASH_SIZE], uint32_t message_timestamp) {
   expireExpectedAcks();
   for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
     AckTableEntry& entry = expected_ack_table[i];
     if (entry.ack != 0
-        && memcmp(entry.text_fingerprint, text_fingerprint, MAX_HASH_SIZE) == 0) {
+        && entry.message_timestamp != message_timestamp
+        && memcmp(entry.text_fingerprint, text_fingerprint, MAX_HASH_SIZE) == 0
+        && hasActiveRetries(entry.retry_key)) {
       return &entry;
     }
   }
@@ -1265,7 +1270,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 void MyMesh::begin(bool has_display) {
   BaseChatMesh::begin();
 
-  if (!_store->loadMainIdentity(self_id)) {
+  const bool is_new_install = !_store->loadMainIdentity(self_id);
+  if (is_new_install) {
     self_id = radio_new_identity(); // create new random identity
     int count = 0;
     while (count < 10 && (self_id.pub_key[0] == 0x00 || self_id.pub_key[0] == 0xFF)) { // reserved id hashes
@@ -1347,7 +1353,15 @@ void MyMesh::begin(bool has_display) {
   updateGpsTelemetryPolicy();
   bootstrapRTCfromContacts();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
+  if (is_new_install) {
+    addChannel("#testing", TESTING_GROUP_PSK);
+  }
+  // A saved table takes precedence over compiled defaults on later boots.
   _store->loadChannels(this);
+  if (is_new_install) {
+    // Make the first-boot defaults survive before a companion app changes them.
+    _store->saveChannels(this);
+  }
 
   saved_radio_apply_pending = !applySavedRadioParams();
   if (!saved_radio_apply_pending) {
@@ -2085,7 +2099,6 @@ void MyMesh::handleCmdFrame(size_t len) {
         mesh::Utils::sha256(text_fingerprint, sizeof(text_fingerprint),
                             recipient->id.pub_key, PUB_KEY_SIZE,
                             (const uint8_t*)text, strlen(text));
-        replacement_entry = findPendingTextMessage(text_fingerprint);
       }
 
       int result;
@@ -2107,9 +2120,9 @@ void MyMesh::handleCmdFrame(size_t len) {
           // so application retries keep one logical server-side timestamp.
           msg_timestamp = getRTCClock()->getCurrentTimeUnique();
         }
+        replacement_entry = findPendingTextMessage(text_fingerprint, msg_timestamp);
         result = sendMessage(*recipient, msg_timestamp, attempt, text, expected_ack, est_timeout,
-                             packet_retry_key,
-                             replacement_entry != NULL ? replacement_entry->retry_key : NULL);
+                             packet_retry_key, NULL, text_fingerprint);
         if (result != MSG_SEND_FAILED && is_room_post) {
           room_message_timestamps.remember(text_fingerprint, app_timestamp,
                                            msg_timestamp);
@@ -2127,13 +2140,14 @@ void MyMesh::handleCmdFrame(size_t len) {
           AckTableEntry& entry = replacement_entry != NULL
               ? *replacement_entry
               : expected_ack_table[next_ack_idx];
-          // Reusing a circular-table slot is only ACK bookkeeping. The evicted
-          // message still owns its lower-level retry sequence; only a semantic
-          // same-text replacement (cleared above) or a received ACK may cancel it.
+          // Reusing this circular slot changes only ACK bookkeeping. Retry
+          // ownership lives in Mesh and ends only on an ACK, retry completion,
+          // or a successfully queued semantic replacement.
           clearExpectedAck(entry, false);
           entry.msg_sent = _ms->getMillis(); // add to circular table
           entry.expires_at = futureMillis(est_timeout);
           entry.ack = expected_ack;
+          entry.message_timestamp = msg_timestamp;
           entry.contact = recipient;
           memcpy(entry.text_fingerprint, text_fingerprint, sizeof(entry.text_fingerprint));
           memcpy(entry.retry_key, packet_retry_key, sizeof(entry.retry_key));
@@ -3196,7 +3210,8 @@ ContactInfo* MyMesh::getTerminalRecipient() {
 }
 
 void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
-                                 uint32_t expected_ack, uint32_t est_timeout,
+                                 uint32_t message_timestamp, uint32_t expected_ack,
+                                 uint32_t est_timeout,
                                  const uint8_t packet_retry_key[MAX_HASH_SIZE]) {
   if (expected_ack == 0) return;
 
@@ -3205,6 +3220,7 @@ void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
   entry.msg_sent = _ms->getMillis();
   entry.expires_at = futureMillis(est_timeout);
   entry.ack = expected_ack;
+  entry.message_timestamp = message_timestamp;
   entry.contact = &recipient;
   mesh::Utils::sha256(entry.text_fingerprint, sizeof(entry.text_fingerprint),
                       recipient.id.pub_key, PUB_KEY_SIZE,
@@ -3259,13 +3275,25 @@ void MyMesh::handleTerminalCommand(char* command) {
     } else {
       uint32_t expected_ack = 0;
       uint32_t est_timeout = 0;
+      uint32_t message_timestamp = getRTCClock()->getCurrentTimeUnique();
+      uint8_t text_fingerprint[MAX_HASH_SIZE] = { 0 };
       uint8_t packet_retry_key[MAX_HASH_SIZE] = { 0 };
-      int result = sendMessage(*recipient, getRTCClock()->getCurrentTimeUnique(), 0,
-                               text, expected_ack, est_timeout, packet_retry_key);
+      mesh::Utils::sha256(text_fingerprint, sizeof(text_fingerprint),
+                          recipient->id.pub_key, PUB_KEY_SIZE,
+                          (const uint8_t*)text, strlen(text));
+      AckTableEntry* replacement_entry =
+          findPendingTextMessage(text_fingerprint, message_timestamp);
+      int result = sendMessage(*recipient, message_timestamp, 0, text,
+                               expected_ack, est_timeout, packet_retry_key,
+                               NULL, text_fingerprint);
       if (result == MSG_SEND_FAILED) {
         Serial.print("  ERROR: unable to send\r\n");
       } else {
-        rememberTerminalAck(*recipient, text, expected_ack, est_timeout, packet_retry_key);
+        if (replacement_entry != NULL) {
+          clearExpectedAck(*replacement_entry, false);
+        }
+        rememberTerminalAck(*recipient, text, message_timestamp, expected_ack,
+                            est_timeout, packet_retry_key);
         Serial.printf("  message sent - %s\r\n",
                       result == MSG_SEND_SENT_FLOOD ? "FLOOD" : "DIRECT");
       }

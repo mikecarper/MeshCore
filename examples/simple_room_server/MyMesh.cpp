@@ -107,24 +107,43 @@ void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   memcpy(&reply_data[len], post.text, text_len);
   len += text_len;
 
+  uint8_t message_participants[2 * PUB_KEY_SIZE];
+  memcpy(message_participants, client->id.pub_key, PUB_KEY_SIZE);
+  memcpy(&message_participants[PUB_KEY_SIZE], post.author.pub_key, PUB_KEY_SIZE);
+  uint8_t message_retry_key[MAX_HASH_SIZE];
+  mesh::Utils::sha256(message_retry_key, sizeof(message_retry_key),
+                      message_participants, sizeof(message_participants),
+                      (const uint8_t*)post.text, text_len);
+
   // calc expected ACK reply
   mesh::Utils::sha256((uint8_t *)&client->extra.room.pending_ack, 4, reply_data, len, client->id.pub_key, PUB_KEY_SIZE);
   client->extra.room.push_post_timestamp = post.post_timestamp;
 
   auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, client->shared_secret, reply_data, len);
+  bool sent = false;
   if (reply) {
     if (client->out_path_len == OUT_PATH_UNKNOWN) {
       unsigned long delay_millis = 0;
-      sendFloodScoped(default_scope, reply, delay_millis, _prefs.path_hash_mode + 1); // REVISIT
-      client->extra.room.ack_timeout = futureMillis(PUSH_ACK_TIMEOUT_FLOOD);
+      sent = sendFloodScoped(default_scope, reply, delay_millis,
+                             _prefs.path_hash_mode + 1); // REVISIT
+      if (sent) {
+        client->extra.room.ack_timeout = futureMillis(PUSH_ACK_TIMEOUT_FLOOD);
+      }
     } else {
-      sendDirect(reply, client->out_path, client->out_path_len);
+      sent = sendDirect(reply, client->out_path, client->out_path_len);
 
-      uint8_t path_hash_count = client->out_path_len & 63;
-      client->extra.room.ack_timeout = futureMillis(PUSH_TIMEOUT_BASE + PUSH_ACK_TIMEOUT_FACTOR * (path_hash_count + 1));
+      if (sent) {
+        uint8_t path_hash_count = client->out_path_len & 63;
+        client->extra.room.ack_timeout = futureMillis(
+            PUSH_TIMEOUT_BASE + PUSH_ACK_TIMEOUT_FACTOR * (path_hash_count + 1));
+      }
     }
-    _num_post_pushes++; // stats
-  } else {
+    if (sent) {
+      replaceActiveMessageRetries(reply, message_retry_key, post.post_timestamp);
+      _num_post_pushes++; // stats
+    }
+  }
+  if (!sent) {
     client->extra.room.pending_ack = 0;
     MESH_DEBUG_PRINTLN("Unable to push post to client");
   }
@@ -1308,14 +1327,15 @@ bool MyMesh::applySavedRadioParams() {
   return true;
 }
 
-void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt,
+                             uint32_t delay_millis, uint8_t path_hash_size) {
   if (scope.isNull()) {
-    sendFlood(pkt, delay_millis, path_hash_size);
+    return sendFlood(pkt, delay_millis, path_hash_size);
   } else {
     uint16_t codes[2];
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;  // REVISIT: set to 'home' Region, for sender/return region?
-    sendFlood(pkt, codes, delay_millis, path_hash_size);
+    return sendFlood(pkt, codes, delay_millis, path_hash_size);
   }
 }
 

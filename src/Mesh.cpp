@@ -166,9 +166,12 @@ void Mesh::begin() {
     _direct_retries[i].echo_wait_started_at = 0;
     _direct_retries[i].retry_at = 0;
     _direct_retries[i].retry_delay = 0;
+    _direct_retries[i].message_timestamp = 0;
     _direct_retries[i].retry_attempts_sent = 0;
     memset(_direct_retries[i].retry_key, 0, sizeof(_direct_retries[i].retry_key));
     memset(_direct_retries[i].trace_replacement_key, 0, sizeof(_direct_retries[i].trace_replacement_key));
+    memset(_direct_retries[i].message_replacement_key, 0,
+           sizeof(_direct_retries[i].message_replacement_key));
     memset(_direct_retries[i].next_hop_hash, 0, sizeof(_direct_retries[i].next_hop_hash));
     _direct_retries[i].next_hop_hash_len = 0;
     _direct_retries[i].payload_type = 0;
@@ -178,6 +181,7 @@ void Mesh::begin() {
     _direct_retries[i].final_hop_retry = false;
     _direct_retries[i].waiting_final_echo = false;
     _direct_retries[i].queued = false;
+    _direct_retries[i].has_message_replacement_key = false;
     _direct_retries[i].active = false;
   }
   for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
@@ -186,13 +190,17 @@ void Mesh::begin() {
     _flood_retries[i].retry_started_at = 0;
     _flood_retries[i].retry_at = 0;
     _flood_retries[i].retry_delay = 0;
+    _flood_retries[i].message_timestamp = 0;
     _flood_retries[i].retry_attempts_sent = 0;
     memset(_flood_retries[i].retry_key, 0, sizeof(_flood_retries[i].retry_key));
+    memset(_flood_retries[i].message_replacement_key, 0,
+           sizeof(_flood_retries[i].message_replacement_key));
     _flood_retries[i].priority = 0;
     _flood_retries[i].progress_marker = 0;
     _flood_retries[i].self_advert = false;
     _flood_retries[i].waiting_final_echo = false;
     _flood_retries[i].queued = false;
+    _flood_retries[i].has_message_replacement_key = false;
     _flood_retries[i].active = false;
   }
   for (int i = 0; i < MAX_RECENT_ADVERT_ECHOS; i++) {
@@ -1037,9 +1045,12 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].echo_wait_started_at = 0;
   _direct_retries[idx].retry_at = 0;
   _direct_retries[idx].retry_delay = 0;
+  _direct_retries[idx].message_timestamp = 0;
   _direct_retries[idx].retry_attempts_sent = 0;
   memset(_direct_retries[idx].retry_key, 0, sizeof(_direct_retries[idx].retry_key));
   memset(_direct_retries[idx].trace_replacement_key, 0, sizeof(_direct_retries[idx].trace_replacement_key));
+  memset(_direct_retries[idx].message_replacement_key, 0,
+         sizeof(_direct_retries[idx].message_replacement_key));
   memset(_direct_retries[idx].next_hop_hash, 0, sizeof(_direct_retries[idx].next_hop_hash));
   _direct_retries[idx].next_hop_hash_len = 0;
   _direct_retries[idx].payload_type = 0;
@@ -1049,6 +1060,7 @@ void Mesh::clearDirectRetrySlot(int idx) {
   _direct_retries[idx].final_hop_retry = false;
   _direct_retries[idx].waiting_final_echo = false;
   _direct_retries[idx].queued = false;
+  _direct_retries[idx].has_message_replacement_key = false;
   _direct_retries[idx].active = false;
   if (rebuild_timeout) rebuildNextDirectRetryTimeout();
 }
@@ -1634,13 +1646,17 @@ void Mesh::clearFloodRetrySlot(int idx) {
   _flood_retries[idx].retry_started_at = 0;
   _flood_retries[idx].retry_at = 0;
   _flood_retries[idx].retry_delay = 0;
+  _flood_retries[idx].message_timestamp = 0;
   _flood_retries[idx].retry_attempts_sent = 0;
   memset(_flood_retries[idx].retry_key, 0, sizeof(_flood_retries[idx].retry_key));
+  memset(_flood_retries[idx].message_replacement_key, 0,
+         sizeof(_flood_retries[idx].message_replacement_key));
   _flood_retries[idx].priority = 0;
   _flood_retries[idx].progress_marker = 0;
   _flood_retries[idx].self_advert = false;
   _flood_retries[idx].waiting_final_echo = false;
   _flood_retries[idx].queued = false;
+  _flood_retries[idx].has_message_replacement_key = false;
   _flood_retries[idx].active = false;
   if (rebuild_timeout) rebuildNextFloodRetryTimeout();
 }
@@ -1791,6 +1807,113 @@ void Mesh::replaceActiveRetries(const Packet* replacement_packet,
       priority = 1;
     }
     maybeScheduleFloodRetry(replacement_packet, priority);
+  }
+}
+
+void Mesh::replaceActiveMessageRetries(
+    const Packet* replacement_packet,
+    const uint8_t message_key[MAX_HASH_SIZE], uint32_t message_timestamp) {
+  if (replacement_packet == NULL || message_key == NULL
+      || replacement_packet->getPayloadType() != PAYLOAD_TYPE_TXT_MSG) {
+    return;
+  }
+
+  int replacement_direct_slot = -1;
+  int replacement_flood_slot = -1;
+  bool found_prior = false;
+
+  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    if (!_direct_retries[i].active) continue;
+    if (_direct_retries[i].trigger_packet == replacement_packet) {
+      replacement_direct_slot = i;
+      continue;
+    }
+    if (_direct_retries[i].has_message_replacement_key
+        && _direct_retries[i].message_timestamp != message_timestamp
+        && memcmp(_direct_retries[i].message_replacement_key, message_key,
+                  MAX_HASH_SIZE) == 0) {
+      found_prior = true;
+    }
+  }
+  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    if (!_flood_retries[i].active) continue;
+    if (_flood_retries[i].trigger_packet == replacement_packet) {
+      replacement_flood_slot = i;
+      continue;
+    }
+    if (_flood_retries[i].has_message_replacement_key
+        && _flood_retries[i].message_timestamp != message_timestamp
+        && memcmp(_flood_retries[i].message_replacement_key, message_key,
+                  MAX_HASH_SIZE) == 0) {
+      found_prior = true;
+    }
+  }
+
+  if (found_prior) {
+    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+      if (i == replacement_direct_slot || !_direct_retries[i].active
+          || !_direct_retries[i].has_message_replacement_key
+          || _direct_retries[i].message_timestamp == message_timestamp
+          || memcmp(_direct_retries[i].message_replacement_key, message_key,
+                    MAX_HASH_SIZE) != 0) {
+        continue;
+      }
+      retireDirectRetrySlot(i);
+    }
+    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+      if (i == replacement_flood_slot || !_flood_retries[i].active
+          || !_flood_retries[i].has_message_replacement_key
+          || _flood_retries[i].message_timestamp == message_timestamp
+          || memcmp(_flood_retries[i].message_replacement_key, message_key,
+                    MAX_HASH_SIZE) != 0) {
+        continue;
+      }
+      retireFloodRetrySlot(i);
+    }
+
+    // A full retry table may have prevented the replacement from reserving a
+    // slot before it was queued. The matching stale slots are free now.
+    if (replacement_direct_slot < 0 && replacement_flood_slot < 0) {
+      if (replacement_packet->isRouteDirect()) {
+        maybeScheduleDirectRetry(replacement_packet, 0);
+      } else if (replacement_packet->isRouteFlood()) {
+        maybeScheduleFloodRetry(replacement_packet, 1);
+      }
+    }
+  }
+
+  // Locate a slot registered above when a full table initially rejected the
+  // new packet. If no slot exists, the role's ordinary retry policy declined
+  // this message and there is no retry state to tag.
+  if (replacement_direct_slot < 0 && replacement_flood_slot < 0) {
+    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+      if (_direct_retries[i].active
+          && _direct_retries[i].trigger_packet == replacement_packet) {
+        replacement_direct_slot = i;
+        break;
+      }
+    }
+    if (replacement_direct_slot < 0) {
+      for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+        if (_flood_retries[i].active
+            && _flood_retries[i].trigger_packet == replacement_packet) {
+          replacement_flood_slot = i;
+          break;
+        }
+      }
+    }
+  }
+
+  if (replacement_direct_slot >= 0) {
+    DirectRetryEntry& entry = _direct_retries[replacement_direct_slot];
+    memcpy(entry.message_replacement_key, message_key, MAX_HASH_SIZE);
+    entry.message_timestamp = message_timestamp;
+    entry.has_message_replacement_key = true;
+  } else if (replacement_flood_slot >= 0) {
+    FloodRetryEntry& entry = _flood_retries[replacement_flood_slot];
+    memcpy(entry.message_replacement_key, message_key, MAX_HASH_SIZE);
+    entry.message_timestamp = message_timestamp;
+    entry.has_message_replacement_key = true;
   }
 }
 

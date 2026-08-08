@@ -64,9 +64,11 @@ class Mesh : public Dispatcher {
     unsigned long echo_wait_started_at;
     unsigned long retry_at;
     uint32_t retry_delay;
+    uint32_t message_timestamp;
     uint8_t retry_attempts_sent;
     uint8_t retry_key[MAX_HASH_SIZE];
     uint8_t trace_replacement_key[MAX_HASH_SIZE];
+    uint8_t message_replacement_key[MAX_HASH_SIZE];
     uint8_t next_hop_hash[MAX_HASH_SIZE];
     uint8_t next_hop_hash_len;
     uint8_t payload_type;
@@ -76,6 +78,7 @@ class Mesh : public Dispatcher {
     bool final_hop_retry;
     bool waiting_final_echo;
     bool queued;
+    bool has_message_replacement_key;
     bool active;
   };
 
@@ -85,13 +88,16 @@ class Mesh : public Dispatcher {
     unsigned long retry_started_at;
     unsigned long retry_at;
     uint32_t retry_delay;
+    uint32_t message_timestamp;
     uint8_t retry_attempts_sent;
     uint8_t retry_key[MAX_HASH_SIZE];
+    uint8_t message_replacement_key[MAX_HASH_SIZE];
     uint8_t priority;
     uint8_t progress_marker;
     bool self_advert;
     bool waiting_final_echo;
     bool queued;
+    bool has_message_replacement_key;
     bool active;
   };
 
@@ -243,6 +249,15 @@ protected:
    */
   void replaceActiveRetries(const Packet* replacement_packet,
                             const uint8_t retry_key[MAX_HASH_SIZE]);
+
+  /**
+   * \brief  Mark a successfully queued text message as the current retry owner.
+   *         Older retries with the same caller-defined message key and a
+   *         different timestamp are retired across both direct and flood routes.
+   */
+  void replaceActiveMessageRetries(
+      const Packet* replacement_packet,
+      const uint8_t message_key[MAX_HASH_SIZE], uint32_t message_timestamp);
 
   // Cancel every queued/future retry of one route type. A packet already on
   // air is allowed to finish, but no later retry is armed from it.

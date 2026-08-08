@@ -449,7 +449,8 @@ mesh::Packet* BaseChatMesh::composeMsgPacket(const ContactInfo& recipient, uint3
 
 int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char* text,
                               uint32_t& expected_ack, uint32_t& est_timeout, uint8_t* packet_hash,
-                              const uint8_t* replace_retry_key) {
+                              const uint8_t* replace_retry_key,
+                              const uint8_t* message_retry_key) {
   mesh::Packet* pkt = composeMsgPacket(recipient, timestamp, attempt, text, expected_ack);
   if (pkt == NULL) return MSG_SEND_FAILED;
   if (packet_hash != NULL) {
@@ -482,6 +483,9 @@ int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, 
   }
   if (replace_retry_key != NULL) {
     replaceActiveRetries(pkt, replace_retry_key);
+  }
+  if (message_retry_key != NULL) {
+    replaceActiveMessageRetries(pkt, message_retry_key, timestamp);
   }
   txt_send_timeout = futureMillis(est_timeout);
   return rc;

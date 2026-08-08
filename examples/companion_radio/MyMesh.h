@@ -264,7 +264,8 @@ private:
   ContactInfo* getTerminalRecipient();
   void importTerminalCard(char* command);
   void rememberTerminalAck(ContactInfo& recipient, const char* text,
-                           uint32_t expected_ack, uint32_t est_timeout,
+                           uint32_t message_timestamp, uint32_t expected_ack,
+                           uint32_t est_timeout,
                            const uint8_t packet_retry_key[MAX_HASH_SIZE]);
 #endif
   bool isValidClientRepeatFreq(uint32_t f) const;
@@ -349,6 +350,7 @@ private:
     unsigned long msg_sent;
     unsigned long expires_at;
     uint32_t ack;
+    uint32_t message_timestamp;
     ContactInfo* contact;
     uint8_t text_fingerprint[MAX_HASH_SIZE];
     uint8_t retry_key[MAX_HASH_SIZE];
@@ -365,7 +367,8 @@ private:
 
   void clearExpectedAck(AckTableEntry& entry, bool cancel_retries = true);
   void expireExpectedAcks();
-  AckTableEntry* findPendingTextMessage(const uint8_t text_fingerprint[MAX_HASH_SIZE]);
+  AckTableEntry* findPendingTextMessage(
+      const uint8_t text_fingerprint[MAX_HASH_SIZE], uint32_t message_timestamp);
 
   #define ADVERT_PATH_TABLE_SIZE   16
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table

@@ -98,6 +98,12 @@ public:
     onSendComplete(packet);
   }
 
+  void trackMessageRetry(const mesh::Packet* packet,
+                         const uint8_t message_key[MAX_HASH_SIZE],
+                         uint32_t message_timestamp) {
+    replaceActiveMessageRetries(packet, message_key, message_timestamp);
+  }
+
   mesh::DispatcherAction receivePacket(mesh::Packet* packet) {
     return onRecvPacket(packet);
   }
@@ -318,6 +324,44 @@ static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,
   if (packet == nullptr) return nullptr;
   EXPECT_TRUE(node.sendDirect(packet, route, route_len));
   return packet;
+}
+
+static mesh::Packet* makeDirectText(TraceTestMesh& node, uint8_t payload_marker,
+                                    const uint8_t* route, uint8_t route_len) {
+  mesh::Packet* packet = node.obtainNewPacket();
+  EXPECT_NE(packet, nullptr);
+  if (packet == nullptr) return nullptr;
+  packet->header = PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT;
+  packet->payload_len = 3;
+  packet->payload[0] = 0xA1;
+  packet->payload[1] = 0xB2;
+  packet->payload[2] = payload_marker;
+  EXPECT_TRUE(node.sendDirect(packet, route, route_len));
+  return packet;
+}
+
+static mesh::Packet* makeFloodText(TraceTestMesh& node, uint8_t payload_marker) {
+  mesh::Packet* packet = node.obtainNewPacket();
+  EXPECT_NE(packet, nullptr);
+  if (packet == nullptr) return nullptr;
+  packet->header = PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT;
+  packet->payload_len = 3;
+  packet->payload[0] = 0xA1;
+  packet->payload[1] = 0xB2;
+  packet->payload[2] = payload_marker;
+  EXPECT_TRUE(node.sendFlood(packet));
+  return packet;
+}
+
+static void finishCurrentSend(TraceTestMesh& node, TraceTestClock& clock,
+                              TraceTestRadio& radio) {
+  clock.now++;
+  node.loop();
+  ASSERT_TRUE(radio.sending);
+  radio.complete = true;
+  clock.now++;
+  node.loop();
+  ASSERT_FALSE(radio.sending);
 }
 
 static void initSelfAdvert(TraceTestMesh& node, mesh::Packet* packet, uint8_t marker) {
@@ -704,6 +748,108 @@ TEST(TraceRetry, NewTraceReplacesQueuedRetryButAdvancedOldTraceStillQueues) {
   returning_old->path[0] = 4;
   ASSERT_TRUE(node.sendPacket(returning_old, 1));
   EXPECT_EQ(2, manager.getOutboundTotal());
+}
+
+TEST(MessageRetry, DifferentTimestampReplacesQueuedDirectRetry) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+
+  const uint8_t route[] = {0x11, 0x22};
+  const uint8_t message_key[MAX_HASH_SIZE] = {
+    0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
+  };
+  mesh::Packet* old_message = makeDirectText(node, 0x01, route, sizeof(route));
+  ASSERT_NE(old_message, nullptr);
+  node.trackMessageRetry(old_message, message_key, 100U);
+  finishCurrentSend(node, clock, radio);
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  mesh::Packet* old_retry = manager.getOutboundByIdx(0);
+
+  mesh::Packet* new_message = makeDirectText(node, 0x02, route, sizeof(route));
+  ASSERT_NE(new_message, nullptr);
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  node.trackMessageRetry(new_message, message_key, 101U);
+
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(new_message, manager.getOutboundByIdx(0));
+  EXPECT_NE(old_retry, manager.getOutboundByIdx(0));
+
+  finishCurrentSend(node, clock, radio);
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_NE(old_retry, manager.getOutboundByIdx(0));
+}
+
+TEST(MessageRetry, SameTimestampKeepsExistingRetrySequence) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+
+  const uint8_t route[] = {0x31, 0x32};
+  const uint8_t message_key[MAX_HASH_SIZE] = {
+    0x81, 0x71, 0x61, 0x51, 0x41, 0x31, 0x21, 0x11
+  };
+  mesh::Packet* old_message = makeDirectText(node, 0x11, route, sizeof(route));
+  ASSERT_NE(old_message, nullptr);
+  node.trackMessageRetry(old_message, message_key, 200U);
+  finishCurrentSend(node, clock, radio);
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  mesh::Packet* old_retry = manager.getOutboundByIdx(0);
+
+  mesh::Packet* same_timestamp = makeDirectText(node, 0x12, route, sizeof(route));
+  ASSERT_NE(same_timestamp, nullptr);
+  node.trackMessageRetry(same_timestamp, message_key, 200U);
+
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  bool found_old_retry = false;
+  bool found_new_message = false;
+  for (int i = 0; i < manager.getOutboundTotal(); i++) {
+    found_old_retry |= manager.getOutboundByIdx(i) == old_retry;
+    found_new_message |= manager.getOutboundByIdx(i) == same_timestamp;
+  }
+  EXPECT_TRUE(found_old_retry);
+  EXPECT_TRUE(found_new_message);
+}
+
+TEST(MessageRetry, ReplacementWorksAcrossFloodAndDirectRoutes) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.begin();
+
+  const uint8_t message_key[MAX_HASH_SIZE] = {
+    0x08, 0x18, 0x28, 0x38, 0x48, 0x58, 0x68, 0x78
+  };
+  mesh::Packet* old_flood = makeFloodText(node, 0x21);
+  ASSERT_NE(old_flood, nullptr);
+  node.trackMessageRetry(old_flood, message_key, 300U);
+  finishCurrentSend(node, clock, radio);
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  mesh::Packet* old_retry = manager.getOutboundByIdx(0);
+
+  const uint8_t route[] = {0x41, 0x42};
+  mesh::Packet* new_direct = makeDirectText(node, 0x22, route, sizeof(route));
+  ASSERT_NE(new_direct, nullptr);
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  node.trackMessageRetry(new_direct, message_key, 301U);
+
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(new_direct, manager.getOutboundByIdx(0));
+  EXPECT_NE(old_retry, manager.getOutboundByIdx(0));
 }
 
 int main(int argc, char** argv) {
