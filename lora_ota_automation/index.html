@@ -762,6 +762,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#transmission-loss-and-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transmission loss and retries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#interruption-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1252,6 +1263,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#transmission-loss-and-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transmission loss and retries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#interruption-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1567,15 +1589,47 @@ the destination.</p>
    hash, version, and nRF52 bootloader capabilities.</li>
 <li>Select or build one compatible mOTA and verify all block hashes, Merkle
    root, full-image hash where applicable, identity fields, signature, codec,
-   and base.</li>
+   base, and the firmware's 1024-byte maximum block size.</li>
 <li>Save the controller's normal radio tuple and show the confirmation prompt.</li>
 <li>Start TempRadio on the target, then far-to-near relays, then the source;
-   finally switch the controller to the same tuple.</li>
+   finally switch the controller to the same tuple and read it back. The runner
+   rejects a TempRadio window that cannot cover setup, seeder startup,
+   discovery, the transfer timeout, final polling, and install checks.</li>
 <li>Start <code>motatool serve</code>, discover the exact eight-hex manifest ID, request
-   <code>ota pull &lt;id&gt; flash</code>, and poll until the target reports ready.</li>
-<li>Request <code>ota install</code>, restore the controller's original radio, wait for
-   reboot, then query the new running identity and version.</li>
+   <code>ota pull &lt;id&gt; flash</code>, and poll until that same ID reports ready. A seeder
+   process exit stops the run immediately.</li>
+<li>Recheck that exact ID, give the target a short final TempRadio safety window,
+   and request <code>ota install</code>. Then shorten each relay's TempRadio window so the
+   normal multi-hop route returns, restore the controller, wait for reboot, and
+   require the new running identity and exact package version.
+   <code>--leave-controller-radio</code> moves the controller back to TempRadio only after
+   this normal-channel verification.</li>
 </ol>
+<p>Remote replies are matched only after queued messages have been drained and
+only when they come from the intended contact and fit the command. A ready
+status for another manifest ID is an error, never permission to install it.</p>
+<h2 id="transmission-loss-and-retries">Transmission loss and retries</h2>
+<p>Read-only and replay-safe transmissions retry up to three times. Three retries
+or 90 seconds, whichever comes first, opens a 10-second stop-or-continue
+prompt. Continue is the default on timeout, Enter, and unattended input, so a
+temporary outage does not silently abandon a resumable transfer. Enter <code>s</code> or
+<code>stop</code> to end the run; Ctrl-C also remains immediate.</p>
+<p>Commands that change OTA state are reconciled before replay:</p>
+<ul>
+<li>After a lost <code>ota pull</code> reply, <code>ota status</code> must show the requested manifest
+  ID before the runner treats the pull as started. Otherwise the safe retry
+  policy applies.</li>
+<li>A lost <code>ota install</code> reply is not blindly resent. After a short wait, it is
+  sent again only if the target replies that the same manifest is still ready.
+  If the target has stopped replying because it may be rebooting, the runner
+  restores the normal path and lets post-reboot identity resolve the outcome.
+  The target's final three-minute safety window also returns a non-rebooting
+  target to the normal channel promptly.</li>
+</ul>
+<p>Retries and operator-selected continuation can outlast the original TempRadio
+budget. If a bounded window expires, rerun the same package after the nodes
+return to their normal channel; the manifest-ID check resumes its partial
+download without replacing it.</p>
 <p>The working directory is retained and printed at exit. It contains the exact
 served mOTA, <code>motatool-serve.log</code>, extracted build inputs when needed, and
 <code>controller-radio.txt</code>. It contains no saved admin password.</p>
@@ -1595,10 +1649,12 @@ meshcli -s /dev/ttyACM0 set radio &quot;$radio&quot;
 <pre><code class="language-powershell">$radio = (Get-Content '.\meshcore-lora-ota-...\controller-radio.txt' -Raw).Trim()
 meshcli -s COM7 set radio $radio
 </code></pre>
-<p>If installation was accepted but the final confirmation timed out, reconnect
-on the node's normal channel and run <code>ota self</code> and <code>ver</code>. Do not immediately
-replace a staged image: the default active-download guard preserves it until
-you explicitly use <code>--replace-active-download</code> or run <code>ota cancel</code>.</p>
+<p>If you stop during final confirmation, reconnect on the node's normal channel
+and run <code>ota self</code> and <code>ver</code>. A completed run returns success only when
+<code>ota self</code> reports a valid new body hash and <code>ver</code> exactly matches the package;
+an unverified install returns status 2. Do not immediately replace a staged
+image: the default active-download guard preserves it until you explicitly use
+<code>--replace-active-download</code> or run <code>ota cancel</code>.</p>
 <p>Exit status is <code>0</code> for success, <code>2</code> for a validation or operational error, and
 <code>130</code> for Ctrl-C.</p>
 
