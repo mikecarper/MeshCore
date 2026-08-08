@@ -579,6 +579,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripted LoRa OTA from start to finish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../nrf52_power_management/" class="md-nav__link">
         
   
@@ -885,6 +912,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -901,6 +946,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#companion-usb-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion USB mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -925,6 +1011,36 @@
   
     
   
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#companion-usb-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion USB mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -951,6 +1067,28 @@
 
 <h1 id="terminal-chat-cli">Terminal Chat CLI</h1>
 <p>Below are the commands you can enter into the Terminal Chat clients:</p>
+<h2 id="companion-usb-mode">Companion USB mode</h2>
+<p>A Companion USB build starts in the normal binary Companion protocol at
+115200 baud. To use this terminal from the same firmware image, connect a
+serial terminal and send this exact sequence:</p>
+<pre><code>+++MESHCORE-TERM-START
+</code></pre>
+<p>Send the following exact sequence to return to the binary protocol:</p>
+<pre><code>+++MESHCORE-TERM-STOP
+</code></pre>
+<p>Closing the serial connection also returns native-USB devices to binary mode.
+Boards whose USB connector is implemented by a USB-to-UART bridge cannot
+observe the host closing the port; on those boards, use the stop sequence or
+reboot the device.</p>
+<p>Both modes use the same port at 115200. Selecting 57600 is not a portable mode
+switch: native USB CDC devices ignore the requested baud, while USB-to-UART
+devices really change the UART timing and receive corrupt data. Binary mode is
+the framed Companion API used by apps and <code>meshcli</code>; close the terminal before
+opening that port from an app.</p>
+<p>For example:</p>
+<pre><code class="language-sh">picocom --baud 115200 /dev/ttyACM0
+</code></pre>
+<h2 id="commands">Commands</h2>
 <pre><code>set freq {frequency}
 </code></pre>
 <p>Set the LoRa frequency. Example:  set freq 915.8</p>

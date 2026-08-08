@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/nrf52_power_management/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/lora_ota_automation/">
       
       
-        <link rel="prev" href="../lora_ota_automation/">
+        <link rel="prev" href="../kiss_modem_protocol/">
       
       
-        <link rel="next" href="../number_allocations/">
+        <link rel="next" href="../nrf52_power_management/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>nRF52 Power Management - MeshCore Docs</title>
+        <title>Scripted LoRa OTA from start to finish - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nrf52-power-management" class="md-skip">
+        <a href="#scripted-lora-ota-from-start-to-finish" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              nRF52 Power Management
+              Scripted LoRa OTA from start to finish
             
           </span>
         </div>
@@ -578,33 +578,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../lora_ota_automation/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Scripted LoRa OTA from start to finish
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -624,7 +597,7 @@
   <span class="md-ellipsis">
     
   
-    nRF52 Power Management
+    Scripted LoRa OTA from start to finish
   
 
     
@@ -642,7 +615,7 @@
   <span class="md-ellipsis">
     
   
-    nRF52 Power Management
+    Scripted LoRa OTA from start to finish
   
 
     
@@ -668,10 +641,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#required-topology" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Required topology
       
     </span>
   </a>
@@ -679,71 +652,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#destination-requirements" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Features">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#boot-voltage-protection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Boot Voltage Protection
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-lpcomp-vbus" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake (LPCOMP + VBUS)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-register-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Register Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#shutdown-reason-tracking" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shutdown Reason Tracking
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Supported Boards
+        Destination requirements
       
     </span>
   </a>
@@ -751,82 +663,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#technical-details" class="md-nav__link">
+  <a href="#1-install-the-host-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Technical Details
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Technical Details">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Architecture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#board-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Board Implementation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#softdevice-compatibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SoftDevice Compatibility
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
+        1. Install the host tools
       
     </span>
   </a>
@@ -834,10 +674,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#debug-output" class="md-nav__link">
+  <a href="#2-identify-and-test-both-local-links" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Debug Output
+        2. Identify and test both local links
       
     </span>
   </a>
@@ -845,10 +685,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
+  <a href="#3-check-the-destination-once" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 (Planned)
+        3. Check the destination once
       
     </span>
   </a>
@@ -856,10 +696,76 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#references" class="md-nav__link">
+  <a href="#4-run-an-esp32-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        References
+        4. Run an ESP32 update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-run-an-internal-flash-nrf52-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Run an internal-flash nRF52 update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-add-intermediate-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Add intermediate relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-connection-choices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other connection choices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-selection-and-safety-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package selection and safety gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens during a run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interruption-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interruption and recovery
       
     </span>
   </a>
@@ -870,6 +776,33 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1198,10 +1131,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#required-topology" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Required topology
       
     </span>
   </a>
@@ -1209,71 +1142,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#destination-requirements" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Features">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#boot-voltage-protection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Boot Voltage Protection
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-lpcomp-vbus" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake (LPCOMP + VBUS)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-register-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Register Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#shutdown-reason-tracking" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shutdown Reason Tracking
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Supported Boards
+        Destination requirements
       
     </span>
   </a>
@@ -1281,82 +1153,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#technical-details" class="md-nav__link">
+  <a href="#1-install-the-host-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Technical Details
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Technical Details">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Architecture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#early-boot-capture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Early Boot Capture
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#board-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Board Implementation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#voltage-wake-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Voltage Wake Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#softdevice-compatibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SoftDevice Compatibility
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
+        1. Install the host tools
       
     </span>
   </a>
@@ -1364,10 +1164,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#debug-output" class="md-nav__link">
+  <a href="#2-identify-and-test-both-local-links" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Debug Output
+        2. Identify and test both local links
       
     </span>
   </a>
@@ -1375,10 +1175,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
+  <a href="#3-check-the-destination-once" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 (Planned)
+        3. Check the destination once
       
     </span>
   </a>
@@ -1386,10 +1186,76 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#references" class="md-nav__link">
+  <a href="#4-run-an-esp32-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        References
+        4. Run an ESP32 update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-run-an-internal-flash-nrf52-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Run an internal-flash nRF52 update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-add-intermediate-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Add intermediate relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-connection-choices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other connection choices
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-selection-and-safety-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package selection and safety gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-happens-during-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What happens during a run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interruption-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interruption and recovery
       
     </span>
   </a>
@@ -1413,7 +1279,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/nrf52_power_management.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/lora_ota_automation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1421,421 +1287,320 @@
   
 
 
-<h1 id="nrf52-power-management">nRF52 Power Management</h1>
-<h2 id="overview">Overview</h2>
-<p>The nRF52 Power Management module provides battery protection features to prevent over-discharge, minimise likelihood of brownout and flash corruption conditions existing, and enable safe voltage-based recovery.</p>
-<h2 id="features">Features</h2>
-<h3 id="boot-voltage-protection">Boot Voltage Protection</h3>
+<h1 id="scripted-lora-ota-from-start-to-finish">Scripted LoRa OTA from start to finish</h1>
+<p><a href="../tools/lora_ota/lora_ota.sh"><code>tools/lora_ota/lora_ota.sh</code></a> and
+<a href="../tools/lora_ota/lora_ota.ps1"><code>tools/lora_ota/lora_ota.ps1</code></a> automate a
+MeshCore LoRa firmware update from a release <code>.zip</code> or ready <code>.mota</code>. They
+identify the destination, validate the hardware and running firmware, prepare
+the right container, move the participating nodes to a temporary radio
+channel, serve and monitor the download, request installation, restore the
+controller, and check the rebooted node.</p>
+<p>The script cannot install the destination's first OTA-capable firmware or its
+nRF52 bootloader. Do those one-time jobs over USB before using LoRa OTA.</p>
+<h2 id="required-topology">Required topology</h2>
+<p>The reliable serial topology uses two local radios:</p>
+<pre><code class="language-text">                                      authenticated admin commands
+computer -- MeshCore binary API --&gt; controller Companion -------------------+
+   |                                                                         |
+   +-- raw text CLI + mOTA seeder --&gt; OTA source ---- LoRa OTA blocks ----&gt; target
+                                                        |                    ^
+                                                        +-- relay(s) --------+
+</code></pre>
 <ul>
-<li>Checks battery voltage immediately after boot and before mesh operations commence</li>
-<li>If voltage is below a configurable threshold (e.g., 3300mV), the device configures voltage wake (LPCOMP + VBUS) and enters protective shutdown (SYSTEMOFF)</li>
-<li>Prevents boot loops when battery is critically low</li>
-<li>Skipped when external power (USB VBUS) is detected</li>
+<li><strong>Controller:</strong> a Companion connected through serial, TCP, or BLE. The
+  script uses <code>meshcli</code> to send remote admin commands to the target and changes
+  the controller's live radio parameters during the transfer. A serial
+  Companion stays in its normal <strong>Binary</strong> USB mode at 115200 baud.</li>
+<li><strong>OTA source:</strong> a separate OTA-enabled repeater or FULL node whose USB port
+  is a raw text CLI and supports <code>ota folder on</code>. <code>motatool</code> uses that same
+  link for its binary seeder frames after enabling the folder.</li>
+<li><strong>Target:</strong> an OTA-enabled ESP32 or nRF52 node present in the controller's
+  contact list. Its admin password is required.</li>
+<li><strong>Relays:</strong> optional. They do not need to install OTA themselves, but every
+  relay on the path must be running current firmware and have an overlapping
+  TempRadio window.</li>
 </ul>
-<h3 id="voltage-wake-lpcomp-vbus">Voltage Wake (LPCOMP + VBUS)</h3>
-<ul>
-<li>Configures the nRF52's Low Power Comparator (LPCOMP) before entering SYSTEMOFF</li>
-<li>Enables USB VBUS detection so external power can wake the device</li>
-<li>Device automatically wakes when battery voltage rises above recovery threshold or when VBUS is detected</li>
-<li>Uses no LPCOMP hysteresis; on divided battery inputs the additional 50 mV
-  comparator hysteresis can move the effective battery wake point by several
-  hundred millivolts and strand an otherwise charged node</li>
-</ul>
-<h3 id="early-boot-register-capture">Early Boot Register Capture</h3>
-<ul>
-<li>Captures RESETREAS (reset reason) and GPREGRET2 (shutdown reason) before SystemInit() clears them</li>
-<li>Allows firmware to determine why it booted (cold boot, watchdog, LPCOMP wake, etc.)</li>
-<li>Allows firmware to determine why it last shut down (user request, low voltage, boot protection)</li>
-</ul>
-<h3 id="shutdown-reason-tracking">Shutdown Reason Tracking</h3>
-<p>Shutdown reason codes (stored in GPREGRET2):</p>
+<p>One serial port cannot serve both controller roles: <code>meshcli</code> must keep
+reopening the controller while <code>motatool</code> owns the source port. The script
+rejects an attempt to use the same port for both.</p>
+<p>The Companion USB ASCII switch (<code>+++MESHCORE-TERM-START</code>) is an interactive
+chat terminal, not the raw repeater/FULL management CLI expected by
+<code>motatool</code>. It does not make a Companion's serial port an OTA seeder. For a
+WiFi seeder, use a FULL/repeater source's port 5001 plus its raw USB CLI, as
+shown below.</p>
+<h2 id="destination-requirements">Destination requirements</h2>
 <table>
 <thead>
 <tr>
-<th>Code</th>
-<th>Name</th>
-<th>Description</th>
+<th>Destination</th>
+<th>Package installed</th>
+<th>One-time prerequisite</th>
+<th>Raw ZIP handling</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>0x00</td>
-<td>NONE</td>
-<td>Normal boot / no previous shutdown</td>
+<td>ESP32</td>
+<td>Full application image</td>
+<td>OTA-enabled image with an A/B partition table</td>
+<td>Builds a full mOTA from the matching non-merged application <code>.bin</code></td>
 </tr>
 <tr>
-<td>0x4C</td>
-<td>LOW_VOLTAGE</td>
-<td>Runtime low voltage threshold reached</td>
+<td>nRF52, internal flash</td>
+<td>In-place delta</td>
+<td>Exact-board OTAFIX bootloader with mOTA apply support</td>
+<td>Requires <code>--base</code> with the exact image currently running</td>
 </tr>
 <tr>
-<td>0x55</td>
-<td>USER</td>
-<td>User requested powerOff()</td>
-</tr>
-<tr>
-<td>0x42</td>
-<td>BOOT_PROTECT</td>
-<td>Boot voltage protection triggered</td>
+<td>MeshTower V2 nRF52, microSD</td>
+<td>Full image or in-place delta</td>
+<td>SD-aware exact-board OTAFIX bootloader and compatible card</td>
+<td>Builds a full mOTA; adding <code>--base</code> requests a delta</td>
 </tr>
 </tbody>
 </table>
-<h2 id="supported-boards">Supported Boards</h2>
-<table>
-<thead>
-<tr>
-<th>Board family</th>
-<th>Implemented</th>
-<th>LPCOMP wake</th>
-<th>VBUS wake</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Seeed Studio XIAO nRF52840 (<code>xiao_nrf52</code>)</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>SenseCAP Solar</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>RAK4631 / RAK3401</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>GAT562 30S / EVB Pro / Tracker Pro / Watch13</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Heltec T096 / T114 / T1 / Tower V2</td>
-<td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
-</tr>
-<tr>
-<td>Muzi Works R1 Neo</td>
-<td>Partial</td>
-<td>Inactive</td>
-<td>Inactive</td>
-</tr>
-<tr>
-<td>Promicro nRF52840</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>RAK WisMesh Tag</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Heltec Mesh Solar</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>LilyGo T-Echo / T-Echo Lite / T-Impulse Plus</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>WIO Tracker L1 / L1 E-Ink / WM1110</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Mesh Pocket / Meshtiny / Nano G2 Ultra</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>ThinkNode M1 / M3 / M6</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>T1000-E</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Ikoka Nano / Stick / Handheld (nRF)</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-<tr>
-<td>Keepteen LT1 / Minewsemi ME25LS01</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-</tr>
-</tbody>
-</table>
-<p>Notes:
-- "Implemented" reflects Phase 1 (boot lockout + shutdown reason capture).
-- R1 Neo has the integration compiled, but its board configuration deliberately
-  sets <code>PWRMGT_VOLTAGE_BOOTLOCK</code> to <code>0</code>; automatic protective shutdown and its
-  voltage/VBUS recovery wake are therefore inactive.
-- User power-off does not enable LPCOMP wake; voltage recovery is armed only
-  for boot protection and automated low-voltage shutdown.
-- VBUS detection is used to skip boot lockout on external power, and VBUS wake is configured alongside LPCOMP when supported hardware exposes VBUS to the nRF52.</p>
-<h2 id="technical-details">Technical Details</h2>
-<h3 id="architecture">Architecture</h3>
-<p>The power management functionality is integrated into the <code>NRF52Board</code> base class in <code>src/helpers/NRF52Board.cpp</code>. Board variants provide hardware-specific configuration via a <code>PowerMgtConfig</code> struct and override <code>initiateShutdown(uint8_t reason)</code> to perform board-specific power-down work and conditionally enable voltage wake (LPCOMP + VBUS).</p>
-<h3 id="early-boot-capture">Early Boot Capture</h3>
-<p>A static constructor with priority 101 in <code>NRF52Board.cpp</code> captures the RESETREAS and GPREGRET2 registers before:
-- SystemInit() (priority 102) - which clears RESETREAS
-- Static C++ constructors (default priority 65535)</p>
-<p>This ensures we capture the true reset reason before any initialisation code runs.</p>
-<h3 id="board-implementation">Board Implementation</h3>
-<p>To enable power management on a board variant:</p>
-<ol>
-<li>
-<p><strong>Enable in platformio.ini</strong>:
-   <code>ini
-   -D NRF52_POWER_MANAGEMENT</code></p>
-</li>
-<li>
-<p><strong>Define configuration in variant.h</strong>:
-   <code>c
-   #define PWRMGT_VOLTAGE_BOOTLOCK    3300   // Won't boot below this voltage (mV)
-   #define PWRMGT_LPCOMP_AIN          7      // AIN channel for voltage sensing
-   #define PWRMGT_LPCOMP_REFSEL       2      // REFSEL (0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)</code></p>
-</li>
-<li>
-<p><strong>Implement in board .cpp file</strong>:
-   ```cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-   const PowerMgtConfig power_config = {
-     .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
-     .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
-     .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
-   };</p>
-</li>
-</ol>
-<p>void MyBoard::initiateShutdown(uint8_t reason) {
-     // Board-specific shutdown preparation (e.g., disable peripherals)
-     bool enable_lpcomp = (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
-                           reason == SHUTDOWN_REASON_BOOT_PROTECT);</p>
-<pre><code> if (enable_lpcomp) {
-   configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
- }
+<p>The firmware inside a raw ZIP must have a valid MeshCore <code>EndF</code> trailer. An
+ESP32 merged/factory image is not an application image and is rejected. A
+generic vendor DFU ZIP may also be unusable if it does not contain the raw
+EndF-bearing <code>.hex</code> or <code>.bin</code>.</p>
+<p>For an internal-flash nRF52, the exact base image is irreducible information.
+The node reports its eight-byte body hash, but that hash cannot reconstruct the
+firmware bytes needed to create a delta. Keep the <code>.pio/build/ENV/firmware.hex</code>
+that was actually flashed. A matching filename or version alone is not enough.</p>
+<h2 id="1-install-the-host-tools">1. Install the host tools</h2>
+<p>Install Python 3.10 or newer, <a href="https://rustup.rs/">Rust</a>, Git, the official
+<a href="https://github.com/meshcore-dev/meshcore-cli"><code>meshcore-cli</code></a>, and the official
+<a href="https://github.com/vk496/motatool"><code>motatool</code></a>.</p>
+<p>On Bash:</p>
+<pre><code class="language-bash">python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+pipx install meshcore-cli
 
- enterSystemOff(reason);
+git clone https://github.com/vk496/motatool.git
+cargo install --path ./motatool
+
+meshcli -v
+motatool --version
 </code></pre>
-<p>}
-   #endif</p>
-<p>void MyBoard::begin() {
-     NRF52Board::begin();  // or NRF52BoardDCDC::begin()
-     // ... board setup ...</p>
-<p>#ifdef NRF52_POWER_MANAGEMENT
-     checkBootVoltage(&amp;power_config);
-   #endif
-   }
-   ```</p>
-<p>For user-initiated shutdowns, <code>powerOff()</code> remains board-specific. Power management only arms LPCOMP for automated shutdown reasons (boot protection/low voltage).</p>
+<p>On PowerShell:</p>
+<pre><code class="language-powershell">py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install meshcore-cli
+
+git clone https://github.com/vk496/motatool.git
+cargo install --path .\motatool
+
+meshcli -v
+motatool --version
+</code></pre>
+<p>Restart the shell if <code>pipx</code> or Cargo reports that it changed <code>PATH</code>.</p>
+<h2 id="2-identify-and-test-both-local-links">2. Identify and test both local links</h2>
+<p>List serial devices:</p>
+<pre><code class="language-bash">meshcli -l
+</code></pre>
+<p>The examples below assume <code>/dev/ttyACM0</code> is the controller and
+<code>/dev/ttyACM1</code> is the OTA source. On Windows they might be <code>COM7</code> and <code>COM8</code>.
+Close picocom, a serial monitor, the phone app, and any other program holding
+either link.</p>
+<p>Test the controller's binary API:</p>
+<pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
+</code></pre>
+<p>Test the source's raw text CLI and OTA support:</p>
+<pre><code class="language-bash">meshcli -r -s /dev/ttyACM1 -b 115200 &quot;ota status&quot;
+</code></pre>
+<p>The second command must print an <code>OTA | ... target:XXXXXXXX</code> status. The
+automation repeats this preflight and stops before changing any radios if the
+source is the wrong build or interface.</p>
+<p>Changing a terminal to 57600 baud does not select ASCII mode. USB Companion
+builds and the normal raw management CLI use 115200 unless a particular build
+was explicitly configured otherwise.</p>
+<h2 id="3-check-the-destination-once">3. Check the destination once</h2>
+<p>The destination must be in the controller's contacts and remotely reachable
+on the normal channel. The script runs these authenticated checks itself:</p>
+<pre><code class="language-text">ota status
+ota self
+ota stats
+</code></pre>
+<p>For nRF52, <code>ota self</code> must report <code>bootloader: apply OK</code> or
+<code>bootloader: SD apply OK</code>. The script also checks the reported bootloader ABI
+and codec mask against the selected package.</p>
+<p>The default TempRadio tuple is:</p>
+<pre><code class="language-text">909.950,250,7,5,120
+</code></pre>
+<p>The 250 kHz bandwidth, SF7, and CR5 combination is supported by every current
+sub-GHz radio family used in USB Companion builds, including older SX127x
+controllers (which do not support SF5). The frequency is only a North American
+example: choose a legal frequency supported by every participating radio and
+appropriate to your location. Pass the complete replacement tuple with
+<code>--temp-radio</code>.</p>
+<h2 id="4-run-an-esp32-update">4. Run an ESP32 update</h2>
+<p>The ZIP can contain a compatible ready <code>.mota</code> or the exact board-and-role
+non-merged application <code>.bin</code>:</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='target-admin-password'
+
+./tools/lora_ota/lora_ota.sh ./release.zip &quot;Roof ESP32&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+</code></pre>
+<p>The script shows the detected target, hardware, running hash, chosen package,
+version, manifest ID, and action before asking for confirmation. For an
+unattended job, add <code>--yes</code>:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.mota &quot;Roof ESP32&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1 \
+  --yes
+</code></pre>
+<p>PowerShell equivalents:</p>
+<pre><code class="language-powershell">$env:MESHCORE_ADMIN_PASSWORD = 'target-admin-password'
+
+&amp; .\tools\lora_ota\lora_ota.ps1 '.\release.zip' 'Roof ESP32' `
+  --controller-serial COM7 `
+  --source-serial COM8
+
+&amp; .\tools\lora_ota\lora_ota.ps1 '.\release.mota' 'Roof ESP32' `
+  --controller-serial COM7 `
+  --source-serial COM8 `
+  --yes
+</code></pre>
+<p>Prefer the environment variable or the interactive password prompt. Passing
+<code>--password</code> works, but the wrapper's own command line may be visible to other
+local processes. The runner keeps the password out of child <code>meshcli</code> command
+lines and removes its protected temporary command file after each call.</p>
+<h2 id="5-run-an-internal-flash-nrf52-update">5. Run an internal-flash nRF52 update</h2>
+<p>If the input ZIP already contains a compatible in-place delta <code>.mota</code>, no
+base argument is needed: its embedded base hash is compared with the live
+node. If the ZIP contains raw new firmware, supply the exact running image:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./nrf52-new-release.zip &quot;Hill nRF52&quot; \
+  --base ./firmware-that-is-running.hex \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+</code></pre>
+<pre><code class="language-powershell">&amp; .\tools\lora_ota\lora_ota.ps1 '.\nrf52-new-release.zip' 'Hill nRF52' `
+  --base '.\firmware-that-is-running.hex' `
+  --controller-serial COM7 `
+  --source-serial COM8
+</code></pre>
+<p>Before building the delta, the runner proves that the base's target ID,
+hardware identity, firmware version when available, and <code>EndF</code> body hash match
+the live destination. It then asks <code>motatool</code> for codec 2, the nRF52 in-place
+format. The normal workspace is <code>0x98000</code>.</p>
+<p>For the SD-backed MeshTower V2 target, a raw ZIP becomes a full image without
+<code>--base</code>. Supplying an exact base requests a smaller in-place delta and
+automatically selects its <code>0xC7000</code> workspace. An explicit
+<code>--inplace-memory</code> overrides the automatic value.</p>
+<h2 id="6-add-intermediate-relays">6. Add intermediate relays</h2>
+<p>List relays from farthest to nearest so each command is sent before its route
+moves to TempRadio. A bare relay name uses the destination password; use
+<code>NAME=PASSWORD</code> when it differs:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.mota &quot;Remote Target&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1 \
+  --relay &quot;Far Relay=far-password&quot; \
+  --relay &quot;Near Relay=near-password&quot;
+</code></pre>
+<p>PowerShell uses the same arguments:</p>
+<pre><code class="language-powershell">&amp; .\tools\lora_ota\lora_ota.ps1 '.\release.mota' 'Remote Target' `
+  --controller-serial COM7 `
+  --source-serial COM8 `
+  --relay 'Far Relay=far-password' `
+  --relay 'Near Relay=near-password'
+</code></pre>
+<h2 id="other-connection-choices">Other connection choices</h2>
+<p>The controller can use any one of:</p>
+<pre><code class="language-text">--controller-serial PORT
+--controller-tcp HOST[:PORT]       # default port 5000
+--controller-ble ADDRESS_OR_NAME
+</code></pre>
+<p>An ESP32 FULL/repeater source can serve over its dedicated WiFi seeder port
+while its raw USB CLI is used to start TempRadio:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.mota &quot;Remote Target&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.50:5001 \
+  --source-cli-serial /dev/ttyACM1
+</code></pre>
+<p>If the source is already on the exact TempRadio tuple through a scheduled or
+manual operation, <code>--source-already-temp</code> lets a TCP source run without a raw
+CLI link. The script cannot verify or extend that source window, so leave a
+comfortable time margin.</p>
+<p>Use <code>--controller-baud</code> or <code>--source-baud</code> only for a build whose corresponding
+interface is genuinely configured to another speed.</p>
+<h2 id="package-selection-and-safety-gates">Package selection and safety gates</h2>
+<p>For a ZIP, the runner first examines every <code>.mota</code> without extracting paths.
+It keeps only packages matching the live target, hardware, base, platform,
+codec, and bootloader capabilities. It chooses the newest compatible version
+and prefers a delta over a full image at the same version. If equally suitable
+files differ, select one explicitly:</p>
+<pre><code class="language-text">--zip-member path/inside/archive/update.mota
+</code></pre>
+<p>If no ready mOTA is usable, it searches <code>.bin</code> and <code>.hex</code> members for a valid,
+matching <code>EndF</code>, then builds the platform-appropriate container. Every result
+is structurally checked by the runner and independently passed through
+<code>motatool verify</code> before any radio changes.</p>
+<p>Useful controls:</p>
+<ul>
+<li><code>--public-key signer.key.pub</code> requires a particular Ed25519 signer during
+  verification.</li>
+<li><code>--sign-key signer.key</code> signs a newly built container.</li>
+<li><code>--no-install</code> downloads and verifies the image but leaves it staged.</li>
+<li><code>--allow-non-upgrade</code> deliberately permits the same or an older version.</li>
+<li><code>--replace-active-download</code> deliberately discards a different update already
+  downloading or staged on the target. Without it, that update is preserved.</li>
+<li><code>--work-dir PATH</code> chooses a new, non-existent work directory.</li>
+<li><code>--meshcli PATH</code> and <code>--motatool PATH</code> select binaries not on <code>PATH</code>.</li>
+</ul>
+<p>For offline package preparation only:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.zip offline \
+  --prepare-only \
+  --platform nrf52 \
+  --target-id 1234ABCD \
+  --target-base-hash 0011223344556677 \
+  --target-hw Heltec_T114 \
+  --base ./firmware-that-is-running.hex
+</code></pre>
+<p>Live operation is safer because the script obtains these values directly from
+the destination.</p>
+<h2 id="what-happens-during-a-run">What happens during a run</h2>
 <ol>
-<li><strong>Declare override in board .h file</strong>:
-   <code>cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-     void initiateShutdown(uint8_t reason) override;
-   #endif</code></li>
+<li>Validate the input paths and host tools, then prove the source is an
+   OTA-enabled raw CLI.</li>
+<li>Authenticate to the target and query its target ID, hardware, running body
+   hash, version, and nRF52 bootloader capabilities.</li>
+<li>Select or build one compatible mOTA and verify all block hashes, Merkle
+   root, full-image hash where applicable, identity fields, signature, codec,
+   and base.</li>
+<li>Save the controller's normal radio tuple and show the confirmation prompt.</li>
+<li>Start TempRadio on the target, then far-to-near relays, then the source;
+   finally switch the controller to the same tuple.</li>
+<li>Start <code>motatool serve</code>, discover the exact eight-hex manifest ID, request
+   <code>ota pull &lt;id&gt; flash</code>, and poll until the target reports ready.</li>
+<li>Request <code>ota install</code>, restore the controller's original radio, wait for
+   reboot, then query the new running identity and version.</li>
 </ol>
-<h3 id="voltage-wake-configuration">Voltage Wake Configuration</h3>
-<p>The LPCOMP (Low Power Comparator) is configured to:
-- Monitor the specified AIN channel (0-7 corresponding to P0.02-P0.05, P0.28-P0.31)
-- Compare against VDD fraction reference (REFSEL: 0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
-- Detect UP events (voltage rising above threshold)
-- Use no hysteresis so the configured recovery threshold is not widened by the battery divider
-- Wake the device from SYSTEMOFF when triggered</p>
-<p>VBUS wake is enabled via the POWER peripheral USBDETECTED event whenever <code>configureVoltageWake()</code> is used. This requires USB VBUS to be routed to the nRF52 (typical on nRF52840 boards with native USB).</p>
-<p><strong>LPCOMP Reference Selection (PWRMGT_LPCOMP_REFSEL)</strong>:</p>
-<table>
-<thead>
-<tr>
-<th>REFSEL</th>
-<th>Fraction</th>
-<th>VBAT @ 1M/1M divider (VDD=3.0-3.3)</th>
-<th>VBAT @ 1.5M/1M divider (VDD=3.0-3.3)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>1/8</td>
-<td>0.75-0.82 V</td>
-<td>0.94-1.03 V</td>
-</tr>
-<tr>
-<td>1</td>
-<td>2/8</td>
-<td>1.50-1.65 V</td>
-<td>1.88-2.06 V</td>
-</tr>
-<tr>
-<td>2</td>
-<td>3/8</td>
-<td>2.25-2.47 V</td>
-<td>2.81-3.09 V</td>
-</tr>
-<tr>
-<td>3</td>
-<td>4/8</td>
-<td>3.00-3.30 V</td>
-<td>3.75-4.12 V</td>
-</tr>
-<tr>
-<td>4</td>
-<td>5/8</td>
-<td>3.75-4.12 V</td>
-<td>4.69-5.16 V</td>
-</tr>
-<tr>
-<td>5</td>
-<td>6/8</td>
-<td>4.50-4.95 V</td>
-<td>5.62-6.19 V</td>
-</tr>
-<tr>
-<td>6</td>
-<td>7/8</td>
-<td>5.25-5.77 V</td>
-<td>6.56-7.22 V</td>
-</tr>
-<tr>
-<td>7</td>
-<td>ARef</td>
-<td>-</td>
-<td>-</td>
-</tr>
-<tr>
-<td>8</td>
-<td>1/16</td>
-<td>0.38-0.41 V</td>
-<td>0.47-0.52 V</td>
-</tr>
-<tr>
-<td>9</td>
-<td>3/16</td>
-<td>1.12-1.24 V</td>
-<td>1.41-1.55 V</td>
-</tr>
-<tr>
-<td>10</td>
-<td>5/16</td>
-<td>1.88-2.06 V</td>
-<td>2.34-2.58 V</td>
-</tr>
-<tr>
-<td>11</td>
-<td>7/16</td>
-<td>2.62-2.89 V</td>
-<td>3.28-3.61 V</td>
-</tr>
-<tr>
-<td>12</td>
-<td>9/16</td>
-<td>3.38-3.71 V</td>
-<td>4.22-4.64 V</td>
-</tr>
-<tr>
-<td>13</td>
-<td>11/16</td>
-<td>4.12-4.54 V</td>
-<td>5.16-5.67 V</td>
-</tr>
-<tr>
-<td>14</td>
-<td>13/16</td>
-<td>4.88-5.36 V</td>
-<td>6.09-6.70 V</td>
-</tr>
-<tr>
-<td>15</td>
-<td>15/16</td>
-<td>5.62-6.19 V</td>
-<td>7.03-7.73 V</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Important</strong>: For boards with a voltage divider on the battery sense pin, LPCOMP measures the divided voltage. Use:
-<code>VBAT_threshold ~ (VDD * fraction) * divider_scale</code>, where <code>divider_scale = (Rtop + Rbottom) / Rbottom</code> (e.g., 2.0 for 1M/1M, 2.5 for 1.5M/1M, 3.0 for XIAO).</p>
-<h3 id="softdevice-compatibility">SoftDevice Compatibility</h3>
-<p>The power management code checks whether SoftDevice is enabled and uses the appropriate API:
-- When SD enabled: <code>sd_power_*</code> functions
-- When SD disabled: Direct register access (NRF_POWER-&gt;*)</p>
-<p>This ensures compatibility regardless of BLE stack state.</p>
-<h2 id="cli-commands">CLI Commands</h2>
-<p>Power management status can be queried via the CLI:</p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>get pwrmgt.support</code></td>
-<td>Returns "supported" or "unsupported"</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.source</code></td>
-<td>Returns current power source - "battery" or "external" (5V/USB power)</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.bootreason</code></td>
-<td>Returns reset and shutdown reason strings</td>
-</tr>
-<tr>
-<td><code>get pwrmgt.bootmv</code></td>
-<td>Returns boot voltage in millivolts</td>
-</tr>
-</tbody>
-</table>
-<p>On boards without power management enabled, all commands except <code>get pwrmgt.support</code> return:</p>
-<pre><code>ERROR: Power management not supported
+<p>The working directory is retained and printed at exit. It contains the exact
+served mOTA, <code>motatool-serve.log</code>, extracted build inputs when needed, and
+<code>controller-radio.txt</code>. It contains no saved admin password.</p>
+<h2 id="interruption-and-recovery">Interruption and recovery</h2>
+<p>Ctrl-C stops the seeder, detaches its serial folder, and attempts to restore
+the controller. The target and relays remain on TempRadio only until their
+bounded windows end; rebooting also restores their saved radio settings. A
+partial download remains safe. Once the target is reachable again (after its
+TempRadio window ends, or after putting the controller back on that tuple),
+rerunning the same package recognizes its manifest ID and resumes the existing
+session instead of clearing it.</p>
+<p>A hard process kill or host power loss cannot run cleanup. Recover a serial
+controller using the tuple saved in the printed work directory:</p>
+<pre><code class="language-bash">radio=$(tr -d '\r\n' &lt; ./meshcore-lora-ota-20260807-123456-1234/controller-radio.txt)
+meshcli -s /dev/ttyACM0 set radio &quot;$radio&quot;
 </code></pre>
-<h2 id="debug-output">Debug Output</h2>
-<p>When <code>MESH_DEBUG=1</code> is enabled, the power management module outputs:</p>
-<pre><code>DEBUG: PWRMGT: Reset = Wake from LPCOMP (0x20000); Shutdown = Low Voltage (0x4C)
-DEBUG: PWRMGT: Boot voltage = 3450 mV (threshold = 3300 mV)
-DEBUG: PWRMGT: LPCOMP wake configured (AIN7, ref=3/8 VDD)
+<pre><code class="language-powershell">$radio = (Get-Content '.\meshcore-lora-ota-...\controller-radio.txt' -Raw).Trim()
+meshcli -s COM7 set radio $radio
 </code></pre>
-<h2 id="phase-2-planned">Phase 2 (Planned)</h2>
-<ul>
-<li>Runtime voltage monitoring</li>
-<li>Voltage state machine (Normal -&gt; Warning -&gt; Critical -&gt; Shutdown)</li>
-<li>Configurable thresholds</li>
-<li>Load shedding callbacks for power reduction</li>
-<li>Deep sleep integration</li>
-<li>Scheduled wake-up</li>
-<li>Extended sleep with periodic monitoring</li>
-</ul>
-<h2 id="references">References</h2>
-<ul>
-<li><a href="https://infocenter.nordicsemi.com/topic/ps_nrf52840/power.html">nRF52840 Product Specification - POWER</a></li>
-<li><a href="https://infocenter.nordicsemi.com/topic/ps_nrf52840/lpcomp.html">nRF52840 Product Specification - LPCOMP</a></li>
-<li><a href="https://infocenter.nordicsemi.com/topic/sdk_nrf5_v17.1.0/group__nrf__sdm__api.html">SoftDevice S140 API - Power Management</a></li>
-</ul>
+<p>If installation was accepted but the final confirmation timed out, reconnect
+on the node's normal channel and run <code>ota self</code> and <code>ver</code>. Do not immediately
+replace a staged image: the default active-download guard preserves it until
+you explicitly use <code>--replace-active-download</code> or run <code>ota cancel</code>.</p>
+<p>Exit status is <code>0</code> for success, <code>2</code> for a validation or operational error, and
+<code>130</code> for Ctrl-C.</p>
 
 
 
