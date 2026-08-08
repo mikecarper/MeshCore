@@ -152,7 +152,9 @@ struct NeighbourInfo {
 #endif
 #ifndef FLOOD_PACKET_FILTER_SLOTS
   #if MESH_ENABLE_FLOOD_RULE_ENGINE
-    #define FLOOD_PACKET_FILTER_SLOTS 31
+    // Keep one extra forward-phase row available when the legacy
+    // flood.channel.data gate is upgraded into an ordinary FPF7 rule.
+    #define FLOOD_PACKET_FILTER_SLOTS 32
   #else
     #define FLOOD_PACKET_FILTER_SLOTS 16
   #endif
@@ -394,6 +396,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
       flood_channel_scope_requirements[FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS];
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
   uint32_t recv_pkt_filter_match_mask;
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+  bool flood_policy_has_embedded_sections;
+  // Zero-based forward-row slot owned by the flood.channel.data compatibility
+  // facade. 0xFF means forwarding is enabled and no compatibility row exists.
+  uint8_t flood_channel_data_rule_slot;
+  uint8_t flood_channel_data_rule_max_hops;
+#endif
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
   bool clock_sync_mesh_enabled;
   bool clock_sync_mesh_edge_enabled;
@@ -583,11 +592,19 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool isMillisTimerDue(unsigned long timestamp) const;
   bool floodChannelDataHopApplies(const mesh::Packet* packet) const;
   bool loadFloodPacketFilters();
-  bool saveFloodPacketFilters();
+  bool saveFloodPacketFilters(bool empty_scope_phase = false);
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
-  void migrateLegacyFloodChannelBlocks();
+  bool migrateLegacyFloodChannelBlocks();
+  bool migrateLegacyFloodChannelData();
+  bool importLegacyFloodPolicySections();
+  int findFloodChannelDataRule() const;
+  bool isFloodChannelDataRule(const FloodPacketFilterEntry& entry) const;
+  void formatFloodChannelData(char* reply) const;
+  void formatFloodChannelDataHops(char* reply) const;
+  void setFloodChannelData(const char* value, char* reply);
+  void setFloodChannelDataHops(const char* value, char* reply);
 #endif
-  void loadFloodPacketFilterBlacklist();
+  bool loadFloodPacketFilterBlacklist();
   bool saveFloodPacketFilterBlacklist();
   void seedDefaultFloodPacketFilters();
   bool floodPacketFilterBlacklistMatches(const mesh::Packet* packet) const;
@@ -622,7 +639,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void formatFloodPacketFilterBlacklist(const char* args, char* reply) const;
   void setFloodPacketFilterBlacklist(const char* args, char* reply);
   void deleteFloodPacketFilterBlacklist(const char* args, char* reply);
-  void loadFloodChannelScopes();
+  bool loadFloodChannelScopes();
   bool saveFloodChannelScopes(bool empty_table = false);
   bool applyFloodChannelScopeTarget(mesh::Packet* packet, const FloodChannelScopeEntry& entry,
                                     bool& scope_changed, bool& fast_track,

@@ -8,12 +8,13 @@ Everything runs locally in this browser. Channel keys, packet facts, and policy
 drafts are not uploaded anywhere.
 
 <div class="filter-design-warning" role="note">
-  <strong>Engine design preview</strong>
+  <strong>Policy design preview</strong>
   <p>
-    This page targets the new policy-engine idea, not today's FPF7 file or
-    existing <code>set flood.*</code> commands. Its readable policy language,
-    JSON, and Base64 bundle are a prototype for design testing. Current
-    firmware cannot install these policies yet.
+    The phases and core conditions model current FPF7 behavior, including its
+    forward rows, scope rewrites, and shared blacklist. The readable policy
+    language, JSON, and Base64 bundle are still a prototype: current firmware
+    is configured with <code>set flood.*</code> commands and cannot install a
+    bundle from this page.
   </p>
 </div>
 
@@ -106,7 +107,7 @@ in the simulator below. The examples draw from
         <code>when type=grp_txt hops=all channel=public sender="Noisy User" do rate=5/min burst=5</code>
       </button>
       <button type="button" data-example="blacklist">
-        <span>Drop packets whose path matches the passive blacklist</span>
+        <span>Stop forwarding traffic from blacklisted internet gateways</span>
         <code>when type=any hops=all path=blacklist do drop</code>
       </button>
       <button type="button" data-example="factory">
@@ -602,6 +603,20 @@ The class column shows which broader selector also matches it.
 | `13` | Reserved payload type 13 | `class:other` |
 | `14` | Reserved payload type 14 | `class:other` |
 | `raw_custom` | Application-defined raw data | `class:other` |
+
+## Current FPF7 command mapping
+
+| Firmware command | FPF7 role |
+| --- | --- |
+| `flood.rule` / `flood.filter` | Forward-phase match and action rows |
+| `flood.channel.data` | Compatibility view over one visible `type=grp_data` forward drop row |
+| `flood.channel.scope` | Scope-rewrite phase rows |
+| `flood.filter.blacklist` | One shared unordered path-ID set referenced by `path=blacklist` rows |
+
+Generalized repeaters commit those sections together. The blacklist is useful
+for refusing to retransmit floods associated with internet gateways dumping
+bulk traffic, but a path ID is truncated and unauthenticated; it identifies a
+routing pattern, not a person.
 
 ## Proposed evaluation contract
 

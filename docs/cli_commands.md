@@ -1334,8 +1334,13 @@ reduce false recoveries when no traffic is expected.
 
 **Forwarding behavior:** Repeater firmware only. The repeater still receives and
 logs the packet when logging is enabled; this only blocks retransmission.
-This is checked before FPF7 and applies to flood `GRP_DATA` packets regardless
-of channel key. Flood group text (`GRP_TXT`) is unaffected by this setting.
+On generalized repeaters these commands manage an ordinary visible FPF7
+`type=grp_data` drop row. `off` with `all` maps to `hops=all`; `off` with `N`
+maps to `hops=N+1+`. The 240 KB compact FPF6 profiles retain the legacy hard
+gate. Because it is an ordinary FPF7 row, a matching higher-priority `stop`
+rule can exempt traffic from it. The compact `get flood.filter` list marks the
+managed row with `~data`. Flood group text (`GRP_TXT`) is unaffected by this
+setting.
 
 `get flood.channel.data` includes the active hop gate as `h=all` or `h>N`.
 
@@ -1344,7 +1349,7 @@ of channel key. Flood group text (`GRP_TXT`) is unaffected by this setting.
 #### Block selected flood channels with FPF7
 
 The separate `flood.channel.block` command and 15-row table have been retired.
-Generalized repeaters use the 31-row FPF7 table for authenticated channel
+Generalized repeaters use the 32-row FPF7 forward phase for authenticated channel
 blocks:
 
 ```text
@@ -1654,8 +1659,8 @@ ordered `prefix=` match on a room server. Standard room-server profiles do not
 compile this table.
 
 **Parameters:**
-- `n`: Rule slot in the build's compiled table (normally `1-31`; some
-  constrained profiles use fewer slots).
+- `n`: Forward-rule slot in the build's compiled table (`1-32` on generalized
+  repeaters and `1-31` on FULL room servers; compact profiles may use fewer).
 - `type`: Payload type name, full `PAYLOAD_TYPE_*` name, decimal value `0-15`,
   hexadecimal value `0x00-0x0F`, or `any`.
 - `hops`: Optional; omitted means `all`.
@@ -1749,7 +1754,7 @@ against the same immutable receive-time packet, before any rule changes its
 scope. Matching rows are processed in descending `priority`, with lower slot
 number winning a tie. The first matching `stop` row is included and all
 lower-order FPF7 matches are discarded. A stop cannot undo an earlier drop or
-bypass hard forwarding gates and separate forwarding tables. A row with
+bypass hard forwarding gates or the other policy phases. A row with
 `path=blacklist` must meet the path condition as well as its other conditions;
 blacklist IDs can occur anywhere in the received path and their configured
 order is irrelevant. In contrast, `prefix=` begins at the first received path
@@ -1833,11 +1838,19 @@ combines slow timing
 (`s`) with temporary-radio suspension (`t`). Packet type is shown numerically
 in that fallback. Normal-sized rows keep the descriptive spelling above.
 
-The blacklist and filter rows are persisted separately. Replacing or deleting
+On generalized repeaters, filter rows, scope-rewrite rows, the shared
+blacklist, and `flood.channel.data` compatibility state are committed in one
+atomic FPF7 image. Compact FPF6 profiles retain separate files. Replacing or deleting
 the blacklist does not delete rows containing `path=blacklist`; such rows
 remain dormant while the list is empty. Path hashes are truncated routing
 identifiers, not authenticated identities, so this is a forwarding signal
 rather than proof that a particular repeater handled a packet.
+
+A common use is containment of bulk internet-to-mesh dumping: list the path
+IDs associated with the offending gateways, then add a broad
+`type=any hops=all path=blacklist drop` row. This prevents this repeater from
+retransmitting matching floods; it does not delete them from local logs or
+prove who originated them.
 
 The unnumbered blacklist `set` replaces the whole list and accepts up to 18 IDs
 so it fits every CLI transport. Numbered `set` writes up to 18 consecutive
@@ -1883,7 +1896,7 @@ and adds `#BlackHole86` only when no scope was present. The second rewrites the
 exact incoming `#usa` scope. The third demonstrates a two-byte pbyte source
 prefix and a global per-row rate cap. The fourth authenticates `#rgdata` at
 zero through two hops, applies no FPF7 action of its own, and stops lower-order
-FPF7 rows; hard gates and separate tables still apply.
+FPF7 forward rows; hard gates and the rewrite/moderation phases still apply.
 
 The fixed 240 KB STM32WL profiles leave
 `MESH_ENABLE_FLOOD_RULE_ENGINE=0` and retain the compact, persistent FPF6

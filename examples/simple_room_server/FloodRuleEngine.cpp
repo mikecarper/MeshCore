@@ -590,6 +590,27 @@ void FloodRuleEngine::load() {
       success = false;
     }
   }
+  if (success && version_7 && file.available() > 0) {
+    uint8_t section_magic[4];
+    uint8_t channel_data_slot = 0xFF;
+    uint8_t channel_data_max_hops = 0xFF;
+    uint8_t scope_count = 0;
+    uint8_t direct_count = 0;
+    uint8_t blacklist_count = 0;
+    success = readExact(section_magic, sizeof(section_magic))
+        && memcmp(section_magic, "FPS1", sizeof(section_magic)) == 0
+        && readExact(&channel_data_slot, sizeof(channel_data_slot))
+        && readExact(&channel_data_max_hops,
+                     sizeof(channel_data_max_hops))
+        && readExact(&scope_count, sizeof(scope_count))
+        && readExact(&direct_count, sizeof(direct_count))
+        && readExact(&blacklist_count, sizeof(blacklist_count))
+        && channel_data_slot == 0xFF
+        && channel_data_max_hops == 0xFF
+        && scope_count == 0 && direct_count == 0
+        && blacklist_count == 0
+        && file.available() == 0;
+  }
     file.close();
     if (!success) memset(_entries, 0, sizeof(_entries));
     return success ? FileState::Valid : FileState::Invalid;
@@ -706,6 +727,19 @@ bool FloodRuleEngine::save() {
         && writeExact(&entry.priority, sizeof(entry.priority))
         && writeExact(&stop_on_match, sizeof(stop_on_match));
   }
+  const uint8_t section_magic[4] = {'F', 'P', 'S', '1'};
+  const uint8_t no_channel_data_slot = 0xFF;
+  const uint8_t channel_data_hops_all = 0xFF;
+  const uint8_t empty_count = 0;
+  success = success
+      && writeExact(section_magic, sizeof(section_magic))
+      && writeExact(&no_channel_data_slot,
+                    sizeof(no_channel_data_slot))
+      && writeExact(&channel_data_hops_all,
+                    sizeof(channel_data_hops_all))
+      && writeExact(&empty_count, sizeof(empty_count))
+      && writeExact(&empty_count, sizeof(empty_count))
+      && writeExact(&empty_count, sizeof(empty_count));
   file.close();
   if (!success || !verifyWrittenFile(
           _fs, RULE_TEMP_FILE, bytes_written, write_hash)) {

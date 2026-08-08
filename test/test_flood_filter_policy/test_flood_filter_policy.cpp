@@ -299,6 +299,20 @@ TEST(FloodRuleOrder, ThirtyOneSlotTableIncludesTheLastSlot) {
                 matches, priorities, stop_flags, 31));
 }
 
+TEST(FloodRuleOrder, ThirtyTwoSlotTableIncludesTheLastSlot) {
+  uint8_t priorities[32] = {0};
+  uint8_t stop_flags[32] = {0};
+  priorities[31] = 200;
+  stop_flags[31] = 1;
+  const uint32_t matches = ((uint32_t)1U << 31) | 1U;
+
+  EXPECT_EQ(31, FloodFilterPolicy::nextOrderedRule(
+                    matches, 0, priorities, 32));
+  EXPECT_EQ((uint32_t)1U << 31,
+            FloodFilterPolicy::truncateRulesAtStop(
+                matches, priorities, stop_flags, 32));
+}
+
 TEST(FloodFilterScope, RegionRequirementHasTheExpectedTruthTable) {
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, false));
   EXPECT_TRUE(FloodFilterPolicy::scopeRuleAllowed(false, true));
