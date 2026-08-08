@@ -5701,7 +5701,7 @@ setting.</p>
 <hr />
 <h4 id="block-selected-flood-channels-with-fpf7">Block selected flood channels with FPF7</h4>
 <p>The separate <code>flood.channel.block</code> command and 15-row table have been retired.
-Generalized repeaters use the 32-row FPF7 forward phase for authenticated channel
+Generalized repeaters use the 63-row FPF7 forward phase for authenticated channel
 blocks:</p>
 <pre><code class="language-text">set flood.rule type=any channel=#test hops=all drop
 set flood.rule.2 type=any channel=#wardriving hops=5+ drop
@@ -5964,7 +5964,7 @@ for remote changes. It does not have the repeater's passive path blacklist, so
 ordered <code>prefix=</code> match on a room server. Standard room-server profiles do not
 compile this table.</p>
 <p><strong>Parameters:</strong>
-- <code>n</code>: Forward-rule slot in the build's compiled table (<code>1-32</code> on generalized
+- <code>n</code>: Forward-rule slot in the build's compiled table (<code>1-63</code> on generalized
   repeaters and <code>1-31</code> on FULL room servers; compact profiles may use fewer).
 - <code>type</code>: Payload type name, full <code>PAYLOAD_TYPE_*</code> name, decimal value <code>0-15</code>,
   hexadecimal value <code>0x00-0x0F</code>, or <code>any</code>.
