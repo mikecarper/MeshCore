@@ -91,6 +91,7 @@ Commands:
   build-repeater-firmwares: Build all repeater firmwares with 254 neighbors, except DRAM-limited targets that retain 50.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
+  build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
 
 Options:
   --firmware-version <version>: Firmware version to embed.
@@ -131,6 +132,9 @@ $ bash build.sh build-room-server-firmwares
 
 Build all sensor firmwares
 $ bash build.sh build-sensor-firmwares
+
+Build all kiss radio firmwares
+$ bash build.sh build-kiss-radio-firmwares
 
 Environment Variables:
   FIRMWARE_VERSION=vX.Y.Z: Firmware version to embed in the build output.
@@ -1272,6 +1276,9 @@ get_pio_envs_for_variant_role() {
         echo "$env"
         ;;
       sensor:sensor|sensor:*_sensor)
+        echo "$env"
+        ;;
+      kiss:kiss_modem|kiss:*_kiss_modem)
         echo "$env"
         ;;
     esac
@@ -2424,6 +2431,10 @@ resolve_sensor_firmwares() {
   get_pio_envs_for_variant_role sensor
 }
 
+resolve_kiss_radio_firmwares() {
+  get_pio_envs_for_variant_role kiss
+}
+
 resolve_full_esp32_firmwares() {
   local env_name
 
@@ -2460,6 +2471,9 @@ get_bulk_build_resolver_name() {
       ;;
     build-sensor-firmwares)
       echo "resolve_sensor_firmwares"
+      ;;
+    build-kiss-radio-firmwares)
+      echo "resolve_kiss_radio_firmwares"
       ;;
     *)
       return 1
@@ -2567,7 +2581,7 @@ resolve_command_targets() {
     return 1
   fi
 
-  if is_bulk_build_command "$1"; then
+  if is_bulk_build_command "$1" && [ "$1" != "build-kiss-radio-firmwares" ]; then
     prompt_for_kiss_modem_build_policy
     if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
       echo "No build targets remain after skipping KISS modem targets."
@@ -3222,7 +3236,6 @@ main() {
   if ! resolve_command_targets "$@"; then
     exit 1
   fi
-
   if ! is_automatic_profile_command "$1" && [ -n "$MQTT_BRIDGE_OVERRIDE" ]; then
     if ! normalize_resolved_targets_for_mqtt "$1"; then
       exit 1
