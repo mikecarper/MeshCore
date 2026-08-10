@@ -67,6 +67,8 @@ bool radio_init() {
   radio.setRxBoostedGainMode(RX_BOOSTED_GAIN);
 #endif
 
+  radio_driver.setDeepInitCallback(radio_init);
+
   return true;  // success
 }
 
