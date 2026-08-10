@@ -418,7 +418,8 @@ static bool deserializeContactRecord(
   memcpy(&c.gps_lon, &in[offset], 4);
   c.id = mesh::Identity(pub_key);
   c.shared_secret_valid = false;
-  return c.out_path_len == OUT_PATH_UNKNOWN || c.out_path_len <= MAX_PATH_SIZE;
+  return c.out_path_len == OUT_PATH_UNKNOWN
+      || mesh::Packet::isValidPathLen(c.out_path_len);
 }
 
 #if defined(NRF52_PLATFORM)

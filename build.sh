@@ -88,6 +88,7 @@ Commands:
   build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build all companion firmwares for all build targets.
+  build-full-companion-firmwares: Build all full Companion firmwares for supported ESP32 and nRF52 targets.
   build-repeater-firmwares: Build all repeater firmwares with 254 neighbors, except DRAM-limited targets that retain 50.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
@@ -126,6 +127,9 @@ $ bash build.sh build-full-esp32-logging-firmwares
 
 Build all companion firmwares
 $ bash build.sh build-companion-firmwares
+
+Build all full Companion firmwares
+$ bash build.sh build-full-companion-firmwares
 
 Build all repeater firmwares
 $ bash build.sh build-repeater-firmwares
@@ -475,6 +479,7 @@ prompt_for_build_mode() {
     "Build all sensor firmwares"
     "Build only FULL ESP32 MQTT firmwares (all features, MQTT, and LoRa OTA)"
     "Build only FULL ESP32 logging firmwares (all features, logging, no MQTT, and LoRa OTA)"
+    "Build all full Companion firmwares (all available transports and host-backed LoRa OTA)"
   )
 
   echo "No command provided. Select a build action:"
@@ -523,6 +528,10 @@ prompt_for_build_mode() {
         ;;
       9)
         SELECTED_COMMAND_ARGS=(build-full-esp32-logging-firmwares)
+        return 0
+        ;;
+      10)
+        SELECTED_COMMAND_ARGS=(build-full-companion-firmwares)
         return 0
         ;;
     esac
@@ -2690,6 +2699,17 @@ resolve_companion_firmwares() {
   get_pio_envs_for_variant_role companion
 }
 
+resolve_full_companion_firmwares() {
+  local env_name
+
+  for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+    if is_supported_build_env "$env_name" \
+        && is_companion_radio_full_target "$env_name"; then
+      printf '%s\n' "$env_name"
+    fi
+  done
+}
+
 resolve_repeater_firmwares() {
   get_pio_envs_for_variant_role repeater
 }
@@ -2733,6 +2753,9 @@ get_bulk_build_resolver_name() {
       ;;
     build-companion-firmwares)
       echo "resolve_companion_firmwares"
+      ;;
+    build-full-companion-firmwares)
+      echo "resolve_full_companion_firmwares"
       ;;
     build-repeater-firmwares)
       echo "resolve_repeater_firmwares"

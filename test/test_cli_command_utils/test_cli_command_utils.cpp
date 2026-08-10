@@ -122,6 +122,71 @@ TEST(CLICommandUtils, ParsesTerminalLoginAndRemoteCommandArguments) {
                 "logins password", "login", argument));
 }
 
+TEST(CLICommandUtils, ParsesTerminalDirectAndExplicitPaths) {
+  using mesh::cli::TerminalPathMode;
+  using mesh::cli::TerminalPathParseResult;
+  uint8_t route[64] = {};
+  mesh::cli::TerminalPath path;
+
+  EXPECT_EQ(TerminalPathParseResult::Valid,
+            mesh::cli::parseTerminalPath(
+                "direct", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathMode::Direct, path.mode);
+  EXPECT_EQ(0, path.encoded_len);
+  EXPECT_EQ(0, path.hop_count);
+  EXPECT_EQ(0u, path.byte_len);
+
+  EXPECT_EQ(TerminalPathParseResult::Valid,
+            mesh::cli::parseTerminalPath(
+                "clear  ", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathMode::Clear, path.mode);
+
+  EXPECT_EQ(TerminalPathParseResult::Valid,
+            mesh::cli::parseTerminalPath(
+                " A1B2C3, d4e5f6,010203 ", route, sizeof(route), 63,
+                path));
+  EXPECT_EQ(TerminalPathMode::Explicit, path.mode);
+  EXPECT_EQ(3, path.hash_size);
+  EXPECT_EQ(3, path.hop_count);
+  EXPECT_EQ(0x83, path.encoded_len);
+  EXPECT_EQ(9u, path.byte_len);
+  const uint8_t expected[] = {
+      0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x01, 0x02, 0x03,
+  };
+  EXPECT_EQ(0, memcmp(expected, route, sizeof(expected)));
+}
+
+TEST(CLICommandUtils, RejectsMalformedTerminalPaths) {
+  using mesh::cli::TerminalPathParseResult;
+  uint8_t route[4] = {};
+  mesh::cli::TerminalPath path;
+
+  EXPECT_EQ(TerminalPathParseResult::Missing,
+            mesh::cli::parseTerminalPath(
+                nullptr, route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::Missing,
+            mesh::cli::parseTerminalPath(
+                "   ", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::InvalidPrefix,
+            mesh::cli::parseTerminalPath(
+                "GG", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::InvalidPrefix,
+            mesh::cli::parseTerminalPath(
+                "AA,", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::MixedPrefixSize,
+            mesh::cli::parseTerminalPath(
+                "AA,BBBB", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::InvalidSeparator,
+            mesh::cli::parseTerminalPath(
+                "AA BB", route, sizeof(route), 63, path));
+  EXPECT_EQ(TerminalPathParseResult::TooManyHops,
+            mesh::cli::parseTerminalPath(
+                "AA,BB", route, sizeof(route), 1, path));
+  EXPECT_EQ(TerminalPathParseResult::RouteTooLong,
+            mesh::cli::parseTerminalPath(
+                "A1B2C3,D4E5F6", route, sizeof(route), 63, path));
+}
+
 TEST(CLICommandUtils, MasksOnlyTerminalLoginPasswordInput) {
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login"));
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login "));

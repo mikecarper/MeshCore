@@ -3463,6 +3463,80 @@ ContactInfo* MyMesh::getTerminalRecipient() {
   return recipient;
 }
 
+void MyMesh::printTerminalPath(const ContactInfo& recipient) {
+  Serial.printf("  Path to %s: ", recipient.name);
+  if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
+    Serial.print("unknown (next login uses FLOOD)\r\n");
+    return;
+  }
+  if (!mesh::Packet::isValidPathLen(recipient.out_path_len)) {
+    Serial.print("invalid\r\n");
+    return;
+  }
+
+  const uint8_t hash_size = (recipient.out_path_len >> 6) + 1;
+  const uint8_t hop_count = recipient.out_path_len & 63;
+  if (hop_count == 0) {
+    Serial.print("direct (zero hop; login uses DIRECT)\r\n");
+    return;
+  }
+
+  for (uint8_t hop = 0; hop < hop_count; hop++) {
+    if (hop != 0) Serial.print(',');
+    mesh::Utils::printHex(Serial,
+                          &recipient.out_path[(size_t)hop * hash_size],
+                          hash_size);
+  }
+  Serial.printf(" (%u %s, %u-byte hashes; login uses DIRECT)\r\n",
+                (unsigned)hop_count, hop_count == 1 ? "hop" : "hops",
+                (unsigned)hash_size);
+}
+
+void MyMesh::handleTerminalPath(ContactInfo& recipient,
+                                const char* path_spec) {
+  if (path_spec == NULL) {
+    printTerminalPath(recipient);
+    return;
+  }
+
+  mesh::cli::TerminalPath path;
+  const mesh::cli::TerminalPathParseResult parsed =
+      mesh::cli::parseTerminalPath(path_spec, _terminal_tmp_buf,
+                                   sizeof(recipient.out_path), 63, path);
+  switch (parsed) {
+    case mesh::cli::TerminalPathParseResult::Valid:
+      break;
+    case mesh::cli::TerminalPathParseResult::Missing:
+      Serial.print("  ERROR: use path <direct|clear|hop[,hop...]>\r\n");
+      return;
+    case mesh::cli::TerminalPathParseResult::InvalidPrefix:
+      Serial.print("  ERROR: each path hop must be 2, 4, or 6 hex digits\r\n");
+      return;
+    case mesh::cli::TerminalPathParseResult::MixedPrefixSize:
+      Serial.print("  ERROR: all path hops must use the same width\r\n");
+      return;
+    case mesh::cli::TerminalPathParseResult::InvalidSeparator:
+      Serial.print("  ERROR: separate path hops with commas\r\n");
+      return;
+    case mesh::cli::TerminalPathParseResult::TooManyHops:
+      Serial.print("  ERROR: path must contain at most 63 hops\r\n");
+      return;
+    case mesh::cli::TerminalPathParseResult::RouteTooLong:
+      Serial.print("  ERROR: path is too long\r\n");
+      return;
+  }
+
+  memset(recipient.out_path, 0, sizeof(recipient.out_path));
+  if (path.mode == mesh::cli::TerminalPathMode::Clear) {
+    recipient.out_path_len = OUT_PATH_UNKNOWN;
+  } else {
+    recipient.out_path_len = mesh::Packet::copyPath(
+        recipient.out_path, _terminal_tmp_buf, path.encoded_len);
+  }
+  scheduleContactWrite(recipient);
+  printTerminalPath(recipient);
+}
+
 void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
                                  uint32_t message_timestamp, uint32_t expected_ack,
                                  uint32_t est_timeout,
@@ -3818,6 +3892,9 @@ void MyMesh::handleTerminalCommand(char* command) {
   const mesh::cli::TerminalArgumentCommandMatch command_match =
       mesh::cli::parseTerminalArgumentCommand(command, "cmd",
                                               remote_command);
+  const char* path_spec = NULL;
+  const mesh::cli::TerminalArgumentCommandMatch path_match =
+      mesh::cli::parseTerminalArgumentCommand(command, "path", path_spec);
 
   if (strcmp(command, "channels") == 0) {
     listTerminalChannels();
@@ -3923,6 +4000,17 @@ void MyMesh::handleTerminalCommand(char* command) {
       Serial.printf("  Current recipient: %s\r\n", recipient->name);
     } else {
       Serial.print("  No recipient selected\r\n");
+    }
+  } else if (path_match
+             != mesh::cli::TerminalArgumentCommandMatch::NoMatch) {
+    ContactInfo* recipient = getTerminalRecipient();
+    if (recipient == NULL) {
+      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+    } else {
+      handleTerminalPath(
+          *recipient,
+          path_match == mesh::cli::TerminalArgumentCommandMatch::Valid
+              ? path_spec : NULL);
     }
   } else if (login_match
              != mesh::cli::TerminalArgumentCommandMatch::NoMatch) {
@@ -4040,6 +4128,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("  time <epoch-seconds>\r\n");
     Serial.print("  list [n]\r\n");
     Serial.print("  to [recipient name or prefix]\r\n");
+    Serial.print("  path [direct|clear|hop[,hop...]]\r\n");
     Serial.print("  send <text>\r\n");
     Serial.print("  login <admin-password>\r\n");
     Serial.print("  cmd <remote-command>\r\n");

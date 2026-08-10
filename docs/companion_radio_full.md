@@ -39,6 +39,14 @@ bash build.sh build-firmware RAK_4631_companion_radio_full \
   --firmware-version v1.17.0
 ```
 
+To build every available full Companion target, select the corresponding
+interactive menu item or run:
+
+```bash
+bash build.sh build-full-companion-firmwares \
+  --firmware-version v1.17.0
+```
+
 Artifacts are written to `out/` by default.
 
 On 4 MB ESP32 boards, the full target uses a single 3 MB application
@@ -105,16 +113,20 @@ The terminal supports Companion chat commands, including `channels`,
 channels
 channel #rgdata Hello from Eugene 👋
 to Hilltop Repeater
+path A1B2C3,D4E5F6
 login my-admin-password
 cmd ver
 trace
 ```
 
-The `to` command selects the remote-administration target. Login passwords are
-masked during entry and limited by the radio protocol to 15 UTF-8 bytes. Wait
-for the asynchronous login result before using `cmd`; command replies appear
-as `CLI -> from <name>`. Remote ACL permissions determine which commands the
-target accepts.
+The `to` command selects the remote-administration target. `path` shows its
+saved outgoing route; `path direct`, `path clear`, or a comma-separated list
+such as `path A1B2C3,D4E5F6` changes the route used by subsequent `login`,
+`send`, and `cmd` commands. Every hop must use the same 2-, 4-, or 6-digit
+hexadecimal width. Login passwords are masked during entry and limited by the
+radio protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before
+using `cmd`; command replies appear as `CLI -> from <name>`. Remote ACL
+permissions determine which commands the target accepts.
 
 With no argument, `trace` uses the current `to` recipient. A name-prefix
 argument traces that contact directly without changing the current recipient.

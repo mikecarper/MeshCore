@@ -274,6 +274,8 @@ private:
   void checkSerialInterface();
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();
+  void printTerminalPath(const ContactInfo& recipient);
+  void handleTerminalPath(ContactInfo& recipient, const char* path_spec);
   void importTerminalCard(char* command);
   void listTerminalChannels();
   void sendTerminalChannelMessage(ChannelDetails& channel, const char* text);

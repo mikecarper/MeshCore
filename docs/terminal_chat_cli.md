@@ -133,12 +133,44 @@ to {name-prefix}
 Sets the recipient to the _first_ matching contact (in 'list') by the name prefix. (ie. you don't have to type whole name)
 
 ```
+path
+```
+Shows the saved outgoing path for the current `to` recipient. This command and
+all path changes require a recipient to be selected first.
+
+```
+path direct
+path clear
+path {hop-hash[,hop-hash...]}
+```
+Sets the outgoing path used by subsequent `login`, `send`, and `cmd` commands.
+`direct` selects a zero-hop route. `clear` forgets the saved route, causing the
+next operation to use flood routing and allowing normal path discovery to
+learn a replacement.
+
+Explicit paths use comma-separated hop hashes. Each hop must contain exactly
+2, 4, or 6 hexadecimal digits, and every hop in one path must use the same
+width. Spaces around commas and hexadecimal letter case do not matter. The
+setting is saved with the selected contact.
+
+For example:
+
+```text
+to Hilltop Repeater
+path A1B2C3,D4E5F6
+path
+login my-admin-password
+```
+
+```
 login {admin-password}
 ```
 Sends a remote login request to the current recipient. Select a repeater,
 room, or other remotely managed node with `to {name-prefix}` first. The
 password is masked with `*` while it is entered and must be 1-15 UTF-8 bytes;
-longer passwords are rejected instead of truncated.
+longer passwords are rejected instead of truncated. Login uses the route shown
+by `path`: a known or explicitly set route is direct, while an unknown route is
+flooded.
 
 Login results arrive asynchronously. A successful modern response displays
 the remote ACL permissions byte and server protocol level. A wrong password,
@@ -219,7 +251,8 @@ eventually report a timeout.
 ```
 reset path
 ```
-Resets the path to current recipient, for new path discovery.
+Resets the path to current recipient, for new path discovery. This is retained
+as an alias for `path clear`.
 
 ```
 public {text}

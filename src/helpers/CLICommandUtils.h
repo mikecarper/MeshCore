@@ -42,6 +42,22 @@ enum class TerminalArgumentCommandMatch : uint8_t {
   MissingArgument,
 };
 
+enum class TerminalPathMode : uint8_t {
+  Explicit = 0,
+  Direct,
+  Clear,
+};
+
+enum class TerminalPathParseResult : uint8_t {
+  Valid = 0,
+  Missing,
+  InvalidPrefix,
+  MixedPrefixSize,
+  InvalidSeparator,
+  TooManyHops,
+  RouteTooLong,
+};
+
 struct RecentRepeaterGetQuery {
   int page;
   uint8_t search_prefix[3];
@@ -52,6 +68,14 @@ struct TerminalChannelMessage {
   const char* selector;
   size_t selector_len;
   const char* text;
+};
+
+struct TerminalPath {
+  TerminalPathMode mode;
+  uint8_t encoded_len;
+  uint8_t hash_size;
+  uint8_t hop_count;
+  size_t byte_len;
 };
 
 inline const char* skipRecentRepeaterSpaces(const char* text) {
@@ -156,6 +180,99 @@ inline int recentRepeaterHexNibble(char c) {
   if (c >= 'a' && c <= 'f') return c - 'a' + 10;
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;
   return -1;
+}
+
+inline bool terminalPathKeywordMatches(const char* text,
+                                       const char* keyword) {
+  const size_t keyword_len = strlen(keyword);
+  if (strncmp(text, keyword, keyword_len) != 0) return false;
+  text = skipRecentRepeaterSpaces(text + keyword_len);
+  return *text == 0;
+}
+
+// Parse: direct | clear | <hop>[,<hop> ...]
+// Each explicit hop is a one-, two-, or three-byte hexadecimal prefix. All
+// hops must use the same width because that width is encoded once for the
+// complete MeshCore direct path.
+inline TerminalPathParseResult parseTerminalPath(
+    const char* input, uint8_t* output, size_t output_capacity,
+    uint8_t max_hops, TerminalPath& result) {
+  result.mode = TerminalPathMode::Explicit;
+  result.encoded_len = 0;
+  result.hash_size = 0;
+  result.hop_count = 0;
+  result.byte_len = 0;
+
+  input = skipRecentRepeaterSpaces(input);
+  if (input == nullptr || *input == 0) {
+    return TerminalPathParseResult::Missing;
+  }
+  if (terminalPathKeywordMatches(input, "direct")) {
+    result.mode = TerminalPathMode::Direct;
+    return TerminalPathParseResult::Valid;
+  }
+  if (terminalPathKeywordMatches(input, "clear")) {
+    result.mode = TerminalPathMode::Clear;
+    return TerminalPathParseResult::Valid;
+  }
+
+  uint8_t hash_size = 0;
+  uint8_t hop_count = 0;
+  size_t offset = 0;
+  while (*input != 0) {
+    input = skipRecentRepeaterSpaces(input);
+    const char* token = input;
+    size_t token_len = 0;
+    while (input[token_len] != 0 && input[token_len] != ','
+           && input[token_len] != ' ' && input[token_len] != '\t') {
+      token_len++;
+    }
+    if (token_len != 2 && token_len != 4 && token_len != 6) {
+      return TerminalPathParseResult::InvalidPrefix;
+    }
+
+    const uint8_t token_hash_size = static_cast<uint8_t>(token_len / 2);
+    if (hash_size == 0) {
+      hash_size = token_hash_size;
+      result.hash_size = hash_size;
+    } else if (token_hash_size != hash_size) {
+      return TerminalPathParseResult::MixedPrefixSize;
+    }
+    if (hop_count >= max_hops) {
+      return TerminalPathParseResult::TooManyHops;
+    }
+    if (output == nullptr || offset + hash_size > output_capacity) {
+      return TerminalPathParseResult::RouteTooLong;
+    }
+
+    for (uint8_t i = 0; i < hash_size; i++) {
+      const int high = recentRepeaterHexNibble(token[i * 2]);
+      const int low = recentRepeaterHexNibble(token[i * 2 + 1]);
+      if (high < 0 || low < 0) {
+        return TerminalPathParseResult::InvalidPrefix;
+      }
+      output[offset++] = static_cast<uint8_t>((high << 4) | low);
+    }
+    hop_count++;
+    input += token_len;
+    input = skipRecentRepeaterSpaces(input);
+    if (*input == 0) break;
+    if (*input != ',') {
+      return TerminalPathParseResult::InvalidSeparator;
+    }
+    input = skipRecentRepeaterSpaces(input + 1);
+    if (*input == 0) {
+      return TerminalPathParseResult::InvalidPrefix;
+    }
+  }
+
+  result.mode = TerminalPathMode::Explicit;
+  result.encoded_len = static_cast<uint8_t>(
+      ((hash_size - 1) << 6) | (hop_count & 63));
+  result.hash_size = hash_size;
+  result.hop_count = hop_count;
+  result.byte_len = offset;
+  return TerminalPathParseResult::Valid;
 }
 
 inline bool parseRecentRepeaterPage(const char* text, int& page) {
