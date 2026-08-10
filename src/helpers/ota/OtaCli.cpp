@@ -127,12 +127,26 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   // ---- help: list the commands in plain words (aliases in parentheses) ----
   if (is_cmd(a, "help|?|h", &rest)) {
+#if defined(OTA_SEEDER_ONLY)
+    snprintf(reply, 160,
+      "OTA seeder: status | stats | ls=find images | get <#> folder=capture | cancel | "
+      "announce | folder | config. LoRa install is disabled.");
+#else
     snprintf(reply, 160,
       "OTA: status | stats=admin ids/hashes | ls=find updates | get <#>=download | install | cancel | "
       "announce | self | folder | cache | config | key. Use `ota ls [page]`.");
+#endif
 
   // ---- inventory dashboard: running fw (self), the one fetch session, serving state ----
   } else if (*a == 0 || is_cmd(a, "status|st", &rest)) {
+#if defined(OTA_SEEDER_ONLY)
+    uint8_t dig[4]; c.manager.servedDigest(dig);
+    char dighx[9]; mesh::Utils::toHex(dighx, dig, 4);
+    snprintf(reply, 160,
+             "OTA seeder | install:disabled | folder:%s | serving:%u dg=%s | target:00000000 (source only)",
+             c.folder_active ? c.folder_dest_info : "not connected",
+             (unsigned)c.manager.servedCount(), dighx);
+#else
     SelfFwInfo fi; bool s = ota_self_firmware(fi);
     char selfhx[9]; if (s && fi.valid) mesh::Utils::toHex(selfhx, fi.body_hash, 4); else strcpy(selfhx, "?");
     OtaManager::FetchState fs = c.manager.fetchState();
@@ -164,6 +178,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #endif
     if (n < 146) n += snprintf(reply + n, 160 - n, " | bl:%s blrc:%02X",
                                bl_state, ota_bootloader_last_rc());
+#endif
 #endif
 
   // ---- admin OTA stats: crypto identities (our fw's content-id + body_hash), serving set, live fetch,
@@ -279,12 +294,20 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (!sel) { strcpy(reply, "ERR no such update (see the numbers in `ota ls`)"); return true; }
     // destination is MANDATORY: with none given, show the choices (flash always; folder iff a link is up).
     if (*dst == 0) {
+#if defined(OTA_SEEDER_ONLY)
+      if (c.folder_dest)
+        snprintf(reply, 160, "choose a destination: `ota pull %s folder`  (folder: %s)",
+                 selstr, c.folder_dest_info);
+      else
+        strcpy(reply, "ERR no folder connected (run motatool serve --tcp)");
+#else
       if (c.folder_dest)
         snprintf(reply, 160, "choose a destination: `ota pull %s flash` | `ota pull %s folder`  (folder: %s)",
                  selstr, selstr, c.folder_dest_info);
       else
         snprintf(reply, 160, "choose a destination: `ota pull %s flash`  (folder: none connected - motatool serve)",
                  selstr);
+#endif
       return true;
     }
     if (c.apply_pending) { strcpy(reply, "ERR busy applying"); return true; }
@@ -295,12 +318,17 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     uint8_t selmid[4]; uint32_t seltgt = sel->target_id; memcpy(selmid, sel->mid, 4);   // sel may move on reset
     OtaStore* store; const char* dname;
     if (strncmp(dst, "flash", 5) == 0) {
+#if defined(OTA_SEEDER_ONLY)
+      strcpy(reply, "ERR seeder-only build cannot stage or install firmware; use `folder`");
+      return true;
+#else
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
       c.stopSdCacheFetch();                         // manual install download takes priority over archiving
 #endif
       store = &c.fetch_store; c.fetch_store.clear(); dname = "flash"; validate = false;   // seed lives in the folder
 #if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
       c.manager.set_accept_full(false);                 // nRF52 flash can install only in-place deltas
+#endif
 #endif
     } else if (strncmp(dst, "folder", 6) == 0) {
       if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
@@ -337,9 +365,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   // ---- broadcast our tiny beacon so peers discover us. If not already serving, set up flash-backed
   //      self-serve first (so we're a real, fetchable source of our own running firmware). ----
   } else if (is_cmd(a, "announce|adv", &rest)) {
+#if defined(OTA_SEEDER_ONLY)
+    c.manager.announce();
+    snprintf(reply, 160, "OK beacon sent (serving=%u host mOTA)",
+             (unsigned)c.manager.servedCount());
+#else
     if (!c.serving) c.serving = ota_serve_self(c, 0);
     c.manager.announce();
     sprintf(reply, "OK beacon sent (serving=%s)", c.serving ? "self fw" : "nothing");
+#endif
 
   // ---- running firmware identity (compare against a delta's base_hash) ----
   } else if (is_cmd(a, "self|id", &rest)) {
@@ -366,7 +400,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // yes" round-trip - unreliable over LoRa): refuse unless the fetch is COMPLETE, then the apply path
     // validates in order (payload hash -> built-for-this-firmware -> signature/trust) and returns the
     // FIRST failing gate, so the operator knows exactly why it refused; it proceeds only if all pass.
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(OTA_SEEDER_ONLY)
+    strcpy(reply, "ERR seeder-only build cannot install firmware via LoRa");
+    return true;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     if (c.sdCacheFetching()) {
       strcpy(reply, "ERR SD archive capture is active; use `ota cancel` before installing");
       return true;
@@ -390,7 +427,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     const char* p = rest;
     if (strncmp(p, "on", 2) == 0) {
 #if defined(OTA_FOLDER_SERIAL)
+#if !defined(OTA_SEEDER_ONLY)
       if (!c.serving) c.serving = ota_serve_self(c, 0);   // keep serving our own fw alongside the folder
+#endif
       char m2[120]; c.attach_folder(m2, sizeof(m2)); c.manager.announce();
       strncpy(reply, m2, 159); reply[159] = 0;
 #else
@@ -398,7 +437,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #endif
     } else if (strncmp(p, "off", 3) == 0) {
       c.detach_folder(); c.manager.announce();
+#if defined(OTA_SEEDER_ONLY)
+      strcpy(reply, "OK folder detached (serving nothing)");
+#else
       strcpy(reply, "OK folder detached (still serving own fw)");
+#endif
     } else {                                              // status + list served entries (* = our own fw)
       int n = snprintf(reply, 159, "folder=%s serving=%u:", c.folder_active ? "on" : "off",
                        (unsigned)c.manager.servedCount());
@@ -460,6 +503,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         snprintf(reply, 160, "OK SD OTA archive capture %s (saved on card)", enabled ? "on" : "off");
     } else
 #endif
+#if defined(OTA_SEEDER_ONLY)
+    if (strncmp(p, "autofetch ", 10) == 0 || strncmp(p, "autoinstall ", 12) == 0) {
+      strcpy(reply, "ERR seeder-only build keeps autofetch and autoinstall off");
+    } else
+#endif
     if (strncmp(p, "autofetch ", 10) == 0) {
       const char* v = p + 10;
       uint8_t pol = strncmp(v, "any", 3) == 0    ? OtaManager::AUTOFETCH_ANY
@@ -500,11 +548,17 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
               (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
 #else
+#if defined(OTA_SEEDER_ONLY)
+      sprintf(reply, "ota config: mode=seeder-only autofetch=off autoinstall=off checkpoint=%u advert=%umin hops=%u",
+              (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
+              (unsigned)c.manager.max_hops());
+#else
       sprintf(reply, "ota config: autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u  (persisted)",
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
               c.autoinstall == OtaContext::AUTOINSTALL_TRUSTED ? "trusted" : "off",
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
               (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
+#endif
 #endif
     }
 
@@ -536,6 +590,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
 // Raw / internal primitives (manual content load + low-level apply steps), under `ota dev ...`.
 static bool handle_dev(const char* d, char* reply, OtaContext& c) {
+#if defined(OTA_SEEDER_ONLY)
+  (void)d;
+  (void)c;
+  strcpy(reply, "ERR ota dev staging/apply is disabled on this seeder-only build");
+#else
   if (strncmp(d, "stage ", 6) == 0) {
     uint32_t sz = parse_u32(d + 6);
     if (sz == 0 || sz > OTA_SERVE_BUF_SIZE) { sprintf(reply, "ERR size 1..%u", OTA_SERVE_BUF_SIZE); }
@@ -646,6 +705,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
   } else {
     strcpy(reply, "ota dev: stage|recv|serve|announce|verify|want|apply slot|manifest|verify|commit|clear");
   }
+#endif
   return true;
 }
 

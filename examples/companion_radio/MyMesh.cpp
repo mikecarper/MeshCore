@@ -4,6 +4,10 @@
 #include <Mesh.h>
 #include "helpers/radiolib/RXPowerSaving.h"
 
+#if defined(COMPANION_RADIO_FULL)
+#include <helpers/ota/OtaCli.h>
+#endif
+
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
 #include <helpers/MQTTDefaults.h>
 #endif
@@ -1215,6 +1219,17 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   command_radio_cr = 0;
   command_radio_repeat = 0;
   command_radio_apply_deadline = 0;
+#if defined(COMPANION_RADIO_FULL)
+  _temp_radio_set_at = 0;
+  _temp_radio_revert_at = 0;
+  _temp_radio_retry_at = 0;
+  _temp_radio_freq = 0.0f;
+  _temp_radio_bw = 0.0f;
+  _temp_radio_sf = 0;
+  _temp_radio_cr = 0;
+  _temp_radio_failures = 0;
+  _temp_radio_applied = false;
+#endif
   offline_queue_len = 0;
   app_target_ver = 0;
   clearPendingReqs();
@@ -1486,6 +1501,159 @@ void MyMesh::servicePendingRadioParamApply() {
     writeErrFrame(ERR_CODE_BAD_STATE);
   }
 }
+
+#if defined(COMPANION_RADIO_FULL)
+static bool isFullCompanionBandwidth(float bw) {
+  static const float supported[] = {
+    7.8f, 10.4f, 15.6f, 20.8f, 31.25f, 41.7f,
+    62.5f, 125.0f, 250.0f, 500.0f
+  };
+  for (float candidate : supported) {
+    if (fabsf(candidate - bw) <= 0.01f) return true;
+  }
+  return false;
+}
+
+bool MyMesh::scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
+                               uint32_t timeout_mins, char* reply,
+                               size_t reply_size) {
+  if (command_radio_apply_pending) {
+    snprintf(reply, reply_size, "ERR companion radio change is already pending");
+    return false;
+  }
+
+  _temp_radio_freq = freq;
+  _temp_radio_bw = bw;
+  _temp_radio_sf = sf;
+  _temp_radio_cr = cr;
+  _temp_radio_set_at = futureMillis(1500);  // let the local reply drain first
+  _temp_radio_revert_at = futureMillis(1500 + (int)(timeout_mins * 60000UL));
+  _temp_radio_retry_at = 0;
+  _temp_radio_failures = 0;
+  snprintf(reply, reply_size, "OK - temp params for %lu mins",
+           (unsigned long)timeout_mins);
+  return true;
+}
+
+void MyMesh::scheduleNormalRadio(char* reply, size_t reply_size) {
+  _temp_radio_set_at = 0;
+  _temp_radio_revert_at = futureMillis(1500);  // keep the reply on the active tuple
+  _temp_radio_retry_at = 0;
+  _temp_radio_failures = 0;
+  snprintf(reply, reply_size, "OK - normal radio restore scheduled");
+}
+
+bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
+                                  size_t reply_size) {
+  if (!command || !reply || reply_size == 0) return false;
+  while (*command == ' ') command++;
+
+  if (strcmp(command, "tempradio") == 0) {
+    if (_temp_radio_set_at) {
+      snprintf(reply, reply_size, "TempRadio pending: %.3f,%.2f,%u,%u",
+               _temp_radio_freq, _temp_radio_bw,
+               (unsigned)_temp_radio_sf, (unsigned)_temp_radio_cr);
+    } else if (isTempRadioActive()) {
+      uint32_t seconds = (_temp_radio_revert_at - _ms->getMillis()) / 1000UL;
+      snprintf(reply, reply_size, "TempRadio active: %.3f,%.2f,%u,%u %lus left",
+               _temp_radio_freq, _temp_radio_bw,
+               (unsigned)_temp_radio_sf, (unsigned)_temp_radio_cr,
+               (unsigned long)seconds);
+    } else {
+      snprintf(reply, reply_size, "TempRadio inactive");
+    }
+    return true;
+  }
+
+  if (strncmp(command, "tempradio ", 10) == 0) {
+    float freq = 0.0f, bw = 0.0f;
+    int sf = 0, cr = 0;
+    unsigned long timeout_mins = 0;
+    char extra = 0;
+    if (sscanf(command + 10, "%f,%f,%d,%d,%lu%c",
+               &freq, &bw, &sf, &cr, &timeout_mins, &extra) != 5
+        || !isfinite(freq) || !isfinite(bw)
+        || freq < 150.0f || freq > 2500.0f
+        || !isFullCompanionBandwidth(bw)
+        || sf < 5 || sf > 12 || cr < 5 || cr > 8
+        || timeout_mins == 0 || timeout_mins > 10080UL) {
+      snprintf(reply, reply_size,
+               "ERR usage: tempradio freq,bw,sf,cr,minutes (minutes 1-10080)");
+      return true;
+    }
+    scheduleTempRadio(freq, bw, (uint8_t)sf, (uint8_t)cr,
+                      (uint32_t)timeout_mins, reply, reply_size);
+    return true;
+  }
+
+  if (strcmp(command, "normalradio") == 0) {
+    scheduleNormalRadio(reply, reply_size);
+    return true;
+  }
+
+  if (strncmp(command, "ota", 3) == 0
+      && (command[3] == 0 || command[3] == ' ')) {
+    char ota_reply[160] = {0};
+    if (!mesh::ota::handle_ota_command(command, ota_reply, board)) return false;
+    snprintf(reply, reply_size, "%s", ota_reply);
+    return true;
+  }
+
+  return false;
+}
+
+void MyMesh::serviceTempRadio() {
+  const unsigned long now = _ms->getMillis();
+  const bool retry_ready = !_temp_radio_retry_at
+      || _temp_radio_retry_at == now || millisHasNowPassed(_temp_radio_retry_at);
+  const bool revert_due = _temp_radio_revert_at
+      && (_temp_radio_revert_at == now || millisHasNowPassed(_temp_radio_revert_at));
+
+  if (revert_due) {
+    if (hasOutbound() || !retry_ready) return;
+    mesh::RadioParamApplyResult result = tryApplyRadioParams(
+        _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+    if (result == mesh::RadioParamApplyResult::APPLIED) {
+      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+      _temp_radio_set_at = 0;
+      _temp_radio_revert_at = 0;
+      _temp_radio_retry_at = 0;
+      _temp_radio_failures = 0;
+      _temp_radio_applied = false;
+      saved_radio_apply_pending = false;
+      MESH_DEBUG_PRINTLN("Full companion restored normal radio");
+    } else {
+      _temp_radio_retry_at = futureMillis(
+          nextRadioApplyRetryDelay(_temp_radio_failures));
+    }
+    return;
+  }
+
+  if (!_temp_radio_set_at
+      || (_temp_radio_set_at != now && !millisHasNowPassed(_temp_radio_set_at))
+      || hasOutbound() || !retry_ready) return;
+
+  mesh::RadioParamApplyResult result = tryApplyRadioParams(
+      _temp_radio_freq, _temp_radio_bw, _temp_radio_sf, _temp_radio_cr);
+  if (result == mesh::RadioParamApplyResult::APPLIED) {
+    _temp_radio_set_at = 0;
+    _temp_radio_retry_at = 0;
+    _temp_radio_failures = 0;
+    _temp_radio_applied = true;
+    MESH_DEBUG_PRINTLN("Full companion entered TempRadio");
+  } else if (result == mesh::RadioParamApplyResult::BUSY) {
+    _temp_radio_retry_at = futureMillis(250);
+  } else {
+    // A partially applied tuple must never become persistent. Restore the
+    // saved Companion settings through the same bounded retry path.
+    _temp_radio_set_at = 0;
+    _temp_radio_revert_at = futureMillis(1);
+    _temp_radio_retry_at = 0;
+    saved_radio_apply_pending = true;
+  }
+}
+#endif
 
 const char *MyMesh::getNodeName() {
   return _prefs.node_name;
@@ -2442,6 +2610,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       return;
     }
+#if defined(COMPANION_RADIO_FULL)
+    if (isTempRadioActive() || _temp_radio_set_at != 0
+        || _temp_radio_revert_at != 0) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return;
+    }
+#endif
     int i = 1;
     uint32_t freq;
     memcpy(&freq, &cmd_frame[i], 4);
@@ -3275,6 +3450,14 @@ void MyMesh::handleTerminalCommand(char* command) {
   while (*command == ' ') command++;
   if (*command == 0) return;
 
+#if defined(COMPANION_RADIO_FULL)
+  char full_reply[160];
+  if (handleFullOtaCommand(command, full_reply, sizeof(full_reply))) {
+    Serial.printf("  %s\r\n", full_reply);
+    return;
+  }
+#endif
+
   if (strncmp(command, "send ", 5) == 0) {
     ContactInfo* recipient = getTerminalRecipient();
     const char* text = command + 5;
@@ -3427,6 +3610,11 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("  advert\r\n");
     Serial.print("  reset path\r\n");
     Serial.print("  public <text>\r\n");
+#if defined(COMPANION_RADIO_FULL)
+    Serial.print("  tempradio [freq,bw,sf,cr,minutes]\r\n");
+    Serial.print("  normalradio\r\n");
+    Serial.print("  ota {status|ls|announce|folder|config|...}\r\n");
+#endif
     Serial.print("  ver\r\n");
     Serial.print("  +++MESHCORE-TERM-STOP\r\n");
   } else {
@@ -3647,8 +3835,15 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+#if defined(COMPANION_RADIO_FULL)
+  serviceTempRadio();
+#endif
   BaseChatMesh::loop();
   if (!command_radio_apply_pending && saved_radio_apply_pending && !hasOutbound()
+#if defined(COMPANION_RADIO_FULL)
+      && !_temp_radio_applied && _temp_radio_set_at == 0
+      && _temp_radio_revert_at == 0
+#endif
       && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at))) {
     // A power-saving wake can enter begin() with a complete packet already
     // waiting. Preserve that packet, then apply the persisted radio settings
@@ -3721,5 +3916,11 @@ bool MyMesh::hasPendingWork() const {
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
       || (dirty_contacts_expiry != 0 && millisHasNowPassed(dirty_contacts_expiry))
       || (emergency_client_repeat_packet != NULL
-          && millisHasNowPassed(emergency_client_repeat_send_at));
+          && millisHasNowPassed(emergency_client_repeat_send_at))
+#if defined(COMPANION_RADIO_FULL)
+      || (_temp_radio_set_at != 0 && millisHasNowPassed(_temp_radio_set_at))
+      || (_temp_radio_revert_at != 0 && millisHasNowPassed(_temp_radio_revert_at))
+      || (_temp_radio_retry_at != 0 && millisHasNowPassed(_temp_radio_retry_at))
+#endif
+      ;
 }

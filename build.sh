@@ -43,7 +43,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -60,7 +60,7 @@ TAG_PREFIX_COMPANION="companion"
 TAG_PREFIX_REPEATER="repeater"
 TAG_PREFIX_SENSOR="sensor"
 SUPPORTED_PLATFORM_PATTERN='ESP32_PLATFORM|NRF52_PLATFORM|STM32_PLATFORM|RP2040_PLATFORM'
-OUTPUT_DIR="out"
+OUTPUT_DIR="${OUTPUT_DIR:-out}"
 ESP32_LORA_OTA_APP_LIMIT=$((0x150000 - 0x10000))
 REPEATER_MAX_NEIGHBOURS=254
 DRAM_LIMITED_MAX_NEIGHBOURS=50
@@ -147,6 +147,7 @@ Environment Variables:
                    If not set, debug flags from variant platformio.ini files are used.
   RESUME_BUILD_OUTPUT=1: Preserves out/ and skips targets whose expected output
                          artifacts already exist. Option 3 resumes by default.
+  OUTPUT_DIR=path: Writes artifacts outside out/ (useful for isolated test builds).
   OPTION3_BUILD_WORKERS=2: Concurrent targets per Option 3 profile pass.
   OPTION3_PIO_JOBS=8: Compiler jobs assigned to each concurrent Option 3 target.
 
@@ -253,7 +254,7 @@ for section, options in data:
     # sensors), and expose a separately named no-external-sensors OTA build for
     # every ESP32/nRF52 repeater role. These two platforms have a complete apply
     # path; RP2040 and STM32 do not yet have the required bootloader/apply path.
-    local env_name ota_env
+    local env_name ota_env full_env usb_env ble_env
     local -a base_envs=("${SUPPORTED_PIO_ENVS[@]}")
     for env_name in "${base_envs[@]}"; do
       case "${PIO_ENV_PLATFORM_BY_NAME[$env_name]}" in
@@ -280,6 +281,76 @@ for section, options in data:
       PIO_ENV_FULL_BUILD_BY_NAME["$ota_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$ota_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$ota_env"]="$env_name"
+    done
+
+    # An ESP32 full companion is built from the board's WiFi companion recipe.
+    # Expose it only when the exact same board also has USB and BLE companion
+    # recipes, so enabling the three transports cannot silently pull in
+    # assumptions from a different hardware variant.
+    #
+    # The full role is a LoRa mOTA *source*, not a LoRa update destination. Its
+    # build overlay below retains the OTA protocol and TCP folder seeder while
+    # omitting flash staging/self-install support.
+    base_envs=("${SUPPORTED_PIO_ENVS[@]}")
+    for env_name in "${base_envs[@]}"; do
+      case "$env_name" in
+        *companion_radio_wifi_mqtt*) continue ;;
+        *companion_radio_wifi*) ;;
+        *) continue ;;
+      esac
+      [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] || continue
+
+      full_env=${env_name/companion_radio_wifi/companion_radio_full}
+      usb_env=${env_name/companion_radio_wifi/companion_radio_usb}
+      ble_env=${env_name/companion_radio_wifi/companion_radio_ble}
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ] \
+          || [ "${PIO_ENV_PLATFORM_BY_NAME[$usb_env]:-}" != "ESP32_PLATFORM" ] \
+          || [ "${PIO_ENV_PLATFORM_BY_NAME[$ble_env]:-}" != "ESP32_PLATFORM" ] \
+          || [ "${PIO_ENV_BOARD_BY_NAME[$usb_env]:-}" != "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" ] \
+          || [ "${PIO_ENV_BOARD_BY_NAME[$ble_env]:-}" != "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" ]; then
+        continue
+      fi
+
+      SUPPORTED_PIO_ENVS+=("$full_env")
+      PIO_ENV_PLATFORM_BY_NAME["$full_env"]="ESP32_PLATFORM"
+      PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$full_env"]=0
+      PIO_ENV_OTA_BY_NAME["$full_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]="${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}"
+      PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+    done
+
+    # An nRF52 full companion is built from the board's USB recipe and adds
+    # BLE plus a source-only serial mOTA mode. nRF52840 has no native WiFi, so
+    # this profile deliberately has no TCP/WebConfig surface. Match exact USB
+    # and BLE environment names (including display/FEM modifiers) and boards.
+    base_envs=("${SUPPORTED_PIO_ENVS[@]}")
+    for env_name in "${base_envs[@]}"; do
+      case "$env_name" in
+        *companion_radio_usb*) ;;
+        *) continue ;;
+      esac
+      [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] || continue
+
+      full_env=${env_name/companion_radio_usb/companion_radio_full}
+      ble_env=${env_name/companion_radio_usb/companion_radio_ble}
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ] \
+          || [ "${PIO_ENV_PLATFORM_BY_NAME[$ble_env]:-}" != "NRF52_PLATFORM" ] \
+          || [ "${PIO_ENV_BOARD_BY_NAME[$ble_env]:-}" != "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" ]; then
+        continue
+      fi
+
+      SUPPORTED_PIO_ENVS+=("$full_env")
+      PIO_ENV_PLATFORM_BY_NAME["$full_env"]="NRF52_PLATFORM"
+      PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$full_env"]=0
+      PIO_ENV_OTA_BY_NAME["$full_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
     done
   fi
 }
@@ -1001,7 +1072,7 @@ get_variants_for_board() {
   local board_family=$1
   local env
 
-  for env in "${ALL_PIO_ENVS[@]}"; do
+  for env in "${SUPPORTED_PIO_ENVS[@]}"; do
     if ! is_supported_build_env "$env"; then
       continue
     fi
@@ -1083,7 +1154,7 @@ prompt_for_board_target() {
     exit 1
   fi
 
-  for env in "${ALL_PIO_ENVS[@]}"; do
+  for env in "${SUPPORTED_PIO_ENVS[@]}"; do
     if ! is_supported_build_env "$env"; then
       continue
     fi
@@ -1262,7 +1333,7 @@ get_pio_envs_ending_with_string() {
   local env
 
   shopt -s nocasematch
-  for env in "${ALL_PIO_ENVS[@]}"; do
+  for env in "${SUPPORTED_PIO_ENVS[@]}"; do
     if is_supported_build_env "$env" && [[ "$env" == *${suffix} ]]; then
       printf '%s\n' "$env"
     fi
@@ -1293,7 +1364,7 @@ get_pio_envs_for_variant_role() {
   local env
   local variant_name
 
-  for env in "${ALL_PIO_ENVS[@]}"; do
+  for env in "${SUPPORTED_PIO_ENVS[@]}"; do
     if ! is_supported_build_env "$env"; then
       continue
     fi
@@ -1770,6 +1841,27 @@ is_esp32_usb_wifi_companion_ota_build() {
   esac
 }
 
+is_companion_radio_full_target() {
+  case "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" in
+    ESP32_PLATFORM|NRF52_PLATFORM) ;;
+    *) return 1 ;;
+  esac
+  case "${1,,}" in
+    *companion_radio_full*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_esp32_companion_radio_full_target() {
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] \
+    && is_companion_radio_full_target "$1"
+}
+
+is_nrf52_companion_radio_full_target() {
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] \
+    && is_companion_radio_full_target "$1"
+}
+
 requires_esp32_companion_full_ota_fallback() {
   # Some classic ESP32 companions cannot hold their configured high-capacity
   # contact, channel, and offline-queue tables together with LoRa OTA in
@@ -2096,6 +2188,13 @@ apply_nrf52_lora_ota_build_recipe() {
 apply_lora_ota_override() {
   local env_name=$1
 
+  # The full companion has its own serve-only overlay. Do not run the generic
+  # install-capable/disabled switch first: PlatformIO build_unflags would also
+  # remove the overlay's later ENABLE_OTA definition.
+  if is_companion_radio_full_target "$env_name"; then
+    return 0
+  fi
+
   if is_lora_ota_build "$env_name"; then
     if [ "${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
       append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1 -DOTA_FLASH_STORE=1"
@@ -2107,6 +2206,57 @@ apply_lora_ota_override() {
   else
     append_platformio_build_unflags "-DENABLE_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"
+  fi
+}
+
+apply_companion_radio_full_profile() {
+  local env_name=$1
+  local pio_env_name=$2
+
+  is_companion_radio_full_target "$env_name" || return 0
+
+  # Every full Companion is a LoRa mOTA source, never an update destination.
+  # Remove inherited staging/install stores before adding the platform's host
+  # folder transport.
+  append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
+
+  if is_nrf52_companion_radio_full_target "$env_name"; then
+    # The USB stream starts as Binary Companion. `motatool serve --serial`
+    # switches it into an exclusive host-folder mode with its existing
+    # `ota folder on` preamble; BLE remains an independent Companion link.
+    append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1"
+
+    if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
+      append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
+    fi
+    if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/nrf52/*.cpp" \
+        && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/nrf52/SerialBLEInterface.cpp"; then
+      append_platformio_build_src_filter "+<helpers/nrf52/SerialBLEInterface.cpp>"
+    fi
+    return 0
+  fi
+
+  # ESP32 inherits the WiFi companion recipe and uses its dedicated TCP folder
+  # seeder instead of multiplexing mOTA data onto USB.
+  append_platformio_build_unflags "-DOTA_FOLDER_SERIAL"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UOTA_FOLDER_SERIAL -DWIFI_OTA_SEEDER=1"
+
+  # BLE + WiFi exhaust internal DRAM on the two high-capacity classic ESP32
+  # recipes. Use the same measured-safe tables as their existing FULL OTA
+  # fallback without changing ordinary USB/BLE/WiFi companion builds.
+  if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
+    append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
+  fi
+
+  # A few WiFi recipes list only their WiFi implementation instead of the
+  # helpers/esp32 wildcard used by newer boards. Add the BLE implementation
+  # explicitly when the inherited source filter does not already include it.
+  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/*.cpp" \
+      && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/SerialBLEInterface.cpp"; then
+    append_platformio_build_src_filter "+<helpers/esp32/SerialBLEInterface.cpp>"
   fi
 }
 
@@ -2456,6 +2606,7 @@ build_firmware() {
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
+  apply_companion_radio_full_profile "$env_name" "$pio_env_name"
   apply_nrf52_lora_ota_build_recipe "$env_name" "$pio_env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
@@ -2464,8 +2615,13 @@ build_firmware() {
   apply_radio_overrides
   apply_firmware_profile_overrides
 
-  if [ "$ESP32_FULL_BUILD" = "1" ]; then
+  if [ "$ESP32_FULL_BUILD" = "1" ] || is_esp32_companion_radio_full_target "$env_name"; then
     export MESHCORE_ESP32_FULL_BUILD=1
+    if is_esp32_companion_radio_full_target "$env_name"; then
+      export MESHCORE_COMPANION_RADIO_FULL=1
+    else
+      unset MESHCORE_COMPANION_RADIO_FULL
+    fi
     target_extra_scripts=$original_platformio_extra_scripts
     if [[ "$target_extra_scripts" != *"scripts/esp32_full_partition.py"* ]]; then
       if [ -n "$target_extra_scripts" ]; then
@@ -2476,6 +2632,7 @@ build_firmware() {
     export PLATFORMIO_EXTRA_SCRIPTS="$target_extra_scripts"
   else
     unset MESHCORE_ESP32_FULL_BUILD
+    unset MESHCORE_COMPANION_RADIO_FULL
   fi
 
   print_build_flags "$env_name"
@@ -2497,6 +2654,7 @@ build_firmware() {
 
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
   unset MESHCORE_ESP32_FULL_BUILD
+  unset MESHCORE_COMPANION_RADIO_FULL
   if [ "$had_platformio_build_unflags" -eq 1 ]; then
     export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
   else

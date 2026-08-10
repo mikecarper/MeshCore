@@ -25,6 +25,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import socket
 import struct
 import subprocess
 import sys
@@ -57,6 +58,8 @@ TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
 TEMP_RADIO_RETURN_MINUTES = 1
 TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
 INSTALL_TARGET_WINDOW_MINUTES = 3
+COMPANION_TERMINAL_START = "+++MESHCORE-TERM-START"
+COMPANION_TERMINAL_STOP = "+++MESHCORE-TERM-STOP"
 # Firmware may hold the apply reboot for up to 15 seconds while its reply
 # drains. Do not interpret "still ready" as a failed install before that cap.
 INSTALL_RECONCILE_WAIT_SECONDS = 20
@@ -1239,32 +1242,71 @@ def parse_temp_radio(value: str) -> tuple[float, float, int, int, int]:
 
 
 def source_cli_command(args: argparse.Namespace, command_text: str, check: bool = True) -> str:
-    port = args.source_cli_serial or args.source_serial
-    if not port:
+    serial_port = args.source_cli_serial or args.source_serial
+    tcp_console = args.source_cli_tcp
+    if not serial_port and not tcp_console:
         if check:
             raise OtaError(
-                "a source CLI serial port is required to enable TempRadio (or use --source-already-temp)"
+                "a source CLI connection is required to enable TempRadio (or use --source-already-temp)"
             )
         return ""
-    command = [
-        args.meshcli,
-        "-r",
-        "-c", "off",
-        "-s", port,
-        "-b", str(args.source_baud),
-        command_text,
-    ]
 
     def run_once() -> str:
-        try:
-            result = run_checked(
-                command,
-                label=f"source command {command_text.split()[0]}",
-                timeout=30,
-            )
-        except OtaError as exc:
-            raise TransmissionError(f"source CLI link failed: {exc}") from exc
-        output = f"{result.stdout}\n{result.stderr}".strip()
+        if tcp_console:
+            host, port = split_host_port(tcp_console, 5002)
+            try:
+                with socket.create_connection((host, port), timeout=10) as connection:
+                    connection.settimeout(10)
+                    greeting = bytearray()
+                    while b"\r\n> " not in greeting and len(greeting) < 4096:
+                        chunk = connection.recv(512)
+                        if not chunk:
+                            break
+                        greeting.extend(chunk)
+                    connection.sendall(command_text.encode("utf-8") + b"\r\n")
+                    response = bytearray()
+                    while b"\r\n> " not in response and len(response) < 4096:
+                        chunk = connection.recv(512)
+                        if not chunk:
+                            break
+                        response.extend(chunk)
+            except (OSError, UnicodeError) as exc:
+                raise TransmissionError(f"source TCP console failed: {exc}") from exc
+            text = response.decode("utf-8", "replace")
+            match = re.search(r"(?:^|\r?\n)\s*->\s*(.*?)\r?\n>\s*$", text, re.DOTALL)
+            if not match:
+                raise TransmissionError(
+                    f"source TCP console returned no command reply: {text.strip() or 'no output'}"
+                )
+            output = match.group(1).strip()
+        else:
+            wire_command = command_text
+            if getattr(args, "source_companion_terminal", False):
+                # meshcli raw mode keeps one serial open while writing this
+                # compound command. The full Companion consumes the start/stop
+                # tokens locally and runs the middle command in ASCII mode.
+                wire_command = (
+                    f"{COMPANION_TERMINAL_START}\r"
+                    f"{command_text}\r"
+                    f"{COMPANION_TERMINAL_STOP}"
+                )
+            command = [
+                args.meshcli,
+                "-r",
+                "-c", "off",
+                "-s", serial_port,
+                "-b", str(args.source_baud),
+                wire_command,
+            ]
+            try:
+                result = run_checked(
+                    command,
+                    label=f"source command {command_text.split()[0]}",
+                    timeout=30,
+                )
+            except OtaError as exc:
+                raise TransmissionError(f"source CLI link failed: {exc}") from exc
+            output = f"{result.stdout}\n{result.stderr}".strip()
         lowered = output.lower()
         if "error" in lowered or "unknown command" in lowered or "err " in lowered:
             raise OtaError(f"source rejected {command_text!r}: {output}")
@@ -1288,14 +1330,31 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
 
 
 def preflight_source_cli(args: argparse.Namespace) -> None:
-    if not (args.source_serial or args.source_cli_serial):
+    if not (args.source_serial or args.source_cli_serial or args.source_cli_tcp):
         return
-    output = source_cli_command(args, "ota status")
-    if "OTA |" not in output or "target:" not in output:
+
+    def valid_status(value: str) -> bool:
+        full_seeder = "OTA seeder" in value and "install:disabled" in value
+        return full_seeder or ("OTA |" in value and "target:" in value)
+
+    serial_port = args.source_cli_serial or args.source_serial
+    if serial_port:
+        # Ordinary repeaters start in raw ASCII. A full Companion starts in
+        # Binary mode, so retry an invalid raw probe through its terminal
+        # control tokens and remember that transport for later TempRadio calls.
+        args.source_companion_terminal = False
+        output = source_cli_command(args, "ota status", check=False)
+        if not valid_status(output):
+            args.source_companion_terminal = True
+            output = source_cli_command(args, "ota status")
+    else:
+        output = source_cli_command(args, "ota status")
+
+    if not valid_status(output):
         raise OtaError(
             "OTA source did not return a valid `ota status`. Use an OTA-enabled "
-            "repeater/FULL raw text CLI; Companion USB is a binary API port and "
-            "cannot be the serial seeder."
+            "repeater raw text CLI, nRF52 full Companion USB port, or "
+            "companion_radio_full TCP console."
         )
 
 
@@ -1793,9 +1852,14 @@ def build_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source-serial", metavar="PORT")
     source.add_argument("--source-tcp", metavar="HOST[:PORT]")
-    parser.add_argument(
+    source_cli = parser.add_mutually_exclusive_group()
+    source_cli.add_argument(
         "--source-cli-serial", metavar="PORT",
         help="local text-CLI port for a TCP seeder source",
+    )
+    source_cli.add_argument(
+        "--source-cli-tcp", metavar="HOST[:PORT]",
+        help="companion_radio_full text console for a TCP seeder source (default port 5002)",
     )
     parser.add_argument("--controller-baud", type=int, default=115200)
     parser.add_argument("--source-baud", type=int, default=115200)
@@ -1890,10 +1954,14 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error("a controller connection is required")
         if not any((args.source_serial, args.source_tcp)):
             parser.error("a source seeder connection is required")
-        if args.source_serial and args.source_cli_serial:
-            parser.error("--source-cli-serial is only used with --source-tcp")
-        if args.source_tcp and not (args.source_cli_serial or args.source_already_temp):
-            parser.error("--source-tcp also needs --source-cli-serial or --source-already-temp")
+        if args.source_serial and (args.source_cli_serial or args.source_cli_tcp):
+            parser.error("--source-cli-serial/--source-cli-tcp are only used with --source-tcp")
+        if args.source_tcp and not (
+            args.source_cli_serial or args.source_cli_tcp or args.source_already_temp
+        ):
+            parser.error(
+                "--source-tcp also needs --source-cli-serial, --source-cli-tcp, or --source-already-temp"
+            )
         if args.controller_serial and args.source_serial:
             if os.path.abspath(args.controller_serial) == os.path.abspath(args.source_serial):
                 parser.error("controller and source must be separate nodes/serial ports")

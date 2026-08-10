@@ -28,9 +28,10 @@ computer -- MeshCore binary API --> controller Companion -------------------+
   script uses `meshcli` to send remote admin commands to the target and changes
   the controller's live radio parameters during the transfer. A serial
   Companion stays in its normal **Binary** USB mode at 115200 baud.
-- **OTA source:** a separate OTA-enabled repeater or FULL node whose USB port
-  is a raw text CLI and supports `ota folder on`. `motatool` uses that same
-  link for its binary seeder frames after enabling the folder.
+- **OTA source:** an OTA-enabled repeater/FULL node whose USB port is a raw
+  text CLI, an ESP32 `companion_radio_full` using WiFi ports 5001 and 5002, or
+  an nRF52 `companion_radio_full` whose USB port switches between Binary,
+  terminal control, and exclusive mOTA seeding.
 - **Target:** an OTA-enabled ESP32 or nRF52 node present in the controller's
   contact list. Its admin password is required.
 - **Relays:** optional. They do not need to install OTA themselves, but every
@@ -41,11 +42,11 @@ One serial port cannot serve both controller roles: `meshcli` must keep
 reopening the controller while `motatool` owns the source port. The script
 rejects an attempt to use the same port for both.
 
-The Companion USB ASCII switch (`+++MESHCORE-TERM-START`) is an interactive
-chat terminal, not the raw repeater/FULL management CLI expected by
-`motatool`. It does not make a Companion's serial port an OTA seeder. For a
-WiFi seeder, use a FULL/repeater source's port 5001 plus its raw USB CLI, as
-shown below.
+The USB ASCII switch (`+++MESHCORE-TERM-START`) is the local control path, not
+the mOTA data framing. On an nRF52 full Companion, the script uses that mode
+briefly for `ota status` and TempRadio commands. It then closes the CLI and
+starts `motatool`, whose existing `ota folder on` preamble switches the same
+USB port into exclusive mOTA mode. BLE remains available during that mode.
 
 ## Destination requirements
 
@@ -120,15 +121,27 @@ Test the controller's binary API:
 meshcli -s /dev/ttyACM0 -b 115200 ver
 ```
 
-Test the source's raw text CLI and OTA support:
+For an ordinary raw-text source, test its OTA support:
 
 ```bash
 meshcli -r -s /dev/ttyACM1 -b 115200 "ota status"
 ```
 
-The second command must print an `OTA | ... target:XXXXXXXX` status. The
-automation repeats this preflight and stops before changing any radios if the
-source is the wrong build or interface.
+The command must print an `OTA | ... target:XXXXXXXX` status.
+
+For an nRF52 full Companion, open the source port in a terminal, send
+`+++MESHCORE-TERM-START`, and run `ota status`. It must report `OTA seeder`,
+`install:disabled`, and target `00000000`; send `+++MESHCORE-TERM-STOP` before
+closing the terminal. The automation detects and performs this token-wrapped
+preflight itself, so no extra command-line option is needed.
+
+For an ESP32 full Companion, test its separate WiFi control console instead:
+
+```bash
+printf 'ota status\r\n' | nc 192.168.1.50 5002
+```
+
+It must report `OTA seeder`, `install:disabled`, and target `00000000`.
 
 Changing a terminal to 57600 baud does not select ASCII mode. USB Companion
 builds and the normal raw management CLI use 115200 unless a particular build
@@ -280,6 +293,31 @@ while its raw USB CLI is used to start TempRadio:
   --source-cli-serial /dev/ttyACM1
 ```
 
+An ESP32 `companion_radio_full` uses WiFi for both dedicated source links:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.mota "Remote Target" \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.50:5001 \
+  --source-cli-tcp 192.168.1.50:5002
+```
+
+Port 5002 defaults automatically when it is omitted from
+`--source-cli-tcp`. The source-only Companion never stages or installs the
+image itself; it streams the host folder to other nodes over LoRa. See the
+[full Companion guide](./companion_radio_full.md) for manual operation and
+interface details.
+
+An nRF52 `companion_radio_full` uses one USB source port sequentially. The
+runner automatically wraps local control commands in the terminal tokens, and
+unmodified `motatool` switches that port into mOTA mode when seeding starts:
+
+```bash
+./tools/lora_ota/lora_ota.sh ./release.mota "Remote Target" \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+```
+
 If the source is already on the exact TempRadio tuple through a scheduled or
 manual operation, `--source-already-temp` lets a TCP source run without a raw
 CLI link. The script cannot verify, extend, or shorten that source window, so
@@ -338,8 +376,8 @@ the destination.
 
 ## What happens during a run
 
-1. Validate the input paths and host tools, then prove the source is an
-   OTA-enabled raw CLI.
+1. Validate the input paths and host tools, then prove the source is either an
+   OTA-enabled raw CLI or a source-only full Companion control interface.
 2. Authenticate to the target and query its target ID, hardware, running body
    hash, version, and nRF52 bootloader capabilities.
 3. Select or build one compatible mOTA and verify all block hashes, Merkle

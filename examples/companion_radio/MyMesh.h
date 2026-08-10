@@ -149,9 +149,21 @@ public:
   void handleTerminalCommand(char* command);
 #endif
 
+#if defined(COMPANION_RADIO_FULL)
+  // Local-only control surface shared by the USB terminal and WiFi port 5002.
+  // Supports bounded TempRadio windows plus the serve-only `ota ...` CLI.
+  bool handleFullOtaCommand(const char* command, char* reply, size_t reply_size);
+#endif
+
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
 protected:
+#if defined(COMPANION_RADIO_FULL)
+  bool isTempRadioActive() const override {
+    return _temp_radio_applied && _temp_radio_revert_at != 0
+        && !millisHasNowPassed(_temp_radio_revert_at);
+  }
+#endif
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
@@ -272,6 +284,12 @@ private:
   void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat);
   void cancelPendingRadioParamApply();
   void servicePendingRadioParamApply();
+#if defined(COMPANION_RADIO_FULL)
+  bool scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
+                         uint32_t timeout_mins, char* reply, size_t reply_size);
+  void scheduleNormalRadio(char* reply, size_t reply_size);
+  void serviceTempRadio();
+#endif
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
@@ -320,6 +338,17 @@ private:
   uint8_t command_radio_cr;
   uint8_t command_radio_repeat;
   unsigned long command_radio_apply_deadline;
+#if defined(COMPANION_RADIO_FULL)
+  unsigned long _temp_radio_set_at;
+  unsigned long _temp_radio_revert_at;
+  unsigned long _temp_radio_retry_at;
+  float _temp_radio_freq;
+  float _temp_radio_bw;
+  uint8_t _temp_radio_sf;
+  uint8_t _temp_radio_cr;
+  uint8_t _temp_radio_failures;
+  bool _temp_radio_applied;
+#endif
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   uint8_t app_target_ver;

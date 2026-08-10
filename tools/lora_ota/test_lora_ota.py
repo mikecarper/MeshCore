@@ -193,6 +193,109 @@ class FormatTests(unittest.TestCase):
                 ota.read_bounded_file(path, 3, "mOTA file")
 
 
+class SourceCliTests(unittest.TestCase):
+    def test_full_companion_tcp_console_command(self) -> None:
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [
+            b"OTA console - type `ota ...`\r\n> ",
+            b"  -> OTA seeder | install:disabled | serving:1\r\n> ",
+        ]
+        args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial=None,
+            source_cli_tcp="192.0.2.10",
+            meshcli="meshcli",
+            source_baud=115200,
+        )
+
+        with mock.patch.object(
+            ota.socket, "create_connection", return_value=connection
+        ) as create_connection:
+            output = ota.source_cli_command(args, "ota status")
+
+        create_connection.assert_called_once_with(("192.0.2.10", 5002), timeout=10)
+        connection.sendall.assert_called_once_with(b"ota status\r\n")
+        self.assertEqual(output, "OTA seeder | install:disabled | serving:1")
+
+    def test_full_companion_tcp_source_arguments_validate(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-tcp", "192.0.2.10:5001",
+            "--source-cli-tcp", "192.0.2.10:5002",
+        ])
+        ota.validate_args(args, parser)
+
+    def test_source_preflight_accepts_seeder_only_status(self) -> None:
+        args = argparse.Namespace(
+            source_serial=None,
+            source_cli_serial=None,
+            source_cli_tcp="192.0.2.10:5002",
+        )
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            return_value="OTA seeder | install:disabled | target:00000000",
+        ) as source_command:
+            ota.preflight_source_cli(args)
+        source_command.assert_called_once_with(args, "ota status")
+
+    def test_serial_preflight_falls_back_to_companion_terminal(self) -> None:
+        args = argparse.Namespace(
+            source_serial="/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp=None,
+        )
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            side_effect=(
+                "",
+                "OTA seeder | install:disabled | target:00000000",
+            ),
+        ) as source_command:
+            ota.preflight_source_cli(args)
+
+        self.assertTrue(args.source_companion_terminal)
+        self.assertEqual(
+            source_command.call_args_list,
+            [
+                mock.call(args, "ota status", check=False),
+                mock.call(args, "ota status"),
+            ],
+        )
+
+    def test_serial_companion_command_is_wrapped_in_terminal_tokens(self) -> None:
+        args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial="/dev/source",
+            source_cli_tcp=None,
+            source_companion_terminal=True,
+            meshcli="meshcli",
+            source_baud=115200,
+        )
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="OK - temp params for 120 mins",
+            stderr="",
+        )
+        with mock.patch.object(ota, "run_checked", return_value=completed) as run:
+            output = ota.source_cli_command(
+                args, "tempradio 909.95,250,7,5,120"
+            )
+
+        wire_command = run.call_args.args[0][-1]
+        self.assertEqual(
+            wire_command,
+            "+++MESHCORE-TERM-START\r"
+            "tempradio 909.95,250,7,5,120\r"
+            "+++MESHCORE-TERM-STOP",
+        )
+        self.assertIn("OK - temp params", output)
+
+
 class CompatibilityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.base_image = firmware(b"old" * 2000, VERSION_OLD)

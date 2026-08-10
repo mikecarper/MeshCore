@@ -8,24 +8,28 @@
 void ArduinoSerialInterface::resetReceiveState() {
   _state = RECV_STATE_IDLE;
   _controlSequencePos = 0;
+  _secondaryControlSequencePos = 0;
   _frame_len = 0;
   rx_len = 0;
 }
 
-bool ArduinoSerialInterface::checkControlSequence(uint8_t c) {
-  if (_controlSequence == nullptr || _controlSequence[0] == 0) return false;
+bool ArduinoSerialInterface::checkControlSequence(uint8_t c,
+                                                  const char* sequence,
+                                                  size_t& position,
+                                                  bool& received) {
+  if (sequence == nullptr || sequence[0] == 0) return false;
 
-  if (c == (uint8_t)_controlSequence[_controlSequencePos]) {
-    _controlSequencePos++;
-    if (_controlSequence[_controlSequencePos] == 0) {
-      _controlSequencePos = 0;
-      _controlSequenceReceived = true;
+  if (c == (uint8_t)sequence[position]) {
+    position++;
+    if (sequence[position] == 0) {
+      position = 0;
+      received = true;
       return true;
     }
   } else {
     // Preserve a possible new match when this byte is also the first byte of
     // the sequence (notably useful for sequences beginning with "+++").
-    _controlSequencePos = c == (uint8_t)_controlSequence[0] ? 1 : 0;
+    position = c == (uint8_t)sequence[0] ? 1 : 0;
   }
   return false;
 }
@@ -33,6 +37,7 @@ bool ArduinoSerialInterface::checkControlSequence(uint8_t c) {
 void ArduinoSerialInterface::setPassthroughMode(bool enabled) {
   _passthroughMode = enabled;
   _controlSequenceReceived = false;
+  _secondaryControlSequenceReceived = false;
   resetReceiveState();
 }
 
@@ -42,14 +47,22 @@ bool ArduinoSerialInterface::takeControlSequence() {
   return received;
 }
 
+bool ArduinoSerialInterface::takeSecondaryControlSequence() {
+  bool received = _secondaryControlSequenceReceived;
+  _secondaryControlSequenceReceived = false;
+  return received;
+}
+
 void ArduinoSerialInterface::enable() {
   _isEnabled = true;
   _controlSequenceReceived = false;
+  _secondaryControlSequenceReceived = false;
   resetReceiveState();
 }
 void ArduinoSerialInterface::disable() {
   _isEnabled = false;
   _controlSequenceReceived = false;
+  _secondaryControlSequenceReceived = false;
   resetReceiveState();
 }
 
@@ -90,7 +103,11 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
 
     switch (_state) {
       case RECV_STATE_IDLE:
-        if (checkControlSequence((uint8_t)c)) {
+        if (checkControlSequence((uint8_t)c, _controlSequence,
+                                 _controlSequencePos, _controlSequenceReceived)
+            || checkControlSequence((uint8_t)c, _secondaryControlSequence,
+                                    _secondaryControlSequencePos,
+                                    _secondaryControlSequenceReceived)) {
           // Leave any following bytes buffered for the passthrough consumer.
           return 0;
         }

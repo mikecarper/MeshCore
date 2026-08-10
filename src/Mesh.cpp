@@ -3,7 +3,9 @@
 #if defined(ENABLE_OTA)
 #include "helpers/ota/OtaContext.h"   // OTA mesh-integration is centralized here so every role gets it
 #include "helpers/ota/OtaProtocol.h"  // decode_adv -> the `ota neighbors` discovery table
+#if !defined(OTA_SEEDER_ONLY)
 #include "helpers/ota/OtaSelf.h"      // ota_self_firmware -> auto-advertise our own image
+#endif
 #if defined(ESP32_PLATFORM) && (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
 #include "helpers/esp32/WiFiOtaSeeder.h"
 #endif
@@ -280,6 +282,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     }
   }
 #if defined(ENABLE_OTA)
+#if !defined(OTA_SEEDER_ONLY)
   // Deferred apply-reboot: a verified `ota applydelta` approves the update but does NOT reboot inline,
   // so its "verified; applying" reply can be delivered first (over LoRa that reply is the operator's
   // only confirmation the apply started). Reboot once that reply has actually been transmitted (the
@@ -297,6 +300,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
       }
     }
   }
+#endif
   const bool ota_active = isTempRadioActive();
   if (!ota_active) {
     _ota_temp_was_active = false;
@@ -312,6 +316,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     // one-shot on first tick: resume an interrupted fetch left staged in flash before a reboot. Only adopt
     // a PARTIAL container (continue fetching the holes); a COMPLETE one is left for manual/auto-install,
     // not re-adopted at boot. requestMissing() (inside resumeStaged) drives the rest via REQ/DATA.
+#if !defined(OTA_SEEDER_ONLY)
     if (!_ota_resumed) {
       _ota_resumed = true;
       ota::OtaContext& oc = ota::ota_ctx();
@@ -320,6 +325,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
         oc.manager.reset_session();        // don't auto-adopt a complete staged container on boot
       }
     }
+#endif
     ota::ota_ctx().manager.set_clock(_ms->getMillis());   // for discovery jitter/ages + the pending-query timer
     ota::ota_ctx().manager.loop();         // re-request still-missing OTA blocks + fire scheduled queries
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
@@ -332,9 +338,11 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     bool in_burst = _ota_announce_count < OTA_ANNOUNCE_BURST;
     uint32_t mins = oc.manager.advert_mins();     // periodic cadence in minutes; 0 = disabled (boot burst only)
     if (in_burst || mins != 0) {
-      // To be discoverable as a source of our OWN firmware, set up flash-backed self-serve once; then the
-      // beacon (announce) advertises our served set and peers can QUERY + fetch it.
+      // Install-capable nodes add their running firmware to the served set.
+      // Seeder-only nodes advertise only host-provided folder entries.
+#if !defined(OTA_SEEDER_ONLY)
       if (!oc.serving) oc.serving = ota::ota_serve_self(oc, 0);
+#endif
       oc.manager.announce();
       if (_ota_announce_count < 250) _ota_announce_count++;
     }
@@ -345,6 +353,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
                                   : OTA_ANNOUNCE_DISABLED_POLL_MS;
     _next_ota_announce = futureMillis(gap);
   }
+#if !defined(OTA_SEEDER_ONLY)
   {   // auto-install (once per COMPLETE fetch): only signed images, and apply_fetched enforces trust
     ota::OtaContext& oc = ota::ota_ctx();
     if (oc.manager.fetchState() != ota::OtaManager::COMPLETE) {
@@ -357,6 +366,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
       oc.apply_fetched(msg);   // arms + sets apply_pending only if signed & allowlisted; refused otherwise
     }
   }
+#endif
 #endif
 }
 

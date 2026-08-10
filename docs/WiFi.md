@@ -175,6 +175,12 @@ A `*_companion_radio_wifi` build replaces the BLE or USB companion link with
 the MeshCore companion protocol over TCP port 5000. The phone or computer must
 be able to reach the device on the same LAN.
 
+An ESP32 `*_companion_radio_full` target keeps all three Companion links at
+once: USB, BLE, and TCP port 5000. It also provides a source-only LoRa mOTA
+service on ports 5001 and 5002. See the
+[full Companion guide](./companion_radio_full.md) for its build, terminal mode,
+and complete update-source workflow.
+
 The companion loads runtime credentials saved in NVS. A non-placeholder
 compile-time `WIFI_SSID`/`WIFI_PWD` can be used as a first-boot fallback, but
 saved credentials take priority. With no credentials, its WebConfig portal
@@ -196,6 +202,9 @@ When `ENABLE_OTA` is included, a WiFi companion also listens on:
 - TCP 5002 for the OTA text console.
 
 These ports do not replace the companion protocol on TCP 5000.
+On a `companion_radio_full` build, port 5002 additionally accepts bounded
+`tempradio` and `normalradio` commands, while LoRa staging and installation on
+the Companion itself are disabled.
 
 FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
 role has a usable WiFi station or setup access point and stops when WiFi stops.

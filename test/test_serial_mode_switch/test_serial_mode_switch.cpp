@@ -39,6 +39,7 @@ public:
 };
 
 static const char START_TOKEN[] = "+++MESHCORE-TERM-START";
+static const char SEEDER_TOKEN[] = "ota folder on";
 
 TEST(SerialModeSwitch, RecognizesControlSequenceAcrossReads) {
   BufferStream stream;
@@ -73,6 +74,44 @@ TEST(SerialModeSwitch, DoesNotScanInsideBinaryFrame) {
   EXPECT_EQ(interface.checkRecvFrame(frame), token_len);
   EXPECT_EQ(memcmp(frame, START_TOKEN, token_len), 0);
   EXPECT_FALSE(interface.takeControlSequence());
+}
+
+TEST(SerialModeSwitch, RecognizesSecondaryControlSequenceSeparately) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream, START_TOKEN, SEEDER_TOKEN);
+  interface.enable();
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  stream.push("ota folder ");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_FALSE(interface.takeControlSequence());
+  EXPECT_FALSE(interface.takeSecondaryControlSequence());
+
+  stream.push("on\r\n");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_FALSE(interface.takeControlSequence());
+  EXPECT_TRUE(interface.takeSecondaryControlSequence());
+  EXPECT_FALSE(interface.takeSecondaryControlSequence());
+  EXPECT_EQ(stream.available(), 2); // trailing CRLF belongs to the seeder
+}
+
+TEST(SerialModeSwitch, DoesNotScanSecondarySequenceInsideBinaryFrame) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream, START_TOKEN, SEEDER_TOKEN);
+  interface.enable();
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  const size_t token_len = strlen(SEEDER_TOKEN);
+  uint8_t header[] = {'<', (uint8_t)token_len, 0};
+  stream.push(header, sizeof(header));
+  stream.push(SEEDER_TOKEN);
+
+  EXPECT_EQ(interface.checkRecvFrame(frame), token_len);
+  EXPECT_EQ(memcmp(frame, SEEDER_TOKEN, token_len), 0);
+  EXPECT_FALSE(interface.takeControlSequence());
+  EXPECT_FALSE(interface.takeSecondaryControlSequence());
 }
 
 TEST(SerialModeSwitch, RecognizesControlSequenceAfterBinaryFrame) {

@@ -44,9 +44,13 @@ namespace ota {
 class FolderMotaStore;   // pull destination over the seeder link (full type only where instantiated/used)
 
 #ifndef OTA_SERVE_BUF_SIZE
+  #if defined(OTA_SEEDER_ONLY)
+    // Source-only Companions never accept the manual in-memory stage command.
+    // Keep the member valid without reserving 16 KB of nRF52840 SRAM.
+    #define OTA_SERVE_BUF_SIZE 1
   // nRF52 self-serving streams from flash; this buffer is only for the manual `ota dev stage` helper.
   // Keep it to one flash page so the OTA singleton does not consume another 16 KB of scarce SRAM.
-  #if defined(NRF52_PLATFORM) && (defined(OTA_FLASH_STORE) || defined(OTA_SD_STORE))
+  #elif defined(NRF52_PLATFORM) && (defined(OTA_FLASH_STORE) || defined(OTA_SD_STORE))
     #define OTA_SERVE_BUF_SIZE 4096
   #else
     #define OTA_SERVE_BUF_SIZE 16384
@@ -58,7 +62,12 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 
 struct OtaContext {
   OtaManager manager;
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(OTA_SEEDER_ONLY)
+  // A seeder-only node never stages an image for itself. Keep a valid default
+  // store object for OtaManager, while folder captures replace it with the
+  // host-backed FolderMotaStore for the duration of the pull.
+  OtaStoreRam<1> fetch_store;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   OtaStoreSdNrf52 fetch_store;             // MeshTower V2: persistent SD staging, full + delta
   OtaCacheSdNrf52 sd_cache;                 // persistent capture + source for every OTA container heard
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
@@ -131,6 +140,11 @@ struct OtaContext {
   // so the deferred-reboot path (mesh loop) takes over. Caller ensures the fetch is COMPLETE. Shared by
   // manual `ota applydelta` and the auto-install path.
   bool apply_fetched(char* msg) {
+#if defined(OTA_SEEDER_ONLY)
+    strncpy(msg, "refused: this build serves mOTA images but cannot install one", 96);
+    msg[95] = 0;
+    return false;
+#else
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     if (sdCacheFetching()) {
       strncpy(msg, "refused: SD archive capture owns the OTA receive slot", 96);
@@ -165,6 +179,7 @@ struct OtaContext {
 #endif
     if (ok) apply_pending = true;
     return ok;
+#endif
   }
 
   // Deferred apply-reboot: a verified `ota applydelta` approves the update but does NOT reboot inline,
@@ -231,8 +246,13 @@ struct OtaContext {
     folder_active = true;
     _folder_link = link;
     _folder_source = source;
+#if defined(OTA_SEEDER_ONLY)
+    snprintf(msg, cap, "OK folder attached (%s) - serving %u host mOTA total",
+             label ? label : "external", (unsigned)manager.servedCount());
+#else
     snprintf(msg, cap, "OK folder attached (%s) - serving %u mOTA total (own fw + folder)",
              label ? label : "external", (unsigned)manager.servedCount());
+#endif
     return true;
   }
 
@@ -379,10 +399,19 @@ struct OtaContext {
       if (_fi.target_id) target_id = _fi.target_id;
       if (_fi.hw_id[0]) hw = _fi.hw_id;
     }
+#if defined(OTA_SEEDER_ONLY)
+    // This role advertises only host-provided containers. A zero local target
+    // prevents auto-selection of firmware for the seeder itself.
+    target_id = 0;
+#endif
     manager.begin(target_id, send, ctx);
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(OTA_SEEDER_ONLY)
+    manager.set_accept_full(true);
+    manager.set_autofetch(OtaManager::AUTOFETCH_OFF);
+    autoinstall = AUTOINSTALL_OFF;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     manager.set_accept_full(true);
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(NRF52_PLATFORM)

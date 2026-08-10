@@ -60,6 +60,12 @@ MultiSerialInterface interface_manager;
   #include <helpers/ArduinoSerialInterface.h>
   static const char USB_TERMINAL_START_TOKEN[] = "+++MESHCORE-TERM-START";
   static const char USB_TERMINAL_STOP_TOKEN[] = "+++MESHCORE-TERM-STOP";
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+  // motatool sends this command automatically when `serve --serial` opens the
+  // port. In Binary mode it is an exact, idle-parser control sequence that
+  // hands USB ownership to the host-backed mOTA source.
+  static const char USB_MOTA_START_TOKEN[] = "ota folder on";
+#endif
   ArduinoSerialInterface usb_serial_interface;
 #endif
 
@@ -120,6 +126,12 @@ static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
 static size_t usb_terminal_line_len = 0;
 static bool usb_terminal_discard_line = false;
 static bool usb_terminal_disconnect_armed = false;
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+static bool usb_mota_mode = false;
+static char usb_mota_line[32];
+static size_t usb_mota_line_len = 0;
+static bool usb_mota_disconnect_armed = false;
+#endif
 
 static bool isUsbTerminalDataConnected() {
 #if defined(RP2040_PLATFORM)
@@ -150,9 +162,100 @@ static void leaveUsbTerminalMode(bool acknowledge) {
   usb_terminal_disconnect_armed = false;
 }
 
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+static void resetUsbMotaMode() {
+  usb_mota_mode = false;
+  usb_mota_line_len = 0;
+  usb_mota_line[0] = 0;
+  usb_mota_disconnect_armed = false;
+  usb_serial_interface.setPassthroughMode(false);
+}
+
+static void leaveUsbMotaMode(bool acknowledge) {
+  char reply[160] = {0};
+  the_mesh.handleFullOtaCommand("ota folder off", reply, sizeof(reply));
+  if (acknowledge) {
+    Serial.print("\r\n");
+    Serial.print(reply);
+    Serial.print("\r\nOK - Binary mode\r\n");
+  }
+  resetUsbMotaMode();
+}
+
+static void enterUsbMotaMode() {
+  usb_serial_interface.setPassthroughMode(true);
+  usb_mota_mode = true;
+  usb_mota_line_len = 0;
+  usb_mota_line[0] = 0;
+  usb_mota_disconnect_armed = isUsbTerminalDataConnected();
+
+  char reply[160] = {0};
+  if (!the_mesh.handleFullOtaCommand("ota folder on", reply, sizeof(reply))
+      || strncmp(reply, "ERR", 3) == 0) {
+    Serial.print("\r\n");
+    Serial.print(reply[0] ? reply : "ERR could not enter mOTA seeder mode");
+    Serial.print("\r\n");
+    resetUsbMotaMode();
+    return;
+  }
+  Serial.print("\r\n");
+  Serial.print(reply);
+  Serial.print("\r\n");
+}
+
+static void serviceUsbMota() {
+  if (isUsbTerminalDataConnected()) {
+    usb_mota_disconnect_armed = true;
+  } else if (usb_mota_disconnect_armed) {
+    leaveUsbMotaMode(false);
+    return;
+  }
+
+  // SerialMotaSource consumes framed responses synchronously while serving a
+  // block. Bytes left here are host control text, notably motatool's automatic
+  // `ota folder off` on a clean shutdown.
+  while (Serial.available()) {
+    int value = Serial.read();
+    if (value < 0) break;
+    char c = (char)value;
+    if (c == '\r' || c == '\n') {
+      if (usb_mota_line_len == 0) continue;
+      usb_mota_line[usb_mota_line_len] = 0;
+      bool stop = strcmp(usb_mota_line, "ota folder off") == 0;
+      usb_mota_line_len = 0;
+      usb_mota_line[0] = 0;
+      if (stop) {
+        leaveUsbMotaMode(true);
+        return;
+      }
+      continue;
+    }
+    if (usb_mota_line_len < sizeof(usb_mota_line) - 1) {
+      usb_mota_line[usb_mota_line_len++] = c;
+      usb_mota_line[usb_mota_line_len] = 0;
+    } else {
+      usb_mota_line_len = 0;
+      usb_mota_line[0] = 0;
+    }
+  }
+}
+#endif
+
 static void serviceUsbTerminal() {
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+  if (usb_mota_mode) {
+    serviceUsbMota();
+    return;
+  }
+#endif
   if (!the_mesh.isTerminalMode()) {
-    if (usb_serial_interface.takeControlSequence()) enterUsbTerminalMode();
+    if (usb_serial_interface.takeControlSequence()) {
+      enterUsbTerminalMode();
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+    } else if (usb_serial_interface.takeSecondaryControlSequence()) {
+      enterUsbMotaMode();
+#endif
+    }
     return;
   }
 
@@ -293,10 +396,10 @@ void halt() {
   }
 #endif
 
-/* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. A WiFi companion has no serial text console, so
-   without this its OTA is only reachable through the phone app. Connect with e.g. `nc <ip> 5002` and type
+/* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. Connect with e.g. `nc <ip> 5002` and type
    `ota status` / `ota ls` / `ota announce` / ... - one client at a time, on a DEDICATED port separate from
-   the companion (5000) and the seeder (5001). */
+   the companion (5000) and the seeder (5001). Full companions also accept `tempradio ...` and
+   `normalradio` here so a host can run an end-to-end mOTA source without occupying the binary port. */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaCli.h>          // mesh::ota::handle_ota_command(line, reply, board)
   #ifndef OTA_CONSOLE_TCP_PORT
@@ -311,7 +414,11 @@ void halt() {
     if (!ota_console_client || !ota_console_client.connected()) {
       WiFiClient c = ota_console_server.available();
       if (c) { ota_console_client = c; ota_console_len = 0;
-               ota_console_client.print("OTA console - type `ota ...` (e.g. ota status / ota ls / ota announce)\r\n> "); }
+               ota_console_client.print("OTA console - type `ota ...`");
+#if defined(COMPANION_RADIO_FULL)
+               ota_console_client.print(" or `tempradio freq,bw,sf,cr,minutes`");
+#endif
+               ota_console_client.print("\r\n> "); }
       return;
     }
     while (ota_console_client.available()) {
@@ -320,8 +427,13 @@ void halt() {
         if (ota_console_len == 0) continue;                            // ignore blanks / the CRLF pair
         ota_console_line[ota_console_len] = 0;
         char reply[160]; reply[0] = 0;
+#if defined(COMPANION_RADIO_FULL)
+        if (!the_mesh.handleFullOtaCommand(ota_console_line, reply, sizeof(reply)))
+          strcpy(reply, "supported: ota ... | tempradio ... | normalradio");
+#else
         if (!mesh::ota::handle_ota_command(ota_console_line, reply, board))
           strcpy(reply, "only `ota ...` commands are supported on this console");
+#endif
         ota_console_client.print("  -> "); ota_console_client.print(reply); ota_console_client.print("\r\n> ");
         ota_console_len = 0;
       } else if (ota_console_len < sizeof(ota_console_line) - 1) {
@@ -489,7 +601,11 @@ void setup() {
 
 // add usb interface
 #if defined(ENABLE_USB_INTERFACE)
+#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+  usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN, USB_MOTA_START_TOKEN);
+#else
   usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN);
+#endif
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
 #endif
 
