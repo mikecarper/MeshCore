@@ -4,6 +4,10 @@
 #include "MeshCore.h"
 #include "LR1110RxRecovery.h"
 
+#ifndef LR11X0_TX_BUSY_TIMEOUT_MS
+#define LR11X0_TX_BUSY_TIMEOUT_MS 1000UL
+#endif
+
 class CustomLR1110 : public LR1110 {
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
@@ -13,6 +17,34 @@ class CustomLR1110 : public LR1110 {
 
   public:
     CustomLR1110(Module *mod) : LR1110(mod) { }
+
+    // RadioLib waits without a deadline for BUSY to fall after SetTx. Bound
+    // that wait so a failed LR1110 transition can reach the wrapper's hard
+    // recovery path instead of hanging the firmware indefinitely.
+    int16_t launchMode() override {
+      if (this->stagedMode != RADIOLIB_RADIO_MODE_TX) {
+        return LR1110::launchMode();
+      }
+
+      this->mod->setRfSwitchState(this->txMode);
+      int16_t state = this->setTx(RADIOLIB_LR11X0_TX_TIMEOUT_NONE);
+      if (state != RADIOLIB_ERR_NONE) {
+        this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+        return state;
+      }
+
+      const uint32_t started = this->mod->hal->millis();
+      while (isChipBusy()) {
+        this->mod->hal->yield();
+        if (this->mod->hal->millis() - started >= LR11X0_TX_BUSY_TIMEOUT_MS) {
+          this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+          return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+        }
+      }
+
+      this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+      return RADIOLIB_ERR_NONE;
+    }
 
     int16_t recoverReceivePath() {
       _activityAt = 0;

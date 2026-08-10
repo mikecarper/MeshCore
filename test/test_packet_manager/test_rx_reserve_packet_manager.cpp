@@ -20,6 +20,11 @@ public:
   bool cad_enabled = false;
   unsigned long last_irq = 0;
   bool recovery_result = true;
+  bool send_complete = false;
+  bool start_success = true;
+  int send_finishes = 0;
+  uint8_t sent_raw[3][MAX_TRANS_UNIT] = {};
+  int sent_len[3] = {};
 
   int recvRaw(uint8_t* dest, int max_len) override {
     if (pending_rx_len == 0) return 0;
@@ -30,9 +35,16 @@ public:
   }
   uint32_t getEstAirtimeFor(int) override { return 1; }
   float packetScore(float, int) override { return 0; }
-  bool startSendRaw(const uint8_t*, int) override { send_starts++; return true; }
-  bool isSendComplete() override { return false; }
-  void onSendFinished() override { }
+  bool startSendRaw(const uint8_t* bytes, int len) override {
+    if (send_starts < 3) {
+      sent_len[send_starts] = len;
+      memcpy(sent_raw[send_starts], bytes, len);
+    }
+    send_starts++;
+    return start_success;
+  }
+  bool isSendComplete() override { return send_complete; }
+  void onSendFinished() override { send_finishes++; }
   bool isInRecvMode() const override { return in_recv_mode; }
   bool isReceiving() override { return receiving; }
   void setCADEnabled(bool enable) override {
@@ -81,9 +93,15 @@ protected:
     failed_packet = packet;
     free_count_during_failure = manager.getFreeCount();
   }
+  void onSendComplete(mesh::Packet* packet) override {
+    completed_packet = packet;
+    completed_packets++;
+  }
 
 public:
   mesh::Packet* failed_packet = nullptr;
+  mesh::Packet* completed_packet = nullptr;
+  int completed_packets = 0;
   int free_count_during_failure = -1;
   int received_packets = 0;
   int forced_rx_delay = -1;
@@ -589,6 +607,135 @@ TEST(Dispatcher, RadioOutsideReceiveModeEscalatesOnSecondAttempt) {
   dispatcher.loop();
   EXPECT_EQ(1, radio.soft_recoveries);
   EXPECT_EQ(1, radio.hard_recoveries);
+}
+
+TEST(Dispatcher, TimedOutTransmitRecoversAndRetriesSamePacket) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  clock.now = 100;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  mesh::Packet* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload[0] = 0x42;
+  packet->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+
+  clock.now = 101;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.send_starts);
+  ASSERT_EQ(0, radio.hard_recoveries);
+
+  clock.now = 103;
+  dispatcher.loop();
+
+  EXPECT_EQ(1, radio.send_finishes);
+  EXPECT_EQ(1, radio.hard_recoveries);
+  EXPECT_EQ(nullptr, dispatcher.failed_packet);
+  EXPECT_EQ(7, manager.getFreeCount());
+  EXPECT_TRUE(dispatcher.getErrFlags() & ERR_EVENT_RADIO_WATCHDOG);
+
+  uint32_t wake_delay = 0;
+  ASSERT_TRUE(dispatcher.nextQueueWakeDelay(wake_delay));
+  EXPECT_EQ(200U, wake_delay);
+
+  clock.now = 304;
+  dispatcher.loop();
+  ASSERT_EQ(2, radio.send_starts);
+  ASSERT_EQ(radio.sent_len[0], radio.sent_len[1]);
+  EXPECT_EQ(0, memcmp(radio.sent_raw[0], radio.sent_raw[1], radio.sent_len[0]));
+
+  radio.send_complete = true;
+  clock.now = 305;
+  dispatcher.loop();
+
+  EXPECT_EQ(2, radio.send_finishes);
+  EXPECT_EQ(packet, dispatcher.completed_packet);
+  EXPECT_EQ(1, dispatcher.completed_packets);
+  EXPECT_EQ(nullptr, dispatcher.failed_packet);
+  EXPECT_EQ(8, manager.getFreeCount());
+}
+
+TEST(Dispatcher, SecondTimedOutTransmitFailsWithoutThirdAttempt) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  clock.now = 100;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  mesh::Packet* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload[0] = 0x43;
+  packet->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+
+  clock.now = 101;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.send_starts);
+
+  clock.now = 103;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.hard_recoveries);
+
+  clock.now = 304;
+  dispatcher.loop();
+  ASSERT_EQ(2, radio.send_starts);
+
+  clock.now = 306;
+  dispatcher.loop();
+
+  EXPECT_EQ(2, radio.send_finishes);
+  EXPECT_EQ(2, radio.hard_recoveries);
+  EXPECT_EQ(packet, dispatcher.failed_packet);
+  EXPECT_EQ(8, manager.getFreeCount());
+
+  clock.now = 1000;
+  dispatcher.loop();
+  EXPECT_EQ(2, radio.send_starts);
+}
+
+TEST(Dispatcher, StartFailureRetriesSamePacketWithoutApp) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  clock.now = 100;
+  TestRadio radio;
+  radio.start_success = false;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  mesh::Packet* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload[0] = 0x44;
+  packet->payload_len = 1;
+  ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+
+  clock.now = 101;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.send_starts);
+  EXPECT_EQ(nullptr, dispatcher.failed_packet);
+  EXPECT_EQ(7, manager.getFreeCount());
+
+  radio.start_success = true;
+  clock.now = 302;
+  dispatcher.loop();
+  ASSERT_EQ(2, radio.send_starts);
+  ASSERT_EQ(radio.sent_len[0], radio.sent_len[1]);
+  EXPECT_EQ(0, memcmp(radio.sent_raw[0], radio.sent_raw[1], radio.sent_len[0]));
+
+  radio.send_complete = true;
+  clock.now = 303;
+  dispatcher.loop();
+
+  EXPECT_EQ(packet, dispatcher.completed_packet);
+  EXPECT_EQ(1, dispatcher.completed_packets);
+  EXPECT_EQ(nullptr, dispatcher.failed_packet);
+  EXPECT_EQ(8, manager.getFreeCount());
 }
 
 TEST(RxReservePacketManager, RejectedOutboundRemainsOwnedByCaller) {

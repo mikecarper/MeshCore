@@ -9,8 +9,14 @@
 #endif
 
 class CustomLR1110Wrapper : public RadioLibWrapper {
+  using DeepInitCallback = bool (*)();
+  DeepInitCallback _deep_init;
+
 public:
-  CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board)
+      : RadioLibWrapper(radio, board), _deep_init(NULL) { }
+
+  void setDeepInitCallback(DeepInitCallback callback) { _deep_init = callback; }
 
   void powerOff() { _radio->standby(); _radio->sleep(); }
 
@@ -109,6 +115,11 @@ protected:
     MESH_DEBUG_PRINTLN("CustomLR1110Wrapper: error: startReceiveDutyCycle(%d), falling back to continuous RX", err);
     return _radio->startReceive();
   }
+
+  bool radioDeepInit() override {
+    return _deep_init != NULL && _deep_init();
+  }
+  bool supportsRadioDeepInit() const override { return _deep_init != NULL; }
 
 public:
   uint8_t getSpreadingFactor() const override { return ((CustomLR1110 *)_radio)->getSpreadingFactor(); }

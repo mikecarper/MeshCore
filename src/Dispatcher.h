@@ -225,6 +225,7 @@ typedef uint32_t  DispatcherAction;
 class Dispatcher {
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
+  unsigned long outbound_radio_retry_at;
   unsigned long last_observed_radio_irq;
 #ifdef RADIO_LIVENESS_SOFT_ONLY
   unsigned long last_radio_activity_ms;
@@ -238,6 +239,8 @@ class Dispatcher {
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
   bool  prev_isrecv_mode;
+  bool  outbound_radio_retry_pending;
+  bool  outbound_radio_retry_used;
 #ifndef RADIO_LIVENESS_SOFT_ONLY
   bool  nonrx_soft_recovery_attempted;
 #endif
@@ -249,6 +252,9 @@ class Dispatcher {
 
   void processRecvPacket(Packet* pkt);
   void releaseDroppedOutbound();
+  bool startOutboundTransmit();
+  bool scheduleOutboundRadioRetry();
+  void failOutboundTransmit();
   void restoreOutboundTxOverrides();
   void updateTxBudget();
 
@@ -262,6 +268,9 @@ protected:
     : _radio(&radio), _ms(&ms), _mgr(&mgr)
   {
     outbound = NULL;
+    outbound_radio_retry_at = 0;
+    outbound_radio_retry_pending = false;
+    outbound_radio_retry_used = false;
     outbound_restore_preamble_len = 0;
     outbound_restore_cr = 0;
     total_air_time = rx_air_time = 0;

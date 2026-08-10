@@ -39,6 +39,9 @@ void Dispatcher::begin() {
   n_sent_flood = n_sent_direct = 0;
   n_recv_flood = n_recv_direct = 0;
   _err_flags = 0;
+  outbound_radio_retry_at = 0;
+  outbound_radio_retry_pending = false;
+  outbound_radio_retry_used = false;
   radio_nonrx_start = _ms->getMillis();
 
   duty_cycle_window_ms = getDutyCycleWindowMs();
@@ -90,6 +93,91 @@ void Dispatcher::restoreOutboundTxOverrides() {
   }
 }
 
+bool Dispatcher::startOutboundTransmit() {
+  if (outbound == NULL) return false;
+
+  int len = 0;
+  uint8_t raw[MAX_TRANS_UNIT];
+
+  raw[len++] = outbound->header;
+  if (outbound->hasTransportCodes()) {
+    memcpy(&raw[len], &outbound->transport_codes[0], 2); len += 2;
+    memcpy(&raw[len], &outbound->transport_codes[1], 2); len += 2;
+  }
+  raw[len++] = outbound->path_len;
+  len += Packet::writePath(&raw[len], outbound->path, outbound->path_len);
+
+  if (len + outbound->payload_len > MAX_TRANS_UNIT) {
+    MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): FATAL: Invalid packet queued... too long, len=%d",
+                       getLogDateTime(), len + outbound->payload_len);
+    return false;
+  }
+  memcpy(&raw[len], outbound->payload, outbound->payload_len);
+  len += outbound->payload_len;
+
+  uint32_t max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
+  outbound_restore_cr = 0;
+  outbound_restore_preamble_len = 0;
+  uint8_t default_cr = getDefaultTxCodingRate();
+  bool is_retry = outbound->tx_cr >= 4 && outbound->tx_cr <= 8;
+  if (outbound->tx_cr >= 4 && outbound->tx_cr <= 8
+      && default_cr >= 4 && default_cr <= 8
+      && outbound->tx_cr != default_cr) {
+    if (_radio->setCodingRate(outbound->tx_cr)) {
+      outbound_restore_cr = default_cr;
+      max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
+    } else {
+      MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): WARN: failed to set packet CR%d",
+                         getLogDateTime(), (uint32_t)outbound->tx_cr);
+    }
+  }
+  if (is_retry) {
+    uint16_t default_preamble_len = _radio->getDefaultPreambleLength();
+    if (default_preamble_len != 32 && _radio->setPreambleLength(32)) {
+      outbound_restore_preamble_len = default_preamble_len;
+      max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
+    }
+  }
+
+  outbound_start = _ms->getMillis();
+  if (!_radio->startSendRaw(raw, len)) {
+    MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): ERROR: send start failed!",
+                       getLogDateTime());
+    restoreOutboundTxOverrides();
+    return false;
+  }
+  outbound_expiry = futureMillis(max_airtime);
+
+#if MESH_PACKET_LOGGING
+  logPacketStart("TX", outbound, len);
+  logPacketEnd(outbound);
+#endif
+  return true;
+}
+
+bool Dispatcher::scheduleOutboundRadioRetry() {
+  if (outbound == NULL || outbound_radio_retry_used) return false;
+
+  outbound_radio_retry_used = true;
+  outbound_radio_retry_pending = true;
+  outbound_radio_retry_at = futureMillis(getCADFailRetryDelay());
+  MESH_DEBUG_PRINTLN("%s Dispatcher: retrying packet once after radio fault",
+                     getLogDateTime());
+  return true;
+}
+
+void Dispatcher::failOutboundTransmit() {
+  if (outbound == NULL) return;
+
+  restoreOutboundTxOverrides();
+  logTxFail(outbound, outbound->getRawLength());
+  onSendFail(outbound);
+  releasePacket(outbound);
+  outbound = NULL;
+  outbound_radio_retry_pending = false;
+  outbound_radio_retry_used = false;
+}
+
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
   return (int) ((powf(10.0f, 0.85f - score) - 1.0f) * air_time);
 }
@@ -137,8 +225,13 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   uint32_t shortest_delay = 0;
 
   if (outbound != NULL) {
-    // TX completion/timeout still needs the normal fast lifecycle path.
-    delay_millis = 0;
+    if (outbound_radio_retry_pending) {
+      int32_t signed_retry_delay = (int32_t)(outbound_radio_retry_at - now);
+      delay_millis = signed_retry_delay > 0 ? (uint32_t)signed_retry_delay : 0;
+    } else {
+      // TX completion/timeout still needs the normal fast lifecycle path.
+      delay_millis = 0;
+    }
     return true;
   }
 
@@ -266,8 +359,21 @@ void Dispatcher::loop() {
 #endif
   }
 
-  if (outbound) {  // waiting for outbound send to be completed
-    if (_radio->isSendComplete()) {
+  if (outbound) {  // waiting for outbound send to complete, or for its one radio retry
+    if (outbound_radio_retry_pending) {
+      if (!millisHasNowPassed(outbound_radio_retry_at)) return;
+
+      outbound_radio_retry_pending = false;
+      if (!allowPacketTransmit(outbound)) {
+        MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): radio retry packet no longer allowed, type=%u",
+                           getLogDateTime(), (uint32_t)outbound->getPayloadType());
+        failOutboundTransmit();
+      } else if (!startOutboundTransmit()) {
+        failOutboundTransmit();
+      } else {
+        return;
+      }
+    } else if (_radio->isSendComplete()) {
       long t = _ms->getMillis() - outbound_start;
       total_air_time += t;
       //Serial.print("  airtime="); Serial.println(t);
@@ -304,16 +410,21 @@ void Dispatcher::loop() {
       }
       releasePacket(outbound);  // return to pool
       outbound = NULL;
+      outbound_radio_retry_pending = false;
+      outbound_radio_retry_used = false;
     } else if (millisHasNowPassed(outbound_expiry)) {
       MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
 
       _radio->onSendFinished();
       restoreOutboundTxOverrides();
-      logTxFail(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
-      onSendFail(outbound);
-
-      releasePacket(outbound);  // return to pool
-      outbound = NULL;
+      _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
+      const bool recovered = _radio->recoverRadio(true);
+      if (!recovered) {
+        MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: hard radio recovery after TX timeout failed!",
+                           getLogDateTime());
+      }
+      if (recovered && scheduleOutboundRadioRetry()) return;
+      failOutboundTransmit();
     } else {
       return;  // can't do any more radio activity until send is complete or timed out
     }
@@ -558,74 +669,29 @@ void Dispatcher::checkSend() {
 
   outbound = _mgr->getNextOutbound(_ms->getMillis());
   if (outbound) {
+    outbound_radio_retry_pending = false;
+    outbound_radio_retry_used = false;
+
     if (!allowPacketTransmit(outbound)) {
       MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): packet no longer allowed, type=%u", getLogDateTime(),
                          (uint32_t)outbound->getPayloadType());
-      onSendFail(outbound);
-      releasePacket(outbound);
-      outbound = NULL;
+      failOutboundTransmit();
       return;
     }
 
-    int len = 0;
-    uint8_t raw[MAX_TRANS_UNIT];
-
-    raw[len++] = outbound->header;
-    if (outbound->hasTransportCodes()) {
-      memcpy(&raw[len], &outbound->transport_codes[0], 2); len += 2;
-      memcpy(&raw[len], &outbound->transport_codes[1], 2); len += 2;
+    if (outbound->getRawLength() > MAX_TRANS_UNIT) {
+      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): FATAL: Invalid packet queued... too long, len=%d",
+                         getLogDateTime(), outbound->getRawLength());
+      failOutboundTransmit();
+      return;
     }
-    raw[len++] = outbound->path_len;
-    len += Packet::writePath(&raw[len], outbound->path, outbound->path_len);
 
-    if (len + outbound->payload_len > MAX_TRANS_UNIT) {
-      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): FATAL: Invalid packet queued... too long, len=%d", getLogDateTime(), len + outbound->payload_len);
-      onSendFail(outbound);
-      releasePacket(outbound);
-      outbound = NULL;
-    } else {
-      memcpy(&raw[len], outbound->payload, outbound->payload_len); len += outbound->payload_len;
-
-      uint32_t max_airtime = _radio->getEstAirtimeFor(len)*3/2;
-      outbound_restore_cr = 0;
-      outbound_restore_preamble_len = 0;
-      uint8_t default_cr = getDefaultTxCodingRate();
-      bool is_retry = outbound->tx_cr >= 4 && outbound->tx_cr <= 8;
-      if (outbound->tx_cr >= 4 && outbound->tx_cr <= 8 && default_cr >= 4 && default_cr <= 8
-          && outbound->tx_cr != default_cr) {
-        if (_radio->setCodingRate(outbound->tx_cr)) {
-          outbound_restore_cr = default_cr;
-          max_airtime = _radio->getEstAirtimeFor(len)*3/2;
-        } else {
-          MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): WARN: failed to set packet CR%d", getLogDateTime(), (uint32_t)outbound->tx_cr);
-        }
-      }
-      if (is_retry) {
-        uint16_t default_preamble_len = _radio->getDefaultPreambleLength();
-        if (default_preamble_len != 32 && _radio->setPreambleLength(32)) {
-          outbound_restore_preamble_len = default_preamble_len;
-          max_airtime = _radio->getEstAirtimeFor(len)*3/2;
-        }
-      }
-      outbound_start = _ms->getMillis();
-      bool success = _radio->startSendRaw(raw, len);
-      if (!success) {
-        MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): ERROR: send start failed!", getLogDateTime());
-
-        restoreOutboundTxOverrides();
-        logTxFail(outbound, outbound->getRawLength());
-        onSendFail(outbound);
-  
-        releasePacket(outbound);  // return to pool
-        outbound = NULL;
-        return;
-      }
-      outbound_expiry = futureMillis(max_airtime);
-
-    #if MESH_PACKET_LOGGING
-      logPacketStart("TX", outbound, len);
-      logPacketEnd(outbound);
-    #endif
+    if (!startOutboundTransmit()) {
+      // RadioLib performs its radio-specific cleanup (including LR1110 hard
+      // recovery for a stuck BUSY command) before returning false. Retain the
+      // packet and let the firmware make one fresh start without app help.
+      if (scheduleOutboundRadioRetry()) return;
+      failOutboundTransmit();
     }
   }
 }

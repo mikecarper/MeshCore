@@ -71,6 +71,10 @@ bool radio_init() {
   radio.setRxBoostedGainMode(RX_BOOSTED_GAIN);
 #endif
 
+  // Reuse this board-specific reset and configuration sequence if a runtime
+  // TX failure requires hard LR1110 recovery.
+  radio_driver.setDeepInitCallback(radio_init);
+
   return true;  // success
 }
 
