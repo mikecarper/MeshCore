@@ -566,6 +566,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../docs/" class="md-nav__link">
         
   
@@ -1494,6 +1521,11 @@ small WiFi updater. Configure those builds with the CLI.</p>
 <p>A <code>*_companion_radio_wifi</code> build replaces the BLE or USB companion link with
 the MeshCore companion protocol over TCP port 5000. The phone or computer must
 be able to reach the device on the same LAN.</p>
+<p>An ESP32 <code>*_companion_radio_full</code> target keeps all three Companion links at
+once: USB, BLE, and TCP port 5000. It also provides a source-only LoRa mOTA
+service on ports 5001 and 5002. See the
+<a href="../companion_radio_full/">full Companion guide</a> for its build, terminal mode,
+and complete update-source workflow.</p>
 <p>The companion loads runtime credentials saved in NVS. A non-placeholder
 compile-time <code>WIFI_SSID</code>/<code>WIFI_PWD</code> can be used as a first-boot fallback, but
 saved credentials take priority. With no credentials, its WebConfig portal
@@ -1511,7 +1543,10 @@ a trusted LAN.</p>
 <li>TCP 5001 for the OTA folder seeder used by <code>motatool serve --tcp</code>;</li>
 <li>TCP 5002 for the OTA text console.</li>
 </ul>
-<p>These ports do not replace the companion protocol on TCP 5000.</p>
+<p>These ports do not replace the companion protocol on TCP 5000.
+On a <code>companion_radio_full</code> build, port 5002 additionally accepts bounded
+<code>tempradio</code> and <code>normalradio</code> commands, while LoRa staging and installation on
+the Companion itself are disabled.</p>
 <p>FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
 role has a usable WiFi station or setup access point and stops when WiFi stops.
 For example, a FULL repeater can run <code>start webconfig</code> to join its saved

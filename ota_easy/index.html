@@ -392,6 +392,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../docs/" class="md-nav__link">
         
   
@@ -1473,8 +1500,8 @@ location and change it when necessary.</p>
   that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do <strong>not</strong> need an
   OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
   Portable logging, portable MQTT, and untagged builds cannot install LoRa OTA; FULL logging OTA builds can.</li>
-<li>An OTA-enabled MeshCore source connected to the computer by USB serial, or an ESP32 WiFi companion/FULL
-  ESP32 source connected over WiFi as described below.</li>
+<li>An OTA-enabled MeshCore source connected to the computer by USB serial, or
+  an ESP32 WiFi companion/FULL source connected over WiFi as described below.</li>
 <li>Overlapping <code>tempradio</code> windows on the source, destination, and every repeater needed between them.</li>
 </ul>
 <p>LoRa OTA packets are generated, consumed, and relayed only while <code>tempradio</code> is active. Intermediate repeaters
@@ -1496,22 +1523,35 @@ The <code>*-full-ota-*</code> profile uses MQTT with logging off. Use a <code>*-
 and packet logging are needed instead; that diagnostic profile explicitly disables MQTT and can produce
 substantial serial output.</p>
 <h3 id="choose-the-source-radio">Choose the source radio</h3>
-<p>Use an OTA-enabled MeshCore node as the source. It receives the update folder from the computer, then
-advertises it over LoRa. ESP32 USB/WiFi companions and FULL ESP32 roles include the required transport.
+<p>Use an OTA-enabled MeshCore node as the source. It receives the update folder
+from the computer, then advertises it over LoRa. ESP32 USB/WiFi companions and
+FULL ESP32 roles include the required transport. A
+<code>*_companion_radio_full</code> target keeps only the source half of LoRa OTA: it
+serves host images but cannot stage or install one for itself. ESP32 full
+combines USB, BLE, and WiFi; nRF52 full combines USB and BLE because nRF52840
+has no WiFi.
 A small set of high-capacity classic ESP32 companions
 keep their normal image and provide a separate <code>-full-ota-</code> image with 100 contacts, 8 group channels, and
 a 16-frame offline queue. Install that variant's merged image over USB once before using it. Connect the
-source by USB serial or, when supported, by WiFi. For USB serial, confirm that its USB CLI accepts:</p>
+source by USB serial or, when supported, by WiFi. For an ordinary raw-text USB
+source, confirm that its USB CLI accepts:</p>
 <pre><code class="language-text">ota folder on
 </code></pre>
 <p>If an older build reports that <code>OTA_FOLDER_SERIAL</code> is not compiled in, install a current <code>-ota-</code> or
 <code>-full-ota-</code> build first. Do <strong>not</strong> use a KISS modem: KISS firmware is a TNC/KISS frame interface
 and does not provide the MeshCore CLI or the OTA-folder transport that <code>motatool serve</code> requires.</p>
+<p>An nRF52 <code>companion_radio_full</code> starts in USB Binary mode. Use
+<code>+++MESHCORE-TERM-START</code> for local TempRadio commands, then return with
+<code>+++MESHCORE-TERM-STOP</code>. When <code>motatool serve --serial</code> opens the port, its
+automatic <code>ota folder on</code> command selects exclusive mOTA mode; stopping the
+tool or disconnecting resets USB to Binary. BLE remains available throughout.</p>
 <p>For an ESP32 WiFi companion or FULL ESP32 source with active WiFi, use its dedicated OTA seeder:</p>
 <pre><code class="language-bash">motatool serve --dir ./motas --tcp &lt;source-host&gt;:5001 -v
 </code></pre>
 <p>Port <code>5001</code> is separate from the companion application port (<code>5000</code>) and the
-infrastructure WebConfig/browser-OTA port (<code>80</code>). On a FULL repeater or room
+HTTP configuration/browser-OTA port (<code>80</code>, depending on the role). An ESP32
+<code>companion_radio_full</code> also has a local OTA/TempRadio console on port <code>5002</code>;
+see the <a href="../companion_radio_full/">full Companion guide</a>. On a FULL repeater or room
 server, <code>start webconfig</code> can bring up the saved WiFi connection. Other FULL
 roles with browser OTA support can raise <code>MeshCore-OTA</code> with <code>start ota</code> and
 use <code>192.168.4.1:5001</code>. The TCP seeder auto-attaches; do not also run

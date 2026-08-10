@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_meshtower_v2_sdcard/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_radio_full/">
       
       
-        <link rel="prev" href="../ota_easy/">
+        <link rel="prev" href="../companion_protocol/">
       
       
-        <link rel="next" href="../ota_protocol/">
+        <link rel="next" href="../docs/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>MeshTower V2 microSD LoRa OTA - MeshCore Docs</title>
+        <title>Full Companion - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#meshtower-v2-microsd-lora-ota" class="md-skip">
+        <a href="#full-companion" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MeshTower V2 microSD LoRa OTA
+              Full Companion
             
           </span>
         </div>
@@ -389,10 +389,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../companion_radio_full/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -408,6 +435,120 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build and install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usb-binary-and-terminal-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        USB Binary and terminal modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nrf52-usb-mota-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52 USB mOTA mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#serve-mota-images-manually" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serve mOTA images manually
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serve mOTA images manually">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#esp32-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nrf52-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52 source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#script-a-complete-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Script a complete update
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -713,37 +854,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    MeshTower V2 microSD LoRa OTA
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -759,98 +873,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Card requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capacity and update types
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SD card CLI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persistent OTA archive and seeder
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Preload many mOTAs from a computer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Serve the preloaded archive over TempRadio
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1098,10 +1120,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
+  <a href="#build-and-install" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Card requirements
+        Build and install
       
     </span>
   </a>
@@ -1109,10 +1131,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
+  <a href="#interfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Capacity and update types
+        Interfaces
       
     </span>
   </a>
@@ -1120,10 +1142,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
+  <a href="#usb-binary-and-terminal-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SD card CLI
+        USB Binary and terminal modes
       
     </span>
   </a>
@@ -1131,22 +1153,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
+  <a href="#nrf52-usb-mota-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Persistent OTA archive and seeder
+        nRF52 USB mOTA mode
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#serve-mota-images-manually" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serve mOTA images manually
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Serve mOTA images manually">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
+  <a href="#esp32-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Preload many mOTAs from a computer
+        ESP32 source
       
     </span>
   </a>
@@ -1154,10 +1187,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
+  <a href="#nrf52-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Serve the preloaded archive over TempRadio
+        nRF52 source
       
     </span>
   </a>
@@ -1166,6 +1199,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#script-a-complete-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Script a complete update
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1186,7 +1230,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_meshtower_v2_sdcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_radio_full.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1194,269 +1238,225 @@
   
 
 
-<h1 id="meshtower-v2-microsd-lora-ota">MeshTower V2 microSD LoRa OTA</h1>
-<p>The <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> target uses the MeshTower V2 onboard
-microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
-both full <code>.mota</code> images and in-place delta <code>.mota</code> images. After verification,
-the matching SD-aware OTAFIX bootloader reads the staged file from the card and
-programs the nRF52840 application region.</p>
-<p>The pin assignment follows the
-<a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf">Heltec MeshTower V2 partial reference circuit</a>:</p>
+<h1 id="full-companion">Full Companion</h1>
+<p><code>companion_radio_full</code> combines every Companion transport available on its
+platform and acts as a host-backed LoRa mOTA source for updating other nodes.
+The full Companion is deliberately not a LoRa OTA destination: it has no
+firmware staging store, refuses <code>ota install</code>, and never advertises its own
+firmware as an mOTA image.</p>
 <table>
 <thead>
 <tr>
-<th>Signal</th>
-<th style="text-align: right;">nRF52840 pin</th>
-<th style="text-align: right;">Arduino pin number</th>
+<th>Capability</th>
+<th>ESP32 full</th>
+<th>nRF52 full</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>SD CS</td>
-<td style="text-align: right;">P1.00</td>
-<td style="text-align: right;">32</td>
+<td>USB Binary Companion</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>SD MOSI</td>
-<td style="text-align: right;">P1.01</td>
-<td style="text-align: right;">33</td>
+<td>BLE Binary Companion</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>SD SCK</td>
-<td style="text-align: right;">P0.06</td>
-<td style="text-align: right;">6</td>
+<td>USB ASCII terminal</td>
+<td>Yes</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td>SD MISO</td>
-<td style="text-align: right;">P0.26</td>
-<td style="text-align: right;">26</td>
+<td>Host-backed LoRa mOTA source</td>
+<td>WiFi TCP 5001</td>
+<td>Exclusive USB mode</td>
+</tr>
+<tr>
+<td>WiFi Companion/WebConfig</td>
+<td>Yes</td>
+<td>No - nRF52840 has no WiFi</td>
+</tr>
+<tr>
+<td>LoRa self-update</td>
+<td>No</td>
+<td>No</td>
 </tr>
 </tbody>
 </table>
-<p>The SD socket uses its own SPI peripheral, so card traffic does not change the
-LoRa radio pinout.</p>
-<h2 id="card-requirements">Card requirements</h2>
-<p>Use a FAT16, FAT32, or exFAT card with an MBR partition table whose first
-partition starts after sector 1. This is the normal layout produced by most SD
-formatters. GPT and unpartitioned "super-floppy" layouts are rejected.</p>
-<p>MeshCore creates <code>/meshcore-ota.mota</code> as a contiguous file. Sector 1, which is
-outside the partition, holds a checksummed bootloader handoff record. The
-firmware validates this gap before writing it; an incompatible card layout
-fails safely without modifying sector 1.</p>
-<h2 id="capacity-and-update-types">Capacity and update types</h2>
-<p>The card removes the internal-flash staging limit. The <code>.mota</code> container may be
-much larger than the old internal staging gap, and either a full image or an
-in-place delta may be downloaded. The installed firmware itself must still fit
-the nRF52840 application region below InternalFS (ending at <code>0xED000</code>); SD
-storage does not increase the MCU's executable flash.</p>
-<p>For this S140 v6 target, the maximum application image including its <code>EndF</code>
-trailer is <code>0xC7000</code> bytes (815,104 bytes). To package a full self-update:</p>
-<pre><code class="language-bash">motatool build --fw ./Heltec_tower_v2_sdcard-new.hex --out-dir ./motas
-motatool verify ./motas/*.mota
+<h2 id="build-and-install">Build and install</h2>
+<p>The target is synthesized by <code>build.sh</code> only when matching transport recipes
+exist for the exact board variant:</p>
+<ul>
+<li>ESP32 requires matching WiFi, USB, and BLE Companion environments.</li>
+<li>nRF52 requires matching USB and BLE Companion environments.</li>
+</ul>
+<p>List the available targets:</p>
+<pre><code class="language-bash">bash build.sh list | grep companion_radio_full
 </code></pre>
-<p>A delta uses the exact installed image as its base. The normal <code>0x98000</code>
-workspace remains compatible. If either image is larger than that legacy
-limit, build the patch with the SD target's larger workspace:</p>
-<pre><code class="language-bash">motatool build \
-  --base ./Heltec_tower_v2_sdcard-running.hex \
-  --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --patch-type in-place \
-  --inplace-memory 0xC7000 \
-  --out-dir ./motas
-motatool verify ./motas/*.mota
-</code></pre>
-<p>The download is resumable because the partial <code>.mota</code> stays on the card.
-Once it reaches <code>ready</code>, <code>ota install</code> performs the final verification,
-publishes the bootloader handoff, and reboots. Keep the card inserted through
-the reboot and installation.</p>
-<p>The SD-aware bootloader is mandatory. <code>ota install</code> refuses to reboot if the
-bootloader capability marker does not advertise SD staging and the selected
-codec. Existing <code>Heltec_tower_v2_repeater</code> firmware continues to use the
-internal-flash delta path and is unchanged.</p>
-<h2 id="sd-card-cli">SD card CLI</h2>
-<p>The SD-backed target provides these CLI commands:</p>
-<pre><code class="language-text">set sdcard format [--force]
-set sdcard erase [--force]
-get sdcard
-get sdcard *
-get sdcard format
-get sdcard erase
-get sdcard free
-get sdcard ls
-get sdcard ls 2
-get sdcard dir 3
-</code></pre>
-<p><code>format</code> creates a new FAT16, FAT32, or exFAT filesystem according to card
-size. <code>erase</code> first uses the card's raw media erase command and then formats it,
-so a successful erase finishes with a usable filesystem. Both operations
-destroy all data on the card and cancel any staged OTA download.</p>
-<p>The firmware records successful format and erase completion times in RAM.
-Repeating the same operation within five minutes is rejected unless <code>--force</code>
-is present. Format and erase have independent cooldowns. Because erase also
-formats the card, a successful erase updates both timestamps. The timestamps
-reset when the device reboots. The <code>get sdcard</code> age queries report how long ago
-each operation completed. <code>get sdcard free</code> reports used and free filesystem
-space in human-readable binary units.</p>
-<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, four
-files per page. A bare command shows page 1; append a positive page number to
-move through the remaining results. Each row includes the path and a compact
-file size. The header reports the selected page, total pages, and total files.</p>
-<h2 id="persistent-ota-archive-and-seeder">Persistent OTA archive and seeder</h2>
-<p>On the SD-backed target, automatic OTA archiving is on by default. While the
-temporary OTA radio is active, the node requests full catalogs from seeders and
-saves every complete mOTA it discovers, including firmware for other hardware
-targets and codecs that this node cannot install. Archive downloads use the
-same per-block Merkle proof checks as an install download, but archived images
-are never selected for local installation.</p>
-<p>Completed containers are stored as <code>/mota/&lt;manifest-id&gt;.mota</code>. An interrupted
-download remains <code>/mota/&lt;manifest-id&gt;.part</code> and resumes when that mOTA is seen
-again. Completed files survive reboot, are enumerated on the first archive
-access or TempRadio window, and are advertised and served directly from SD.
-The SD target supports the protocol maximum served set: its own running
-firmware plus up to 254 archived mOTAs.</p>
-<p>Automatic capture preserves an 8 MiB free-space reserve for manual
-<code>/meshcore-ota.mota</code> installation staging. It stops starting new archive files
-when the next file would cross that reserve. Archive allocation first tries the
-fast contiguous path and then falls back to an ordinary fragmented FAT file;
-only the bootloader staging file requires contiguous sectors.</p>
-<h3 id="preload-many-motas-from-a-computer">Preload many mOTAs from a computer</h3>
-<p>You can populate the archive much faster on a computer than over LoRa. Use only
-complete, verified <code>.mota</code> containers. Do not copy firmware <code>.bin</code>, <code>.hex</code>,
-<code>.zip</code>, or <code>.part</code> files into the archive.</p>
-<p>Install the standalone <a href="https://github.com/vk496/motatool"><code>motatool</code></a> first if
-it is not already available:</p>
-<pre><code class="language-bash">git clone https://github.com/vk496/motatool.git
-cargo install --path ./motatool
-</code></pre>
-<p>The on-card filename is part of the archive index and has a strict format:</p>
-<pre><code class="language-text">/mota/&lt;merkle_root&gt;.mota
-</code></pre>
-<p><code>&lt;merkle_root&gt;</code> is the eight-hex-digit value printed by <code>motatool inspect</code>. It
-is also the mOTA's four-byte manifest ID. The extension must be lowercase, the
-file must be directly inside <code>/mota</code>, and descriptive release filenames are
-not indexed. For example, if inspection reports:</p>
-<pre><code class="language-text">merkle_root    : ABCD1234
-</code></pre>
-<p>copy that container to:</p>
-<pre><code class="language-text">/mota/abcd1234.mota
-</code></pre>
-<p>If two containers have the same Merkle root, they have the same protocol ID
-and cannot both be present. Keep only the intended one. The current SD seeder
-can index up to 254 archived files. A served file must use a logical block size
-of at most 1024 bytes and contain at most 2048 blocks; check <code>block_size</code> and
-<code>block_count</code> in <code>motatool inspect</code> when importing unusually large images.
-Files outside that serve geometry are not counted or advertised. If a malformed
-<code>/mota/&lt;id&gt;.mota</code> conflicts with a newly discovered valid image, the repeater
-preserves the malformed file as <code>&lt;id&gt;.bad</code> through <code>&lt;id&gt;.bad9</code> and downloads a
-clean replacement instead of treating path existence as a valid cache hit.</p>
-<p>To prepare and load the card:</p>
-<ol>
-<li>Format it as described under <a href="#card-requirements">Card requirements</a>. The
-   easiest way to guarantee the expected layout is to insert it in the
-   repeater, run <code>set sdcard format</code>, power the repeater off, and then move the
-   card to the computer. Formatting destroys the existing card contents.</li>
-<li>Mount the card on the computer and create a directory named <code>mota</code> at the
-   filesystem root. Do not use a nested directory such as <code>/firmware/mota</code>.</li>
-<li>Run <code>motatool verify FILE.mota</code> for every source file. Do not copy a file
-   that reports <code>FAIL</code>.</li>
-<li>Run <code>motatool inspect FILE.mota</code>, read its <code>merkle_root</code>, and copy the file
-   to <code>/mota/&lt;lowercase-merkle-root&gt;.mota</code> on the card.</li>
-<li>Flush pending writes, safely eject the card, power the repeater off, insert
-   the card, and boot
-   <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>.</li>
-</ol>
-<p>On Linux or macOS, this Bash example verifies and imports every <code>.mota</code> from
-<code>./motas</code>. Replace the example mount path before running it:</p>
-<pre><code class="language-bash">card_mount=/media/YOU/MESHCORE
-mkdir -p &quot;$card_mount/mota&quot;
+<p>Build by using one exact listed name:</p>
+<pre><code class="language-bash">bash build.sh build-firmware heltec_v4_r8_companion_radio_full \
+  --firmware-version v1.17.0
 
-shopt -s nullglob
-for image in ./motas/*.mota; do
-  motatool verify &quot;$image&quot; || exit 1
-  mid=$(motatool inspect &quot;$image&quot; |
-    awk '$1 == &quot;merkle_root&quot; { print tolower($3) }')
-  if [[ ! $mid =~ ^[0-9a-f]{8}$ ]]; then
-    echo &quot;Could not read the Merkle root from: $image&quot; &gt;&amp;2
-    exit 1
-  fi
-
-  destination=&quot;$card_mount/mota/$mid.mota&quot;
-  if [[ -e $destination ]]; then
-    cmp -s &quot;$image&quot; &quot;$destination&quot; || {
-      echo &quot;Different containers have the same ID: $mid&quot; &gt;&amp;2
-      exit 1
-    }
-  else
-    cp &quot;$image&quot; &quot;$destination&quot;
-  fi
-done
-sync
+bash build.sh build-firmware RAK_4631_companion_radio_full \
+  --firmware-version v1.17.0
 </code></pre>
-<p>On Windows, create <code>E:\mota</code>, inspect each source with <code>motatool inspect</code>, and
-rename it to the reported lowercase root in the same way. Safely eject the
-drive after all copies finish.</p>
-<p>After boot, scan the archive and confirm the card contents from the repeater
-console:</p>
-<pre><code class="language-text">get sdcard ls
-get sdcard ls 2
-ota cache
-ota folder
+<p>Artifacts are written to <code>out/</code> by default.</p>
+<p>On 4 MB ESP32 boards, the full target uses a single 3 MB application
+partition so WiFi, BLE, WebConfig, and source-only mOTA fit together. Flash
+the generated <code>-merged.bin</code> when first installing this partition layout.
+Boards with 8 MB or more retain dual application partitions. Heltec V2 and
+TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline queue in
+this combined profile because of internal DRAM limits.</p>
+<p>The nRF52 target inherits the board's ordinary USB Companion installation
+format and adds BLE plus the serial mOTA source. It does not enable an SD cache
+or any other board-specific storage behavior; host files are streamed as they
+are requested.</p>
+<h2 id="interfaces">Interfaces</h2>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Interface</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Both</td>
+<td>USB, 115200 baud</td>
+<td>Binary Companion by default; terminal switch available</td>
+</tr>
+<tr>
+<td>Both</td>
+<td>BLE</td>
+<td>Binary Companion; default pairing PIN <code>123456</code></td>
+</tr>
+<tr>
+<td>ESP32</td>
+<td>TCP 5000</td>
+<td>Binary Companion over WiFi</td>
+</tr>
+<tr>
+<td>ESP32</td>
+<td>HTTP 80</td>
+<td>Companion WebConfig and first-boot WiFi setup</td>
+</tr>
+<tr>
+<td>ESP32</td>
+<td>TCP 5001</td>
+<td>Host <code>.mota</code> folder from <code>motatool serve --tcp</code></td>
+</tr>
+<tr>
+<td>ESP32</td>
+<td>TCP 5002</td>
+<td>Local <code>ota</code>, <code>tempradio</code>, and <code>normalradio</code> console</td>
+</tr>
+<tr>
+<td>nRF52</td>
+<td>USB mOTA mode</td>
+<td>Host <code>.mota</code> folder from <code>motatool serve --serial</code></td>
+</tr>
+</tbody>
+</table>
+<p>Binary Companion replies are broadcast through the multi-interface manager,
+so use one active Companion application at a time. On nRF52, BLE remains
+available while USB is in terminal or mOTA mode.</p>
+<p>ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
+Expose them only on a trusted LAN or temporary setup network. See
+<a href="../WiFi/">WiFi setup</a> for credential setup and reconnect behavior.</p>
+<h2 id="usb-binary-and-terminal-modes">USB Binary and terminal modes</h2>
+<p>USB starts in Binary mode for MeshCore apps and <code>meshcli</code>:</p>
+<pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
 </code></pre>
-<p><code>ota cache</code> should report the imported count. <code>ota folder</code> reports the current
-served count; once OTA serving starts in TempRadio, that set also includes the
-repeater's running firmware. If the files appear in <code>get sdcard ls</code> but not in
-the served count, check their exact names, run <code>motatool verify</code> again, and
-inspect their block geometry. It is fine to run <code>ota cache off</code> for a curated,
-read-mostly archive: that disables capture of new mOTAs but continues serving
-every valid file already on the card.</p>
-<h3 id="serve-the-preloaded-archive-over-tempradio">Serve the preloaded archive over TempRadio</h3>
-<p>LoRa OTA traffic exists only during an active temporary-radio window. The SD
-repeater, each receiving node, and every intermediate repeater in the path need
-overlapping windows on the same temporary channel. Use a frequency permitted
-for the node's configured region. This North American example uses the
-recommended fast OTA settings and a 120-minute window:</p>
-<pre><code class="language-text">tempradio 909.950,250,5,5,120
+<p>Open the port at 115200 and send the terminal start token as an exact line:</p>
+<pre><code class="language-bash">picocom -b 115200 /dev/ttyACM0
++++MESHCORE-TERM-START
 </code></pre>
-<p>Start the farthest receiving node first, then intermediate repeaters, and the
-SD source last so their windows overlap for as long as possible. Before or
-during the source window, <code>ota cache</code> makes the source scan and attach the SD
-archive. Entry into TempRadio automatically triggers an OTA advertisement
-burst; <code>ota announce</code> can send another advertisement immediately.</p>
-<p>On a receiving OTA-capable node, allow a few seconds for catalog exchange,
-then run:</p>
-<pre><code class="language-text">ota ls
-ota ls 2
-ota get 1 flash
+<p>The terminal supports Companion chat commands plus local <code>ota</code>, <code>tempradio</code>,
+and <code>normalradio</code> controls. Return to Binary mode with:</p>
+<pre><code class="language-text">+++MESHCORE-TERM-STOP
+</code></pre>
+<p>Closing the USB data connection also resets the port to Binary mode. A
+different baud rate, including 57600, does not select ASCII mode.</p>
+<h2 id="nrf52-usb-mota-mode">nRF52 USB mOTA mode</h2>
+<p>The nRF52 full target has a third, exclusive USB mode for the host folder.
+Unmodified <code>motatool serve --serial</code> already sends <code>ota folder on</code> when it
+opens the port. The Binary parser recognizes that exact idle control sequence,
+stops USB Binary traffic, and attaches the serial folder source. The sequence
+is not examined inside a framed Binary Companion packet.</p>
+<p>While mOTA mode owns USB:</p>
+<ul>
+<li>mOTA manifests and blocks stream from the computer on demand.</li>
+<li>USB Binary and the USB text terminal are unavailable.</li>
+<li>BLE Binary Companion remains available.</li>
+<li><code>motatool</code> sending <code>ota folder off</code>, or disconnecting the USB data session,
+  detaches the folder and restores Binary mode.</li>
+</ul>
+<p>No manual mode token or modified <code>motatool</code> build is required.</p>
+<h2 id="serve-mota-images-manually">Serve mOTA images manually</h2>
+<p>First put the destination, required relays, controller, and source on the same
+bounded TempRadio tuple. The example frequency below is not legal everywhere;
+choose a legal tuple supported by every participating radio.</p>
+<h3 id="esp32-source">ESP32 source</h3>
+<p>Use the local console to start TempRadio:</p>
+<pre><code class="language-bash">nc 192.168.1.50 5002
+</code></pre>
+<pre><code class="language-text">tempradio 909.950,250,7,5,120
 ota status
 </code></pre>
-<p>Use <code>ota ls 2</code>, <code>ota ls 3</code>, and so on when the source advertises more than the
-two rows that fit in one remote CLI reply. The update numbers are global across
-pages, so select the displayed number for the desired target instead of assuming
-it is always <code>1</code>. A receiver retains the complete protocol catalog and verifies
-every transferred block. It still applies its normal target, hardware, codec,
-signature, and installation checks. The SD
-repeater may advertise images for many hardware families; it never installs
-those archive files merely because it serves them.</p>
-<p>When a temporary window expires or a node reboots, it returns to its saved
-radio settings and OTA transfer stops. The archive remains on the card. Start
-another set of overlapping <code>tempradio</code> windows to resume an interrupted
-download, or use synchronized <code>tempradioat</code> entries for a scheduled window.</p>
-<p>Archive capture is lower priority than operator work. An explicit <code>ota pull</code>
-to install storage or a host folder immediately takes the single receive slot;
-the archive partial is checkpointed and resumes later. Existing cached files
-can still answer peer requests while another archive file is downloading.</p>
-<p>Use these commands to inspect or control automatic capture:</p>
-<pre><code class="language-text">ota cache
-ota cache on
-ota cache off
-ota config cache on
-ota config cache off
+<p>Then start the dedicated TCP seeder:</p>
+<pre><code class="language-bash">motatool serve --dir ./motas --tcp 192.168.1.50:5001 -v
 </code></pre>
-<p>The on/off choice is saved on the SD card. Turning capture off stops new
-downloads but keeps serving files already cached. Formatting or erasing the
-card removes both the archive and its off marker, so a newly formatted card
-returns to the default-on setting. <code>ota config sdseed on|off</code> is also accepted
-as an alias.</p>
+<h3 id="nrf52-source">nRF52 source</h3>
+<p>Use the USB terminal briefly to schedule TempRadio, then return to Binary mode
+and close the terminal:</p>
+<pre><code class="language-text">+++MESHCORE-TERM-START
+tempradio 909.950,250,7,5,120
++++MESHCORE-TERM-STOP
+</code></pre>
+<p>Start the serial seeder on that same port:</p>
+<pre><code class="language-bash">motatool serve --dir ./motas --serial /dev/ttyACM1 --baud 115200 -v
+</code></pre>
+<p><code>motatool</code> switches the port into mOTA mode automatically. Stop it with
+Ctrl-C to detach the folder. Reopen the terminal and use <code>normalradio</code> if the
+source should return early; otherwise the saved radio settings return when the
+bounded window expires.</p>
+<p>Both platforms intentionally refuse firmware installation commands such as:</p>
+<pre><code class="language-text">ota pull &lt;id&gt; flash
+ota install
+ota dev ...
+</code></pre>
+<h2 id="script-a-complete-update">Script a complete update</h2>
+<p>The Bash and PowerShell wrappers accept a release ZIP or ready <code>.mota</code>, set up
+TempRadio, run <code>motatool</code>, monitor the exact image, install it on the
+destination, and restore the radio path. Use a separate Companion as the
+controller.</p>
+<p>For an ESP32 full source:</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='target-admin-password'
+
+./tools/lora_ota/lora_ota.sh ./release.zip &quot;Roof Node&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.50:5001 \
+  --source-cli-tcp 192.168.1.50:5002
+</code></pre>
+<p>For an nRF52 full source, the script automatically detects the token-switched
+terminal and uses the same source port sequentially for control and seeding:</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='target-admin-password'
+
+./tools/lora_ota/lora_ota.sh ./release.zip &quot;Roof Node&quot; \
+  --controller-serial /dev/ttyACM0 \
+  --source-serial /dev/ttyACM1
+</code></pre>
+<pre><code class="language-powershell">$env:MESHCORE_ADMIN_PASSWORD = 'target-admin-password'
+
+&amp; .\tools\lora_ota\lora_ota.ps1 '.\release.zip' 'Roof Node' `
+  --controller-serial COM7 `
+  --source-serial COM8
+</code></pre>
+<p>See the <a href="../lora_ota_automation/">start-to-finish LoRa OTA guide</a> for package
+selection, nRF52 in-place deltas, relays, trust checks, and recovery behavior.</p>
 
 
 
