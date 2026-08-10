@@ -40,6 +40,98 @@ TEST(CLICommandUtils, HandlesLeadingWhitespaceAndSingleWordCommands) {
   EXPECT_STREQ("powersaving", single_command);
 }
 
+TEST(CLICommandUtils, ParsesTerminalChannelMessagesWithUtf8Text) {
+  using mesh::cli::TerminalChannelCommandMatch;
+  mesh::cli::TerminalChannelMessage message;
+
+  EXPECT_EQ(TerminalChannelCommandMatch::Valid,
+            mesh::cli::parseTerminalChannelMessage(
+                "channel #rgdata Hello from Eugene 👋", message));
+  EXPECT_EQ(7u, message.selector_len);
+  EXPECT_EQ(0, memcmp("#rgdata", message.selector, message.selector_len));
+  EXPECT_STREQ("Hello from Eugene 👋", message.text);
+  EXPECT_TRUE(mesh::cli::terminalChannelNameMatches(message, "#rgdata"));
+  EXPECT_FALSE(mesh::cli::terminalChannelNameMatches(message, "#RGDATA"));
+}
+
+TEST(CLICommandUtils, ParsesTerminalChannelSlotsStrictly) {
+  using mesh::cli::TerminalChannelCommandMatch;
+  mesh::cli::TerminalChannelMessage message;
+  size_t channel_index = 99;
+
+  EXPECT_EQ(TerminalChannelCommandMatch::Valid,
+            mesh::cli::parseTerminalChannelMessage(
+                "channel 2 Slot message", message));
+  EXPECT_TRUE(mesh::cli::parseTerminalChannelIndex(message, 8,
+                                                   channel_index));
+  EXPECT_EQ(2u, channel_index);
+
+  EXPECT_EQ(TerminalChannelCommandMatch::Valid,
+            mesh::cli::parseTerminalChannelMessage(
+                "channel 8 Out of range", message));
+  EXPECT_FALSE(mesh::cli::parseTerminalChannelIndex(message, 8,
+                                                    channel_index));
+
+  EXPECT_EQ(TerminalChannelCommandMatch::Valid,
+            mesh::cli::parseTerminalChannelMessage(
+                "channel 2name Named channel", message));
+  EXPECT_FALSE(mesh::cli::parseTerminalChannelIndex(message, 8,
+                                                    channel_index));
+  EXPECT_TRUE(mesh::cli::terminalChannelNameMatches(message, "2name"));
+}
+
+TEST(CLICommandUtils, RejectsIncompleteTerminalChannelMessages) {
+  using mesh::cli::TerminalChannelCommandMatch;
+  mesh::cli::TerminalChannelMessage message;
+
+  EXPECT_EQ(TerminalChannelCommandMatch::MissingSelector,
+            mesh::cli::parseTerminalChannelMessage("channel", message));
+  EXPECT_EQ(TerminalChannelCommandMatch::MissingMessage,
+            mesh::cli::parseTerminalChannelMessage("channel #rgdata", message));
+  EXPECT_EQ(TerminalChannelCommandMatch::NoMatch,
+            mesh::cli::parseTerminalChannelMessage("channels", message));
+  EXPECT_EQ(TerminalChannelCommandMatch::NoMatch,
+            mesh::cli::parseTerminalChannelMessage("channelized test", message));
+}
+
+TEST(CLICommandUtils, ParsesTerminalLoginAndRemoteCommandArguments) {
+  using mesh::cli::TerminalArgumentCommandMatch;
+  const char* argument = nullptr;
+
+  EXPECT_EQ(TerminalArgumentCommandMatch::Valid,
+            mesh::cli::parseTerminalArgumentCommand(
+                "login admin password", "login", argument));
+  EXPECT_STREQ("admin password", argument);
+
+  EXPECT_EQ(TerminalArgumentCommandMatch::Valid,
+            mesh::cli::parseTerminalArgumentCommand(
+                "LOGIN CaseSensitivePassword", "login", argument));
+  EXPECT_STREQ("CaseSensitivePassword", argument);
+
+  EXPECT_EQ(TerminalArgumentCommandMatch::Valid,
+            mesh::cli::parseTerminalArgumentCommand(
+                "cmd\tget stats", "cmd", argument));
+  EXPECT_STREQ("get stats", argument);
+
+  EXPECT_EQ(TerminalArgumentCommandMatch::MissingArgument,
+            mesh::cli::parseTerminalArgumentCommand(
+                "login   ", "login", argument));
+  EXPECT_EQ(nullptr, argument);
+  EXPECT_EQ(TerminalArgumentCommandMatch::NoMatch,
+            mesh::cli::parseTerminalArgumentCommand(
+                "logins password", "login", argument));
+}
+
+TEST(CLICommandUtils, MasksOnlyTerminalLoginPasswordInput) {
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login "));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("login s"));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("LOGIN s"));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("  login secret phrase"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("cmd login secret"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login-status"));
+}
+
 TEST(CLICommandUtils, ParsesStrictDecimalValues) {
   float value = 0.0f;
 

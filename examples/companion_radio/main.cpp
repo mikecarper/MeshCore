@@ -58,6 +58,7 @@ MultiSerialInterface interface_manager;
 // include usb interface
 #if defined(ENABLE_USB_INTERFACE)
   #include <helpers/ArduinoSerialInterface.h>
+  #include <helpers/CLICommandUtils.h>
   static const char USB_TERMINAL_START_TOKEN[] = "+++MESHCORE-TERM-START";
   static const char USB_TERMINAL_STOP_TOKEN[] = "+++MESHCORE-TERM-STOP";
 #if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
@@ -133,6 +134,11 @@ static size_t usb_mota_line_len = 0;
 static bool usb_mota_disconnect_armed = false;
 #endif
 
+static void clearUsbTerminalLine() {
+  memset(usb_terminal_line, 0, sizeof(usb_terminal_line));
+  usb_terminal_line_len = 0;
+}
+
 static bool isUsbTerminalDataConnected() {
 #if defined(RP2040_PLATFORM)
   return (bool)Serial;
@@ -143,8 +149,7 @@ static bool isUsbTerminalDataConnected() {
 
 static void enterUsbTerminalMode() {
   usb_serial_interface.setPassthroughMode(true);
-  usb_terminal_line_len = 0;
-  usb_terminal_line[0] = 0;
+  clearUsbTerminalLine();
   usb_terminal_discard_line = false;
   usb_terminal_disconnect_armed = isUsbTerminalDataConnected();
   the_mesh.enterTerminalMode();
@@ -156,8 +161,7 @@ static void leaveUsbTerminalMode(bool acknowledge) {
   }
   the_mesh.exitTerminalMode();
   usb_serial_interface.setPassthroughMode(false);
-  usb_terminal_line_len = 0;
-  usb_terminal_line[0] = 0;
+  clearUsbTerminalLine();
   usb_terminal_discard_line = false;
   usb_terminal_disconnect_armed = false;
 }
@@ -291,15 +295,13 @@ static void serviceUsbTerminal() {
       if (usb_terminal_line_len == 0) continue;
       Serial.print("\r\n");
       the_mesh.handleTerminalCommand(usb_terminal_line);
-      usb_terminal_line_len = 0;
-      usb_terminal_line[0] = 0;
+      clearUsbTerminalLine();
       Serial.print("> ");
       return; // service at most one command per mesh loop
     }
 
     if (usb_terminal_line_len >= sizeof(usb_terminal_line) - 1) {
-      usb_terminal_line_len = 0;
-      usb_terminal_line[0] = 0;
+      clearUsbTerminalLine();
       usb_terminal_discard_line = true;
       Serial.print("\r\n  ERROR: command too long\r\n");
       continue;
@@ -307,7 +309,8 @@ static void serviceUsbTerminal() {
 
     usb_terminal_line[usb_terminal_line_len++] = c;
     usb_terminal_line[usb_terminal_line_len] = 0;
-    Serial.print(c);
+    Serial.print(mesh::cli::shouldMaskTerminalInput(usb_terminal_line) ? '*'
+                                                                      : c);
 
     if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {
       leaveUsbTerminalMode(true);

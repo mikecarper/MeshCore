@@ -275,6 +275,18 @@ private:
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();
   void importTerminalCard(char* command);
+  void listTerminalChannels();
+  void sendTerminalChannelMessage(ChannelDetails& channel, const char* text);
+  void clearTerminalLogin();
+  void serviceTerminalLogin();
+  void sendTerminalLogin(ContactInfo& recipient, const char* password);
+  void sendTerminalCommand(ContactInfo& recipient, const char* command);
+  void clearTerminalTrace();
+  void serviceTerminalTrace();
+  void sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
+                              uint8_t hop_count, const char* target);
+  void sendTerminalTrace(ContactInfo& recipient);
+  void sendTerminalRawTrace(const char* arguments);
 #endif
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
@@ -327,6 +339,17 @@ private:
   bool _terminal_recipient_set;
   uint8_t _terminal_recipient_key[PUB_KEY_SIZE];
   uint8_t _terminal_tmp_buf[MAX_TRANS_UNIT];
+  bool _terminal_login_pending;
+  uint8_t _terminal_login_key[4];
+  unsigned long _terminal_login_expires_at;
+  char _terminal_login_target[32];
+  bool _terminal_trace_pending;
+  uint8_t _terminal_trace_hash_size;
+  uint32_t _terminal_trace_tag;
+  uint32_t _terminal_trace_auth;
+  unsigned long _terminal_trace_sent_at;
+  unsigned long _terminal_trace_expires_at;
+  char _terminal_trace_target[32];
 #endif
   bool saved_radio_apply_pending;
   unsigned long radio_apply_retry_at;

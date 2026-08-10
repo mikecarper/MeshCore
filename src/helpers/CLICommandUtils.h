@@ -29,15 +29,126 @@ enum class RecentRepeaterGetMatch : uint8_t {
   Invalid,
 };
 
+enum class TerminalChannelCommandMatch : uint8_t {
+  NoMatch = 0,
+  Valid,
+  MissingSelector,
+  MissingMessage,
+};
+
+enum class TerminalArgumentCommandMatch : uint8_t {
+  NoMatch = 0,
+  Valid,
+  MissingArgument,
+};
+
 struct RecentRepeaterGetQuery {
   int page;
   uint8_t search_prefix[3];
   uint8_t search_prefix_len;
 };
 
+struct TerminalChannelMessage {
+  const char* selector;
+  size_t selector_len;
+  const char* text;
+};
+
 inline const char* skipRecentRepeaterSpaces(const char* text) {
   while (text != nullptr && (*text == ' ' || *text == '\t')) text++;
   return text;
+}
+
+inline TerminalArgumentCommandMatch parseTerminalArgumentCommand(
+    const char* command, const char* verb, const char*& argument) {
+  argument = nullptr;
+  if (command == nullptr || verb == nullptr || *verb == 0) {
+    return TerminalArgumentCommandMatch::NoMatch;
+  }
+
+  const size_t verb_len = strlen(verb);
+  for (size_t i = 0; i < verb_len; i++) {
+    char actual = command[i];
+    char expected = verb[i];
+    if (actual >= 'A' && actual <= 'Z') actual += 'a' - 'A';
+    if (expected >= 'A' && expected <= 'Z') expected += 'a' - 'A';
+    if (actual != expected) return TerminalArgumentCommandMatch::NoMatch;
+  }
+  if (command[verb_len] != 0 && command[verb_len] != ' '
+      && command[verb_len] != '\t') {
+    return TerminalArgumentCommandMatch::NoMatch;
+  }
+
+  const char* cursor = skipRecentRepeaterSpaces(command + verb_len);
+  if (*cursor == 0) return TerminalArgumentCommandMatch::MissingArgument;
+  argument = cursor;
+  return TerminalArgumentCommandMatch::Valid;
+}
+
+// Return true once terminal input has reached a login password. The caller
+// can still retain the real bytes for command handling while echoing '*'.
+inline bool shouldMaskTerminalInput(const char* line) {
+  line = skipRecentRepeaterSpaces(line);
+  const char* password = nullptr;
+  return parseTerminalArgumentCommand(line, "login", password)
+      == TerminalArgumentCommandMatch::Valid;
+}
+
+inline TerminalChannelCommandMatch parseTerminalChannelMessage(
+    const char* command, TerminalChannelMessage& message) {
+  message.selector = nullptr;
+  message.selector_len = 0;
+  message.text = nullptr;
+  if (command == nullptr || strncmp(command, "channel", 7) != 0) {
+    return TerminalChannelCommandMatch::NoMatch;
+  }
+
+  const char* cursor = command + 7;
+  if (*cursor != 0 && *cursor != ' ' && *cursor != '\t') {
+    return TerminalChannelCommandMatch::NoMatch;
+  }
+  cursor = skipRecentRepeaterSpaces(cursor);
+  if (*cursor == 0) return TerminalChannelCommandMatch::MissingSelector;
+
+  message.selector = cursor;
+  while (*cursor != 0 && *cursor != ' ' && *cursor != '\t') cursor++;
+  message.selector_len = static_cast<size_t>(cursor - message.selector);
+  cursor = skipRecentRepeaterSpaces(cursor);
+  if (*cursor == 0) return TerminalChannelCommandMatch::MissingMessage;
+
+  message.text = cursor;
+  return TerminalChannelCommandMatch::Valid;
+}
+
+inline bool parseTerminalChannelIndex(const TerminalChannelMessage& message,
+                                      size_t max_channels,
+                                      size_t& channel_index) {
+  if (message.selector == nullptr || message.selector_len == 0
+      || max_channels == 0) {
+    return false;
+  }
+
+  size_t value = 0;
+  for (size_t i = 0; i < message.selector_len; i++) {
+    const char c = message.selector[i];
+    if (c < '0' || c > '9') return false;
+    const size_t digit = static_cast<size_t>(c - '0');
+    if (digit >= max_channels
+        || value > (max_channels - 1 - digit) / 10) {
+      return false;
+    }
+    value = value * 10 + digit;
+  }
+  if (value >= max_channels) return false;
+  channel_index = value;
+  return true;
+}
+
+inline bool terminalChannelNameMatches(const TerminalChannelMessage& message,
+                                       const char* channel_name) {
+  return message.selector != nullptr && channel_name != nullptr
+      && strlen(channel_name) == message.selector_len
+      && memcmp(channel_name, message.selector, message.selector_len) == 0;
 }
 
 inline int recentRepeaterHexNibble(char c) {

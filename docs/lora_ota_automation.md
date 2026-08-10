@@ -129,11 +129,20 @@ meshcli -r -s /dev/ttyACM1 -b 115200 "ota status"
 
 The command must print an `OTA | ... target:XXXXXXXX` status.
 
-For an nRF52 full Companion, open the source port in a terminal, send
-`+++MESHCORE-TERM-START`, and run `ota status`. It must report `OTA seeder`,
-`install:disabled`, and target `00000000`; send `+++MESHCORE-TERM-STOP` before
-closing the terminal. The automation detects and performs this token-wrapped
-preflight itself, so no extra command-line option is needed.
+For an nRF52 full Companion, open the source port with terminal mode selected
+automatically:
+
+```bash
+picocom -b 115200 \
+  --imap spchex \
+  --initstring '+++MESHCORE-TERM-START' \
+  /dev/ttyACM1
+```
+
+Run `ota status`. It must report `OTA seeder`, `install:disabled`, and target
+`00000000`; send `+++MESHCORE-TERM-STOP` before closing the terminal. The
+automation detects and performs this token-wrapped preflight itself, so no
+extra command-line option is needed.
 
 For an ESP32 full Companion, test its separate WiFi control console instead:
 

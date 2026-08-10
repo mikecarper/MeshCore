@@ -81,15 +81,59 @@ USB starts in Binary mode for MeshCore apps and `meshcli`:
 meshcli -s /dev/ttyACM0 -b 115200 ver
 ```
 
-Open the port at 115200 and send the terminal start token as an exact line:
+Open the port with the terminal start token sent automatically:
 
 ```bash
-picocom -b 115200 /dev/ttyACM0
-+++MESHCORE-TERM-START
+picocom -b 115200 \
+  --imap spchex \
+  --initstring '+++MESHCORE-TERM-START' \
+  /dev/ttyACM0
 ```
 
-The terminal supports Companion chat commands plus local `ota`, `tempradio`,
-and `normalradio` controls. Return to Binary mode with:
+The input map prevents any Binary Companion control bytes received during the
+mode transition from changing the local terminal's character set or display
+state while leaving UTF-8 emoji intact. The banner confirms that terminal mode
+is active; do not enter the start token again after it appears.
+
+The terminal supports Companion chat commands, including `channels`,
+`channel <name-or-slot> <message>`, remote administration with
+`login <admin-password>` and `cmd <remote-command>`, and routed
+`trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
+`normalradio` controls. For example:
+
+```text
+channels
+channel #rgdata Hello from Eugene 👋
+to Hilltop Repeater
+login my-admin-password
+cmd ver
+trace
+```
+
+The `to` command selects the remote-administration target. Login passwords are
+masked during entry and limited by the radio protocol to 15 UTF-8 bytes. Wait
+for the asynchronous login result before using `cmd`; command replies appear
+as `CLI -> from <name>`. Remote ACL permissions determine which commands the
+target accepts.
+
+With no argument, `trace` uses the current `to` recipient. A name-prefix
+argument traces that contact directly without changing the current recipient.
+The contact must already have a known direct path; results show the SNR at each
+hop, or a timeout if the round trip does not return.
+
+An explicit route can use 1-, 2-, or 4-byte hexadecimal prefixes. Spaces,
+commas, and mixed separators are accepted:
+
+```text
+trace path 1 12 34 56 34 12
+trace path 2 1234,ABCD,5678,ABCD,1234
+trace path 4 12345678, ABCDEF01 89ABCDEF, ABCDEF01,12345678
+```
+
+The entered route must include both the outward and return prefixes. Exact
+three-byte traces are not supported.
+
+Return to Binary mode with:
 
 ```text
 +++MESHCORE-TERM-STOP
@@ -146,11 +190,19 @@ motatool serve --dir ./motas --tcp 192.168.1.50:5001 -v
 Use the USB terminal briefly to schedule TempRadio, then return to Binary mode
 and close the terminal:
 
+```bash
+picocom -b 115200 \
+  --imap spchex \
+  --initstring '+++MESHCORE-TERM-START' \
+  /dev/ttyACM1
+```
+
 ```text
-+++MESHCORE-TERM-START
 tempradio 909.950,250,7,5,120
 +++MESHCORE-TERM-STOP
 ```
+
+After sending the stop token, exit `picocom` with Ctrl-A, Ctrl-X.
 
 Start the serial seeder on that same port:
 
