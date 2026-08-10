@@ -1370,12 +1370,46 @@ Expose them only on a trusted LAN or temporary setup network. See
 <p>USB starts in Binary mode for MeshCore apps and <code>meshcli</code>:</p>
 <pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
 </code></pre>
-<p>Open the port at 115200 and send the terminal start token as an exact line:</p>
-<pre><code class="language-bash">picocom -b 115200 /dev/ttyACM0
-+++MESHCORE-TERM-START
+<p>Open the port with the terminal start token sent automatically:</p>
+<pre><code class="language-bash">picocom -b 115200 \
+  --imap spchex \
+  --initstring '+++MESHCORE-TERM-START' \
+  /dev/ttyACM0
 </code></pre>
-<p>The terminal supports Companion chat commands plus local <code>ota</code>, <code>tempradio</code>,
-and <code>normalradio</code> controls. Return to Binary mode with:</p>
+<p>The input map prevents any Binary Companion control bytes received during the
+mode transition from changing the local terminal's character set or display
+state while leaving UTF-8 emoji intact. The banner confirms that terminal mode
+is active; do not enter the start token again after it appears.</p>
+<p>The terminal supports Companion chat commands, including <code>channels</code>,
+<code>channel &lt;name-or-slot&gt; &lt;message&gt;</code>, remote administration with
+<code>login &lt;admin-password&gt;</code> and <code>cmd &lt;remote-command&gt;</code>, and routed
+<code>trace [recipient-name-or-prefix]</code>, plus local <code>ota</code>, <code>tempradio</code>, and
+<code>normalradio</code> controls. For example:</p>
+<pre><code class="language-text">channels
+channel #rgdata Hello from Eugene 👋
+to Hilltop Repeater
+login my-admin-password
+cmd ver
+trace
+</code></pre>
+<p>The <code>to</code> command selects the remote-administration target. Login passwords are
+masked during entry and limited by the radio protocol to 15 UTF-8 bytes. Wait
+for the asynchronous login result before using <code>cmd</code>; command replies appear
+as <code>CLI -&gt; from &lt;name&gt;</code>. Remote ACL permissions determine which commands the
+target accepts.</p>
+<p>With no argument, <code>trace</code> uses the current <code>to</code> recipient. A name-prefix
+argument traces that contact directly without changing the current recipient.
+The contact must already have a known direct path; results show the SNR at each
+hop, or a timeout if the round trip does not return.</p>
+<p>An explicit route can use 1-, 2-, or 4-byte hexadecimal prefixes. Spaces,
+commas, and mixed separators are accepted:</p>
+<pre><code class="language-text">trace path 1 12 34 56 34 12
+trace path 2 1234,ABCD,5678,ABCD,1234
+trace path 4 12345678, ABCDEF01 89ABCDEF, ABCDEF01,12345678
+</code></pre>
+<p>The entered route must include both the outward and return prefixes. Exact
+three-byte traces are not supported.</p>
+<p>Return to Binary mode with:</p>
 <pre><code class="language-text">+++MESHCORE-TERM-STOP
 </code></pre>
 <p>Closing the USB data connection also resets the port to Binary mode. A
@@ -1412,10 +1446,15 @@ ota status
 <h3 id="nrf52-source">nRF52 source</h3>
 <p>Use the USB terminal briefly to schedule TempRadio, then return to Binary mode
 and close the terminal:</p>
-<pre><code class="language-text">+++MESHCORE-TERM-START
-tempradio 909.950,250,7,5,120
+<pre><code class="language-bash">picocom -b 115200 \
+  --imap spchex \
+  --initstring '+++MESHCORE-TERM-START' \
+  /dev/ttyACM1
+</code></pre>
+<pre><code class="language-text">tempradio 909.950,250,7,5,120
 +++MESHCORE-TERM-STOP
 </code></pre>
+<p>After sending the stop token, exit <code>picocom</code> with Ctrl-A, Ctrl-X.</p>
 <p>Start the serial seeder on that same port:</p>
 <pre><code class="language-bash">motatool serve --dir ./motas --serial /dev/ttyACM1 --baud 115200 -v
 </code></pre>
