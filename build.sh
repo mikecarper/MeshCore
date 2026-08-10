@@ -92,6 +92,9 @@ Commands:
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
+  get-companion-firmwares-to-build: List USB and BLE companion targets for release automation.
+  get-repeater-firmwares-to-build: List standard repeater targets for release automation.
+  get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
 Options:
   --firmware-version <version>: Firmware version to embed.
@@ -1254,6 +1257,37 @@ get_supported_pio_envs() {
   fi
 }
 
+get_pio_envs_ending_with_string() {
+  local suffix=$1
+  local env
+
+  shopt -s nocasematch
+  for env in "${ALL_PIO_ENVS[@]}"; do
+    if is_supported_build_env "$env" && [[ "$env" == *${suffix} ]]; then
+      printf '%s\n' "$env"
+    fi
+  done
+  shopt -u nocasematch
+}
+
+print_release_firmware_targets() {
+  case "$1" in
+    get-companion-firmwares-to-build)
+      get_pio_envs_ending_with_string "_companion_radio_usb"
+      get_pio_envs_ending_with_string "_companion_radio_ble"
+      ;;
+    get-repeater-firmwares-to-build)
+      get_pio_envs_ending_with_string "_repeater"
+      ;;
+    get-room-server-firmwares-to-build)
+      get_pio_envs_ending_with_string "_room_server"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 get_pio_envs_for_variant_role() {
   local role=$1
   local env
@@ -1994,6 +2028,71 @@ append_platformio_build_unflags() {
   export PLATFORMIO_BUILD_UNFLAGS
 }
 
+pio_env_option_contains() {
+  local env_name=$1
+  local option_name=$2
+  local needle=$3
+
+  python3 -c '
+import json
+import sys
+
+env_name, option_name, needle = sys.argv[1:]
+for section, options in json.load(sys.stdin):
+    if section != f"env:{env_name}":
+        continue
+    for key, value in options:
+        if key != option_name:
+            continue
+        values = value if isinstance(value, list) else str(value).split()
+        if any(needle in str(item) for item in values):
+            sys.exit(0)
+    break
+sys.exit(1)
+' "$env_name" "$option_name" "$needle" <<<"$PIO_CONFIG_JSON"
+}
+
+append_platformio_build_src_filter() {
+  local rule=$1
+
+  if [ -n "${PLATFORMIO_BUILD_SRC_FILTER:-}" ]; then
+    PLATFORMIO_BUILD_SRC_FILTER+=$'\n'
+  fi
+  PLATFORMIO_BUILD_SRC_FILTER+="$rule"
+  export PLATFORMIO_BUILD_SRC_FILTER
+}
+
+append_platformio_extra_script() {
+  local script=$1
+
+  if [ -n "${PLATFORMIO_EXTRA_SCRIPTS:-}" ]; then
+    PLATFORMIO_EXTRA_SCRIPTS+=$'\n'
+  fi
+  PLATFORMIO_EXTRA_SCRIPTS+="$script"
+  export PLATFORMIO_EXTRA_SCRIPTS
+}
+
+apply_nrf52_lora_ota_build_recipe() {
+  local env_name=$1
+  local pio_env_name=$2
+
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ] \
+      || ! is_lora_ota_build "$env_name"; then
+    return 0
+  fi
+
+  # Synthetic OTA aliases build an ordinary repeater PlatformIO environment
+  # with OTA flags. Most nRF52 repeaters already include this recipe, but a new
+  # board may not. Add only the missing pieces so ENABLE_OTA never reaches the
+  # linker without its implementation or the EndF trailer/zip post-build step.
+  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
+    append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
+  fi
+  if ! pio_env_option_contains "$pio_env_name" extra_scripts "tools/mota/pio_endf.py"; then
+    append_platformio_extra_script "post:tools/mota/pio_endf.py"
+  fi
+}
+
 apply_lora_ota_override() {
   local env_name=$1
 
@@ -2260,10 +2359,12 @@ build_firmware() {
   local mota_target_flag=""
   local original_platformio_build_flags
   local original_platformio_build_unflags
+  local original_platformio_build_src_filter
   local original_platformio_extra_scripts
   local target_extra_scripts
   local had_platformio_build_flags=0
   local had_platformio_build_unflags=0
+  local had_platformio_build_src_filter=0
   local had_platformio_extra_scripts=0
   local build_status
   local -a pio_run_args=()
@@ -2336,6 +2437,12 @@ build_firmware() {
   else
     original_platformio_build_unflags=""
   fi
+  if [ "${PLATFORMIO_BUILD_SRC_FILTER+x}" ]; then
+    had_platformio_build_src_filter=1
+    original_platformio_build_src_filter=$PLATFORMIO_BUILD_SRC_FILTER
+  else
+    original_platformio_build_src_filter=""
+  fi
   if [ "${PLATFORMIO_EXTRA_SCRIPTS+x}" ]; then
     had_platformio_extra_scripts=1
     original_platformio_extra_scripts=$PLATFORMIO_EXTRA_SCRIPTS
@@ -2349,6 +2456,7 @@ build_firmware() {
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
+  apply_nrf52_lora_ota_build_recipe "$env_name" "$pio_env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
@@ -2393,6 +2501,11 @@ build_firmware() {
     export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
   else
     unset PLATFORMIO_BUILD_UNFLAGS
+  fi
+  if [ "$had_platformio_build_src_filter" -eq 1 ]; then
+    export PLATFORMIO_BUILD_SRC_FILTER="$original_platformio_build_src_filter"
+  else
+    unset PLATFORMIO_BUILD_SRC_FILTER
   fi
   if [ "$had_platformio_extra_scripts" -eq 1 ]; then
     export PLATFORMIO_EXTRA_SCRIPTS="$original_platformio_extra_scripts"
@@ -3183,6 +3296,11 @@ main() {
       init_project_context
       get_pio_envs
       exit 0
+      ;;
+    get-companion-firmwares-to-build|get-repeater-firmwares-to-build|get-room-server-firmwares-to-build)
+      init_project_context
+      print_release_firmware_targets "$1"
+      exit $?
       ;;
   esac
 
