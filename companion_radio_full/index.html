@@ -1302,6 +1302,11 @@ exist for the exact board variant:</p>
 bash build.sh build-firmware RAK_4631_companion_radio_full \
   --firmware-version v1.17.0
 </code></pre>
+<p>To build every available full Companion target, select the corresponding
+interactive menu item or run:</p>
+<pre><code class="language-bash">bash build.sh build-full-companion-firmwares \
+  --firmware-version v1.17.0
+</code></pre>
 <p>Artifacts are written to <code>out/</code> by default.</p>
 <p>On 4 MB ESP32 boards, the full target uses a single 3 MB application
 partition so WiFi, BLE, WebConfig, and source-only mOTA fit together. Flash
@@ -1388,15 +1393,19 @@ is active; do not enter the start token again after it appears.</p>
 <pre><code class="language-text">channels
 channel #rgdata Hello from Eugene 👋
 to Hilltop Repeater
+path A1B2C3,D4E5F6
 login my-admin-password
 cmd ver
 trace
 </code></pre>
-<p>The <code>to</code> command selects the remote-administration target. Login passwords are
-masked during entry and limited by the radio protocol to 15 UTF-8 bytes. Wait
-for the asynchronous login result before using <code>cmd</code>; command replies appear
-as <code>CLI -&gt; from &lt;name&gt;</code>. Remote ACL permissions determine which commands the
-target accepts.</p>
+<p>The <code>to</code> command selects the remote-administration target. <code>path</code> shows its
+saved outgoing route; <code>path direct</code>, <code>path clear</code>, or a comma-separated list
+such as <code>path A1B2C3,D4E5F6</code> changes the route used by subsequent <code>login</code>,
+<code>send</code>, and <code>cmd</code> commands. Every hop must use the same 2-, 4-, or 6-digit
+hexadecimal width. Login passwords are masked during entry and limited by the
+radio protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before
+using <code>cmd</code>; command replies appear as <code>CLI -&gt; from &lt;name&gt;</code>. Remote ACL
+permissions determine which commands the target accepts.</p>
 <p>With no argument, <code>trace</code> uses the current <code>to</code> recipient. A name-prefix
 argument traces that contact directly without changing the current recipient.
 The contact must already have a known direct path; results show the SNR at each

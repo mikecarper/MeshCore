@@ -1175,12 +1175,36 @@ opening that port from an app.</p>
 <pre><code>to {name-prefix}
 </code></pre>
 <p>Sets the recipient to the <em>first</em> matching contact (in 'list') by the name prefix. (ie. you don't have to type whole name)</p>
+<pre><code>path
+</code></pre>
+<p>Shows the saved outgoing path for the current <code>to</code> recipient. This command and
+all path changes require a recipient to be selected first.</p>
+<pre><code>path direct
+path clear
+path {hop-hash[,hop-hash...]}
+</code></pre>
+<p>Sets the outgoing path used by subsequent <code>login</code>, <code>send</code>, and <code>cmd</code> commands.
+<code>direct</code> selects a zero-hop route. <code>clear</code> forgets the saved route, causing the
+next operation to use flood routing and allowing normal path discovery to
+learn a replacement.</p>
+<p>Explicit paths use comma-separated hop hashes. Each hop must contain exactly
+2, 4, or 6 hexadecimal digits, and every hop in one path must use the same
+width. Spaces around commas and hexadecimal letter case do not matter. The
+setting is saved with the selected contact.</p>
+<p>For example:</p>
+<pre><code class="language-text">to Hilltop Repeater
+path A1B2C3,D4E5F6
+path
+login my-admin-password
+</code></pre>
 <pre><code>login {admin-password}
 </code></pre>
 <p>Sends a remote login request to the current recipient. Select a repeater,
 room, or other remotely managed node with <code>to {name-prefix}</code> first. The
 password is masked with <code>*</code> while it is entered and must be 1-15 UTF-8 bytes;
-longer passwords are rejected instead of truncated.</p>
+longer passwords are rejected instead of truncated. Login uses the route shown
+by <code>path</code>: a known or explicitly set route is direct, while an unknown route is
+flooded.</p>
 <p>Login results arrive asynchronously. A successful modern response displays
 the remote ACL permissions byte and server protocol level. A wrong password,
 an unreachable target, or a server that does not support remote login normally
@@ -1237,7 +1261,8 @@ the mirrored examples above. A route that does not return to this node will
 eventually report a timeout.</p>
 <pre><code>reset path
 </code></pre>
-<p>Resets the path to current recipient, for new path discovery.</p>
+<p>Resets the path to current recipient, for new path discovery. This is retained
+as an alias for <code>path clear</code>.</p>
 <pre><code>public {text}
 </code></pre>
 <p>Sends the text message to the built-in <code>Public</code> group channel.</p>
