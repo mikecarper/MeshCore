@@ -149,6 +149,8 @@ Environment Variables:
                            when configured (otherwise origin), then derives a
                            default from the latest matching tag and appends "-dev".
                            In interactive builds, this value is offered as the editable default.
+                           A single custom version suffix found in existing OUTPUT_DIR
+                           artifacts is carried forward after the new numeric version.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
                    If not set, debug flags from variant platformio.ini files are used.
   RESUME_BUILD_OUTPUT=1: Preserves out/ and skips targets whose expected output
@@ -1293,6 +1295,62 @@ derive_default_firmware_version_for_targets() {
   echo "${sorted_versions[$((${#sorted_versions[@]} - 1))]}"
 }
 
+get_output_firmware_version_suffix() {
+  local output_dir=${1:-$OUTPUT_DIR}
+  local filename
+  local candidate_suffix
+  local selected_suffix=""
+  local found_suffix=0
+  local artifact_pattern='-v[0-9]+\.[0-9]+\.[0-9]+(-[[:alnum:]_.-]+)?-[[:xdigit:]]{7,40}(-merged)?\.(bin|hex|uf2|zip)$'
+
+  if ! [ -d "$output_dir" ]; then
+    return 1
+  fi
+
+  while IFS= read -r filename; do
+    if ! [[ "$filename" =~ $artifact_pattern ]]; then
+      continue
+    fi
+
+    candidate_suffix=${BASH_REMATCH[1]}
+    if [ "$found_suffix" -eq 0 ]; then
+      selected_suffix=$candidate_suffix
+      found_suffix=1
+    elif [ "$candidate_suffix" != "$selected_suffix" ]; then
+      # Mixed firmware suffixes make the intended default ambiguous.
+      return 1
+    fi
+  done < <(find "$output_dir" -maxdepth 1 -type f -printf '%f\n')
+
+  # Empty and ordinary -dev suffixes add no information beyond the tag-derived
+  # suggestion. Only carry a custom label forward.
+  if [ "$found_suffix" -eq 0 ] \
+      || [ -z "$selected_suffix" ] \
+      || [ "$selected_suffix" == "-dev" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$selected_suffix"
+}
+
+apply_output_firmware_version_suffix() {
+  local suggested_version=$1
+  local output_suffix
+
+  if ! output_suffix=$(get_output_firmware_version_suffix "$OUTPUT_DIR"); then
+    printf '%s\n' "$suggested_version"
+    return 0
+  fi
+
+  # Preserve the newly tag-derived numeric version while replacing its generic
+  # prerelease label with the custom label from the previous output artifacts.
+  if [[ "$suggested_version" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+)(-[[:alnum:]_.-]+)?$ ]]; then
+    printf '%s%s\n' "${BASH_REMATCH[1]}" "$output_suffix"
+  else
+    printf '%s\n' "$suggested_version"
+  fi
+}
+
 prompt_for_firmware_version() {
   local prompt_label=$1
   local result_var=$2
@@ -1332,6 +1390,7 @@ prompt_for_resolved_firmware_version() {
 
   if [ -z "$selected_version" ]; then
     selected_version=$(derive_default_firmware_version_for_targets "${RESOLVED_BUILD_TARGETS[@]}")
+    selected_version=$(apply_output_firmware_version_suffix "$selected_version")
   fi
 
   if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 1 ]; then
