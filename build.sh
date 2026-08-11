@@ -2184,6 +2184,24 @@ apply_repeater_neighbor_capacity() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 }
 
+apply_nrf52_lora_ota_size_profile() {
+  local env_name=$1
+
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ] \
+      || ! is_lora_ota_build "$env_name" \
+      || ! is_lora_ota_only_target "$env_name"; then
+    return 0
+  fi
+
+  # The Adafruit nRF52 platform defaults release builds to -Ofast. Once the
+  # runtime software Ed25519 fallback is linked alongside CC310, that setting
+  # fully expands repeated Curve25519 arithmetic and wastes tens of kilobytes.
+  # Keep hardware crypto, RNG mixing, the software fallback, and board features;
+  # only select the size optimizer for the constrained self-updatable image.
+  append_platformio_build_unflags "-Ofast"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Os"
+}
+
 apply_lora_ota_no_external_sensors_profile() {
   local env_name=$1
 
@@ -2712,6 +2730,7 @@ build_firmware() {
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
+  apply_nrf52_lora_ota_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides

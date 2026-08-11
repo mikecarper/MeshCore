@@ -126,6 +126,11 @@ board-native telemetry remain enabled. ESP32 siblings retain the compact browser
 full 254-entry neighbor table. RP2040 and STM32 targets are not offered because those platforms do not yet
 have a safe bootloader/apply path.
 
+nRF52 LoRa-OTA siblings use size optimization rather than the Adafruit platform's default `-Ofast`. This
+keeps the runtime software Ed25519 fallback from being expanded into tens of kilobytes of repeated curve
+arithmetic while retaining CC310 hardware crypto, hardware RNG mixing, telemetry history, and board-native
+features.
+
 Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
 keep MQTT/TLS, onboard GPS, and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, display
 support, and optional external sensor drivers. Their compact CLI keeps observer controls plus the radio,

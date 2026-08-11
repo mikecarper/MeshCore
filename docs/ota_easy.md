@@ -65,6 +65,11 @@ browser WiFi uploader (`start ota`) and use a 254-entry neighbor table. RP2040 a
 currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
 during TempRadio.
 
+nRF52 `-ota-` siblings are compiled with size optimization instead of the Adafruit platform's default
+speed optimization. This prevents the retained software Ed25519 fallback from expanding beyond the fixed
+in-place workspace; CC310 hardware crypto, hardware RNG mixing, telemetry history, and board-native features
+remain enabled.
+
 ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
 install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
