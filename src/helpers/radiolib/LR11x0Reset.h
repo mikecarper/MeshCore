@@ -16,6 +16,8 @@ inline void lr11x0ResetAGC(LR11x0* radio, float freqMHz) {
   radio->calibrateImageRejection(freqMHz - 4.0f, freqMHz + 4.0f);
 
 #ifdef RX_BOOSTED_GAIN
+  // Fallback for callers without a runtime override. RadioLibWrapper::resetAGC()
+  // reapplies its cached radio.rxgain selection before receive mode resumes.
   radio->setRxBoostedGainMode(RX_BOOSTED_GAIN);
 #endif
 }

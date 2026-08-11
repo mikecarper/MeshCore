@@ -3,6 +3,7 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 #include "helpers/radiolib/RXPowerSaving.h"
+#include "helpers/radiolib/RxBoostedGainDefaults.h"
 
 #ifdef ENABLE_USB_INTERFACE
 #include <helpers/CLICommandUtils.h>
@@ -1336,12 +1337,10 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
   _prefs.setRepeatEn(false);
-#if defined(USE_SX1262) || defined(USE_SX1268)
-#ifdef SX126X_RX_BOOSTED_GAIN
-  _prefs.rx_boosted_gain = SX126X_RX_BOOSTED_GAIN;
-#else
-  _prefs.rx_boosted_gain = 1; // enabled by default
-#endif
+#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LR1110) \
+    || defined(USE_LR2021) || defined(SX126X_RX_BOOSTED_GAIN) \
+    || defined(RX_BOOSTED_GAIN)
+  _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = DEFAULT_FEM_RX_GAIN;
 
@@ -2257,7 +2256,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     out_frame[i++] = FIRMWARE_VER_CODE;
     out_frame[i++] = MAX_CONTACTS / 2;   // v3+
     out_frame[i++] = MAX_GROUP_CHANNELS; // v3+
-    memcpy(&out_frame[i], &_prefs.ble_pin, 4);
+    memcpy(&out_frame[i], &_active_ble_pin, 4);
     i += 4;
     memset(&out_frame[i], 0, 12);
     strcpy((char *)&out_frame[i], FIRMWARE_BUILD_DATE);

@@ -36,6 +36,7 @@ class UITask : public AbstractUITask {
   int _msgcount;
   bool _need_refresh = true;
   bool _displayWasOn = false;  // Track display state before button press
+  unsigned long _pairing_screen_until;
   unsigned long ui_started_at;
 
   // Button handlers
@@ -58,12 +59,16 @@ class UITask : public AbstractUITask {
   void handleButtonQuadruplePress();
   void handleButtonLongPress();
   bool shouldPlayMessageTone() const;
+  bool isPairingScreenActive() const;
+  void showPairingPin();
+  void finishPairingScreen(bool timed_out);
 
  
 public:
 
   UITask(mesh::MainBoard* board, MultiSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL) {
       _next_refresh = 0;
+      _pairing_screen_until = 0;
       ui_started_at = 0;
   }
   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);

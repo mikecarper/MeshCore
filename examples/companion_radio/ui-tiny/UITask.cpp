@@ -11,6 +11,9 @@
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #endif
+#ifndef BLE_PAIRING_DISPLAY_MILLIS
+  #define BLE_PAIRING_DISPLAY_MILLIS 120000UL
+#endif
 #define BOOT_SCREEN_MILLIS   4000   // 4 seconds
 
 #ifdef PIN_STATUS_LED
@@ -144,6 +147,8 @@ public:
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
        _shutdown_init(false), sensors_lpp(200) {  }
 
+  void showFirstPage() { _page = HomePage::FIRST; }
+
   void poll() override {
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
@@ -179,7 +184,7 @@ public:
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 54, tmp);
       #endif
-      if (_task->hasConnection()) {
+      if (_task->hasBluetoothConnection()) {
         display.setColor(UIColor::warning_txt);
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, display.height()-8, "< Connected >");
@@ -550,6 +555,36 @@ void UITask::setCurrScreen(UIScreen* c) {
   _next_refresh = 100;
 }
 
+bool UITask::isPairingScreenActive() const {
+  return _pairing_screen_until != 0
+      && !hasBluetoothConnection()
+      && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
+}
+
+void UITask::showPairingPin() {
+  const unsigned long now = millis();
+  _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
+  static_cast<HomeScreen*>(home)->showFirstPage();
+  setCurrScreen(home);
+
+  if (_display != NULL) {
+    if (!_display->isOn()) _display->turnOn();
+    _next_refresh = 0;
+  }
+}
+
+void UITask::finishPairingScreen(bool timed_out) {
+  _pairing_screen_until = 0;
+  _next_refresh = 0;
+  if (_display == NULL) return;
+
+  if (timed_out) {
+    _display->turnOff();
+  } else {
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+  }
+}
+
 /*
   hardware-agnostic pre-shutdown activity should be done here
 */
@@ -585,6 +620,17 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
+  if (_interfaceManager->takePairingRequest()) {
+    showPairingPin();
+  }
+
+  if (_pairing_screen_until != 0) {
+    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    if (hasBluetoothConnection() || timed_out) {
+      finishPairingScreen(timed_out);
+    }
+  }
+
   char c = 0;
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
@@ -657,6 +703,12 @@ void UITask::loop() {
   }
 #endif
 
+  if (isPairingScreenActive()) {
+    static_cast<HomeScreen*>(home)->showFirstPage();
+    if (curr != home) setCurrScreen(home);
+    c = 0;
+  }
+
   if (c != 0 && curr) {
     curr->handleInput(c);
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
@@ -693,7 +745,7 @@ void UITask::loop() {
         }
       }
 
-      if (millis() < _alert_expiry) {  // render alert popup
+      if (!isPairingScreenActive() && millis() < _alert_expiry) {  // render alert popup
         _display->setTextSize(1);
         int y = _display->height() / 3;
         int p = _display->height() / 32;
@@ -717,7 +769,7 @@ void UITask::loop() {
       _auto_off = millis() + AUTO_OFF_MILLIS;
     }
 #endif
-    if (isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
+    if (!isPairingScreenActive() && isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
       _display->turnOff();
     }
 #endif

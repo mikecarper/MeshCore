@@ -90,6 +90,18 @@ public:
     return false; 
   }
 
+  bool isBluetoothConnected() const {
+    if (!_enabled) return false;
+
+    for (auto iface : _interfaces) {
+      if (iface.instance && iface.type == InterfaceType::Bluetooth
+          && iface.instance->isEnabled() && iface.instance->isConnected()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // enable all interfaces
   void enable() override {
     _enabled = true;
@@ -181,7 +193,8 @@ public:
 
   bool takePairingRequest() override {
     for (auto iface : _interfaces) {
-      if (iface.instance && iface.instance->isEnabled()
+      if (iface.instance && iface.type == InterfaceType::Bluetooth
+          && iface.instance->isEnabled()
           && iface.instance->takePairingRequest()) {
         return true;
       }

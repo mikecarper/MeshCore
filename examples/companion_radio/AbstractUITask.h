@@ -53,6 +53,7 @@ protected:
 public:
   void setHasConnection(bool connected) { _connected = connected; }
   bool hasConnection() const { return _connected; }
+  bool hasBluetoothConnection() const { return _interfaceManager->isBluetoothConnected(); }
   uint16_t getBattMilliVolts() const { return _board->getBattMilliVolts(); }
   bool isBluetoothEnabled() const { return _interfaceManager->isBluetoothEnabled(); }
   void enableBluetooth() { _interfaceManager->enableBluetooth(); }

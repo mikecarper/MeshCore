@@ -26,6 +26,8 @@ inline void sx126xResetAGC(SX126x* radio) {
   radio->setDio2AsRfSwitch(SX126X_DIO2_AS_RF_SWITCH);
 #endif
 #ifdef SX126X_RX_BOOSTED_GAIN
+  // Fallback for callers without a runtime override. RadioLibWrapper::resetAGC()
+  // reapplies its cached radio.rxgain selection before receive mode resumes.
   radio->setRxBoostedGainMode(SX126X_RX_BOOSTED_GAIN);
 #endif
 #ifdef SX126X_REGISTER_PATCH

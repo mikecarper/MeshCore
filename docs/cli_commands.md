@@ -554,9 +554,14 @@ disabled.
 **Parameters:**
   - `state`: `on`|`off`
 
-**Default:** `on`
+**Default:** Target-specific. Most SX1262 and LR1110 targets default to `on`;
+Station G2/G3 targets default to `off`.
 
-**Temporary Note:** If you upgraded from an older version to 1.14.1 without erasing flash, this setting is `off` because of [#2118](https://github.com/meshcore-dev/MeshCore/issues/2118)
+**Notes:**
+- The saved setting is applied immediately and persists across reboots.
+- Periodic AGC resets restore the saved runtime setting; they do not replace it
+  with the target's compile-time default.
+- Existing installations retain their previously saved value after an upgrade.
 
 ---
 

@@ -80,7 +80,7 @@ are requested.
 | Platform | Interface | Purpose |
 | --- | --- | --- |
 | Both | USB, 115200 baud | Binary Companion by default; terminal switch available |
-| Both | BLE | Binary Companion; default pairing PIN `123456` |
+| Both | BLE | Binary Companion; display builds show a random session PIN, while headless builds default to `123456` |
 | ESP32 | TCP 5000 | Binary Companion over WiFi |
 | ESP32 | HTTP 80 | Companion WebConfig and first-boot WiFi setup |
 | ESP32 | TCP 5001 | Host `.mota` folder from `motatool serve --tcp` |
@@ -90,6 +90,14 @@ are requested.
 Binary Companion replies are broadcast through the multi-interface manager,
 so use one active Companion application at a time. On nRF52, BLE remains
 available while USB is in terminal or mOTA mode.
+
+When a BLE client requests pairing, a display-equipped build wakes the screen,
+switches to the first home page, and keeps the active six-digit PIN visible
+until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,
+Ethernet, and hardware-serial connections do not suppress this screen. With no
+saved BLE PIN, display builds generate a new PIN at boot; builds without a
+physical display use `123456`. A PIN saved through the Companion protocol takes
+effect after reboot.
 
 ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
 Expose them only on a trusted LAN or temporary setup network. See

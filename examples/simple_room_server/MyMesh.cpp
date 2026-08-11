@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
 #if defined(MESHCORE_ESP32_FULL_PROFILE)
 #include <helpers/FloodFilterPolicy.h>
@@ -1157,12 +1158,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.gps_interval = 0;
   _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
 
-#if defined(USE_SX1262) || defined(USE_SX1268)
-#ifdef SX126X_RX_BOOSTED_GAIN
-  _prefs.rx_boosted_gain = SX126X_RX_BOOSTED_GAIN;
-#else
-  _prefs.rx_boosted_gain = 1; // enabled by default;
-#endif
+#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LR1110) \
+    || defined(USE_LR2021) || defined(SX126X_RX_BOOSTED_GAIN) \
+    || defined(RX_BOOSTED_GAIN)
+  _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = 1;
 

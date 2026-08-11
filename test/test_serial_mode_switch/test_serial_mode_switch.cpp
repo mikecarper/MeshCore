@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "helpers/ArduinoSerialInterface.h"
+#include "helpers/MultiSerialInterface.h"
 
 class BufferStream : public Stream {
 public:
@@ -40,6 +41,63 @@ public:
 
 static const char START_TOKEN[] = "+++MESHCORE-TERM-START";
 static const char SEEDER_TOKEN[] = "ota folder on";
+
+class FakeSerialInterface : public BaseSerialInterface {
+public:
+  bool enabled = false;
+  bool connected = false;
+  bool pairing_request = false;
+
+  void enable() override { enabled = true; }
+  void disable() override { enabled = false; }
+  bool isEnabled() const override { return enabled; }
+  bool isConnected() const override { return connected; }
+  bool isReadBusy() const override { return false; }
+  bool isWriteBusy() const override { return false; }
+  bool takePairingRequest() override {
+    bool pending = pairing_request;
+    pairing_request = false;
+    return pending;
+  }
+  size_t writeFrame(const uint8_t[], size_t len) override { return len; }
+  size_t checkRecvFrame(uint8_t[]) override { return 0; }
+};
+
+TEST(MultiSerialInterface, TracksBluetoothConnectionSeparately) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface bluetooth;
+  usb.connected = true;
+
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  EXPECT_TRUE(manager.isConnected());
+  EXPECT_FALSE(manager.isBluetoothConnected());
+
+  bluetooth.connected = true;
+  EXPECT_TRUE(manager.isBluetoothConnected());
+
+  manager.disableBluetooth();
+  EXPECT_FALSE(manager.isBluetoothConnected());
+}
+
+TEST(MultiSerialInterface, PairingRequestsComeOnlyFromBluetooth) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface bluetooth;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  usb.pairing_request = true;
+  EXPECT_FALSE(manager.takePairingRequest());
+
+  bluetooth.pairing_request = true;
+  EXPECT_TRUE(manager.takePairingRequest());
+  EXPECT_FALSE(manager.takePairingRequest());
+}
 
 TEST(SerialModeSwitch, RecognizesControlSequenceAcrossReads) {
   BufferStream stream;

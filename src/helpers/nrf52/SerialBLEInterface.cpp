@@ -35,6 +35,7 @@ static bool isBondAuthenticationFailure(uint8_t reason) {
 void SerialBLEInterface::onConnect(uint16_t connection_handle) {
   BLE_DEBUG_PRINTLN("SerialBLEInterface: connected handle=0x%04X", connection_handle);
   if (instance) {
+    instance->_pairingRequestPending.store(false, std::memory_order_release);
     instance->_conn_handle = connection_handle;
     instance->_isDeviceConnected = false;
     instance->_security_timer.start(millis());
@@ -46,6 +47,7 @@ void SerialBLEInterface::onDisconnect(uint16_t connection_handle, uint8_t reason
   BLE_DEBUG_PRINTLN("SerialBLEInterface: disconnected handle=0x%04X reason=%u", connection_handle, reason);
   if (instance) {
     if (instance->_conn_handle == connection_handle) {
+      instance->_pairingRequestPending.store(false, std::memory_order_release);
       instance->_conn_handle = BLE_CONN_HANDLE_INVALID;
       instance->_isDeviceConnected = false;
       instance->_security_timer.cancel();
@@ -99,9 +101,11 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
 }
 
 bool SerialBLEInterface::onPairingPasskey(uint16_t connection_handle, uint8_t const passkey[6], bool match_request) {
-  (void)connection_handle;
   (void)passkey;
   BLE_DEBUG_PRINTLN("SerialBLEInterface: pairing passkey request match=%d", match_request);
+  if (instance && instance->isValidConnection(connection_handle)) {
+    instance->_pairingRequestPending.store(true, std::memory_order_release);
+  }
   return true;
 }
 
@@ -397,6 +401,7 @@ bool SerialBLEInterface::isAdvertising() const {
 void SerialBLEInterface::enable() {
   if (_isEnabled) return;
 
+  _pairingRequestPending.store(false, std::memory_order_release);
   _isEnabled = true;
   clearBuffers();
   _last_health_check = millis();
@@ -413,6 +418,7 @@ void SerialBLEInterface::disconnect() {
 
 void SerialBLEInterface::disable() {
   _isEnabled = false;
+  _pairingRequestPending.store(false, std::memory_order_release);
   BLE_DEBUG_PRINTLN("SerialBLEInterface: disable");
 
   Bluefruit.Advertising.restartOnDisconnect(false);

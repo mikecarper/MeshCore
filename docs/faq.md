@@ -686,7 +686,10 @@ You can get the epoch time on <https://www.epochconverter.com> and use it to set
 **A:** Make sure that you flashed the Bluetooth companion firmware and not the USB-only companion firmware.
 
 ### 6.5. Q: I can't connect via Bluetooth, what is the Bluetooth pairing code?
-**A:** The default Bluetooth pairing code is `123456`
+**A:** The default Bluetooth pairing code is `123456` on builds without a
+physical display. Display-equipped Companion builds generate a six-digit PIN
+at boot and show it when a client requests pairing. The display stays awake on
+the PIN page until Bluetooth connects or the two-minute pairing window expires.
 
 ### 6.6. Q: My Heltec V3 keeps disconnecting from my smartphone. It can't hold a solid Bluetooth connection.
 **A:** Heltec V3 has a very small coil antenna on its PCB for Wi-Fi and Bluetooth connectivity. It has a very short range, only a few feet. It is possible to remove the coil antenna and replace it with a 31mm wire. The BT range is much improved with the modification.

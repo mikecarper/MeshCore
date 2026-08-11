@@ -1,9 +1,27 @@
 #include <gtest/gtest.h>
 
 #include <helpers/RadioLivenessTracker.h>
+#include <helpers/radiolib/RxBoostedGainDefaults.h>
 
 using mesh::RadioLivenessTracker;
 using mesh::RadioRecoveryAction;
+
+TEST(RxBoostedGainDefaults, UsesTargetCompileTimeSetting) {
+  using mesh::radio::selectRxBoostedGainDefault;
+
+  EXPECT_EQ(selectRxBoostedGainDefault(true, 0, false, 0), 0);
+  EXPECT_EQ(selectRxBoostedGainDefault(true, 1, false, 0), 1);
+  EXPECT_EQ(selectRxBoostedGainDefault(false, 0, true, 0), 0);
+  EXPECT_EQ(selectRxBoostedGainDefault(false, 0, true, 1), 1);
+  EXPECT_EQ(selectRxBoostedGainDefault(false, 0, false, 0), 1);
+}
+
+TEST(RxBoostedGainDefaults, Sx126xSettingTakesPrecedence) {
+  using mesh::radio::selectRxBoostedGainDefault;
+
+  EXPECT_EQ(selectRxBoostedGainDefault(true, 0, true, 1), 0);
+  EXPECT_EQ(selectRxBoostedGainDefault(true, 1, true, 0), 1);
+}
 
 TEST(RadioLivenessTracker, StagesSoftThenHardRecovery) {
   RadioLivenessTracker tracker;

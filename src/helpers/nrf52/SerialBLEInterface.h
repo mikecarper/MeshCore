@@ -4,6 +4,7 @@
 #include "../BleTxStallWatchdog.h"
 #include "SecuritySessionTimer.h"
 #include <bluefruit.h>
+#include <atomic>
 
 #ifndef BLE_TX_POWER
 #define BLE_TX_POWER 4
@@ -20,6 +21,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   ble_gap_addr_t _peer_address = {};
   bool _peer_address_valid;
   bool _bond_removed_for_connection;
+  std::atomic<bool> _pairingRequestPending{false};
   SecuritySessionTimer _security_timer;
   mesh::BleTxStallWatchdog _tx_stall_watchdog;
   mesh::BleDisconnectRecovery _tx_disconnect_recovery;
@@ -83,6 +85,9 @@ public:
   bool isReadBusy() const override;
   bool isWriteBusy() const override;
   bool hasPendingIO() const override;
+  bool takePairingRequest() override {
+    return _pairingRequestPending.exchange(false, std::memory_order_acq_rel);
+  }
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
 };

@@ -5,6 +5,9 @@
 
 #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #define BOOT_SCREEN_MILLIS   3000   // 3 seconds
+#ifndef BLE_PAIRING_DISPLAY_MILLIS
+#define BLE_PAIRING_DISPLAY_MILLIS 120000UL
+#endif
 
 #if defined(PIN_STATUS_LED) || defined(PIN_STATUS_LED_R)
 #define LED_ON_MILLIS     20
@@ -104,7 +107,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
 bool UITask::shouldPlayMessageTone() const {
 #ifdef BLE_PIN_CODE
-  return !hasConnection();
+  return !hasBluetoothConnection();
 #else
   // A USB or Ethernet companion connection is not a Bluetooth connection and
   // should not silence the standalone new-message alert.
@@ -214,7 +217,8 @@ void UITask::renderCurrScreen() {
   if (_display == NULL) return;  // assert() ??
 
   char tmp[80];
-  if (_alert[0]) {
+  const bool pairing_screen_active = isPairingScreenActive();
+  if (!pairing_screen_active && _alert[0]) {
     _display->setTextSize(1.4);
     uint16_t textWidth = _display->getTextWidth(_alert);
     _display->setCursor((_display->width() - textWidth) / 2, 22);
@@ -223,7 +227,7 @@ void UITask::renderCurrScreen() {
     _alert[0] = 0;
     _need_refresh = true;
     return;
-  } else if (_origin[0] && _msg[0]) { // message preview
+  } else if (!pairing_screen_active && _origin[0] && _msg[0]) { // message preview
     // render message preview
     _display->setCursor(0, 0);
     _display->setTextSize(1);
@@ -242,7 +246,7 @@ void UITask::renderCurrScreen() {
     sprintf(tmp, "%d", _msgcount);
     _display->print(tmp);
     _display->setColor(UIColor::secondary_txt); // last color will be kept on T114
-  } else if ((millis() - ui_started_at) < BOOT_SCREEN_MILLIS) { // boot screen
+  } else if (!pairing_screen_active && (millis() - ui_started_at) < BOOT_SCREEN_MILLIS) { // boot screen
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
     int logoWidth = 128;
@@ -276,7 +280,7 @@ void UITask::renderCurrScreen() {
     _display->print(tmp);
 
     // BT pin
-    if (!_connected && the_mesh.getBLEPin() != 0) {
+    if (!hasBluetoothConnection() && the_mesh.getBLEPin() != 0) {
       _display->setColor(UIColor::warning_txt);
       _display->setTextSize(2);
       _display->setCursor(0, 43);
@@ -447,7 +451,47 @@ void UITask::shutdown(bool restart){
   }
 }
 
+bool UITask::isPairingScreenActive() const {
+  return _pairing_screen_until != 0
+      && !hasBluetoothConnection()
+      && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
+}
+
+void UITask::showPairingPin() {
+  const unsigned long now = millis();
+  _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
+  _need_refresh = true;
+  _next_refresh = 0;
+  if (_display != NULL && !_display->isOn()) {
+    _display->turnOn();
+  }
+}
+
+void UITask::finishPairingScreen(bool timed_out) {
+  _pairing_screen_until = 0;
+  _need_refresh = true;
+  _next_refresh = 0;
+  if (_display == NULL) return;
+
+  if (timed_out) {
+    _display->turnOff();
+  } else {
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+  }
+}
+
 void UITask::loop() {
+  if (_interfaceManager->takePairingRequest()) {
+    showPairingPin();
+  }
+
+  if (_pairing_screen_until != 0) {
+    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    if (hasBluetoothConnection() || timed_out) {
+      finishPairingScreen(timed_out);
+    }
+  }
+
   #ifdef PIN_USER_BTN
     if (_userButton) {
       _userButton->update();
@@ -486,7 +530,7 @@ void UITask::loop() {
       _auto_off = millis() + AUTO_OFF_MILLIS;
     }
 #endif
-    if (isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
+    if (!isPairingScreenActive() && isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
       _display->turnOff();
     }
   }

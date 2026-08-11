@@ -31,6 +31,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_mqtt_topic_router` | `src/helpers/MQTTTopicRouter.h` | complete preset/custom topic-routing contract; MeshRank packets-only behavior; required identifiers; invalid inputs/slots; exact buffer boundaries |
 | `test_mqtt_connection_policy` | `src/helpers/MQTTConnectionPolicy.h` | reconnect guard/backoff/stagger and breaker transitions; stable reset; JWT lifetime/renewal policy; exact timing boundaries and 32-bit `millis()` rollover |
 | `test_wifi_reconnect_policy` | `src/helpers/WiFiReconnectPolicy.h` | five-minute forced reconnect cadence, connection resets, duplicate disconnect observations, and 32-bit `millis()` rollover |
+| `test_radio_liveness` | `src/helpers/RadioLivenessTracker.h`, `src/helpers/radiolib/RxBoostedGainDefaults.h` | staged radio recovery, activity reset and rollover handling; target-specific RX boosted-gain defaults and SX126x precedence |
 | `test_lr1110_rx_recovery` | `src/helpers/radiolib/LR1110RxRecovery.h` | LR1110 four-byte RX-buffer shift signature; captured and accumulated shifts; ordinary/scoped packet exclusions |
 | `test_mqtt_packet_queue_policy` | `src/helpers/MQTTPacketQueuePolicy.h` | queue-full eviction; stale-disconnect flush; adaptive drain limits; bounded QoS0 retries; exact timing boundaries and 32-bit `millis()` rollover |
 | `test_mqtt_runtime_buffer_lifecycle` | `src/helpers/MQTTRuntimeBufferLifecycle.h` | idempotent allocation/release; partial-allocation degradation; retry of only missing buffers |
@@ -43,7 +44,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_logical_message_cache` | `src/helpers/LogicalMessageCache.h` | bounded logical-message mapping; stable retry timestamps; exact older retries after newer messages; stale and same-timestamp mismatch rejection |
 | `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; empty-response completion; on-air truncation and clearing |
 | `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing |
-| `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp` | independent terminal/seeder control-sequence recognition across reads and binary-frame boundaries; passthrough ownership of USB input and suppression of binary output |
+| `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp`, `src/helpers/MultiSerialInterface.h` | independent terminal/seeder control-sequence recognition across reads and binary-frame boundaries; passthrough ownership of USB input and suppression of binary output; Bluetooth-only connection and pairing-request routing |
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 

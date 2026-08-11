@@ -239,7 +239,7 @@ public:
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 54, tmp);
       #endif
-      if (_task->hasConnection()) {
+      if (_task->hasBluetoothConnection()) {
         display.setColor(UIColor::warning_txt);
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 43, "< Connected >");
@@ -725,7 +725,7 @@ void UITask::setCurrScreen(UIScreen* c) {
 
 bool UITask::isPairingScreenActive() const {
   return _pairing_screen_until != 0
-      && !hasConnection()
+      && !hasBluetoothConnection()
       && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
 }
 
@@ -805,7 +805,7 @@ void UITask::loop() {
 
   if (_pairing_screen_until != 0) {
     const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
-    if (hasConnection() || timed_out) {
+    if (hasBluetoothConnection() || timed_out) {
       finishPairingScreen(timed_out);
     }
   }
