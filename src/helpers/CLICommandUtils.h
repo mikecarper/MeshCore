@@ -118,6 +118,20 @@ inline bool shouldMaskTerminalInput(const char* line) {
       == TerminalArgumentCommandMatch::Valid;
 }
 
+// Remove one complete UTF-8 code point from a terminal input buffer. Invalid
+// trailing bytes are still removed safely, and the result remains terminated.
+inline size_t eraseLastTerminalInput(char* line, size_t line_length) {
+  if (line == nullptr || line_length == 0) return 0;
+
+  size_t new_length = line_length - 1;
+  while (new_length > 0
+         && (static_cast<uint8_t>(line[new_length]) & 0xC0) == 0x80) {
+    new_length--;
+  }
+  line[new_length] = 0;
+  return new_length;
+}
+
 inline TerminalChannelCommandMatch parseTerminalChannelMessage(
     const char* command, TerminalChannelMessage& message) {
   message.selector = nullptr;

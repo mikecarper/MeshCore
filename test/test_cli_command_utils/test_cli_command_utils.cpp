@@ -198,6 +198,24 @@ TEST(CLICommandUtils, MasksOnlyTerminalLoginPasswordInput) {
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login-status"));
 }
 
+TEST(CLICommandUtils, BackspaceErasesAsciiAndUtf8Characters) {
+  char ascii[] = "trace path 2 7773";
+  size_t length = strlen(ascii);
+
+  length = mesh::cli::eraseLastTerminalInput(ascii, length);
+  EXPECT_STREQ("trace path 2 777", ascii);
+  EXPECT_EQ(strlen(ascii), length);
+
+  char utf8[] = "channel Public hi 👋";
+  length = strlen(utf8);
+  length = mesh::cli::eraseLastTerminalInput(utf8, length);
+  EXPECT_STREQ("channel Public hi ", utf8);
+  EXPECT_EQ(strlen(utf8), length);
+
+  EXPECT_EQ(0u, mesh::cli::eraseLastTerminalInput(nullptr, 0));
+  EXPECT_EQ(0u, mesh::cli::eraseLastTerminalInput(utf8, 0));
+}
+
 TEST(CLICommandUtils, ParsesStrictDecimalValues) {
   float value = 0.0f;
 

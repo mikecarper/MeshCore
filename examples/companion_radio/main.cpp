@@ -139,6 +139,35 @@ static void clearUsbTerminalLine() {
   usb_terminal_line_len = 0;
 }
 
+static void printUsbTerminalInputEcho() {
+  const char* password = nullptr;
+  size_t visible_len = usb_terminal_line_len;
+  if (mesh::cli::parseTerminalArgumentCommand(
+          usb_terminal_line, "login", password)
+      == mesh::cli::TerminalArgumentCommandMatch::Valid) {
+    visible_len = static_cast<size_t>(password - usb_terminal_line);
+  }
+
+  if (visible_len > 0) {
+    Serial.write(reinterpret_cast<const uint8_t*>(usb_terminal_line),
+                 visible_len);
+  }
+  for (size_t i = visible_len; i < usb_terminal_line_len; i++) {
+    Serial.print('*');
+  }
+}
+
+static void redrawUsbTerminalInput() {
+  // The documented picocom `--imap spchex` converts an echoed BS to "[08]".
+  // It deliberately leaves CR untouched, so redraw the edited line with CR
+  // and printable bytes only. Padding clears a removed tab or wide glyph.
+  Serial.print("\r> ");
+  printUsbTerminalInputEcho();
+  Serial.print("        ");
+  Serial.print("\r> ");
+  printUsbTerminalInputEcho();
+}
+
 static bool isUsbTerminalDataConnected() {
 #if defined(RP2040_PLATFORM)
   return (bool)Serial;
@@ -285,8 +314,9 @@ static void serviceUsbTerminal() {
 
     if (c == '\b' || c == 0x7F) {
       if (usb_terminal_line_len > 0) {
-        usb_terminal_line[--usb_terminal_line_len] = 0;
-        Serial.print("\b \b");
+        usb_terminal_line_len = mesh::cli::eraseLastTerminalInput(
+            usb_terminal_line, usb_terminal_line_len);
+        redrawUsbTerminalInput();
       }
       continue;
     }
