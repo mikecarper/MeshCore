@@ -277,6 +277,7 @@ private:
   void checkCLIRescueCmd();
   void checkSerialInterface();
   bool applyAndSaveFemRxGain(bool enabled);
+  bool applyAndSaveFemTxGain(bool enabled);
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();
   void printTerminalPath(const ContactInfo& recipient);

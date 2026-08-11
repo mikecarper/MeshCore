@@ -3,7 +3,7 @@
 #include <SHA256.h>
 
 #ifdef USE_CC310_HW_CRYPTO
-#include <Adafruit_nRFCrypto.h>
+#include "helpers/NRF52Crypto.h"
 #include "nrf_cc310/include/crys_hash.h"
 #include "nrf_cc310/include/crys_hmac.h"
 #include "nrf_cc310/include/ssi_aes.h"
@@ -12,6 +12,142 @@
 #ifdef ARDUINO
   #include <Arduino.h>
 #endif
+
+namespace {
+
+void sha256Software(uint8_t* hash, size_t hash_len, const uint8_t* msg, int msg_len) {
+  SHA256 sha;
+  sha.update(msg, msg_len);
+  sha.finalize(hash, hash_len);
+}
+
+void sha256Software(uint8_t* hash, size_t hash_len,
+                    const uint8_t* frag1, int frag1_len,
+                    const uint8_t* frag2, int frag2_len) {
+  SHA256 sha;
+  sha.update(frag1, frag1_len);
+  sha.update(frag2, frag2_len);
+  sha.finalize(hash, hash_len);
+}
+
+int decryptSoftware(const uint8_t* shared_secret, uint8_t* dest,
+                    const uint8_t* src, int src_len) {
+  AES128 aes;
+  uint8_t* dp = dest;
+  const uint8_t* sp = src;
+
+  aes.setKey(shared_secret, CIPHER_KEY_SIZE);
+  while (sp - src < src_len) {
+    aes.decryptBlock(dp, sp);
+    dp += CIPHER_BLOCK_SIZE;
+    sp += CIPHER_BLOCK_SIZE;
+  }
+  return static_cast<int>(sp - src);
+}
+
+int encryptSoftware(const uint8_t* shared_secret, uint8_t* dest,
+                    const uint8_t* src, int src_len) {
+  AES128 aes;
+  uint8_t* dp = dest;
+
+  aes.setKey(shared_secret, CIPHER_KEY_SIZE);
+  while (src_len >= CIPHER_BLOCK_SIZE) {
+    aes.encryptBlock(dp, src);
+    dp += CIPHER_BLOCK_SIZE;
+    src += CIPHER_BLOCK_SIZE;
+    src_len -= CIPHER_BLOCK_SIZE;
+  }
+  if (src_len > 0) {
+    uint8_t tmp[CIPHER_BLOCK_SIZE] = {};
+    memcpy(tmp, src, src_len);
+    aes.encryptBlock(dp, tmp);
+    dp += CIPHER_BLOCK_SIZE;
+  }
+  return static_cast<int>(dp - dest);
+}
+
+void hmacSoftware(const uint8_t* shared_secret, uint8_t* dest,
+                  const uint8_t* src, int src_len) {
+  SHA256 sha;
+  sha.resetHMAC(shared_secret, PUB_KEY_SIZE);
+  sha.update(src, src_len);
+  sha.finalizeHMAC(shared_secret, PUB_KEY_SIZE, dest, CIPHER_MAC_SIZE);
+}
+
+#ifdef USE_CC310_HW_CRYPTO
+
+bool rangesOverlap(const uint8_t* first, size_t first_len,
+                   const uint8_t* second, size_t second_len) {
+  const uintptr_t first_addr = reinterpret_cast<uintptr_t>(first);
+  const uintptr_t second_addr = reinterpret_cast<uintptr_t>(second);
+  if (first_addr <= second_addr) return second_addr - first_addr < first_len;
+  return first_addr - second_addr < second_len;
+}
+
+// Returns -1 when the hardware path is unavailable or any CC310 call fails.
+// Callers retain the original input and can recompute the complete result in
+// software.
+int aesHardware(bool encrypting, const uint8_t* shared_secret, uint8_t* dest,
+                const uint8_t* src, int src_len) {
+  mesh::CC310CryptoSession session;
+  if (!session) return -1;
+
+  static SaSiAesUserContext_t ctx;
+  SaSiAesUserKeyData_t key_data = {
+    const_cast<uint8_t*>(shared_secret), CIPHER_KEY_SIZE
+  };
+  SaSiError_t rc = SaSi_AesInit(
+      &ctx, encrypting ? SASI_AES_ENCRYPT : SASI_AES_DECRYPT,
+      SASI_AES_MODE_ECB, SASI_AES_PADDING_NONE);
+  const bool initialized = rc == SASI_OK;
+  if (rc == SASI_OK) {
+    rc = SaSi_AesSetKey(&ctx, SASI_AES_USER_KEY, &key_data, sizeof(key_data));
+  }
+
+  uint8_t* dp = dest;
+  const uint8_t* sp = src;
+  int remaining = src_len;
+  while (rc == SASI_OK && remaining >= CIPHER_BLOCK_SIZE) {
+    rc = SaSi_AesBlock(&ctx, const_cast<uint8_t*>(sp), CIPHER_BLOCK_SIZE, dp);
+    if (rc == SASI_OK) {
+      dp += CIPHER_BLOCK_SIZE;
+      sp += CIPHER_BLOCK_SIZE;
+      remaining -= CIPHER_BLOCK_SIZE;
+    }
+  }
+  if (rc == SASI_OK && encrypting && remaining > 0) {
+    uint8_t padded[CIPHER_BLOCK_SIZE] = {};
+    memcpy(padded, sp, remaining);
+    rc = SaSi_AesBlock(&ctx, padded, CIPHER_BLOCK_SIZE, dp);
+    if (rc == SASI_OK) dp += CIPHER_BLOCK_SIZE;
+  }
+
+  size_t final_size = 0;
+  if (rc == SASI_OK) {
+    rc = SaSi_AesFinish(&ctx, 0, NULL, 0, NULL, &final_size);
+  }
+  const SaSiError_t free_rc = initialized ? SaSi_AesFree(&ctx) : SASI_OK;
+  if (rc != SASI_OK || free_rc != SASI_OK) return -1;
+  return static_cast<int>(dp - dest);
+}
+
+bool hmacHardware(const uint8_t* shared_secret, uint8_t* dest,
+                  const uint8_t* src, int src_len) {
+  mesh::CC310CryptoSession session;
+  if (!session) return false;
+
+  static CRYS_HASH_Result_t result;
+  const CRYSError_t rc = CRYS_HMAC(
+      CRYS_HASH_SHA256_mode, const_cast<uint8_t*>(shared_secret), PUB_KEY_SIZE,
+      const_cast<uint8_t*>(src), static_cast<size_t>(src_len), result);
+  if (rc != CRYS_OK) return false;
+  memcpy(dest, result, CIPHER_MAC_SIZE);
+  return true;
+}
+
+#endif
+
+} // namespace
 
 namespace mesh {
 
@@ -23,35 +159,53 @@ uint32_t RNG::nextInt(uint32_t _min, uint32_t _max) {
 
 void Utils::sha256(uint8_t *hash, size_t hash_len, const uint8_t* msg, int msg_len) {
 #ifdef USE_CC310_HW_CRYPTO
-  static CRYS_HASH_Result_t result;
-  nRFCrypto.begin();
-  CRYS_HASH(CRYS_HASH_SHA256_mode, (uint8_t*)msg, (size_t)msg_len, result);
-  nRFCrypto.end();
-  memcpy(hash, result, hash_len);
-#else
-  SHA256 sha;
-  sha.update(msg, msg_len);
-  sha.finalize(hash, hash_len);
+  if (hash_len <= SHA256::HASH_SIZE && msg_len >= 0) {
+    CC310CryptoSession session;
+    if (session) {
+      static CRYS_HASH_Result_t result;
+      const CRYSError_t rc = CRYS_HASH(
+          CRYS_HASH_SHA256_mode, const_cast<uint8_t*>(msg),
+          static_cast<size_t>(msg_len), result);
+      if (rc == CRYS_OK) {
+        memcpy(hash, result, hash_len);
+        return;
+      }
+    }
+  }
 #endif
+  sha256Software(hash, hash_len, msg, msg_len);
 }
 
 void Utils::sha256(uint8_t *hash, size_t hash_len, const uint8_t* frag1, int frag1_len, const uint8_t* frag2, int frag2_len) {
 #ifdef USE_CC310_HW_CRYPTO
-  static CRYS_HASHUserContext_t ctx;
-  static CRYS_HASH_Result_t result;
-  nRFCrypto.begin();
-  CRYS_HASH_Init(&ctx, CRYS_HASH_SHA256_mode);
-  CRYS_HASH_Update(&ctx, (uint8_t*)frag1, (size_t)frag1_len);
-  CRYS_HASH_Update(&ctx, (uint8_t*)frag2, (size_t)frag2_len);
-  CRYS_HASH_Finish(&ctx, result);
-  nRFCrypto.end();
-  memcpy(hash, result, hash_len);
-#else
-  SHA256 sha;
-  sha.update(frag1, frag1_len);
-  sha.update(frag2, frag2_len);
-  sha.finalize(hash, hash_len);
+  if (hash_len <= SHA256::HASH_SIZE && frag1_len > 0 && frag2_len > 0) {
+    CC310CryptoSession session;
+    if (session) {
+      static CRYS_HASHUserContext_t ctx;
+      static CRYS_HASH_Result_t result;
+      CRYSError_t rc = CRYS_HASH_Init(&ctx, CRYS_HASH_SHA256_mode);
+      const bool initialized = rc == CRYS_OK;
+      if (rc == CRYS_OK) {
+        rc = CRYS_HASH_Update(&ctx, const_cast<uint8_t*>(frag1),
+                              static_cast<size_t>(frag1_len));
+      }
+      if (rc == CRYS_OK) {
+        rc = CRYS_HASH_Update(&ctx, const_cast<uint8_t*>(frag2),
+                              static_cast<size_t>(frag2_len));
+      }
+      if (rc == CRYS_OK) rc = CRYS_HASH_Finish(&ctx, result);
+      if (rc == CRYS_OK) {
+        memcpy(hash, result, hash_len);
+        return;
+      }
+      if (initialized) {
+        const bool context_freed = CRYS_HASH_Free(&ctx) == CRYS_OK;
+        (void) context_freed;
+      }
+    }
+  }
 #endif
+  sha256Software(hash, hash_len, frag1, frag1_len, frag2, frag2_len);
 }
 
 int Utils::decrypt(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* src, int src_len) {
@@ -61,100 +215,38 @@ int Utils::decrypt(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* s
   }
 
 #ifdef USE_CC310_HW_CRYPTO
-  static SaSiAesUserContext_t ctx;
-  SaSiAesUserKeyData_t keyData = { (uint8_t*)shared_secret, CIPHER_KEY_SIZE };
-  uint8_t* dp = dest;
-  const uint8_t* sp = src;
-  size_t dummy_out = 0;
-
-  nRFCrypto.begin();
-  SaSi_AesInit(&ctx, SASI_AES_DECRYPT, SASI_AES_MODE_ECB, SASI_AES_PADDING_NONE);
-  SaSi_AesSetKey(&ctx, SASI_AES_USER_KEY, &keyData, sizeof(keyData));
-  while (sp - src < src_len) {
-    SaSi_AesBlock(&ctx, (uint8_t*)sp, 16, dp);
-    dp += 16; sp += 16;
+  if (!rangesOverlap(dest, static_cast<size_t>(src_len),
+                     src, static_cast<size_t>(src_len))) {
+    const int hardware_len = aesHardware(false, shared_secret, dest, src, src_len);
+    if (hardware_len >= 0) return hardware_len;
   }
-  SaSi_AesFinish(&ctx, 0, NULL, 0, NULL, &dummy_out);
-  SaSi_AesFree(&ctx);
-  nRFCrypto.end();
-  return sp - src;
-#else
-  AES128 aes;
-  uint8_t* dp = dest;
-  const uint8_t* sp = src;
-
-  aes.setKey(shared_secret, CIPHER_KEY_SIZE);
-  while (sp - src < src_len) {
-    aes.decryptBlock(dp, sp);
-    dp += 16; sp += 16;
-  }
-
-  return sp - src;  // will always be multiple of 16
 #endif
+  return decryptSoftware(shared_secret, dest, src, src_len);
 }
 
 int Utils::encrypt(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* src, int src_len) {
+  if (shared_secret == NULL || dest == NULL || src == NULL || src_len <= 0) return 0;
+
 #ifdef USE_CC310_HW_CRYPTO
-  static SaSiAesUserContext_t ctx;
-  SaSiAesUserKeyData_t keyData = { (uint8_t*)shared_secret, CIPHER_KEY_SIZE };
-  uint8_t* dp = dest;
-  size_t dummy_out = 0;
-
-  nRFCrypto.begin();
-  SaSi_AesInit(&ctx, SASI_AES_ENCRYPT, SASI_AES_MODE_ECB, SASI_AES_PADDING_NONE);
-  SaSi_AesSetKey(&ctx, SASI_AES_USER_KEY, &keyData, sizeof(keyData));
-  while (src_len >= 16) {
-    SaSi_AesBlock(&ctx, (uint8_t*)src, 16, dp);
-    dp += 16; src += 16; src_len -= 16;
+  const size_t output_len = static_cast<size_t>(
+      (src_len + CIPHER_BLOCK_SIZE - 1) / CIPHER_BLOCK_SIZE * CIPHER_BLOCK_SIZE);
+  if (!rangesOverlap(dest, output_len, src, static_cast<size_t>(src_len))) {
+    const int hardware_len = aesHardware(true, shared_secret, dest, src, src_len);
+    if (hardware_len >= 0) return hardware_len;
   }
-  if (src_len > 0) {  // remaining partial block — zero-pad to 16 bytes
-    uint8_t tmp[16] = {};
-    memcpy(tmp, src, src_len);
-    SaSi_AesBlock(&ctx, tmp, 16, dp);
-    dp += 16;
-  }
-  SaSi_AesFinish(&ctx, 0, NULL, 0, NULL, &dummy_out);
-  SaSi_AesFree(&ctx);
-  nRFCrypto.end();
-  return dp - dest;
-#else
-  AES128 aes;
-  uint8_t* dp = dest;
-
-  aes.setKey(shared_secret, CIPHER_KEY_SIZE);
-  while (src_len >= 16) {
-    aes.encryptBlock(dp, src);
-    dp += 16; src += 16; src_len -= 16;
-  }
-  if (src_len > 0) {  // remaining partial block
-    uint8_t tmp[16];
-    memset(tmp, 0, 16);
-    memcpy(tmp, src, src_len);
-    aes.encryptBlock(dp, tmp);
-    dp += 16;
-  }
-  return dp - dest;  // will always be multiple of 16
 #endif
+  return encryptSoftware(shared_secret, dest, src, src_len);
 }
 
 int Utils::encryptThenMAC(const uint8_t* shared_secret, uint8_t* dest, const uint8_t* src, int src_len) {
   int enc_len = encrypt(shared_secret, dest + CIPHER_MAC_SIZE, src, src_len);
 
 #ifdef USE_CC310_HW_CRYPTO
-  static CRYS_HMACUserContext_t hmac_ctx;
-  static CRYS_HASH_Result_t hmac_result;
-  nRFCrypto.begin();
-  CRYS_HMAC_Init(&hmac_ctx, CRYS_HASH_SHA256_mode, (uint8_t*)shared_secret, PUB_KEY_SIZE);
-  CRYS_HMAC_Update(&hmac_ctx, dest + CIPHER_MAC_SIZE, enc_len);
-  CRYS_HMAC_Finish(&hmac_ctx, hmac_result);
-  nRFCrypto.end();
-  memcpy(dest, hmac_result, CIPHER_MAC_SIZE);
-#else
-  SHA256 sha;
-  sha.resetHMAC(shared_secret, PUB_KEY_SIZE);
-  sha.update(dest + CIPHER_MAC_SIZE, enc_len);
-  sha.finalizeHMAC(shared_secret, PUB_KEY_SIZE, dest, CIPHER_MAC_SIZE);
+  if (!hmacHardware(shared_secret, dest, dest + CIPHER_MAC_SIZE, enc_len))
 #endif
+  {
+    hmacSoftware(shared_secret, dest, dest + CIPHER_MAC_SIZE, enc_len);
+  }
 
   return CIPHER_MAC_SIZE + enc_len;
 }
@@ -167,24 +259,11 @@ int Utils::MACThenDecrypt(const uint8_t* shared_secret, uint8_t* dest, const uin
 
   uint8_t hmac[CIPHER_MAC_SIZE];
 #ifdef USE_CC310_HW_CRYPTO
-  {
-    static CRYS_HMACUserContext_t hmac_ctx;
-    static CRYS_HASH_Result_t hmac_result;
-    nRFCrypto.begin();
-    CRYS_HMAC_Init(&hmac_ctx, CRYS_HASH_SHA256_mode, (uint8_t*)shared_secret, PUB_KEY_SIZE);
-    CRYS_HMAC_Update(&hmac_ctx, (uint8_t*)(src + CIPHER_MAC_SIZE), src_len - CIPHER_MAC_SIZE);
-    CRYS_HMAC_Finish(&hmac_ctx, hmac_result);
-    nRFCrypto.end();
-    memcpy(hmac, hmac_result, CIPHER_MAC_SIZE);
-  }
-#else
-  {
-    SHA256 sha;
-    sha.resetHMAC(shared_secret, PUB_KEY_SIZE);
-    sha.update(src + CIPHER_MAC_SIZE, enc_len);
-    sha.finalizeHMAC(shared_secret, PUB_KEY_SIZE, hmac, CIPHER_MAC_SIZE);
-  }
+  if (!hmacHardware(shared_secret, hmac, src + CIPHER_MAC_SIZE, enc_len))
 #endif
+  {
+    hmacSoftware(shared_secret, hmac, src + CIPHER_MAC_SIZE, enc_len);
+  }
   if (memcmp(hmac, src, CIPHER_MAC_SIZE) == 0) {
     return decrypt(shared_secret, dest, src + CIPHER_MAC_SIZE, enc_len);
   }

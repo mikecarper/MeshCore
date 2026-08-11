@@ -931,6 +931,7 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
   _prefs.gps_interval = 0;
   _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
   _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_txgain = 0;
 
   memset(default_scope.key, 0, sizeof(default_scope.key));
 }
@@ -974,6 +975,7 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
     _radio->recalibrateNoiseFloor();
   }
+  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();

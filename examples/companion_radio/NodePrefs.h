@@ -37,6 +37,7 @@ struct NodePrefs {  // persisted to file
   uint8_t default_scope_key[16];
   uint8_t radio_fem_rxgain_override; // 1 once the user overrides the build default
   uint8_t vibe_quiet;          // haptic quiet mode; appended for prefs compatibility
+  uint8_t radio_fem_txgain;    // LoRa FEM TX gain; appended for prefs compatibility
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

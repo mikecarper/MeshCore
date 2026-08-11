@@ -57,9 +57,13 @@ boost** switch. From the USB terminal, use:
 get radio.fem.rxgain
 set radio.fem.rxgain off
 set radio.fem.rxgain on
+get radio.fem.txgain
+set radio.fem.txgain off
+set radio.fem.txgain on
 ```
 
-The selected state is applied immediately and retained after reboot.
+The selected states are applied immediately and retained after reboot. FEM TX
+gain is reported as unsupported on boards without software-selectable PA gain.
 
 Artifacts are written to `out/` by default.
 

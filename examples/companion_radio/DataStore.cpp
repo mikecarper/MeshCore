@@ -320,6 +320,9 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
     if (file.available() >= (int)sizeof(_prefs.vibe_quiet)) {
       file.read((uint8_t *)&_prefs.vibe_quiet, sizeof(_prefs.vibe_quiet));                  // 124
     }
+    if (file.available() >= (int)sizeof(_prefs.radio_fem_txgain)) {
+      file.read((uint8_t *)&_prefs.radio_fem_txgain, sizeof(_prefs.radio_fem_txgain));      // 125
+    }
 
     file.close();
   }
@@ -369,6 +372,8 @@ bool DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
                sizeof(_prefs.radio_fem_rxgain_override)) == sizeof(_prefs.radio_fem_rxgain_override); // 123
     success = success && file.write((uint8_t *)&_prefs.vibe_quiet,
                sizeof(_prefs.vibe_quiet)) == sizeof(_prefs.vibe_quiet);                    // 124
+    success = success && file.write((uint8_t *)&_prefs.radio_fem_txgain,
+               sizeof(_prefs.radio_fem_txgain)) == sizeof(_prefs.radio_fem_txgain);        // 125
 
 #if defined(NRF52_PLATFORM)
     success = file.commit(success);

@@ -93,6 +93,10 @@ public:
   virtual bool setLoRaFemLnaEnabled(bool enable) { return false; }
   virtual bool canControlLoRaFemLna() const { return false; }
   virtual bool isLoRaFemLnaEnabled() const { return false; }
+  // Software-selectable external FEM transmit gain. This is not a PA power switch.
+  virtual bool setLoRaFemPaGainEnabled(bool enable) { return false; }
+  virtual bool canControlLoRaFemPaGain() const { return false; }
+  virtual bool isLoRaFemPaGainEnabled() const { return false; }
 #if defined(ENABLE_OTA)
   // 4-byte build-target discriminator for OTA-over-LoRa (docs/ota_protocol.md Section 9). Default is the
   // MOTA_TARGET_ID build flag injected by build.sh; 0 when unset (e.g. a bare IDE build).

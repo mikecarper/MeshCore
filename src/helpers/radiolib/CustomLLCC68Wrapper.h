@@ -42,7 +42,7 @@ public:
   }
   uint8_t getSpreadingFactor() const override { return ((CustomLLCC68 *)_radio)->spreadingFactor; }
 
-  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
+  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()); }
 
 protected:
   bool radioDeepInit() override {

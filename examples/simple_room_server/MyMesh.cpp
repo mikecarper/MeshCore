@@ -1164,6 +1164,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_txgain = 0;
 
   // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() - they live
   // in /mqtt_prefs now, not NodePrefs.
@@ -1241,6 +1242,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
     _radio->recalibrateNoiseFloor();
   }
+  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();

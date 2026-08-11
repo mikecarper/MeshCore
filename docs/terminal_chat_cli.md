@@ -87,12 +87,14 @@ Sets the transmit air-time-factor. Deprecated - use `set dutycycle` instead.
 ```
 get radio.fem.rxgain
 set radio.fem.rxgain {on|off}
+get radio.fem.txgain
+set radio.fem.txgain {on|off}
 ```
-Shows or changes the external FEM receive-path LNA on supported Heltec boards.
-The change is applied immediately, saved across reboots, and recalibrates the
-radio noise floor. This is separate from the SX126x `radio.rxgain` setting.
-Boards whose FEM receive path cannot be controlled report the setting as
-unsupported.
+Shows or changes the external FEM receive-path LNA or transmit-path gain on
+supported boards. Changes are applied immediately and saved across reboots;
+changing RX gain also recalibrates the radio noise floor. These settings are
+separate from the SX126x `radio.rxgain` setting. Boards without the respective
+control report it as unsupported.
 
 
 ```

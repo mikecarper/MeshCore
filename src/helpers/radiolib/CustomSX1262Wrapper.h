@@ -99,8 +99,6 @@ protected:
   }
   bool supportsRadioDeepInit() const override { return true; }
 
-  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
-
 protected:
   bool applyRxBoostedGainMode(bool en) override {
     return ((CustomSX1262 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
@@ -109,4 +107,6 @@ public:
   bool getRxBoostedGainMode() const override {
     return ((CustomSX1262 *)_radio)->getRxBoostedGainMode();
   }
+
+  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()); }
 };

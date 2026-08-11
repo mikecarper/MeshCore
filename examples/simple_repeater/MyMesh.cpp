@@ -3030,6 +3030,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = 1;      // LoRa FEM RX gain on by default (FEM boards)
+  _prefs.radio_fem_txgain = 0;
 
   pending_discover_tag = 0;
   pending_discover_until = 0;
@@ -3200,6 +3201,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
     _radio->recalibrateNoiseFloor();
   }
+  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
 
   updateAdvertTimer();

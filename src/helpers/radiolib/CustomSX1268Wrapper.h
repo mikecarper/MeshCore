@@ -46,8 +46,6 @@ public:
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1268 *)_radio)->spreadingFactor; }
 
-  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio); }
-
 protected:
   bool radioDeepInit() override {
     return ((CustomSX1268 *)_radio)->std_init();
@@ -62,4 +60,6 @@ public:
   bool getRxBoostedGainMode() const override {
     return ((CustomSX1268 *)_radio)->getRxBoostedGainMode();
   }
+
+  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()); }
 };

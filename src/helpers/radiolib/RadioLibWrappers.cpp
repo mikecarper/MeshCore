@@ -32,6 +32,11 @@ void setFlag(void) {
 }
 
 void RadioLibWrapper::begin() {
+#ifdef USE_CC310_HW_CRYPTO
+  // Initialize CryptoCell once from normal task context. The session helper
+  // still initializes lazily if an earlier crypto operation runs first.
+  (void) mesh::initializeCC310Crypto();
+#endif
   _radio->setPacketReceivedAction(setFlag);  // this is also SentComplete interrupt
   _preamble_sf = getSpreadingFactor();
   _radio->setPreambleLength(preambleLengthForSF(_preamble_sf)); // longer preamble for lower SF improves reliability

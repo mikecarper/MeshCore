@@ -79,6 +79,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | `set` is local serial only | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature |
+| Radio | [`get/set radio.fem.txgain`](cli_commands.md#view-or-change-the-lora-fem-transmit-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature |
 | Radio | [`get/set radio.rxps`; `get rxps.wd`](#radio-rxps) | RX power-saving support | Feature | Feature | Feature |
 | System | [`get/set name`](cli_commands.md#view-or-change-this-nodes-name) | All text CLI roles | Yes | Yes | Yes |
 | System | [`get/set lat`](cli_commands.md#view-or-change-this-nodes-latitude) | All text CLI roles | Yes | Yes | Yes |
@@ -234,6 +235,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | `set` is local serial only | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature | Feature | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature | Feature | Feature | Feature | Feature |
+| Radio | [`get/set radio.fem.txgain`](cli_commands.md#view-or-change-the-lora-fem-transmit-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature | Feature | Feature | Feature | Feature |
 | Radio | [`get/set radio.rxps`; `get rxps.wd`](#radio-rxps) | Full parser and RX power-saving support | Feature | Feature | Feature | No | No | Feature | Feature |
 | System | [`get/set name`](cli_commands.md#view-or-change-this-nodes-name) | All full-parser text CLI roles | Yes | Yes | Yes | No | No | Yes | Yes |
 | System | [`get/set lat`](cli_commands.md#view-or-change-this-nodes-latitude) | All full-parser text CLI roles | Yes | Yes | Yes | No | No | Yes | Yes |

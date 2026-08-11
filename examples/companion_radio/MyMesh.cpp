@@ -1357,6 +1357,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.gps_interval = 0;      // No automatic GPS updates by default
   _prefs.autoadd_config = DEFAULT_AUTOADD_CONFIG;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
+  _prefs.radio_fem_txgain = 0;
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
   _prefs.setRepeatEn(false);
 #if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LR1110) \
@@ -1436,6 +1437,7 @@ void MyMesh::begin(bool has_display) {
     _prefs.radio_fem_rxgain = DEFAULT_FEM_RX_GAIN;
   }
   _prefs.radio_fem_rxgain = constrain(_prefs.radio_fem_rxgain, 0, 1);
+  _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
@@ -1484,6 +1486,7 @@ void MyMesh::begin(bool has_display) {
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
     _radio->recalibrateNoiseFloor();
   }
+  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
 
@@ -2042,6 +2045,19 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       strcpy(reply, "Error: unsupported");
     } else if (!applyAndSaveFemRxGain(enabled)) {
       strcpy(reply, "Error: failed to apply FEM RX gain");
+    } else {
+      strcpy(reply, "OK");
+    }
+    return;
+  }
+  if (strcmp(key, "radio.fem.txgain") == 0) {
+    bool enabled;
+    if (!wcParseBool(value, enabled)) {
+      strcpy(reply, "Error: must be on or off");
+    } else if (!board.canControlLoRaFemPaGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (!applyAndSaveFemTxGain(enabled)) {
+      strcpy(reply, "Error: failed to apply FEM TX gain");
     } else {
       strcpy(reply, "OK");
     }
@@ -3450,6 +3466,15 @@ bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
   return true;
 }
 
+bool MyMesh::applyAndSaveFemTxGain(bool enabled) {
+  if (!board.canControlLoRaFemPaGain()) return false;
+  if (!board.setLoRaFemPaGainEnabled(enabled)) return false;
+
+  _prefs.radio_fem_txgain = enabled ? 1 : 0;
+  savePrefs();
+  return true;
+}
+
 #ifdef ENABLE_USB_INTERFACE
 void MyMesh::enterTerminalMode() {
   _terminal_mode = true;
@@ -4236,6 +4261,13 @@ void MyMesh::handleTerminalCommand(char* command) {
       Serial.printf("  FEM RX gain: %s\r\n",
                     board.isLoRaFemLnaEnabled() ? "on" : "off");
     }
+  } else if (strcmp(command, "get radio.fem.txgain") == 0) {
+    if (!board.canControlLoRaFemPaGain()) {
+      Serial.print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+    } else {
+      Serial.printf("  FEM TX gain: %s\r\n",
+                    board.isLoRaFemPaGainEnabled() ? "on" : "off");
+    }
   } else if (strncmp(command, "set ", 4) == 0) {
     const char* config = command + 4;
     if (strncmp(config, "af ", 3) == 0) {
@@ -4276,6 +4308,20 @@ void MyMesh::handleTerminalCommand(char* command) {
       } else {
         Serial.printf("  OK - FEM RX gain %s\r\n", value);
       }
+    } else if (strncmp(config, "radio.fem.txgain", 16) == 0
+               && (config[16] == 0 || config[16] == ' '
+                   || config[16] == '\t')) {
+      const char* value = config + 16;
+      while (*value == ' ' || *value == '\t') value++;
+      if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+        Serial.print("  ERROR: use set radio.fem.txgain <on|off>\r\n");
+      } else if (!board.canControlLoRaFemPaGain()) {
+        Serial.print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+      } else if (!applyAndSaveFemTxGain(strcmp(value, "on") == 0)) {
+        Serial.print("  ERROR: failed to apply FEM TX gain\r\n");
+      } else {
+        Serial.printf("  OK - FEM TX gain %s\r\n", value);
+      }
     } else {
       Serial.printf("  ERROR: unknown setting: %s\r\n", config);
     }
@@ -4287,6 +4333,8 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     Serial.print("  get radio.fem.rxgain\r\n");
     Serial.print("  set radio.fem.rxgain <on|off>\r\n");
+    Serial.print("  get radio.fem.txgain\r\n");
+    Serial.print("  set radio.fem.txgain <on|off>\r\n");
     Serial.print("  card\r\n");
     Serial.print("  import <meshcore://card>\r\n");
     Serial.print("  clock\r\n");

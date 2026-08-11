@@ -160,6 +160,7 @@ struct NodePrefs { // persisted to file
   // LR2021 side-detector SFs are appended at /com_prefs offset 856. Their
   // in-memory placement here does not shift the established binary layout.
   uint8_t extra_sf[4] = {};
+  uint8_t radio_fem_txgain; // LoRa FEM TX gain; persisted at /com_prefs offset 860
   uint8_t retry_preset;
   uint8_t direct_retry_attempts;
   uint16_t direct_retry_base_ms;

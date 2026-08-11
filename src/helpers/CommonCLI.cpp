@@ -909,6 +909,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // Defaults for the trailing fields that older/shorter files may not contain.
     // Build-profile defaults - overwritten below when the saved field is present.
     _prefs->radio_fem_rxgain = 1;
+    _prefs->radio_fem_txgain = 0;
     _prefs->cad_enabled = DEFAULT_CAD_ENABLED;
     memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
     _prefs->rx_powersaving_enabled = 0;
@@ -1193,6 +1194,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     }
     if (file.available() >= (int)sizeof(_prefs->extra_sf)) {
       file.read((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));
+      if (file.available() >= (int)sizeof(_prefs->radio_fem_txgain)) {
+        file.read((uint8_t *)&_prefs->radio_fem_txgain,
+                  sizeof(_prefs->radio_fem_txgain));
+      }
     } else if (file.available() > 0) {
       // Never accept a torn append as a partial detector list.
       _com_prefs_needs_upgrade = true;
@@ -1261,6 +1266,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
     _prefs->radio_fem_rxgain = constrain(_prefs->radio_fem_rxgain, 0, 1); // boolean
+    _prefs->radio_fem_txgain = constrain(_prefs->radio_fem_txgain, 0, 1); // boolean
     _prefs->cad_enabled = constrain(_prefs->cad_enabled, 0, 1); // boolean
     if (!directRetryPrefsValid(_prefs)) {
       setDefaultDirectRetryPrefs(_prefs);
@@ -1467,6 +1473,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->rx_watchdog_enabled);             // 854
   WRITE_COMMON_PREFS(&prefs->system_watchdog_enabled);         // 855
   WRITE_COMMON_PREFS(&prefs->extra_sf);                        // 856
+  WRITE_COMMON_PREFS(&prefs->radio_fem_txgain);                // 860
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1617,7 +1624,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)&_prefs->system_watchdog_enabled,
                sizeof(_prefs->system_watchdog_enabled));                                           // 855
     file.write((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));                              // 856
-    // next: 860
+    file.write((uint8_t *)&_prefs->radio_fem_txgain, sizeof(_prefs->radio_fem_txgain));             // 860
+    // next: 861
 
 #if defined(NRF52_PLATFORM)
     if (!file.commit()) {
@@ -3208,6 +3216,23 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
       }
     }
+  } else if (memcmp(config, "radio.fem.txgain ", 17) == 0) {
+    const char* value = &config[17];
+    if (!_board->canControlLoRaFemPaGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: state must be on or off");
+    } else {
+      const bool enabled = strcmp(value, "on") == 0;
+      if (_board->setLoRaFemPaGainEnabled(enabled)) {
+        _prefs->radio_fem_txgain = enabled ? 1 : 0;
+        savePrefs();
+        strcpy(reply, enabled
+            ? "OK - LoRa FEM TX gain on" : "OK - LoRa FEM TX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
+      }
+    }
   } else if (memcmp(config, "radio ", 6) == 0) {
     strcpy(tmp, &config[6]);
     const char* parts[4];
@@ -3504,6 +3529,28 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "OK - LoRa FEM RX gain off");
       } else {
         strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else {
+      strcpy(reply, "Error: state must be on or off");
+    }
+  } else if (memcmp(config, "radio.fem.txgain ", 17) == 0) {
+    if (!_board->canControlLoRaFemPaGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (memcmp(&config[17], "on", 2) == 0) {
+      if (_board->setLoRaFemPaGainEnabled(true)) {
+        _prefs->radio_fem_txgain = 1;
+        savePrefs();
+        strcpy(reply, "OK - LoRa FEM TX gain on");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
+      }
+    } else if (memcmp(&config[17], "off", 3) == 0) {
+      if (_board->setLoRaFemPaGainEnabled(false)) {
+        _prefs->radio_fem_txgain = 0;
+        savePrefs();
+        strcpy(reply, "OK - LoRa FEM TX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
       }
     } else {
       strcpy(reply, "Error: state must be on or off");
@@ -4249,6 +4296,13 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "> %s",
               _board->isLoRaFemLnaEnabled() ? "on" : "off");
     }
+  } else if (strcmp(config, "radio.fem.txgain") == 0) {
+    if (!_board->canControlLoRaFemPaGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s",
+              _board->isLoRaFemPaGainEnabled() ? "on" : "off");
+    }
   } else if (strcmp(config, "radio") == 0) {
     char freq[16], bw[16];
     strcpy(freq, StrHelper::ftoa(_prefs->freq));
@@ -4358,6 +4412,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error: unsupported");
     } else {
       sprintf(reply, "> %s", _board->isLoRaFemLnaEnabled() ? "on" : "off");
+    }
+  } else if (memcmp(config, "radio.fem.txgain", 16) == 0) {
+    if (!_board->canControlLoRaFemPaGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s", _board->isLoRaFemPaGainEnabled() ? "on" : "off");
     }
   } else if (memcmp(config, "tempradioat", 11) == 0 && (config[11] == 0 || config[11] == ' ')) {
     _callbacks->formatScheduledRadioParams(true, skipSpacesConst(&config[11]), reply);
