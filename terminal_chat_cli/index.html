@@ -1150,12 +1150,14 @@ opening that port from an app.</p>
 <p>Sets the transmit air-time-factor. Deprecated - use <code>set dutycycle</code> instead.</p>
 <pre><code>get radio.fem.rxgain
 set radio.fem.rxgain {on|off}
+get radio.fem.txgain
+set radio.fem.txgain {on|off}
 </code></pre>
-<p>Shows or changes the external FEM receive-path LNA on supported Heltec boards.
-The change is applied immediately, saved across reboots, and recalibrates the
-radio noise floor. This is separate from the SX126x <code>radio.rxgain</code> setting.
-Boards whose FEM receive path cannot be controlled report the setting as
-unsupported.</p>
+<p>Shows or changes the external FEM receive-path LNA or transmit-path gain on
+supported boards. Changes are applied immediately and saved across reboots;
+changing RX gain also recalibrates the radio noise floor. These settings are
+separate from the SX126x <code>radio.rxgain</code> setting. Boards without the respective
+control report it as unsupported.</p>
 <pre><code>time {epoch-secs}
 </code></pre>
 <p>Set the device clock using UNIX epoch seconds. Example:  time 1738242833</p>
