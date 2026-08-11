@@ -77,7 +77,9 @@ this combined profile because of internal DRAM limits.
 The nRF52 target inherits the board's ordinary USB Companion installation
 format and adds BLE plus the serial mOTA source. It does not enable an SD cache
 or any other board-specific storage behavior; host files are streamed as they
-are requested.
+are requested. Its image is bounded by the board's normal application region,
+not the smaller OTAFIX in-place workspace reserved for firmware that can update
+itself.
 
 ## Interfaces
 

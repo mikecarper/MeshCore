@@ -56,6 +56,16 @@ def _cppdef(name):                                # value of a -D<name>=<value> 
     return None
 
 
+def _board_maximum_size(build_env):
+    """Return PlatformIO's resolved application-size limit, including per-env overrides."""
+    try:
+        value = build_env.BoardConfig().get("upload.maximum_size")
+        size = int(str(value), 0)
+        return size if size > 0 else None
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def _version_from_headers():
     """FIRMWARE_VERSION is a header ``#define`` in the example (upstream MeshCore convention), not a -D, so
     _cppdef() can't see it and the EndF version would otherwise default to 0. Read it from the source WITHOUT
@@ -149,9 +159,19 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
     sd_backed = _cppdef("OTA_SD_STORE") is not None
-    image_limit = ml.NRF52_SD_APP_MEMORY if sd_backed else ml.NRF52_INPLACE_MEMORY
-    limit_name = "SD application" if sd_backed else "in-place"
-    if len(out) > image_limit:
+    seeder_only = _cppdef("OTA_SEEDER_ONLY") is not None
+    if seeder_only:
+        # A source-only full Companion never stages or applies an update to
+        # itself, so it does not need to fit in OTAFIX's in-place workspace.
+        # It must still fit the board/env's resolved flash application region.
+        image_limit = _board_maximum_size(env)
+        if image_limit is None:
+            raise RuntimeError("nRF52 seeder-only application limit is unavailable")
+        limit_name = "application"
+    else:
+        image_limit = ml.NRF52_SD_APP_MEMORY if sd_backed else ml.NRF52_INPLACE_MEMORY
+        limit_name = "SD application" if sd_backed else "in-place"
+    if image_limit is not None and len(out) > image_limit:
         raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; {limit_name} limit is "
                            f"{image_limit} bytes")
     if len(out) == len(body):

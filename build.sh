@@ -2265,15 +2265,19 @@ apply_nrf52_lora_ota_build_recipe() {
   local env_name=$1
   local pio_env_name=$2
 
-  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ] \
-      || ! is_lora_ota_build "$env_name"; then
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ]; then
+    return 0
+  fi
+  if ! is_lora_ota_build "$env_name" \
+      && ! is_nrf52_companion_radio_full_target "$env_name"; then
     return 0
   fi
 
-  # Synthetic OTA aliases build an ordinary repeater PlatformIO environment
-  # with OTA flags. Most nRF52 repeaters already include this recipe, but a new
-  # board may not. Add only the missing pieces so ENABLE_OTA never reaches the
-  # linker without its implementation or the EndF trailer/zip post-build step.
+  # Synthetic OTA aliases and full Companions build an ordinary PlatformIO
+  # environment with an OTA overlay. Most nRF52 bases already include this
+  # recipe, but a new board may not. Add only the missing pieces so ENABLE_OTA
+  # never reaches the linker without its implementation or the EndF
+  # trailer/zip post-build step.
   if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
     append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
   fi
