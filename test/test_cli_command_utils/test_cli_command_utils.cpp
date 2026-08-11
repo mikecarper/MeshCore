@@ -1,7 +1,105 @@
 #include <gtest/gtest.h>
 
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ContactListOrder.h>
+#include <helpers/TerminalCommandTracker.h>
+#include <helpers/TerminalDisplayFilter.h>
 #include <helpers/WiFiPowerSave.h>
+
+TEST(ContactListOrder, SortsFavoritesBeforeNewerNonFavorites) {
+  EXPECT_LT(mesh::compareContactListOrder(0x01, 100, 0x00, 200), 0);
+  EXPECT_GT(mesh::compareContactListOrder(0x00, 200, 0x01, 100), 0);
+}
+
+TEST(ContactListOrder, SortsEachGroupByNewestAdvertisement) {
+  EXPECT_LT(mesh::compareContactListOrder(0x01, 200, 0x01, 100), 0);
+  EXPECT_GT(mesh::compareContactListOrder(0x00, 100, 0x00, 200), 0);
+  EXPECT_EQ(0, mesh::compareContactListOrder(0x01, 100, 0x01, 100));
+}
+
+TEST(CLICommandUtils, LabelsInboundDirectRouteAsRouted) {
+  EXPECT_STREQ("ROUTED", mesh::cli::terminalInboundRouteLabel(true));
+  EXPECT_STREQ("FLOOD", mesh::cli::terminalInboundRouteLabel(false));
+}
+
+TEST(TerminalDisplayFilter, UsesQuietDefaultsWithEmergencyVisible) {
+  mesh::TerminalDisplayFilter filter;
+
+  EXPECT_FALSE(filter.shouldShowAdvert());
+  EXPECT_FALSE(filter.shouldShowChannel(false));
+  EXPECT_TRUE(filter.shouldShowChannel(true));
+}
+
+TEST(TerminalDisplayFilter, KeepsChannelAndEmergencyControlsIndependent) {
+  mesh::TerminalDisplayFilter filter;
+
+  filter.setEnabled(mesh::TerminalDisplayCategory::Channels, true);
+  filter.setEnabled(mesh::TerminalDisplayCategory::Emergency, false);
+  filter.setEnabled(mesh::TerminalDisplayCategory::Adverts, true);
+
+  EXPECT_TRUE(filter.shouldShowAdvert());
+  EXPECT_TRUE(filter.shouldShowChannel(false));
+  EXPECT_FALSE(filter.shouldShowChannel(true));
+}
+
+TEST(TerminalDisplayFilter, ParsesStatusAndUpdatesCaseInsensitively) {
+  using mesh::TerminalDisplayCategory;
+  using mesh::TerminalDisplayParseResult;
+  mesh::TerminalDisplayCommand command;
+
+  EXPECT_EQ(TerminalDisplayParseResult::StatusAll,
+            mesh::parseTerminalDisplayCommand(NULL, command));
+  EXPECT_EQ(TerminalDisplayParseResult::StatusOne,
+            mesh::parseTerminalDisplayCommand(" channels ", command));
+  EXPECT_EQ(TerminalDisplayCategory::Channels, command.category);
+  EXPECT_EQ(TerminalDisplayParseResult::Updated,
+            mesh::parseTerminalDisplayCommand(" Emergency OFF ", command));
+  EXPECT_EQ(TerminalDisplayCategory::Emergency, command.category);
+  EXPECT_FALSE(command.enabled);
+  EXPECT_EQ(TerminalDisplayParseResult::Updated,
+            mesh::parseTerminalDisplayCommand("advertisements on", command));
+  EXPECT_EQ(TerminalDisplayCategory::Adverts, command.category);
+  EXPECT_TRUE(command.enabled);
+}
+
+TEST(TerminalDisplayFilter, RejectsUnknownCategoriesAndValues) {
+  mesh::TerminalDisplayCommand command;
+
+  EXPECT_EQ(mesh::TerminalDisplayParseResult::InvalidCategory,
+            mesh::parseTerminalDisplayCommand("messages on", command));
+  EXPECT_EQ(mesh::TerminalDisplayParseResult::InvalidValue,
+            mesh::parseTerminalDisplayCommand("channels maybe", command));
+  EXPECT_EQ(mesh::TerminalDisplayParseResult::InvalidValue,
+            mesh::parseTerminalDisplayCommand("emergency off extra", command));
+}
+
+TEST(TerminalCommandTracker, MatchesReplyAndReportsRoundTrip) {
+  mesh::TerminalCommandTracker<4> tracker;
+  const uint8_t target[] = {0x11, 0x22, 0x33, 0x44};
+  const uint8_t other[] = {0x11, 0x22, 0x33, 0x45};
+  uint32_t elapsed = 99;
+
+  ASSERT_TRUE(tracker.begin(target, 1000, 3000));
+  EXPECT_FALSE(tracker.begin(target, 1100, 3000));
+  EXPECT_FALSE(tracker.takeReply(other, 1500, elapsed));
+  EXPECT_EQ(0UL, elapsed);
+  EXPECT_TRUE(tracker.isPending());
+  EXPECT_TRUE(tracker.takeReply(target, 1750, elapsed));
+  EXPECT_EQ(750UL, elapsed);
+  EXPECT_FALSE(tracker.isPending());
+}
+
+TEST(TerminalCommandTracker, ExpiresSafelyAcrossMillisRollover) {
+  mesh::TerminalCommandTracker<4> tracker;
+  const uint8_t target[] = {0xAA, 0xBB, 0xCC, 0xDD};
+  uint32_t elapsed = 0;
+
+  ASSERT_TRUE(tracker.begin(target, 0xFFFFFFF0UL, 32));
+  EXPECT_FALSE(tracker.expire(0x0000000FUL, elapsed));
+  EXPECT_TRUE(tracker.expire(0x00000010UL, elapsed));
+  EXPECT_EQ(32UL, elapsed);
+  EXPECT_FALSE(tracker.isPending());
+}
 
 TEST(CLICommandUtils, NormalizesCapitalizedSetVerb) {
   char command[] = "Set altpath 600000,0d2784,F8DADA";
@@ -123,6 +221,20 @@ TEST(CLICommandUtils, ParsesTerminalLoginAndRemoteCommandArguments) {
                 "logins password", "login", argument));
 }
 
+TEST(CLICommandUtils, ParsesCapitalizedRecipientWithRepeatedWhitespace) {
+  using mesh::cli::TerminalArgumentCommandMatch;
+  char command[] = "To  SEA Mercerwood";
+  const char* recipient = nullptr;
+
+  mesh::cli::normalizeCommandVerb(command);
+
+  EXPECT_STREQ("to  SEA Mercerwood", command);
+  EXPECT_EQ(TerminalArgumentCommandMatch::Valid,
+            mesh::cli::parseTerminalArgumentCommand(
+                command, "to", recipient));
+  EXPECT_STREQ("SEA Mercerwood", recipient);
+}
+
 TEST(CLICommandUtils, ParsesTerminalDirectAndExplicitPaths) {
   using mesh::cli::TerminalPathMode;
   using mesh::cli::TerminalPathParseResult;
@@ -157,6 +269,25 @@ TEST(CLICommandUtils, ParsesTerminalDirectAndExplicitPaths) {
   EXPECT_EQ(0, memcmp(expected, route, sizeof(expected)));
 }
 
+TEST(CLICommandUtils, ParsesSpaceSeparatedTerminalPath) {
+  using mesh::cli::TerminalPathMode;
+  using mesh::cli::TerminalPathParseResult;
+  uint8_t route[6] = {};
+  mesh::cli::TerminalPath path;
+
+  ASSERT_EQ(TerminalPathParseResult::Valid,
+            mesh::cli::parseTerminalPath(
+                "7773D0 7E7662", route, sizeof(route), 63, path));
+
+  const uint8_t expected[] = {0x77, 0x73, 0xD0, 0x7E, 0x76, 0x62};
+  EXPECT_EQ(TerminalPathMode::Explicit, path.mode);
+  EXPECT_EQ(3, path.hash_size);
+  EXPECT_EQ(2, path.hop_count);
+  EXPECT_EQ(0x82, path.encoded_len);
+  EXPECT_EQ(sizeof(expected), path.byte_len);
+  EXPECT_EQ(0, memcmp(expected, route, sizeof(expected)));
+}
+
 TEST(CLICommandUtils, RejectsMalformedTerminalPaths) {
   using mesh::cli::TerminalPathParseResult;
   uint8_t route[4] = {};
@@ -177,9 +308,9 @@ TEST(CLICommandUtils, RejectsMalformedTerminalPaths) {
   EXPECT_EQ(TerminalPathParseResult::MixedPrefixSize,
             mesh::cli::parseTerminalPath(
                 "AA,BBBB", route, sizeof(route), 63, path));
-  EXPECT_EQ(TerminalPathParseResult::InvalidSeparator,
+  EXPECT_EQ(TerminalPathParseResult::InvalidPrefix,
             mesh::cli::parseTerminalPath(
-                "AA BB", route, sizeof(route), 63, path));
+                "AA,,BB", route, sizeof(route), 63, path));
   EXPECT_EQ(TerminalPathParseResult::TooManyHops,
             mesh::cli::parseTerminalPath(
                 "AA,BB", route, sizeof(route), 1, path));

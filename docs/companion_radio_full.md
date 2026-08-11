@@ -134,21 +134,43 @@ The terminal supports Companion chat commands, including `channels`,
 ```text
 channels
 channel #rgdata Hello from Eugene 👋
+show
+show channels on
 to Hilltop Repeater
 path A1B2C3,D4E5F6
+path 7773D0 7E7662
 login my-admin-password
 cmd ver
 trace
 ```
 
+The terminal `list [n]` command displays favorite contacts first and orders
+each favorite/non-favorite group by its most recent advertisement. This does
+not alter the binary Companion contact-list protocol.
+
+Unsolicited terminal output starts in a quiet mode: advertisements and
+ordinary channel messages are hidden, while `#emergency` messages remain
+visible. Use `show adverts on|off`, `show channels on|off`, and
+`show emergency on|off` to control each category independently; plain `show`
+reports their state. These runtime filters affect terminal printing only and
+reset to their defaults after reboot.
+
 The `to` command selects the remote-administration target. `path` shows its
-saved outgoing route; `path direct`, `path clear`, or a comma-separated list
-such as `path A1B2C3,D4E5F6` changes the route used by subsequent `login`,
-`send`, and `cmd` commands. Every hop must use the same 2-, 4-, or 6-digit
-hexadecimal width. Login passwords are masked during entry and limited by the
-radio protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before
-using `cmd`; command replies appear as `CLI -> from <name>`. Remote ACL
-permissions determine which commands the target accepts.
+saved outgoing route; `path direct`, `path clear`, or a list separated by
+spaces, commas, or both changes the route used by subsequent `login`, `send`,
+and `cmd` commands. Every hop must use the same 2-, 4-, or 6-digit hexadecimal
+width. Login passwords are masked during entry and limited by the radio
+protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before using
+`cmd`; command replies appear as `CLI -> from <name>` and use a response window
+of 300% of the route estimate. `DIRECT via path <hop,...>` displays the exact
+saved prefixes copied into the packet. Remote ACL permissions determine which
+commands the target accepts. The matching reply reports its round-trip time
+from local queueing through result reception, including radio transit and
+remote execution. Only one terminal `cmd` can be pending at a time.
+
+Incoming unicast replies are labeled `ROUTED`. Their exact return prefixes are
+not available at the destination because each forwarder consumes its prefix;
+use `trace` to verify the return route.
 
 With no argument, `trace` uses the current `to` recipient. A name-prefix
 argument traces that contact directly without changing the current recipient.

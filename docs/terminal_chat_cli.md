@@ -130,7 +130,26 @@ Imports the given card to your contacts.
 ```
 list {n}
 ```
-List all contacts by most recent. (optional {n}, is the last n by advertisement date)
+Lists favorite contacts first, then all remaining contacts. Each group is
+ordered by the most recent advertisement. Optional `{n}` limits the displayed
+contacts after applying that order.
+
+```
+show
+show adverts {on|off}
+show channels {on|off}
+show emergency {on|off}
+```
+Controls unsolicited receive output in the USB terminal. Plain `show` reports
+the current settings, and `show {category}` reports one category. At boot,
+advertisements and ordinary channel messages are hidden while `#emergency`
+messages are shown. The three controls are independent, so `show channels on`
+does not override `show emergency off`.
+
+These filters affect terminal printing only. Messages still enter the offline
+queue and are delivered through the binary Companion protocol. Changes remain
+active when switching between terminal and binary mode and reset to their
+defaults after reboot.
 
 ```
 to
@@ -151,23 +170,24 @@ all path changes require a recipient to be selected first.
 ```
 path direct
 path clear
-path {hop-hash[,hop-hash...]}
+path {hop-hash...}
 ```
 Sets the outgoing path used by subsequent `login`, `send`, and `cmd` commands.
 `direct` selects a zero-hop route. `clear` forgets the saved route, causing the
 next operation to use flood routing and allowing normal path discovery to
 learn a replacement.
 
-Explicit paths use comma-separated hop hashes. Each hop must contain exactly
-2, 4, or 6 hexadecimal digits, and every hop in one path must use the same
-width. Spaces around commas and hexadecimal letter case do not matter. The
-setting is saved with the selected contact.
+Explicit paths use spaces, commas, or a mixture of both between hop hashes.
+Each hop must contain exactly 2, 4, or 6 hexadecimal digits, and every hop in
+one path must use the same width. Whitespace and hexadecimal letter case do
+not matter. The setting is saved with the selected contact.
 
 For example:
 
 ```text
 to Hilltop Repeater
 path A1B2C3,D4E5F6
+path 7773D0 7E7662
 path
 login my-admin-password
 ```
@@ -192,7 +212,14 @@ cmd {remote-command}
 ```
 Sends CLI data to the current recipient. Wait for the login result before
 sending the first command. The remote node applies its own ACL permissions,
-and any reply appears asynchronously as `CLI -> from {name}`.
+and any reply appears asynchronously as `CLI -> from {name}`. The response
+window is 300% of the route estimate. A routed send is displayed as
+`DIRECT via path {hop,...}` with the exact prefixes copied into the packet; in
+MeshCore, `DIRECT` is the route class for an explicit path, not a synonym for
+zero hops. A matched reply also shows its local round-trip time, measured from
+queueing the command through receiving the result. This includes both radio
+directions and remote execution; it is not execution-only CPU time. Only one
+terminal `cmd` can be pending at a time.
 
 For example:
 
@@ -207,6 +234,11 @@ cmd get radio
 The exact commands and permissions depend on the target firmware. `cmd` does
 not run a command on the local Companion; it sends the text over LoRa to the
 selected node.
+
+Incoming direct-route messages are labeled `ROUTED`, not `DIRECT`. Forwarders
+consume direct-route prefixes as the packet travels, so the destination cannot
+recover the reply's actual hop history from the received packet. Use `trace`
+when the return route itself must be verified.
 
 ```
 send {text}
@@ -286,6 +318,7 @@ For example:
 channels
 channel #rgdata Hello from Eugene 👋
 channel 2 Another message
+show channels on
 ```
 
 Messages are UTF-8. Emoji use multiple bytes toward the available message

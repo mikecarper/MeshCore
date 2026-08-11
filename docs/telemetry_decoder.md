@@ -32,6 +32,13 @@ reply that its history is empty.
 ## Decode a reply
 
 <div class="telemetry-tool" data-telemetry-decoder>
+  <div class="telemetry-examples" aria-label="Load an example reply">
+    <strong>Try an example:</strong>
+    <button type="button" data-telemetry-example="temperature">Temperature</button>
+    <button type="button" data-telemetry-example="voltage">Voltage</button>
+    <button type="button" data-telemetry-example="gps">GPS</button>
+  </div>
+
   <label for="telemetry-reply-input">CLI reply or Base64 payload</label>
   <textarea
     id="telemetry-reply-input"
@@ -53,13 +60,6 @@ reply that its history is empty.
       <input type="checkbox" data-role="local-time">
       Show browser-local time
     </label>
-  </div>
-
-  <div class="telemetry-examples" aria-label="Load an example reply">
-    <strong>Try an example:</strong>
-    <button type="button" data-telemetry-example="temperature">Temperature</button>
-    <button type="button" data-telemetry-example="voltage">Voltage</button>
-    <button type="button" data-telemetry-example="gps">GPS</button>
   </div>
 
   <div class="telemetry-error" data-role="error" role="alert" aria-live="polite" hidden></div>

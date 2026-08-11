@@ -2,6 +2,23 @@
 
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
+#include <helpers/RemoteCliTimeout.h>
+
+TEST(RemoteCliTimeout, UsesThreeHundredPercentOfRouteEstimate) {
+  uint32_t timeout = 0;
+
+  ASSERT_TRUE(mesh::calculateRemoteCliTimeoutMillis(6218, timeout));
+  EXPECT_EQ(18654UL, timeout);
+}
+
+TEST(RemoteCliTimeout, RejectsInvalidOrOverflowingEstimate) {
+  uint32_t timeout = 123;
+
+  EXPECT_FALSE(mesh::calculateRemoteCliTimeoutMillis(0, timeout));
+  EXPECT_EQ(0UL, timeout);
+  EXPECT_FALSE(mesh::calculateRemoteCliTimeoutMillis(0x7FFFFFFFUL, timeout));
+  EXPECT_EQ(0UL, timeout);
+}
 
 TEST(RemoteCliReplyCache, ReplaysOnlyTheSameAuthenticatedRequest) {
   mesh::RemoteCliReplyCache cache;

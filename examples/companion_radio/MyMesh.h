@@ -43,6 +43,8 @@
 #include <helpers/LogicalMessageCache.h>
 #include <helpers/SimpleMeshTables.h>
 #include <helpers/StaticPoolPacketManager.h>
+#include <helpers/TerminalCommandTracker.h>
+#include <helpers/TerminalDisplayFilter.h>
 #include <target.h>
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
@@ -202,7 +204,9 @@ protected:
 #endif
   ContactInfo* processAck(const uint8_t *data) override;
   void queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
-                    const uint8_t *extra, int extra_len, const char *text);
+                    const uint8_t *extra, int extra_len, const char *text,
+                    bool terminal_command_reply=false,
+                    uint32_t terminal_command_elapsed_millis=0);
 
   void onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                      const char *text) override;
@@ -280,9 +284,15 @@ private:
   void importTerminalCard(char* command);
   void listTerminalChannels();
   void sendTerminalChannelMessage(ChannelDetails& channel, const char* text);
+  void handleTerminalDisplayCommand(const char* arguments);
+  void printTerminalSendStatus(const char* operation,
+                               const ContactInfo& recipient, int result,
+                               uint32_t timeout_millis);
   void clearTerminalLogin();
   void serviceTerminalLogin();
   void sendTerminalLogin(ContactInfo& recipient, const char* password);
+  void clearTerminalCommand();
+  void serviceTerminalCommand();
   void sendTerminalCommand(ContactInfo& recipient, const char* command);
   void clearTerminalTrace();
   void serviceTerminalTrace();
@@ -339,6 +349,7 @@ private:
   bool _cli_rescue;
 #ifdef ENABLE_USB_INTERFACE
   bool _terminal_mode;
+  mesh::TerminalDisplayFilter _terminal_display;
   bool _terminal_recipient_set;
   uint8_t _terminal_recipient_key[PUB_KEY_SIZE];
   uint8_t _terminal_tmp_buf[MAX_TRANS_UNIT];
@@ -346,6 +357,8 @@ private:
   uint8_t _terminal_login_key[4];
   unsigned long _terminal_login_expires_at;
   char _terminal_login_target[32];
+  mesh::TerminalCommandTracker<PUB_KEY_SIZE> _terminal_command;
+  char _terminal_command_target[32];
   bool _terminal_trace_pending;
   uint8_t _terminal_trace_hash_size;
   uint32_t _terminal_trace_tag;

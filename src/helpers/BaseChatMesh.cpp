@@ -1,5 +1,7 @@
 #include <helpers/BaseChatMesh.h>
+#include <helpers/ContactListOrder.h>
 #include <helpers/RemoteCliRequest.h>
+#include <helpers/RemoteCliTimeout.h>
 #include <Utils.h>
 
 #ifndef SERVER_RESPONSE_DELAY
@@ -89,7 +91,7 @@ ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
     } else if (shouldOverwriteWhenFull()) {
       // Find oldest non-favourite contact by oldest lastmod timestamp
       for (int i = MAX_ANON_CONTACTS; i < num_contacts; i++) {
-        bool is_favourite = (contacts[i].flags & 0x01) != 0;
+        bool is_favourite = mesh::isFavoriteContact(contacts[i].flags);
         if (!is_favourite && contacts[i].lastmod < oldest_lastmod) {
           oldest_lastmod = contacts[i].lastmod;
           oldest_idx = i;
@@ -495,6 +497,7 @@ int BaseChatMesh::sendCommandData(const ContactInfo& recipient,
                                   uint32_t timestamp, uint8_t attempt,
                                   const char* text, uint32_t& est_timeout,
                                   uint32_t logical_request_id) {
+  est_timeout = 0;
   int text_len = strlen(text);
   if (text_len > MAX_TEXT_LEN) return MSG_SEND_FAILED;
 
@@ -514,18 +517,35 @@ int BaseChatMesh::sendCommandData(const ContactInfo& recipient,
                             recipient.getSharedSecret(self_id), temp,
                             payload_len);
   if (pkt == NULL) return MSG_SEND_FAILED;
+  if (recipient.out_path_len != OUT_PATH_UNKNOWN
+      && !mesh::Packet::isValidPathLen(recipient.out_path_len)) {
+    releasePacket(pkt);
+    return MSG_SEND_FAILED;
+  }
 
   uint32_t t = _radio->getEstAirtimeFor(pkt->getRawLength());
+  const uint32_t base_timeout = recipient.out_path_len == OUT_PATH_UNKNOWN
+      ? calcFloodTimeoutMillisFor(t)
+      : calcDirectTimeoutMillisFor(t, recipient.out_path_len);
+  if (!mesh::calculateRemoteCliTimeoutMillis(base_timeout, est_timeout)) {
+    releasePacket(pkt);
+    return MSG_SEND_FAILED;
+  }
+
   int rc;
+  bool sent;
   if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-    sendFloodScoped(recipient, pkt);
-    txt_send_timeout = futureMillis(est_timeout = calcFloodTimeoutMillisFor(t));
+    sent = sendFloodScoped(recipient, pkt);
     rc = MSG_SEND_SENT_FLOOD;
   } else {
-    sendDirect(pkt, recipient.out_path, recipient.out_path_len);
-    txt_send_timeout = futureMillis(est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len));
+    sent = sendDirect(pkt, recipient.out_path, recipient.out_path_len);
     rc = MSG_SEND_SENT_DIRECT;
   }
+  if (!sent) {
+    est_timeout = 0;
+    return MSG_SEND_FAILED;
+  }
+  txt_send_timeout = futureMillis(est_timeout);
   return rc;
 }
 
@@ -851,12 +871,12 @@ void BaseChatMesh::resetPathTo(ContactInfo& recipient) {
 
 static ContactInfo* table;  // pass via global :-(
 
-static int cmp_adv_timestamp(const void *a, const void *b) {
+static int cmp_contact_list_order(const void *a, const void *b) {
   int a_idx = *((int *)a);
   int b_idx = *((int *)b);
-  if (table[b_idx].last_advert_timestamp > table[a_idx].last_advert_timestamp) return 1;
-  if (table[b_idx].last_advert_timestamp < table[a_idx].last_advert_timestamp) return -1;
-  return 0;
+  return mesh::compareContactListOrder(
+      table[a_idx].flags, table[a_idx].last_advert_timestamp,
+      table[b_idx].flags, table[b_idx].last_advert_timestamp);
 }
 
 void BaseChatMesh::scanRecentContacts(int last_n, ContactVisitor* visitor) {
@@ -864,7 +884,8 @@ void BaseChatMesh::scanRecentContacts(int last_n, ContactVisitor* visitor) {
     sort_array[i] = i;
   }
   table = contacts; // pass via global *sigh* :-(
-  qsort(sort_array, num_contacts, sizeof(sort_array[0]), cmp_adv_timestamp);
+  qsort(sort_array, num_contacts, sizeof(sort_array[0]),
+        cmp_contact_list_order);
 
   if (last_n == 0) {
     last_n = num_contacts;   // scan ALL

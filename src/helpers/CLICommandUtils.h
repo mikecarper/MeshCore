@@ -58,6 +58,13 @@ enum class TerminalPathParseResult : uint8_t {
   RouteTooLong,
 };
 
+// Direct-route prefixes are consumed hop by hop, so a destination cannot
+// distinguish a zero-hop packet from one that arrived through repeaters.
+// "ROUTED" describes the received unicast class without claiming zero hops.
+inline const char* terminalInboundRouteLabel(bool is_direct_route) {
+  return is_direct_route ? "ROUTED" : "FLOOD";
+}
+
 struct RecentRepeaterGetQuery {
   int page;
   uint8_t search_prefix[3];
@@ -204,10 +211,11 @@ inline bool terminalPathKeywordMatches(const char* text,
   return *text == 0;
 }
 
-// Parse: direct | clear | <hop>[,<hop> ...]
+// Parse: direct | clear | <hop>[<separator><hop> ...]
 // Each explicit hop is a one-, two-, or three-byte hexadecimal prefix. All
 // hops must use the same width because that width is encoded once for the
-// complete MeshCore direct path.
+// complete MeshCore direct path. Separators may be commas, spaces, tabs, or
+// mixtures of a comma and surrounding whitespace.
 inline TerminalPathParseResult parseTerminalPath(
     const char* input, uint8_t* output, size_t output_capacity,
     uint8_t max_hops, TerminalPath& result) {
@@ -269,14 +277,16 @@ inline TerminalPathParseResult parseTerminalPath(
     }
     hop_count++;
     input += token_len;
+
+    bool consumed_comma = false;
     input = skipRecentRepeaterSpaces(input);
-    if (*input == 0) break;
-    if (*input != ',') {
-      return TerminalPathParseResult::InvalidSeparator;
+    if (*input == ',') {
+      consumed_comma = true;
+      input = skipRecentRepeaterSpaces(input + 1);
     }
-    input = skipRecentRepeaterSpaces(input + 1);
     if (*input == 0) {
-      return TerminalPathParseResult::InvalidPrefix;
+      if (consumed_comma) return TerminalPathParseResult::InvalidPrefix;
+      break;
     }
   }
 
