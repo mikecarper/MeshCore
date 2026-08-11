@@ -2898,7 +2898,7 @@ Bytes 2+: Variable length based on firmware version
 For firmware version &gt;= 3:
 Byte 2: Max Contacts Raw (uint8, actual = value * 2)
 Byte 3: Max Channels (uint8)
-Bytes 4-7: BLE PIN (32-bit little-endian)
+Bytes 4-7: Active BLE PIN (32-bit little-endian; includes a generated session PIN)
 Bytes 8-19: Firmware Build (12 bytes, UTF-8, null-padded)
 Bytes 20-59: Model (40 bytes, UTF-8, null-padded)
 Bytes 60-79: Version (20 bytes, UTF-8, null-padded)

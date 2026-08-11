@@ -1346,7 +1346,7 @@ are requested.</p>
 <tr>
 <td>Both</td>
 <td>BLE</td>
-<td>Binary Companion; default pairing PIN <code>123456</code></td>
+<td>Binary Companion; display builds show a random session PIN, while headless builds default to <code>123456</code></td>
 </tr>
 <tr>
 <td>ESP32</td>
@@ -1378,6 +1378,13 @@ are requested.</p>
 <p>Binary Companion replies are broadcast through the multi-interface manager,
 so use one active Companion application at a time. On nRF52, BLE remains
 available while USB is in terminal or mOTA mode.</p>
+<p>When a BLE client requests pairing, a display-equipped build wakes the screen,
+switches to the first home page, and keeps the active six-digit PIN visible
+until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,
+Ethernet, and hardware-serial connections do not suppress this screen. With no
+saved BLE PIN, display builds generate a new PIN at boot; builds without a
+physical display use <code>123456</code>. A PIN saved through the Companion protocol takes
+effect after reboot.</p>
 <p>ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
 Expose them only on a trusted LAN or temporary setup network. See
 <a href="../WiFi/">WiFi setup</a> for credential setup and reconnect behavior.</p>

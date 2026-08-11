@@ -3499,7 +3499,10 @@ Below are the instructions to flash firmware onto a supported LoRa device using 
 <h3 id="64-q-my-companion-isnt-showing-up-over-bluetooth">6.4. Q: My companion isn't showing up over Bluetooth?</h3>
 <p><strong>A:</strong> Make sure that you flashed the Bluetooth companion firmware and not the USB-only companion firmware.</p>
 <h3 id="65-q-i-cant-connect-via-bluetooth-what-is-the-bluetooth-pairing-code">6.5. Q: I can't connect via Bluetooth, what is the Bluetooth pairing code?</h3>
-<p><strong>A:</strong> The default Bluetooth pairing code is <code>123456</code></p>
+<p><strong>A:</strong> The default Bluetooth pairing code is <code>123456</code> on builds without a
+physical display. Display-equipped Companion builds generate a six-digit PIN
+at boot and show it when a client requests pairing. The display stays awake on
+the PIN page until Bluetooth connects or the two-minute pairing window expires.</p>
 <h3 id="66-q-my-heltec-v3-keeps-disconnecting-from-my-smartphone-it-cant-hold-a-solid-bluetooth-connection">6.6. Q: My Heltec V3 keeps disconnecting from my smartphone. It can't hold a solid Bluetooth connection.</h3>
 <p><strong>A:</strong> Heltec V3 has a very small coil antenna on its PCB for Wi-Fi and Bluetooth connectivity. It has a very short range, only a few feet. It is possible to remove the coil antenna and replace it with a 31mm wire. The BT range is much improved with the modification.</p>
 <h3 id="67-q-my-rakt1000-exiao_nrf52-device-seems-to-be-corrupted-how-do-i-wipe-it-clean-to-start-fresh">6.7. Q: My RAK/T1000-E/xiao_nRF52 device seems to be corrupted, how do I wipe it clean to start fresh?</h3>

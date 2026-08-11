@@ -5167,8 +5167,13 @@ disabled.</p>
 - <code>set radio.rxgain &lt;state&gt;</code></p>
 <p><strong>Parameters:</strong>
   - <code>state</code>: <code>on</code>|<code>off</code></p>
-<p><strong>Default:</strong> <code>on</code></p>
-<p><strong>Temporary Note:</strong> If you upgraded from an older version to 1.14.1 without erasing flash, this setting is <code>off</code> because of <a href="https://github.com/meshcore-dev/MeshCore/issues/2118">#2118</a></p>
+<p><strong>Default:</strong> Target-specific. Most SX1262 and LR1110 targets default to <code>on</code>;
+Station G2/G3 targets default to <code>off</code>.</p>
+<p><strong>Notes:</strong>
+- The saved setting is applied immediately and persists across reboots.
+- Periodic AGC resets restore the saved runtime setting; they do not replace it
+  with the target's compile-time default.
+- Existing installations retain their previously saved value after an upgrade.</p>
 <hr />
 <h4 id="view-or-change-rx-duty-cycle-power-saving">View or change RX duty-cycle power saving</h4>
 <p><strong>Usage:</strong>
