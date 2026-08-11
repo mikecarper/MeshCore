@@ -145,7 +145,9 @@ $ bash build.sh build-kiss-radio-firmwares
 
 Environment Variables:
   FIRMWARE_VERSION=vX.Y.Z: Firmware version to embed in the build output.
-                           If not set, build.sh derives a default from the latest matching git tag and appends "-dev".
+                           If not set, build.sh first refreshes tags from upstream
+                           when configured (otherwise origin), then derives a
+                           default from the latest matching tag and appends "-dev".
                            In interactive builds, this value is offered as the editable default.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
                    If not set, debug flags from variant platformio.ini files are used.
@@ -1214,6 +1216,33 @@ get_latest_version_from_tags() {
   fi
 
   echo "${latest_tag#"${tag_prefix}"-}"
+}
+
+refresh_firmware_version_tags() {
+  local tag_remote
+
+  if [ "$FIRMWARE_VERSION_EXPLICIT" -eq 1 ] \
+      || [ -n "${FIRMWARE_VERSION:-}" ]; then
+    return 0
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "WARNING: not in a git worktree; using existing local version tags." >&2
+    return 0
+  fi
+  if git remote get-url upstream >/dev/null 2>&1; then
+    tag_remote="upstream"
+  elif git remote get-url origin >/dev/null 2>&1; then
+    tag_remote="origin"
+  else
+    echo "WARNING: no upstream or origin git remote is available; using existing local version tags." >&2
+    return 0
+  fi
+
+  echo "Refreshing firmware version tags from ${tag_remote}..."
+  if ! GIT_TERMINAL_PROMPT=0 git fetch --quiet --tags "$tag_remote"; then
+    echo "WARNING: unable to refresh tags from ${tag_remote}; using existing local version tags." >&2
+  fi
 }
 
 derive_default_firmware_version() {
@@ -3559,6 +3588,7 @@ main() {
     fi
   fi
 
+  refresh_firmware_version_tags
   prompt_for_resolved_firmware_version
   if is_automatic_profile_command "$1" \
       || [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
