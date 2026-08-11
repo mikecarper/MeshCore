@@ -1302,11 +1302,21 @@ exist for the exact board variant:</p>
 bash build.sh build-firmware RAK_4631_companion_radio_full \
   --firmware-version v1.17.0
 </code></pre>
-<p>To build every available full Companion target, select the corresponding
+<p>To build every canonical full Companion target, select the corresponding
 interactive menu item or run:</p>
 <pre><code class="language-bash">bash build.sh build-full-companion-firmwares \
   --firmware-version v1.17.0
 </code></pre>
+<p>Heltec <code>_femon</code> Companion firmware can switch the external FEM receive gain at
+runtime, so the Companion bulk-build commands omit the redundant legacy
+<code>_femoff</code> targets. Those targets remain available through an explicit
+<code>build-firmware</code> command for compatibility. In WebConfig, use the <strong>FEM RX
+boost</strong> switch. From the USB terminal, use:</p>
+<pre><code class="language-text">get radio.fem.rxgain
+set radio.fem.rxgain off
+set radio.fem.rxgain on
+</code></pre>
+<p>The selected state is applied immediately and retained after reboot.</p>
 <p>Artifacts are written to <code>out/</code> by default.</p>
 <p>On 4 MB ESP32 boards, the full target uses a single 3 MB application
 partition so WiFi, BLE, WebConfig, and source-only mOTA fit together. Flash
