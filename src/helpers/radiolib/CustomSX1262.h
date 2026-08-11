@@ -16,6 +16,36 @@ class CustomSX1262 : public SX1262 {
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
 
+    // MeshCore keeps the SX1262 in LoRa mode. Use RadioLib's cached modem
+    // parameters instead of issuing GetPacketType while RX duty cycling may
+    // have the chip asleep. A failed live query otherwise becomes an encoded
+    // negative error in the unsigned time-on-air result and can stall TX.
+    RadioLibTime_t getTimeOnAir(size_t len) override {
+      uint8_t cr = this->codingRate;
+      // RadioLib stores ordinary CR 4/5 through 4/8 as 0-4. Long-interleaving
+      // CR values 0-4 and 5-7 map to the same time-on-air denominators.
+      if (cr < 5) {
+        cr += 4;
+      } else if (cr == 7) {
+        cr += 1;
+      }
+
+      DataRate_t data_rate = {};
+      data_rate.lora.spreadingFactor = this->spreadingFactor;
+      data_rate.lora.bandwidth = this->bandwidthKhz;
+      data_rate.lora.codingRate = cr;
+
+      PacketConfig_t packet_config = {};
+      packet_config.lora.preambleLength = this->preambleLengthLoRa;
+      packet_config.lora.crcEnabled = (bool)this->crcTypeLoRa;
+      packet_config.lora.implicitHeader =
+          this->headerType == RADIOLIB_SX126X_LORA_HEADER_IMPLICIT;
+      packet_config.lora.ldrOptimize = (bool)this->ldrOptimize;
+
+      return SX126x::calculateTimeOnAir(
+          ModemType_t::RADIOLIB_MODEM_LORA, data_rate, packet_config, len);
+    }
+
   #ifdef RP2040_PLATFORM
     bool std_init(SPIClassRP2040* spi = NULL)
   #else
