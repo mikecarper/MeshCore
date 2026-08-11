@@ -590,10 +590,15 @@ void setup() {
       WIFI_DEBUG_PRINTLN("%s", web_reply);
     }
   #endif
-  // Disable WiFi modem power-save after starting WebConfig: that startup may
-  // restore a saved ESP-IDF WiFi power policy. Companion radios must keep
-  // modem sleep disabled because its pauses can stall SX1262 SPI/DIO service.
+  // ESP-IDF requires WiFi modem sleep when Bluetooth is active. Full ESP32
+  // companions provide both transports, so use the lowest sleep policy there;
+  // WiFi-only companions keep modem sleep disabled to avoid pauses in SX1262
+  // SPI/DIO service.
+#if defined(BLE_PIN_CODE)
+  WiFi.setSleep(true);
+#else
   WiFi.setSleep(false);
+#endif
   wifi_interface.begin(TCP_PORT);
   interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
   #ifdef ENABLE_OTA

@@ -26,6 +26,20 @@
 #include "WebConfigHtml.h"
 #include "helpers/CLICommandUtils.h"
 #include "helpers/WebConfigKeys.h"
+#include "helpers/WiFiPowerSave.h"
+
+static bool bluetoothWiFiCoexistenceRequired() {
+#if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
+  return true;
+#else
+  return false;
+#endif
+}
+
+static uint8_t effectiveWiFiPowerSave(uint8_t configured) {
+  return mesh::wifi::effectivePowerSave(
+      configured, bluetoothWiFiCoexistenceRequired());
+}
 
 // Placeholder sent instead of stored secrets; POSTs carrying it are dropped
 // so an untouched password field never overwrites the stored value.
@@ -106,6 +120,7 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
     loadStandaloneWiFi(_wifi_ssid, sizeof(_wifi_ssid),
                        _wifi_password, sizeof(_wifi_password), &_wifi_power_save);
   }
+  _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
 }
 
 WebConfigServer::~WebConfigServer() {
@@ -165,12 +180,13 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
   ssid[ssid_len - 1] = 0;
   strncpy(password, stored_password.c_str(), password_len - 1);
   password[password_len - 1] = 0;
-  if (power_save) *power_save = stored_ps <= 2 ? stored_ps : 1;
+  if (power_save) *power_save = effectiveWiFiPowerSave(stored_ps);
   return stored_ssid.length() != 0;
 }
 
 bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
                                          uint8_t power_save) {
+  power_save = effectiveWiFiPowerSave(power_save);
   if (!ssid || !ssid[0] || strlen(ssid) >= 32
       || (password && strlen(password) >= 64) || power_save > 2) {
     return false;
@@ -234,6 +250,11 @@ bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
   uint8_t power_save = 1;
   if (!mesh::cli::parseStandaloneWiFiPowerSave(value, power_save)) {
     snprintf(reply, reply_len, "Error: power save must be none, min, or max");
+    return false;
+  }
+  if (effectiveWiFiPowerSave(power_save) != power_save) {
+    snprintf(reply, reply_len,
+             "Error: power save none is unavailable while Bluetooth is active");
     return false;
   }
 
@@ -542,6 +563,7 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   _setup_reconnect_deadline = 0;
   _wifi_reconnect_tracker.noteDisconnected(millis());
   WiFi.begin(_wifi_ssid, _wifi_password);
+  _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
   wifi_ps_type_t ps_mode = _wifi_power_save == 1 ? WIFI_PS_NONE
                             : _wifi_power_save == 2 ? WIFI_PS_MAX_MODEM
                             : WIFI_PS_MIN_MODEM;
@@ -917,7 +939,11 @@ void WebConfigServer::drainBatch(uint32_t now) {
       }
     } else if ((_mqtt_prefs == NULL || !_owns_wifi) && strcmp(e.key, "wifi.powersave") == 0) {
       if (strcmp(value, "min") == 0) _wifi_power_save = 0;
-      else if (strcmp(value, "none") == 0) _wifi_power_save = 1;
+      else if (strcmp(value, "none") == 0
+               && bluetoothWiFiCoexistenceRequired()) {
+        strcpy(e.reply,
+               "Error: power save none is unavailable while Bluetooth is active");
+      } else if (strcmp(value, "none") == 0) _wifi_power_save = 1;
       else if (strcmp(value, "max") == 0) _wifi_power_save = 2;
       else strcpy(e.reply, "Error: must be none, min, or max");
       if (e.reply[0] == 0) {

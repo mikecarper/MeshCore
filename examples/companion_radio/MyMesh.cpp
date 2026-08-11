@@ -2019,17 +2019,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       strcpy(reply, "Error: must be on or off");
     } else if (!board.canControlLoRaFemLna()) {
       strcpy(reply, "Error: unsupported");
+    } else if (!applyAndSaveFemRxGain(enabled)) {
+      strcpy(reply, "Error: failed to apply FEM RX gain");
     } else {
-      bool changed = board.isLoRaFemLnaEnabled() != enabled;
-      if (!board.setLoRaFemLnaEnabled(enabled)) {
-        strcpy(reply, "Error: failed to apply FEM RX gain");
-      } else {
-        if (changed) _radio->recalibrateNoiseFloor();
-        _prefs.radio_fem_rxgain = enabled;
-        _prefs.radio_fem_rxgain_override = 1;
-        savePrefs();
-        strcpy(reply, "OK");
-      }
+      strcpy(reply, "OK");
     }
     return;
   }
@@ -3215,12 +3208,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (!board.canControlLoRaFemLna()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else if (value <= 1) {
-      bool changed = board.isLoRaFemLnaEnabled() != (value != 0);
-      if (board.setLoRaFemLnaEnabled(value != 0)) {
-        if (changed) _radio->recalibrateNoiseFloor();
-        _prefs.radio_fem_rxgain = value;
-        _prefs.radio_fem_rxgain_override = 1;
-        savePrefs();
+      if (applyAndSaveFemRxGain(value != 0)) {
         writeOKFrame();
       } else {
         writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
@@ -3426,6 +3414,19 @@ void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
   if (_store->releaseContact(contact)) {
     dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
   }
+}
+
+bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
+  if (!board.canControlLoRaFemLna()) return false;
+
+  const bool changed = board.isLoRaFemLnaEnabled() != enabled;
+  if (!board.setLoRaFemLnaEnabled(enabled)) return false;
+
+  if (changed) _radio->recalibrateNoiseFloor();
+  _prefs.radio_fem_rxgain = enabled ? 1 : 0;
+  _prefs.radio_fem_rxgain_override = 1;
+  savePrefs();
+  return true;
 }
 
 #ifdef ENABLE_USB_INTERFACE
@@ -4087,6 +4088,13 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
   } else if (strncmp(command, "import ", 7) == 0) {
     importTerminalCard(command + 7);
+  } else if (strcmp(command, "get radio.fem.rxgain") == 0) {
+    if (!board.canControlLoRaFemLna()) {
+      Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
+    } else {
+      Serial.printf("  FEM RX gain: %s\r\n",
+                    board.isLoRaFemLnaEnabled() ? "on" : "off");
+    }
   } else if (strncmp(command, "set ", 4) == 0) {
     const char* config = command + 4;
     if (strncmp(config, "af ", 3) == 0) {
@@ -4113,6 +4121,20 @@ void MyMesh::handleTerminalCommand(char* command) {
       _prefs.freq = constrain((float)atof(config + 5), 150.0f, 2500.0f);
       savePrefs();
       Serial.print("  OK - reboot to apply\r\n");
+    } else if (strncmp(config, "radio.fem.rxgain", 16) == 0
+               && (config[16] == 0 || config[16] == ' '
+                   || config[16] == '\t')) {
+      const char* value = config + 16;
+      while (*value == ' ' || *value == '\t') value++;
+      if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+        Serial.print("  ERROR: use set radio.fem.rxgain <on|off>\r\n");
+      } else if (!board.canControlLoRaFemLna()) {
+        Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
+      } else if (!applyAndSaveFemRxGain(strcmp(value, "on") == 0)) {
+        Serial.print("  ERROR: failed to apply FEM RX gain\r\n");
+      } else {
+        Serial.printf("  OK - FEM RX gain %s\r\n", value);
+      }
     } else {
       Serial.printf("  ERROR: unknown setting: %s\r\n", config);
     }
@@ -4122,6 +4144,8 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "help") == 0) {
     Serial.print("Commands:\r\n");
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    Serial.print("  get radio.fem.rxgain\r\n");
+    Serial.print("  set radio.fem.rxgain <on|off>\r\n");
     Serial.print("  card\r\n");
     Serial.print("  import <meshcore://card>\r\n");
     Serial.print("  clock\r\n");

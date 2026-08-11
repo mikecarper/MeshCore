@@ -87,8 +87,8 @@ Commands:
   build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with up to 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
-  build-companion-firmwares: Build all companion firmwares for all build targets.
-  build-full-companion-firmwares: Build all full Companion firmwares for supported ESP32 and nRF52 targets.
+  build-companion-firmwares: Build canonical companion firmwares; legacy _femoff targets remain available as direct builds.
+  build-full-companion-firmwares: Build canonical full Companion firmwares for supported ESP32 and nRF52 targets.
   build-repeater-firmwares: Build all repeater firmwares with 254 neighbors, except DRAM-limited targets that retain 50.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
@@ -474,12 +474,12 @@ prompt_for_build_mode() {
     "Build all firmwares"
     "Build all firmwares in 5 profiles (standard, logging, MQTT, full ESP32 MQTT, full ESP32 logging without MQTT)"
     "Build all repeater firmwares"
-    "Build all companion firmwares"
+    "Build canonical companion firmwares (FEM RX gain is runtime configurable)"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
     "Build only FULL ESP32 MQTT firmwares (all features, MQTT, and LoRa OTA)"
     "Build only FULL ESP32 logging firmwares (all features, logging, no MQTT, and LoRa OTA)"
-    "Build all full Companion firmwares (all available transports and host-backed LoRa OTA)"
+    "Build canonical full Companion firmwares (runtime FEM control and host-backed LoRa OTA)"
   )
 
   echo "No command provided. Select a build action:"
@@ -2695,8 +2695,23 @@ resolve_all_firmwares() {
   get_supported_pio_envs
 }
 
+is_legacy_companion_femoff_target() {
+  case "${1,,}" in
+    *companion_radio_*_femoff)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 resolve_companion_firmwares() {
-  get_pio_envs_for_variant_role companion
+  local env_name
+
+  while IFS= read -r env_name; do
+    if ! is_legacy_companion_femoff_target "$env_name"; then
+      printf '%s\n' "$env_name"
+    fi
+  done < <(get_pio_envs_for_variant_role companion)
 }
 
 resolve_full_companion_firmwares() {
@@ -2705,6 +2720,9 @@ resolve_full_companion_firmwares() {
   for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
     if is_supported_build_env "$env_name" \
         && is_companion_radio_full_target "$env_name"; then
+      if is_legacy_companion_femoff_target "$env_name"; then
+        continue
+      fi
       printf '%s\n' "$env_name"
     fi
   done

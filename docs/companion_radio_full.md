@@ -39,13 +39,27 @@ bash build.sh build-firmware RAK_4631_companion_radio_full \
   --firmware-version v1.17.0
 ```
 
-To build every available full Companion target, select the corresponding
+To build every canonical full Companion target, select the corresponding
 interactive menu item or run:
 
 ```bash
 bash build.sh build-full-companion-firmwares \
   --firmware-version v1.17.0
 ```
+
+Heltec `_femon` Companion firmware can switch the external FEM receive gain at
+runtime, so the Companion bulk-build commands omit the redundant legacy
+`_femoff` targets. Those targets remain available through an explicit
+`build-firmware` command for compatibility. In WebConfig, use the **FEM RX
+boost** switch. From the USB terminal, use:
+
+```text
+get radio.fem.rxgain
+set radio.fem.rxgain off
+set radio.fem.rxgain on
+```
+
+The selected state is applied immediately and retained after reboot.
 
 Artifacts are written to `out/` by default.
 

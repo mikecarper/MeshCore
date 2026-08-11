@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/CLICommandUtils.h>
+#include <helpers/WiFiPowerSave.h>
 
 TEST(CLICommandUtils, NormalizesCapitalizedSetVerb) {
   char command[] = "Set altpath 600000,0d2784,F8DADA";
@@ -289,6 +290,15 @@ TEST(CLICommandUtils, ValidatesStandaloneWiFiValues) {
   EXPECT_TRUE(mesh::cli::parseStandaloneWiFiPowerSave("max", power_save));
   EXPECT_EQ(2, power_save);
   EXPECT_FALSE(mesh::cli::parseStandaloneWiFiPowerSave("off", power_save));
+}
+
+TEST(CLICommandUtils, EnforcesWiFiSleepForBluetoothCoexistence) {
+  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(0, true));
+  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(1, true));
+  EXPECT_EQ(2, mesh::wifi::effectivePowerSave(2, true));
+  EXPECT_EQ(1, mesh::wifi::effectivePowerSave(1, false));
+  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(99, true));
+  EXPECT_EQ(1, mesh::wifi::effectivePowerSave(99, false));
 }
 
 TEST(CLICommandUtils, MatchesDiscoverNeighborsWithoutPrefixCollisions) {

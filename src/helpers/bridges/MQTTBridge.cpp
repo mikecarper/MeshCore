@@ -7,6 +7,7 @@
 #include "../MQTTRuntimeBufferLifecycle.h"
 #include "../MQTTTopicRouter.h"
 #include "../TxtDataHelpers.h"
+#include "../WiFiPowerSave.h"
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <Timezone.h>
@@ -2561,7 +2562,14 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       _wifi_reconnect_backoff_attempt = 0;
       #ifdef ESP_PLATFORM
       wifi_ps_type_t ps_mode;
-      uint8_t ps_pref = _obs->wifi_power_save;
+      uint8_t ps_pref = mesh::wifi::effectivePowerSave(
+          _obs->wifi_power_save,
+#if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
+          true
+#else
+          false
+#endif
+      );
       if (ps_pref == 1) {
         ps_mode = WIFI_PS_NONE;
       } else if (ps_pref == 2) {
