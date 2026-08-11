@@ -1074,10 +1074,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#estimate-and-correct-repeater-time-after-startup" class="md-nav__link">
+  <a href="#estimate-and-correct-infrastructure-node-time-after-startup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Estimate and correct repeater time after startup
+        Estimate and correct infrastructure-node time after startup
       
     </span>
   </a>
@@ -3520,10 +3520,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#estimate-and-correct-repeater-time-after-startup" class="md-nav__link">
+  <a href="#estimate-and-correct-infrastructure-node-time-after-startup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Estimate and correct repeater time after startup
+        Estimate and correct infrastructure-node time after startup
       
     </span>
   </a>
@@ -5383,7 +5383,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - The nRF52 hardware cannot stop a watchdog after it has started. Disabling is persisted immediately, then the current firmware stops feeding it so the board performs one watchdog restart within 60 seconds. It remains off after that restart.
 - This setting is nRF52-only. The SoftDevice flash deadlock does not apply to ESP32, whose existing watchdog behavior is unchanged.</p>
 <hr />
-<h4 id="estimate-and-correct-repeater-time-after-startup">Estimate and correct repeater time after startup</h4>
+<h4 id="estimate-and-correct-infrastructure-node-time-after-startup">Estimate and correct infrastructure-node time after startup</h4>
 <p><strong>Usage:</strong>
 - <code>get clock.sync</code>
 - <code>get clock.sync.status</code>
@@ -5401,22 +5401,22 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>get clock.sync.samples</code>
 - <code>set clock.sync.samples &lt;3-16&gt;</code></p>
 <p><strong>Defaults:</strong>
-- <code>clock.sync.mesh</code>: <code>on</code> for nRF52 repeaters; <code>off</code> for other builds
+- <code>clock.sync.mesh</code>: <code>on</code> for all repeater, sensor, and room-server builds
 - <code>clock.sync.mesh.edge</code>: <code>on</code>
 - <code>clock.sync.internet</code>: <code>off</code>
 - <code>clock.sync.drift</code>: <code>3600</code> seconds
 - <code>clock.sync.samples</code>: <code>9</code></p>
-<p>When either source is enabled, the repeater makes its first clock-bootstrap
+<p>When either source is enabled, the node makes its first clock-bootstrap
 attempt after 30 minutes of uptime, or immediately when the configured number
 of fresh evidence sources has been collected, whichever comes first. A
 successful estimate changes the RTC only when the absolute difference is
 <strong>greater than</strong> <code>clock.sync.drift</code>; correction can move the clock forward or
 backward. A valid estimate within the threshold counts as a successful sync
 without changing the clock. Seven days after each successful estimate, the
-repeater evaluates time again; the seven-day deadline therefore starts from the
+node evaluates time again; the seven-day deadline therefore starts from the
 last successful estimate rather than from boot. This is a lazy uptime deadline:
 the check runs on the first normal loop/wake after it becomes due and does not
-wake the device by itself. If no source or consensus is available, the repeater
+wake the device by itself. If no source or consensus is available, the node
 retries every 30 minutes, and newly collected evidence triggers another
 immediate evaluation once the configured source count is present. Every reboot
 starts with the initial bootstrap attempt. An existing saved setting always
@@ -5514,12 +5514,14 @@ one sender can claim multiple names and inflate the edge-mode vote count.</p>
 <p><code>clock.sync.internet</code> is available on WiFi MQTT repeater-observer builds. Its
 initial and seven-day queries run on the MQTT/WiFi task and are read-only until
 the repeater applies the configured drift test. Failed queries retry after 30
-minutes. On other repeater builds, the preference can be stored but status
-reports that internet time is unavailable. MQTT builds retain their existing
-startup NTP behavior required for MQTT/TLS/JWT operation; this setting controls
-the additional delayed drift checks. Startup NTP is always preferred when it
+minutes. On other infrastructure-node builds, the preference can be stored but
+status reports that internet time is unavailable. MQTT builds retain their
+existing startup NTP behavior required for MQTT/TLS/JWT operation; this setting
+controls the additional delayed drift checks. Startup NTP is always preferred when it
 succeeds, regardless of this setting.</p>
-<p>Changing any <code>clock.sync.*</code> setting starts a new attempt for the current boot.
+<p>Sensor and room-server builds support mesh clock consensus and report
+<code>clock.sync.internet</code> as unavailable. Changing any <code>clock.sync.*</code> setting starts
+a new attempt for the current boot.
 Settings are persistent in <code>/clock_sync</code>; samples and schedule state are not.</p>
 <p>A backward correction is intentionally allowed, but peers that already recorded
 a later timestamp from this node may temporarily reject its lower timestamps as
