@@ -18,6 +18,15 @@ class CustomLR1110 : public LR1110 {
   public:
     CustomLR1110(Module *mod) : LR1110(mod) { }
 
+    // MeshCore keeps the LR1110 in LoRa mode. Calculate from RadioLib's cached
+    // parameters so an airtime query never issues GetPacketType while RX duty
+    // cycling has the chip asleep. RadioLib's LR11x0 implementation ignores a
+    // failed modem query and can otherwise return an encoded negative error as
+    // a multi-million-millisecond airtime.
+    RadioLibTime_t getTimeOnAir(size_t len) override {
+      return getToA(len, ModemType_t::RADIOLIB_MODEM_LORA);
+    }
+
     // RadioLib waits without a deadline for BUSY to fall after SetTx. Bound
     // that wait so a failed LR1110 transition can reach the wrapper's hard
     // recovery path instead of hanging the firmware indefinitely.

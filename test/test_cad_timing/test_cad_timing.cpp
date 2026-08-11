@@ -2,6 +2,14 @@
 
 #include <helpers/radiolib/CadTiming.h>
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
+#include <helpers/radiolib/RadioAirtime.h>
+
+TEST(RadioAirtime, DetectsUnsignedRadioLibErrors) {
+  EXPECT_TRUE(mesh::isEncodedRadioLibAirtimeError(UINT32_MAX));
+  EXPECT_TRUE(mesh::isEncodedRadioLibAirtimeError(
+      static_cast<uint32_t>(-20)));
+  EXPECT_FALSE(mesh::isEncodedRadioLibAirtimeError(200000UL));
+}
 
 TEST(CadTiming, UsesShortDeadlineForCascadeProfile) {
   EXPECT_EQ(mesh::calculateCadScanTimeoutMillis(7, 62.5f), 100UL);

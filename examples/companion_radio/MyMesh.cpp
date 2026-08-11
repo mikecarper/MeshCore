@@ -3779,6 +3779,20 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
     return;
   }
 
+  const uint32_t airtime = _radio->getEstAirtimeFor(9 + route_byte_len + 2);
+  if (airtime == 0) {
+    Serial.print("  ERROR: unable to estimate trace timeout\r\n");
+    return;
+  }
+  const uint32_t base_timeout =
+      calcDirectTimeoutMillisFor(airtime, hop_count);
+  uint32_t trace_timeout = 0;
+  if (!mesh::calculateTerminalTraceTimeoutMillis(base_timeout,
+                                                 trace_timeout)) {
+    Serial.print("  ERROR: trace timeout is out of range\r\n");
+    return;
+  }
+
   uint32_t tag = 0;
   uint32_t auth = 0;
   getRNG()->random((uint8_t*)&tag, sizeof(tag));
@@ -3789,8 +3803,6 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
     return;
   }
 
-  const uint32_t airtime = _radio->getEstAirtimeFor(9 + route_byte_len + 2);
-  const uint32_t timeout = calcDirectTimeoutMillisFor(airtime, hop_count);
   if (!sendDirect(packet, route, static_cast<uint8_t>(route_byte_len))) {
     Serial.print("  ERROR: unable to send trace\r\n");
     return;
@@ -3801,12 +3813,12 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   _terminal_trace_tag = tag;
   _terminal_trace_auth = auth;
   _terminal_trace_sent_at = _ms->getMillis();
-  _terminal_trace_expires_at = futureMillis(timeout + timeout / 5);
+  _terminal_trace_expires_at = futureMillis(trace_timeout);
   StrHelper::strzcpy(_terminal_trace_target, target,
                      sizeof(_terminal_trace_target));
   Serial.printf("  Trace sent to %s (%u route hops, timeout %lu ms)\r\n",
                 target, (unsigned)hop_count,
-                (unsigned long)(timeout + timeout / 5));
+                (unsigned long)trace_timeout);
 }
 
 void MyMesh::sendTerminalTrace(ContactInfo& recipient) {

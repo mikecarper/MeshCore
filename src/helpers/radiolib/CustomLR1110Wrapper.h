@@ -55,6 +55,7 @@ public:
 
   uint32_t getEstAirtimeFor(int len_bytes) override {
     auto airtime = RadioLibWrapper::getEstAirtimeFor(len_bytes);
+    if (airtime == 0) return 0;
     return airtime < 200 ? 200 : airtime;   // at least 200 millis
   }
 

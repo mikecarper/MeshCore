@@ -2,6 +2,22 @@
 
 #include <helpers/TracePathHelpers.h>
 
+TEST(TracePathHelpers, AddsTwoHundredPercentTerminalTimeoutMargin) {
+  uint32_t timeout = 0;
+
+  ASSERT_TRUE(mesh::calculateTerminalTraceTimeoutMillis(6300, timeout));
+  EXPECT_EQ(18900UL, timeout);
+}
+
+TEST(TracePathHelpers, RejectsInvalidTerminalTimeouts) {
+  uint32_t timeout = 123;
+
+  EXPECT_FALSE(mesh::calculateTerminalTraceTimeoutMillis(0, timeout));
+  EXPECT_EQ(0UL, timeout);
+  EXPECT_FALSE(mesh::calculateTerminalTraceTimeoutMillis(UINT32_MAX, timeout));
+  EXPECT_EQ(0UL, timeout);
+}
+
 TEST(TracePathHelpers, BuildsOneByteRoundTripThroughEndpoint) {
   const uint8_t saved[] = {0x11, 0x22};
   const uint8_t endpoint[] = {0x33};

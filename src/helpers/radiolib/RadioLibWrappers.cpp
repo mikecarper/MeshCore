@@ -632,7 +632,15 @@ void RadioLibWrapper::finishReceiveProcessing() {
 }
 
 uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
-  return _radio->getTimeOnAir(len_bytes) / 1000;
+  const uint32_t airtime_us =
+      static_cast<uint32_t>(_radio->getTimeOnAir(len_bytes));
+  if (mesh::isEncodedRadioLibAirtimeError(airtime_us)) {
+    MESH_DEBUG_PRINTLN(
+        "RadioLibWrapper: invalid time-on-air estimate (0x%08lX)",
+        (unsigned long)airtime_us);
+    return 0;
+  }
+  return airtime_us / 1000;
 }
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {

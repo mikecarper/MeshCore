@@ -6,6 +6,28 @@
 
 namespace mesh {
 
+static constexpr uint32_t TERMINAL_TRACE_TIMEOUT_MARGIN_PERCENT = 200UL;
+static constexpr uint32_t TERMINAL_TRACE_MAX_TIMEOUT_MILLIS = 0x7FFFFFFFUL;
+
+// Terminal trace timeouts add a 200% margin to the direct-send estimate. Keep
+// the arithmetic wide because futureMillis() accepts a signed millisecond
+// delta and rollover-safe comparisons require the result to stay in range.
+inline bool calculateTerminalTraceTimeoutMillis(uint32_t base_timeout_millis,
+                                                uint32_t& timeout_millis) {
+  timeout_millis = 0;
+  if (base_timeout_millis == 0) return false;
+
+  const uint64_t margin =
+      static_cast<uint64_t>(base_timeout_millis)
+      * TERMINAL_TRACE_TIMEOUT_MARGIN_PERCENT / 100UL;
+  const uint64_t total =
+      static_cast<uint64_t>(base_timeout_millis) + margin;
+  if (total > TERMINAL_TRACE_MAX_TIMEOUT_MILLIS) return false;
+
+  timeout_millis = static_cast<uint32_t>(total);
+  return true;
+}
+
 struct RoundTripTracePath {
   uint8_t hash_size;
   uint8_t hop_count;

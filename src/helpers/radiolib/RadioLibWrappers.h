@@ -3,6 +3,7 @@
 #include <Mesh.h>
 #include <RadioLib.h>
 #include "CadTiming.h"
+#include "RadioAirtime.h"
 
 // Fallback RX powersaving timings, only used until setRxPowerSaving() is called
 // (begin() always applies the persisted values). The authoritative defaults live
