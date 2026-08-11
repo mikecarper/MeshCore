@@ -830,7 +830,7 @@ send text.flood checking ridge link
 
 ---
 
-#### Estimate and correct repeater time after startup
+#### Estimate and correct infrastructure-node time after startup
 
 **Usage:**
 - `get clock.sync`
@@ -850,23 +850,23 @@ send text.flood checking ridge link
 - `set clock.sync.samples <3-16>`
 
 **Defaults:**
-- `clock.sync.mesh`: `on` for nRF52 repeaters; `off` for other builds
+- `clock.sync.mesh`: `on` for all repeater, sensor, and room-server builds
 - `clock.sync.mesh.edge`: `on`
 - `clock.sync.internet`: `off`
 - `clock.sync.drift`: `3600` seconds
 - `clock.sync.samples`: `9`
 
-When either source is enabled, the repeater makes its first clock-bootstrap
+When either source is enabled, the node makes its first clock-bootstrap
 attempt after 30 minutes of uptime, or immediately when the configured number
 of fresh evidence sources has been collected, whichever comes first. A
 successful estimate changes the RTC only when the absolute difference is
 **greater than** `clock.sync.drift`; correction can move the clock forward or
 backward. A valid estimate within the threshold counts as a successful sync
 without changing the clock. Seven days after each successful estimate, the
-repeater evaluates time again; the seven-day deadline therefore starts from the
+node evaluates time again; the seven-day deadline therefore starts from the
 last successful estimate rather than from boot. This is a lazy uptime deadline:
 the check runs on the first normal loop/wake after it becomes due and does not
-wake the device by itself. If no source or consensus is available, the repeater
+wake the device by itself. If no source or consensus is available, the node
 retries every 30 minutes, and newly collected evidence triggers another
 immediate evaluation once the configured source count is present. Every reboot
 starts with the initial bootstrap attempt. An existing saved setting always
@@ -975,13 +975,15 @@ one sender can claim multiple names and inflate the edge-mode vote count.
 `clock.sync.internet` is available on WiFi MQTT repeater-observer builds. Its
 initial and seven-day queries run on the MQTT/WiFi task and are read-only until
 the repeater applies the configured drift test. Failed queries retry after 30
-minutes. On other repeater builds, the preference can be stored but status
-reports that internet time is unavailable. MQTT builds retain their existing
-startup NTP behavior required for MQTT/TLS/JWT operation; this setting controls
-the additional delayed drift checks. Startup NTP is always preferred when it
+minutes. On other infrastructure-node builds, the preference can be stored but
+status reports that internet time is unavailable. MQTT builds retain their
+existing startup NTP behavior required for MQTT/TLS/JWT operation; this setting
+controls the additional delayed drift checks. Startup NTP is always preferred when it
 succeeds, regardless of this setting.
 
-Changing any `clock.sync.*` setting starts a new attempt for the current boot.
+Sensor and room-server builds support mesh clock consensus and report
+`clock.sync.internet` as unavailable. Changing any `clock.sync.*` setting starts
+a new attempt for the current boot.
 Settings are persistent in `/clock_sync`; samples and schedule state are not.
 
 A backward correction is intentionally allowed, but peers that already recorded

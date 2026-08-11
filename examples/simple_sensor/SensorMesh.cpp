@@ -350,6 +350,7 @@ bool SensorMesh::getCADEnabled() const {
 bool SensorMesh::allowPacketForward(const mesh::Packet* packet) {
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood() && packet->getPathHashCount() >= _prefs.flood_max) return false;
+  _clock_sync.observeAcceptedFlood(packet);
   return true;
 }
 
@@ -629,10 +630,23 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
       board.setGpio(val);
     }
     sprintf(reply, "%x", board.getGpio());
+  } else if (_clock_sync.handleCommand(command, reply)) {
+    // handled by the role-independent mesh clock synchronizer
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
     updateGpsTelemetryPolicy();
   }
+}
+
+void SensorMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
+                              uint32_t timestamp, const uint8_t* app_data,
+                              size_t app_data_len) {
+  mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
+  _clock_sync.observeVerifiedAdvert(packet, id, timestamp);
+}
+
+void SensorMesh::onGroupPacketRecv(mesh::Packet* packet) {
+  _clock_sync.observeGroupPacket(packet);
 }
 
 void SensorMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
@@ -886,6 +900,7 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
      : mesh::Mesh(radio, ms, rng, rtc, *new StaticPoolPacketManager(32), tables),
       region_map(key_store),
       _cli(board, rtc, sensors, region_map, acl, &_prefs, this),
+      _clock_sync(radio, ms, rtc, acl, sensors, _prefs.tx_delay_factor, this),
       telemetry(MAX_PACKET_PAYLOAD - 4)
 {
   next_local_advert = next_flood_advert = 0;
@@ -944,6 +959,7 @@ void SensorMesh::begin(FILESYSTEM* fs) {
 
   acl.load(_fs, self_id);
   region_map.load(_fs);
+  _clock_sync.begin(_fs);
   updateGpsTelemetryPolicy();
 
   // establish default-scope
@@ -1126,6 +1142,7 @@ bool  SensorMesh::getGPS(uint8_t channel, float& lat, float& lon, float& alt) {
 void SensorMesh::loop() {
   _cli.loop();
   mesh::Mesh::loop();
+  _clock_sync.loop();
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet* pkt = createSelfAdvert();

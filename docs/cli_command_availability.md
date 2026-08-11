@@ -98,7 +98,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get role`](cli_commands.md#view-this-nodes-configured-role) | All text CLI roles | Yes | Yes | Yes |
 | System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag-repeater-only) | Supported repeater board | Feature | Feature | Feature |
 | System | [`get/set reboot.interval`](#reboot-interval) | Full parser | Yes | Yes | Yes |
-| Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-repeater-time-after-startup) | Repeater; `clock.sync.internet` needs MQTT | Yes | Yes | Yes |
+| Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-infrastructure-node-time-after-startup) | Repeater, sensor, and room server; `clock.sync.internet` needs MQTT repeater | Yes | Yes | Yes |
 | Routing | [`get/set repeat`](cli_commands.md#view-or-change-this-nodes-repeat-flag) | Forwarding-capable role | Yes | Yes | Yes |
 | Routing | [`get/set path.hash.mode`](cli_commands.md#view-or-change-this-nodes-advert-path-hash-size) | Role that supports path-hash selection | Yes | Yes | Yes |
 | Routing | [`get/set loop.detect`](cli_commands.md#view-or-change-this-nodes-loop-detection) | Repeater | Yes | Yes | Yes |
@@ -254,7 +254,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get role`](cli_commands.md#view-this-nodes-configured-role) | All text CLI roles | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag-repeater-only) | Supported repeater board | Feature | Feature | Feature | No | No | Feature | Feature |
 | System | [`get/set reboot.interval`](#reboot-interval) | Full parser | Yes | Yes | Yes | No | No | Yes | Yes |
-| Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-repeater-time-after-startup) | Repeater; `clock.sync.internet` needs MQTT | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-infrastructure-node-time-after-startup) | Repeater, sensor, and room server; `clock.sync.internet` needs MQTT repeater | Yes | Yes | Yes | No | Yes | Yes | Yes |
 | Routing | [`get/set repeat`](cli_commands.md#view-or-change-this-nodes-repeat-flag) | Forwarding-capable role | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set path.hash.mode`](cli_commands.md#view-or-change-this-nodes-advert-path-hash-size) | Full parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | Routing | [`get/set loop.detect`](cli_commands.md#view-or-change-this-nodes-loop-detection) | Repeater, full common parser | Yes | Yes | Yes | No | No | Yes | Yes |

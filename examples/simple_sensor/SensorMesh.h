@@ -20,6 +20,7 @@
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/CommonCLI.h>
+#include <helpers/MeshClockSync.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpioReplyTracker.h>
 #endif
@@ -49,7 +50,8 @@
 #define MAX_SEARCH_RESULTS      8
 #define MAX_CONCURRENT_ALERTS   4
 
-class SensorMesh : public mesh::Mesh, public CommonCLICallbacks {
+class SensorMesh : public mesh::Mesh, public CommonCLICallbacks,
+                   public mesh::MeshClockSyncCallbacks {
 public:
   SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   void begin(FILESYSTEM* fs);
@@ -68,6 +70,7 @@ public:
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
   }
+  void onManualClockSet() override { _clock_sync.onManualClockSet(); }
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;
@@ -172,6 +175,10 @@ protected:
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
+  void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
+                    uint32_t timestamp, const uint8_t* app_data,
+                    size_t app_data_len) override;
+  void onGroupPacketRecv(mesh::Packet* packet) override;
   virtual bool handleIncomingMsg(ClientInfo& from, uint32_t timestamp, uint8_t* data, uint8_t flags, size_t len);
   void sendAckTo(const ClientInfo& dest, uint32_t ack_hash, uint8_t path_hash_size=1);
 private:
@@ -180,6 +187,7 @@ private:
   NodePrefs _prefs;
   ClientACL  acl;
   CommonCLI _cli;
+  mesh::MeshClockSync _clock_sync;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   UserGpioReplyTracker _gpio_reply_tracker;
 #endif

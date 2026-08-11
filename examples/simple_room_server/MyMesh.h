@@ -19,6 +19,7 @@
 #include <helpers/AlertReporter.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/CommonCLI.h>
+#include <helpers/MeshClockSync.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpioReplyTracker.h>
 #endif
@@ -122,7 +123,8 @@ struct NeighbourInfo {
   int8_t snr; // multiplied by 4, user should divide to get float value
 };
 
-class MyMesh : public mesh::Mesh, public CommonCLICallbacks
+class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
+               public mesh::MeshClockSyncCallbacks
 #ifdef WITH_WEBCONFIG
     , public WebConfigServer::Callbacks
 #endif
@@ -145,6 +147,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
   CommonCLI _cli;
+  mesh::MeshClockSync _clock_sync;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   UserGpioReplyTracker _gpio_reply_tracker;
 #endif
@@ -299,8 +302,9 @@ protected:
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
-#if defined(WITH_MQTT_NEIGHBORS)
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) override;
+  void onGroupPacketRecv(mesh::Packet* packet) override;
+#if defined(WITH_MQTT_NEIGHBORS)
   void onControlDataRecv(mesh::Packet* packet) override;
 #endif
 
@@ -329,6 +333,14 @@ public:
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
+  }
+  void onManualClockSet() override { _clock_sync.onManualClockSet(); }
+  bool hasAuthoritativeClock() const override {
+#ifdef WITH_MQTT_BRIDGE
+    return bridge != nullptr && bridge->hasNtpTime();
+#else
+    return false;
+#endif
   }
 
   bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt,

@@ -524,6 +524,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
                             _ms->getMillis());
   }
 #endif
+  _clock_sync.observeAcceptedFlood(packet);
   return true;
 }
 
@@ -992,6 +993,28 @@ void MyMesh::onAckRecv(mesh::Packet *packet, uint32_t ack_crc) {
   }
 }
 
+void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
+                          uint32_t timestamp, const uint8_t* app_data,
+                          size_t app_data_len) {
+  mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
+  _clock_sync.observeVerifiedAdvert(packet, id, timestamp);
+
+#if defined(WITH_MQTT_NEIGHBORS)
+  bool is_share = packet->hasTransportCodes()
+      && packet->transport_codes[0] == 0 && packet->transport_codes[1] == 0;
+  if (packet->getPathHashCount() == 0 && !is_share) {
+    AdvertDataParser parser(app_data, app_data_len);
+    if (parser.isValid() && parser.getType() == ADV_TYPE_REPEATER) {
+      putNeighbour(id, timestamp, packet->getSNR());
+    }
+  }
+#endif
+}
+
+void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+  _clock_sync.observeGroupPacket(packet);
+}
+
 #if defined(WITH_MQTT_NEIGHBORS)
 
 #define CTL_TYPE_NODE_DISCOVER_REQ   0x80
@@ -1020,26 +1043,6 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
   neighbour->advert_timestamp = timestamp;
   neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
   neighbour->snr = (int8_t)(snr * 4);
-}
-
-static bool isShare(const mesh::Packet *packet) {
-  if (packet->hasTransportCodes()) {
-    return packet->transport_codes[0] == 0 && packet->transport_codes[1] == 0;  // codes { 0, 0 } means 'send to nowhere'
-  }
-  return false;
-}
-
-void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32_t timestamp,
-                          const uint8_t *app_data, size_t app_data_len) {
-  mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
-
-  // if this a zero hop advert (and not via 'Share'), add it to neighbours
-  if (packet->getPathHashCount() == 0 && !isShare(packet)) {
-    AdvertDataParser parser(app_data, app_data_len);
-    if (parser.isValid() && parser.getType() == ADV_TYPE_REPEATER) { // just keep neigbouring Repeaters
-      putNeighbour(id, timestamp, packet->getSNR());
-    }
-  }
 }
 
 void MyMesh::onControlDataRecv(mesh::Packet* packet) {
@@ -1098,6 +1101,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
     : mesh::Mesh(radio, ms, rng, rtc, *createObserverPacketManager(32), tables),
       region_map(key_store), temp_map(key_store),
       _cli(board, rtc, sensors, region_map, acl, &_prefs, this),
+      _clock_sync(radio, ms, rtc, acl, sensors, _prefs.tx_delay_factor, this),
       telemetry(MAX_PACKET_PAYLOAD - 4)
 #ifdef WITH_MQTT_BRIDGE
       , bridge(nullptr)
@@ -1208,6 +1212,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   acl.load(_fs, self_id);
   region_map.load(_fs);
+  _clock_sync.begin(_fs);
 #if defined(MESHCORE_ESP32_FULL_PROFILE)
   flood_rules.begin(_fs, &region_map);
 #endif
@@ -2039,7 +2044,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     // handled by the FULL-profile persistent flood rule engine
   }
 #endif
-  else {
+  else if (_clock_sync.handleCommand(command, reply)) {
+    // handled by the role-independent mesh clock synchronizer
+  } else {
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
 }
@@ -2053,6 +2060,7 @@ void MyMesh::loop() {
   // MQTT processing can take time, so we prioritize radio reception
   mesh::Mesh::loop();
   _cli.loop();
+  _clock_sync.loop();
 #ifdef WITH_MQTT_BRIDGE
   // bridge.loop() is now handled by FreeRTOS task on Core 0 - no need to call it here
 #endif
