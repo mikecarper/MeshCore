@@ -15,6 +15,7 @@
 #include "soc/rtc.h"
 #include "esp_system.h"
 #include <driver/rtc_io.h>
+#include "ESP32TrueRandom.h"
 
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT && \
     (!defined(ARDUINO_USB_MODE) || !ARDUINO_USB_MODE)
@@ -38,6 +39,10 @@ protected:
 
 public:
   void begin() {
+    // Arduino's early init hook normally captured this before initVariant().
+    // Keep this idempotent fallback before this class touches ADC peripherals.
+    mesh::initializeESP32TrueRandom();
+
     // for future use, sub-classes SHOULD call this from their begin()
     startup_reason = BD_STARTUP_NORMAL;    
 

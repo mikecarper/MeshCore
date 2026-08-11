@@ -15,6 +15,9 @@
 #ifdef USE_CC310_HW_CRYPTO
 #include "../NRF52Crypto.h"
 #endif
+#ifdef ESP32_PLATFORM
+#include "../ESP32TrueRandom.h"
+#endif
 struct PacketMillis {
   uint32_t preambleMillis;  // preamble-detect -> header-valid deadline
   uint32_t payloadMillis;   // header-valid   -> rx-done deadline
@@ -217,14 +220,16 @@ public:
   RadioNoiseListener(PhysicalLayer& radio): _radio(&radio) { }
 
   void random(uint8_t* dest, size_t sz) override {
-    // Preserve the existing radio/PRNG entropy on every platform. On nRF52840,
-    // independently generated CC310 bytes are mixed in without becoming the
-    // sole source of randomness.
+    // Preserve the existing radio/PRNG entropy on every platform. Independent
+    // hardware entropy is mixed in without becoming the sole source.
     for (size_t i = 0; i < sz; i++) {
       dest[i] = _radio->randomByte() ^ (::random(0, 256) & 0xFF);
     }
 #ifdef USE_CC310_HW_CRYPTO
     mesh::mixCC310Random(dest, sz);
+#endif
+#ifdef ESP32_PLATFORM
+    mesh::mixESP32TrueRandom(dest, sz);
 #endif
   }
 };

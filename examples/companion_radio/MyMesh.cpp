@@ -2,8 +2,13 @@
 
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/IdentityGeneration.h>
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
+
+#if defined(ESP32_PLATFORM)
+#include <helpers/ESP32TrueRandom.h>
+#endif
 
 #ifdef ENABLE_USB_INTERFACE
 #include <helpers/CLICommandUtils.h>
@@ -1382,15 +1387,21 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 void MyMesh::begin(bool has_display) {
   BaseChatMesh::begin();
 
-  const bool is_new_install = !_store->loadMainIdentity(self_id);
+  const bool is_new_install = !_store->loadMainIdentity(self_id)
+      || mesh::hasReservedIdentityPrefix(self_id);
+  bool identity_ready = true;
   if (is_new_install) {
-    self_id = radio_new_identity(); // create new random identity
-    int count = 0;
-    while (count < 10 && (self_id.pub_key[0] == 0x00 || self_id.pub_key[0] == 0xFF)) { // reserved id hashes
-      self_id = radio_new_identity();
-      count++;
-    }
-    _store->saveMainIdentity(self_id);
+    identity_ready = mesh::generateUsableLocalIdentity(self_id, radio_new_identity);
+    if (identity_ready) _store->saveMainIdentity(self_id);
+  }
+
+#if defined(ESP32_PLATFORM)
+  mesh::discardESP32TrueRandom();
+#endif
+  if (!identity_ready) {
+    MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+    board.reboot();
+    return;
   }
 
 // if name is provided as a build flag, use that as default node name instead

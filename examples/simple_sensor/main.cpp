@@ -1,4 +1,9 @@
 #include "SensorMesh.h"
+#include <helpers/IdentityGeneration.h>
+
+#if defined(ESP32_PLATFORM)
+  #include <helpers/ESP32TrueRandom.h>
+#endif
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
@@ -100,14 +105,22 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
-  if (!store.load("_main", the_mesh.self_id)) {
+  const bool needs_identity = !store.load("_main", the_mesh.self_id)
+      || mesh::hasReservedIdentityPrefix(the_mesh.self_id);
+  bool identity_ready = true;
+  if (needs_identity) {
     MESH_DEBUG_PRINTLN("Generating new keypair");
-    the_mesh.self_id = radio_new_identity();   // create new random identity
-    int count = 0;
-    while (count < 10 && (the_mesh.self_id.pub_key[0] == 0x00 || the_mesh.self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
-      the_mesh.self_id = radio_new_identity(); count++;
-    }
-    store.save("_main", the_mesh.self_id);
+    identity_ready = mesh::generateUsableLocalIdentity(the_mesh.self_id, radio_new_identity);
+    if (identity_ready) store.save("_main", the_mesh.self_id);
+  }
+
+#if defined(ESP32_PLATFORM)
+  mesh::discardESP32TrueRandom();
+#endif
+  if (!identity_ready) {
+    MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+    board.reboot();
+    return;
   }
 
   Serial.print("Sensor ID: ");

@@ -10,9 +10,13 @@
 #endif
 
 #include <helpers/ArduinoHelpers.h>
+#include <helpers/IdentityGeneration.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/SimpleMeshTables.h>
 #include <helpers/IdentityStore.h>
+#if defined(ESP32_PLATFORM)
+  #include <helpers/ESP32TrueRandom.h>
+#endif
 #include <RTClib.h>
 #include <target.h>
 
@@ -310,7 +314,10 @@ public:
   #else
     IdentityStore store(fs, "/identity");
   #endif
-    if (!store.load("_main", self_id, _prefs.node_name, sizeof(_prefs.node_name))) {  // legacy: node_name was from identity file
+    const bool needs_identity = !store.load("_main", self_id, _prefs.node_name, sizeof(_prefs.node_name))
+        || mesh::hasReservedIdentityPrefix(self_id);  // legacy: node_name was from identity file
+    bool identity_ready = true;
+    if (needs_identity) {
       // Need way to get some entropy to seed RNG
       Serial.println("Press ENTER to generate key:");
       char c = 0;
@@ -319,12 +326,22 @@ public:
       }
       ((StdRNG *)getRNG())->begin(millis());
 
-      self_id = mesh::LocalIdentity(getRNG());  // create new random identity
-      int count = 0;
-      while (count < 10 && (self_id.pub_key[0] == 0x00 || self_id.pub_key[0] == 0xFF)) {  // reserved id hashes
-        self_id = mesh::LocalIdentity(getRNG()); count++;
-      }
-      store.save("_main", self_id);
+    #if defined(ESP32_PLATFORM)
+      identity_ready = mesh::generateUsableLocalIdentity(self_id, radio_new_identity);
+    #else
+      identity_ready = mesh::generateUsableLocalIdentity(
+          self_id, [this]() { return mesh::LocalIdentity(getRNG()); });
+    #endif
+      if (identity_ready) store.save("_main", self_id);
+    }
+
+  #if defined(ESP32_PLATFORM)
+    mesh::discardESP32TrueRandom();
+  #endif
+    if (!identity_ready) {
+      MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+      board.reboot();
+      return;
     }
 
     // load persisted prefs

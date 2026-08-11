@@ -1,8 +1,13 @@
 #include <Arduino.h>
 #include <target.h>
 #include <helpers/ArduinoHelpers.h>
+#include <helpers/IdentityGeneration.h>
 #include <helpers/IdentityStore.h>
 #include "KissModem.h"
+
+#if defined(ESP32_PLATFORM)
+  #include <helpers/ESP32TrueRandom.h>
+#endif
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
@@ -48,12 +53,20 @@ void loadOrCreateIdentity() {
   #error "Filesystem not defined"
 #endif
 
-  if (!store.load("_main", identity)) {
-    identity = radio_new_identity();
-    while (identity.pub_key[0] == 0x00 || identity.pub_key[0] == 0xFF) {
-      identity = radio_new_identity();
-    }
-    store.save("_main", identity);
+  const bool needs_identity = !store.load("_main", identity)
+      || mesh::hasReservedIdentityPrefix(identity);
+  bool identity_ready = true;
+  if (needs_identity) {
+    identity_ready = mesh::generateUsableLocalIdentity(identity, radio_new_identity);
+    if (identity_ready) store.save("_main", identity);
+  }
+
+#if defined(ESP32_PLATFORM)
+  mesh::discardESP32TrueRandom();
+#endif
+  if (!identity_ready) {
+    MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+    board.reboot();
   }
 }
 

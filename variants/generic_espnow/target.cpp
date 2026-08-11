@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "target.h"
 #include <helpers/ArduinoHelpers.h>
+#include <helpers/ESP32TrueRandom.h>
 
 ESP32Board board;
 
@@ -17,12 +18,15 @@ bool radio_init() {
   return true;  // success
 }
 
-// NOTE: as we are using the WiFi radio, the ESP_IDF will have enabled hardware RNG:
-//    https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/random.html
+// Combine the normal software source with true entropy captured before RF/ADC
+// initialization. The hardware source is never read in pseudo-random-only mode.
 class ESP_RNG : public mesh::RNG {
 public:
   void random(uint8_t* dest, size_t sz) override {
-    esp_fill_random(dest, sz);
+    for (size_t i = 0; i < sz; ++i) {
+      dest[i] = (::random(0, 256) & 0xFF);
+    }
+    mesh::mixESP32TrueRandom(dest, sz);
   }
 };
 
