@@ -1176,7 +1176,23 @@ unsupported.</p>
 <p>Imports the given card to your contacts.</p>
 <pre><code>list {n}
 </code></pre>
-<p>List all contacts by most recent. (optional {n}, is the last n by advertisement date)</p>
+<p>Lists favorite contacts first, then all remaining contacts. Each group is
+ordered by the most recent advertisement. Optional <code>{n}</code> limits the displayed
+contacts after applying that order.</p>
+<pre><code>show
+show adverts {on|off}
+show channels {on|off}
+show emergency {on|off}
+</code></pre>
+<p>Controls unsolicited receive output in the USB terminal. Plain <code>show</code> reports
+the current settings, and <code>show {category}</code> reports one category. At boot,
+advertisements and ordinary channel messages are hidden while <code>#emergency</code>
+messages are shown. The three controls are independent, so <code>show channels on</code>
+does not override <code>show emergency off</code>.</p>
+<p>These filters affect terminal printing only. Messages still enter the offline
+queue and are delivered through the binary Companion protocol. Changes remain
+active when switching between terminal and binary mode and reset to their
+defaults after reboot.</p>
 <pre><code>to
 </code></pre>
 <p>Shows the name of current recipient contact. (for subsequent 'send' commands)</p>
@@ -1189,19 +1205,20 @@ unsupported.</p>
 all path changes require a recipient to be selected first.</p>
 <pre><code>path direct
 path clear
-path {hop-hash[,hop-hash...]}
+path {hop-hash...}
 </code></pre>
 <p>Sets the outgoing path used by subsequent <code>login</code>, <code>send</code>, and <code>cmd</code> commands.
 <code>direct</code> selects a zero-hop route. <code>clear</code> forgets the saved route, causing the
 next operation to use flood routing and allowing normal path discovery to
 learn a replacement.</p>
-<p>Explicit paths use comma-separated hop hashes. Each hop must contain exactly
-2, 4, or 6 hexadecimal digits, and every hop in one path must use the same
-width. Spaces around commas and hexadecimal letter case do not matter. The
-setting is saved with the selected contact.</p>
+<p>Explicit paths use spaces, commas, or a mixture of both between hop hashes.
+Each hop must contain exactly 2, 4, or 6 hexadecimal digits, and every hop in
+one path must use the same width. Whitespace and hexadecimal letter case do
+not matter. The setting is saved with the selected contact.</p>
 <p>For example:</p>
 <pre><code class="language-text">to Hilltop Repeater
 path A1B2C3,D4E5F6
+path 7773D0 7E7662
 path
 login my-admin-password
 </code></pre>
@@ -1221,7 +1238,14 @@ produces a timeout because those nodes do not send a rejection packet.</p>
 </code></pre>
 <p>Sends CLI data to the current recipient. Wait for the login result before
 sending the first command. The remote node applies its own ACL permissions,
-and any reply appears asynchronously as <code>CLI -&gt; from {name}</code>.</p>
+and any reply appears asynchronously as <code>CLI -&gt; from {name}</code>. The response
+window is 300% of the route estimate. A routed send is displayed as
+<code>DIRECT via path {hop,...}</code> with the exact prefixes copied into the packet; in
+MeshCore, <code>DIRECT</code> is the route class for an explicit path, not a synonym for
+zero hops. A matched reply also shows its local round-trip time, measured from
+queueing the command through receiving the result. This includes both radio
+directions and remote execution; it is not execution-only CPU time. Only one
+terminal <code>cmd</code> can be pending at a time.</p>
 <p>For example:</p>
 <pre><code class="language-text">to Hilltop Repeater
 login my-admin-password
@@ -1232,6 +1256,10 @@ cmd get radio
 <p>The exact commands and permissions depend on the target firmware. <code>cmd</code> does
 not run a command on the local Companion; it sends the text over LoRa to the
 selected node.</p>
+<p>Incoming direct-route messages are labeled <code>ROUTED</code>, not <code>DIRECT</code>. Forwarders
+consume direct-route prefixes as the packet travels, so the destination cannot
+recover the reply's actual hop history from the received packet. Use <code>trace</code>
+when the return route itself must be verified.</p>
 <pre><code>send {text}
 </code></pre>
 <p>Sends the text message (as DM) to current recipient.</p>
@@ -1285,6 +1313,7 @@ Use the slot shown by <code>channels</code> when a channel name contains spaces.
 <pre><code class="language-text">channels
 channel #rgdata Hello from Eugene 👋
 channel 2 Another message
+show channels on
 </code></pre>
 <p>Messages are UTF-8. Emoji use multiple bytes toward the available message
 length, which also includes the sender-name prefix added over the air.</p>

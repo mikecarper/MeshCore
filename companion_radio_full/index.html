@@ -1409,20 +1409,39 @@ is active; do not enter the start token again after it appears.</p>
 <code>normalradio</code> controls. For example:</p>
 <pre><code class="language-text">channels
 channel #rgdata Hello from Eugene 👋
+show
+show channels on
 to Hilltop Repeater
 path A1B2C3,D4E5F6
+path 7773D0 7E7662
 login my-admin-password
 cmd ver
 trace
 </code></pre>
+<p>The terminal <code>list [n]</code> command displays favorite contacts first and orders
+each favorite/non-favorite group by its most recent advertisement. This does
+not alter the binary Companion contact-list protocol.</p>
+<p>Unsolicited terminal output starts in a quiet mode: advertisements and
+ordinary channel messages are hidden, while <code>#emergency</code> messages remain
+visible. Use <code>show adverts on|off</code>, <code>show channels on|off</code>, and
+<code>show emergency on|off</code> to control each category independently; plain <code>show</code>
+reports their state. These runtime filters affect terminal printing only and
+reset to their defaults after reboot.</p>
 <p>The <code>to</code> command selects the remote-administration target. <code>path</code> shows its
-saved outgoing route; <code>path direct</code>, <code>path clear</code>, or a comma-separated list
-such as <code>path A1B2C3,D4E5F6</code> changes the route used by subsequent <code>login</code>,
-<code>send</code>, and <code>cmd</code> commands. Every hop must use the same 2-, 4-, or 6-digit
-hexadecimal width. Login passwords are masked during entry and limited by the
-radio protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before
-using <code>cmd</code>; command replies appear as <code>CLI -&gt; from &lt;name&gt;</code>. Remote ACL
-permissions determine which commands the target accepts.</p>
+saved outgoing route; <code>path direct</code>, <code>path clear</code>, or a list separated by
+spaces, commas, or both changes the route used by subsequent <code>login</code>, <code>send</code>,
+and <code>cmd</code> commands. Every hop must use the same 2-, 4-, or 6-digit hexadecimal
+width. Login passwords are masked during entry and limited by the radio
+protocol to 15 UTF-8 bytes. Wait for the asynchronous login result before using
+<code>cmd</code>; command replies appear as <code>CLI -&gt; from &lt;name&gt;</code> and use a response window
+of 300% of the route estimate. <code>DIRECT via path &lt;hop,...&gt;</code> displays the exact
+saved prefixes copied into the packet. Remote ACL permissions determine which
+commands the target accepts. The matching reply reports its round-trip time
+from local queueing through result reception, including radio transit and
+remote execution. Only one terminal <code>cmd</code> can be pending at a time.</p>
+<p>Incoming unicast replies are labeled <code>ROUTED</code>. Their exact return prefixes are
+not available at the destination because each forwarder consumes its prefix;
+use <code>trace</code> to verify the return route.</p>
 <p>With no argument, <code>trace</code> uses the current <code>to</code> recipient. A name-prefix
 argument traces that contact directly without changing the current recipient.
 The contact must already have a known direct path; results show the SNR at each
