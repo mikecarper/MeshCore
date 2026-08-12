@@ -977,7 +977,9 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   // forward. Edge mode observes verified evidence on the receive path instead,
   // so repeat off and other forwarding filters do not hide a single upstream
   // path from a node at the edge of the network.
+#if !defined(PORTABLE_MQTT_OBSERVER)
   if (!clock_sync_mesh_edge_enabled) recordAcceptedFloodClockSample(packet);
+#endif
 #endif
   return true;
 }
@@ -2489,12 +2491,14 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
   // Mesh calls this hook only after verifying the advert's Ed25519 signature.
   // Edge mode observes it here rather than in allowPacketForward(), because
   // forwarding can be disabled on a receive-only edge node.
+#if !defined(PORTABLE_MQTT_OBSERVER)
   if (clock_sync_mesh_edge_enabled && isClockSyncCollectionActive()) {
     uint8_t source_id[4];
     mesh::Utils::sha256(source_id, sizeof(source_id), id.pub_key, PUB_KEY_SIZE);
     recordClockSyncSample(mesh::CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT,
                           source_id, timestamp, packet);
   }
+#endif
 
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
   if (packet->getPathHashCount() == 0 && !isShare(packet)) {
@@ -2506,6 +2510,7 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
 }
 
 void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+#if !defined(PORTABLE_MQTT_OBSERVER)
   // The base Mesh calls this for every unseen, structurally valid group packet
   // before the forwarding decision. Public-channel decryption below also
   // verifies its MAC, so unrelated or forged channel packets are ignored.
@@ -2513,6 +2518,9 @@ void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
       && packet->getPayloadType() == PAYLOAD_TYPE_GRP_TXT) {
     recordPublicChannelClockSample(packet);
   }
+#else
+  (void)packet;
+#endif
 }
 
 void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, const uint8_t *secret,
@@ -3090,7 +3098,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
   loadFloodChannelScopeRequirements();
   loadFloodGroupModeration();
+#if !defined(PORTABLE_MQTT_OBSERVER)
   loadClockSyncPrefs();
+#endif
 #endif
 
   // establish default-scope
@@ -8743,6 +8753,8 @@ void MyMesh::deleteFloodGroupModeration(const char* args, char* reply) {
   }
 }
 
+#if !defined(PORTABLE_MQTT_OBSERVER)
+
 void MyMesh::loadClockSyncPrefs() {
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
   clock_sync_mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0;
@@ -9378,6 +9390,20 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
     }
   }
 }
+
+#else
+
+// Portable MQTT observers use their bridge's NTP source. Omitting the mesh
+// consensus implementation keeps these legacy-slot images update-compatible;
+// FULL MQTT images retain both NTP and mesh clock synchronization.
+static const char* clockSyncMeshSuppressionName(uint8_t source) {
+  (void)source;
+  return "unavailable";
+}
+
+void MyMesh::onManualClockSet() {}
+
+#endif
 
 void MyMesh::formatStatsReply(char *reply) {
   StatsFormatHelper::formatCoreStats(reply, board, *_ms, _err_flags, _mgr);
