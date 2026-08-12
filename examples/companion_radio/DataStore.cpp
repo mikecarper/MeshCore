@@ -269,7 +269,7 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   return identity_store.save("_main", identity);
 }
 
-void DataStore::loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon) {
+void DataStore::loadPrefs(CompanionNodePrefs& prefs, double& node_lat, double& node_lon) {
   if (_fs->exists("/new_prefs")) {
     loadPrefsInt("/new_prefs", prefs, node_lat, node_lon); // new filename
   } else if (_fs->exists("/node_prefs")) {
@@ -280,7 +280,7 @@ void DataStore::loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon) 
   }
 }
 
-void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& node_lat, double& node_lon) {
+void DataStore::loadPrefsInt(const char *filename, CompanionNodePrefs& _prefs, double& node_lat, double& node_lon) {
   File file = openRead(_fs, filename);
   if (file) {
     uint8_t pad[8];
@@ -328,7 +328,7 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
   }
 }
 
-bool DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_lon) {
+bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, double node_lon) {
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(_fs, "/new_prefs");
 #else

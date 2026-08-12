@@ -110,7 +110,7 @@ class HomeScreen : public UIScreen {
   UITask* _task;
   mesh::RTCClock* _rtc;
   SensorManager* _sensors;
-  NodePrefs* _node_prefs;
+  CompanionNodePrefs* _node_prefs;
   uint8_t _page;
   bool _shutdown_init;
   AdvertPath recent[UI_RECENT_LIST_SIZE];
@@ -143,7 +143,7 @@ class HomeScreen : public UIScreen {
   }
 
 public:
-  HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, NodePrefs* node_prefs)
+  HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, CompanionNodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
        _shutdown_init(false), sensors_lpp(200) {  }
 
@@ -434,7 +434,7 @@ public:
 };
 
 
-void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
+void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
   _auto_off = millis() + AUTO_OFF_MILLIS;

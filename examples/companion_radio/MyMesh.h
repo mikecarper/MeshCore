@@ -116,7 +116,7 @@ public:
   void startInterface(BaseSerialInterface &serial);
 
   const char *getNodeName();
-  NodePrefs *getNodePrefs();
+  CompanionNodePrefs *getNodePrefs();
   uint32_t getBLEPin();
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
@@ -324,7 +324,7 @@ private:
   void scheduleContactWriteAfterRelease(const ContactInfo& contact);
 
   DataStore* _store;
-  NodePrefs _prefs;
+  CompanionNodePrefs _prefs;
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   MQTTPrefs _mqtt_prefs;
   MQTTBridge* _mqtt_bridge;

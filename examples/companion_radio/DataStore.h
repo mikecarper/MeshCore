@@ -37,7 +37,7 @@ class DataStore {
   void resetContactPageState();
 #endif
 
-  void loadPrefsInt(const char *filename, NodePrefs& prefs, double& node_lat, double& node_lon);
+  void loadPrefsInt(const char *filename, CompanionNodePrefs& prefs, double& node_lat, double& node_lon);
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   void checkAdvBlobFile();
 #endif
@@ -52,8 +52,8 @@ public:
   void disableSecondaryFS() { _fsExtra = nullptr; }
   bool loadMainIdentity(mesh::LocalIdentity &identity);
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
-  void loadPrefs(NodePrefs& prefs, double& node_lat, double& node_lon);
-  bool savePrefs(const NodePrefs& prefs, double node_lat, double node_lon);
+  void loadPrefs(CompanionNodePrefs& prefs, double& node_lat, double& node_lon);
+  bool savePrefs(const CompanionNodePrefs& prefs, double node_lat, double node_lon);
   void loadContacts(DataStoreHost* host);
   bool saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool markContactDirty(const ContactInfo& contact);

@@ -28,7 +28,7 @@ class UITask : public AbstractUITask {
   DRV2605Vibration vibration;
 #endif
   unsigned long _next_refresh, _auto_off;
-  NodePrefs* _node_prefs;
+  CompanionNodePrefs* _node_prefs;
   char _version_info[32];
   char _origin[62];
   char _msg[80];
@@ -71,7 +71,7 @@ public:
       _pairing_screen_until = 0;
       ui_started_at = 0;
   }
-  void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
+  void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
 
   bool hasDisplay() const { return _display != NULL; }
   void clearMsgPreview();

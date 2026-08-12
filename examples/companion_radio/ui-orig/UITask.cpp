@@ -43,7 +43,7 @@ static const uint8_t meshcore_logo [] PROGMEM = {
     0xe3, 0xe3, 0x8f, 0xff, 0x1f, 0xfc, 0x3c, 0x0e, 0x1f, 0xf8, 0xff, 0xf8, 0x70, 0x3c, 0x7f, 0xf8, 
 };
 
-void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
+void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
   _auto_off = millis() + AUTO_OFF_MILLIS;

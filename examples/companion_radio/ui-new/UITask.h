@@ -35,7 +35,7 @@ class UITask : public AbstractUITask {
   unsigned long _msg_preview_until;
   unsigned long _pairing_screen_until;
   bool _deferred_msg_preview;
-  NodePrefs* _node_prefs;
+  CompanionNodePrefs* _node_prefs;
   char _alert[80];
   unsigned long _alert_expiry;
   int _msgcount;
@@ -79,7 +79,7 @@ public:
     ui_started_at = 0;
     curr = NULL;
   }
-  void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
+  void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
 
   void gotoHomeScreen() { setCurrScreen(home); }
   void showAlert(const char* text, int duration_millis);

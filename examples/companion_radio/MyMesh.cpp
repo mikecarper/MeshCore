@@ -1768,7 +1768,7 @@ void MyMesh::serviceTempRadio() {
 const char *MyMesh::getNodeName() {
   return _prefs.node_name;
 }
-NodePrefs *MyMesh::getNodePrefs() {
+CompanionNodePrefs *MyMesh::getNodePrefs() {
   return &_prefs;
 }
 uint32_t MyMesh::getBLEPin() {
