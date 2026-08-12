@@ -32,7 +32,11 @@ public:
   uint16_t getBattMilliVolts() override;
 
   const char* getManufacturerName() const override {
+#ifdef MANUFACTURER_STRING
+    return MANUFACTURER_STRING;
+#else
     return "Seeed Xiao-nrf52";
+#endif
   }
 
   void powerOff() override {

@@ -66,6 +66,10 @@ public:
   }
 
   const char* getManufacturerName() const override {
+#ifdef MANUFACTURER_STRING
+    return MANUFACTURER_STRING;
+#else
     return "Heltec V3";
+#endif
   }
 };

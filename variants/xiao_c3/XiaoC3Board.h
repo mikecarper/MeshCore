@@ -75,6 +75,10 @@ public:
   }
 
   const char* getManufacturerName() const override {
+#ifdef MANUFACTURER_STRING
+    return MANUFACTURER_STRING;
+#else
     return "Xiao C3";
+#endif
   }
 };
