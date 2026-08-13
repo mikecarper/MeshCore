@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/telemetry_decoder/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/rak3401_mota_chain/">
       
       
-        <link rel="prev" href="../stats_binary_frames/">
+        <link rel="prev" href="../qr_codes/">
       
       
-        <link rel="next" href="../terminal_chat_cli/">
+        <link rel="next" href="../stats_binary_frames/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Telemetry history decoder - MeshCore Docs</title>
+        <title>RAK3401 1W repeater LoRa update chain - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#telemetry-history-decoder" class="md-skip">
+        <a href="#rak3401-1w-repeater-lora-update-chain" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Telemetry history decoder
+              RAK3401 1W repeater LoRa update chain
             
           </span>
         </div>
@@ -875,10 +875,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../rak3401_mota_chain/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401 1W repeater LoRa update chain
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -894,6 +921,136 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#corrected-test-candidate-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Corrected test-candidate bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#withdrawn-v11702-chain-smoke-test-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Withdrawn v1.17.02-chain smoke-test result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recover-the-lab-rak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recover the lab RAK
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#intended-runner-safety-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intended runner safety behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-and-radio-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host and radio requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-without-touching-a-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify without touching a radio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#corrected-release-live-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Corrected-release live preflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-lab-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct lab template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relayed-lab-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relayed lab template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -929,37 +1086,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Telemetry history decoder
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
         
   
   
@@ -975,109 +1105,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#commands-to-run" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Commands to run
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decode-a-reply" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decode a reply
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#example-calls-and-replies" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example calls and replies
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Example calls and replies">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#temperature" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Temperature
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#battery-voltage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Battery voltage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#gps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GPS
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#reading-the-table" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reading the table
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1136,10 +1163,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#commands-to-run" class="md-nav__link">
+  <a href="#corrected-test-candidate-bundle" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Commands to run
+        Corrected test-candidate bundle
       
     </span>
   </a>
@@ -1147,10 +1174,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#decode-a-reply" class="md-nav__link">
+  <a href="#withdrawn-v11702-chain-smoke-test-result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Decode a reply
+        Withdrawn v1.17.02-chain smoke-test result
       
     </span>
   </a>
@@ -1158,60 +1185,87 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-calls-and-replies" class="md-nav__link">
+  <a href="#recover-the-lab-rak" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example calls and replies
+        Recover the lab RAK
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Example calls and replies">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#temperature" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Temperature
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#battery-voltage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Battery voltage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#gps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GPS
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#reading-the-table" class="md-nav__link">
+  <a href="#intended-runner-safety-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reading the table
+        Intended runner safety behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-and-radio-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host and radio requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-without-touching-a-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify without touching a radio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#corrected-release-live-preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Corrected-release live preflight
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#direct-lab-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct lab template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relayed-lab-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relayed lab template
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completion checks
       
     </span>
   </a>
@@ -1235,7 +1289,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/telemetry_decoder.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/rak3401_mota_chain.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1243,136 +1297,265 @@
   
 
 
-<h1 id="telemetry-history-decoder">Telemetry history decoder</h1>
-<p>Decode the Base64 reply from MeshCore repeater telemetry commands into a
-timestamped table. Decoding happens entirely in this browser; the pasted reply
-is not uploaded or sent anywhere.</p>
-<h2 id="commands-to-run">Commands to run</h2>
-<p>Run one of these commands in a local serial CLI or a remote administrator CLI
-session, then copy the complete reply beginning with <code>&gt;</code> into the decoder.</p>
-<table>
-<thead>
-<tr>
-<th>Data</th>
-<th>Newest page</th>
-<th>Older-page example</th>
-<th>Samples per page</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>MCU temperature</td>
-<td><code>get telemetry.temp</code></td>
-<td><code>get telemetry.temp 2</code></td>
-<td>48 (24 hours)</td>
-</tr>
-<tr>
-<td>Battery voltage</td>
-<td><code>get telemetry.volt</code></td>
-<td><code>get telemetry.volt 3</code></td>
-<td>48 (24 hours)</td>
-</tr>
-<tr>
-<td>GPS position</td>
-<td><code>get telemetry.gps</code></td>
-<td><code>get telemetry.gps 2</code></td>
-<td>24 (12 hours)</td>
-</tr>
-</tbody>
-</table>
-<p>Page <code>1</code> is always the newest. Temperature and voltage support pages <code>1</code>-<code>7</code>.
-GPS normally supports pages <code>1</code>-<code>6</code>; its configured retention can be changed
-from one through 30 days:</p>
-<pre><code class="language-text">set telemetry.gps 7
-get telemetry.gps 1
-get telemetry.gps 14
-</code></pre>
-<p>The GPS setter reports the number of days and pages the device could actually
-allocate. Telemetry history is boot-local, so a freshly rebooted repeater may
-reply that its history is empty.</p>
-<h2 id="decode-a-reply">Decode a reply</h2>
-<div class="telemetry-tool" data-telemetry-decoder>
-  <div class="telemetry-examples" aria-label="Load an example reply">
-    <strong>Try an example:</strong>
-    <button type="button" data-telemetry-example="temperature">Temperature</button>
-    <button type="button" data-telemetry-example="voltage">Voltage</button>
-    <button type="button" data-telemetry-example="gps">GPS</button>
-  </div>
-
-  <label for="telemetry-reply-input">CLI reply or Base64 payload</label>
-  <textarea
-    id="telemetry-reply-input"
-    data-role="input"
-    spellcheck="false"
-    autocomplete="off"
-    placeholder="> paste the Base64 telemetry reply here"
-    aria-describedby="telemetry-input-help"
-  ></textarea>
-  <p class="telemetry-tool-help" id="telemetry-input-help">
-    Paste either the complete <code>&gt; ...</code> response or Base64 alone.
-    Press Ctrl/Command+Enter to decode.
-  </p>
-
-  <div class="telemetry-actions">
-    <button class="telemetry-primary-action" type="button" data-role="decode">Decode telemetry</button>
-    <button type="button" data-role="clear">Clear</button>
-    <label class="telemetry-local-time">
-      <input type="checkbox" data-role="local-time">
-      Show browser-local time
-    </label>
-  </div>
-
-  <div class="telemetry-error" data-role="error" role="alert" aria-live="polite" hidden></div>
-
-  <section class="telemetry-results" data-role="results" aria-live="polite" hidden>
-    <div class="telemetry-results-header">
-      <h2 data-role="result-title">Decoded telemetry</h2>
-      <button type="button" data-role="download">Download CSV</button>
-    </div>
-    <dl class="telemetry-summary" data-role="summary"></dl>
-    <div class="telemetry-warnings" data-role="warnings" hidden>
-      <strong>Decode notes</strong>
-      <ul data-role="warning-list"></ul>
-    </div>
-    <div class="telemetry-table-wrap">
-      <table class="telemetry-table" data-role="table"></table>
-    </div>
-  </section>
-</div>
-
-<h2 id="example-calls-and-replies">Example calls and replies</h2>
-<p>The buttons above load these synthetic but protocol-valid examples. Real
-responses have the same <code>&gt;</code> prefix and are auto-detected from payload type
-<code>0x11</code>, <code>0x12</code>, or <code>0x13</code>.</p>
-<h3 id="temperature">Temperature</h3>
-<pre><code class="language-text">get telemetry.temp
-&gt; EUDUcWoeMAVZVVVVUVVVVVXVVQACTJlSwEyZMmTJkuXKkyZEeNFARIcOFChQoUOHDiRY0aPI/ypUuXMmTA==
-</code></pre>
-<h3 id="battery-voltage">Battery voltage</h3>
-<pre><code class="language-text">get telemetry.volt 1
-&gt; EkDUcWoeMAAB5+bl5eTj4uLh4ODf3t7d3Nvb2tnZ2NfX1tXU1NPS0tHQ0M/Ozc3My8vKycnI/w==
-</code></pre>
-<h3 id="gps">GPS</h3>
-<pre><code class="language-text">get telemetry.gps 1
-&gt; EwB9cmoeGIChAxwAR0i3AgAAAAAAAAAAAAAAAAKAAAAAAIAAAAD/9ABAAX/+AAgAYAAAB//wAD/+gAAAA/+wAP/8ABwAEAEABgAAAA//gAX/7AAv/3/8AAf/oAF//QAYACAAgAc=
-</code></pre>
-<h2 id="reading-the-table">Reading the table</h2>
+<h1 id="rak3401-1w-repeater-lora-update-chain">RAK3401 1W repeater LoRa update chain</h1>
+<blockquote>
+<p>Status: the corrected v1.17.01 26-package release candidate has passed
+complete offline reconstruction, independent container verification, and
+both stable OTAFIX 2.4 and Preview 6 C simulations. It still needs its first
+complete physical RAK3401 run and is gated behind
+<code>--accept-test-candidate</code>; do not use it in production yet.</p>
+</blockquote>
+<p>This procedure records the exact 26-step update chain from the release
+<a href="https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e"><code>rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e</code></a>.
+It is intentionally specific to the following destination firmware:</p>
 <ul>
-<li>Timestamps default to UTC. Select <strong>Show browser-local time</strong> to convert
-  them for display and CSV export.</li>
-<li>Temperature preserves exact whole degrees from <code>-50 C</code> through <code>+77 C</code>, plus
-  missing, below-range, and above-range states.</li>
-<li>Voltage preserves hundredths of a volt from <code>1.88 V</code> through <code>4.40 V</code>, plus
-  missing and out-of-range states.</li>
-<li>GPS positions are reconstructed from signed 10-meter differentials. A zero
-  differential after the page origin is inherently ambiguous: it can represent
-  an unchanged fix, movement below the encoded resolution, or no fix. The table
-  labels those rows rather than inventing a coordinate.</li>
-<li>A GPS clipping warning means at least one movement exceeded the differential
-  range, so positions after that point can be less accurate.</li>
+<li>target ID: <code>2FA509C1</code></li>
+<li>hardware: <code>RAK_3401</code></li>
+<li>role: <code>RAK_3401_repeater_lora_ota_no_external_sensors</code></li>
+<li>starting version: <code>1.16.7.0</code>, build <code>c1caa5ad</code></li>
+<li>starting EndF body hash: <code>71F4026CBE4B8B74</code></li>
+<li>destination key used for this deployment:
+  <code>63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d</code></li>
 </ul>
-<p>For the byte-level layouts, see
-<a href="../cli_commands/#read-repeater-telemetry-history">Read repeater telemetry history</a>.</p>
+<p>Do not use this chain on another node, and do not start it on another RAK3401.
+The artifact checks do not replace the pending complete physical-board run.
+Use this candidate only for the next recoverable lab test.</p>
+<h2 id="corrected-test-candidate-bundle">Corrected test-candidate bundle</h2>
+<p>The replacement rebuilds steps 6 through 14 so both <code>Utils::sha256</code> overloads
+use software SHA-256; hardware AES and HMAC stay enabled. Temporary steps 14
+through 25 have monotonic EndF versions <code>1.16.9.110</code> through <code>1.16.9.121</code>.
+The final endpoint is a real v1.17.01 build from <code>c96bdd6e</code>, with both its
+runtime string and EndF version set to <code>1.17.1.0</code>. No v1.17.02 endpoint is used.</p>
+<pre><code class="language-text">/home/mesh/git/MeshCore/out-rak3401-mota-v1.17.01-corrected/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e.zip
+</code></pre>
+<p>ZIP SHA-256:
+<code>693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a</code>.
+The largest package is 88,280 bytes, leaving 1,832 bytes below the staging
+limit. All 26 deltas reconstruct with both zero-filled and 0xFF-filled
+workspaces. The endpoint has whole-image SHA-256
+<code>e923f6209e0f071a5862ffbc7690e0b355c1e74829067e0bfdacd0de6c316065</code>
+and EndF body hash <code>AC267B02E055F42E</code>.</p>
+<p>The candidate includes the exact v1.16.7 test-start UF2/Nordic DFU ZIP, a
+diagnostic corrected step-6 image, and the final recovery UF2/ZIP. Restore the
+lab node locally to the included test-start image before rerunning the chain.
+The bundle's <code>RUNBOOK.md</code> contains the direct and two-hop commands.</p>
+<h2 id="withdrawn-v11702-chain-smoke-test-result">Withdrawn v1.17.02-chain smoke-test result</h2>
+<p>The lab topology used a Heltec V4.3 OLED ESP32 Full Companion on
+<code>/dev/ttyACM0</code> and a direct LoRa path to <code>RAK3401 1W Repeater</code>. The remote
+admin password is the lowercase default <code>password</code>, not <code>Password</code>.</p>
+<p>Steps 1 through 5 completed and passed an exact post-boot version and EndF
+body-hash check. Step 6 then did all of the following successfully:</p>
+<ul>
+<li>downloaded all 79 blocks of mOTA ID <code>7C8BC884</code>;</li>
+<li>verified the watchdog was off immediately before install;</li>
+<li>returned <code>verified (unsigned); applying</code>;</li>
+<li>booted <code>v1.16.08.7-halo-keymind-cascade-b-0c4ed3ac</code>;</li>
+<li>retained a soft-reset boot record consistent with OTAFIX apply success.</li>
+</ul>
+<p>The resulting bridge returns <code>ERR no EndF (firmware lacks the trailer?)</code> from
+<code>ota self</code>. The release package is not corrupt: independently applying its
+delta reconstructs the expected 524,204-byte image with whole-image SHA-256
+<code>61ced8b63953c614748c2fa1b04c2c01e8eb6626a604f6ef95fd2594d6d8ce71</code>
+and valid EndF body hash <code>A0130F9BD6760D47</code>.</p>
+<p>The regression is in the intermediate application. This is the first bridge
+in the chain built with the old CC310 hardware-crypto SHA path. That path
+passes the memory-mapped application body to CC310 and ignores a failed return
+code instead of falling back to software SHA. The preceding v1.16.08 image
+uses software SHA, while later code contains the required checked fallback.
+The normal nRF52 install gate correctly refuses step 7 when it cannot validate
+the running body. Forcing the bootloader trigger would bypass an application
+safety gate and is not an acceptable recovery.</p>
+<p>The lab RAK remains alive on v1.16.08.7. Its normal radio is restored to
+<code>910.525,62.5,7,5</code>, and <code>system.watchdog</code> is restored and verified <code>on</code>.</p>
+<h2 id="recover-the-lab-rak">Recover the lab RAK</h2>
+<p>Recovery now requires a local data path to the RAK3401 itself. The Heltec
+controller cable cannot recover the remote RAK, and this host currently has no
+Bluetooth adapter.</p>
+<ol>
+<li>Connect the RAK3401 itself to this host by USB.</li>
+<li>Enter its exact-board UF2 bootloader, using a local <code>uf2reset</code> command or
+   the board's double-reset gesture.</li>
+<li>Flash the final RAK3401 UF2 from the corrected bundle's <code>recovery/final/</code>
+   directory:
+   <code>RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.01-halo-keymind-cascade-dev-c96bdd6e.uf2</code>.</li>
+<li>After it boots, require version <code>v1.17.1</code>, target <code>2FA509C1</code>, hardware
+   <code>RAK_3401</code>, a valid <code>ota self</code> reply, normal radio settings, and watchdog
+   <code>on</code>.</li>
+</ol>
+<p>Do not send step 7, force an apply, or issue a remote recovery reboot. Once the
+RAK USB cable is attached, the port and UF2 mount can be detected and the
+recovery completed without guessing device paths.</p>
+<h2 id="intended-runner-safety-behavior">Intended runner safety behavior</h2>
+<p>Stable OTAFIX 2.4 cannot feed a system watchdog inherited by the bootloader.
+The dormant live path implements the release's watchdog sequence:</p>
+<ol>
+<li>Persist <code>system.watchdog off</code> without issuing a normal reboot.</li>
+<li>Wait 90 seconds for the already-running watchdog to reset the node.</li>
+<li>Require the node to report <code>&gt; off</code>.</li>
+<li>Prove another 90 seconds of stable uptime.</li>
+<li>Enforce the requested <code>ota config hops</code> reach before every chain step.</li>
+<li>Recheck <code>&gt; off</code> immediately before every <code>ota install</code> command.</li>
+<li>Re-enable the watchdog only after the exact step 26 image boots and passes
+   both version and EndF body-hash verification.</li>
+</ol>
+<p>These controls are active for the corrected candidate. They cannot repair the
+old bridge whose own EndF check is broken. The candidate must pass a complete
+physical-board run before its explicit lab-only gate is removed.</p>
+<p>An interrupted download is resumable. Avoid interrupting power or radio
+coverage while <code>ota install</code> is applying a package. Physical USB recovery is
+the fallback if an apply is interrupted at the wrong instant.</p>
+<h2 id="host-and-radio-requirements">Host and radio requirements</h2>
+<p>Install:</p>
+<ul>
+<li>Python 3.9 or newer</li>
+<li><code>meshcli</code> 1.6.0 or newer</li>
+<li>a current <code>motatool</code></li>
+<li>a Full Companion or OTA-enabled repeater to seed the files</li>
+</ul>
+<p>The ESP32 Full Companion serves mOTA data through its dedicated TCP port
+<code>5001</code>; its USB port remains the Binary API controller. Its local OTA and
+TempRadio console is TCP port <code>5002</code>. For a Heltec Full Companion at
+<code>192.168.1.51</code>, use these three connections together:</p>
+<pre><code class="language-text">controller:  /dev/ttyACM0
+mOTA source: 192.168.1.51:5001
+source CLI:  192.168.1.51:5002
+</code></pre>
+<p>Before a deployment, verify that USB and TCP port <code>5000</code> report the same
+Companion public key:</p>
+<pre><code class="language-bash">meshcli -s /dev/ttyACM0 -j -c off infos
+meshcli -t 192.168.1.51 -p 5000 -j -c off infos
+</code></pre>
+<p>The tested Heltec key is
+<code>8ce031bc322f3cf77376eeacfe8800b30d8c5dfe927f3636d801f3455a2dd4cf</code>.
+Change the IP address for a different deployment.</p>
+<p>The source, controller, destination, and every intermediate relay must support
+the temporary tuple <code>909.950,250,7,5</code>. Confirm that this frequency and
+bandwidth are legal at the deployment location. All nodes return to their
+ordinary radio after each step.</p>
+<h2 id="verify-without-touching-a-radio">Verify without touching a radio</h2>
+<p>The chain runner pins the release ZIP SHA-256 to
+<code>693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a</code>.
+It also pins and verifies the inner checksum list, checks complete checksum
+coverage, parses every manifest, verifies the chain continuity, and runs
+<code>motatool verify</code> on all 26 containers.</p>
+<p>It downloads the release automatically when <code>--bundle</code> is omitted:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
+  --work-dir ./rak3401-mota-chain-work \
+  --motatool /path/to/motatool \
+  --verify-only
+</code></pre>
+<p>An already-downloaded asset can be supplied with <code>--bundle</code>. Only the pinned
+ZIP or its extracted root is accepted.</p>
+<h2 id="corrected-release-live-preflight">Corrected-release live preflight</h2>
+<p>The remote-admin password for the tested RAK is the lowercase default
+<code>password</code>. Prefer the environment variable so it is not placed in the child
+process command line:</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='password'
+
+python3 tools/lora_ota/rak3401_mota_chain.py \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.51:5001 \
+  --source-cli-tcp 192.168.1.51:5002 \
+  --source-shares-controller \
+  --ota-hops 3 \
+  --accept-test-candidate \
+  --motatool /path/to/motatool \
+  --preflight-only
+</code></pre>
+<p>This validates the corrected bundle, Full Companion identity, source, and
+destination without changing radio or watchdog settings. Omitting
+<code>--accept-test-candidate</code> exits before connecting to a device. The withdrawn
+v1.17.02 chain is also recognized and always blocked before device access.</p>
+<h2 id="direct-lab-template">Direct lab template</h2>
+<p>Use only on a locally recoverable test RAK3401. Keep the work directory for
+resume, and retain the explicit <code>--accept-test-candidate</code> lab gate.</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='password'
+
+python3 tools/lora_ota/rak3401_mota_chain.py \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.51:5001 \
+  --source-cli-tcp 192.168.1.51:5002 \
+  --source-shares-controller \
+  --ota-hops 3 \
+  --accept-test-candidate \
+  --motatool /path/to/motatool \
+  --yes
+</code></pre>
+<p>The intended runner logs each isolated step attempt below <code>steps/</code>, records every
+verified transition in <code>progress.jsonl</code>, and prints the source log path. Rerun
+the exact command after a host restart or recoverable RF failure. Its default
+60-second status interval deliberately leaves airtime for the low-priority OTA
+transfer; avoid shortening it on a busy or relayed mesh.</p>
+<h2 id="relayed-lab-template">Relayed lab template</h2>
+<p>Every intermediate relay must enter the same TempRadio tuple. Add one
+<code>--relay</code> argument for each intermediate repeater, ordered from the destination
+side back toward the controller. In other words, list the farthest relay first
+and the nearest relay last. A bare relay name uses
+<code>MESHCORE_ADMIN_PASSWORD</code>; append <code>=PASSWORD</code> only when that relay has a
+different password.</p>
+<p>The word "hop" is sometimes counted two ways:</p>
+<ul>
+<li><code>controller -&gt; relay -&gt; destination</code> is two RF links but has one
+  intermediate relay, so pass one <code>--relay</code>.</li>
+<li><code>controller -&gt; near relay -&gt; far relay -&gt; destination</code> has two intermediate
+  relays, so pass two <code>--relay</code> values, <code>far</code> first and <code>near</code> second.</li>
+</ul>
+<p>For one intermediate relay:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.51:5001 \
+  --source-cli-tcp 192.168.1.51:5002 \
+  --source-shares-controller \
+  --ota-hops 3 \
+  --relay 'Intermediate Repeater' \
+  --accept-test-candidate \
+  --motatool /path/to/motatool \
+  --yes
+</code></pre>
+<p>For two intermediate relays:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.51:5001 \
+  --source-cli-tcp 192.168.1.51:5002 \
+  --source-shares-controller \
+  --ota-hops 3 \
+  --relay 'Far Repeater' \
+  --relay 'Near Repeater' \
+  --accept-test-candidate \
+  --motatool /path/to/motatool \
+  --yes
+</code></pre>
+<p>Do not begin a production deployment until the corrected bundle passes a
+direct physical smoke test from start to endpoint. Run <code>--preflight-only</code> with
+the same relay arguments first. The runner sends
+the destination to TempRadio, then the relays farthest-to-nearest while their
+remaining normal routes still exist. It checks that the 120-minute TempRadio
+window covers the selected relay count and all configured timeouts. The
+starting build may report <code>hops=0</code> after the watchdog-driven reset, so the
+runner re-enforces <code>--ota-hops 3</code> before every step. That setting accepts OTA
+packets received through up to three intermediate repeaters.</p>
+<p>For a lossy multi-hop path, increase <code>--reply-timeout</code>,
+<code>--discovery-timeout</code>, or <code>--transfer-timeout-minutes</code> as needed. If their sum
+no longer fits the TempRadio window, also increase the minutes in
+<code>--temp-radio</code>; the runner rejects an unsafe combination before connecting.</p>
+<h2 id="completion-checks">Completion checks</h2>
+<p>Success requires all of the following:</p>
+<ul>
+<li>version <code>v1.17.1.0</code></li>
+<li>target ID <code>2FA509C1</code></li>
+<li>hardware <code>RAK_3401</code></li>
+<li>final EndF body hash <code>AC267B02E055F42E</code></li>
+<li><code>get system.watchdog</code> returning <code>&gt; on</code></li>
+</ul>
+<p>Do not treat a successful transfer alone as completion. Each temporary bridge
+is a complete bootable image, but the RAK should not be left on a bridge
+version between planned maintenance sessions.</p>
+<p>See <a href="../lora_ota_automation/">LoRa OTA automation</a> for the generic single-step
+workflow and source topology details.</p>
 
 
 

@@ -1068,6 +1068,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../rak3401_mota_chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401 1W repeater LoRa update chain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../stats_binary_frames/" class="md-nav__link">
         
   
@@ -1337,6 +1364,10 @@
 
 
 <h1 id="scripted-lora-ota-from-start-to-finish">Scripted LoRa OTA from start to finish</h1>
+<p>The dedicated <a href="../rak3401_mota_chain/">RAK3401 chain report</a> records the
+physical failure of the withdrawn 26-step migration and the corrected
+v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
+explicit lab-only gate for the corrected chain until physical testing passes.</p>
 <p><a href="../tools/lora_ota/lora_ota.sh"><code>tools/lora_ota/lora_ota.sh</code></a> and
 <a href="../tools/lora_ota/lora_ota.ps1"><code>tools/lora_ota/lora_ota.ps1</code></a> automate a
 MeshCore LoRa firmware update from a release <code>.zip</code> or ready <code>.mota</code>. They
@@ -1630,6 +1661,16 @@ well as individual ZIP members, are rejected above 64 MiB before being loaded.</
 <li><code>--allow-non-upgrade</code> deliberately permits the same or an older version.</li>
 <li><code>--replace-active-download</code> deliberately discards a different update already
   downloading or staged on the target. Without it, that update is preserved.</li>
+<li><code>--source-shares-controller</code> is for a Full Companion whose USB Binary API is
+  the controller while its TCP port <code>5001</code> is the source. It verifies that the
+  source's port-<code>5000</code> public key equals the controller key. The Binary API
+  first moves the shared physical radio, port <code>5002</code> then enables the local OTA
+  egress gate, and cleanup sends <code>normalradio</code> before restoring the saved
+  Binary radio tuple.</li>
+<li><code>--require-system-watchdog-off</code> checks <code>get system.watchdog</code> immediately
+  before every <code>ota install</code> transmission and refuses installation unless the
+  destination reports <code>&gt; off</code>. Use it for nRF52 chains whose bootloader cannot
+  service an application watchdog inherited across reset.</li>
 <li><code>--work-dir PATH</code> chooses a new, non-existent work directory.</li>
 <li><code>--meshcli PATH</code> and <code>--motatool PATH</code> select binaries not on <code>PATH</code>.</li>
 </ul>
