@@ -20,7 +20,12 @@ public:
 
 class TraceTestRNG : public mesh::RNG {
 public:
-  void random(uint8_t* dest, size_t sz) override { memset(dest, 0, sz); }
+  uint32_t value = 0;
+  void random(uint8_t* dest, size_t sz) override {
+    for (size_t offset = 0; offset < sz; offset++) {
+      dest[offset] = (uint8_t)(value >> (8 * (offset % sizeof(value))));
+    }
+  }
 };
 
 class TraceTestRadio : public mesh::Radio {
@@ -92,6 +97,10 @@ public:
 
   uint32_t floodAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx = 0) {
     return getFloodRetryAttemptDelay(packet, attempt_idx);
+  }
+
+  uint32_t otaRelayDelay(const mesh::Packet* packet) {
+    return getOtaRetransmitDelay(packet);
   }
 
   void completePacketSend(mesh::Packet* packet) {
@@ -212,6 +221,55 @@ TEST(RepeaterTransport, OtaFloodRelaysWithoutOtaManagerOnlyDuringTempRadio) {
 
   node.tempRadioActive = false;
   EXPECT_FALSE(node.canTransmit(&packet));  // queued-near-expiry packets cannot leak onto the normal channel
+}
+
+TEST(RepeaterTransport, OtaRelayDelayIsQuarterToHalfAirtime) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;                     // fixed 10 ms packet airtime
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+
+  rng.value = 0;
+  EXPECT_EQ(node.otaRelayDelay(&packet), 3u);  // ceil(0.25 * 10 ms)
+  rng.value = 2;                              // selects the last value in [3, 5]
+  EXPECT_EQ(node.otaRelayDelay(&packet), 5u);  // 0.5 * 10 ms
+}
+
+TEST(RepeaterTransport, OtaRelayDelayEscalatesAndCapsAtThreeAirtimes) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;                         // fixed 10 ms packet airtime
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.tempRadioActive = true;
+  node.forwardFloods = true;
+  auto make_request = []() {
+    mesh::Packet request = makeFloodPacket(PAYLOAD_TYPE_OTA);
+    request.payload_len = 9;
+    request.payload[0] = 0x06;                  // OTA_REQ
+    for (uint8_t i = 1; i < request.payload_len; i++) request.payload[i] = i;
+    return request;
+  };
+
+  mesh::Packet request = make_request();
+  node.receivePacket(&request);                  // first request establishes the key
+  for (uint32_t retry = 1; retry <= 3; retry++) {
+    clock.now = retry * 3000;
+    request = make_request();                    // a fresh origin copy has the same zero-hop request key
+    node.receivePacket(&request);                // frequent repeats raise one level each
+  }
+  rng.value = 20;                                // last value in inclusive [10, 30]
+  EXPECT_EQ(node.otaRelayDelay(&request), 30u);  // hard maximum = 3 * 10 ms
+
+  clock.now = 100000;                            // three clean 30-second decay periods
+  rng.value = 2;
+  EXPECT_EQ(node.otaRelayDelay(&request), 5u);   // returned to the 0.25-0.5 baseline
 }
 
 TEST(RepeaterTransport, OpaqueKnownFloodPayloadsAreRelayed) {

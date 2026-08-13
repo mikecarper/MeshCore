@@ -128,6 +128,12 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #ifndef OTA_FRAG_DATA
 #define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)
 #endif
+#ifndef OTA_FETCH_PIPELINE
+#define OTA_FETCH_PIPELINE 2        // concurrent client block slots; keeps one block ready behind proof/flash work
+#endif
+#if OTA_FETCH_PIPELINE < 1
+#error "OTA_FETCH_PIPELINE must be at least 1"
+#endif
 // nRF52 note: a flash page-erase halts the CPU (~85 ms, code runs from flash) and starves the LoRa RX,
 // so writing to flash on every received packet drops in-flight DATA and the transfer stalls. The SD-safe
 // driver (Adafruit flash_nrf5x) always erases on flush, so there is no erase-free write; instead
@@ -315,7 +321,7 @@ public:
   void reset_session() {
     _fstate = IDLE; _have = 0; _req_count = 0; _mf_retries = 0;
     clearReassembly();
-    _loop_last_have = 0; _loop_last_mask = 0;
+    _loop_last_have = 0; _loop_last_progress = pipelineProgress();
     _mf_total = 0; _mf_mask = 0; _mf_len = 0; _loop_last_mfmask = 0;
     freeLeaves(); _validate = false; _archive_fetch = false;
     _lv_retries = 0; _loop_last_lvmask = 0;
@@ -371,8 +377,13 @@ private:
   void handleProof(const uint8_t* m, uint16_t n);
   void startFetch(const uint8_t* mid, uint32_t target, bool validate = false);   // begin/resume a fetch
   bool wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const;  // fetch this row?
-  void clearReassembly();                                 // forget the in-flight block (reset to NO_BLOCK)
-  uint32_t pickMissingBlock();                            // choose the next missing block in serial order
+  void clearReassembly();                                 // forget every in-flight pipeline slot
+  void clearReassemblySlot(uint8_t slot);
+  int findReassemblySlot(uint32_t block) const;
+  int findEmptyReassemblySlot() const;
+  bool blockInPipeline(uint32_t block) const;
+  uint32_t pipelineProgress() const;
+  uint32_t pickMissingBlock();                            // choose the next missing block not already in flight
   int  serveEntryIndex(const uint8_t* mid) const;         // registry slot serving this mid (-1 if none)
   ServeView* resolve(const uint8_t* mid);                 // pick/load the ServeView for this mid (nullptr)
   bool loadSource(const ServeEntry& e);                   // load an external mota into _srcv (head+leaves)
@@ -399,7 +410,9 @@ private:
   bool storedLeavesRootMatches() const;
   void beginStagedVerification();
   void verifyStagedStep();
-  void requestMissing();
+  void requestSlot(uint8_t slot);                         // request DATA holes or the proof for one slot
+  bool fillPipeline();                                    // assign and request blocks until the window is full
+  void requestMissing();                                  // fill the window, or retry one stalled slot
   uint32_t blockLen(uint32_t i) const;
 
   uint32_t _target = 0;
@@ -436,7 +449,7 @@ private:
   uint32_t   _resume_verify_idx = 0;
   bool       _resume_invalidated = false;
   MerkleAccumulator _resume_merkle;
-  uint32_t   _req_start = 0, _req_count = 0;   // last block requested (per-block serial flow; telemetry)
+  uint32_t   _req_start = 0, _req_count = 0;   // most recently requested block + active window size
   uint32_t   _loop_last_have = 0;              // for stall detection in loop()
   uint32_t   _desired_target = 0;              // manual cross-target override (0 = auto / own target)
   uint8_t    _desired_mid[4] = {0,0,0,0};      // pull a specific manifest_id (see want_mid)
@@ -452,13 +465,19 @@ private:
   uint16_t   _advert_mins = OTA_ADVERT_INTERVAL_MINS;    // beacon re-advertise cadence, minutes; 0=off (persisted)
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
   uint8_t    _fflags = 0;                       // flags of the manifest currently being fetched
-  // multi-fragment reassembly of the current block (per-block 2-phase: fetch data, then its proof)
-  uint32_t   _reasm_block = NO_BLOCK;          // block being reassembled / awaiting proof (none)
-  uint16_t   _reasm_mask = 0;                  // received FRAG_DATA-slice bitmap (bit k = slice @ k*FRAG_DATA)
-  uint16_t   _reasm_need = 0;                  // full mask once all slices of the current block are in
-  bool       _awaiting_proof = false;          // data complete; REQ_PROOF sent, verify on PROOF
-  uint16_t   _loop_last_mask = 0;              // fragment-level stall detection in loop()
-  uint8_t    _reasm_buf[OTA_MAX_BLOCK];
+  // Bounded multi-block client pipeline. Each slot independently reassembles DATA and awaits its Merkle
+  // proof, so proof/flash work for one block can overlap radio delivery of the next. The wire protocol and
+  // opaque repeater behavior are unchanged.
+  struct ReassemblySlot {
+    uint32_t block = NO_BLOCK;
+    uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
+    uint16_t need = 0;                         // full bitmap for this block
+    bool awaiting_proof = false;
+    uint8_t buf[OTA_MAX_BLOCK];
+  };
+  ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
+  uint32_t   _loop_last_progress = 0;           // aggregate pipeline progress for stall detection
+  uint8_t    _retry_slot = 0;                   // round-robin stalled-slot retry cursor
   // multi-fragment manifest reassembly (a signed v2 manifest exceeds one packet)
   uint8_t    _mf_buf[OTA_MF_MAXFRAG * OTA_MF_FRAG];   // sized to the fragment cap so no valid manifest is silently dropped
   uint16_t   _mf_retries = 0;                          // GET_MANIFEST retries while WANT_MANIFEST (give up after a cap)

@@ -110,12 +110,23 @@ class Mesh : public Dispatcher {
     bool valid;
   };
 
+  static const uint8_t OTA_REQUEST_TRACK_SLOTS = 4;
+  struct OtaRequestTrackEntry {
+    uint8_t key[7];                    // message type + manifest_id + block_idx
+    uint32_t last_request_ms;
+    uint8_t min_path_hops;             // ignore a later downstream echo with a longer path
+    bool valid;
+  };
+
   RTCClock* _rtc;
   RNG* _rng;
   MeshTables* _tables;
   DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
   FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
   RecentAdvertEchoEntry _recent_advert_echoes[MAX_RECENT_ADVERT_ECHOS];
+  OtaRequestTrackEntry _ota_request_track[OTA_REQUEST_TRACK_SLOTS] = {};
+  uint32_t _ota_relay_decay_at = 0;
+  uint8_t _ota_relay_backoff_level = 0;
   uint8_t _active_direct_retry_count;
   uint8_t _active_flood_retry_count;
   uint8_t _waiting_direct_retry_count;
@@ -154,6 +165,9 @@ class Mesh : public Dispatcher {
   void armFloodRetryOnSendComplete(const Packet* packet);
   void clearPendingFloodRetryOnSendFail(const Packet* packet);
   void maybeScheduleFloodRetry(const Packet* packet, uint8_t priority);
+  void resetOtaRelayBackoff();
+  void observeOtaRequestPressure(const Packet* packet);
+  void decayOtaRelayBackoff();
   void serviceLoopMaintenance();
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
   DispatcherAction forwardMultipartDirect(Packet* pkt);
@@ -194,6 +208,11 @@ protected:
    * \returns  number of milliseconds delay to apply to retransmitting the given packet.
    */
   virtual uint32_t getRetransmitDelay(const Packet* packet);
+
+  /**
+   * \returns  Adaptive TempRadio-only OTA relay delay, from 0.25-0.5 airtimes up to a 3-airtime cap.
+   */
+  virtual uint32_t getOtaRetransmitDelay(const Packet* packet);
 
   /**
    * \returns  number of milliseconds delay to apply to retransmitting the given packet, for DIRECT mode.

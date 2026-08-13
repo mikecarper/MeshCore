@@ -149,7 +149,7 @@ re-running a `validate` pull re-begins fresh (it never resumes a stale partial).
 trusted - every kept block is checked against the target's own fingerprints, so a mismatched or missing seed
 just means those blocks are fetched over the radio (correct result, only slower).
 
-The node fetches from one source, **at low priority**, one block at a time. Mesh repeaters may carry the
+The node fetches from one source, **at low priority**, with a bounded two-block receive window. Mesh repeaters may carry the
 packets, but only while their temporary-radio windows are active. Check progress with `ota status`.
 
 If a `folder` pull loses its link mid-transfer, `ota status` shows **paused** - the host keeps the

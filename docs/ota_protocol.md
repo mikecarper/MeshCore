@@ -502,7 +502,9 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   removes the burst, so there is nothing to collide with. The block/manifest mask matches the 16-bit
   reassembly bitmap (<=16 fragments/block; 1 KB blocks = 7). `OTA_PROOF` is a single packet and needs no mask.
 - **Data and proof are separate phases.** `OTA_DATA` carries no proof; the proof is fetched once per block
-  via `OTA_REQ_PROOF`/`OTA_PROOF` after the block's data is complete.
+  via `OTA_REQ_PROOF`/`OTA_PROOF` after that block's data is complete. The receiver keeps a bounded two-block
+  window, so one block can await its proof or flash commit while DATA for the next block arrives. Slots retry
+  independently and only one stalled slot is retried per service tick.
 
 ### 8.5 Sizing against `MAX_PACKET_PAYLOAD = 184`
 
@@ -519,12 +521,19 @@ payload); larger self-images pass a bigger scratch buffer.
 ### 8.6 Temporary-radio and transfer boundary
 
 OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
-its `tempradio` window is actually running. A receiver requests missing blocks in serial order from the offered
-firmware source. It never serves partial blocks. A normal install receiver never re-advertises its completed
+its `tempradio` window is actually running. A receiver selects missing blocks in serial order into a bounded
+two-block pipeline. It never serves partial blocks. A normal install receiver never re-advertises its completed
 download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
 to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
 This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
 repeaters between them and persistent archive nodes to improve future availability.
+
+Because TempRadio is a bounded channel dedicated to this transfer, an accepted OTA flood normally relays after
+a randomized 0.25 to 0.5 packet-airtime delay. Repeated requests for the same manifest block or proof provide
+congestion feedback without changing the wire format. Frequent retries widen the local relay window through
+0.5-1.0, 0.75-2.0, and finally 1.0-3.0 airtimes. The maximum is hard-capped at three packet airtimes. Each
+30-second interval without another observed retry lowers the window one level. Other flood payloads retain the
+role's normal randomized delay, and CAD still applies when enabled.
 
 ---
 

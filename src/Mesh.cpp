@@ -1,4 +1,5 @@
 #include "Mesh.h"
+#include "helpers/ota/OtaFormat.h"   // request types used by TempRadio relay-pressure tracking
 //#include <Arduino.h>
 #if defined(ENABLE_OTA)
 #include "helpers/ota/OtaContext.h"   // OTA mesh-integration is centralized here so every role gets it
@@ -37,6 +38,10 @@ static const uint8_t FLOOD_RETRY_MAX_PATH_DEFAULT = 1;
 static const uint32_t ORIGIN_ADVERT_RETRY_EXTRA_DELAY_MS = 60UL * 1000UL;
 static const uint32_t RECENT_ADVERT_MAX_AGE_SECONDS = 6UL * 60UL * 60UL;
 static const uint32_t FORWARDED_ADVERT_ECHO_WATCH_MS = 5UL * 60UL * 1000UL;
+static const uint32_t OTA_RETRY_OBSERVE_MIN_MS = 750UL;
+static const uint32_t OTA_RETRY_OBSERVE_MAX_MS = 30000UL;
+static const uint32_t OTA_RETRY_ESCALATE_MS = 6000UL;
+static const uint32_t OTA_RELAY_DECAY_MS = 30000UL;
 
 static bool hasValidEncryptedPayloadLength(uint16_t payload_len, uint16_t clear_prefix_len) {
   const uint16_t overhead = clear_prefix_len + CIPHER_MAC_SIZE;
@@ -214,6 +219,7 @@ void Mesh::begin() {
     _recent_advert_echoes[i].confirmed = false;
     _recent_advert_echoes[i].valid = false;
   }
+  resetOtaRelayBackoff();
   Dispatcher::begin();
 #if defined(ENABLE_OTA)
   uint32_t my_tid = 0;
@@ -397,6 +403,91 @@ uint32_t Mesh::getRetransmitDelay(const mesh::Packet* packet) {
   uint32_t t = (_radio->getEstAirtimeFor(packet->getRawLength()) * 52 / 50) / 2;
 
   return _rng->nextInt(0, 5)*t;
+}
+void Mesh::resetOtaRelayBackoff() {
+  for (uint8_t i = 0; i < OTA_REQUEST_TRACK_SLOTS; i++) {
+    memset(_ota_request_track[i].key, 0, sizeof(_ota_request_track[i].key));
+    _ota_request_track[i].last_request_ms = 0;
+    _ota_request_track[i].min_path_hops = 0;
+    _ota_request_track[i].valid = false;
+  }
+  _ota_relay_decay_at = 0;
+  _ota_relay_backoff_level = 0;
+}
+
+void Mesh::observeOtaRequestPressure(const mesh::Packet* packet) {
+  if (packet == NULL || packet->payload_len < 7) return;
+  const uint8_t type = packet->payload[0];
+  if (type != ota::OTA_REQ && type != ota::OTA_REQ_PROOF) return;
+
+  const uint32_t now = _ms->getMillis();
+  int match = -1;
+  int replacement = 0;
+  uint32_t oldest_age = 0;
+  for (uint8_t i = 0; i < OTA_REQUEST_TRACK_SLOTS; i++) {
+    OtaRequestTrackEntry& entry = _ota_request_track[i];
+    if (entry.valid && memcmp(entry.key, packet->payload, sizeof(entry.key)) == 0) {
+      match = i;
+      break;
+    }
+    uint32_t age = entry.valid ? now - entry.last_request_ms : UINT32_MAX;
+    if (i == 0 || age > oldest_age) {
+      oldest_age = age;
+      replacement = i;
+    }
+  }
+
+  if (match < 0) {
+    OtaRequestTrackEntry& entry = _ota_request_track[replacement];
+    memcpy(entry.key, packet->payload, sizeof(entry.key));
+    entry.last_request_ms = now;
+    entry.min_path_hops = packet->getPathHashCount();
+    entry.valid = true;
+    return;
+  }
+
+  OtaRequestTrackEntry& entry = _ota_request_track[match];
+  const uint32_t elapsed = now - entry.last_request_ms;
+  const uint8_t path_hops = packet->getPathHashCount();
+  // A longer-path copy shortly after the first is a downstream forwarding echo, not client retry pressure.
+  if (path_hops > entry.min_path_hops && elapsed <= OTA_RETRY_OBSERVE_MAX_MS) return;
+
+  if (elapsed >= OTA_RETRY_OBSERVE_MIN_MS && elapsed <= OTA_RETRY_OBSERVE_MAX_MS) {
+    if (elapsed <= OTA_RETRY_ESCALATE_MS) {
+      if (_ota_relay_backoff_level < 3) _ota_relay_backoff_level++;
+    } else if (_ota_relay_backoff_level == 0) {
+      _ota_relay_backoff_level = 1;
+    }
+    _ota_relay_decay_at = now + OTA_RELAY_DECAY_MS;
+  }
+  entry.last_request_ms = now;
+  if (path_hops < entry.min_path_hops) entry.min_path_hops = path_hops;
+}
+
+void Mesh::decayOtaRelayBackoff() {
+  if (_ota_relay_backoff_level == 0 || _ota_relay_decay_at == 0) return;
+  const uint32_t now = _ms->getMillis();
+  while (_ota_relay_backoff_level > 0 && (int32_t)(now - _ota_relay_decay_at) >= 0) {
+    _ota_relay_backoff_level--;
+    _ota_relay_decay_at += OTA_RELAY_DECAY_MS;
+  }
+  if (_ota_relay_backoff_level == 0) _ota_relay_decay_at = 0;
+}
+
+uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
+  if (packet == NULL) return 0;
+  decayOtaRelayBackoff();
+  uint32_t airtime = _radio->getEstAirtimeFor(packet->getRawLength());
+  if (airtime == 0) return 0;
+  // Quarter-airtime units by pressure level: 0.25-0.5, 0.5-1.0, 0.75-2.0, 1.0-3.0.
+  // The maximum uses floor division, so level 3 can never exceed exactly three measured airtimes.
+  static const uint8_t min_quarters[4] = {1, 2, 3, 4};
+  static const uint8_t max_quarters[4] = {2, 4, 8, 12};
+  const uint8_t level = _ota_relay_backoff_level > 3 ? 3 : _ota_relay_backoff_level;
+  uint32_t min_delay = (airtime * min_quarters[level] + 3) / 4;
+  uint32_t max_delay = (airtime * max_quarters[level]) / 4;
+  if (max_delay < min_delay) max_delay = min_delay;
+  return _rng->nextInt(min_delay, max_delay + 1);
 }
 uint32_t Mesh::getDirectRetransmitDelay(const Packet* packet) {
   return 0;  // by default, no delay
@@ -902,6 +993,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       // OTA is invisible outside an actually-running temporary-radio window. In particular, do not add it
       // to the seen table: a copy heard on the normal channel must not suppress one received after temp radio starts.
       if (!isTempRadioActive()) break;
+      observeOtaRequestPressure(pkt);
       uint8_t n = pkt->getPathHashCount();   // hops travelled to reach us (flood path-hash count)
 #if defined(ENABLE_OTA)
       // Accept-gate (duty-cycle horizon): ignore OTA from further than our hop limit - neither process nor
@@ -934,7 +1026,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
           && allowPacketForward(pkt)) {
         self_id.copyHashTo(&pkt->path[n * pkt->getPathHashSize()], pkt->getPathHashSize());
         pkt->setPathHashCount(n + 1);
-        action = ACTION_RETRANSMIT_DELAYED(OTA_TX_PRIORITY, getRetransmitDelay(pkt));
+        action = ACTION_RETRANSMIT_DELAYED(OTA_TX_PRIORITY, getOtaRetransmitDelay(pkt));
       }
       break;
     }

@@ -677,6 +677,130 @@ static void deliver_manifest_fragment(OtaManager& client, const uint8_t mid[4], 
   client.on_message(wire, wire_len);
 }
 
+TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_GE(manifest.block_count, 3u);
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();                                      // discard the initial GET_MANIFEST
+
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+  client.set_clock(5000);
+  client.loop();                                           // opens the bounded request window
+
+  ASSERT_EQ(sent.items.size(), 2u);
+  ReqMsg request0, request1;
+  ASSERT_TRUE(decode_req(sent.items[0].data(), (uint16_t)sent.items[0].size(), request0));
+  ASSERT_TRUE(decode_req(sent.items[1].data(), (uint16_t)sent.items[1].size(), request1));
+  EXPECT_EQ(request0.block_idx, 0);
+  EXPECT_EQ(request1.block_idx, 1);
+
+  // Deliver block 1 first and its fragments in reverse order. Its independent slot must request and
+  // accept a proof without disturbing the still-empty slot reserved for block 0.
+  const uint32_t block = 1;
+  const uint32_t block_size = manifest.block_size();
+  const uint32_t block_len = block + 1 < manifest.block_count
+      ? block_size : manifest.payload_size - block * block_size;
+  const uint32_t fragments = (block_len + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  for (uint32_t k = fragments; k-- > 0;) {
+    const uint32_t offset = k * OTA_FRAG_DATA;
+    uint32_t length = block_len - offset;
+    if (length > OTA_FRAG_DATA) length = OTA_FRAG_DATA;
+    DataMsg data;
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.block_idx = block;
+    data.frag_off = (uint16_t)offset;
+    data.data = manifest.payload + block * block_size + offset;
+    data.data_len = (uint16_t)length;
+    uint16_t wire_len = encode_data(wire, sizeof(wire), data);
+    ASSERT_GT(wire_len, 0);
+    client.on_message(wire, wire_len);
+  }
+
+  ASSERT_EQ(sent.items.size(), 3u);
+  ReqProofMsg proof_request;
+  ASSERT_TRUE(decode_req_proof(sent.items[2].data(), (uint16_t)sent.items[2].size(), proof_request));
+  EXPECT_EQ(proof_request.block_idx, block);
+
+  uint8_t scratch[SIM_MOTA_1K_BLOCKS * 4];
+  uint8_t siblings[32 * 4];
+  uint8_t sibling_count = merkle_gen_proof(
+      manifest.leaves, manifest.block_count, block, scratch, siblings);
+  ProofMsg proof;
+  memcpy(proof.manifest_id, manifest.merkle_root, 4);
+  proof.block_idx = block;
+  proof.n_proof = sibling_count;
+  proof.proof = siblings;
+  uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
+  ASSERT_GT(wire_len, 0);
+  client.on_message(wire, wire_len);
+
+  EXPECT_EQ(client.blocksHave(), 1u);
+  ASSERT_EQ(sent.items.size(), 4u);                       // freed slot was immediately refilled
+  ReqMsg refill;
+  ASSERT_TRUE(decode_req(sent.items[3].data(), (uint16_t)sent.items[3].size(), refill));
+  EXPECT_EQ(refill.block_idx, 2);
+}
+
+TEST(OtaTransfer, PipelineRetriesOneSlotAndOnlyItsMissingFragments) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 2u);                       // initial requests for blocks 0 and 1
+
+  DataMsg first_fragment;
+  memcpy(first_fragment.manifest_id, manifest.merkle_root, 4);
+  first_fragment.block_idx = 0;
+  first_fragment.frag_off = 0;
+  first_fragment.data = manifest.payload;
+  first_fragment.data_len = OTA_FRAG_DATA;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t wire_len = encode_data(wire, sizeof(wire), first_fragment);
+  ASSERT_GT(wire_len, 0);
+  client.on_message(wire, wire_len);
+
+  client.loop();                                         // observes progress; no premature retry
+  EXPECT_EQ(sent.items.size(), 2u);
+  client.loop();                                         // stalled: retry slot 0 only
+  ASSERT_EQ(sent.items.size(), 3u);
+  ReqMsg retry0;
+  ASSERT_TRUE(decode_req(sent.items[2].data(), (uint16_t)sent.items[2].size(), retry0));
+  EXPECT_EQ(retry0.block_idx, 0);
+  EXPECT_EQ(retry0.want_mask, (uint16_t)(0x007F & ~0x0001));
+
+  client.loop();                                         // next stalled tick rotates to slot 1
+  ASSERT_EQ(sent.items.size(), 4u);
+  ReqMsg retry1;
+  ASSERT_TRUE(decode_req(sent.items[3].data(), (uint16_t)sent.items[3].size(), retry1));
+  EXPECT_EQ(retry1.block_idx, 1);
+  EXPECT_EQ(retry1.want_mask, 0x007F);
+}
+
 TEST(OtaTransfer, RejectsShortNonFinalManifestFragment) {
   g_q.clear();
   MotaManifest manifest;
