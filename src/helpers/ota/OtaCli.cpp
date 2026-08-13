@@ -109,9 +109,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   // ---- help: list the commands in plain words (aliases in parentheses) ----
   if (is_cmd(a, "help|?|h", &rest)) {
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+    snprintf(reply, 160,
+      "OTA: status | stats | ls | get | install | rescue install <hash16> | cancel | announce | "
+      "self | folder | config | key");
+#else
     snprintf(reply, 160,
       "OTA: status | stats=admin ids/hashes | ls=find updates | get <#>=download | install | cancel | "
       "announce | self | folder | config | key. Try `ota ls`.");
+#endif
 
   // ---- inventory dashboard: running fw (self), the one fetch session, serving state ----
   } else if (*a == 0 || is_cmd(a, "status|st", &rest)) {
@@ -308,6 +314,28 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     const OtaBlCaps& bl = c.bootloaderCaps();   // cached (flash scanned once)
     if (bl.present) snprintf(reply + n, 160 - n, " | bootloader: apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
     else            snprintf(reply + n, 160 - n, " | bootloader: NO mota-apply support (delta install will refuse)");
+#endif
+
+  } else if (is_cmd(a, "rescue", &rest)) {
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+    const char* hash_text = nullptr;
+    uint8_t operator_base_hash[8];
+    if (!is_cmd(rest, "install", &hash_text) ||
+        !mesh::Utils::fromHex(operator_base_hash, sizeof(operator_base_hash), hash_text)) {
+      strcpy(reply, "ERR usage: ota rescue install <hash16>");
+      return true;
+    }
+    if (c.manager.fetchState() != OtaManager::COMPLETE || c.fetch_store.staged_size() == 0) {
+      sprintf(reply, "ERR no complete update fetched (fetch=%c %u/%u)",
+              fstate_char(c.manager.fetchState()), (unsigned)c.manager.blocksHave(),
+              (unsigned)c.manager.blocksTotal());
+      return true;
+    }
+    char m2[100];
+    bool ok = c.apply_fetched_rescue(operator_base_hash, m2);
+    sprintf(reply, "%s | %s", ok ? "OK" : "ERR", m2);
+#else
+    strcpy(reply, "ERR rescue requires an internal-flash nRF52 LoRa OTA build");
 #endif
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {

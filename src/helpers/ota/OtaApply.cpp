@@ -403,6 +403,10 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len, const SignerAllowl
 bool ota_apply_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) {
   st = ApplyState(); strcpy(msg, "nRF52-only (ESP32 uses ota_apply_detools_mota)"); return false;
 }
+bool ota_rescue_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, const uint8_t*,
+                           uint32_t, ApplyState& st, char* msg) {
+  st = ApplyState(); strcpy(msg, "rescue is internal-flash nRF52-only"); return false;
+}
 
 void ota_reboot_to_apply() { esp_restart(); }  // boots the slot armed by ota_apply_detools_mota; no return
 
@@ -434,8 +438,11 @@ uint8_t ota_bootloader_last_rc() {             // bootloader's last in-place-app
   return (uint8_t)v;
 }
 
-bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlist& allow,
-                          ApplyState& st, char* msg) {
+static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
+                                      const SignerAllowlist& allow,
+                                      const uint8_t* rescue_base_hash,
+                                      uint32_t local_target_id,
+                                      ApplyState& st, char* msg) {
   st = ApplyState();
   MotaManifest m;
   if (!mota_parse(buf, len, m)) { strcpy(msg, "parse failed"); return false; }
@@ -466,12 +473,31 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
     strcpy(msg, "payload hash mismatch (incomplete or corrupt .mota)"); return false;
   }
 
-  // 2) target firmware: the delta must be built against THIS running image (base_hash == our EndF body
-  //    hash). The resulting image_hash is re-checked by the bootloader after the in-place decode -- a
-  //    single-slot device cannot produce the target image to hash it before applying.
+  // 2) target firmware. Normal install requires a valid EndF and matching
+  // base. Explicit rescue is only for a broken app-side EndF check: it gates
+  // on the operator-provided package base and local target, then relies on the
+  // bootloader's independent running-base check before any application write.
   SelfFwInfo fi;
-  if (!ota_self_firmware(fi) || !fi.valid) { strcpy(msg, "cannot read running firmware (no EndF)"); return false; }
-  if (!m.base_hash || memcmp(m.base_hash, fi.body_hash, 8) != 0) { strcpy(msg, "not built for the running firmware (base mismatch)"); return false; }
+  const bool self_valid = ota_self_firmware(fi) && fi.valid;
+  if (rescue_base_hash) {
+    switch (ota_nrf52_rescue_gate(self_valid, m.base_hash, rescue_base_hash,
+                                  m.target_id, local_target_id)) {
+      case NRF52_RESCUE_SELF_VALID:
+        strcpy(msg, "EndF OK; use ota install"); return false;
+      case NRF52_RESCUE_BASE_MISSING:
+      case NRF52_RESCUE_BASE_MISMATCH:
+        strcpy(msg, "rescue base mismatch"); return false;
+      case NRF52_RESCUE_TARGET_MISMATCH:
+        strcpy(msg, "rescue target mismatch"); return false;
+      case NRF52_RESCUE_OK:
+        break;
+    }
+  } else {
+    if (!self_valid) { strcpy(msg, "cannot read running firmware (no EndF)"); return false; }
+    if (!m.base_hash || memcmp(m.base_hash, fi.body_hash, 8) != 0) {
+      strcpy(msg, "not built for the running firmware (base mismatch)"); return false;
+    }
+  }
   st.slot_ok = true;
 
   // 3) signature (only if the .mota is signed): valid Ed25519 AND signer in this device's allowlist
@@ -489,9 +515,25 @@ bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlis
 
   // Approved. Do NOT reset here - return so the caller can deliver `msg` to the operator first; the
   // deferred ota_reboot_to_apply() (after the reply is sent) does the actual handoff to the bootloader.
-  sprintf(msg, "verified%s; applying - rebooting into bootloader once this reply is sent",
-          vr.is_signed ? " (signer trusted)" : " (unsigned)");
+  if (rescue_base_hash) {
+    strcpy(msg, "rescue armed; bootloader checks base");
+  } else {
+    sprintf(msg, "verified%s; applying - rebooting into bootloader once this reply is sent",
+            vr.is_signed ? " (signer trusted)" : " (unsigned)");
+  }
   return true;
+}
+
+bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_impl(buf, len, allow, nullptr, 0, st, msg);
+}
+
+bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowlist& allow,
+                           const uint8_t operator_base_hash[8], uint32_t local_target_id,
+                           ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_impl(buf, len, allow, operator_base_hash,
+                                   local_target_id, st, msg);
 }
 
 #else  // native / other platforms
@@ -502,6 +544,10 @@ bool ota_apply_verify_slot(ApplyState&) { return false; }
 bool ota_apply_commit() { return false; }
 bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "unsupported"); return false; }
 bool ota_apply_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "unsupported"); return false; }
+bool ota_rescue_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, const uint8_t*,
+                           uint32_t, ApplyState& st, char* msg) {
+  st = ApplyState(); strcpy(msg, "unsupported"); return false;
+}
 void ota_reboot_to_apply() {}
 uint8_t ota_bootloader_last_rc() { return 0; }
 
