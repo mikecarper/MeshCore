@@ -539,24 +539,21 @@ def find_resume_index(
     steps: list[ChainStep],
     final_body_hash: bytes,
 ) -> int:
-    current_version = version_number(target.current_version or "")
-    final_version = version_number(EXPECTED_FINAL_VERSION)
-    if current_version == final_version:
-        if target.base_hash != final_body_hash:
-            raise ota.OtaError(
-                "target reports the final version but its body hash does not match the release endpoint"
-            )
+    if target.base_hash == final_body_hash:
         return len(steps)
-    for index, step in enumerate(steps):
-        if current_version == version_number(step.from_version):
-            if target.base_hash != step.base_hash:
-                raise ota.OtaError(
-                    f"target version matches step {step.number}, but body hash is "
-                    f"{target.base_hash.hex().upper()} instead of {step.base_hash.hex().upper()}"
-                )
-            return index
+    matching_indexes = [
+        index for index, step in enumerate(steps)
+        if target.base_hash == step.base_hash
+    ]
+    if len(matching_indexes) == 1:
+        return matching_indexes[0]
+    if len(matching_indexes) > 1:
+        raise ota.OtaError(
+            "live body hash occurs at multiple points in the pinned chain"
+        )
     raise ota.OtaError(
-        f"live version {target.current_version} is not a recognized point in this exact chain"
+        f"live body hash {target.base_hash.hex().upper()} is not a recognized "
+        "point in this exact chain"
     )
 
 
@@ -666,6 +663,44 @@ def append_progress(
         output.write(json.dumps(record, sort_keys=True) + "\n")
 
 
+def clear_completed_download(
+    controller: ota.Controller,
+    target_name: str,
+    step: ChainStep,
+) -> None:
+    """Clear only a retained record for the exact, proven installed step."""
+    status = controller.remote_command(target_name, "ota status")
+    active_id = ota.download_manifest_id(status)
+    if active_id is None:
+        if "no download" not in status.lower():
+            raise ota.OtaError(
+                f"post-install download state is ambiguous after step {step.number}: "
+                f"{status}"
+            )
+        return
+    if active_id != step.package.manifest_id:
+        raise ota.OtaError(
+            f"post-install target retained mOTA {active_id} after step "
+            f"{step.number}; expected only {step.package.manifest_id}"
+        )
+    if "ready to install" not in status.lower():
+        raise ota.OtaError(
+            f"post-install target still has an active step-{step.number} session: "
+            f"{status}"
+        )
+    reply = controller.remote_command(target_name, "ota cancel")
+    if not reply.startswith("OK"):
+        raise ota.OtaError(
+            f"could not clear completed step-{step.number} staging record: {reply}"
+        )
+    status = controller.remote_command(target_name, "ota status")
+    if "no download" not in status.lower():
+        raise ota.OtaError(
+            f"completed step-{step.number} staging record remains: {status}"
+        )
+    print(f"[chain] cleared retained staging record for step {step.number:02d}")
+
+
 def connection_arguments(args: argparse.Namespace) -> list[str]:
     values: list[str] = []
     if args.controller_serial:
@@ -694,6 +729,7 @@ def run_step(
     args: argparse.Namespace,
     target_name: str,
     step: ChainStep,
+    previous_step: ChainStep | None,
     work_dir: Path,
 ) -> None:
     command = [
@@ -714,8 +750,17 @@ def run_step(
         "--reboot-wait", str(args.reboot_wait),
         "--work-dir", str(next_attempt_dir(work_dir, step.number)),
         "--require-system-watchdog-off",
+        # Some audited bridge binaries retain a later historical runtime
+        # version string than their pinned EndF chain version. The exact base
+        # hash, target hash, package ID, and ordered step still gate the move.
+        "--allow-non-upgrade",
         "--yes",
     ]
+    if previous_step is not None:
+        command.extend([
+            "--clear-completed-manifest", previous_step.package.manifest_id,
+            "--clear-completed-on-body-hash", step.base_hash.hex().upper(),
+        ])
     for relay in args.relay:
         command.extend(["--relay", relay])
     result = ota.main(command)
@@ -981,20 +1026,36 @@ def main(argv: list[str] | None = None) -> int:
                 f"\n[chain] step {step.number:02d}/{len(steps)}: "
                 f"{step.from_version} -> {step.to_version}"
             )
-            run_step(args, target_name, step, work_dir)
+            previous_step = steps[index - 1] if index > 0 else None
+            run_step(args, target_name, step, previous_step, work_dir)
 
             target = query_live_target(controller, args, target_name)
             expected_hash = expected_hash_after(steps, final_body_hash, index)
-            if version_number(target.current_version or "") != version_number(step.to_version):
-                raise ota.OtaError(
-                    f"step {step.number} returned version {target.current_version}, "
-                    f"expected {step.to_version}"
-                )
             if target.base_hash != expected_hash:
                 raise ota.OtaError(
                     f"step {step.number} returned body hash {target.base_hash.hex().upper()}, "
                     f"expected {expected_hash.hex().upper()}"
                 )
+            if (
+                target.current_version_source == "ota stats"
+                and version_number(target.current_version or "")
+                != version_number(step.to_version)
+            ):
+                raise ota.OtaError(
+                    f"step {step.number} EndF metadata reports version "
+                    f"{target.current_version}, expected {step.to_version}"
+                )
+            if (
+                target.current_version_source == "ver"
+                and version_number(target.current_version or "")
+                != version_number(step.to_version)
+            ):
+                print(
+                    f"[chain] step {step.number:02d} exact body hash is verified; "
+                    f"runtime label {target.current_version} is historical and is "
+                    f"not the EndF chain version {step.to_version}"
+                )
+            clear_completed_download(controller, target_name, step)
             require_watchdog_state(controller, target_name, "off")
             append_progress(work_dir, step, target.base_hash)
             print(f"[chain] step {step.number:02d} verified")

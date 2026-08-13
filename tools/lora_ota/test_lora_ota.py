@@ -406,6 +406,39 @@ class DownloadSessionTests(unittest.TestCase):
             ota.find_and_start_pull(controller, self.args(), self.package)
         self.assertEqual(controller.commands, ["ota status"])
 
+    def test_completed_previous_session_requires_exact_running_hash(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: ready to install 9/9 id=DEADBEEF 2s",
+            "self body=1 image=2 base_hash=8899AABBCCDDEEFF",
+        ])
+        with self.assertRaisesRegex(ota.OtaError, "running body hash"):
+            ota.find_and_start_pull(controller, args, self.package)
+        self.assertEqual(controller.commands, ["ota status", "ota self"])
+
+    def test_completed_previous_session_is_cleared_after_exact_proof(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: ready to install 9/9 id=DEADBEEF 2s",
+            "self body=1 image=2 base_hash=0011223344556677",
+            "OK dropped session",
+            "OTA | no download",
+            "Updates 1/1",
+            f"OK pulling mid={self.package.manifest_id} -> flash (low priority)",
+        ])
+        ota.find_and_start_pull(controller, args, self.package)
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status", "ota self", "ota cancel", "ota status", "ota ls",
+                f"ota pull {self.package.manifest_id} flash",
+            ],
+        )
+
     def test_replace_active_session_requires_explicit_flag(self) -> None:
         controller = self.Controller([
             "OTA | download: downloading 3/9 id=DEADBEEF 2s",
@@ -488,6 +521,7 @@ class ReliabilityTests(unittest.TestCase):
             Controller(), argparse.Namespace(target="remote")
         )
         self.assertEqual(result.current_version, "v1.16.9")
+        self.assertEqual(result.current_version_source, "ver")
 
     def test_unattended_prompt_waits_ten_seconds_and_continues(self) -> None:
         output = io.StringIO()
@@ -630,6 +664,73 @@ class ReliabilityTests(unittest.TestCase):
         requested = ota.RadioSettings(909.95, 250, 7, 5, False)
         with self.assertRaisesRegex(ota.OtaError, "read back"):
             controller.set_radio(requested, "set radio")
+
+    def test_lost_target_temp_reply_is_resolved_on_temporary_channel(self) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 250.0, 7, 5, False)
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.radios: list[ota.RadioSettings] = []
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                if command.startswith("tempradio "):
+                    raise ota.TransmissionError("lost reply")
+                return "self body=1 image=2 base_hash=0011223344556677"
+
+            def set_radio(self, radio: ota.RadioSettings, _label: str) -> None:
+                self.radios.append(radio)
+
+        controller = Controller()
+        ota.arm_target_temp_radio(
+            controller,
+            argparse.Namespace(target="remote"),
+            "tempradio 909.95,250,7,5,120",
+            temporary,
+            normal,
+        )
+        self.assertEqual(
+            controller.commands,
+            ["tempradio 909.95,250,7,5,120", "ota self"],
+        )
+        self.assertEqual(controller.radios, [temporary, normal])
+
+    def test_ambiguous_target_temp_probe_is_not_replayed(self) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 250.0, 7, 5, False)
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.radios: list[ota.RadioSettings] = []
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                raise ota.TransmissionError("lost reply")
+
+            def set_radio(self, radio: ota.RadioSettings, _label: str) -> None:
+                self.radios.append(radio)
+
+        controller = Controller()
+        with self.assertRaisesRegex(ota.OtaError, "outcome is ambiguous"):
+            ota.arm_target_temp_radio(
+                controller,
+                argparse.Namespace(target="remote"),
+                "tempradio 909.95,250,7,5,120",
+                temporary,
+                normal,
+            )
+        self.assertEqual(
+            controller.commands,
+            ["tempradio 909.95,250,7,5,120", "ota self"],
+        )
+        self.assertEqual(controller.radios, [temporary, normal])
 
     def test_install_retries_only_after_still_ready_is_confirmed(self) -> None:
         image = firmware(b"install" * 900, VERSION_NEW)
@@ -780,6 +881,26 @@ class ReliabilityTests(unittest.TestCase):
             Controller(), argparse.Namespace(target="remote"), package, expected_hash
         )
 
+    def test_exact_hash_allows_historical_runtime_label_when_stats_unknown(self) -> None:
+        image = firmware(b"verify-historical" * 700, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        expected_hash = ota.parse_endf(image).body_hash
+
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    f"self body=1 image=2 base_hash={expected_hash.hex()}",
+                    "OTA | fw v? id=?",
+                    "v1.16.9 (Build: historical)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        ota.verify_installed(
+            Controller(), argparse.Namespace(target="remote"), package, expected_hash
+        )
+
     def test_unknown_new_hash_must_differ_from_pre_install_hash(self) -> None:
         image = firmware(b"delta-result" * 700, VERSION_NEW)
         package = ota.parse_mota(mota_blob(
@@ -893,6 +1014,51 @@ class ReliabilityTests(unittest.TestCase):
 
 
 class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
+    def test_chain_resume_uses_exact_body_hash_not_runtime_label(self) -> None:
+        steps = [
+            mock.Mock(base_hash=bytes.fromhex("0011223344556677")),
+            mock.Mock(base_hash=bytes.fromhex("8899AABBCCDDEEFF")),
+        ]
+        live = target(
+            platform="nrf52",
+            base_hash=steps[1].base_hash,
+            boot_codecs=1 << ota.MOTA_CODEC_IN_PLACE,
+            current_version="v9.9.9",
+        )
+        self.assertEqual(
+            rak_chain.find_resume_index(live, steps, b"FINAL123"), 1
+        )
+
+    def test_completed_chain_step_clears_only_its_retained_manifest(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies = iter([
+                    "OTA | download: ready to install 9/9 id=1234ABCD 2s",
+                    "OK dropped session",
+                    "OTA | no download | target:2FA509C1",
+                ])
+
+            def remote_command(self, _target: str, command: str) -> str:
+                self.commands.append(command)
+                return next(self.replies)
+
+        controller = Controller()
+        step = mock.Mock(number=12, package=mock.Mock(manifest_id="1234ABCD"))
+        rak_chain.clear_completed_download(controller, "remote", step)
+        self.assertEqual(
+            controller.commands, ["ota status", "ota cancel", "ota status"]
+        )
+
+    def test_completed_chain_step_refuses_another_retained_manifest(self) -> None:
+        class Controller:
+            def remote_command(self, _target: str, _command: str) -> str:
+                return "OTA | download: ready to install 9/9 id=DEADBEEF 2s"
+
+        step = mock.Mock(number=12, package=mock.Mock(manifest_id="1234ABCD"))
+        with self.assertRaisesRegex(ota.OtaError, "retained mOTA DEADBEEF"):
+            rak_chain.clear_completed_download(Controller(), "remote", step)
+
     def test_live_chain_is_blocked_after_failed_physical_step_6(self) -> None:
         self.assertEqual(rak_chain.KNOWN_UNSAFE_STEP, 6)
         self.assertEqual(rak_chain.KNOWN_UNSAFE_VERSION, "1.16.8.7")

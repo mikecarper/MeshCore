@@ -139,6 +139,7 @@ class TargetInfo:
     status: str
     self_status: str
     current_version: str | None = None
+    current_version_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1207,11 +1208,13 @@ def query_target(
             "could not read the nRF52 bootloader ABI and codec mask from `ota self`"
         )
     current_version = None
+    current_version_source = None
     try:
         stats = controller.remote_command(args.target, "ota stats")
         version_match = re.search(r"\bfw (v\d+\.\d+\.\d+(?:\.\d+)?)\b", stats)
         if version_match:
             current_version = version_match.group(1)
+            current_version_source = "ota stats"
     except TransmissionStopped:
         raise
     except OtaError as exc:
@@ -1224,9 +1227,11 @@ def query_target(
                 f"could not read destination firmware version from `ver`: {version_reply}"
             )
         current_version = format_version(version_value)
+        current_version_source = "ver"
     return TargetInfo(
         args.target, target_id, base_hash, platform, nrf_sd, hw_id,
         bootloader_abi, bootloader_codecs, status, self_status, current_version,
+        current_version_source,
     )
 
 
@@ -1594,6 +1599,56 @@ def find_and_start_pull(
                 raise OtaError(
                     f"could not reset failed destination download: {cancel_reply}"
                 )
+        elif active_id == getattr(args, "clear_completed_manifest", None):
+            expected_hash = args.clear_completed_on_body_hash
+            if "ready to install" not in status.lower():
+                raise OtaError(
+                    f"refusing to clear previous mOTA {active_id} because it is "
+                    f"not complete: {status}"
+                )
+            identity = remote_command_with_seeder(
+                controller, args.target, "ota self", seeder,
+                "while proving a completed previous manifest",
+            )
+            hash_match = re.search(
+                r"\bbase_hash=([0-9A-Fa-f]{16})\b", identity
+            )
+            running_hash = hash_match.group(1).upper() if hash_match else None
+            if running_hash != expected_hash:
+                raise OtaError(
+                    f"refusing to clear previous mOTA {active_id}: running body "
+                    f"hash is {running_hash or 'unknown'}, expected {expected_hash}"
+                )
+            try:
+                cancel_reply = controller.remote_command(
+                    args.target, "ota cancel", retry=False
+                )
+            except TransmissionError as cancel_error:
+                resolved = remote_command_with_seeder(
+                    controller, args.target, "ota status", seeder,
+                    "while resolving a lost completed-manifest cancel reply",
+                )
+                if "no download" not in resolved.lower():
+                    raise OtaError(
+                        f"completed-manifest cancel outcome is ambiguous: {resolved}"
+                    ) from cancel_error
+            else:
+                if not cancel_reply.startswith("OK"):
+                    raise OtaError(
+                        f"could not clear completed previous mOTA: {cancel_reply}"
+                    )
+            status = remote_command_with_seeder(
+                controller, args.target, "ota status", seeder,
+                "after clearing a completed previous manifest",
+            )
+            if "no download" not in status.lower():
+                raise OtaError(
+                    f"completed previous mOTA {active_id} remains: {status}"
+                )
+            print(
+                f"[download] cleared completed previous session {active_id} "
+                f"after proving running body {expected_hash}"
+            )
         elif not args.replace_active_download:
             raise OtaError(
                 f"destination already has mOTA {active_id} staged or downloading; "
@@ -1692,6 +1747,48 @@ def monitor_download(
 def require_temp_radio_reply(node: str, reply: str) -> None:
     if not reply.lower().startswith("ok - temp params for "):
         raise OtaError(f"{node} did not accept TempRadio: {reply}")
+
+
+def arm_target_temp_radio(
+    controller: Controller,
+    args: argparse.Namespace,
+    command: str,
+    temp_radio: RadioSettings,
+    normal_radio: RadioSettings,
+) -> None:
+    """Resolve a lost TempRadio reply without blindly replaying the command."""
+    try:
+        reply = controller.remote_command(args.target, command, retry=False)
+    except TransmissionError as command_error:
+        print(
+            "[destination] TempRadio reply was lost; probing the declared "
+            "temporary channel"
+        )
+        controller.set_radio(temp_radio, "probe destination TempRadio state")
+        try:
+            identity = controller.remote_command(
+                args.target, "ota self", retry=False
+            )
+            if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
+                raise OtaError(
+                    "destination replied on TempRadio but did not return a valid "
+                    "running EndF identity"
+                )
+        except (OtaError, TransmissionError) as probe_error:
+            raise OtaError(
+                "destination TempRadio outcome is ambiguous; the controller was "
+                "restored to its normal channel and the command was not replayed"
+            ) from probe_error
+        finally:
+            controller.set_radio(
+                normal_radio, "restore controller after TempRadio probe"
+            )
+        print(
+            "[destination] resolved lost TempRadio reply from the exact target "
+            "identity; continuing"
+        )
+        return
+    require_temp_radio_reply(args.target, reply)
 
 
 def temp_radio_command_for_minutes(
@@ -1895,7 +1992,6 @@ def verify_installed(
             )
 
     installed_version = None
-    version_source = "`ota stats`"
     try:
         stats_reply = controller.remote_command(args.target, "ota stats")
         version_match = re.search(
@@ -1905,20 +2001,31 @@ def verify_installed(
             installed_version = parse_version(version_match.group(1))
     except OtaError as exc:
         print(f"[warn] post-reboot `ota stats` version query failed: {exc}")
-    if installed_version is None:
-        version_source = "`ver`"
+    if installed_version is not None:
+        if installed_version != package.fw_version:
+            raise OtaError(
+                f"destination `ota stats` reports "
+                f"{format_version(installed_version)} after reboot; "
+                f"expected {package.version}"
+            )
+    else:
         version_reply = controller.remote_command(args.target, "ver")
-        installed_version = extract_reply_version(version_reply)
-        if installed_version is None:
+        runtime_version = extract_reply_version(version_reply)
+        if runtime_version is None:
             raise OtaError(
                 f"post-reboot `ver` returned no firmware version: {version_reply}"
             )
-    if installed_version != package.fw_version:
-        raise OtaError(
-            f"destination {version_source} reports "
-            f"{format_version(installed_version)} after reboot; "
-            f"expected {package.version}"
-        )
+        if expected_body_hash is None and runtime_version != package.fw_version:
+            raise OtaError(
+                f"destination `ver` reports {format_version(runtime_version)} "
+                f"after reboot; expected {package.version}"
+            )
+        if expected_body_hash is not None and runtime_version != package.fw_version:
+            print(
+                f"[verified] `ota stats` did not expose an EndF version; runtime "
+                f"label {format_version(runtime_version)} differs from package "
+                f"{package.version}, but the exact expected body hash matches"
+            )
     print(
         f"[verified] {args.target}: {package.version} "
         f"body={installed_hash.hex().upper()}"
@@ -2011,6 +2118,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--replace-active-download", action="store_true",
         help="discard a different update already staged on the destination",
     )
+    parser.add_argument(
+        "--clear-completed-manifest",
+        metavar="ID",
+        help=(
+            "clear this exact previous ready-to-install manifest only after "
+            "--clear-completed-on-body-hash proves it is already running"
+        ),
+    )
+    parser.add_argument(
+        "--clear-completed-on-body-hash",
+        metavar="HASH",
+        help="16-hex running EndF body hash required by --clear-completed-manifest",
+    )
     parser.add_argument("--yes", action="store_true", help="skip the destructive-action confirmation")
     parser.add_argument(
         "--require-system-watchdog-off",
@@ -2040,6 +2160,24 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         args.temp_values = parse_temp_radio(args.temp_radio)
     except argparse.ArgumentTypeError as exc:
         parser.error(f"--temp-radio: {exc}")
+    clear_manifest = args.clear_completed_manifest
+    clear_body_hash = args.clear_completed_on_body_hash
+    if bool(clear_manifest) != bool(clear_body_hash):
+        parser.error(
+            "--clear-completed-manifest and --clear-completed-on-body-hash "
+            "must be supplied together"
+        )
+    if clear_manifest:
+        if not re.fullmatch(r"[0-9A-Fa-f]{8}", clear_manifest):
+            parser.error("--clear-completed-manifest must be 8 hexadecimal characters")
+        if not re.fullmatch(r"[0-9A-Fa-f]{16}", clear_body_hash):
+            parser.error(
+                "--clear-completed-on-body-hash must be 16 hexadecimal characters"
+            )
+        args.clear_completed_manifest = clear_manifest.upper()
+        args.clear_completed_on_body_hash = clear_body_hash.upper()
+        if args.prepare_only:
+            parser.error("completed-manifest cleanup is only valid during a live run")
     if args.prepare_only:
         if not args.platform or not args.target_id:
             parser.error("--prepare-only requires --platform and --target-id")
@@ -2225,10 +2363,18 @@ def main(argv: list[str] | None = None) -> int:
         freq, bandwidth, sf, cr, _minutes = args.temp_values
         temp_command = f"tempradio {args.temp_radio}"
 
+        temp_radio = RadioSettings(
+            freq, bandwidth, sf, cr, original_radio.repeat
+        )
+
         # Move far nodes first while the controller is still on the normal
-        # channel. Relays are supplied in farthest-to-nearest order.
-        temp_reply = controller.remote_command(args.target, temp_command)
-        require_temp_radio_reply(args.target, temp_reply)
+        # channel. Relays are supplied in farthest-to-nearest order. A target
+        # can process TempRadio even when its reply is lost, so resolve that
+        # ambiguity by probing its exact identity on the temporary channel
+        # instead of replaying the command from the normal channel.
+        arm_target_temp_radio(
+            controller, args, temp_command, temp_radio, original_radio
+        )
         for relay_name, relay_password in args.relay_values:
             temp_reply = controller.remote_command(
                 relay_name, temp_command, password=relay_password
@@ -2238,9 +2384,6 @@ def main(argv: list[str] | None = None) -> int:
             source_cli_command(args, temp_command)
             source_temp_owned = True
 
-        temp_radio = RadioSettings(
-            freq, bandwidth, sf, cr, original_radio.repeat
-        )
         controller_changed = True
         controller.set_radio(temp_radio, "switch controller to TempRadio")
         if args.source_shares_controller:
