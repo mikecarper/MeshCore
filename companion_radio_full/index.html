@@ -1515,7 +1515,7 @@ choose a legal tuple supported by every participating radio.</p>
 <p>Use the local console to start TempRadio:</p>
 <pre><code class="language-bash">nc 192.168.1.50 5002
 </code></pre>
-<pre><code class="language-text">tempradio 909.950,250,7,5,120
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
 ota status
 </code></pre>
 <p>Then start the dedicated TCP seeder:</p>
@@ -1529,7 +1529,7 @@ and close the terminal:</p>
   --initstring '+++MESHCORE-TERM-START' \
   /dev/ttyACM1
 </code></pre>
-<pre><code class="language-text">tempradio 909.950,250,7,5,120
+<pre><code class="language-text">tempradio 909.950,250,5,5,120
 +++MESHCORE-TERM-STOP
 </code></pre>
 <p>After sending the stop token, exit <code>picocom</code> with Ctrl-A, Ctrl-X.</p>

@@ -1519,14 +1519,12 @@ ota stats
 <code>bootloader: SD apply OK</code>. The script also checks the reported bootloader ABI
 and codec mask against the selected package.</p>
 <p>The default TempRadio tuple is:</p>
-<pre><code class="language-text">909.950,250,7,5,120
+<pre><code class="language-text">909.950,250,5,5,120
 </code></pre>
-<p>The 250 kHz bandwidth, SF7, and CR5 combination is supported by every current
-sub-GHz radio family used in USB Companion builds, including older SX127x
-controllers (which do not support SF5). The frequency is only a North American
-example: choose a legal frequency supported by every participating radio and
-appropriate to your location. Pass the complete replacement tuple with
-<code>--temp-radio</code>.</p>
+<p>The test default is 250 kHz bandwidth, SF5, and CR5. The frequency is only a
+North American example: choose a legal frequency supported by every
+participating radio and appropriate to your location. Older radios that do not
+support SF5 require a complete replacement tuple passed with <code>--temp-radio</code>.</p>
 <h2 id="4-run-an-esp32-update">4. Run an ESP32 update</h2>
 <p>The ZIP can contain a compatible ready <code>.mota</code> or the exact board-and-role
 non-merged application <code>.bin</code>:</p>
