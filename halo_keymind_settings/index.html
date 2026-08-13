@@ -1380,9 +1380,9 @@ set flood.retry.ignore none
 <tbody>
 <tr>
 <td><code>telemetry.temp</code>, <code>telemetry.volt</code>, <code>telemetry.gps</code></td>
-<td>Records 30-minute whole-degree MCU temperature and battery samples for seven days. GPS defaults to three days, or requests seven days at startup on onboard-GPS sensor builds. Runtime GPS retention can be <code>1</code>-<code>30</code> days and is reduced if needed to retain 2 KB of free memory. Pages are 1-based and newest first. History and runtime sizing reset on reboot.</td>
-<td><code>get telemetry.temp [page]</code>, <code>get telemetry.volt [page]</code>, <code>get telemetry.gps [page]</code>, <code>set telemetry.gps &lt;1-30&gt;</code></td>
-<td><code>set telemetry.gps 30</code></td>
+<td>Records 30-minute MCU temperature and battery samples for seven days. GPS-capable builds retain GPS separately for authenticated paging. <code>telemetry.tx</code> sends one temperature RAW_CUSTOM packet and one voltage packet over a configured direct path, on a persistent 1-30 day schedule (default two days) or immediately for testing; GPS is never included. Scheduled packets contain 165 points. History resets on reboot.</td>
+<td><code>get telemetry.temp [page]</code>, <code>get telemetry.volt [page]</code>, <code>get telemetry.gps [page]</code>, <code>set telemetry.gps &lt;1-30&gt;</code>, <code>get telemetry.tx</code>, <code>set telemetry.tx &lt;off|direct|path&gt;</code>, <code>set telemetry.tx schedule &lt;off|1-30d&gt;</code>, <code>send telemetry.tx now</code></td>
+<td><code>set telemetry.tx A1B2,C3D4</code></td>
 </tr>
 <tr>
 <td><code>battery.alert</code></td>

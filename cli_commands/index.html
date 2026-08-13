@@ -4945,10 +4945,11 @@ refresh is already in flight, the scope pass is queued behind it.</p>
 <hr />
 <h3 id="read-repeater-telemetry-history">Read repeater telemetry history</h3>
 <p>Repeater firmware records one UTC-aligned sample every 30 minutes. Temperature
-and battery voltage retain 336 samples (seven rolling days). GPS retains three
-days by default. Sensor builds with an onboard GPS provider request a seven-day
-default at startup. The history and any runtime retention change are held in
-RAM and reset after a reboot.</p>
+and battery voltage retain 336 samples (seven rolling days). GPS-capable builds
+retain three GPS days by default and request a seven-day default at startup.
+Builds without a GPS provider omit the GPS history commands to conserve flash.
+The history and any runtime retention change are held in RAM and reset after a
+reboot.</p>
 <p>The feature is omitted from flash-constrained STM32 repeater images.</p>
 <p><strong>Usage:</strong></p>
 <ul>
@@ -4956,6 +4957,10 @@ RAM and reset after a reboot.</p>
 <li><code>get telemetry.volt [page]</code></li>
 <li><code>get telemetry.gps [page]</code></li>
 <li><code>set telemetry.gps &lt;days&gt;</code></li>
+<li><code>get telemetry.tx</code></li>
+<li><code>set telemetry.tx &lt;off|direct|path&gt;</code></li>
+<li><code>set telemetry.tx schedule &lt;off|1-30d&gt;</code></li>
+<li><code>send telemetry.tx now</code></li>
 </ul>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -4968,6 +4973,12 @@ RAM and reset after a reboot.</p>
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   <code>OK - telemetry.gps days=18 pages=36 requested=30</code>.</li>
+<li><code>direct</code>: Send the binary temperature and voltage snapshots zero-hop to a
+  neighboring MQTT observer.</li>
+<li><code>path</code>: A comma-separated direct route using the same one-, two-, or
+  three-byte hop hashes accepted by <code>set outpath</code>.</li>
+<li><code>schedule</code>: Automatic interval in whole days. The default is <code>2d</code>; <code>off</code>
+  retains the configured direct path for manual test sends.</li>
 </ul>
 <p>Local serial and remote administrator CLI sessions can read the history.
 Collection uses the MCU temperature, battery voltage, and an already-valid
@@ -4979,6 +4990,67 @@ significant bit first, oldest sample first.</p>
 <p>Use the browser-based <a href="../telemetry_decoder/">Telemetry history decoder</a> to
 turn a reply into a timestamped table or downloadable CSV without uploading
 the data.</p>
+<p><code>telemetry.tx</code> is disabled by default. Its schedule and direct path are stored
+across reboots. Configuring <code>direct</code> or a routed path enables the default <code>2d</code>
+schedule; <code>set telemetry.tx schedule</code> changes it from one through 30 days or
+turns it off. An automatic run waits until 165 half-hour positions are
+available, then sends one maximum-size temperature packet and one maximum-size
+voltage packet. GPS is never included in this raw transmission. The history
+remains boot-local, so the first scheduled pair after a reboot needs about
+82.5 hours to fill. On the default two-day interval, each 82.5-hour packet
+overlaps the previous packet by 34.5 hours. A queue failure is retried after
+30 minutes only for the packet that did not queue; successfully queued packets
+are not duplicated.</p>
+<p><code>send telemetry.tx now</code> is an administrator-only test action. It immediately
+queues one temperature and one voltage direct packet over the configured path,
+using all currently available positions up to 165. It works while the schedule
+is off and does not move the next scheduled send time. RAW_CUSTOM direct
+packets do not enter the normal encrypted direct-message retry mechanism.</p>
+<p>Full snapshots are 184-byte RAW_CUSTOM payloads. Manual tests can be shorter
+while history fills. Both formats are binary, not Base64 and not encrypted:</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code>-<code>3</code></td>
+<td>ASCII magic <code>TTB1</code> for temperature or <code>TVB1</code> for voltage</td>
+</tr>
+<tr>
+<td><code>4</code>-<code>11</code></td>
+<td>First eight bytes of the repeater public key</td>
+</tr>
+<tr>
+<td><code>12</code>-<code>15</code></td>
+<td>First sample UTC epoch, unsigned 32-bit little-endian</td>
+</tr>
+<tr>
+<td><code>16</code>-<code>17</code></td>
+<td>Sample interval in minutes, unsigned 16-bit little-endian (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>18</code></td>
+<td>Sample count (<code>1</code>-<code>165</code>)</td>
+</tr>
+<tr>
+<td><code>19</code> onward</td>
+<td>Oldest-to-newest encoded samples for the selected series</td>
+</tr>
+</tbody>
+</table>
+<p>Temperature codes reserve <code>0</code> for no reading, <code>1</code> for below <code>-50 C</code>, and <code>2</code>
+for above <code>+77 C</code>. Codes <code>3</code> through <code>130</code> represent exact whole degrees from
+<code>-50 C</code> through <code>+77 C</code>; decode them as <code>code - 53</code>. Voltage codes use the
+same encoding as the paged voltage payload documented below.</p>
+<p>Match bytes <code>4</code>-<code>11</code> to the first 16 hex characters of the repeater public key
+shown by its advert or <code>get public.key</code>. This compact identifier is useful for
+association but is not authenticated and can be spoofed. An MQTT observer can
+upload the received raw packet to LetsMesh Analyzer <code>/packets</code>; its packet hex
+contains the direct-route header and path followed by this payload.</p>
 <p>Temperature payload (<code>0x11</code>, 61 bytes):</p>
 <table>
 <thead>
