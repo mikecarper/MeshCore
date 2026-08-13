@@ -1,5 +1,10 @@
 # Scripted LoRa OTA from start to finish
 
+The dedicated [RAK3401 chain report](rak3401_mota_chain.md) records the
+physical failure of the withdrawn 26-step migration and the corrected
+v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
+explicit lab-only gate for the corrected chain until physical testing passes.
+
 [`tools/lora_ota/lora_ota.sh`](../tools/lora_ota/lora_ota.sh) and
 [`tools/lora_ota/lora_ota.ps1`](../tools/lora_ota/lora_ota.ps1) automate a
 MeshCore LoRa firmware update from a release `.zip` or ready `.mota`. They
@@ -365,6 +370,16 @@ Useful controls:
 - `--allow-non-upgrade` deliberately permits the same or an older version.
 - `--replace-active-download` deliberately discards a different update already
   downloading or staged on the target. Without it, that update is preserved.
+- `--source-shares-controller` is for a Full Companion whose USB Binary API is
+  the controller while its TCP port `5001` is the source. It verifies that the
+  source's port-`5000` public key equals the controller key. The Binary API
+  first moves the shared physical radio, port `5002` then enables the local OTA
+  egress gate, and cleanup sends `normalradio` before restoring the saved
+  Binary radio tuple.
+- `--require-system-watchdog-off` checks `get system.watchdog` immediately
+  before every `ota install` transmission and refuses installation unless the
+  destination reports `> off`. Use it for nRF52 chains whose bootloader cannot
+  service an application watchdog inherited across reset.
 - `--work-dir PATH` chooses a new, non-existent work directory.
 - `--meshcli PATH` and `--motatool PATH` select binaries not on `PATH`.
 

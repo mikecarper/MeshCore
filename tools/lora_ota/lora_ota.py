@@ -1017,6 +1017,17 @@ class Controller:
                 )
         raise OtaError("meshcli did not return the controller radio settings")
 
+    def get_public_key(self) -> str:
+        objects = self._run(["infos"], "read controller identity")
+        for value in reversed(objects):
+            public_key = value.get("public_key")
+            if (
+                isinstance(public_key, str)
+                and re.fullmatch(r"[0-9A-Fa-f]{64}", public_key)
+            ):
+                return public_key.lower()
+        raise OtaError("meshcli did not return the controller public key")
+
     def set_radio(self, settings: RadioSettings, label: str) -> None:
         command_error: OtaError | None = None
         try:
@@ -1358,6 +1369,39 @@ def preflight_source_cli(args: argparse.Namespace) -> None:
         )
 
 
+def verify_shared_source_identity(
+    controller: Controller,
+    args: argparse.Namespace,
+) -> None:
+    """Prove that a TCP source is the controller's own Full Companion."""
+    if not getattr(args, "source_shares_controller", False):
+        return
+    source_host, _source_port = split_host_port(args.source_tcp, 5001)
+    cli_host, _cli_port = split_host_port(args.source_cli_tcp, 5002)
+    if source_host.lower() != cli_host.lower():
+        raise OtaError(
+            "shared source data and CLI endpoints must use the same host"
+        )
+    api_host = f"[{source_host}]:5000" if ":" in source_host else f"{source_host}:5000"
+    api_args = argparse.Namespace(
+        meshcli=args.meshcli,
+        controller_serial=None,
+        controller_tcp=api_host,
+        controller_ble=None,
+        controller_baud=args.controller_baud,
+        reply_timeout=args.reply_timeout,
+    )
+    source_api = Controller(api_args, "")
+    controller_key = controller.get_public_key()
+    source_key = source_api.get_public_key()
+    if source_key != controller_key:
+        raise OtaError(
+            "--source-shares-controller identity mismatch: controller is "
+            f"{controller_key}, source host is {source_key}"
+        )
+    print(f"[source] verified shared Full Companion {source_key}")
+
+
 class SeederProcess:
     def __init__(self, args: argparse.Namespace, served_dir: Path, work_dir: Path):
         self.args = args
@@ -1682,6 +1726,19 @@ def confirm_ready_to_install(
     return status
 
 
+def require_system_watchdog_off(
+    controller: Controller,
+    args: argparse.Namespace,
+) -> None:
+    reply = controller.remote_command(args.target, "get system.watchdog")
+    if re.fullmatch(r"\s*>\s*off\s*", reply, re.IGNORECASE) is None:
+        raise OtaError(
+            "destination system watchdog must report `> off` immediately "
+            f"before installation; got: {reply}"
+        )
+    print(f"[install] {args.target} system watchdog is off")
+
+
 def request_install(
     controller: Controller,
     args: argparse.Namespace,
@@ -1695,6 +1752,8 @@ def request_install(
         # If an install reply is lost and the target also stops replying, this
         # short window gets it back onto the normal channel for verification.
         arm_target_install_window(controller, args)
+        if getattr(args, "require_system_watchdog_off", False):
+            require_system_watchdog_off(controller, args)
         try:
             reply = controller.remote_command(args.target, "ota install", retry=False)
         except TransmissionError as exc:
@@ -1780,6 +1839,18 @@ def shorten_source_temp_window(
 ) -> bool:
     if args.source_already_temp:
         return True
+    if getattr(args, "source_shares_controller", False):
+        print("[source] ending shared Full Companion TempRadio before restore")
+        output = source_cli_command(args, "normalradio", check=check)
+        if not output and not check:
+            print(
+                "[warn] could not end the shared source TempRadio window; "
+                "end it with `normalradio` before restoring the controller",
+                file=sys.stderr,
+            )
+            return False
+        time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+        return True
     command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
     print(
         f"[source] scheduling return to the normal channel in "
@@ -1823,13 +1894,29 @@ def verify_installed(
                 "destination still reports its pre-install firmware hash"
             )
 
-    version_reply = controller.remote_command(args.target, "ver")
-    installed_version = extract_reply_version(version_reply)
+    installed_version = None
+    version_source = "`ota stats`"
+    try:
+        stats_reply = controller.remote_command(args.target, "ota stats")
+        version_match = re.search(
+            r"\bfw (v\d+\.\d+\.\d+(?:\.\d+)?)\b", stats_reply
+        )
+        if version_match:
+            installed_version = parse_version(version_match.group(1))
+    except OtaError as exc:
+        print(f"[warn] post-reboot `ota stats` version query failed: {exc}")
     if installed_version is None:
-        raise OtaError(f"post-reboot `ver` returned no firmware version: {version_reply}")
+        version_source = "`ver`"
+        version_reply = controller.remote_command(args.target, "ver")
+        installed_version = extract_reply_version(version_reply)
+        if installed_version is None:
+            raise OtaError(
+                f"post-reboot `ver` returned no firmware version: {version_reply}"
+            )
     if installed_version != package.fw_version:
         raise OtaError(
-            f"destination reports {format_version(installed_version)} after reboot; "
+            f"destination {version_source} reports "
+            f"{format_version(installed_version)} after reboot; "
             f"expected {package.version}"
         )
     print(
@@ -1908,6 +1995,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not configure a TCP source; assert it is already on --temp-radio",
     )
     parser.add_argument(
+        "--source-shares-controller",
+        action="store_true",
+        help=(
+            "TCP source is the controller's own Full Companion; verify its "
+            "port-5000 identity and let the controller radio switch move both"
+        ),
+    )
+    parser.add_argument(
         "--leave-controller-radio", action="store_true",
         help="leave the controller on --temp-radio instead of restoring it",
     )
@@ -1917,6 +2012,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="discard a different update already staged on the destination",
     )
     parser.add_argument("--yes", action="store_true", help="skip the destructive-action confirmation")
+    parser.add_argument(
+        "--require-system-watchdog-off",
+        action="store_true",
+        help=(
+            "refuse each ota install attempt unless the destination immediately "
+            "reports that its system watchdog is off"
+        ),
+    )
     parser.add_argument(
         "--prepare-only", action="store_true",
         help="only select/build/verify the mOTA; requires offline target metadata",
@@ -1962,6 +2065,16 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error(
                 "--source-tcp also needs --source-cli-serial, --source-cli-tcp, or --source-already-temp"
             )
+        if args.source_shares_controller and not (
+            args.source_tcp and args.source_cli_tcp
+        ):
+            parser.error(
+                "--source-shares-controller requires --source-tcp and --source-cli-tcp"
+            )
+        if args.source_shares_controller and args.source_already_temp:
+            parser.error(
+                "--source-shares-controller and --source-already-temp are mutually exclusive"
+            )
         if args.controller_serial and args.source_serial:
             if os.path.abspath(args.controller_serial) == os.path.abspath(args.source_serial):
                 parser.error("controller and source must be separate nodes/serial ports")
@@ -1985,7 +2098,9 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error(f"--{name.replace('_', '-')} must be positive")
     if not args.prepare_only:
         remote_setup_seconds = (1 + len(args.relay)) * args.reply_timeout
-        source_setup_seconds = 0 if args.source_already_temp else 30
+        source_setup_seconds = (
+            0 if args.source_already_temp or args.source_shares_controller else 30
+        )
         final_reply_count = 1 if args.no_install else 4 + len(args.relay)
         required_temp_seconds = (
             remote_setup_seconds
@@ -2082,6 +2197,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.prepare_only:
             preflight_source_cli(args)
             controller = Controller(args, password)
+            verify_shared_source_identity(controller, args)
             target = query_target(controller, args)
             original_radio = controller.get_radio()
             print(f"[controller] saved radio {original_radio.meshcli_value()}")
@@ -2118,7 +2234,7 @@ def main(argv: list[str] | None = None) -> int:
                 relay_name, temp_command, password=relay_password
             )
             require_temp_radio_reply(relay_name, temp_reply)
-        if not args.source_already_temp:
+        if not args.source_already_temp and not args.source_shares_controller:
             source_cli_command(args, temp_command)
             source_temp_owned = True
 
@@ -2127,6 +2243,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         controller_changed = True
         controller.set_radio(temp_radio, "switch controller to TempRadio")
+        if args.source_shares_controller:
+            # The Full Companion OTA egress gate needs its local TempRadio
+            # state even though the Binary API has already moved the same
+            # physical radio. Enter it after persisting the temporary tuple;
+            # cleanup runs `normalradio` before the Binary restore.
+            source_cli_command(args, temp_command)
+            source_temp_owned = True
         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
 
         seeder = SeederProcess(args, package_path.parent, work_dir)

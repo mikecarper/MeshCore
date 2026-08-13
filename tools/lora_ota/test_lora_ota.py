@@ -18,6 +18,7 @@ from unittest import mock
 import zipfile
 
 import lora_ota as ota
+import rak3401_mota_chain as rak_chain
 
 
 TARGET = 0x1234ABCD
@@ -669,6 +670,72 @@ class ReliabilityTests(unittest.TestCase):
             ],
         )
 
+    def test_install_watchdog_gate_runs_immediately_before_install(self) -> None:
+        image = firmware(b"watchdog" * 900, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies = iter([
+                    f"OTA | download: ready to install 9/9 id={package.manifest_id} 2s",
+                    "OK - temp params for 3 mins",
+                    "> off",
+                    "OK | verified; applying",
+                ])
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                return next(self.replies)
+
+        controller = Controller()
+        args = argparse.Namespace(
+            target="remote",
+            temp_values=(909.95, 250.0, 7, 5, 120),
+            require_system_watchdog_off=True,
+        )
+        self.assertTrue(ota.request_install(controller, args, package))
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status",
+                "tempradio 909.95,250,7,5,3",
+                "get system.watchdog",
+                "ota install",
+            ],
+        )
+
+    def test_install_watchdog_gate_rejects_enabled_watchdog(self) -> None:
+        image = firmware(b"watchdog-on" * 900, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies = iter([
+                    f"OTA | download: ready to install 9/9 id={package.manifest_id} 2s",
+                    "OK - temp params for 3 mins",
+                    "> on",
+                ])
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                return next(self.replies)
+
+        controller = Controller()
+        args = argparse.Namespace(
+            target="remote",
+            temp_values=(909.95, 250.0, 7, 5, 120),
+            require_system_watchdog_off=True,
+        )
+        with self.assertRaisesRegex(ota.OtaError, "must report `> off`"):
+            ota.request_install(controller, args, package)
+        self.assertNotIn("ota install", controller.commands)
+
     def test_post_install_verification_requires_exact_version(self) -> None:
         image = firmware(b"verify" * 900, VERSION_NEW)
         package = ota.parse_mota(mota_blob(image))
@@ -678,7 +745,7 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self, version: str) -> None:
                 self.replies = iter([
                     f"self body=1 image=2 base_hash={expected_hash.hex()}",
-                    version,
+                    f"OTA stats | fw {version}",
                 ])
 
             def remote_command(self, *_args: object, **_kwargs: object) -> str:
@@ -692,6 +759,26 @@ class ReliabilityTests(unittest.TestCase):
             ota.verify_installed(
                 Controller("v1.16.9 (Build: old)"), args, package, expected_hash
             )
+
+    def test_post_install_version_falls_back_to_runtime_ver(self) -> None:
+        image = firmware(b"verify-fallback" * 700, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        expected_hash = ota.parse_endf(image).body_hash
+
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    f"self body=1 image=2 base_hash={expected_hash.hex()}",
+                    "ERR command not found",
+                    "v1.17.0 (Build: test)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        ota.verify_installed(
+            Controller(), argparse.Namespace(target="remote"), package, expected_hash
+        )
 
     def test_unknown_new_hash_must_differ_from_pre_install_hash(self) -> None:
         image = firmware(b"delta-result" * 700, VERSION_NEW)
@@ -707,7 +794,6 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.replies = iter([
                     f"self body=1 image=2 base_hash={old_hash.hex()}",
-                    "v1.17.0 (Build: test)",
                 ])
 
             def remote_command(self, *_args: object, **_kwargs: object) -> str:
@@ -771,6 +857,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_source_cleanup_only_changes_a_script_owned_window(self) -> None:
         args = argparse.Namespace(
             source_already_temp=False,
+            source_shares_controller=False,
             temp_values=(909.95, 250.0, 7, 5, 120),
         )
         with mock.patch.object(
@@ -785,6 +872,64 @@ class ReliabilityTests(unittest.TestCase):
         with mock.patch.object(ota, "source_cli_command") as source_command:
             self.assertTrue(ota.shorten_source_temp_window(args))
         source_command.assert_not_called()
+
+    def test_shared_source_cleanup_ends_temp_before_binary_restore(self) -> None:
+        args = argparse.Namespace(
+            source_already_temp=False,
+            source_shares_controller=True,
+            temp_values=(909.95, 250.0, 7, 5, 120),
+        )
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                return_value="OK - normal radio restore scheduled",
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            self.assertTrue(ota.shorten_source_temp_window(args))
+        source_command.assert_called_once_with(args, "normalradio", check=True)
+        sleep.assert_called_once_with(ota.TEMP_RADIO_SWITCH_DELAY_SECONDS)
+
+
+class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
+    def test_live_chain_is_blocked_after_failed_physical_step_6(self) -> None:
+        self.assertEqual(rak_chain.KNOWN_UNSAFE_STEP, 6)
+        self.assertEqual(rak_chain.KNOWN_UNSAFE_VERSION, "1.16.8.7")
+        steps = [mock.Mock(target_sha256="") for _ in range(6)]
+        steps[5].target_sha256 = rak_chain.KNOWN_UNSAFE_IMAGE_SHA256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "physical RAK3401 test reached step 6",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+
+    def test_corrected_chain_requires_explicit_lab_gate(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(6)]
+        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "needs its first end-to-end board test",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=True), steps
+        )
+
+    def test_unrecognized_step6_is_blocked(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(6)]
+        steps[5].target_sha256 = "00" * 32
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "not a recognized, audited RAK3401 bridge image",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
 
 
 class MotatoolIntegrationTests(unittest.TestCase):
