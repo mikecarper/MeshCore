@@ -100,6 +100,11 @@ KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256 = (
 SAFE_CANDIDATE_STEP15_IMAGE_SHA256 = (
     "1124247f65772f11f9527408e51971eb9633ed656206276fa95019275bb8fdd2"
 )
+KNOWN_FAILED_V11701_STEP16 = 16
+KNOWN_FAILED_V11701_STEP16_VERSION = "1.16.9.112"
+KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256 = (
+    "35211ea70be635376b366a90afc74fcd8a7695f744f9c21a50bc872455ec5b21"
+)
 KNOWN_UNSAFE_RELEASE_MESSAGE = (
     f"live installation of {KNOWN_UNSAFE_RELEASE_TAG} is disabled: a physical RAK3401 "
     f"test reached step {KNOWN_UNSAFE_STEP} (v{KNOWN_UNSAFE_VERSION}) but "
@@ -113,6 +118,15 @@ KNOWN_FAILED_V11701_MESSAGE = (
     f"(v{KNOWN_FAILED_V11701_VERSION}) booted without a usable EndF because its "
     "unchecked CC310 SHA path failed. Use --verify-only for artifact inspection. "
     "Do not deploy this replaced candidate."
+)
+KNOWN_FAILED_V11701_STEP16_MESSAGE = (
+    "live installation of the second v1.17.01 candidate is disabled: a "
+    "physical RAK3401 test passed steps 1-15, but step "
+    f"{KNOWN_FAILED_V11701_STEP16} (v{KNOWN_FAILED_V11701_STEP16_VERSION}) "
+    "booted without a usable EndF. Its checked CC310 SHA call can report "
+    "success while returning a wrong digest for memory-mapped application "
+    "flash, so return-code fallback is not sufficient. Use --verify-only for "
+    "artifact inspection. Do not deploy this replaced candidate."
 )
 
 
@@ -140,12 +154,13 @@ def require_live_release_safe(
             "live installation is disabled: step 15 is not a recognized, "
             "audited RAK3401 SHA-safe bridge image"
         )
-    if not args.accept_test_candidate:
-        raise KnownUnsafeReleaseError(
-            "this corrected bundle has passed offline reconstruction and bootloader "
-            "simulation but still needs its first end-to-end board test; rerun with "
-            "--accept-test-candidate only on a recoverable lab RAK3401"
-        )
+    step16_sha256 = steps[KNOWN_FAILED_V11701_STEP16 - 1].target_sha256
+    if step16_sha256 == KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256:
+        raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_STEP16_MESSAGE)
+    raise KnownUnsafeReleaseError(
+        "live installation is disabled: step 16 is not a recognized, "
+        "physically tested software-SHA bridge image"
+    )
 
 
 @dataclass(frozen=True)
@@ -649,6 +664,20 @@ def enforce_ota_hops(
     print(f"[radio] destination OTA reach verified at {current} hops")
 
 
+def require_rescue_capability(
+    controller: ota.Controller,
+    target_name: str,
+) -> None:
+    """Require the guarded no-EndF recovery command before another transition."""
+    reply = controller.remote_command(target_name, "ota help")
+    if "rescue install <hash16>" not in reply:
+        raise ota.OtaError(
+            "running bridge does not advertise `ota rescue install <hash16>`; "
+            "refusing to expose it to another chain transition"
+        )
+    print("[rescue] guarded no-EndF recovery command is present")
+
+
 def wait_with_label(seconds: int, label: str) -> None:
     deadline = time.monotonic() + seconds
     while True:
@@ -781,7 +810,9 @@ def run_step(
     target_name: str,
     step: ChainStep,
     previous_step: ChainStep | None,
+    expected_body_hash: bytes,
     work_dir: Path,
+    controller: ota.Controller,
 ) -> None:
     command = [
         str(step.path),
@@ -801,6 +832,7 @@ def run_step(
         "--reboot-wait", str(args.reboot_wait),
         "--work-dir", str(next_attempt_dir(work_dir, step.number)),
         "--require-system-watchdog-off",
+        "--expected-installed-body-hash", expected_body_hash.hex().upper(),
         # Some audited bridge binaries retain a later historical runtime
         # version string than their pinned EndF chain version. The exact base
         # hash, target hash, package ID, and ordered step still gate the move.
@@ -814,7 +846,7 @@ def run_step(
         ])
     for relay in args.relay:
         command.extend(["--relay", relay])
-    result = ota.main(command)
+    result = ota.main(command, controller_override=controller)
     if result != 0:
         raise ota.OtaError(f"chain step {step.number} exited with status {result}")
 
@@ -842,8 +874,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-test-candidate",
         action="store_true",
         help=(
-            "permit the corrected, offline-validated chain on a recoverable lab "
-            "RAK3401 before its first complete physical test"
+            "reserved lab gate for a future pinned candidate; it never overrides "
+            "a bundle known to have failed physical testing"
         ),
     )
 
@@ -951,7 +983,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         + args.seeder_start_wait
         + args.discovery_timeout
         + args.transfer_timeout_minutes * 60
-        + args.poll_seconds
+        + ota.adaptive_poll_ceiling(args.poll_seconds)
         + args.reply_timeout * (4 + len(args.relay))
     )
     if not args.verify_only and temp_values[4] * 60 <= required_seconds:
@@ -1018,10 +1050,18 @@ def main(argv: list[str] | None = None) -> int:
                 == KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256
             ):
                 print(f"WARNING: {KNOWN_FAILED_V11701_MESSAGE}", file=sys.stderr)
+            elif (
+                steps[KNOWN_FAILED_V11701_STEP16 - 1].target_sha256
+                == KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256
+            ):
+                print(
+                    f"WARNING: {KNOWN_FAILED_V11701_STEP16_MESSAGE}",
+                    file=sys.stderr,
+                )
             else:
                 print(
-                    "Corrected test candidate verified offline; a complete physical-board "
-                    "run is still required before production use."
+                    "Unfailed candidate verified offline; complete physical-board testing "
+                    "is still required before production use."
                 )
             return 0
 
@@ -1083,10 +1123,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"{step.from_version} -> {step.to_version}"
             )
             previous_step = steps[index - 1] if index > 0 else None
-            run_step(args, target_name, step, previous_step, work_dir)
+            expected_hash = expected_hash_after(steps, final_body_hash, index)
+            run_step(
+                args, target_name, step, previous_step, expected_hash,
+                work_dir, controller
+            )
 
             target = query_live_target(controller, args, target_name)
-            expected_hash = expected_hash_after(steps, final_body_hash, index)
             if target.base_hash != expected_hash:
                 raise ota.OtaError(
                     f"step {step.number} returned body hash {target.base_hash.hex().upper()}, "
@@ -1111,6 +1154,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"runtime label {target.current_version} is historical and is "
                     f"not the EndF chain version {step.to_version}"
                 )
+            require_rescue_capability(controller, target_name)
             clear_completed_download(controller, target_name, step)
             require_watchdog_state(controller, target_name, "off")
             append_progress(work_dir, step, target.base_hash)

@@ -27,8 +27,8 @@
 // COALESCED to the 4 KB sector and each sector is programmed once. The meta region (header+manifest+
 // leaves -- written all transfer long as blocks/leaves arrive, often out of order) is PINNED in RAM and
 // flushed at finalize() with the radio idle; the bulk payload streams through ONE sliding sector buffer,
-// flushing the sector it leaves behind (~1 flush per 4 KB, off the per-packet path). OTA is also the
-// lowest-priority TX, so a brief stall yields to real traffic. A small delta whose container fits the
+// flushing the sector it leaves behind (~1 flush per 4 KB, off the per-packet path). A brief stall still
+// yields between radio packets. A small delta whose container fits the
 // pinned meta region does ZERO flash I/O until COMPLETE.
 
 namespace mesh {

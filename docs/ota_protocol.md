@@ -15,8 +15,8 @@ where a section names a source file, that file is the authoritative reference fo
 - **Trustless mesh relay:** repeaters may forward packets while the source alone serves firmware data;
   integrity is content-addressed
   against a signed merkle root, so a relay need not be trusted and never needs the signing keys.
-- **Lowest priority, always:** OTA traffic is enqueued behind all mesh traffic - "eventually upgradable".
-  A busy node delays OTA indefinitely rather than competing with real traffic.
+- **Primary while transferring:** periodic discovery stays at background priority, but manifest, block,
+  data, and proof packets for an active fetch use primary queue priority at every relay hop.
 - **Portable:** the engine (`src/helpers/ota/OtaManager`) is Arduino/radio/crypto-free and host-testable,
   so the same logic drives a device, a simulation, or a third-party implementation.
 
@@ -68,7 +68,8 @@ where a section names a source file, that file is the authoritative reference fo
 | `PAYLOAD_TYPE_OTA` | `0x0C` | MeshCore packet type (`src/Packet.h`) |
 | `MAX_PACKET_PAYLOAD` | `184` | usable bytes per packet (`src/MeshCore.h`) |
 | Default block size | `1024` | `block_size_log2 = 0x0A` |
-| OTA TX priority | `250` | lowest (`OTA_TX_PRIORITY`, `src/Mesh.h`) |
+| OTA discovery TX priority | `250` | background (`OTA_TX_PRIORITY`, `src/Mesh.h`) |
+| OTA active-transfer TX priority | `0` | primary (`OTA_TRANSFER_TX_PRIORITY`, `src/Mesh.h`) |
 
 ---
 
@@ -366,8 +367,9 @@ Message types:
 
 - **`manifest_id`** = the manifest's `merkle_root` (4 bytes) - a compact content id present in every
   transfer message, so a multi-mota server dispatches each request to the right image.
-- **Priority:** all OTA packets enqueue at `OTA_TX_PRIORITY = 250` (lowest). OTA never competes with mesh
-  traffic; on a busy node it is delayed indefinitely.
+- **Priority:** `OTA_ADV`, `OTA_QUERY`, and `OTA_HAVE` enqueue at background priority 250. Once a fetch is
+  active, manifest, block request, data, and proof messages enqueue at primary priority 0. Relay-only
+  nodes classify the wire message identically, so a transfer stays primary across the complete path.
 - **Reliability is *eventual*:** the fetcher re-requests missing fragments/blocks after a timeout, possibly
   from a different peer. No hard ACKs, no global ordering.
 - **Relay:** replies are flooded, so transparent relay needs no per-requester addressing, and the transfer
@@ -377,9 +379,10 @@ Message types:
 - **Hop limit + duty cycle:** OTA floods accumulate one path-hash per relay (the mesh's flood routing). A
   node with the OTA manager *accepts* a packet only if it arrived within `ota config hops` hops (default 3;
   `0` = direct only) and *relays* it only while still under that limit, appending its own hash. Relay-only
-  repeaters instead use their ordinary flood limits and forwarding filters. Relays are lowest-priority and
-  are skipped when the packet pool runs low (the source retries), so heavy OTA can never monopolise a
-  repeater's RAM or starve real traffic.
+  repeaters instead use their ordinary flood limits and forwarding filters. Discovery relays remain
+  lowest-priority and may be skipped when the packet pool runs low. Active-transfer relays bypass that
+  background pool gate and use priority 0; operators should therefore treat TempRadio as a dedicated OTA
+  maintenance window because the transfer can delay unrelated mesh traffic.
 
 ### 8.1 Two-tier discovery
 
@@ -522,7 +525,10 @@ payload); larger self-images pass a bigger scratch buffer.
 
 OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
 its `tempradio` window is actually running. A receiver selects missing blocks in serial order into a bounded
-two-block pipeline. It never serves partial blocks. A normal install receiver never re-advertises its completed
+request pipeline. The default capacity is two blocks. Targets with a larger compiled capacity begin at two,
+grow the live window by one after four clean verified blocks, and shrink it after two consecutive no-progress
+service ticks; the RAK3401 LoRa-OTA target currently adapts from two through four blocks. It never serves
+partial blocks. A normal install receiver never re-advertises its completed
 download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
 to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
 This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
@@ -712,6 +718,9 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   locates the physical EndF, hashes the running app, and compares that value with the package before its
   first app write. A physically absent/corrupt EndF or wrong base therefore returns to the unchanged app;
   it still requires USB recovery if that app does not already contain this command.
+  A chain intended to cross historical firmware must introduce this command in its first bridge and retain
+  it in every later bridge. Manual pulls still use the build-provided target ID when app-side EndF parsing
+  fails, so a rescue-capable bridge can fetch its exact successor before invoking the guarded command.
 - **MeshTower V2 SD nRF52:** the application stores a contiguous `/meshcore-ota.mota` on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,

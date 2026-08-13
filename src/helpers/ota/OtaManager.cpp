@@ -620,6 +620,9 @@ void OtaManager::clearReassembly() {
   for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) clearReassemblySlot(slot);
   _retry_slot = 0;
   _req_count = 0;
+  _pipeline_width = OTA_FETCH_PIPELINE_INITIAL;
+  _pipeline_success_streak = 0;
+  _pipeline_stall_streak = 0;
 }
 
 int OtaManager::findReassemblySlot(uint32_t block) const {
@@ -630,10 +633,33 @@ int OtaManager::findReassemblySlot(uint32_t block) const {
 }
 
 int OtaManager::findEmptyReassemblySlot() const {
-  for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) {
+  for (uint8_t slot = 0; slot < _pipeline_width; slot++) {
     if (_reasm[slot].block == NO_BLOCK) return slot;
   }
   return -1;
+}
+
+void OtaManager::notePipelineBlockVerified() {
+  _pipeline_stall_streak = 0;
+  if (_pipeline_width >= OTA_FETCH_PIPELINE) return;
+  if (++_pipeline_success_streak < OTA_FETCH_PIPELINE_GROW_BLOCKS) return;
+  _pipeline_success_streak = 0;
+  _pipeline_width++;
+  OTA_DBG("OTA: request pipeline grew to %u/%u after clean block progress\n",
+          (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
+}
+
+void OtaManager::notePipelineStall() {
+  _pipeline_success_streak = 0;
+  if (_pipeline_width <= OTA_FETCH_PIPELINE_INITIAL) {
+    _pipeline_stall_streak = 0;
+    return;
+  }
+  if (++_pipeline_stall_streak < OTA_FETCH_PIPELINE_SHRINK_TICKS) return;
+  _pipeline_stall_streak = 0;
+  _pipeline_width--;
+  OTA_DBG("OTA: request pipeline shrank to %u/%u after stalled ticks\n",
+          (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
 }
 
 bool OtaManager::blockInPipeline(uint32_t block) const {
@@ -1015,6 +1041,7 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   }
   _have++;
   OTA_DBG("OTA: block %u OK  have=%u/%u\n", (unsigned)block, (unsigned)_have, (unsigned)_fbc);
+  notePipelineBlockVerified();
   clearReassemblySlot((uint8_t)slot_index);
   // periodically persist progress (meta/leaf page + open payload) so a reboot can resume (no-op for RAM);
   // cadence is runtime-tunable via `ota config checkpoint <N>` (0 = never)
@@ -1079,6 +1106,7 @@ void OtaManager::requestMissing() {
 
   // A full window with no progress is stalled. Retry one slot per service tick, round-robin, so a weak
   // block cannot trigger a simultaneous multi-block re-burst on a half-duplex channel.
+  notePipelineStall();
   for (uint8_t offset = 0; offset < OTA_FETCH_PIPELINE; offset++) {
     uint8_t slot = (uint8_t)((_retry_slot + offset) % OTA_FETCH_PIPELINE);
     if (_reasm[slot].block == NO_BLOCK) continue;

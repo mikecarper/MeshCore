@@ -1,10 +1,8 @@
 # RAK3401 1W repeater LoRa update chain
 
-> Status: the corrected v1.17.01 26-package release candidate has passed
-> complete offline reconstruction, independent container verification, and
-> both stable OTAFIX 2.4 and Preview 6 C simulations. It still needs its first
-> complete physical RAK3401 run and is gated behind
-> `--accept-test-candidate`; do not use it in production yet.
+> Status: the second corrected v1.17.01 candidate is withdrawn. A physical
+> RAK3401 run passed steps 1 through 15, then step 16 booted but could not
+> validate its EndF. The runner blocks this exact bundle before device access.
 
 This procedure records the exact 26-step update chain from the release
 [`rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e`](https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e).
@@ -19,33 +17,45 @@ It is intentionally specific to the following destination firmware:
   `63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d`
 
 Do not use this chain on another node, and do not start it on another RAK3401.
-The artifact checks do not replace the pending complete physical-board run.
-Use this candidate only for the next recoverable lab test.
+The physical test has withdrawn this exact chain. Use it only for offline
+diagnosis; the runner refuses live deployment even with
+`--accept-test-candidate`.
 
-## Corrected test-candidate bundle
+## Withdrawn second v1.17.01 candidate
 
-The replacement rebuilds steps 6 through 14 so both `Utils::sha256` overloads
-use software SHA-256; hardware AES and HMAC stay enabled. Temporary steps 14
-through 25 have monotonic EndF versions `1.16.9.110` through `1.16.9.121`.
-The final endpoint is a real v1.17.01 build from `c96bdd6e`, with both its
-runtime string and EndF version set to `1.17.1.0`. No v1.17.02 endpoint is used.
+The replacement rebuilt steps 6 through 15 around the first observed SHA
+failure. Step 15 used software SHA-256 and passed its physical EndF check.
+Step 16 re-enabled CC310 SHA with checked return codes. It downloaded and
+applied successfully, booted `v1.16.9.112-ea3843e0`, then returned `ERR no
+EndF`. This proves that CC310 can report success yet produce a wrong digest
+for the memory-mapped application image; return-code fallback is insufficient.
 
 ```text
 /home/mesh/git/MeshCore/out-rak3401-mota-v1.17.01-corrected/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e.zip
 ```
 
 ZIP SHA-256:
-`693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a`.
+`46c7480ed6bdc2aa01fb23a0f70e34c4012ffdd42b616d07bde66cf66d594630`.
 The largest package is 88,280 bytes, leaving 1,832 bytes below the staging
 limit. All 26 deltas reconstruct with both zero-filled and 0xFF-filled
 workspaces. The endpoint has whole-image SHA-256
 `e923f6209e0f071a5862ffbc7690e0b355c1e74829067e0bfdacd0de6c316065`
 and EndF body hash `AC267B02E055F42E`.
 
-The candidate includes the exact v1.16.7 test-start UF2/Nordic DFU ZIP, a
+The withdrawn bundle includes the exact v1.16.7 test-start UF2/Nordic DFU ZIP, a
 diagnostic corrected step-6 image, and the final recovery UF2/ZIP. Restore the
 lab node locally to the included test-start image before rerunning the chain.
-The bundle's `RUNBOOK.md` contains the direct and two-hop commands.
+The bundle's `RUNBOOK.md` is retained for diagnosis only.
+
+## Requirements for the next chain
+
+The next chain must use software SHA-256 for every bridge. CC310 may remain
+enabled for AES, HMAC, and entropy, but not for either `Utils::sha256`
+overload. The guarded `ota rescue install <base_hash16>` command must be in
+the first installed bridge (step 1) and every target after it. Offline
+validation must reconstruct each target and prove that command is present;
+the live runner also probes `ota help` after every successful transition and
+refuses to expose a bridge without the rescue path to another update.
 
 ## Withdrawn v1.17.02-chain smoke-test result
 
@@ -82,21 +92,24 @@ The lab RAK remains alive on v1.16.08.7. Its normal radio is restored to
 
 ## Recover the lab RAK
 
-Recovery now requires a local data path to the RAK3401 itself. The Heltec
-controller cable cannot recover the remote RAK, and this host currently has no
-Bluetooth adapter.
+The latest physical run stopped on `v1.16.9.112-ea3843e0`: normal radio is
+restored to `910.525,62.5,7,5` and `system.watchdog` is verified `on`, but the
+application reports `ERR no EndF`. That bridge predates the guarded rescue
+command, so recovery requires a local data path to the RAK3401 itself. The
+Heltec controller cable cannot recover the remote RAK.
 
 1. Connect the RAK3401 itself to this host by USB.
 2. Enter its exact-board UF2 bootloader, using a local `uf2reset` command or
    the board's double-reset gesture.
-3. Flash the final RAK3401 UF2 from the corrected bundle's `recovery/final/`
-   directory:
-   `RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.01-halo-keymind-cascade-dev-c96bdd6e.uf2`.
-4. After it boots, require version `v1.17.1`, target `2FA509C1`, hardware
-   `RAK_3401`, a valid `ota self` reply, normal radio settings, and watchdog
-   `on`.
+3. For another chain test, flash the exact c1caa5ad test-start UF2 from the
+   withdrawn bundle's `recovery/test-start/` directory. Do not use its final
+   recovery image as a production recovery target; it predates the new
+   software-only SHA rule.
+4. After it boots, require the c1caa5ad start identity, target `2FA509C1`,
+   hardware `RAK_3401`, a valid `ota self` reply, normal radio settings, and
+   watchdog `on`.
 
-Do not send step 7, force an apply, or issue a remote recovery reboot. Once the
+Do not force an apply or issue a remote recovery reboot. Once the
 RAK USB cable is attached, the port and UF2 mount can be detected and the
 recovery completed without guessing device paths.
 
@@ -114,9 +127,10 @@ The dormant live path implements the release's watchdog sequence:
 7. Re-enable the watchdog only after the exact step 26 image boots and passes
    both version and EndF body-hash verification.
 
-These controls are active for the corrected candidate. They cannot repair the
-old bridge whose own EndF check is broken. The candidate must pass a complete
-physical-board run before its explicit lab-only gate is removed.
+These controls remain requirements for the next candidate. They cannot repair
+a running bridge that lacks both valid app-side EndF validation and the rescue
+command. A replacement must pass a complete physical-board run before its
+lab-only gate is removed.
 
 An interrupted download is resumable. Avoid interrupting power or radio
 coverage while `ota install` is applying a package. Physical USB recovery is
@@ -162,7 +176,7 @@ ordinary radio after each step.
 ## Verify without touching a radio
 
 The chain runner pins the release ZIP SHA-256 to
-`693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a`.
+`46c7480ed6bdc2aa01fb23a0f70e34c4012ffdd42b616d07bde66cf66d594630`.
 It also pins and verifies the inner checksum list, checks complete checksum
 coverage, parses every manifest, verifies the chain continuity, and runs
 `motatool verify` on all 26 containers.
@@ -179,36 +193,26 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
 An already-downloaded asset can be supplied with `--bundle`. Only the pinned
 ZIP or its extracted root is accepted.
 
-## Corrected-release live preflight
+## Withdrawn-release verification
 
-The remote-admin password for the tested RAK is the lowercase default
-`password`. Prefer the environment variable so it is not placed in the child
-process command line:
+No password or device connection is needed for offline verification:
 
 ```bash
-export MESHCORE_ADMIN_PASSWORD='password'
-
 python3 tools/lora_ota/rak3401_mota_chain.py \
   --work-dir ./rak3401-mota-chain-work \
-  --controller-serial /dev/ttyACM0 \
-  --source-tcp 192.168.1.51:5001 \
-  --source-cli-tcp 192.168.1.51:5002 \
-  --source-shares-controller \
-  --ota-hops 3 \
-  --accept-test-candidate \
   --motatool /path/to/motatool \
-  --preflight-only
+  --verify-only
 ```
 
-This validates the corrected bundle, Full Companion identity, source, and
-destination without changing radio or watchdog settings. Omitting
-`--accept-test-candidate` exits before connecting to a device. The withdrawn
-v1.17.02 chain is also recognized and always blocked before device access.
+Use `--verify-only` for this withdrawn bundle. Every live invocation exits
+before connecting to a device, including one with `--accept-test-candidate`.
+The older failed v1.17.01 and v1.17.02 chains are also recognized and blocked.
 
-## Direct lab template
+## Future direct lab template
 
-Use only on a locally recoverable test RAK3401. Keep the work directory for
-resume, and retain the explicit `--accept-test-candidate` lab gate.
+This template becomes usable only after a new ZIP and its hashes are pinned in
+the runner. Use it only on a locally recoverable test RAK3401. Keep the work
+directory for resume, and retain the explicit `--accept-test-candidate` gate.
 
 ```bash
 export MESHCORE_ADMIN_PASSWORD='password'
@@ -227,9 +231,10 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
 
 The intended runner logs each isolated step attempt below `steps/`, records every
 verified transition in `progress.jsonl`, and prints the source log path. Rerun
-the exact command after a host restart or recoverable RF failure. Its default
-60-second status interval deliberately leaves airtime for the low-priority OTA
-transfer; avoid shortening it on a busy or relayed mesh.
+the exact command after a host restart or recoverable RF failure. Status polling
+starts at 60 seconds, expands adaptively when replies are slow or the link is
+contended, and contracts after quick replies. The transfer itself is primary
+traffic, so reserve the TempRadio window for OTA on a busy or relayed mesh.
 
 ## Relayed lab template
 
@@ -280,7 +285,7 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
   --yes
 ```
 
-Do not begin a production deployment until the corrected bundle passes a
+Do not begin a production deployment until a replacement bundle passes a
 direct physical smoke test from start to endpoint. Run `--preflight-only` with
 the same relay arguments first. The runner sends
 the destination to TempRadio, then the relays farthest-to-nearest while their

@@ -144,8 +144,17 @@ void Mesh::configureDirectRetryPacket(Packet* retry, const Packet* original, uin
 
   retry->tx_cr = getDirectRetryCodingRateForAttempt(default_cr, retry_attempt);
 }
+
+static bool isPrimaryOtaTraffic(const uint8_t* msg, uint16_t len) {
+  return msg && len && ota::ota_is_transfer_message(msg[0]);
+}
+
+static uint8_t otaTrafficPriority(const uint8_t* msg, uint16_t len) {
+  return isPrimaryOtaTraffic(msg, len) ? OTA_TRANSFER_TX_PRIORITY : OTA_TX_PRIORITY;
+}
+
 #if defined(ENABLE_OTA)
-// Adapter so the portable OtaManager can emit packets through the mesh (lowest priority, hop-capped).
+// Adapter so the portable OtaManager can emit packets through the mesh (message-priority, hop-capped).
 void Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
   if (!m->isTempRadioActive()) return;
@@ -1006,6 +1015,8 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       // ONLY to avoid re-flooding the same packet more than once.
       bool seen = _tables->wasSeen(pkt);
       if (!seen) _tables->markSeen(pkt);
+      const bool primary_ota = isPrimaryOtaTraffic(pkt->payload, pkt->payload_len);
+      const uint8_t ota_priority = otaTrafficPriority(pkt->payload, pkt->payload_len);
 #if defined(ENABLE_OTA)
       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
       ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);  // central OTA receive (beacon/query/
@@ -1013,20 +1024,19 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook
 #endif
-      // Re-flood at the LOWEST priority and only while still under the hop limit, so OTA never competes with
-      // mesh traffic. The free-pool guard keeps heavy OTA from monopolising the shared packet pool - dropping
-      // a relay is safe (OTA is best-effort; the source retries). A relay-only build has no OTA-specific hop
-      // preference, so its ordinary repeater flood limits in allowPacketForward() remain authoritative.
+      // Re-flood discovery at background priority, but keep an active transfer primary at every relay hop.
+      // The free-pool reserve still sheds periodic discovery under pressure; requested transfer packets are
+      // protected from that background-only gate. Ordinary hop and forwarding policy remain authoritative.
       if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
 #if defined(ENABLE_OTA)
           && n < getOtaHopLimit()
 #endif
           && (n + 1) * pkt->getPathHashSize() <= MAX_PATH_SIZE
-          && _mgr->getFreeCount() > OTA_FWD_MIN_FREE
+          && (primary_ota || _mgr->getFreeCount() > OTA_FWD_MIN_FREE)
           && allowPacketForward(pkt)) {
         self_id.copyHashTo(&pkt->path[n * pkt->getPathHashSize()], pkt->getPathHashSize());
         pkt->setPathHashCount(n + 1);
-        action = ACTION_RETRANSMIT_DELAYED(OTA_TX_PRIORITY, getOtaRetransmitDelay(pkt));
+        action = ACTION_RETRANSMIT_DELAYED(ota_priority, getOtaRetransmitDelay(pkt));
       }
       break;
     }
@@ -2634,7 +2644,7 @@ void Mesh::sendOtaFlood(Packet* packet, uint32_t delay_millis) {
   packet->header |= ROUTE_TYPE_FLOOD;
   packet->setPathHashSizeAndCount(1, 0);
   _tables->markSeen(packet);   // mark as sent, in case it floods back to us
-  sendPacket(packet, OTA_TX_PRIORITY, delay_millis);
+  sendPacket(packet, otaTrafficPriority(packet->payload, packet->payload_len), delay_millis);
 }
 #endif
 

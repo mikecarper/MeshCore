@@ -47,8 +47,8 @@ public:
   // Cheap metadata + region offsets for mota `idx`. False if idx is out of range or unparsable.
   virtual bool    describe(uint8_t idx, MotaDesc& out) = 0;
   // Random-access read of `len` bytes at absolute offset `off` of mota `idx` into `buf`. Returns true iff
-  // exactly `len` bytes were produced. May block on the transport (serial round-trip); OTA is lowest
-  // priority so latency here is acceptable.
+  // exactly `len` bytes were produced. May block on the transport (serial round-trip); implementations
+  // should keep active-transfer reads prompt because requested OTA traffic is primary traffic.
   virtual bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) = 0;
 };
 

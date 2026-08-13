@@ -87,6 +87,25 @@ enum OtaMsgType : uint8_t {
   OTA_LEAVES       = 0x0B,   // a fragment of the leaves[] array (for host-side seed leaf-diff)
 };
 
+// Discovery is periodic background traffic; every packet that advances an active fetch is primary
+// traffic. Keep this classification in the wire-format layer so origins and opaque relay-only builds make
+// the same queueing decision without needing an OtaManager.
+inline bool ota_is_transfer_message(uint8_t type) {
+  switch (type) {
+    case OTA_GET_MANIFEST:
+    case OTA_MANIFEST:
+    case OTA_REQ:
+    case OTA_DATA:
+    case OTA_REQ_PROOF:
+    case OTA_PROOF:
+    case OTA_GET_LEAVES:
+    case OTA_LEAVES:
+      return true;
+    default:
+      return false;  // ADV / QUERY / HAVE and unknown future messages stay background-safe
+  }
+}
+
 static const uint16_t OTA_DEFAULT_BLOCK_SIZE = 1024;
 static const uint8_t  OTA_DEFAULT_HOP_LIMIT  = 3;
 

@@ -170,6 +170,31 @@ class FormatTests(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             ota.validate_args(args, parser)
 
+    def test_expected_installed_body_hash_is_normalized(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-serial", "/dev/source",
+            "--expected-installed-body-hash", "aabbccddeeff0011",
+        ])
+        ota.validate_args(args, parser)
+        self.assertEqual(
+            args.expected_installed_body_hash, "AABBCCDDEEFF0011"
+        )
+
+    def test_expected_installed_body_hash_rejects_stage_only(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-serial", "/dev/source",
+            "--expected-installed-body-hash", "AABBCCDDEEFF0011",
+            "--no-install",
+        ])
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            ota.validate_args(args, parser)
+
     def test_intel_hex_rejects_an_excessive_address_span(self) -> None:
         def record(address: int, record_type: int, data: bytes) -> str:
             raw = bytes((len(data), address >> 8, address & 0xFF, record_type)) + data
@@ -434,7 +459,7 @@ class DownloadSessionTests(unittest.TestCase):
             "OK dropped session",
             "OTA | no download",
             "Updates 1/1",
-            f"OK pulling mid={self.package.manifest_id} -> flash (low priority)",
+            f"OK pulling mid={self.package.manifest_id} -> flash (primary traffic)",
         ])
         ota.find_and_start_pull(controller, args, self.package)
         self.assertEqual(
@@ -450,7 +475,7 @@ class DownloadSessionTests(unittest.TestCase):
             "OTA | download: downloading 3/9 id=DEADBEEF 2s",
             "OK dropped session",
             "Updates 1/1",
-            f"OK pulling mid={self.package.manifest_id} -> flash (low priority)",
+            f"OK pulling mid={self.package.manifest_id} -> flash (primary traffic)",
         ])
         ota.find_and_start_pull(controller, self.args(replace=True), self.package)
         self.assertEqual(
@@ -599,6 +624,21 @@ class ReliabilityTests(unittest.TestCase):
             ota.retry_transmission(action, "test command")
         self.assertEqual(calls, 4)
 
+    def test_retry_delay_is_bounded_exponential(self) -> None:
+        self.assertEqual(
+            [ota.transmission_retry_delay(number) for number in range(1, 6)],
+            [2, 4, 8, 8, 8],
+        )
+
+    def test_status_poll_interval_adapts_to_contention(self) -> None:
+        backed_off = ota.adaptive_poll_interval(60, 60, 30, 45)
+        self.assertEqual(backed_off, 90)
+        self.assertEqual(
+            ota.adaptive_poll_interval(backed_off, 60, 2, 45),
+            67.5,
+        )
+        self.assertEqual(ota.adaptive_poll_ceiling(60), 180)
+
     def test_marked_output_excludes_queued_messages(self) -> None:
         controller = object.__new__(ota.Controller)
         controller._execute = lambda _commands, _label: subprocess.CompletedProcess(
@@ -639,6 +679,67 @@ class ReliabilityTests(unittest.TestCase):
         )
         reply = controller._remote_command_once("remote", "ota status", "secret")
         self.assertTrue(reply.startswith("OTA |"))
+
+    def test_remote_admin_login_is_reused_until_explicit_refresh(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        controller._authenticated_targets = set()
+        controller._authenticated_target_failures = {}
+        key = "A1" * 32
+        commands_seen: list[list[str]] = []
+
+        def run_marked(commands: list[str], _label: str, _marker: str):
+            commands_seen.append(commands)
+            objects = [{"adv_name": "remote", "public_key": key}]
+            if "login" in commands:
+                objects.append({"login_success": True})
+            return objects, [{
+                "txt_type": 1,
+                "text": "OTA | no download | target:1234ABCD",
+                "pubkey_prefix": key[:12],
+            }]
+
+        controller._run_marked = run_marked
+        controller._remote_command_once("remote", "ota status", "secret")
+        controller._remote_command_once("remote", "ota status", "secret")
+        self.assertIn("login", commands_seen[0])
+        self.assertNotIn("login", commands_seen[1])
+
+        controller.forget_remote_auth("remote")
+        controller._remote_command_once("remote", "ota status", "secret")
+        self.assertIn("login", commands_seen[2])
+
+    def test_two_silent_commands_refresh_cached_admin_session(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        controller._authenticated_targets = {"remote"}
+        controller._authenticated_target_failures = {}
+        key = "A1" * 32
+        commands_seen: list[list[str]] = []
+
+        def run_marked(commands: list[str], _label: str, _marker: str):
+            commands_seen.append(commands)
+            objects = [{"adv_name": "remote", "public_key": key}]
+            if "login" in commands:
+                objects.append({"login_success": True})
+                replies = [{
+                    "txt_type": 1,
+                    "text": "OTA | no download | target:1234ABCD",
+                    "pubkey_prefix": key[:12],
+                }]
+            else:
+                replies = []
+            return objects, replies
+
+        controller._run_marked = run_marked
+        with self.assertRaises(ota.TransmissionError):
+            controller._remote_command_once("remote", "ota status", "secret")
+        with self.assertRaises(ota.TransmissionError):
+            controller._remote_command_once("remote", "ota status", "secret")
+        controller._remote_command_once("remote", "ota status", "secret")
+        self.assertNotIn("login", commands_seen[0])
+        self.assertNotIn("login", commands_seen[1])
+        self.assertIn("login", commands_seen[2])
 
     def test_generic_retry_rejects_state_changing_ota_commands(self) -> None:
         controller = object.__new__(ota.Controller)
@@ -1065,6 +1166,18 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ota.OtaError, "retained mOTA DEADBEEF"):
             rak_chain.clear_completed_download(Controller(), "remote", step)
 
+    def test_chain_requires_rescue_command_before_another_transition(self) -> None:
+        controller = mock.Mock()
+        controller.remote_command.return_value = (
+            "OTA: status | install | rescue install <hash16> | cancel"
+        )
+        rak_chain.require_rescue_capability(controller, "remote")
+        controller.remote_command.assert_called_once_with("remote", "ota help")
+
+        controller.remote_command.return_value = "OTA: status | install | cancel"
+        with self.assertRaisesRegex(ota.OtaError, "refusing to expose"):
+            rak_chain.require_rescue_capability(controller, "remote")
+
     def test_live_chain_is_blocked_after_failed_physical_step_6(self) -> None:
         self.assertEqual(rak_chain.KNOWN_UNSAFE_STEP, 6)
         self.assertEqual(rak_chain.KNOWN_UNSAFE_VERSION, "1.16.8.7")
@@ -1079,19 +1192,41 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             )
 
     def test_corrected_chain_requires_explicit_lab_gate(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(15)]
+        steps = [mock.Mock(target_sha256="") for _ in range(16)]
         steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
         steps[14].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP15_IMAGE_SHA256
+        steps[15].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256
+        )
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
-            "needs its first end-to-end board test",
+            "physical RAK3401 test passed steps 1-15",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=False), steps
             )
-        rak_chain.require_live_release_safe(
-            argparse.Namespace(accept_test_candidate=True), steps
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "physical RAK3401 test passed steps 1-15",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_checked_cc310_step16_is_always_blocked(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(16)]
+        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[14].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP15_IMAGE_SHA256
+        steps[15].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256
         )
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "return-code fallback is not sufficient",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
 
     def test_first_v11701_candidate_is_blocked_after_failed_step15(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(15)]

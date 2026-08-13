@@ -4,12 +4,16 @@
 
 // OTA-over-LoRa transport is understood by every Mesh role even when the OTA manager/installer is not
 // compiled in. Repeaters can therefore relay PAYLOAD_TYPE_OTA opaquely while they are on TempRadio.
-// OTA traffic always uses the lowest TX priority (selected only after all real traffic).
+// Periodic OTA discovery stays at the lowest priority. Once an image transfer starts, its manifest,
+// block, and proof exchange is a primary operation at every origin and relay hop.
 #ifndef OTA_TX_PRIORITY
 #define OTA_TX_PRIORITY 250
 #endif
-// Keep this many pool slots free while relaying OTA, so best-effort firmware traffic cannot monopolise the
-// shared packet pool and starve real traffic.
+#ifndef OTA_TRANSFER_TX_PRIORITY
+#define OTA_TRANSFER_TX_PRIORITY 0
+#endif
+// Keep this many pool slots free while relaying background OTA discovery. An explicitly requested transfer
+// is primary and bypasses this discovery-only reserve gate.
 #ifndef OTA_FWD_MIN_FREE
 #define OTA_FWD_MIN_FREE 4
 #endif
@@ -545,7 +549,8 @@ public:
 #if defined(ENABLE_OTA)
   // Build a PAYLOAD_TYPE_OTA packet from raw OTA message bytes (route set by sendOtaFlood).
   Packet* createOtaPacket(const uint8_t* data, size_t len);
-  // Flood-send at the lowest priority (so OTA never competes with mesh traffic).
+  // Flood-send at the priority derived from the OTA message: discovery is background, active transfer is
+  // primary. Relay-only nodes use the same classification.
   void sendOtaFlood(Packet* packet, uint32_t delay_millis = 0);
 #endif
   Packet* createTrace(uint32_t tag, uint32_t auth_code, uint8_t flags = 0);

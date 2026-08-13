@@ -158,53 +158,15 @@ uint32_t RNG::nextInt(uint32_t _min, uint32_t _max) {
 }
 
 void Utils::sha256(uint8_t *hash, size_t hash_len, const uint8_t* msg, int msg_len) {
-#ifdef USE_CC310_HW_CRYPTO
-  if (hash_len <= SHA256::HASH_SIZE && msg_len >= 0) {
-    CC310CryptoSession session;
-    if (session) {
-      static CRYS_HASH_Result_t result;
-      const CRYSError_t rc = CRYS_HASH(
-          CRYS_HASH_SHA256_mode, const_cast<uint8_t*>(msg),
-          static_cast<size_t>(msg_len), result);
-      if (rc == CRYS_OK) {
-        memcpy(hash, result, hash_len);
-        return;
-      }
-    }
-  }
-#endif
+  // CC310 can report CRYS_OK yet return a wrong digest when the input is the
+  // memory-mapped nRF52 application image. SHA-256 protects firmware identity,
+  // Merkle proofs, and install gates, so a return-code fallback is insufficient:
+  // always use the deterministic software implementation. CC310 remains in use
+  // for AES, HMAC, and entropy, where its inputs live in ordinary RAM.
   sha256Software(hash, hash_len, msg, msg_len);
 }
 
 void Utils::sha256(uint8_t *hash, size_t hash_len, const uint8_t* frag1, int frag1_len, const uint8_t* frag2, int frag2_len) {
-#ifdef USE_CC310_HW_CRYPTO
-  if (hash_len <= SHA256::HASH_SIZE && frag1_len > 0 && frag2_len > 0) {
-    CC310CryptoSession session;
-    if (session) {
-      static CRYS_HASHUserContext_t ctx;
-      static CRYS_HASH_Result_t result;
-      CRYSError_t rc = CRYS_HASH_Init(&ctx, CRYS_HASH_SHA256_mode);
-      const bool initialized = rc == CRYS_OK;
-      if (rc == CRYS_OK) {
-        rc = CRYS_HASH_Update(&ctx, const_cast<uint8_t*>(frag1),
-                              static_cast<size_t>(frag1_len));
-      }
-      if (rc == CRYS_OK) {
-        rc = CRYS_HASH_Update(&ctx, const_cast<uint8_t*>(frag2),
-                              static_cast<size_t>(frag2_len));
-      }
-      if (rc == CRYS_OK) rc = CRYS_HASH_Finish(&ctx, result);
-      if (rc == CRYS_OK) {
-        memcpy(hash, result, hash_len);
-        return;
-      }
-      if (initialized) {
-        const bool context_freed = CRYS_HASH_Free(&ctx) == CRYS_OK;
-        (void) context_freed;
-      }
-    }
-  }
-#endif
   sha256Software(hash, hash_len, frag1, frag1_len, frag2, frag2_len);
 }
 

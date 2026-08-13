@@ -134,6 +134,28 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #if OTA_FETCH_PIPELINE < 1
 #error "OTA_FETCH_PIPELINE must be at least 1"
 #endif
+#ifndef OTA_FETCH_PIPELINE_INITIAL
+  #if OTA_FETCH_PIPELINE >= 2
+    #define OTA_FETCH_PIPELINE_INITIAL 2
+  #else
+    #define OTA_FETCH_PIPELINE_INITIAL 1
+  #endif
+#endif
+#if OTA_FETCH_PIPELINE_INITIAL < 1 || OTA_FETCH_PIPELINE_INITIAL > OTA_FETCH_PIPELINE
+#error "OTA_FETCH_PIPELINE_INITIAL must be between 1 and OTA_FETCH_PIPELINE"
+#endif
+#ifndef OTA_FETCH_PIPELINE_GROW_BLOCKS
+#define OTA_FETCH_PIPELINE_GROW_BLOCKS 4  // clean verified blocks before adding one concurrent request slot
+#endif
+#if OTA_FETCH_PIPELINE_GROW_BLOCKS < 1
+#error "OTA_FETCH_PIPELINE_GROW_BLOCKS must be at least 1"
+#endif
+#ifndef OTA_FETCH_PIPELINE_SHRINK_TICKS
+#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive 3-second no-progress ticks before removing one slot
+#endif
+#if OTA_FETCH_PIPELINE_SHRINK_TICKS < 1
+#error "OTA_FETCH_PIPELINE_SHRINK_TICKS must be at least 1"
+#endif
 // nRF52 note: a flash page-erase halts the CPU (~85 ms, code runs from flash) and starves the LoRa RX,
 // so writing to flash on every received packet drops in-flight DATA and the transfer stalls. The SD-safe
 // driver (Adafruit flash_nrf5x) always erases on flush, so there is no erase-free write; instead
@@ -332,6 +354,8 @@ public:
   FetchState fetchState() const { return _fstate; }
   uint32_t blocksHave() const { return _have; }
   uint32_t blocksTotal() const { return _fbc; }
+  uint8_t fetchPipelineWidth() const { return _pipeline_width; }
+  static constexpr uint8_t fetchPipelineCapacity() { return OTA_FETCH_PIPELINE; }
   const uint8_t* fetchManifestId() const { return _fid; }
 
   // --- discovery catalog (for `ota neighbors`): mOTAs heard around us via OTA_HAVE, deduped by mid ---
@@ -382,6 +406,8 @@ private:
   int findReassemblySlot(uint32_t block) const;
   int findEmptyReassemblySlot() const;
   bool blockInPipeline(uint32_t block) const;
+  void notePipelineBlockVerified();
+  void notePipelineStall();
   uint32_t pipelineProgress() const;
   uint32_t pickMissingBlock();                            // choose the next missing block not already in flight
   int  serveEntryIndex(const uint8_t* mid) const;         // registry slot serving this mid (-1 if none)
@@ -465,9 +491,9 @@ private:
   uint16_t   _advert_mins = OTA_ADVERT_INTERVAL_MINS;    // beacon re-advertise cadence, minutes; 0=off (persisted)
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
   uint8_t    _fflags = 0;                       // flags of the manifest currently being fetched
-  // Bounded multi-block client pipeline. Each slot independently reassembles DATA and awaits its Merkle
-  // proof, so proof/flash work for one block can overlap radio delivery of the next. The wire protocol and
-  // opaque repeater behavior are unchanged.
+  // Bounded adaptive multi-block client pipeline. Each slot independently reassembles DATA and awaits its
+  // Merkle proof, so proof/flash work for one block can overlap radio delivery of the next. The live window
+  // grows on clean verified blocks and contracts after stalled service ticks; the wire protocol is unchanged.
   struct ReassemblySlot {
     uint32_t block = NO_BLOCK;
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
@@ -478,6 +504,9 @@ private:
   ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
   uint32_t   _loop_last_progress = 0;           // aggregate pipeline progress for stall detection
   uint8_t    _retry_slot = 0;                   // round-robin stalled-slot retry cursor
+  uint8_t    _pipeline_width = OTA_FETCH_PIPELINE_INITIAL; // live request window, adaptive up to array capacity
+  uint8_t    _pipeline_success_streak = 0;      // verified blocks since the last grow/stall decision
+  uint8_t    _pipeline_stall_streak = 0;        // consecutive no-progress service ticks
   // multi-fragment manifest reassembly (a signed v2 manifest exceeds one packet)
   uint8_t    _mf_buf[OTA_MF_MAXFRAG * OTA_MF_FRAG];   // sized to the fragment cap so no valid manifest is silently dropped
   uint16_t   _mf_retries = 0;                          // GET_MANIFEST retries while WANT_MANIFEST (give up after a cap)

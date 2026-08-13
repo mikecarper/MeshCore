@@ -42,16 +42,16 @@ battery telemetry, and `battery.alert` behavior.
 
 ## The important part first: it's safe
 
-- **Nothing installs by itself.** Your node can *discover* and *download* an update in the background, but
+- **Nothing installs by itself.** Your node can *discover* and download an update, but
   it only **installs** when you say so (unless you deliberately turn on auto-install - see below).
 - **Bad downloads can't sneak in.** Every piece of the firmware is checked against a cryptographic
   fingerprint as it arrives, and the whole image is verified again before install. A corrupt or tampered
   download is rejected, not installed.
 - **You choose who to trust.** Updates can be *signed* by their author. You can tell your node to only
   auto-install firmware signed by keys you've added.
-- **It won't disrupt your mesh.** OTA traffic is always the **lowest priority** - your node only spends
-  spare airtime on it. Messages and routing always come first; a busy node simply updates later. Think of
-  it as *"eventually upgradable."*
+- **Discovery stays quiet; a transfer is deliberate.** Periodic update discovery uses background priority.
+  Once a download starts, its transfer packets are primary traffic across every relay hop, so use
+  TempRadio as an OTA maintenance window when delaying unrelated mesh traffic would matter.
 - **It can recover.** If an install ever fails, the node falls back to a safe recovery mode (you can
   re-flash a known-good firmware over USB) - it won't be left bricked.
 
@@ -149,8 +149,10 @@ re-running a `validate` pull re-begins fresh (it never resumes a stale partial).
 trusted - every kept block is checked against the target's own fingerprints, so a mismatched or missing seed
 just means those blocks are fetched over the radio (correct result, only slower).
 
-The node fetches from one source, **at low priority**, with a bounded two-block receive window. Mesh repeaters may carry the
-packets, but only while their temporary-radio windows are active. Check progress with `ota status`.
+The node fetches from one source as **primary traffic**, with a bounded adaptive block-request window.
+RAK3401 OTA builds start with two concurrent block requests, grow to four on a clean link, and contract on
+repeated stalls. Mesh repeaters carry the packets only while their temporary-radio windows are active.
+Check progress with `ota status`.
 
 If a `folder` pull loses its link mid-transfer, `ota status` shows **paused** - the host keeps the
 partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
@@ -190,6 +192,7 @@ After it reboots, run `ota status` to confirm the new version.
   target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
   the running app and rejects a wrong base before writing the app. If the physical EndF is absent or this
   command was not already in the running firmware, recover over USB.
+  Release chains should put this command in their first bridge and keep it in every bridge after that.
 - If an **install** fails, the node won't boot a broken image - it lands in **recovery mode**:
   - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
     to recover.
@@ -284,8 +287,8 @@ already active. Other FULL roles with browser OTA support can use the
 
 You don't have to be a gateway to help. Once **any** node finishes downloading an update, it automatically
 offers it to *its* neighbours too. So a new firmware spreads outward node-to-node, instead of everyone
-hammering the one node that had it first - and no node is ever overloaded, because all of this stays
-lowest-priority.
+hammering the one node that had it first. Discovery remains background traffic; an actual transfer is
+primary traffic for the duration of its TempRadio maintenance window.
 
 ---
 

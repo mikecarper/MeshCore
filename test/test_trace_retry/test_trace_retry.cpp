@@ -4,6 +4,7 @@
 #include <Mesh.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/StaticPoolPacketManager.h>
+#include <helpers/ota/OtaFormat.h>
 
 class TraceTestClock : public mesh::MillisecondClock {
 public:
@@ -195,7 +196,7 @@ TEST(RepeaterTransport, UnknownFloodPayloadHonorsReceiveAndForwardingRejections)
   EXPECT_EQ(1, tables.mark_seen_calls);
 }
 
-TEST(RepeaterTransport, OtaFloodRelaysWithoutOtaManagerOnlyDuringTempRadio) {
+TEST(RepeaterTransport, OtaDiscoveryRelaysInBackgroundOnlyDuringTempRadio) {
   TraceTestClock clock;
   TraceTestRTC rtc;
   TraceTestRNG rng;
@@ -206,6 +207,7 @@ TEST(RepeaterTransport, OtaFloodRelaysWithoutOtaManagerOnlyDuringTempRadio) {
   node.forwardFloods = true;
 
   mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  packet.payload[0] = mesh::ota::OTA_ADV;
   EXPECT_FALSE(node.canTransmit(&packet));
   EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
   EXPECT_EQ(0, tables.mark_seen_calls);
@@ -221,6 +223,27 @@ TEST(RepeaterTransport, OtaFloodRelaysWithoutOtaManagerOnlyDuringTempRadio) {
 
   node.tempRadioActive = false;
   EXPECT_FALSE(node.canTransmit(&packet));  // queued-near-expiry packets cannot leak onto the normal channel
+}
+
+TEST(RepeaterTransport, OtaTransferRelaysAsPrimaryTrafficWithoutOtaManager) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(OTA_FWD_MIN_FREE);  // exactly at the discovery-shedding threshold
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.forwardFloods = true;
+  node.tempRadioActive = true;
+
+  mesh::Packet request = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  request.payload[0] = mesh::ota::OTA_REQ;
+  ASSERT_EQ(OTA_FWD_MIN_FREE, manager.getFreeCount());
+  mesh::DispatcherAction action = node.receivePacket(&request);
+
+  EXPECT_NE(ACTION_RELEASE, action);
+  EXPECT_EQ(OTA_TRANSFER_TX_PRIORITY, (action >> 24) - 1);
+  EXPECT_EQ(1, request.getPathHashCount());
 }
 
 TEST(RepeaterTransport, OtaRelayDelayIsQuarterToHalfAirtime) {

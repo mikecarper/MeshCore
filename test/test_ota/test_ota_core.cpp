@@ -413,6 +413,21 @@ TEST(OtaMerkle, GenProofMatchesPythonAndVerifies) {
 
 // --- protocol codec round-trips ---------------------------------------------------------------
 
+TEST(OtaProtocol, ClassifiesOnlyActiveTransferMessagesAsPrimary) {
+  EXPECT_FALSE(ota_is_transfer_message(OTA_ADV));
+  EXPECT_FALSE(ota_is_transfer_message(OTA_QUERY));
+  EXPECT_FALSE(ota_is_transfer_message(OTA_HAVE));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_GET_MANIFEST));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_MANIFEST));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_REQ));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_DATA));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_REQ_PROOF));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_PROOF));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_GET_LEAVES));
+  EXPECT_TRUE(ota_is_transfer_message(OTA_LEAVES));
+  EXPECT_FALSE(ota_is_transfer_message(0xFF));
+}
+
 TEST(OtaProtocol, CodecRoundTrips) {
   uint8_t buf[200];
 
@@ -774,6 +789,77 @@ TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
   ASSERT_TRUE(decode_req(sent.items[3].data(), (uint16_t)sent.items[3].size(), refill));
   EXPECT_EQ(refill.block_idx, 2);
 }
+
+#if OTA_FETCH_PIPELINE >= 3
+TEST(OtaTransfer, RequestWindowGrowsOnCleanBlocksAndShrinksOnStalls) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  ASSERT_GE(manifest.block_count, 7u);
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  ASSERT_EQ(client.fetchPipelineCapacity(), 4u);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  client.loop();
+  ASSERT_EQ(client.fetchPipelineWidth(), 2u);
+
+  auto deliver_verified_block = [&](uint32_t block) {
+    const uint32_t block_size = manifest.block_size();
+    const uint32_t block_len = block + 1 < manifest.block_count
+        ? block_size : manifest.payload_size - block * block_size;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    for (uint32_t offset = 0; offset < block_len; offset += OTA_FRAG_DATA) {
+      uint32_t length = block_len - offset;
+      if (length > OTA_FRAG_DATA) length = OTA_FRAG_DATA;
+      DataMsg data;
+      memcpy(data.manifest_id, manifest.merkle_root, 4);
+      data.block_idx = block;
+      data.frag_off = (uint16_t)offset;
+      data.data = manifest.payload + block * block_size + offset;
+      data.data_len = (uint16_t)length;
+      uint16_t wire_len = encode_data(wire, sizeof(wire), data);
+      ASSERT_GT(wire_len, 0);
+      client.on_message(wire, wire_len);
+    }
+
+    std::vector<uint8_t> scratch(manifest.block_count * 4);
+    uint8_t siblings[32 * 4];
+    uint8_t sibling_count = merkle_gen_proof(
+        manifest.leaves, manifest.block_count, block, scratch.data(), siblings);
+    ProofMsg proof;
+    memcpy(proof.manifest_id, manifest.merkle_root, 4);
+    proof.block_idx = block;
+    proof.n_proof = sibling_count;
+    proof.proof = siblings;
+    uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
+    ASSERT_GT(wire_len, 0);
+    client.on_message(wire, wire_len);
+  };
+
+  for (uint32_t block = 0; block < 3; block++) {
+    deliver_verified_block(block);
+    EXPECT_EQ(client.fetchPipelineWidth(), 2u);
+  }
+  deliver_verified_block(3);
+  EXPECT_EQ(client.blocksHave(), 4u);
+  EXPECT_EQ(client.fetchPipelineWidth(), 3u);
+
+  client.loop();  // establish the new committed-block/progress baseline
+  client.loop();  // first no-progress service tick
+  EXPECT_EQ(client.fetchPipelineWidth(), 3u);
+  client.loop();  // second no-progress service tick contracts the request window
+  EXPECT_EQ(client.fetchPipelineWidth(), 2u);
+}
+#endif
 
 TEST(OtaTransfer, PipelineRetriesOneSlotAndOnlyItsMissingFragments) {
   MotaManifest manifest;
@@ -1341,7 +1427,7 @@ TEST(OtaCatalog, DistinctSeederCountAndHaveCount) {
 }
 
 // An unanswered GET_MANIFEST must not pin the fetch slot forever: after OTA_MANIFEST_MAX_RETRY ticks with
-// no manifest, the session gives up (FAILED) so a new pull can take the slot. (Lowest-priority + bounded.)
+// no manifest, the session gives up (FAILED) so a new pull can take the slot. (Bounded primary operation.)
 TEST(OtaTransfer, ManifestGiveUpAfterRetries) {
   g_q.clear();
   OtaManager client; OtaStoreRam<4096> store; SendTo to_none{&client};

@@ -14,12 +14,14 @@ Run through ``lora_ota.sh`` or ``lora_ota.ps1``; see
 from __future__ import annotations
 
 import argparse
+import atexit
 import getpass
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
+import queue
 import re
 import secrets
 import shlex
@@ -30,6 +32,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -52,8 +55,10 @@ MAX_FIRMWARE_IMAGE_SIZE = 64 * 1024 * 1024
 MOTA_MAX_BLOCK_SIZE = 1024
 TRANSMISSION_RETRY_LIMIT = 3
 TRANSMISSION_RETRY_WINDOW_SECONDS = 90
-TRANSMISSION_RETRY_DELAY_SECONDS = 1
+TRANSMISSION_RETRY_DELAY_SECONDS = 2
+TRANSMISSION_RETRY_MAX_DELAY_SECONDS = 8
 TRANSMISSION_PROMPT_SECONDS = 10
+ADAPTIVE_POLL_MAX_FACTOR = 3
 TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
 TEMP_RADIO_RETURN_MINUTES = 1
 TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
@@ -246,7 +251,7 @@ def retry_transmission(action: Callable[[], T], label: str) -> T:
                     f"[transmission] {label} failed; retry "
                     f"{retries}/{TRANSMISSION_RETRY_LIMIT}: {exc}"
                 )
-                time.sleep(TRANSMISSION_RETRY_DELAY_SECONDS)
+                time.sleep(transmission_retry_delay(retries))
                 continue
             if not prompt_after_transmission_failure(label, exc):
                 raise TransmissionStopped(
@@ -254,6 +259,33 @@ def retry_transmission(action: Callable[[], T], label: str) -> T:
                 ) from exc
             cycle_started = time.monotonic()
             retries = 0
+
+
+def transmission_retry_delay(retry_number: int) -> int:
+    """Return a bounded exponential delay for consecutive RF failures."""
+    exponent = max(0, retry_number - 1)
+    return min(
+        TRANSMISSION_RETRY_MAX_DELAY_SECONDS,
+        TRANSMISSION_RETRY_DELAY_SECONDS * (2 ** exponent),
+    )
+
+
+def adaptive_poll_interval(
+    current_seconds: float,
+    baseline_seconds: float,
+    query_seconds: float,
+    reply_timeout: float,
+) -> float:
+    """Back status polling off after contention and recover after quick replies."""
+    ceiling = max(baseline_seconds, baseline_seconds * ADAPTIVE_POLL_MAX_FACTOR)
+    contention_threshold = max(5.0, reply_timeout * 0.5)
+    if query_seconds >= contention_threshold:
+        return min(ceiling, max(baseline_seconds, current_seconds * 1.5))
+    return max(baseline_seconds, current_seconds * 0.75)
+
+
+def adaptive_poll_ceiling(baseline_seconds: float) -> float:
+    return max(baseline_seconds, baseline_seconds * ADAPTIVE_POLL_MAX_FACTOR)
 
 
 def format_decimal(value: float) -> str:
@@ -926,8 +958,159 @@ def extract_reply_version(reply: str) -> int | None:
     return parse_version(match.group(1)) if match else None
 
 
+class PersistentMeshcliSession:
+    """Run meshcli scripts over one long-lived Companion connection."""
+
+    def __init__(self, command: list[str]):
+        self.command = command
+        self.process: subprocess.Popen[bytes] | None = None
+        self.output_queue: queue.Queue[bytes | None] = queue.Queue()
+        self.pending = bytearray()
+        self.reader_thread: threading.Thread | None = None
+        self.announced = False
+
+    @staticmethod
+    def _read_output(
+        stream,
+        output_queue: queue.Queue[bytes | None],
+    ) -> None:
+        try:
+            while True:
+                chunk = os.read(stream.fileno(), 4096)
+                if not chunk:
+                    break
+                output_queue.put(chunk)
+        except OSError:
+            pass
+        finally:
+            output_queue.put(None)
+
+    def _start(self) -> None:
+        self.close()
+        self.output_queue = queue.Queue()
+        self.pending = bytearray()
+        try:
+            self.process = subprocess.Popen(
+                [*self.command, "-C", "-i"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=0,
+            )
+        except OSError as exc:
+            raise OtaError(
+                f"could not start persistent meshcli session: {exc}"
+            ) from exc
+        assert self.process.stdout is not None
+        self.reader_thread = threading.Thread(
+            target=self._read_output,
+            args=(self.process.stdout, self.output_queue),
+            name="meshcli-output",
+            daemon=True,
+        )
+        self.reader_thread.start()
+
+    @staticmethod
+    def _line_pattern(marker: str) -> re.Pattern[bytes]:
+        return re.compile(
+            rb"(?:^|\r?\n)" + re.escape(marker.encode("ascii")) + rb"\r?\n"
+        )
+
+    def _read_frame(self, start: str, end: str, timeout: float) -> str:
+        start_pattern = self._line_pattern(start)
+        end_pattern = self._line_pattern(end)
+        deadline = time.monotonic() + timeout
+        while True:
+            start_match = start_pattern.search(self.pending)
+            if start_match is not None:
+                end_match = end_pattern.search(self.pending, start_match.end())
+                if end_match is not None:
+                    frame = bytes(self.pending[start_match.end():end_match.start()])
+                    del self.pending[:end_match.end()]
+                    return frame.decode("utf-8", "replace")
+            elif len(self.pending) > 256 * 1024:
+                del self.pending[:-64 * 1024]
+
+            if len(self.pending) > 8 * 1024 * 1024:
+                raise OtaError("persistent meshcli output exceeded 8 MiB")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.close()
+                raise OtaError("persistent meshcli command timed out")
+            try:
+                chunk = self.output_queue.get(timeout=min(remaining, 1.0))
+            except queue.Empty:
+                if self.process is not None and self.process.poll() is not None:
+                    detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
+                    self.close()
+                    raise OtaError(
+                        "persistent meshcli session exited"
+                        + (f": {detail.strip()}" if detail.strip() else "")
+                    )
+                continue
+            if chunk is None:
+                detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
+                self.close()
+                raise OtaError(
+                    "persistent meshcli session closed"
+                    + (f": {detail.strip()}" if detail.strip() else "")
+                )
+            self.pending.extend(chunk)
+
+    def run_script(
+        self,
+        script_path: Path,
+        start_marker: str,
+        end_marker: str,
+        timeout: float,
+    ) -> str:
+        if self.process is None or self.process.poll() is not None:
+            self._start()
+        assert self.process is not None and self.process.stdin is not None
+        command = shlex.join(["script", str(script_path)]) + "\n"
+        try:
+            self.process.stdin.write(command.encode("utf-8"))
+            self.process.stdin.flush()
+        except (BrokenPipeError, OSError) as exc:
+            self.close()
+            raise OtaError(f"persistent meshcli input failed: {exc}") from exc
+        output = self._read_frame(start_marker, end_marker, timeout)
+        if not self.announced:
+            print("[controller] persistent meshcli connection established")
+            self.announced = True
+        return output
+
+    def close(self) -> None:
+        process = self.process
+        self.process = None
+        if process is None:
+            return
+        if process.poll() is None and process.stdin is not None:
+            try:
+                process.stdin.write(b"quit\n")
+                process.stdin.flush()
+                process.wait(timeout=2)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stdin is not None:
+            process.stdin.close()
+
+
 class Controller:
-    def __init__(self, args: argparse.Namespace, password: str):
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        password: str,
+        *,
+        persistent: bool = True,
+    ):
         self.meshcli = args.meshcli
         self.password = password
         self.reply_timeout = args.reply_timeout
@@ -942,6 +1125,58 @@ class Controller:
             self.connection = ["-t", host, "-p", str(port)]
         else:
             self.connection = ["-a", args.controller_ble]
+        # Remote-admin authentication belongs to the radio node, not to each
+        # host command. Reuse it across application reboots; only repeated
+        # silence suggests that the session needs to be refreshed.
+        self._authenticated_targets: set[str] = set()
+        self._authenticated_target_failures: dict[str, int] = {}
+        self._meshcli_session = (
+            PersistentMeshcliSession([
+                self.meshcli, "-j", "-c", "off", *self.connection,
+            ])
+            if persistent else None
+        )
+        if self._meshcli_session is not None:
+            atexit.register(self.close)
+
+    def close(self) -> None:
+        session = getattr(self, "_meshcli_session", None)
+        if session is not None:
+            session.close()
+
+    def forget_remote_auth(self, target: str) -> None:
+        authenticated = getattr(self, "_authenticated_targets", None)
+        if authenticated is not None:
+            authenticated.discard(target)
+        failures = getattr(self, "_authenticated_target_failures", None)
+        if failures is not None:
+            failures.pop(target, None)
+
+    def _remote_auth_is_cached(self, target: str) -> bool:
+        return target in getattr(self, "_authenticated_targets", set())
+
+    def _cache_remote_auth(self, target: str) -> None:
+        if not hasattr(self, "_authenticated_targets"):
+            self._authenticated_targets = set()
+        if not hasattr(self, "_authenticated_target_failures"):
+            self._authenticated_target_failures = {}
+        self._authenticated_targets.add(target)
+        self._authenticated_target_failures.pop(target, None)
+
+    def _note_remote_silence(self, target: str) -> bool:
+        if not hasattr(self, "_authenticated_target_failures"):
+            self._authenticated_target_failures = {}
+        failures = self._authenticated_target_failures.get(target, 0) + 1
+        self._authenticated_target_failures[target] = failures
+        if failures < 2:
+            return False
+        self.forget_remote_auth(target)
+        return True
+
+    def _note_remote_reply(self, target: str) -> None:
+        failures = getattr(self, "_authenticated_target_failures", None)
+        if failures is not None:
+            failures.pop(target, None)
 
     def _execute(
         self, commands: list[str], label: str
@@ -951,25 +1186,38 @@ class Controller:
         # us one safely quoted command line. The temporary file is removed even
         # when meshcli times out or fails.
         script_path: Path | None = None
+        frame_start = f"MESHCORE_HOST_START_{secrets.token_hex(16)}"
+        frame_end = f"MESHCORE_HOST_END_{secrets.token_hex(16)}"
         try:
             with tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", prefix="meshcore-ota-",
                 suffix=".meshcli", delete=False,
             ) as script:
+                if self._meshcli_session is not None:
+                    script.write(shlex.join(["echo", frame_start]))
+                    script.write("\n")
                 script.write(shlex.join(commands))
                 script.write("\n")
+                if self._meshcli_session is not None:
+                    script.write(shlex.join(["echo", frame_end]))
+                    script.write("\n")
                 script_path = Path(script.name)
             if os.name != "nt":
                 script_path.chmod(0o600)
-            command = [
-                self.meshcli, "-j", "-c", "off", *self.connection,
-                "script", str(script_path),
-            ]
-            result = run_checked(
-                command,
-                label=label,
-                timeout=max(90, self.reply_timeout + 60),
-            )
+            timeout = max(90, self.reply_timeout + 60)
+            if self._meshcli_session is not None:
+                stdout = self._meshcli_session.run_script(
+                    script_path, frame_start, frame_end, timeout
+                )
+                result = subprocess.CompletedProcess(
+                    [], 0, stdout=stdout, stderr=""
+                )
+            else:
+                command = [
+                    self.meshcli, "-j", "-c", "off", *self.connection,
+                    "script", str(script_path),
+                ]
+                result = run_checked(command, label=label, timeout=timeout)
         finally:
             if script_path is not None:
                 script_path.unlink(missing_ok=True)
@@ -1064,17 +1312,20 @@ class Controller:
         password: str,
     ) -> str:
         marker = f"MESHCORE_OTA_{secrets.token_hex(16)}"
+        login_required = not self._remote_auth_is_cached(target)
+        commands = ["contact_info", target]
+        if login_required:
+            commands.extend(["login", target, password])
+        commands.extend([
+            "sync_msgs",
+            "echo", marker,
+            "cmd", target, command_text,
+            "trywait_msg", str(self.reply_timeout),
+            "sync_msgs",
+        ])
         try:
             objects, post_objects = self._run_marked(
-                [
-                    "contact_info", target,
-                    "login", target, password,
-                    "sync_msgs",
-                    "echo", marker,
-                    "cmd", target, command_text,
-                    "trywait_msg", str(self.reply_timeout),
-                    "sync_msgs",
-                ],
+                commands,
                 f"remote command on {target}",
                 marker,
             )
@@ -1090,10 +1341,13 @@ class Controller:
         ):
             raise OtaError(f"controller has no contact named {target!r}")
         login_results = [item for item in objects if "login_success" in item]
-        if login_results and not login_results[-1].get("login_success"):
-            raise OtaError(f"admin login failed for {target}")
-        if not login_results:
-            raise TransmissionError(f"no admin-login result from {target}")
+        if login_required:
+            if login_results and not login_results[-1].get("login_success"):
+                raise OtaError(f"admin login failed for {target}")
+            if not login_results:
+                raise TransmissionError(f"no admin-login result from {target}")
+            self._cache_remote_auth(target)
+            print(f"[auth] remote admin session established for {target}")
 
         target_key = None
         for item in objects:
@@ -1115,11 +1369,17 @@ class Controller:
             and reply_matches_command(command_text, item["text"])
         ]
         if not messages:
+            refresh = self._note_remote_silence(target)
+            refresh_note = (
+                "; cached admin session will be refreshed on the next retry"
+                if refresh else ""
+            )
             raise TransmissionError(
                 f"no matching CLI reply from {target} for {command_text!r}; "
-                "check its path and reply timeout"
+                f"check its path and reply timeout{refresh_note}"
             )
         reply = messages[-1]["text"]
+        self._note_remote_reply(target)
         print(f"[{target}] {reply}")
         return reply
 
@@ -1396,9 +1656,12 @@ def verify_shared_source_identity(
         controller_baud=args.controller_baud,
         reply_timeout=args.reply_timeout,
     )
-    source_api = Controller(api_args, "")
     controller_key = controller.get_public_key()
-    source_key = source_api.get_public_key()
+    if controller.connection == ["-t", source_host, "-p", "5000"]:
+        source_key = controller_key
+    else:
+        source_api = Controller(api_args, "", persistent=False)
+        source_key = source_api.get_public_key()
     if source_key != controller_key:
         raise OtaError(
             "--source-shares-controller identity mismatch: controller is "
@@ -1730,15 +1993,29 @@ def monitor_download(
     seeder: SeederProcess | None = None,
 ) -> str:
     deadline = time.monotonic() + args.transfer_timeout_minutes * 60
+    poll_seconds = float(args.poll_seconds)
     while time.monotonic() < deadline:
+        query_started = time.monotonic()
         status = remote_command_with_seeder(
             controller, args.target, "ota status", seeder, "during transfer"
         )
+        query_seconds = time.monotonic() - query_started
         require_package_session(status, package)
         lowered = status.lower()
         if "ready to install" in lowered:
             return status
-        time.sleep(args.poll_seconds)
+        next_poll = adaptive_poll_interval(
+            poll_seconds, float(args.poll_seconds), query_seconds,
+            float(args.reply_timeout),
+        )
+        if round(next_poll) != round(poll_seconds):
+            print(
+                f"[download] adaptive status interval "
+                f"{round(poll_seconds)}s -> {round(next_poll)}s "
+                f"(query {query_seconds:.1f}s)"
+            )
+        poll_seconds = next_poll
+        time.sleep(poll_seconds)
     raise OtaError(
         "transfer timeout; the partial download remains staged and can resume when the same mOTA is served again"
     )
@@ -1881,7 +2158,7 @@ def request_install(
                     f"[install] destination is still staged; safe retry "
                     f"{retries}/{TRANSMISSION_RETRY_LIMIT}"
                 )
-                time.sleep(TRANSMISSION_RETRY_DELAY_SECONDS)
+                time.sleep(transmission_retry_delay(retries))
                 continue
             if not prompt_after_transmission_failure(
                 f"'ota install' on {args.target}", exc
@@ -2131,6 +2408,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HASH",
         help="16-hex running EndF body hash required by --clear-completed-manifest",
     )
+    parser.add_argument(
+        "--expected-installed-body-hash",
+        metavar="HASH",
+        help=(
+            "require this exact 16-hex EndF body hash after installation; "
+            "used when a delta does not expose its reconstructed target hash"
+        ),
+    )
     parser.add_argument("--yes", action="store_true", help="skip the destructive-action confirmation")
     parser.add_argument(
         "--require-system-watchdog-off",
@@ -2178,6 +2463,21 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         args.clear_completed_on_body_hash = clear_body_hash.upper()
         if args.prepare_only:
             parser.error("completed-manifest cleanup is only valid during a live run")
+    expected_installed_hash = args.expected_installed_body_hash
+    if expected_installed_hash:
+        if not re.fullmatch(r"[0-9A-Fa-f]{16}", expected_installed_hash):
+            parser.error(
+                "--expected-installed-body-hash must be 16 hexadecimal characters"
+            )
+        args.expected_installed_body_hash = expected_installed_hash.upper()
+        if args.prepare_only:
+            parser.error(
+                "--expected-installed-body-hash is only valid during a live install"
+            )
+        if args.no_install:
+            parser.error(
+                "--expected-installed-body-hash cannot be used with --no-install"
+            )
     if args.prepare_only:
         if not args.platform or not args.target_id:
             parser.error("--prepare-only requires --platform and --target-id")
@@ -2247,7 +2547,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             + args.seeder_start_wait
             + args.discovery_timeout
             + args.transfer_timeout_minutes * 60
-            + args.poll_seconds
+            + adaptive_poll_ceiling(args.poll_seconds)
             + args.reply_timeout * final_reply_count
         )
         temp_seconds = args.temp_values[4] * 60
@@ -2309,12 +2609,16 @@ def offline_target(args: argparse.Namespace) -> TargetInfo:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    controller_override: Controller | None = None,
+) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     validate_args(args, parser)
     work_dir: Path | None = None
-    controller: Controller | None = None
+    controller: Controller | None = controller_override
     original_radio: RadioSettings | None = None
     controller_changed = False
     seeder: SeederProcess | None = None
@@ -2334,7 +2638,8 @@ def main(argv: list[str] | None = None) -> int:
         args.relay_values = [parse_relay(value, password) for value in args.relay]
         if not args.prepare_only:
             preflight_source_cli(args)
-            controller = Controller(args, password)
+            if controller is None:
+                controller = Controller(args, password)
             verify_shared_source_identity(controller, args)
             target = query_target(controller, args)
             original_radio = controller.get_radio()
@@ -2350,6 +2655,17 @@ def main(argv: list[str] | None = None) -> int:
         package_path, package, expected_body_hash = prepare_package(
             args, target, work_dir
         )
+        if args.expected_installed_body_hash:
+            asserted_body_hash = bytes.fromhex(args.expected_installed_body_hash)
+            if (
+                expected_body_hash is not None
+                and expected_body_hash != asserted_body_hash
+            ):
+                raise OtaError(
+                    "--expected-installed-body-hash conflicts with the body hash "
+                    "exposed by the selected package"
+                )
+            expected_body_hash = asserted_body_hash
         print(
             f"[package] {package_path.name}: {package.version} {package.kind} "
             f"target={package.target_id:08X} mid={package.manifest_id}"

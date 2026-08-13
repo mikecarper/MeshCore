@@ -348,7 +348,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     c.manager.set_fetch_store(store);                        // stage this pull to the chosen destination
     c.manager.pull(selmid, seltgt, validate);                // sets want + begins the manifest fetch now
     char midhx[9]; mesh::Utils::toHex(midhx, selmid, 4);
-    snprintf(reply, 160, "OK pulling mid=%s -> %s (low priority)", midhx, dname);
+    snprintf(reply, 160, "OK pulling mid=%s -> %s (primary traffic)", midhx, dname);
 
   // ---- discard the current session (e.g. a stalled old fetch) to free the slot ----
   } else if (is_cmd(a, "drop|cancel|stop", &rest)) {

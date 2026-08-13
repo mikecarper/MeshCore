@@ -8,8 +8,8 @@
 // it never contends with the line-based text CLI on the main console.
 //
 // The device always initiates; every request gets exactly one response. Framing is resync-safe: the
-// reader scans for the 2-byte magic, so line noise / a half-read frame just times out and is retried
-// (OTA is lowest priority - eventually-upgradable). All multi-byte fields are little-endian.
+// reader scans for the 2-byte magic, so line noise / a half-read frame just times out and is retried.
+// Active transfers are primary mesh traffic; discovery remains background. All multi-byte fields are little-endian.
 //
 //   request  (device -> host):  'M' 'S'  op(1)  args...                     xsum(1 = XOR of op+args)
 //   response (host -> device):  'm' 's'  op(1)  status(1)  payload...       xsum(1 = XOR of all prior)
