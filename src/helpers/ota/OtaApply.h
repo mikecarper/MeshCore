@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #include "SignerAllowlist.h"
 
 // P6 apply (full-image, ESP32 A/B). The new image is delivered into the inactive OTA slot; the device
@@ -22,6 +23,31 @@ struct ApplyState {
   uint32_t image_size = 0;
   uint8_t  image_hash[32] = {0};
 };
+
+// Policy gate for the nRF52 recovery-only apply path. This is intentionally separate from the normal
+// EndF/base check so it cannot become an accidental fallback: the operator must invoke the rescue
+// command with the exact base hash carried by the staged package, and the package must target this
+// build. The bootloader still recomputes and checks the actual running-image base before writing it.
+enum Nrf52RescueGate : uint8_t {
+  NRF52_RESCUE_OK = 0,
+  NRF52_RESCUE_SELF_VALID,
+  NRF52_RESCUE_BASE_MISSING,
+  NRF52_RESCUE_BASE_MISMATCH,
+  NRF52_RESCUE_TARGET_MISMATCH,
+};
+
+inline Nrf52RescueGate ota_nrf52_rescue_gate(bool self_valid,
+                                              const uint8_t* manifest_base_hash,
+                                              const uint8_t* operator_base_hash,
+                                              uint32_t manifest_target_id,
+                                              uint32_t local_target_id) {
+  if (self_valid) return NRF52_RESCUE_SELF_VALID;
+  if (!manifest_base_hash || !operator_base_hash) return NRF52_RESCUE_BASE_MISSING;
+  if (memcmp(manifest_base_hash, operator_base_hash, 8) != 0) return NRF52_RESCUE_BASE_MISMATCH;
+  if (!manifest_target_id || !local_target_id || manifest_target_id != local_target_id)
+    return NRF52_RESCUE_TARGET_MISMATCH;
+  return NRF52_RESCUE_OK;
+}
 
 bool ota_apply_slot_info(uint32_t* addr, uint32_t* size);                 // the inactive A/B slot
 bool ota_apply_set_manifest(const uint8_t* mf, uint32_t len,
@@ -50,6 +76,11 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len,
 // Returns true (msg = "verified...") when approved, false (msg = the first failing gate) otherwise.
 bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
+// Recovery for failed app-side EndF validation. This is available only through the explicit
+// `ota rescue install <base_hash16>` CLI command and never through normal or automatic installation.
+bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len,
+                           const SignerAllowlist& allow, const uint8_t operator_base_hash[8],
+                           uint32_t local_target_id, ApplyState& st, char* msg);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 class OtaStoreSdNrf52;
 bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store,

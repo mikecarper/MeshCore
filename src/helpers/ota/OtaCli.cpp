@@ -131,6 +131,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     snprintf(reply, 160,
       "OTA seeder: status | stats | ls=find images | get <#> folder=capture | cancel | "
       "announce | folder | config. LoRa install is disabled.");
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+    strcpy(reply,
+      "OTA: status | stats | ls | get | install | rescue install <hash16> | cancel | announce | "
+      "self | folder | config | key");
 #else
     snprintf(reply, 160,
       "OTA: status | stats=admin ids/hashes | ls=find updates | get <#>=download | install | cancel | "
@@ -393,6 +397,32 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (bl.present) snprintf(reply + n, 160 - n, " | bootloader: apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
     else            snprintf(reply + n, 160 - n, " | bootloader: NO mota-apply support (delta install will refuse)");
 #endif
+#endif
+
+  } else if (is_cmd(a, "rescue", &rest)) {
+    // Recovery-only nRF52 handoff for firmware whose normal EndF validation is broken. This command is
+    // deliberately not an alias or automatic fallback: the operator must name `install` and provide
+    // the exact 8-byte base hash carried by the already-fetched package. The bootloader independently
+    // hashes the running app and refuses a mismatch before writing any application flash.
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+    const char* hash_text = nullptr;
+    uint8_t operator_base_hash[8];
+    if (!is_cmd(rest, "install", &hash_text) ||
+        !mesh::Utils::fromHex(operator_base_hash, sizeof(operator_base_hash), hash_text)) {
+      strcpy(reply, "ERR usage: ota rescue install <hash16>");
+      return true;
+    }
+    if (c.manager.fetchState() != OtaManager::COMPLETE || c.fetch_store.staged_size() == 0) {
+      sprintf(reply, "ERR no complete update fetched (fetch=%c %u/%u)",
+              fstate_char(c.manager.fetchState()), (unsigned)c.manager.blocksHave(),
+              (unsigned)c.manager.blocksTotal());
+      return true;
+    }
+    char m2[100];
+    bool ok = c.apply_fetched_rescue(operator_base_hash, m2);
+    sprintf(reply, "%s | %s", ok ? "OK" : "ERR", m2);
+#else
+    strcpy(reply, "ERR rescue requires an internal-flash nRF52 LoRa OTA build");
 #endif
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {

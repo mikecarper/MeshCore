@@ -866,7 +866,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME[=PASSWORD]",
         help="intermediate relay, farthest-to-nearest; repeat for each relay",
     )
-    parser.add_argument("--temp-radio", default="909.950,250,7,5,120")
+    parser.add_argument("--temp-radio", default="909.950,250,5,5,120")
     parser.add_argument(
         "--ota-hops",
         type=int,

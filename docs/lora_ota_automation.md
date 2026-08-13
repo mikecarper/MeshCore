@@ -179,15 +179,13 @@ and codec mask against the selected package.
 The default TempRadio tuple is:
 
 ```text
-909.950,250,7,5,120
+909.950,250,5,5,120
 ```
 
-The 250 kHz bandwidth, SF7, and CR5 combination is supported by every current
-sub-GHz radio family used in USB Companion builds, including older SX127x
-controllers (which do not support SF5). The frequency is only a North American
-example: choose a legal frequency supported by every participating radio and
-appropriate to your location. Pass the complete replacement tuple with
-`--temp-radio`.
+The test default is 250 kHz bandwidth, SF5, and CR5. The frequency is only a
+North American example: choose a legal frequency supported by every
+participating radio and appropriate to your location. Older radios that do not
+support SF5 require a complete replacement tuple passed with `--temp-radio`.
 
 ## 4. Run an ESP32 update
 

@@ -679,6 +679,7 @@ ota status | st  (or bare `ota`)   plain-language: running fw, the one fetch ses
 ota ls | neighbors | nbrs | updates | n [page]   paged updates (queries sources; rows arrive async via OTA_HAVE)
 ota get | pull | download <#|mid8> fetch a chosen mOTA (manual; works regardless of autofetch)
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
+ota rescue install <base_hash16>  internal-flash nRF52 only: recover from failed app-side EndF validation
 ota cancel | drop | stop           drop the current fetch session (frees the slot)
 ota announce | adv                 serve self + send a beacon now
 ota self | id                      print this firmware's EndF (body/image size, base_hash)
@@ -702,6 +703,15 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   2. re-checks `TRAILER`, `image_hash`, `approval == "APRV"`, and that the delta's `base_hash` equals the
      running firmware's `EndF.body_hash` (recomputed by scanning for `EndF` - never trust `bank_0_size`),
   3. applies the in-place codec over the app region and boots only if the result hashes to `image_hash`.
+- **nRF52 EndF rescue:** `ota rescue install <base_hash16>` is a pre-provisioned recovery path for an
+  internal-flash nRF52 application that still runs but cannot validate its own EndF identity. It refuses
+  when normal EndF validation succeeds, requires the operator hash to exactly equal the staged delta's
+  `base_hash`, requires the package `target_id` to match and its `hw_id` to pass the normal hardware gate,
+  and retains the normal payload and signature/allowlist gates. Approval only delegates the base decision:
+  OTAFIX independently
+  locates the physical EndF, hashes the running app, and compares that value with the package before its
+  first app write. A physically absent/corrupt EndF or wrong base therefore returns to the unchanged app;
+  it still requires USB recovery if that app does not already contain this command.
 - **MeshTower V2 SD nRF52:** the application stores a contiguous `/meshcore-ota.mota` on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,

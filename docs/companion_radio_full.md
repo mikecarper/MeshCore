@@ -237,7 +237,7 @@ nc 192.168.1.50 5002
 ```
 
 ```text
-tempradio 909.950,250,7,5,120
+tempradio 909.950,250,5,5,120
 ota status
 ```
 
@@ -260,7 +260,7 @@ picocom -b 115200 \
 ```
 
 ```text
-tempradio 909.950,250,7,5,120
+tempradio 909.950,250,5,5,120
 +++MESHCORE-TERM-STOP
 ```
 

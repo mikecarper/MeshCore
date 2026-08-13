@@ -2066,7 +2066,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional relay, ordered farthest-to-nearest; repeat as needed",
     )
     parser.add_argument(
-        "--temp-radio", default="909.950,250,7,5,120",
+        "--temp-radio", default="909.950,250,5,5,120",
         help="frequency,bw,sf,cr,minutes",
     )
     parser.add_argument(

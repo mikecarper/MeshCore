@@ -178,6 +178,18 @@ After it reboots, run `ota status` to confirm the new version.
 ### 5. If something goes wrong
 
 - A download that stalls or gets interrupted just **resumes** later, or you can `ota cancel` and try again.
+- An internal-flash **nRF52** that still runs but reports `no EndF` can use the pre-provisioned rescue path
+  if its physical EndF is intact and only app-side validation is failing. Fetch the exact in-place delta,
+  obtain its 16-hex-digit `base_hash` from the package metadata, then run:
+
+  ```text
+  ota rescue install <base_hash16>
+  ```
+
+  This is not a force option. It refuses a normally valid EndF, a different package hash, hardware or
+  target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
+  the running app and rejects a wrong base before writing the app. If the physical EndF is absent or this
+  command was not already in the running firmware, recover over USB.
 - If an **install** fails, the node won't boot a broken image - it lands in **recovery mode**:
   - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
     to recover.
@@ -301,6 +313,7 @@ that only contains what changed). You get them by:
 | Download update #1 for installation | `ota get 1 flash` |
 | Cancel a download | `ota cancel` |
 | Install a finished download | `ota install` |
+| Recover app-side `no EndF` on internal nRF52 | `ota rescue install <base_hash16>` |
 | Turn on auto-download | `ota config autofetch any` |
 | Turn on auto-install (trusted only) | `ota config autoinstall trusted` |
 | Trust a signer | `ota key add <hex>` |

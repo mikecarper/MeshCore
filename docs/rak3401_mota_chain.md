@@ -155,7 +155,7 @@ The tested Heltec key is
 Change the IP address for a different deployment.
 
 The source, controller, destination, and every intermediate relay must support
-the temporary tuple `909.950,250,7,5`. Confirm that this frequency and
+the temporary tuple `909.950,250,5,5`. Confirm that this frequency and
 bandwidth are legal at the deployment location. All nodes return to their
 ordinary radio after each step.
 

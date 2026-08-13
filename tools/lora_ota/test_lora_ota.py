@@ -141,11 +141,17 @@ class FormatTests(unittest.TestCase):
 
     def test_temp_radio_accepts_only_cli_bandwidths(self) -> None:
         self.assertEqual(
-            ota.parse_temp_radio("909.950,250,7,5,120"),
-            (909.95, 250.0, 7, 5, 120),
+            ota.parse_temp_radio("909.950,250,5,5,120"),
+            (909.95, 250.0, 5, 5, 120),
         )
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "bandwidth must be"):
-            ota.parse_temp_radio("909.950,200,7,5,120")
+            ota.parse_temp_radio("909.950,200,5,5,120")
+
+    def test_ota_runners_default_to_sf5_and_250_khz(self) -> None:
+        generic = ota.build_parser().parse_args(["release.mota", "remote"])
+        chain = rak_chain.build_parser().parse_args([])
+        self.assertEqual(generic.temp_radio, "909.950,250,5,5,120")
+        self.assertEqual(chain.temp_radio, "909.950,250,5,5,120")
 
     def test_offline_sd_nrf52_does_not_require_a_base_hash(self) -> None:
         parser = ota.build_parser()
@@ -284,14 +290,14 @@ class SourceCliTests(unittest.TestCase):
         )
         with mock.patch.object(ota, "run_checked", return_value=completed) as run:
             output = ota.source_cli_command(
-                args, "tempradio 909.95,250,7,5,120"
+                args, "tempradio 909.95,250,5,5,120"
             )
 
         wire_command = run.call_args.args[0][-1]
         self.assertEqual(
             wire_command,
             "+++MESHCORE-TERM-START\r"
-            "tempradio 909.95,250,7,5,120\r"
+            "tempradio 909.95,250,5,5,120\r"
             "+++MESHCORE-TERM-STOP",
         )
         self.assertIn("OK - temp params", output)
@@ -661,13 +667,13 @@ class ReliabilityTests(unittest.TestCase):
         controller = object.__new__(ota.Controller)
         controller._run = lambda *_args: [{}]
         controller.get_radio = lambda: ota.RadioSettings(915, 250, 7, 5, False)
-        requested = ota.RadioSettings(909.95, 250, 7, 5, False)
+        requested = ota.RadioSettings(909.95, 250, 5, 5, False)
         with self.assertRaisesRegex(ota.OtaError, "read back"):
             controller.set_radio(requested, "set radio")
 
     def test_lost_target_temp_reply_is_resolved_on_temporary_channel(self) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
-        temporary = ota.RadioSettings(909.95, 250.0, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 250.0, 5, 5, False)
 
         class Controller:
             def __init__(self) -> None:
@@ -689,19 +695,19 @@ class ReliabilityTests(unittest.TestCase):
         ota.arm_target_temp_radio(
             controller,
             argparse.Namespace(target="remote"),
-            "tempradio 909.95,250,7,5,120",
+            "tempradio 909.95,250,5,5,120",
             temporary,
             normal,
         )
         self.assertEqual(
             controller.commands,
-            ["tempradio 909.95,250,7,5,120", "ota self"],
+            ["tempradio 909.95,250,5,5,120", "ota self"],
         )
         self.assertEqual(controller.radios, [temporary, normal])
 
     def test_ambiguous_target_temp_probe_is_not_replayed(self) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
-        temporary = ota.RadioSettings(909.95, 250.0, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 250.0, 5, 5, False)
 
         class Controller:
             def __init__(self) -> None:
@@ -722,13 +728,13 @@ class ReliabilityTests(unittest.TestCase):
             ota.arm_target_temp_radio(
                 controller,
                 argparse.Namespace(target="remote"),
-                "tempradio 909.95,250,7,5,120",
+                "tempradio 909.95,250,5,5,120",
                 temporary,
                 normal,
             )
         self.assertEqual(
             controller.commands,
-            ["tempradio 909.95,250,7,5,120", "ota self"],
+            ["tempradio 909.95,250,5,5,120", "ota self"],
         )
         self.assertEqual(controller.radios, [temporary, normal])
 
@@ -759,15 +765,15 @@ class ReliabilityTests(unittest.TestCase):
 
         controller = Controller()
         args = argparse.Namespace(
-            target="remote", temp_values=(909.95, 250.0, 7, 5, 120)
+            target="remote", temp_values=(909.95, 250.0, 5, 5, 120)
         )
         with mock.patch.object(ota.time, "sleep"):
             self.assertTrue(ota.request_install(controller, args, package))
         self.assertEqual(
             controller.commands,
             [
-                "ota status", "tempradio 909.95,250,7,5,3", "ota install",
-                "ota status", "tempradio 909.95,250,7,5,3", "ota install",
+                "ota status", "tempradio 909.95,250,5,5,3", "ota install",
+                "ota status", "tempradio 909.95,250,5,5,3", "ota install",
             ],
         )
 
@@ -794,7 +800,7 @@ class ReliabilityTests(unittest.TestCase):
         controller = Controller()
         args = argparse.Namespace(
             target="remote",
-            temp_values=(909.95, 250.0, 7, 5, 120),
+            temp_values=(909.95, 250.0, 5, 5, 120),
             require_system_watchdog_off=True,
         )
         self.assertTrue(ota.request_install(controller, args, package))
@@ -802,7 +808,7 @@ class ReliabilityTests(unittest.TestCase):
             controller.commands,
             [
                 "ota status",
-                "tempradio 909.95,250,7,5,3",
+                "tempradio 909.95,250,5,5,3",
                 "get system.watchdog",
                 "ota install",
             ],
@@ -830,7 +836,7 @@ class ReliabilityTests(unittest.TestCase):
         controller = Controller()
         args = argparse.Namespace(
             target="remote",
-            temp_values=(909.95, 250.0, 7, 5, 120),
+            temp_values=(909.95, 250.0, 5, 5, 120),
             require_system_watchdog_off=True,
         )
         with self.assertRaisesRegex(ota.OtaError, "must report `> off`"):
@@ -939,7 +945,7 @@ class ReliabilityTests(unittest.TestCase):
             "release.mota", "remote",
             "--controller-serial", "/dev/controller",
             "--source-serial", "/dev/source",
-            "--temp-radio", "909.950,250,7,5,114",
+            "--temp-radio", "909.950,250,5,5,114",
         ])
         with (
             contextlib.redirect_stderr(io.StringIO()),
@@ -963,15 +969,15 @@ class ReliabilityTests(unittest.TestCase):
         args = argparse.Namespace(
             target="remote",
             relay_values=[("relay", "relay-secret")],
-            temp_values=(909.95, 250.0, 7, 5, 120),
+            temp_values=(909.95, 250.0, 5, 5, 120),
         )
         ota.shorten_target_temp_window(controller, args)
         ota.shorten_relay_temp_windows(controller, args)
         self.assertEqual(
             controller.commands,
             [
-                ("remote", "tempradio 909.95,250,7,5,1", None),
-                ("relay", "tempradio 909.95,250,7,5,1", "relay-secret"),
+                ("remote", "tempradio 909.95,250,5,5,1", None),
+                ("relay", "tempradio 909.95,250,5,5,1", "relay-secret"),
             ],
         )
 
@@ -979,14 +985,14 @@ class ReliabilityTests(unittest.TestCase):
         args = argparse.Namespace(
             source_already_temp=False,
             source_shares_controller=False,
-            temp_values=(909.95, 250.0, 7, 5, 120),
+            temp_values=(909.95, 250.0, 5, 5, 120),
         )
         with mock.patch.object(
             ota, "source_cli_command", return_value="OK - temp params for 1 mins"
         ) as source_command:
             self.assertTrue(ota.shorten_source_temp_window(args))
         source_command.assert_called_once_with(
-            args, "tempradio 909.95,250,7,5,1", check=True
+            args, "tempradio 909.95,250,5,5,1", check=True
         )
 
         args.source_already_temp = True
@@ -998,7 +1004,7 @@ class ReliabilityTests(unittest.TestCase):
         args = argparse.Namespace(
             source_already_temp=False,
             source_shares_controller=True,
-            temp_values=(909.95, 250.0, 7, 5, 120),
+            temp_values=(909.95, 250.0, 5, 5, 120),
         )
         with (
             mock.patch.object(
