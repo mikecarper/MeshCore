@@ -1073,8 +1073,9 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             )
 
     def test_corrected_chain_requires_explicit_lab_gate(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(6)]
+        steps = [mock.Mock(target_sha256="") for _ in range(15)]
         steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[14].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP15_IMAGE_SHA256
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
             "needs its first end-to-end board test",
@@ -1085,6 +1086,32 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
         rak_chain.require_live_release_safe(
             argparse.Namespace(accept_test_candidate=True), steps
         )
+
+    def test_first_v11701_candidate_is_blocked_after_failed_step15(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(15)]
+        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[14].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256
+        )
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "passed steps 1-14",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_unrecognized_step15_is_blocked(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(15)]
+        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[14].target_sha256 = "00" * 32
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "step 15 is not a recognized",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
 
     def test_unrecognized_step6_is_blocked(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(6)]

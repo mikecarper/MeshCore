@@ -35,9 +35,19 @@ ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a"
-CHECKSUM_LIST_SHA256 = "a3bd757db2138fc11be766976295051c017ceb02e0c3a22fe1c4c73e93f30f0a"
+ASSET_SHA256 = "46c7480ed6bdc2aa01fb23a0f70e34c4012ffdd42b616d07bde66cf66d594630"
+CHECKSUM_LIST_SHA256 = "8c74bbf9ae244f8c32041c68791b2780650c8a9321c23d32206614009739be5f"
 BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e"
+
+# The first v1.17.01 candidate reused an unsafe source-transition bridge at
+# step 15. Keep its hashes recognizable for offline diagnosis, but never allow
+# it to reach a live device.
+KNOWN_FAILED_V11701_ASSET_SHA256 = (
+    "693f08187e42cce72124f01328983965726bfbbb3fef80de503f06c4cbe9256a"
+)
+KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256 = (
+    "a3bd757db2138fc11be766976295051c017ceb02e0c3a22fe1c4c73e93f30f0a"
+)
 
 # Keep the withdrawn bundle recognizable for offline diagnosis. Live use is
 # still refused before meshcli, password handling, or any device mutation.
@@ -67,17 +77,13 @@ MIN_MESHCLI_VERSION = (1, 6, 0)
 WATCHDOG_RESET_WAIT_SECONDS = 90
 WATCHDOG_STABILITY_WAIT_SECONDS = 90
 
-# A physical RAK3401 smoke test on 2026-08-12 proved that the published
-# transition at step 6 is a dead end. The target image itself is byte-correct,
-# and stable OTAFIX 2.4 reports a successful apply, but the v1.16.08.7 bridge
-# cannot validate its own EndF body hash. That bridge is the first image in
-# this chain built with the old CC310 SHA path, which ignores a hardware hash
-# failure instead of falling back to software. Its normal `ota install` path
-# consequently refuses every following delta with "no EndF".
-#
-# Keep the withdrawn bundle useful for offline diagnosis, but fail closed
-# before a live connection. The corrected replacement remains behind an
-# explicit lab-only gate until its end-to-end physical-board test is complete.
+# Physical RAK3401 testing proved two retired packages unsafe. The original
+# v1.17.02 chain failed at step 6. Its software-SHA replacement then passed
+# steps 1 through 14, but the first v1.17.01 candidate failed at step 15 because
+# that retained 386ae4a5 bridge still used unchecked CC310 SHA. Keep both
+# bundles useful for offline diagnosis, but fail closed before a live
+# connection. The second corrected replacement remains behind an explicit
+# lab-only gate until its end-to-end physical-board test is complete.
 KNOWN_UNSAFE_STEP = 6
 KNOWN_UNSAFE_VERSION = "1.16.8.7"
 KNOWN_UNSAFE_IMAGE_SHA256 = (
@@ -86,12 +92,27 @@ KNOWN_UNSAFE_IMAGE_SHA256 = (
 SAFE_CANDIDATE_STEP6_IMAGE_SHA256 = (
     "4bab3d2d6f6d3a033713d2db87565cb5f7fabe29b2b902b911724dd602fb7df8"
 )
+KNOWN_FAILED_V11701_STEP = 15
+KNOWN_FAILED_V11701_VERSION = "1.16.9.111"
+KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256 = (
+    "e8d9d1bd06217c7fd8d7fd333c6fcfde79000838550aa149b10be12fdc64fccb"
+)
+SAFE_CANDIDATE_STEP15_IMAGE_SHA256 = (
+    "1124247f65772f11f9527408e51971eb9633ed656206276fa95019275bb8fdd2"
+)
 KNOWN_UNSAFE_RELEASE_MESSAGE = (
     f"live installation of {KNOWN_UNSAFE_RELEASE_TAG} is disabled: a physical RAK3401 "
     f"test reached step {KNOWN_UNSAFE_STEP} (v{KNOWN_UNSAFE_VERSION}) but "
     "that bridge cannot validate its own EndF and cannot install step 7. "
     "Use --verify-only for artifact inspection. Do not deploy this release; "
     "publish and physically test a corrected chain first."
+)
+KNOWN_FAILED_V11701_MESSAGE = (
+    "live installation of the first v1.17.01 candidate is disabled: a physical "
+    f"RAK3401 test passed steps 1-14, but step {KNOWN_FAILED_V11701_STEP} "
+    f"(v{KNOWN_FAILED_V11701_VERSION}) booted without a usable EndF because its "
+    "unchecked CC310 SHA path failed. Use --verify-only for artifact inspection. "
+    "Do not deploy this replaced candidate."
 )
 
 
@@ -110,6 +131,14 @@ def require_live_release_safe(
         raise KnownUnsafeReleaseError(
             "live installation is disabled: step 6 is not a recognized, "
             "audited RAK3401 bridge image"
+        )
+    step15_sha256 = steps[KNOWN_FAILED_V11701_STEP - 1].target_sha256
+    if step15_sha256 == KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256:
+        raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_MESSAGE)
+    if step15_sha256 != SAFE_CANDIDATE_STEP15_IMAGE_SHA256:
+        raise KnownUnsafeReleaseError(
+            "live installation is disabled: step 15 is not a recognized, "
+            "audited RAK3401 SHA-safe bridge image"
         )
     if not args.accept_test_candidate:
         raise KnownUnsafeReleaseError(
@@ -251,7 +280,11 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     if not supplied.is_file() or supplied.suffix.lower() != ".zip":
         raise ota.OtaError("--bundle must be the pinned release ZIP or its extracted root")
     actual = sha256_file(supplied)
-    if actual not in {ASSET_SHA256, KNOWN_UNSAFE_ASSET_SHA256}:
+    if actual not in {
+        ASSET_SHA256,
+        KNOWN_FAILED_V11701_ASSET_SHA256,
+        KNOWN_UNSAFE_ASSET_SHA256,
+    }:
         raise ota.OtaError(
             f"release ZIP has SHA-256 {actual}, expected a pinned audited asset: {supplied}"
         )
@@ -263,7 +296,11 @@ def verify_checksum_list(bundle_root: Path) -> None:
     if not checksum_path.is_file():
         raise ota.OtaError("bundle is missing SHA256SUMS.txt")
     checksum_digest = sha256_file(checksum_path)
-    expected_lists = {CHECKSUM_LIST_SHA256, KNOWN_UNSAFE_CHECKSUM_LIST_SHA256}
+    expected_lists = {
+        CHECKSUM_LIST_SHA256,
+        KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256,
+        KNOWN_UNSAFE_CHECKSUM_LIST_SHA256,
+    }
     if checksum_digest not in expected_lists:
         raise ota.OtaError(
             "bundle checksum list is not the one pinned by this chain runner: "
@@ -380,6 +417,20 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             "bundle does not contain a recognized audited step-6 image; "
             "review and repin the runner before using it"
         )
+    if step6.target_sha256 == SAFE_CANDIDATE_STEP6_IMAGE_SHA256:
+        step15 = steps[KNOWN_FAILED_V11701_STEP - 1]
+        recognized_step15_hashes = {
+            KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256,
+            SAFE_CANDIDATE_STEP15_IMAGE_SHA256,
+        }
+        if (
+            step15.to_version != KNOWN_FAILED_V11701_VERSION
+            or step15.target_sha256 not in recognized_step15_hashes
+        ):
+            raise ota.OtaError(
+                "bundle does not contain a recognized audited step-15 image; "
+                "review and repin the runner before using it"
+            )
     expected_final_version = (
         "1.17.2.0"
         if step6.target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256
@@ -962,6 +1013,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Verified release bundle: {bundle_root}")
             if steps[KNOWN_UNSAFE_STEP - 1].target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
                 print(f"WARNING: {KNOWN_UNSAFE_RELEASE_MESSAGE}", file=sys.stderr)
+            elif (
+                steps[KNOWN_FAILED_V11701_STEP - 1].target_sha256
+                == KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256
+            ):
+                print(f"WARNING: {KNOWN_FAILED_V11701_MESSAGE}", file=sys.stderr)
             else:
                 print(
                     "Corrected test candidate verified offline; a complete physical-board "
@@ -971,7 +1027,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # This must precede meshcli, password handling, source preflight, and
         # every radio/watchdog mutation. Structural checks passing does not
-        # make this physically failed chain safe to deploy.
+        # make either physically failed chain safe to deploy.
         require_live_release_safe(args, steps)
 
         require_meshcli_version(args.meshcli)
