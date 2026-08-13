@@ -306,10 +306,11 @@ refresh is already in flight, the scope pass is queued behind it.
 ### Read repeater telemetry history
 
 Repeater firmware records one UTC-aligned sample every 30 minutes. Temperature
-and battery voltage retain 336 samples (seven rolling days). GPS retains three
-days by default. Sensor builds with an onboard GPS provider request a seven-day
-default at startup. The history and any runtime retention change are held in
-RAM and reset after a reboot.
+and battery voltage retain 336 samples (seven rolling days). GPS-capable builds
+retain three GPS days by default and request a seven-day default at startup.
+Builds without a GPS provider omit the GPS history commands to conserve flash.
+The history and any runtime retention change are held in RAM and reset after a
+reboot.
 
 The feature is omitted from flash-constrained STM32 repeater images.
 
@@ -319,6 +320,10 @@ The feature is omitted from flash-constrained STM32 repeater images.
 - `get telemetry.volt [page]`
 - `get telemetry.gps [page]`
 - `set telemetry.gps <days>`
+- `get telemetry.tx`
+- `set telemetry.tx <off|direct|path>`
+- `set telemetry.tx schedule <off|1-30d>`
+- `send telemetry.tx now`
 
 **Parameters:**
 
@@ -331,6 +336,12 @@ The feature is omitted from flash-constrained STM32 repeater images.
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   `OK - telemetry.gps days=18 pages=36 requested=30`.
+- `direct`: Send the binary temperature and voltage snapshots zero-hop to a
+  neighboring MQTT observer.
+- `path`: A comma-separated direct route using the same one-, two-, or
+  three-byte hop hashes accepted by `set outpath`.
+- `schedule`: Automatic interval in whole days. The default is `2d`; `off`
+  retains the configured direct path for manual test sends.
 
 Local serial and remote administrator CLI sessions can read the history.
 Collection uses the MCU temperature, battery voltage, and an already-valid
@@ -344,6 +355,47 @@ significant bit first, oldest sample first.
 Use the browser-based [Telemetry history decoder](telemetry_decoder.md) to
 turn a reply into a timestamped table or downloadable CSV without uploading
 the data.
+
+`telemetry.tx` is disabled by default. Its schedule and direct path are stored
+across reboots. Configuring `direct` or a routed path enables the default `2d`
+schedule; `set telemetry.tx schedule` changes it from one through 30 days or
+turns it off. An automatic run waits until 165 half-hour positions are
+available, then sends one maximum-size temperature packet and one maximum-size
+voltage packet. GPS is never included in this raw transmission. The history
+remains boot-local, so the first scheduled pair after a reboot needs about
+82.5 hours to fill. On the default two-day interval, each 82.5-hour packet
+overlaps the previous packet by 34.5 hours. A queue failure is retried after
+30 minutes only for the packet that did not queue; successfully queued packets
+are not duplicated.
+
+`send telemetry.tx now` is an administrator-only test action. It immediately
+queues one temperature and one voltage direct packet over the configured path,
+using all currently available positions up to 165. It works while the schedule
+is off and does not move the next scheduled send time. RAW_CUSTOM direct
+packets do not enter the normal encrypted direct-message retry mechanism.
+
+Full snapshots are 184-byte RAW_CUSTOM payloads. Manual tests can be shorter
+while history fills. Both formats are binary, not Base64 and not encrypted:
+
+| Bytes | Meaning |
+|---|---|
+| `0`-`3` | ASCII magic `TTB1` for temperature or `TVB1` for voltage |
+| `4`-`11` | First eight bytes of the repeater public key |
+| `12`-`15` | First sample UTC epoch, unsigned 32-bit little-endian |
+| `16`-`17` | Sample interval in minutes, unsigned 16-bit little-endian (`30`) |
+| `18` | Sample count (`1`-`165`) |
+| `19` onward | Oldest-to-newest encoded samples for the selected series |
+
+Temperature codes reserve `0` for no reading, `1` for below `-50 C`, and `2`
+for above `+77 C`. Codes `3` through `130` represent exact whole degrees from
+`-50 C` through `+77 C`; decode them as `code - 53`. Voltage codes use the
+same encoding as the paged voltage payload documented below.
+
+Match bytes `4`-`11` to the first 16 hex characters of the repeater public key
+shown by its advert or `get public.key`. This compact identifier is useful for
+association but is not authenticated and can be spoofed. An MQTT observer can
+upload the received raw packet to LetsMesh Analyzer `/packets`; its packet hex
+contains the direct-route header and path followed by this payload.
 
 Temperature payload (`0x11`, 61 bytes):
 

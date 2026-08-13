@@ -157,6 +157,13 @@ static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
 #define RX_INACTIVITY_WATCHDOG_INTERVAL (12UL * 60UL * 60UL * 1000UL)
 #if MESH_ENABLE_TELEMETRY_HISTORY
 #define TELEMETRY_GPS_HEAP_RESERVE_BYTES 2048U
+#define TELEMETRY_HISTORY_TX_PREFS_FILE "/telemetry_tx"
+static const uint64_t TELEMETRY_HISTORY_TX_RETRY_MILLIS =
+    30ULL * 60ULL * 1000ULL;
+static const uint8_t TELEMETRY_HISTORY_TX_DEFAULT_DAYS = 2U;
+static const uint8_t TELEMETRY_HISTORY_TX_MAX_DAYS = 30U;
+static const uint8_t TELEMETRY_HISTORY_TX_TEMPERATURE = 1U;
+static const uint8_t TELEMETRY_HISTORY_TX_VOLTAGE = 2U;
 #endif
 
 #define CLOCK_SYNC_VALID_YEARS 10
@@ -2952,6 +2959,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   clock_sync_internet_requested_millis = 0;
   clock_sync_next_attempt_uptime = CLOCK_SYNC_STARTUP_DELAY_MILLIS;
 
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  telemetry_history_tx_enabled = false;
+  memset(telemetry_history_tx_path, 0, sizeof(telemetry_history_tx_path));
+  telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
+  telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
+  telemetry_history_tx_pending = 0;
+  telemetry_history_next_tx_uptime = 0;
+#endif
+
 #if MAX_NEIGHBOURS
   memset(neighbours, 0, sizeof(neighbours));
 #endif
@@ -3063,6 +3079,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  loadTelemetryHistoryTxPrefs();
+#endif
 
 #ifdef SIM_WIFI_SSID
   // Emulator builds (Wokwi) boot with fresh NVS every run. Seed WiFi so the
@@ -10041,8 +10060,183 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       mesh::TelemetryHistory::SERIES_TEMPERATURE;
   static const char telemetry_temp_command[] = "get telemetry.temp";
   static const char telemetry_volt_command[] = "get telemetry.volt";
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   static const char telemetry_gps_command[] = "get telemetry.gps";
   static const char telemetry_gps_set_command[] = "set telemetry.gps";
+#endif
+  static const char telemetry_tx_get_command[] = "get telemetry.tx";
+  static const char telemetry_tx_set_command[] = "set telemetry.tx";
+  static const char telemetry_tx_schedule_command[] =
+      "set telemetry.tx schedule";
+  static const char telemetry_tx_send_now_command[] = "send telemetry.tx now";
+
+  if (strcmp(command, telemetry_tx_send_now_command) == 0) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+      return;
+    }
+    if (telemetry_history_tx_path_len == OUT_PATH_UNKNOWN
+        || telemetry_history_tx_path_len == OUT_PATH_FORCE_FLOOD
+        || !mesh::Packet::isValidPathLen(telemetry_history_tx_path_len)) {
+      strcpy(reply, "Err - configure telemetry.tx direct or path first");
+      return;
+    }
+    if (telemetry_history.voltageSampleCount() == 0) {
+      strcpy(reply, "Err - telemetry history is empty");
+      return;
+    }
+    const bool temperature_queued = sendTelemetryHistorySnapshot(
+        mesh::TelemetryHistory::SERIES_TEMPERATURE);
+    const bool voltage_queued = sendTelemetryHistorySnapshot(
+        mesh::TelemetryHistory::SERIES_VOLTAGE);
+    if (temperature_queued && voltage_queued) {
+      const uint16_t available = telemetry_history.voltageSampleCount();
+      const unsigned sent = available < mesh::TelemetryHistory::BINARY_MAX_SAMPLES
+          ? (unsigned)available
+          : (unsigned)mesh::TelemetryHistory::BINARY_MAX_SAMPLES;
+      snprintf(reply, 160, "OK - telemetry.tx queued temp=%u volt=%u",
+               sent, sent);
+    } else {
+      snprintf(reply, 160, "Err - telemetry.tx queue temp=%s volt=%s",
+               temperature_queued ? "yes" : "no",
+               voltage_queued ? "yes" : "no");
+    }
+    return;
+  }
+
+  if (strcmp(command, telemetry_tx_get_command) == 0) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+    } else {
+      formatTelemetryHistoryTxStatus(reply, 160);
+    }
+    return;
+  }
+
+  if (strncmp(command, telemetry_tx_schedule_command,
+              sizeof(telemetry_tx_schedule_command) - 1U) == 0
+      && (command[sizeof(telemetry_tx_schedule_command) - 1U] == 0
+          || command[sizeof(telemetry_tx_schedule_command) - 1U] == ' ')) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+      return;
+    }
+    char* spec = trimSpaces(
+        command + sizeof(telemetry_tx_schedule_command) - 1U);
+    bool enable = false;
+    unsigned long days = telemetry_history_tx_interval_days;
+    if (strcmp(spec, "off") == 0) {
+      enable = false;
+    } else {
+      char* end = NULL;
+      days = strtoul(spec, &end, 10);
+      if (end == spec) days = 0;
+      if (*end == 'd') end++;
+      end = trimSpaces(end);
+      if (*end != 0 || days < 1U
+          || days > TELEMETRY_HISTORY_TX_MAX_DAYS) {
+        strcpy(reply, "Err - use: set telemetry.tx schedule <off|1-30d>");
+        return;
+      }
+      if (telemetry_history_tx_path_len == OUT_PATH_UNKNOWN
+          || telemetry_history_tx_path_len == OUT_PATH_FORCE_FLOOD
+          || !mesh::Packet::isValidPathLen(telemetry_history_tx_path_len)) {
+        strcpy(reply, "Err - configure telemetry.tx direct or path first");
+        return;
+      }
+      enable = true;
+    }
+
+    const bool previous_enabled = telemetry_history_tx_enabled;
+    const uint8_t previous_days = telemetry_history_tx_interval_days;
+    const uint8_t previous_pending = telemetry_history_tx_pending;
+    const uint64_t previous_next_tx = telemetry_history_next_tx_uptime;
+    telemetry_history_tx_enabled = enable;
+    if (enable) telemetry_history_tx_interval_days = (uint8_t)days;
+    telemetry_history_tx_pending = 0;
+    telemetry_history_next_tx_uptime = 0;
+    if (!saveTelemetryHistoryTxPrefs()) {
+      telemetry_history_tx_enabled = previous_enabled;
+      telemetry_history_tx_interval_days = previous_days;
+      telemetry_history_tx_pending = previous_pending;
+      telemetry_history_next_tx_uptime = previous_next_tx;
+      strcpy(reply, "Err - unable to save telemetry.tx schedule");
+    } else if (enable) {
+      snprintf(reply, 160, "OK - telemetry.tx schedule=%ud", (unsigned)days);
+    } else {
+      strcpy(reply, "OK - telemetry.tx schedule=off");
+    }
+    return;
+  }
+
+  if (strncmp(command, telemetry_tx_set_command,
+              sizeof(telemetry_tx_set_command) - 1U) == 0
+      && (command[sizeof(telemetry_tx_set_command) - 1U] == 0
+          || command[sizeof(telemetry_tx_set_command) - 1U] == ' ')) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+      return;
+    }
+
+    char* spec = trimSpaces(
+        command + sizeof(telemetry_tx_set_command) - 1U);
+    if (*spec == 0) {
+      strcpy(reply,
+             "Err - use: set telemetry.tx <off|direct|path>");
+      return;
+    }
+
+    const bool previous_enabled = telemetry_history_tx_enabled;
+    const uint8_t previous_path_len = telemetry_history_tx_path_len;
+    const uint8_t previous_pending = telemetry_history_tx_pending;
+    const uint64_t previous_next_tx = telemetry_history_next_tx_uptime;
+    uint8_t previous_path[MAX_PATH_SIZE];
+    memcpy(previous_path, telemetry_history_tx_path, sizeof(previous_path));
+
+    if (strcmp(spec, "off") == 0) {
+      telemetry_history_tx_enabled = false;
+      telemetry_history_tx_pending = 0;
+      telemetry_history_next_tx_uptime = 0;
+    } else {
+      uint8_t path[MAX_PATH_SIZE];
+      uint8_t path_len = OUT_PATH_UNKNOWN;
+      const char* err = NULL;
+      if (!parsePathCommand(spec, path, path_len, err)
+          || path_len == OUT_PATH_UNKNOWN
+          || path_len == OUT_PATH_FORCE_FLOOD) {
+        strcpy(reply, err != NULL ? err
+                                 : "Err - telemetry.tx needs a direct path");
+        return;
+      }
+      telemetry_history_tx_enabled = true;
+      telemetry_history_tx_path_len = path_len;
+      telemetry_history_tx_pending = 0;
+      telemetry_history_next_tx_uptime = 0;
+      memset(telemetry_history_tx_path, 0,
+             sizeof(telemetry_history_tx_path));
+      if ((path_len & 63U) != 0) {
+        mesh::Packet::copyPath(telemetry_history_tx_path, path, path_len);
+      }
+    }
+
+    if (!saveTelemetryHistoryTxPrefs()) {
+      telemetry_history_tx_enabled = previous_enabled;
+      telemetry_history_tx_path_len = previous_path_len;
+      telemetry_history_tx_pending = previous_pending;
+      telemetry_history_next_tx_uptime = previous_next_tx;
+      memcpy(telemetry_history_tx_path, previous_path,
+             sizeof(telemetry_history_tx_path));
+      strcpy(reply, "Err - unable to save telemetry.tx");
+    } else if (telemetry_history_tx_enabled) {
+      snprintf(reply, 160, "OK - telemetry.tx schedule=%ud temp=165 volt=165",
+               (unsigned)telemetry_history_tx_interval_days);
+    } else {
+      strcpy(reply, "OK - telemetry.tx off");
+    }
+    return;
+  }
+
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   if (strncmp(command, telemetry_gps_set_command,
               sizeof(telemetry_gps_set_command) - 1U) == 0
       && (command[sizeof(telemetry_gps_set_command) - 1U] == 0
@@ -10066,6 +10260,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
              (unsigned)requested_days);
     return;
   }
+#endif
 
   if (strncmp(command, telemetry_temp_command,
               sizeof(telemetry_temp_command) - 1U) == 0
@@ -10078,12 +10273,14 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
           || command[sizeof(telemetry_volt_command) - 1U] == ' ')) {
     telemetry_series = mesh::TelemetryHistory::SERIES_VOLTAGE;
     telemetry_args = command + sizeof(telemetry_volt_command) - 1U;
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   } else if (strncmp(command, telemetry_gps_command,
                      sizeof(telemetry_gps_command) - 1U) == 0
       && (command[sizeof(telemetry_gps_command) - 1U] == 0
           || command[sizeof(telemetry_gps_command) - 1U] == ' ')) {
     telemetry_series = mesh::TelemetryHistory::SERIES_GPS;
     telemetry_args = command + sizeof(telemetry_gps_command) - 1U;
+#endif
   }
 
   if (telemetry_args != NULL) {
@@ -10536,6 +10733,7 @@ void MyMesh::loop() {
 }
 
 #if MESH_ENABLE_TELEMETRY_HISTORY
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
 uint8_t MyMesh::resizeTelemetryGpsDays(uint8_t requested_days) {
   size_t free_bytes = telemetryFreeHeapBytes();
   const size_t allocation_budget = free_bytes > TELEMETRY_GPS_HEAP_RESERVE_BYTES
@@ -10565,6 +10763,142 @@ uint8_t MyMesh::resizeTelemetryGpsDays(uint8_t requested_days) {
     free_bytes = telemetryFreeHeapBytes();
   }
   return actual_days;
+}
+#endif
+
+void MyMesh::loadTelemetryHistoryTxPrefs() {
+  telemetry_history_tx_enabled = false;
+  memset(telemetry_history_tx_path, 0, sizeof(telemetry_history_tx_path));
+  telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
+  telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
+  telemetry_history_tx_pending = 0;
+  telemetry_history_next_tx_uptime = 0;
+
+  if (_fs == NULL || !_fs->exists(TELEMETRY_HISTORY_TX_PREFS_FILE)) return;
+  File file = openFloodSettingsRead(_fs, TELEMETRY_HISTORY_TX_PREFS_FILE);
+  if (!file) return;
+
+  uint8_t magic[4];
+  uint8_t enabled = 0;
+  uint8_t path_len = OUT_PATH_UNKNOWN;
+  uint8_t interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
+  uint8_t path[MAX_PATH_SIZE];
+  bool valid = file.read(magic, sizeof(magic)) == sizeof(magic)
+      && memcmp(magic, "THT2", sizeof(magic)) == 0
+      && file.read(&enabled, sizeof(enabled)) == sizeof(enabled)
+      && file.read(&path_len, sizeof(path_len)) == sizeof(path_len)
+      && file.read(&interval_days, sizeof(interval_days))
+             == sizeof(interval_days)
+      && file.read(path, sizeof(path)) == sizeof(path);
+  file.close();
+
+  valid = valid && enabled <= 1 && interval_days >= 1
+      && interval_days <= TELEMETRY_HISTORY_TX_MAX_DAYS;
+  if (enabled != 0) {
+    valid = valid && path_len != OUT_PATH_UNKNOWN
+        && path_len != OUT_PATH_FORCE_FLOOD
+        && mesh::Packet::isValidPathLen(path_len);
+  }
+  if (!valid) return;
+
+  telemetry_history_tx_enabled = enabled != 0;
+  telemetry_history_tx_path_len = path_len;
+  telemetry_history_tx_interval_days = interval_days;
+  memcpy(telemetry_history_tx_path, path, sizeof(telemetry_history_tx_path));
+}
+
+bool MyMesh::saveTelemetryHistoryTxPrefs() {
+  if (_fs == NULL) return false;
+  File file = openFloodSettingsWrite(_fs, TELEMETRY_HISTORY_TX_PREFS_FILE);
+  if (!file) return false;
+
+  const uint8_t magic[4] = {'T', 'H', 'T', '2'};
+  const uint8_t enabled = telemetry_history_tx_enabled ? 1 : 0;
+  bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
+      && file.write(&enabled, sizeof(enabled)) == sizeof(enabled)
+      && file.write(&telemetry_history_tx_path_len,
+                    sizeof(telemetry_history_tx_path_len))
+             == sizeof(telemetry_history_tx_path_len)
+      && file.write(&telemetry_history_tx_interval_days,
+                    sizeof(telemetry_history_tx_interval_days))
+             == sizeof(telemetry_history_tx_interval_days)
+      && file.write(telemetry_history_tx_path,
+                    sizeof(telemetry_history_tx_path))
+             == sizeof(telemetry_history_tx_path);
+  file.close();
+  return success;
+}
+
+void MyMesh::formatTelemetryHistoryTxStatus(char* reply,
+                                            size_t reply_size) const {
+  char source_id[mesh::TelemetryHistory::BINARY_SOURCE_ID_SIZE * 2U + 1U];
+  mesh::Utils::toHex(source_id, self_id.pub_key,
+                     mesh::TelemetryHistory::BINARY_SOURCE_ID_SIZE);
+  char path_reply[132];
+  formatPathReply(telemetry_history_tx_path,
+                  telemetry_history_tx_path_len,
+                  path_reply, sizeof(path_reply));
+  snprintf(reply, reply_size, "> %s%ud id=%s p=%s",
+           telemetry_history_tx_enabled ? "on " : "off ",
+           (unsigned)telemetry_history_tx_interval_days,
+           source_id, path_reply[0] == '>' && path_reply[1] == ' '
+               ? path_reply + 2 : path_reply);
+}
+
+bool MyMesh::sendTelemetryHistorySnapshot(
+    mesh::TelemetryHistory::Series series) {
+  uint8_t payload[mesh::TelemetryHistory::BINARY_PAYLOAD_SIZE];
+  const size_t payload_len = series == mesh::TelemetryHistory::SERIES_VOLTAGE
+      ? telemetry_history.formatVoltageBinarySnapshot(
+            self_id.pub_key, payload, sizeof(payload))
+      : telemetry_history.formatTemperatureBinarySnapshot(
+            self_id.pub_key, payload, sizeof(payload));
+  if (payload_len <= mesh::TelemetryHistory::BINARY_HEADER_SIZE) return false;
+
+  mesh::Packet* packet = createRawData(payload, payload_len);
+  if (packet == NULL) return false;
+  return sendDirect(packet, telemetry_history_tx_path,
+                    telemetry_history_tx_path_len);
+}
+
+void MyMesh::serviceTelemetryHistoryTx() {
+  if (!telemetry_history_tx_enabled
+      || telemetry_history.voltageSampleCount()
+             < mesh::TelemetryHistory::BINARY_MAX_SAMPLES) {
+    return;
+  }
+
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  if (telemetry_history_next_tx_uptime != 0
+      && current_uptime_millis < telemetry_history_next_tx_uptime) {
+    return;
+  }
+
+  if (telemetry_history_tx_pending == 0) {
+    telemetry_history_tx_pending = TELEMETRY_HISTORY_TX_TEMPERATURE
+        | TELEMETRY_HISTORY_TX_VOLTAGE;
+  }
+  if ((telemetry_history_tx_pending & TELEMETRY_HISTORY_TX_TEMPERATURE) != 0
+      && sendTelemetryHistorySnapshot(
+          mesh::TelemetryHistory::SERIES_TEMPERATURE)) {
+    telemetry_history_tx_pending &=
+        (uint8_t)~TELEMETRY_HISTORY_TX_TEMPERATURE;
+  }
+  if ((telemetry_history_tx_pending & TELEMETRY_HISTORY_TX_VOLTAGE) != 0
+      && sendTelemetryHistorySnapshot(mesh::TelemetryHistory::SERIES_VOLTAGE)) {
+    telemetry_history_tx_pending &= (uint8_t)~TELEMETRY_HISTORY_TX_VOLTAGE;
+  }
+
+  if (telemetry_history_tx_pending == 0) {
+    telemetry_history_next_tx_uptime =
+        current_uptime_millis
+        + (uint64_t)telemetry_history_tx_interval_days
+            * 24ULL * 60ULL * 60ULL * 1000ULL;
+  } else {
+    telemetry_history_next_tx_uptime =
+        current_uptime_millis + TELEMETRY_HISTORY_TX_RETRY_MILLIS;
+  }
 }
 
 void MyMesh::sampleTelemetryHistory() {
@@ -10613,6 +10947,7 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   checkRxInactivityWatchdog();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   sampleTelemetryHistory();
+  serviceTelemetryHistoryTx();
 #endif
 #if !defined(PORTABLE_MQTT_OBSERVER)
   checkBatteryAlert();

@@ -69,7 +69,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`stats-radio`](cli_commands.md#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors) | Local serial | Serial | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial |
 | Statistics | [`stats-packets`](cli_commands.md#packet-stats---packet-counters-received-sent) | Local serial | Serial | Serial | Serial |
-| Statistics | [`get telemetry.temp/volt/gps`; `set telemetry.gps`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; remote access requires administrator | Yes | Yes | Yes |
+| Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data; other roles can return empty data | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes |
@@ -225,7 +225,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`stats-radio`](cli_commands.md#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
 | Statistics | [`stats-packets`](cli_commands.md#packet-stats---packet-counters-received-sent) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
-| Statistics | [`get telemetry.temp/volt/gps`; `set telemetry.gps`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; remote access requires administrator | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data | Yes | Yes | Yes | No | No | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes | Yes | Yes | Yes | Yes |

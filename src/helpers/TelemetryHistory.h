@@ -41,6 +41,14 @@ public:
   static constexpr uint8_t VOLTAGE_PAYLOAD_TYPE_V1 = 0x12;
   static constexpr uint8_t GPS_PAYLOAD_TYPE_V1 = 0x13;
 
+  // A raw custom temperature ("TTB1") or voltage ("TVB1") snapshot fills one
+  // 184-byte mesh payload: 19 metadata bytes plus 165 chronological samples.
+  static constexpr size_t BINARY_HEADER_SIZE = 19;
+  static constexpr uint8_t BINARY_SOURCE_ID_SIZE = 8;
+  static constexpr uint8_t BINARY_MAX_SAMPLES = 165;
+  static constexpr size_t BINARY_PAYLOAD_SIZE =
+      BINARY_HEADER_SIZE + BINARY_MAX_SAMPLES;
+
   enum Series : uint8_t {
     SERIES_TEMPERATURE = 0,
     SERIES_VOLTAGE = 1,
@@ -169,6 +177,68 @@ public:
     return (uint8_t)(_gps_capacity / GPS_SAMPLES_PER_PAGE);
   }
 
+  uint16_t voltageSampleCount() const {
+    return _tv_count;
+  }
+
+  size_t formatTemperatureBinarySnapshot(
+      const uint8_t source_id[BINARY_SOURCE_ID_SIZE],
+      uint8_t* dest, size_t dest_size) const {
+    return formatBinarySnapshot(false, source_id, dest, dest_size);
+  }
+
+  size_t formatVoltageBinarySnapshot(
+      const uint8_t source_id[BINARY_SOURCE_ID_SIZE],
+      uint8_t* dest, size_t dest_size) const {
+    return formatBinarySnapshot(true, source_id, dest, dest_size);
+  }
+
+private:
+  // Formats a RAW_CUSTOM payload without Base64. The source ID is normally
+  // the first eight bytes of the repeater public key. Samples are oldest
+  // first, and the payload contains as many as fit, capped at 165.
+  size_t formatBinarySnapshot(
+      bool voltage_series, const uint8_t source_id[BINARY_SOURCE_ID_SIZE],
+      uint8_t* dest, size_t dest_size) const {
+    if (source_id == NULL || dest == NULL
+        || dest_size <= BINARY_HEADER_SIZE || !_has_bucket) {
+      return 0;
+    }
+
+    size_t sample_count = dest_size - BINARY_HEADER_SIZE;
+    if (sample_count > BINARY_MAX_SAMPLES) {
+      sample_count = BINARY_MAX_SAMPLES;
+    }
+    if (sample_count > _tv_count) sample_count = _tv_count;
+    if (sample_count == 0) return 0;
+
+    memcpy(dest, voltage_series ? "TVB1" : "TTB1", 4);
+    memcpy(&dest[4], source_id, BINARY_SOURCE_ID_SIZE);
+    const uint16_t oldest_offset = (uint16_t)(sample_count - 1U);
+    putUint32LE(&dest[12], startEpochForOffset(oldest_offset));
+    putUint16LE(&dest[16], (uint16_t)(SAMPLE_INTERVAL_SECONDS / 60U));
+    dest[18] = (uint8_t)sample_count;
+
+    for (uint16_t slot = 0; slot < sample_count; slot++) {
+      uint8_t temperature = 0;
+      uint8_t temperature_status = TEMPERATURE_NONE;
+      uint8_t voltage = 0;
+      tvAtOffset((uint16_t)(oldest_offset - slot), temperature,
+                 temperature_status, voltage);
+      uint8_t value = voltage;
+      if (!voltage_series) {
+        if (temperature_status == TEMPERATURE_NONE) value = 0;
+        else if (temperature_status == TEMPERATURE_LOW) value = 1;
+        else if (temperature_status == TEMPERATURE_HIGH) value = 2;
+        else value = (uint8_t)(temperature + 3U);
+      }
+      dest[BINARY_HEADER_SIZE + slot] = value;
+    }
+    return BINARY_HEADER_SIZE + sample_count;
+  }
+
+public:
+
   // Changes the logical GPS retention and preserves the newest samples. The
   // heap budget is the maximum additional allocation allowed for this call.
   // Requests above the budget are reduced one day at a time. The returned
@@ -244,6 +314,8 @@ public:
     cursor = skipSpaces(cursor);
     if (*cursor != 0) return formatUsage(series, reply, reply_size);
 
+#if !defined(MESH_ENABLE_TELEMETRY_GPS_HISTORY) \
+    || MESH_ENABLE_TELEMETRY_GPS_HISTORY
     if (series == SERIES_GPS) {
       if (page < 1U || page > gpsPageCount()) {
         snprintf(reply, reply_size, "Err - telemetry.gps page must be 1-%u",
@@ -252,6 +324,7 @@ public:
       }
       return formatGpsPage((uint8_t)page, reply, reply_size);
     }
+#endif
 
     if (page < 1U || page > TV_PAGE_COUNT) {
       copyReply(reply, reply_size, series == SERIES_TEMPERATURE
@@ -504,6 +577,11 @@ private:
     dest[1] = (uint8_t)(value >> 8);
     dest[2] = (uint8_t)(value >> 16);
     dest[3] = (uint8_t)(value >> 24);
+  }
+
+  static void putUint16LE(uint8_t* dest, uint16_t value) {
+    dest[0] = (uint8_t)value;
+    dest[1] = (uint8_t)(value >> 8);
   }
 
   static void putInt32LE(uint8_t* dest, int32_t value) {

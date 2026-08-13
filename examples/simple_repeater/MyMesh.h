@@ -18,6 +18,16 @@
   #endif
 #endif
 
+#ifndef MESH_ENABLE_TELEMETRY_GPS_HISTORY
+  // Builds without a GPS provider only collect missing GPS positions. Omit
+  // their unused decoder and resize CLI to preserve flash for useful history.
+  #if ENV_INCLUDE_GPS == 1
+    #define MESH_ENABLE_TELEMETRY_GPS_HISTORY 1
+  #else
+    #define MESH_ENABLE_TELEMETRY_GPS_HISTORY 0
+  #endif
+#endif
+
 #ifndef MESH_ENABLE_RECENT_REPEATERS
   #define MESH_ENABLE_RECENT_REPEATERS  1
 #endif
@@ -426,6 +436,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   CayenneLPP telemetry;
 #if MESH_ENABLE_TELEMETRY_HISTORY
   mesh::TelemetryHistory telemetry_history;
+  bool telemetry_history_tx_enabled;
+  uint8_t telemetry_history_tx_path[MAX_PATH_SIZE];
+  uint8_t telemetry_history_tx_path_len;
+  uint8_t telemetry_history_tx_interval_days;
+  uint8_t telemetry_history_tx_pending;
+  uint64_t telemetry_history_next_tx_uptime;
 #endif
   unsigned long _ota_update_at = 0;  // deferred `ota update` fire time (0 = none scheduled)
   float active_bw;  // live BW, including temporary radio overrides
@@ -562,7 +578,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void servicePostMeshLoop();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   void sampleTelemetryHistory();
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   uint8_t resizeTelemetryGpsDays(uint8_t requested_days);
+#endif
+  void loadTelemetryHistoryTxPrefs();
+  bool saveTelemetryHistoryTxPrefs();
+  void serviceTelemetryHistoryTx();
+  bool sendTelemetryHistorySnapshot(mesh::TelemetryHistory::Series series);
+  void formatTelemetryHistoryTxStatus(char* reply, size_t reply_size) const;
 #endif
   void sendSelfAdvertisementNow(uint32_t delay_millis, bool flood);
   bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,

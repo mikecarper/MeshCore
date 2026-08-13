@@ -48,6 +48,10 @@ uint32_t uint32LE(const uint8_t* source) {
       | ((uint32_t)source[3] << 24);
 }
 
+uint16_t uint16LE(const uint8_t* source) {
+  return (uint16_t)source[0] | ((uint16_t)source[1] << 8);
+}
+
 int32_t int32LE(const uint8_t* source) {
   return (int32_t)uint32LE(source);
 }
@@ -189,6 +193,95 @@ TEST(TelemetryHistory, RetainsExactlySevenTemperatureVoltageDays) {
   EXPECT_EQ((first_bucket + 1U) * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
             uint32LE(&voltage_payload[1]));
   EXPECT_EQ(3U, voltage_payload[7]);
+}
+
+TEST(TelemetryHistory, FormatsMaximumRawVoltageSnapshot) {
+  using mesh::TelemetryHistory;
+  TelemetryHistory history;
+  const uint32_t first_bucket = 500000U;
+  const uint32_t total_samples = 200U;
+  for (uint32_t sample = 0; sample < total_samples; sample++) {
+    history.record((first_bucket + sample)
+                       * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                   20, true,
+                   (uint16_t)(1880U + (sample % 253U) * 10U),
+                   0, 0, false);
+  }
+
+  const uint8_t source_id[TelemetryHistory::BINARY_SOURCE_ID_SIZE] = {
+      0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF};
+  uint8_t payload[TelemetryHistory::BINARY_PAYLOAD_SIZE];
+  ASSERT_EQ(sizeof(payload), history.formatVoltageBinarySnapshot(
+                                 source_id, payload, sizeof(payload)));
+  EXPECT_EQ(0, memcmp(payload, "TVB1", 4));
+  EXPECT_EQ(0, memcmp(&payload[4], source_id, sizeof(source_id)));
+
+  const uint32_t oldest_sample =
+      total_samples - TelemetryHistory::BINARY_MAX_SAMPLES;
+  EXPECT_EQ((first_bucket + oldest_sample)
+                * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+            uint32LE(&payload[12]));
+  EXPECT_EQ(30, uint16LE(&payload[16]));
+  EXPECT_EQ(TelemetryHistory::BINARY_MAX_SAMPLES, payload[18]);
+  for (uint16_t slot = 0;
+       slot < TelemetryHistory::BINARY_MAX_SAMPLES; slot++) {
+    const uint32_t sample = oldest_sample + slot;
+    EXPECT_EQ(TelemetryHistory::encodeVoltage(
+                  (uint16_t)(1880U + (sample % 253U) * 10U)),
+              payload[TelemetryHistory::BINARY_HEADER_SIZE + slot]);
+  }
+}
+
+TEST(TelemetryHistory, FormatsMaximumRawTemperatureSnapshot) {
+  using mesh::TelemetryHistory;
+  TelemetryHistory history;
+  const uint32_t first_bucket = 700000U;
+  const uint32_t total_samples = TelemetryHistory::BINARY_MAX_SAMPLES;
+  for (uint32_t sample = 0; sample < total_samples; sample++) {
+    const int16_t temperature = sample == 0 ? -51
+        : sample == 1 ? 78 : (int16_t)(-50 + sample % 128U);
+    history.record((first_bucket + sample)
+                       * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                   temperature, sample != 2, 3700, 0, 0, false);
+  }
+
+  const uint8_t source_id[TelemetryHistory::BINARY_SOURCE_ID_SIZE] = {
+      0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE};
+  uint8_t payload[TelemetryHistory::BINARY_PAYLOAD_SIZE];
+  ASSERT_EQ(sizeof(payload), history.formatTemperatureBinarySnapshot(
+                                 source_id, payload, sizeof(payload)));
+  EXPECT_EQ(0, memcmp(payload, "TTB1", 4));
+  EXPECT_EQ(0, memcmp(&payload[4], source_id, sizeof(source_id)));
+  EXPECT_EQ(first_bucket * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+            uint32LE(&payload[12]));
+  EXPECT_EQ(30, uint16LE(&payload[16]));
+  EXPECT_EQ(TelemetryHistory::BINARY_MAX_SAMPLES, payload[18]);
+  EXPECT_EQ(1, payload[TelemetryHistory::BINARY_HEADER_SIZE]);
+  EXPECT_EQ(2, payload[TelemetryHistory::BINARY_HEADER_SIZE + 1U]);
+  EXPECT_EQ(0, payload[TelemetryHistory::BINARY_HEADER_SIZE + 2U]);
+  for (uint16_t slot = 3; slot < TelemetryHistory::BINARY_MAX_SAMPLES; slot++) {
+    EXPECT_EQ((uint8_t)(slot % 128U + 3U),
+              payload[TelemetryHistory::BINARY_HEADER_SIZE + slot]);
+  }
+}
+
+TEST(TelemetryHistory, RawVoltageSnapshotRequiresHistoryAndDataSpace) {
+  using mesh::TelemetryHistory;
+  TelemetryHistory history;
+  const uint8_t source_id[TelemetryHistory::BINARY_SOURCE_ID_SIZE] = {};
+  uint8_t payload[TelemetryHistory::BINARY_PAYLOAD_SIZE];
+
+  EXPECT_EQ(0U, history.formatVoltageBinarySnapshot(
+                    source_id, payload, sizeof(payload)));
+  history.record(1800000000U, 20, true, 3700, 0, 0, false);
+  EXPECT_EQ(0U, history.formatVoltageBinarySnapshot(
+                    source_id, payload,
+                    TelemetryHistory::BINARY_HEADER_SIZE));
+  EXPECT_EQ(TelemetryHistory::BINARY_HEADER_SIZE + 1U,
+            history.formatVoltageBinarySnapshot(
+                source_id, payload,
+                TelemetryHistory::BINARY_HEADER_SIZE + 1U));
+  EXPECT_EQ(1, payload[18]);
 }
 
 TEST(TelemetryHistory, EmitsZeroGpsOriginAndDeltasWithoutFixes) {
