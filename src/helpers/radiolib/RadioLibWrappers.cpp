@@ -22,7 +22,7 @@ static volatile uint8_t state = STATE_IDLE;
 
 // this function is called when a complete packet
 // is transmitted by the module
-static 
+static
 #if defined(ESP8266) || defined(ESP32)
   ICACHE_RAM_ATTR
 #endif

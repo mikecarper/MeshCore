@@ -15,6 +15,10 @@
 #include <Adafruit_TinyUSB.h>
 #endif
 
+#ifdef USE_CC310_HW_CRYPTO
+#include <Adafruit_nRFCrypto.h>
+#endif
+
 static BLEDfu bledfu;
 static uint16_t ota_conn_handle = BLE_CONN_HANDLE_INVALID;
 static bool ota_active = false;
@@ -108,6 +112,11 @@ static void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
 
 void NRF52Board::begin() {
   startup_reason = BD_STARTUP_NORMAL;
+
+  #ifdef USE_CC310_HW_CRYPTO
+    // CC310 TRNG is higher quality and environment-independent vs radio RSSI noise.
+    nRFCrypto.begin();
+  #endif
 }
 
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
@@ -540,6 +549,10 @@ void NRF52Board::shutdownPeripherals() {
   if(sensors.getLocationProvider() != NULL) {
     sensors.getLocationProvider()->stop();
   }
+
+#ifdef USE_CC310_HW_CRYPTO
+    nRFCrypto.end();
+#endif
 
   // Flush serial buffers
   Serial.flush();

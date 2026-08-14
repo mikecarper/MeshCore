@@ -24,20 +24,26 @@ bool SH1106Display::begin()
 {
   // Wire must already be initialised by board.begin() before this is called.
   // Boards with non-standard SH1106 addresses should define DISPLAY_ADDRESS
-  // in their variant/platformio configuration. Some board revisions may have
-  // different solder-bridge address configurations, so variants can also
-  // provide DISPLAY_ADDRESS_ALT as a fallback.
-  if (i2c_probe(Wire, DISPLAY_ADDRESS) && display.begin(DISPLAY_ADDRESS, true)) {
-    return true;
+  // in their variant/platformio configuration. The SA0 strap selects 0x3C or
+  // 0x3D and differs between revisions of the same board. Variants may name a
+  // preferred alternate explicitly; otherwise try the other address in the
+  // pair. Always run the Adafruit init so its buffer and device objects exist,
+  // even when no panel answers the probe.
+  uint8_t addr = 0;
+  if (i2c_probe(Wire, DISPLAY_ADDRESS)) {
+    addr = DISPLAY_ADDRESS;
   }
 #ifdef DISPLAY_ADDRESS_ALT
-  if (DISPLAY_ADDRESS_ALT != DISPLAY_ADDRESS &&
-      i2c_probe(Wire, DISPLAY_ADDRESS_ALT) &&
-      display.begin(DISPLAY_ADDRESS_ALT, true)) {
-    return true;
+  if (addr == 0 && DISPLAY_ADDRESS_ALT != DISPLAY_ADDRESS &&
+      i2c_probe(Wire, DISPLAY_ADDRESS_ALT)) {
+    addr = DISPLAY_ADDRESS_ALT;
   }
 #endif
-  return false;
+  if (addr == 0 && i2c_probe(Wire, DISPLAY_ADDRESS ^ 1)) {
+    addr = DISPLAY_ADDRESS ^ 1;
+  }
+  bool ok = display.begin(addr ? addr : DISPLAY_ADDRESS, true);
+  return addr != 0 && ok;
 }
 
 void SH1106Display::turnOn()

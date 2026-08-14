@@ -20,12 +20,18 @@ public:
 
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    return ((CustomLR2021 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
+    bool success = ((CustomLR2021 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf)
         && applySideDetectorConfig(sf, bw);
+    if (!success) return false;
+
+    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForSF(sf));
+    ((CustomLR2021 *)_radio)->setPreambleMillis(pm.preambleMillis);
+    ((CustomLR2021 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
+    return true;
   }
 
 public:

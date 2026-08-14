@@ -30,6 +30,7 @@
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/RegionMap.h>
 #include "FloodRuleEngine.h"
+#include <helpers/RoutingPolicy.h>
 #include <RTClib.h>
 #include <target.h>
 
@@ -51,11 +52,11 @@
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef FIRMWARE_BUILD_DATE
-  #define FIRMWARE_BUILD_DATE   "9 Aug 2026"
+  #define FIRMWARE_BUILD_DATE   "14 Aug 2026"
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.17.0"
+  #define FIRMWARE_VERSION   "v1.17.1"
 #endif
 
 #ifndef LORA_FREQ
