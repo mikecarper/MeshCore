@@ -1703,8 +1703,8 @@ document is the technical/wire specification.</p>
 <li><strong>Trustless mesh relay:</strong> repeaters may forward packets while the source alone serves firmware data;
   integrity is content-addressed
   against a signed merkle root, so a relay need not be trusted and never needs the signing keys.</li>
-<li><strong>Lowest priority, always:</strong> OTA traffic is enqueued behind all mesh traffic - "eventually upgradable".
-  A busy node delays OTA indefinitely rather than competing with real traffic.</li>
+<li><strong>Primary while transferring:</strong> periodic discovery stays at background priority, but manifest, block,
+  data, and proof packets for an active fetch use primary queue priority at every relay hop.</li>
 <li><strong>Portable:</strong> the engine (<code>src/helpers/ota/OtaManager</code>) is Arduino/radio/crypto-free and host-testable,
   so the same logic drives a device, a simulation, or a third-party implementation.</li>
 </ul>
@@ -1853,9 +1853,14 @@ document is the technical/wire specification.</p>
 <td><code>block_size_log2 = 0x0A</code></td>
 </tr>
 <tr>
-<td>OTA TX priority</td>
+<td>OTA discovery TX priority</td>
 <td><code>250</code></td>
-<td>lowest (<code>OTA_TX_PRIORITY</code>, <code>src/Mesh.h</code>)</td>
+<td>background (<code>OTA_TX_PRIORITY</code>, <code>src/Mesh.h</code>)</td>
+</tr>
+<tr>
+<td>OTA active-transfer TX priority</td>
+<td><code>0</code></td>
+<td>primary (<code>OTA_TRANSFER_TX_PRIORITY</code>, <code>src/Mesh.h</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -2083,9 +2088,10 @@ while n &gt; 1:
     idx //= 2 ; n = (n + 1) // 2
 accept iff h == merkle_root and p == len(proof)
 </code></pre>
-<p>Over LoRa, <code>leaves[]</code> are <strong>omitted</strong> from the manifest transfer; a serving node computes a block's proof
-on demand from its stored <code>leaves[]</code> (<code>OTA_REQ_PROOF</code>/<code>OTA_PROOF</code>, Section 8.5), and the fetcher fills its own
-<code>leaves[i]</code> as each verified block lands.</p>
+<p>Over LoRa, <code>leaves[]</code> are <strong>omitted</strong> from the manifest transfer. A serving node computes a block's proof
+on demand from its stored <code>leaves[]</code> and normally sends <code>OTA_PROOF</code> immediately after that block's paced
+<code>OTA_DATA</code>. <code>OTA_REQ_PROOF</code> remains the fallback for an older source or a lost proactive proof. The fetcher
+fills its own <code>leaves[i]</code> as each verified block lands.</p>
 <hr />
 <h2 id="7-block-availability-staging-resume">7. Block availability, staging &amp; resume</h2>
 <p>There is no separate availability structure. <strong>Block <code>i</code> is present &lt;=&gt; <code>leaves[i]</code> is non-erased</strong>
@@ -2122,67 +2128,67 @@ small delta that fits page 0 does zero flash I/O until COMPLETE.</p>
 <tr>
 <td><code>OTA_ADV</code></td>
 <td>0x01</td>
-<td>flood</td>
+<td>discovery</td>
 <td>tiny per-node beacon (discovery tier 1)</td>
 </tr>
 <tr>
 <td><code>OTA_QUERY</code></td>
 <td>0x02</td>
-<td>flood</td>
+<td>discovery</td>
 <td>ask a source for its catalog (discovery tier 2)</td>
 </tr>
 <tr>
 <td><code>OTA_HAVE</code></td>
 <td>0x03</td>
-<td>flood</td>
+<td>discovery</td>
 <td>the catalog reply (fragmented, digest-tagged)</td>
 </tr>
 <tr>
 <td><code>OTA_GET_MANIFEST</code></td>
 <td>0x04</td>
-<td>direct</td>
+<td>transfer</td>
 <td>request a manifest's fragments (<code>want_mask</code>) by <code>manifest_id</code></td>
 </tr>
 <tr>
 <td><code>OTA_MANIFEST</code></td>
 <td>0x05</td>
-<td>direct</td>
+<td>transfer</td>
 <td>the manifest-minus-leaves, fragmented</td>
 </tr>
 <tr>
 <td><code>OTA_REQ</code></td>
 <td>0x06</td>
-<td>direct</td>
+<td>transfer</td>
 <td>request specific DATA fragments of one block (<code>want_mask</code>)</td>
 </tr>
 <tr>
 <td><code>OTA_DATA</code></td>
 <td>0x07</td>
-<td>direct</td>
+<td>transfer</td>
 <td>one self-describing fragment of a block's data</td>
 </tr>
 <tr>
 <td><code>OTA_REQ_PROOF</code></td>
 <td>0x08</td>
-<td>direct</td>
-<td>request the merkle proof for one block</td>
+<td>transfer</td>
+<td>request/re-request a missing proof</td>
 </tr>
 <tr>
 <td><code>OTA_PROOF</code></td>
 <td>0x09</td>
-<td>direct</td>
+<td>transfer</td>
 <td>the merkle proof for one block</td>
 </tr>
 <tr>
 <td><code>OTA_GET_LEAVES</code></td>
 <td>0x0A</td>
-<td>direct</td>
+<td>transfer</td>
 <td>request the target's <code>leaves[]</code> fragments (<code>want_mask</code>) - warm-start only</td>
 </tr>
 <tr>
 <td><code>OTA_LEAVES</code></td>
 <td>0x0B</td>
-<td>direct</td>
+<td>transfer</td>
 <td>a fragment of the <code>leaves[]</code> array (for host-side seed leaf-diff)</td>
 </tr>
 </tbody>
@@ -2190,20 +2196,23 @@ small delta that fits page 0 does zero flash I/O until COMPLETE.</p>
 <ul>
 <li><strong><code>manifest_id</code></strong> = the manifest's <code>merkle_root</code> (4 bytes) - a compact content id present in every
   transfer message, so a multi-mota server dispatches each request to the right image.</li>
-<li><strong>Priority:</strong> all OTA packets enqueue at <code>OTA_TX_PRIORITY = 250</code> (lowest). OTA never competes with mesh
-  traffic; on a busy node it is delayed indefinitely.</li>
-<li><strong>Reliability is <em>eventual</em>:</strong> the fetcher re-requests missing fragments/blocks after a timeout, possibly
-  from a different peer. No hard ACKs, no global ordering.</li>
-<li><strong>Relay:</strong> replies are flooded, so transparent relay needs no per-requester addressing, and the transfer
-  is trustless (the fetcher verifies every block against the signed root). Any neighbor may serve any
-  fragment it has. A repeater without <code>ENABLE_OTA</code> transports <code>PAYLOAD_TYPE_OTA</code> opaquely and does not need
-  the manager, staging store, installer, or destination bootloader.</li>
+<li><strong>Priority:</strong> <code>OTA_ADV</code>, <code>OTA_QUERY</code>, and <code>OTA_HAVE</code> enqueue at background priority 250. Once a fetch is
+  active, manifest, block request, data, and proof messages enqueue at primary priority 0. Relay-only
+  nodes classify the wire message identically, so a transfer stays primary across the complete path.</li>
+<li><strong>Reliability is <em>eventual</em>:</strong> the fetcher re-requests only missing fragments after a one-second stalled
+  service tick. No hard ACKs or global ordering are required.</li>
+<li><strong>Relay envelope:</strong> OTA still uses a bounded flood-shaped mesh header so the same packets can cross the
+  configured number of hops without first discovering an addressed return path. During TempRadio each node
+  forwards one copy; active OTA packets do not use the generic flood-retry subsystem. The fetcher verifies
+  every block against the signed root, and a repeater without <code>ENABLE_OTA</code> can transport
+  <code>PAYLOAD_TYPE_OTA</code> opaquely without the manager, staging store, installer, or destination bootloader.</li>
 <li><strong>Hop limit + duty cycle:</strong> OTA floods accumulate one path-hash per relay (the mesh's flood routing). A
   node with the OTA manager <em>accepts</em> a packet only if it arrived within <code>ota config hops</code> hops (default 3;
   <code>0</code> = direct only) and <em>relays</em> it only while still under that limit, appending its own hash. Relay-only
-  repeaters instead use their ordinary flood limits and forwarding filters. Relays are lowest-priority and
-  are skipped when the packet pool runs low (the source retries), so heavy OTA can never monopolise a
-  repeater's RAM or starve real traffic.</li>
+  repeaters instead use their ordinary flood limits and forwarding filters. Discovery relays remain
+  lowest-priority and may be skipped when the packet pool runs low. Active-transfer relays bypass that
+  background pool gate and use priority 0; operators should therefore treat TempRadio as a dedicated OTA
+  maintenance window because the transfer can delay unrelated mesh traffic.</li>
 </ul>
 <h3 id="81-two-tier-discovery">8.1 Two-tier discovery</h3>
 <p>Because a node may serve <strong>many</strong> mOTAs (its own firmware plus an external folder - Section 10), discovery is split
@@ -2261,8 +2270,8 @@ pattern), all in <code>OtaManager</code>:</p>
     OTA_REQ(mid, block_idx, want_mask) &gt;  (want_mask=all fragments first; only the holes on retry)
                                &lt;-------   OTA_DATA(mid, block_idx, frag_off, data) x requested frags
     (reassemble block from frag_off slices)
-    OTA_REQ_PROOF(mid, block_idx) ----&gt;
-                               &lt;-------   OTA_PROOF(mid, block_idx, n_proof, proof)
+                               &lt;-------   OTA_PROOF(mid, block_idx, n_proof, proof)  (proactive)
+    [if proof is absent after grace: OTA_REQ_PROOF(mid, block_idx) -&gt; legacy/loss fallback]
     (verify proof vs merkle_root -&gt; write block -&gt; write leaves[i])
   when all blocks present: verify full merkle_root + image_hash -&gt; COMPLETE
 </code></pre>
@@ -2293,7 +2302,7 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   is answering <code>OTA_GET_LEAVES</code> with leaves the node already holds, so any node's firmware can be captured.</p>
 </li>
 <li>
-<p><strong>Block &lt;-&gt; fragments:</strong> a 1 KB block is split into self-describing <code>OTA_DATA</code> fragments. <code>frag_off</code> is the
+<p><strong>Block &lt;-&gt; fragments:</strong> a 1 KB block remains split into self-describing <code>OTA_DATA</code> fragments. <code>frag_off</code> is the
   byte offset of <code>data</code> within the block, so the global position is <code>block_idx*block_size + frag_off</code> -
   a fragment is self-placing when returned by the source. The fetcher tracks a
   per-block slice bitmap and reassembles before requesting the proof.</p>
@@ -2308,10 +2317,12 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   with the tail of the in-flight burst and drop the same fragment forever - a hang. Requesting only the hole
   removes the burst, so there is nothing to collide with. The block/manifest mask matches the 16-bit
   reassembly bitmap (&lt;=16 fragments/block; 1 KB blocks = 7). <code>OTA_PROOF</code> is a single packet and needs no mask.</li>
-<li><strong>Data and proof are separate phases.</strong> <code>OTA_DATA</code> carries no proof; the proof is fetched once per block
-  via <code>OTA_REQ_PROOF</code>/<code>OTA_PROOF</code> after that block's data is complete. The receiver keeps a bounded two-block
-  window, so one block can await its proof or flash commit while DATA for the next block arrives. Slots retry
-  independently and only one stalled slot is retried per service tick.</li>
+<li><strong>Data and proof remain separate packets, without a normal extra round trip.</strong> A server retains requested
+  blocks in a bounded descriptor queue, admits at most one response per main-loop pass, and sends one
+  <code>OTA_PROOF</code> after the requested fragments. The receiver waits 500 ms after completing a block, then uses
+  <code>OTA_REQ_PROOF</code> only as a loss/legacy-server fallback. It keeps a bounded multi-block window, so one block
+  can await proof or flash commit while DATA for the next block arrives. Slots retry independently and only
+  one stalled slot is retried per service tick.</li>
 </ul>
 <h3 id="85-sizing-against-max_packet_payload-184">8.5 Sizing against <code>MAX_PACKET_PAYLOAD = 184</code></h3>
 <table>
@@ -2350,17 +2361,21 @@ payload); larger self-images pass a bigger scratch buffer.</p>
 <h3 id="86-temporary-radio-and-transfer-boundary">8.6 Temporary-radio and transfer boundary</h3>
 <p>OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
 its <code>tempradio</code> window is actually running. A receiver selects missing blocks in serial order into a bounded
-two-block pipeline. It never serves partial blocks. A normal install receiver never re-advertises its completed
+request pipeline. The default capacity is two blocks. Targets with a larger compiled capacity begin at two,
+grow the live window by one after four clean verified blocks, and shrink it after two consecutive no-progress
+service ticks; the RAK3401 LoRa-OTA target currently adapts from two through four blocks. It never serves
+partial blocks. A normal install receiver never re-advertises its completed
 download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
 to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
 This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
 repeaters between them and persistent archive nodes to improve future availability.</p>
-<p>Because TempRadio is a bounded channel dedicated to this transfer, an accepted OTA flood normally relays after
-a randomized 0.25 to 0.5 packet-airtime delay. Repeated requests for the same manifest block or proof provide
-congestion feedback without changing the wire format. Frequent retries widen the local relay window through
-0.5-1.0, 0.75-2.0, and finally 1.0-3.0 airtimes. The maximum is hard-capped at three packet airtimes. Each
-30-second interval without another observed retry lowers the window one level. Other flood payloads retain the
-role's normal randomized delay, and CAD still applies when enabled.</p>
+<p>TempRadio is treated as a private maintenance network. Active transfer packets use priority 0, bypass the
+public-flood receive holdoff and relay jitter, and do not schedule generic flood retries. The bounded serving
+queue admits at most two DATA/PROOF packets ahead of the radio while preserving at least four free packet-pool
+entries. CAD remains enabled to arbitrate the half-duplex channel, but its busy retry is scaled to one-quarter
+of a packet airtime and clamped to 5-50 ms instead of the ordinary 120-360 ms cadence. Discovery traffic keeps
+collision jitter and background priority. These changes remove software waits and duplicate bursts; they do
+not remove the one required forwarding transmission per hop.</p>
 <hr />
 <h2 id="9-identity-trust-versioning">9. Identity, trust &amp; versioning</h2>
 <ul>
@@ -2513,7 +2528,10 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   OTAFIX independently
   locates the physical EndF, hashes the running app, and compares that value with the package before its
   first app write. A physically absent/corrupt EndF or wrong base therefore returns to the unchanged app;
-  it still requires USB recovery if that app does not already contain this command.</li>
+  it still requires USB recovery if that app does not already contain this command.
+  A chain intended to cross historical firmware must introduce this command in its first bridge and retain
+  it in every later bridge. Manual pulls still use the build-provided target ID when app-side EndF parsing
+  fails, so a rescue-capable bridge can fetch its exact successor before invoking the guarded command.</li>
 <li><strong>MeshTower V2 SD nRF52:</strong> the application stores a contiguous <code>/meshcore-ota.mota</code> on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,

@@ -1489,16 +1489,16 @@ battery telemetry, and <code>battery.alert</code> behavior.</p>
 <hr />
 <h2 id="the-important-part-first-its-safe">The important part first: it's safe</h2>
 <ul>
-<li><strong>Nothing installs by itself.</strong> Your node can <em>discover</em> and <em>download</em> an update in the background, but
+<li><strong>Nothing installs by itself.</strong> Your node can <em>discover</em> and download an update, but
   it only <strong>installs</strong> when you say so (unless you deliberately turn on auto-install - see below).</li>
 <li><strong>Bad downloads can't sneak in.</strong> Every piece of the firmware is checked against a cryptographic
   fingerprint as it arrives, and the whole image is verified again before install. A corrupt or tampered
   download is rejected, not installed.</li>
 <li><strong>You choose who to trust.</strong> Updates can be <em>signed</em> by their author. You can tell your node to only
   auto-install firmware signed by keys you've added.</li>
-<li><strong>It won't disrupt your mesh.</strong> OTA traffic is always the <strong>lowest priority</strong> - your node only spends
-  spare airtime on it. Messages and routing always come first; a busy node simply updates later. Think of
-  it as <em>"eventually upgradable."</em></li>
+<li><strong>Discovery stays quiet; a transfer is deliberate.</strong> Periodic update discovery uses background priority.
+  Once a download starts, its transfer packets are primary traffic across every relay hop, so use
+  TempRadio as an OTA maintenance window when delaying unrelated mesh traffic would matter.</li>
 <li><strong>It can recover.</strong> If an install ever fails, the node falls back to a safe recovery mode (you can
   re-flash a known-good firmware over USB) - it won't be left bricked.</li>
 </ul>
@@ -1568,8 +1568,10 @@ no guessing. <strong><code>validate</code> is the switch:</strong> a plain <code
 re-running a <code>validate</code> pull re-begins fresh (it never resumes a stale partial). Nothing about the seed is
 trusted - every kept block is checked against the target's own fingerprints, so a mismatched or missing seed
 just means those blocks are fetched over the radio (correct result, only slower).</p>
-<p>The node fetches from one source, <strong>at low priority</strong>, with a bounded two-block receive window. Mesh repeaters may carry the
-packets, but only while their temporary-radio windows are active. Check progress with <code>ota status</code>.</p>
+<p>The node fetches from one source as <strong>primary traffic</strong>, with a bounded adaptive block-request window.
+RAK3401 OTA builds start with two concurrent block requests, grow to four on a clean link, and contract on
+repeated stalls. Mesh repeaters carry the packets only while their temporary-radio windows are active.
+Check progress with <code>ota status</code>.</p>
 <p>If a <code>folder</code> pull loses its link mid-transfer, <code>ota status</code> shows <strong>paused</strong> - the host keeps the
 partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
 falls back to flash. To <strong>stop</strong> a download you no longer want:</p>
@@ -1597,6 +1599,7 @@ automatically.)</p>
   target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
   the running app and rejects a wrong base before writing the app. If the physical EndF is absent or this
   command was not already in the running firmware, recover over USB.
+  Release chains should put this command in their first bridge and keep it in every bridge after that.
 - If an <strong>install</strong> fails, the node won't boot a broken image - it lands in <strong>recovery mode</strong>:
   - <strong>nRF52:</strong> it appears as a USB drive; drag a known-good firmware <code>.uf2</code> for that exact board onto it
     to recover.
@@ -1670,8 +1673,8 @@ already active. Other FULL roles with browser OTA support can use the
 <h3 id="everyone-helps-share">Everyone helps share</h3>
 <p>You don't have to be a gateway to help. Once <strong>any</strong> node finishes downloading an update, it automatically
 offers it to <em>its</em> neighbours too. So a new firmware spreads outward node-to-node, instead of everyone
-hammering the one node that had it first - and no node is ever overloaded, because all of this stays
-lowest-priority.</p>
+hammering the one node that had it first. Discovery remains background traffic; an actual transfer is
+primary traffic for the duration of its TempRadio maintenance window.</p>
 <hr />
 <h2 id="where-firmware-files-come-from">Where firmware files come from</h2>
 <p>OTA distributes <strong><code>.mota</code></strong> files - a packaged, verifiable firmware image (full image or a small "delta"

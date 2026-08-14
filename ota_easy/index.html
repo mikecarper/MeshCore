@@ -1694,9 +1694,10 @@ entry 1, run:</p>
 <p>Monitor the transfer:</p>
 <pre><code class="language-text">ota status
 </code></pre>
-<p>The update is ready when the status says <code>ready to install</code>. OTA is deliberately the lowest-priority mesh
-traffic. At the temporary-radio settings in this guide, allow roughly <strong>one hour</strong> for a typical ESP32 full
-image over a quiet, direct link. That is a planning estimate, not an upper bound: repeaters, retries, weak
+<p>The update is ready when the status says <code>ready to install</code>. Discovery is background traffic, while an
+active OTA download is primary mesh traffic. At the temporary-radio settings in this guide, allow roughly
+<strong>one hour</strong> for a typical ESP32 full image over a quiet, direct link. That is a planning estimate, not an
+upper bound: repeaters, retries, weak
 links, and normal mesh traffic can extend it well past an hour. The 120-minute example window is
 intentional. If necessary, start another overlapping <code>tempradio</code> window; the download resumes rather than
 starting over.</p>
