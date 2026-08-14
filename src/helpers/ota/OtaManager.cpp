@@ -423,6 +423,7 @@ void OtaManager::clearReassemblySlot(uint8_t slot) {
   _reasm[slot].mask = 0;
   _reasm[slot].need = 0;
   _reasm[slot].awaiting_proof = false;
+  _reasm[slot].proof_request_at = 0;
 }
 
 // Forget all blocks currently being reassembled or awaiting proofs.
@@ -732,10 +733,11 @@ void OtaManager::handleData(const uint8_t* m, uint16_t n) {
   if (kf >= 16) return;
   memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
   slot.mask |= (uint16_t)(1u << kf);
-  if (slot.mask != slot.need || slot.awaiting_proof) return;  // wait for all slices (or proof already asked)
-  // block fully reassembled -> request its proof (data + proof are fetched separately)
+  if (slot.mask != slot.need || slot.awaiting_proof) return;
+  // A current server sends the proof immediately after this block's paced DATA. Avoid spending one request
+  // packet per block; an older server or lost proof falls back after a short grace in loop().
   slot.awaiting_proof = true;
-  requestSlot((uint8_t)slot_index);
+  slot.proof_request_at = _now_ms + OTA_PROOF_GRACE_MS;
 }
 
 void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
@@ -820,6 +822,7 @@ bool OtaManager::fillPipeline() {
     slot.mask = 0;
     slot.need = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
     slot.awaiting_proof = false;
+    slot.proof_request_at = 0;
     requestSlot((uint8_t)slot_index);
     requested = true;
   }
@@ -892,6 +895,14 @@ void OtaManager::loop() {
     return;
   }
   if (_fstate != FETCHING) return;
+  for (uint8_t slot_index = 0; slot_index < OTA_FETCH_PIPELINE; slot_index++) {
+    ReassemblySlot& slot = _reasm[slot_index];
+    if (!slot.awaiting_proof || slot.proof_request_at == 0
+        || (int32_t)(_now_ms - slot.proof_request_at) < 0) continue;
+    slot.proof_request_at = 0;
+    requestSlot(slot_index);
+    return;
+  }
   // Retry only when a whole tick passed with no committed block, fragment, proof transition, or window
   // assignment. This avoids re-request spam while any pipelined block is making progress.
   uint32_t progress = pipelineProgress();

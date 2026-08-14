@@ -13,6 +13,9 @@
   #ifndef OTA_FWD_MIN_FREE
   #define OTA_FWD_MIN_FREE 4
   #endif
+  #ifndef OTA_RETRY_TICK_MS
+  #define OTA_RETRY_TICK_MS 1000
+  #endif
 #endif
 
 namespace mesh {

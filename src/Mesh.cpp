@@ -307,7 +307,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     }
     ota::ota_ctx().manager.set_clock(_ms->getMillis());   // for discovery jitter/ages + the pending-query timer
     ota::ota_ctx().manager.loop();         // re-request still-missing OTA blocks + fire scheduled queries
-    _next_ota_tick = futureMillis(3000);
+    _next_ota_tick = futureMillis(OTA_RETRY_TICK_MS);
   }
   if (millisHasNowPassed(_next_ota_announce)) {   // auto-advertise so peers discover us (tiny beacon)
     ota::OtaContext& oc = ota::ota_ctx();
@@ -454,6 +454,7 @@ uint8_t Mesh::applyFloodRetryAttemptPolicy(const Packet* packet,
 
   switch (packet->getPayloadType()) {
     case PAYLOAD_TYPE_REQ:
+    case PAYLOAD_TYPE_OTA:
       return 0;
     case PAYLOAD_TYPE_GRP_TXT:
       return attempts;
@@ -527,7 +528,12 @@ void Mesh::onSendFail(Packet* packet) {
 }
 
 uint32_t Mesh::getCADFailRetryDelay() const {
-  return _rng->nextInt(1, 4)*120;
+  if (!isTempRadioActive()) return _rng->nextInt(1, 4) * 120;
+  uint32_t airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
+  uint32_t retry = airtime / 4;
+  if (retry < 5) retry = 5;
+  if (retry > 50) retry = 50;
+  return retry;
 }
 
 int Mesh::searchPeersByHash(const uint8_t* hash) {

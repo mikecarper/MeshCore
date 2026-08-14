@@ -103,6 +103,9 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #ifndef OTA_FRAG_DATA
 #define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)
 #endif
+#ifndef OTA_PROOF_GRACE_MS
+#define OTA_PROOF_GRACE_MS 500      // wait for a proactive proof before the legacy REQ_PROOF fallback
+#endif
 #ifndef OTA_FETCH_PIPELINE
 #define OTA_FETCH_PIPELINE 2        // concurrent client block slots; keeps one block ready behind proof/flash work
 #endif
@@ -126,7 +129,7 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #error "OTA_FETCH_PIPELINE_GROW_BLOCKS must be at least 1"
 #endif
 #ifndef OTA_FETCH_PIPELINE_SHRINK_TICKS
-#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive 3-second no-progress ticks before removing one slot
+#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive no-progress retry ticks before removing one slot
 #endif
 #if OTA_FETCH_PIPELINE_SHRINK_TICKS < 1
 #error "OTA_FETCH_PIPELINE_SHRINK_TICKS must be at least 1"
@@ -408,6 +411,7 @@ private:
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
     uint16_t need = 0;                         // full bitmap for this block
     bool awaiting_proof = false;
+    uint32_t proof_request_at = 0;              // proactive-proof grace deadline; 0 after fallback is sent
     uint8_t buf[OTA_MAX_BLOCK];
   };
   ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
