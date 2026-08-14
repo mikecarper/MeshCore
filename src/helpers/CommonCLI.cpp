@@ -52,6 +52,8 @@ static void resetToUf2Bootloader() {
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
 #include <esp_heap_caps.h>
+#else
+#include <malloc.h>  // mallinfo() for the `memory` command on nRF52/RP2040
 #endif
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
@@ -2026,6 +2028,16 @@ void CommonCLI::loadMQTTPrefs(
           MESH_DEBUG_PRINTLN("MQTT: /mqtt_prefs read failed, using defaults (file preserved)");
         } else {
           has_observer_fields = plan.observer_fields_present;
+          // Written by a later build with appended fields. Everything this
+          // binary knows loaded normally; say so, because the next `set` will
+          // rewrite the file at this length and drop the newer settings.
+          if (file_size - sizeof(MQTTPrefsHeader) > plan.payload_len) {
+            MESH_DEBUG_PRINTLN(
+                "MQTT: /mqtt_prefs written by newer firmware (%u > %u bytes); "
+                "config loaded, newer settings ignored and dropped on next save",
+                (unsigned)(file_size - sizeof(MQTTPrefsHeader)),
+                (unsigned)plan.payload_len);
+          }
         }
         if (file) file.close();
       } else if (plan.rewrite_legacy) {
@@ -2182,12 +2194,15 @@ bool CommonCLI::saveMQTTPrefs(FILESYSTEM* fs) {
   }
 
   // Write header and payload sequentially so the transaction needs no second
-  // full-size (2.8 KiB) staging buffer on constrained targets.
-  const MQTTPrefsHeader header = MQTTPrefsCodec::makeHeader();
+  // full-size (2.8 KiB) staging buffer on constrained targets. The length is
+  // the shortest that still round-trips this config, so a node with default
+  // packet filters keeps writing a payload older firmware can read.
+  const size_t payload_len = MQTTPrefsCodec::payloadLenFor(_mqtt_prefs);
+  const MQTTPrefsHeader header = MQTTPrefsCodec::makeHeader(payload_len);
   MQTTPrefsFileStore store(fs);
   const MQTTPrefsAtomicStore::Result result = MQTTPrefsAtomicStore::write(
       store, (const uint8_t *)&header, sizeof(header),
-      (const uint8_t *)&_mqtt_prefs, sizeof(_mqtt_prefs));
+      (const uint8_t *)&_mqtt_prefs, payload_len);
   if (!MQTTPrefsAtomicStore::committed(result)) {
     MESH_DEBUG_PRINTLN("MQTT: atomic /mqtt_prefs save failed at %s; source preserved",
                        mqttPrefsSaveResultName(result));
@@ -2514,8 +2529,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "ERR: webconfig not supported on this build");
       }
 #endif
-#ifdef ESP_PLATFORM
     } else if (memcmp(command, "memory", 6) == 0) {
+#ifdef ESP_PLATFORM
       sprintf(reply, "Free: %d, Min: %d, Max: %d, Queue: %d, IntFree: %d, IntMax: %d, PSRAM: %d/%d",
               ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(),
               _callbacks->getQueueSize(),
@@ -2523,6 +2538,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
               (int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
               (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
               (int)heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+#else
+      struct mallinfo mi = mallinfo();
+      sprintf(reply, "Heap: free=%d, used=%d", (int)mi.fordblks, (int)mi.uordblks);
 #endif
     } else if (memcmp(command, "start ota", 9) == 0 && (command[9] == 0 || command[9] == ' ')) {
       // Manual OTA: bring up the board's browser server for a hand-uploaded binary.

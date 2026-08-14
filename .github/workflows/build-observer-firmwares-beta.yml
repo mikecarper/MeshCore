@@ -38,11 +38,17 @@ on:
       - 'LICENSE'
       - '.vscode/**'
       - '.claude/**'
+      # Throwaway build worktrees never affect the binaries.
+      - '.build-wt-*'
+      - '.build-wt-*/**'
 
-# Shared with build-observer-firmwares.yml and sync-flasher-content.yml so the
-# workflows never push to the flasher repo at the same time.
+# Own group: serialize beta builds against each other only. Concurrency groups are
+# repo-wide, not per-branch, so sharing one with the production workflows let an
+# in-flight beta build force a production build into the pending state, where the
+# next run queued into the group cancelled it outright. Concurrent flasher pushes
+# are instead made safe by the rebase-retry in "Commit & Push Beta Artifacts".
 concurrency:
-  group: flasher-publish
+  group: observer-firmware-beta-build
   cancel-in-progress: false
 
 env:
@@ -50,7 +56,7 @@ env:
   # OTA comparison treats a different base version as "always an update", so a
   # distinct base here would make every beta node think it is permanently behind.
   # Channels are separated by manifest URL, not by base version.
-  FIRMWARE_VERSION: v1.16.0
+  FIRMWARE_VERSION: v1.17.0
 
   # Beta-only rolling release. A separate tag is required, not cosmetic: the
   # publish step prunes all but the KEEP_BUILDS most recent build hashes within
@@ -346,4 +352,26 @@ jobs:
           git config user.name "meshcore-bot"
           git config user.email "noreply@gessaman.com"
           git commit -m "Update BETA observer firmware to ${{ steps.sha.outputs.short }} (build ${FIRMWARE_VERSION}.${{ needs.enumerate.outputs.build_number }})"
-          git push
+          # The production workflows can be pushing to the flasher repo right now
+          # (no shared concurrency group any more), so a non-fast-forward is expected
+          # rather than fatal: rebase onto their commit and retry. The scoped add
+          # above keeps this commit inside the beta paths, so a conflict with
+          # production's files is not possible.
+          br=$(git rev-parse --abbrev-ref HEAD)
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:$br"; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto origin/$br"
+            git fetch origin "$br"
+            # --autostash: the scoped add above leaves unrelated edits in the
+            # checkout unstaged on purpose, and plain rebase refuses to run with a
+            # dirty tree. They stay unstaged, so they still never get published.
+            git rebase --autostash "origin/$br" || {
+              git rebase --abort || true
+              echo "::error::flasher rebase conflicted; re-run this workflow to republish"
+              exit 1
+            }
+          done
+          echo "::error::could not push beta changes after 3 attempts"
+          exit 1

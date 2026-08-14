@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "MQTTPacketFilter.h"
 #include "MQTTPrefsStorage.h"
 
 #ifdef WITH_MQTT_BRIDGE
@@ -37,23 +38,44 @@ struct DecodePlan {
 
 static const size_t kV1PreObserverPayloadSize = MQTT_PREFS_V1_PRE_OBSERVER_PAYLOAD_SIZE;
 static const size_t kV1PreNeighborsPayloadSize = MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE;
+static const size_t kV1PreFilterPayloadSize = MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE;
 static const size_t kV1BaselinePayloadSize = MQTT_PREFS_V1_FULL_PAYLOAD_SIZE;
 static const size_t kEncodedSize = sizeof(MQTTPrefsHeader) + kV1BaselinePayloadSize;
 
-inline MQTTPrefsHeader makeHeader() {
+// Shortest payload length that still round-trips this configuration.
+//
+// The packet-filter tail is the only optional part of the current layout, and
+// its default (all types) is exactly what a pre-filter decoder supplies for a
+// missing tail. So a device whose filters are all default keeps writing the
+// 2864-byte payload that pre-filter firmware can still read. That matters
+// because /mqtt_prefs also carries the WiFi credentials: an unrecognised
+// longer payload sends older firmware to defaults with no network, and it
+// refuses to overwrite the file, so the node cannot be recovered over the air.
+// Touching any filter opts that node into the longer payload -- a deliberate,
+// operator-initiated trade rather than a side effect of upgrading.
+inline size_t payloadLenFor(const MQTTPrefs& prefs) {
+  return MQTTPacketFilter::allMasksDefault(prefs.mqtt_slot_packet_filter,
+                                           MQTT_PREFS_SLOT_COUNT)
+      ? kV1PreFilterPayloadSize
+      : kV1BaselinePayloadSize;
+}
+
+inline MQTTPrefsHeader makeHeader(size_t payload_len) {
   MQTTPrefsHeader header;
   memcpy(header.magic, MQTT_PREFS_MAGIC, sizeof(header.magic));
   header.version = MQTT_PREFS_VERSION;
-  header.payload_len = static_cast<uint16_t>(kV1BaselinePayloadSize);
+  header.payload_len = static_cast<uint16_t>(payload_len);
   return header;
 }
 
 inline size_t encode(const MQTTPrefs& prefs, uint8_t* output, size_t output_size) {
-  if (output == nullptr || output_size < kEncodedSize) return 0;
-  const MQTTPrefsHeader header = makeHeader();
+  const size_t payload_len = payloadLenFor(prefs);
+  const size_t encoded_size = sizeof(MQTTPrefsHeader) + payload_len;
+  if (output == nullptr || output_size < encoded_size) return 0;
+  const MQTTPrefsHeader header = makeHeader(payload_len);
   memcpy(output, &header, sizeof(header));
-  memcpy(output + sizeof(header), &prefs, sizeof(prefs));
-  return kEncodedSize;
+  memcpy(output + sizeof(header), &prefs, payload_len);
+  return encoded_size;
 }
 
 inline bool isMagicPrefix(const uint8_t* input, size_t available) {
@@ -92,13 +114,34 @@ inline DecodePlan classify(const uint8_t* prefix, size_t prefix_read, size_t fil
       if (header.payload_len != payload_available) {
         return corruptPlan();
       }
-      // A same-version append is still unknown to this binary. Holding the
-      // file prevents a downgrade from discarding it on the next CLI save.
+      // A longer same-version payload was written by a later build that
+      // appended fields. Within a version tag the layout is append-only, so
+      // every byte this binary knows is present and correctly positioned -- read
+      // the baseline prefix and ignore the tail.
+      //
+      // This is the downgrade contract, and it is deliberately asymmetric:
+      // refusing the file would cost the operator WiFi credentials and every
+      // broker slot (a node with no network and no portal, recoverable only
+      // over serial), whereas reading it costs only the settings the newer
+      // build added. Losing a later feature's settings is the acceptable half.
+      //
+      // The tail survives until something actually writes: saveMQTTPrefs()
+      // rewrites at this binary's own length, so a rollback that changes no
+      // observer setting and is later rolled forward keeps the newer fields
+      // intact. Only an explicit `set` while downgraded drops them.
+      //
+      // A layout change that is NOT a pure append must bump MQTT_PREFS_VERSION;
+      // the version check above is what makes this rule safe.
       if (header.payload_len > kV1BaselinePayloadSize) {
-        return {Source::UnsupportedVersion, false, true, false, 0};
+        return {Source::Current, false, false, true, kV1BaselinePayloadSize};
       }
       if (header.payload_len == kV1BaselinePayloadSize) {
         return {Source::Current, false, false, true, kV1BaselinePayloadSize};
+      }
+      if (header.payload_len == kV1PreFilterPayloadSize) {
+        // Written before the per-slot packet-filter tail. Defaults supply an
+        // all-types mask for every slot.
+        return {Source::Current, false, false, true, kV1PreFilterPayloadSize};
       }
       if (header.payload_len == kV1PreNeighborsPayloadSize) {
         // Written by observer/webconfig firmware before the neighbors tail

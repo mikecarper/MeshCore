@@ -8,6 +8,7 @@
 #include <helpers/MQTTPrefs.h>
 #include <helpers/PrefsSaveRouting.h>
 #include <helpers/RegionMap.h>
+#include <helpers/ConfigSerializer.h>
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -106,90 +107,91 @@
 #define TELEMETRY_ACCESS_ALL  0
 #define TELEMETRY_ACCESS_ACL  1
 
-struct NodePrefs { // persisted to file
-  float airtime_factor;
-  char node_name[32];
-  double node_lat, node_lon;
-  char password[16];
-  float freq;
-  int8_t tx_power_dbm;
-  uint8_t disable_fwd;
-  uint8_t advert_interval;       // minutes / 2
-  uint8_t flood_advert_interval; // hours
-  float rx_delay_base;
-  float tx_delay_factor;
-  char guest_password[16];
-  float direct_tx_delay_factor;
-  uint32_t guard;
-  uint8_t sf;
-  uint8_t cr;
-  uint8_t allow_read_only;
-  uint8_t multi_acks;
-  float bw;
-  uint8_t flood_max;
-  uint8_t flood_max_unscoped;
-  uint8_t flood_max_advert;
-  uint8_t interference_threshold;
-  uint8_t agc_reset_interval; // secs / 4
+class NodePrefs : public ConfigSerializer { // persisted to file
+public:
+  float airtime_factor = 0;
+  char node_name[32] = {};
+  double node_lat = 0, node_lon = 0;
+  char password[16] = {};
+  float freq = 0;
+  int8_t tx_power_dbm = 0;
+  uint8_t disable_fwd = 0;
+  uint8_t advert_interval = 0;       // minutes / 2
+  uint8_t flood_advert_interval = 0; // hours
+  float rx_delay_base = 0;
+  float tx_delay_factor = 0;
+  char guest_password[16] = {};
+  float direct_tx_delay_factor = 0;
+  uint32_t guard = 0;
+  uint8_t sf = 0;
+  uint8_t cr = 0;
+  uint8_t allow_read_only = 0;
+  uint8_t multi_acks = 0;
+  float bw = 0;
+  uint8_t flood_max = 0;
+  uint8_t flood_max_unscoped = 0;
+  uint8_t flood_max_advert = 0;
+  uint8_t interference_threshold = 0;
+  uint8_t agc_reset_interval = 0; // secs / 4
   // Bridge settings
-  uint8_t bridge_enabled; // boolean
-  uint16_t bridge_delay;  // milliseconds (default 500 ms)
-  uint8_t bridge_pkt_src; // 0 = logTx, 1 = logRx (default logRx)
-  uint32_t bridge_baud;   // 9600, 19200, 38400, 57600, 115200 (default 115200)
-  uint8_t bridge_channel; // 1-14 (ESP-NOW only)
-  char bridge_secret[16]; // for XOR encryption of bridge packets (ESP-NOW only)
+  uint8_t bridge_enabled = 0; // boolean
+  uint16_t bridge_delay = 0;  // milliseconds (default 500 ms)
+  uint8_t bridge_pkt_src = 0; // 0 = logTx, 1 = logRx (default logRx)
+  uint32_t bridge_baud = 0;   // 9600, 19200, 38400, 57600, 115200 (default 115200)
+  uint8_t bridge_channel = 0; // 1-14 (ESP-NOW only)
+  char bridge_secret[16] = {}; // for XOR encryption of bridge packets (ESP-NOW only)
   // Power setting
-  uint8_t powersaving_enabled; // boolean
-  uint8_t reboot_interval; // hours, 0-255 (default 0=disable)
+  uint8_t powersaving_enabled = 0; // boolean
+  uint8_t reboot_interval = 0; // hours, 0-255 (default 0=disable)
   // Gps settings
-  uint8_t gps_enabled;
-  uint32_t gps_interval; // in seconds
-  uint8_t advert_loc_policy;
-  uint32_t discovery_mod_timestamp;
-  float adc_multiplier;
-  char owner_info[120];
+  uint8_t gps_enabled = 0;
+  uint32_t gps_interval = 0; // in seconds
+  uint8_t advert_loc_policy = 0;
+  uint32_t discovery_mod_timestamp = 0;
+  float adc_multiplier = 0;
+  char owner_info[120] = {};
   // NOTE: member order below matches mcarper/keymindCascade (upstream/dev order).
   // It is in-memory only - /com_prefs is read/written field-by-field in loadPrefsInt/
   // savePrefs, whose canonical file order (identical to the flex fleet's through
   // offset 294, keymind retry tail at 295+) is what devices actually persist.
-  uint8_t rx_boosted_gain; // power settings
-  uint8_t radio_fem_rxgain; // LoRa FEM RX gain setting
-  uint8_t path_hash_mode;   // which path mode to use when sending
-  uint8_t loop_detect;
-  uint8_t cad_enabled;      // hardware Channel Activity Detection before TX (boolean)
+  uint8_t rx_boosted_gain = 0; // power settings
+  uint8_t radio_fem_rxgain = 0; // LoRa FEM RX gain setting
+  uint8_t path_hash_mode = 0;   // which path mode to use when sending
+  uint8_t loop_detect = 0;
+  uint8_t cad_enabled = 0;      // hardware Channel Activity Detection before TX (boolean)
   // LR2021 side-detector SFs are appended at /com_prefs offset 856. Their
   // in-memory placement here does not shift the established binary layout.
   uint8_t extra_sf[4] = {};
-  uint8_t radio_fem_txgain; // LoRa FEM TX gain; persisted at /com_prefs offset 860
-  uint8_t retry_preset;
-  uint8_t direct_retry_attempts;
-  uint16_t direct_retry_base_ms;
-  uint16_t direct_retry_step_ms;
-  uint16_t direct_retry_snr_margin_x4;
-  int8_t direct_retry_cr4_snr_x4;
-  int8_t direct_retry_cr5_snr_x4;
-  int8_t direct_retry_cr7_snr_x4;
-  int8_t direct_retry_cr8_snr_x4;
-  uint8_t direct_retry_enabled;
-  uint8_t direct_retry_cr_enabled;
-  uint8_t direct_retry_prefs_magic[2];
-  uint8_t flood_retry_attempts;
-  uint8_t flood_retry_max_path;
-  uint8_t flood_retry_prefixes[FLOOD_RETRY_PREFIX_SLOTS][FLOOD_RETRY_PREFIX_LEN];
-  uint8_t flood_retry_bridge_enabled;
-  uint8_t flood_retry_bridge_buckets[FLOOD_RETRY_BRIDGE_BUCKETS][FLOOD_RETRY_BUCKET_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
-  uint8_t flood_retry_ignore_prefixes[FLOOD_RETRY_IGNORE_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
-  uint8_t flood_retry_advert_enabled;
-  uint8_t battery_alert_enabled;
-  uint8_t battery_alert_low_percent;
-  uint8_t battery_alert_critical_percent;
-  uint8_t direct_retry_recent_enabled;
-  uint8_t flood_channel_data_enabled;
+  uint8_t radio_fem_txgain = 0; // LoRa FEM TX gain; persisted at /com_prefs offset 860
+  uint8_t retry_preset = 0;
+  uint8_t direct_retry_attempts = 0;
+  uint16_t direct_retry_base_ms = 0;
+  uint16_t direct_retry_step_ms = 0;
+  uint16_t direct_retry_snr_margin_x4 = 0;
+  int8_t direct_retry_cr4_snr_x4 = 0;
+  int8_t direct_retry_cr5_snr_x4 = 0;
+  int8_t direct_retry_cr7_snr_x4 = 0;
+  int8_t direct_retry_cr8_snr_x4 = 0;
+  uint8_t direct_retry_enabled = 0;
+  uint8_t direct_retry_cr_enabled = 0;
+  uint8_t direct_retry_prefs_magic[2] = {};
+  uint8_t flood_retry_attempts = 0;
+  uint8_t flood_retry_max_path = 0;
+  uint8_t flood_retry_prefixes[FLOOD_RETRY_PREFIX_SLOTS][FLOOD_RETRY_PREFIX_LEN] = {};
+  uint8_t flood_retry_bridge_enabled = 0;
+  uint8_t flood_retry_bridge_buckets[FLOOD_RETRY_BRIDGE_BUCKETS][FLOOD_RETRY_BUCKET_PREFIXES][FLOOD_RETRY_PREFIX_LEN] = {};
+  uint8_t flood_retry_ignore_prefixes[FLOOD_RETRY_IGNORE_PREFIXES][FLOOD_RETRY_PREFIX_LEN] = {};
+  uint8_t flood_retry_advert_enabled = 0;
+  uint8_t battery_alert_enabled = 0;
+  uint8_t battery_alert_low_percent = 0;
+  uint8_t battery_alert_critical_percent = 0;
+  uint8_t direct_retry_recent_enabled = 0;
+  uint8_t flood_channel_data_enabled = 0;
   // Retains the removed flood.channel.block byte at its established file
   // offset so every following preference remains upgrade-compatible.
-  uint8_t legacy_flood_channel_block_max_hops;
-  uint8_t flood_channel_data_max_hops;
-  uint8_t telemetry_access;
+  uint8_t legacy_flood_channel_block_max_hops = 0;
+  uint8_t flood_channel_data_max_hops = 0;
+  uint8_t telemetry_access = 0;
 
   // NOTE: observer settings (MQTT/WiFi/timezone/SNMP/alert) were moved out of
   // NodePrefs into MQTTPrefs (persisted to /mqtt_prefs) so this struct stays
@@ -198,24 +200,155 @@ struct NodePrefs { // persisted to file
 
 #if defined(ENABLE_OTA)
   // OTA config (persisted; synced to OtaContext on load, written on change). 0 = conservative defaults.
-  uint8_t ota_autofetch;        // OtaManager AUTOFETCH_* (0=off, 1=any-compatible, 2=signed-only)
-  uint8_t ota_autoinstall;      // OtaContext AUTOINSTALL_* (0=off, 1=trusted-only)
-  uint8_t ota_signer_count;     // # of allowlisted signer pubkeys below
-  uint8_t ota_signers[4][32];   // trusted Ed25519 signer pubkeys (== MAX_OTA_SIGNERS)
-  uint16_t ota_checkpoint_blocks; // resume checkpoint cadence (blocks); 0=never. Default 4 (runtime-tunable)
-  uint16_t ota_advert_interval;   // OTA beacon re-advertise cadence (mins); 0=off. Default 1440 (24h, tunable)
-  uint8_t ota_max_hops;           // OTA flood reach in hops; 0=direct only. Default 3 (runtime-tunable)
+  uint8_t ota_autofetch = 0;        // OtaManager AUTOFETCH_* (0=off, 1=any-compatible, 2=signed-only)
+  uint8_t ota_autoinstall = 0;      // OtaContext AUTOINSTALL_* (0=off, 1=trusted-only)
+  uint8_t ota_signer_count = 0;     // # of allowlisted signer pubkeys below
+  uint8_t ota_signers[4][32] = {};  // trusted Ed25519 signer pubkeys (== MAX_OTA_SIGNERS)
+  uint16_t ota_checkpoint_blocks = 0; // resume checkpoint cadence (blocks); 0=never. Default 4 (runtime-tunable)
+  uint16_t ota_advert_interval = 0;   // OTA beacon re-advertise cadence (mins); 0=off. Default 1440 (24h, tunable)
+  uint8_t ota_max_hops = 0;           // OTA flood reach in hops; 0=direct only. Default 3 (runtime-tunable)
 #endif
 
-  uint8_t rx_powersaving_enabled; // boolean
-  uint32_t rx_ps_rx_us;
-  uint32_t rx_ps_sleep_us;
-  uint8_t rx_ps_level;      // 0 = manual/explicit us timings; 1..10 = level-derived (auto-retunes on SF/BW change)
-  uint8_t rx_ps_preamble;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
-  char battery_alert_region[31]; // named scope for low-battery floods; empty = no alert scope
-  uint8_t flood_retry_group_max_path; // PAYLOAD_TYPE_GRP_DATA retry path gate; 0xFF = use only the general gate
-  uint8_t rx_watchdog_enabled; // repeater RX-inactivity reboot watchdog (boolean)
-  uint8_t system_watchdog_enabled; // nRF52 main-loop hardware watchdog (boolean; default on)
+  uint8_t rx_powersaving_enabled = 0; // boolean
+  uint32_t rx_ps_rx_us = 0;
+  uint32_t rx_ps_sleep_us = 0;
+  uint8_t rx_ps_level = 0;      // 0 = manual/explicit us timings; 1..10 = level-derived (auto-retunes on SF/BW change)
+  uint8_t rx_ps_preamble = 0;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
+  char battery_alert_region[31] = {}; // named scope for low-battery floods; empty = no alert scope
+  uint8_t flood_retry_group_max_path = 0; // PAYLOAD_TYPE_GRP_DATA retry path gate; 0xFF = use only the general gate
+  uint8_t rx_watchdog_enabled = 0; // repeater RX-inactivity reboot watchdog (boolean)
+  uint8_t system_watchdog_enabled = 0; // nRF52 main-loop hardware watchdog (boolean; default on)
+
+private:
+  class RadioPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("freq", _parent->freq);
+      def("bw", _parent->bw);
+      def("sf", _parent->sf);
+      def("cr", _parent->cr);
+      def("cad", _parent->cad_enabled);
+      def("int_thr", _parent->interference_threshold);
+      def("rxgain", _parent->rx_boosted_gain);
+      def("fem_rxgain", _parent->radio_fem_rxgain);
+      def("fem_txgain", _parent->radio_fem_txgain);
+      def("tx", _parent->tx_power_dbm);
+      def("af", _parent->airtime_factor);
+      def("rxdelay", _parent->rx_delay_base);
+      def("f_txdelay", _parent->tx_delay_factor);
+      def("d_txdelay", _parent->direct_tx_delay_factor);
+      def("agc_int", _parent->agc_reset_interval);
+      def("hash_mode", _parent->path_hash_mode);
+      def("multi_ack", _parent->multi_acks);
+    }
+
+  public:
+    explicit RadioPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  RadioPrefs radio;
+
+  class BridgePrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("en", _parent->bridge_enabled);
+      def("delay", _parent->bridge_delay);
+      def("src", _parent->bridge_pkt_src);
+      def("baud", _parent->bridge_baud);
+      def("ch", _parent->bridge_channel);
+      def("secret", _parent->bridge_secret, sizeof(_parent->bridge_secret));
+    }
+
+  public:
+    explicit BridgePrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  BridgePrefs bridge;
+
+  class GPSPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("en", _parent->gps_enabled);
+      def("int", _parent->gps_interval);
+      def("adv_loc", _parent->advert_loc_policy);
+    }
+
+  public:
+    explicit GPSPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  GPSPrefs gps;
+
+  class PowerPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("adc_mult", _parent->adc_multiplier);
+      def("pwr_sav_en", _parent->powersaving_enabled);
+    }
+
+  public:
+    explicit PowerPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  PowerPrefs power;
+
+  class RepeatPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("disable", _parent->disable_fwd);
+      def("f_max", _parent->flood_max);
+      def("f_max_uns", _parent->flood_max_unscoped);
+      def("f_max_adv", _parent->flood_max_advert);
+      def("loop", _parent->loop_detect);
+    }
+
+  public:
+    explicit RepeatPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  RepeatPrefs repeat;
+
+  class RoomPrefs : public ConfigSerializer {
+    NodePrefs* _parent;
+
+  protected:
+    void structure() override {
+      def("rd_only", _parent->allow_read_only);
+    }
+
+  public:
+    explicit RoomPrefs(NodePrefs* parent) : _parent(parent) { }
+  };
+  RoomPrefs room;
+
+protected:
+  void structure() override {
+    def("name", node_name, sizeof(node_name));
+    def("pass", password, sizeof(password));
+    def("guest", guest_password, sizeof(guest_password));
+    def("owner", owner_info, sizeof(owner_info));
+    def("adv_int", advert_interval);
+    def("f_adv_int", flood_advert_interval);
+    def("lat", node_lat);
+    def("lon", node_lon);
+    def("disc_mod", discovery_mod_timestamp);
+    def("radio", radio);
+    def("bridge", bridge);
+    def("gps", gps);
+    def("repeat", repeat);
+    def("room", room);
+    def("power", power);
+  }
+
+public:
+  NodePrefs()
+      : ConfigSerializer(), radio(this), bridge(this), gps(this), power(this),
+        repeat(this), room(this) { }
 };
 
 #ifdef WITH_MQTT_BRIDGE
@@ -518,7 +651,7 @@ class CommonCLI {
   // run on defaults and saveMQTTPrefs() must not overwrite the source file.
   bool _mqtt_prefs_hold = false;
 #endif
-  bool _com_prefs_needs_upgrade = false;  // old-format /com_prefs detected; rewrite once after load
+  bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs(

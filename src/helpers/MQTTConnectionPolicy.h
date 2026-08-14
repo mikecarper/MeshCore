@@ -18,6 +18,10 @@ static const uint32_t kDefaultJwtLifetimeSecs = 86400UL;
 static const uint32_t kMaxJwtStaggerSecs = 300UL;
 static const uint32_t kMinimumValidEpoch = 1000000000UL;
 static const uint32_t kJwtClockThreshold = 1735689600UL; // 2025-01-01 UTC
+// A wall clock at or past this instant was set from a real source (NTP or an
+// admin); anything earlier is the firmware's unset-clock default (1715770351,
+// 15 May 2024), so a delta spanning the sync is meaningless.
+static const uint32_t kSyncedClockEpoch = kJwtClockThreshold;
 
 // Unsigned subtraction is intentionally used: it is the standard millis()
 // idiom and remains correct across a single 32-bit counter rollover.

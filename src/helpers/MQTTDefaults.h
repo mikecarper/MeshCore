@@ -5,6 +5,7 @@
 #include <string.h>
 #include <MeshCore.h>
 #include "MQTTPrefs.h"
+#include "MQTTPacketFilter.h"
 #include "MQTTPresets.h"
 
 // Compile-time defaults for fresh /mqtt_prefs (override via platformio build_flags).
@@ -82,6 +83,9 @@ static inline void applyMQTTDefaults(MQTTPrefs* prefs) {
                         MQTT_DEFAULT_SLOT5_PRESET);
   mqttDefaultSlotPreset(prefs->mqtt_slot_preset[5], sizeof(prefs->mqtt_slot_preset[5]),
                         MQTT_DEFAULT_SLOT6_PRESET);
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    prefs->mqtt_slot_packet_filter[i] = MQTTPacketFilter::kAllPacketTypes;
+  }
 
   if (MQTT_DEFAULT_IATA[0] != '\0') {
     strncpy(prefs->mqtt_iata, MQTT_DEFAULT_IATA, sizeof(prefs->mqtt_iata) - 1);

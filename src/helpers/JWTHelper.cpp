@@ -1,6 +1,9 @@
-#include "JWTHelper.h"
-
+// MQTT-only translation unit. 22 variants re-glob helpers/*.cpp past the
+// arduino_base exclusion, so the contents are guarded here rather than in
+// the build filter -- same idiom as helpers/esp32/WebConfigServer.cpp.
 #ifdef WITH_MQTT_BRIDGE
+
+#include "JWTHelper.h"
 
 #include <ArduinoJson.h>
 #include <SHA256.h>
@@ -202,4 +205,4 @@ size_t JWTHelper::createPayload(
   return base64UrlEncode((uint8_t*)jsonBuffer, len, output, outputSize);
 }
 
-#endif
+#endif  // WITH_MQTT_BRIDGE

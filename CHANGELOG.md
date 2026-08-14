@@ -1,7 +1,7 @@
 # MeshCore Observer - Changelog
 
 Changes to the MQTT observer / bridge work that powers the firmware offered on
-[flasher.meshcore.io](https://flasher.meshcore.io). Newest changes are at the top.
+[observer.gessaman.com](https://observer.gessaman.com/). Newest changes are at the top.
 
 **Legend:** **New** = new capability * **Fix** = bug fix * **Improvement** = enhancement to
 existing behavior * **Internal** = refactor / under-the-hood * **Docs** = documentation *

@@ -75,6 +75,11 @@ public:
     uint32_t heard_secs_ago;
     const char* scopes;
     const char* status;
+    // True renders heard_secs_ago as JSON null, for a neighbour whose stored
+    // stamp cannot yield an age. No default initializer: the struct stays an
+    // aggregate for the device toolchain, and a zeroed tail means "age known",
+    // so size-measurement callers keep reserving the widest numeric value.
+    bool heard_unknown;
   };
 
   // Build neighbors-table JSON for the meshcore/{iata}/{device}/neighbors topic.
@@ -86,9 +91,26 @@ public:
     const char* origin_id,
     const char* timestamp,
     const char* self_scopes,
+    const char* self_default_scope,
     const NeighborsMessageEntry* neighbors,
     int neighbor_count,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    int total_neighbors = -1,
+    int queried_neighbors = -1,
+    bool truncated = false
   );
+
+  // Exact serialized-size components used by paced neighbor discovery. The
+  // base reserves the largest progress metadata values for this snapshot;
+  // callers add each entry size plus one byte for commas after the first.
+  static size_t measureNeighborsMessageBase(
+    const char* origin,
+    const char* origin_id,
+    const char* timestamp,
+    const char* self_scopes,
+    const char* self_default_scope,
+    int total_neighbors
+  );
+  static size_t measureNeighborsMessageEntry(const NeighborsMessageEntry& neighbor);
 };

@@ -22,6 +22,7 @@ TEST(WebConfigKeys, AllowsPerSlotKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt1.preset"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt1.server"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt1.token"));
+  EXPECT_TRUE(wcIsAllowedSetKey("mqtt2.filter"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt6.audience"));  // MAX_MQTT_SLOTS == 6
 }
 
@@ -102,6 +103,7 @@ TEST(WebConfigKeys, NonSecretKeysNotFlagged) {
   EXPECT_FALSE(wcIsSecretKey("wifi.ssid"));
   EXPECT_FALSE(wcIsSecretKey("mqtt1.username"));  // username is not masked
   EXPECT_FALSE(wcIsSecretKey("mqtt1.server"));
+  EXPECT_FALSE(wcIsSecretKey("mqtt1.filter"));
   EXPECT_FALSE(wcIsSecretKey("mqtt.origin"));
   EXPECT_FALSE(wcIsSecretKey("name"));
   EXPECT_FALSE(wcIsSecretKey(""));
@@ -115,6 +117,45 @@ TEST(WebConfigKeys, EverySecretKeyIsAlsoAllowed) {
     EXPECT_TRUE(wcIsSecretKey(k)) << k;
     EXPECT_TRUE(wcIsAllowedSetKey(k)) << k;
   }
+}
+
+// ---- CLI secret reads ----------------------------------------------------
+// The web CLI runs commands with sender_timestamp 0, which is how CommonCLI
+// recognises the serial console and answers secret getters in plaintext. These
+// are the reads that must be masked back down for an HTTP caller.
+
+TEST(WebConfigKeys, MasksEverySecretReadTheCliCanReach) {
+  const char* masked[] = {
+    "get prv.key",           // this node's identity -- the worst one to leak
+    "get wifi.pwd",          // grants the operator's LAN, not just the node
+    "get guest.password",
+    "get alert.psk",
+    "get bridge.secret",
+    "get mqtt1.password", "get mqtt1.token",
+    "get mqtt6.password", "get mqtt6.token",
+    "get  wifi.pwd",         // extra space after the verb
+  };
+  for (const char* c : masked) EXPECT_TRUE(wcIsSecretReadCommand(c)) << c;
+}
+
+TEST(WebConfigKeys, DoesNotMaskReadsThatCarryNoSecret) {
+  const char* plain[] = {
+    "get wifi.ssid", "get mqtt1.username", "get mqtt1.server", "get tx",
+    "get public.key",        // public half, safe to read
+    "get mqtt.owner",        // an owner's public key, not a credential
+  };
+  for (const char* c : plain) EXPECT_FALSE(wcIsSecretReadCommand(c)) << c;
+}
+
+TEST(WebConfigKeys, OnlyMasksReads) {
+  // Writing a secret has always been the portal's job and reveals nothing;
+  // only the read is restricted. Nor may a prefix be mistaken for a `get`.
+  EXPECT_FALSE(wcIsSecretReadCommand("set wifi.pwd hunter2"));
+  EXPECT_FALSE(wcIsSecretReadCommand("set prv.key aabb"));
+  EXPECT_FALSE(wcIsSecretReadCommand("password hunter2"));
+  EXPECT_FALSE(wcIsSecretReadCommand("getwifi.pwd"));
+  EXPECT_FALSE(wcIsSecretReadCommand("get"));
+  EXPECT_FALSE(wcIsSecretReadCommand(""));
 }
 
 // ---- request correlation -------------------------------------------------

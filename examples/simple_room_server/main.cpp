@@ -16,6 +16,7 @@
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
   static UITask ui_task(display);
+  static bool display_ready = false;
 #endif
 
 StdRNG fast_rng;
@@ -45,7 +46,8 @@ void setup() {
 #endif
 
 #ifdef DISPLAY_CLASS
-  if (display.begin()) {
+  display_ready = display.begin();
+  if (display_ready) {
     display.startFrame();
     display.setCursor(0, 0);
     display.print("Please wait...");
@@ -113,7 +115,9 @@ void setup() {
   the_mesh.begin(fs);
 
 #ifdef DISPLAY_CLASS
-  ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+  if (display_ready) {
+    ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+  }
 #endif
 
 #ifdef ETHERNET_ENABLED
@@ -179,7 +183,7 @@ void loop() {
   the_mesh.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
-  ui_task.loop();
+  if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
 #ifdef HAS_EXTERNAL_WATCHDOG

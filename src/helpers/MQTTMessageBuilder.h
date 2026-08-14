@@ -166,11 +166,24 @@ public:
     const char* origin_id,
     const char* timestamp,
     const char* self_scopes,
+    const char* self_default_scope,
     const NeighborsMessageEntry* neighbors,
     int neighbor_count,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    int total_neighbors = -1,
+    int queried_neighbors = -1,
+    bool truncated = false
   );
+  static size_t measureNeighborsMessageBase(
+    const char* origin,
+    const char* origin_id,
+    const char* timestamp,
+    const char* self_scopes,
+    const char* self_default_scope,
+    int total_neighbors
+  );
+  static size_t measureNeighborsMessageEntry(const NeighborsMessageEntry& neighbor);
 
   /**
    * Convert packet to JSON message

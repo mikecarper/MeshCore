@@ -31,6 +31,7 @@
 #include "bridges/MQTTBridge.h"
 #include "MQTTConnectionPolicy.h"  // classifySlotActivation() -- "will this slot connect here?"
 #include "MQTTDefaults.h"
+#include "MQTTPacketFilter.h"
 #endif
 
 // Local copy of the busted-libc-safe atoi (the original in CommonCLI.cpp is static).
@@ -294,7 +295,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
 #elif defined(WITH_MQTT_BRIDGE)
   } else if (memcmp(config, "mqtt.neighbors.interval ", 24) == 0 ||
              memcmp(config, "mqtt.neighbors ", 15) == 0) {
-    strcpy(reply, "Err - not supported (requires PSRAM)");
+    strcpy(reply, "Err - neighbors not enabled in this build");
 #endif
   } else if (memcmp(config, "mqtt.ntp ", 9) == 0) {
     const char* host = &config[9];
@@ -539,6 +540,32 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
       saveObserverPrefs();
       _callbacks->restartBridgeSlot(slot);
       sprintf(reply, "OK - slot %d JWT audience cleared (using username/password auth)", slot + 1);
+    } else if (strcmp(subcmd, "filter") == 0 ||
+               strncmp(subcmd, "filter ", 7) == 0) {
+      // Empty/bare input resets to the backwards-compatible all-types default.
+      const char* filter_value = subcmd[6] == '\0' ? "" : &subcmd[7];
+      uint16_t filter_mask = 0;
+      if (!MQTTPacketFilter::parse(filter_value, &filter_mask)) {
+        strcpy(reply, "Error: filter must be all, none, or a CSV of types 0-15 / names (advert,txt_msg,...)");
+      } else {
+        _mqtt_prefs.mqtt_slot_packet_filter[slot] = filter_mask;
+        savePrefs();
+        char filter_text[MQTTPacketFilter::kFilterTextSize];
+        MQTTPacketFilter::format(filter_mask, filter_text, sizeof(filter_text));
+        snprintf(reply, 160, "OK - slot %d packet types: %s", slot + 1, filter_text);
+        // A non-default filter extends /mqtt_prefs past what pre-filter
+        // firmware can read (see MQTTPrefsCodec::payloadLenFor), so say when
+        // that cost buys nothing: slots beyond the runtime array are never
+        // published to on this board, the same warning `preset` gives.
+        if (slot >= RUNTIME_MQTT_SLOTS &&
+            filter_mask != MQTTPacketFilter::kAllPacketTypes) {
+          size_t used = strlen(reply);
+          if (used < 158) {
+            snprintf(reply + used, 160 - used,
+                     " (slot inactive on this hardware; blocks firmware rollback)");
+          }
+        }
+      }
     } else {
       sprintf(reply, "unknown config: %s", config);
     }
@@ -825,7 +852,7 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
 #elif defined(WITH_MQTT_BRIDGE)
   } else if (memcmp(config, "mqtt.neighbors.interval", 23) == 0 ||
              memcmp(config, "mqtt.neighbors", 14) == 0) {
-    strcpy(reply, "Err - not supported (requires PSRAM)");
+    strcpy(reply, "Err - neighbors not enabled in this build");
 #endif
   } else if (memcmp(config, "mqtt.ntp.diag", 13) == 0 && (config[13] == '\0' || config[13] == ' ')) {
 #if defined(PORTABLE_MQTT_OBSERVER)
@@ -887,6 +914,14 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
         sprintf(reply, "> %s", _mqtt_prefs.mqtt_slot_audience[slot]);
       } else {
         strcpy(reply, "> (not set - custom slots use username/password auth)");
+      }
+    } else if (strcmp(subcmd, "filter") == 0) {
+      char filter_text[MQTTPacketFilter::kFilterTextSize];
+      if (MQTTPacketFilter::format(_mqtt_prefs.mqtt_slot_packet_filter[slot],
+                                   filter_text, sizeof(filter_text))) {
+        snprintf(reply, 160, "> %s", filter_text);
+      } else {
+        strcpy(reply, "Error: invalid stored packet filter");
       }
     } else if (memcmp(subcmd, "diag", 4) == 0) {
       MQTTBridge::formatSlotDiagReply(reply, 160, slot);

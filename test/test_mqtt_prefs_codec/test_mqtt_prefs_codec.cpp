@@ -5,6 +5,7 @@
 
 #define WITH_MQTT_BRIDGE 1
 #include "helpers/MQTTPrefsCodec.h"
+#include "helpers/MQTTPacketFilter.h"
 
 namespace Codec = MQTTPrefsCodec;
 
@@ -20,6 +21,7 @@ MQTTPrefs defaults() {
   prefs.wifi_power_save = 1;
   for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
     strncpy(prefs.mqtt_slot_preset[i], "none", sizeof(prefs.mqtt_slot_preset[i]) - 1);
+    prefs.mqtt_slot_packet_filter[i] = MQTTPacketFilter::kAllPacketTypes;
   }
   strncpy(prefs.snmp_community, "public", sizeof(prefs.snmp_community) - 1);
   prefs.radio_watchdog_minutes = 5;
@@ -218,6 +220,10 @@ TEST(MQTTPrefsCodec, MigratesAllLegacySixSlotPrefixesWithoutClobberingDefaults) 
     } else {
       EXPECT_STREQ("time.example", prefs.mqtt_ntp_server);
     }
+    for (int slot = 0; slot < MQTT_PREFS_SLOT_COUNT; ++slot) {
+      EXPECT_EQ(MQTTPacketFilter::kAllPacketTypes,
+                prefs.mqtt_slot_packet_filter[slot]) << size << ":" << slot;
+    }
   }
 }
 
@@ -228,6 +234,9 @@ TEST(MQTTPrefsCodec, CurrentVersionedPayloadRoundTripsExactly) {
   strncpy(source.alert_region, "PNW", sizeof(source.alert_region) - 1);
   source.mqtt_neighbors_enabled = 1;
   source.mqtt_neighbors_interval = MQTT_NEIGHBORS_MAX_INTERVAL_MS;
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    source.mqtt_slot_packet_filter[i] = static_cast<uint16_t>(1u << i);
+  }
   std::vector<uint8_t> bytes(Codec::kEncodedSize);
   ASSERT_EQ(Codec::kEncodedSize, Codec::encode(source, bytes.data(), bytes.size()));
 
@@ -238,6 +247,114 @@ TEST(MQTTPrefsCodec, CurrentVersionedPayloadRoundTripsExactly) {
   MQTTPrefs loaded = defaults();
   memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
   EXPECT_EQ(0, memcmp(&source, &loaded, sizeof(source)));
+}
+
+// /mqtt_prefs also carries the WiFi credentials, so a payload older firmware
+// rejects strands a downgraded node with no network and no way to save. The
+// filter tail is only written once it actually holds something.
+TEST(MQTTPrefsCodec, DefaultFiltersKeepTheDowngradeReadablePayloadLength) {
+  MQTTPrefs source = defaults();
+  strncpy(source.wifi_ssid, "home-net", sizeof(source.wifi_ssid) - 1);
+  strncpy(source.mqtt_slot_preset[0], "analyzer-us", sizeof(source.mqtt_slot_preset[0]) - 1);
+
+  ASSERT_EQ(Codec::kV1PreFilterPayloadSize, Codec::payloadLenFor(source));
+  std::vector<uint8_t> bytes(Codec::kEncodedSize, 0xEE);
+  const size_t written = Codec::encode(source, bytes.data(), bytes.size());
+  ASSERT_EQ(sizeof(MQTTPrefsHeader) + Codec::kV1PreFilterPayloadSize, written);
+  EXPECT_LT(written, Codec::kEncodedSize);
+
+  MQTTPrefsHeader header;
+  memcpy(&header, bytes.data(), sizeof(header));
+  EXPECT_EQ(Codec::kV1PreFilterPayloadSize, header.payload_len);
+  // Nothing past the boundary was touched, so the file really is the short one.
+  for (size_t i = written; i < bytes.size(); ++i) {
+    EXPECT_EQ(0xEE, bytes[i]) << i;
+  }
+
+  bytes.resize(written);
+  const Codec::DecodePlan plan = classify(bytes);
+  ASSERT_EQ(Codec::Source::Current, plan.source);
+  ASSERT_EQ(Codec::kV1PreFilterPayloadSize, plan.payload_len);
+  ASSERT_FALSE(plan.preserve_file);
+
+  MQTTPrefs loaded = defaults();
+  memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+  EXPECT_EQ(0, memcmp(&source, &loaded, sizeof(source)));
+}
+
+TEST(MQTTPrefsCodec, AnyNonDefaultFilterOptsIntoTheLongerPayload) {
+  MQTTPrefs source = defaults();
+  strncpy(source.wifi_ssid, "home-net", sizeof(source.wifi_ssid) - 1);
+
+  // "none" is as much a real setting as a subset, and must survive a reload.
+  for (int slot = 0; slot < MQTT_PREFS_SLOT_COUNT; ++slot) {
+    for (uint16_t mask : {static_cast<uint16_t>(0),
+                          static_cast<uint16_t>(1u << 4),
+                          static_cast<uint16_t>(MQTTPacketFilter::kAllPacketTypes & ~1u)}) {
+      source.mqtt_slot_packet_filter[slot] = mask;
+      ASSERT_EQ(Codec::kV1BaselinePayloadSize, Codec::payloadLenFor(source)) << slot;
+
+      std::vector<uint8_t> bytes(Codec::kEncodedSize);
+      ASSERT_EQ(Codec::kEncodedSize, Codec::encode(source, bytes.data(), bytes.size()));
+      const Codec::DecodePlan plan = classify(bytes);
+      ASSERT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len);
+
+      MQTTPrefs loaded = defaults();
+      memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+      EXPECT_EQ(mask, loaded.mqtt_slot_packet_filter[slot]) << slot;
+      EXPECT_EQ(0, memcmp(&source, &loaded, sizeof(source)));
+    }
+    source.mqtt_slot_packet_filter[slot] = MQTTPacketFilter::kAllPacketTypes;
+  }
+  // Clearing the last non-default filter returns the node to the short payload.
+  EXPECT_EQ(Codec::kV1PreFilterPayloadSize, Codec::payloadLenFor(source));
+}
+
+TEST(MQTTPrefsCodec, EncodeRefusesAnOutputBufferShorterThanItsChosenPayload) {
+  MQTTPrefs shortest = defaults();
+  const size_t short_size = sizeof(MQTTPrefsHeader) + Codec::kV1PreFilterPayloadSize;
+  std::vector<uint8_t> bytes(Codec::kEncodedSize);
+
+  EXPECT_EQ(0u, Codec::encode(shortest, bytes.data(), short_size - 1));
+  EXPECT_EQ(short_size, Codec::encode(shortest, bytes.data(), short_size));
+  EXPECT_EQ(0u, Codec::encode(shortest, nullptr, bytes.size()));
+
+  // A buffer that fits the short payload is not enough for the long one.
+  MQTTPrefs longest = defaults();
+  longest.mqtt_slot_packet_filter[0] = 0;
+  EXPECT_EQ(0u, Codec::encode(longest, bytes.data(), short_size));
+  EXPECT_EQ(Codec::kEncodedSize, Codec::encode(longest, bytes.data(), bytes.size()));
+}
+
+TEST(MQTTPrefsCodec, PreFilterV1PayloadDefaultsEverySlotToAllTypes) {
+  MQTTPrefs source = defaults();
+  strncpy(source.mqtt_origin, "pre-filter-node", sizeof(source.mqtt_origin) - 1);
+  source.mqtt_neighbors_enabled = 1;
+  source.mqtt_neighbors_interval = MQTT_NEIGHBORS_MAX_INTERVAL_MS;
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    source.mqtt_slot_packet_filter[i] = 0;
+  }
+
+  std::vector<uint8_t> bytes(sizeof(MQTTPrefsHeader) + Codec::kV1PreFilterPayloadSize, 0);
+  writeHeader(&bytes, MQTT_PREFS_VERSION,
+              static_cast<uint16_t>(Codec::kV1PreFilterPayloadSize));
+  memcpy(bytes.data() + sizeof(MQTTPrefsHeader), &source, Codec::kV1PreFilterPayloadSize);
+
+  const Codec::DecodePlan plan = classify(bytes);
+  ASSERT_EQ(Codec::Source::Current, plan.source);
+  ASSERT_EQ(Codec::kV1PreFilterPayloadSize, plan.payload_len);
+  ASSERT_TRUE(plan.observer_fields_present);
+  ASSERT_FALSE(plan.preserve_file);
+
+  MQTTPrefs loaded = defaults();
+  memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+  EXPECT_STREQ("pre-filter-node", loaded.mqtt_origin);
+  EXPECT_EQ(1u, loaded.mqtt_neighbors_enabled);
+  EXPECT_EQ(MQTT_NEIGHBORS_MAX_INTERVAL_MS, loaded.mqtt_neighbors_interval);
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    EXPECT_EQ(MQTTPacketFilter::kAllPacketTypes,
+              loaded.mqtt_slot_packet_filter[i]) << i;
+  }
 }
 
 TEST(MQTTPrefsCodec, CompatibleShortV1PayloadPreservesDefaultsBeyondObserverBoundary) {
@@ -304,6 +421,10 @@ TEST(MQTTPrefsCodec, PreNeighborsV1PayloadLoadsObserverFieldsAndDefaultsNeighbor
   // Interval begins at 2860 (beyond the read) -> keeps the caller's default.
   EXPECT_EQ(0u, loaded.mqtt_neighbors_enabled);
   EXPECT_EQ(MQTT_NEIGHBORS_DEFAULT_INTERVAL_MS, loaded.mqtt_neighbors_interval);
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    EXPECT_EQ(MQTTPacketFilter::kAllPacketTypes,
+              loaded.mqtt_slot_packet_filter[i]) << i;
+  }
 }
 
 TEST(MQTTPrefsCodec, CorruptOrShortVersionedInputsArePreserved) {
@@ -378,18 +499,83 @@ TEST(MQTTPrefsCodec, UnsupportedHeaderlessSizesArePreserved) {
   }
 }
 
-TEST(MQTTPrefsCodec, NewerAndSameVersionExtendedPayloadsAreHeld) {
+// A different version tag means the layout may have changed shape, so it is
+// still refused outright. That refusal is what makes reading longer same-version
+// payloads safe, so the two belong in one test.
+TEST(MQTTPrefsCodec, ADifferentVersionTagIsStillRefusedAndHeld) {
   std::vector<uint8_t> newer(sizeof(MQTTPrefsHeader), 0);
   writeHeader(&newer, MQTT_PREFS_VERSION + 1, 0);
-  Codec::DecodePlan plan = classify(newer);
+  const Codec::DecodePlan plan = classify(newer);
   EXPECT_EQ(Codec::Source::UnsupportedVersion, plan.source);
   EXPECT_TRUE(plan.preserve_file);
+}
 
-  std::vector<uint8_t> extended(sizeof(MQTTPrefsHeader) + Codec::kV1BaselinePayloadSize + 1, 0);
-  writeHeader(&extended, MQTT_PREFS_VERSION,
-              static_cast<uint16_t>(Codec::kV1BaselinePayloadSize + 1));
-  plan = classify(extended);
-  EXPECT_EQ(Codec::Source::UnsupportedVersion, plan.source);
+// The downgrade contract: a v1 payload longer than this build's baseline was
+// appended to by a later build, so the baseline prefix is present verbatim.
+// Read it and drop the tail -- never refuse the file, which would cost the
+// operator WiFi and every broker slot to save settings they don't understand.
+TEST(MQTTPrefsCodec, LongerSameVersionPayloadLoadsTheBaselineAndIgnoresTheTail) {
+  MQTTPrefs source = defaults();
+  strncpy(source.mqtt_origin, "future-node", sizeof(source.mqtt_origin) - 1);
+  strncpy(source.wifi_ssid, "field-ssid", sizeof(source.wifi_ssid) - 1);
+  strncpy(source.wifi_password, "field-secret", sizeof(source.wifi_password) - 1);
+  strncpy(source.mqtt_iata, "SEA", sizeof(source.mqtt_iata) - 1);
+  strncpy(source.mqtt_slot_preset[0], "meshrank", sizeof(source.mqtt_slot_preset[0]) - 1);
+  source.mqtt_neighbors_enabled = 1;
+  for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
+    source.mqtt_slot_packet_filter[i] = static_cast<uint16_t>(1u << i);
+  }
+
+  // Baseline image plus a 40-byte tail of fields this build has never heard of.
+  const size_t kTail = 40;
+  const size_t payload_len = Codec::kV1BaselinePayloadSize + kTail;
+  std::vector<uint8_t> bytes(sizeof(MQTTPrefsHeader) + payload_len, 0xA5);
+  writeHeader(&bytes, MQTT_PREFS_VERSION, static_cast<uint16_t>(payload_len));
+  memcpy(bytes.data() + sizeof(MQTTPrefsHeader), &source, sizeof(source));
+
+  const Codec::DecodePlan plan = classify(bytes);
+  ASSERT_EQ(Codec::Source::Current, plan.source);
+  EXPECT_FALSE(plan.preserve_file) << "refusing the file would strand the node";
+  EXPECT_TRUE(plan.observer_fields_present);
+  EXPECT_FALSE(plan.rewrite_legacy);
+  ASSERT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len);
+
+  // Reading plan.payload_len bytes recovers this build's whole struct exactly,
+  // and cannot run past it into the unknown tail.
+  MQTTPrefs loaded = defaults();
+  memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+  EXPECT_EQ(0, memcmp(&source, &loaded, sizeof(source)));
+  EXPECT_STREQ("future-node", loaded.mqtt_origin);
+  EXPECT_STREQ("field-ssid", loaded.wifi_ssid);
+  EXPECT_STREQ("field-secret", loaded.wifi_password);
+  EXPECT_STREQ("meshrank", loaded.mqtt_slot_preset[0]);
+  EXPECT_EQ(1u, loaded.mqtt_neighbors_enabled);
+  EXPECT_EQ(1u, loaded.mqtt_slot_packet_filter[0]);
+}
+
+// The rule has to hold for any appended size, including a single byte and a
+// tail far larger than the baseline.
+TEST(MQTTPrefsCodec, EveryLongerSameVersionLengthReadsTheBaseline) {
+  for (const size_t tail : {size_t(1), size_t(2), size_t(12), size_t(64),
+                            size_t(512), size_t(4096)}) {
+    const size_t payload_len = Codec::kV1BaselinePayloadSize + tail;
+    std::vector<uint8_t> bytes(sizeof(MQTTPrefsHeader) + payload_len, 0);
+    writeHeader(&bytes, MQTT_PREFS_VERSION, static_cast<uint16_t>(payload_len));
+    const Codec::DecodePlan plan = classify(bytes);
+    EXPECT_EQ(Codec::Source::Current, plan.source) << tail;
+    EXPECT_FALSE(plan.preserve_file) << tail;
+    EXPECT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len) << tail;
+  }
+}
+
+// A length that merely *declares* a longer payload without the bytes to back it
+// is still corrupt -- the header/file-size agreement check must run first.
+TEST(MQTTPrefsCodec, LongerDeclaredLengthWithoutTheBytesIsStillCorrupt) {
+  std::vector<uint8_t> bytes(sizeof(MQTTPrefsHeader) + Codec::kV1BaselinePayloadSize, 0);
+  writeHeader(&bytes, MQTT_PREFS_VERSION,
+              static_cast<uint16_t>(Codec::kV1BaselinePayloadSize + 16));
+  const Codec::DecodePlan plan = classify(bytes);
+  EXPECT_EQ(Codec::Source::Corrupt, plan.source);
   EXPECT_TRUE(plan.preserve_file);
 }
 

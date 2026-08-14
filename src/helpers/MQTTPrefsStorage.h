@@ -117,6 +117,11 @@ struct MQTTPrefs {
   // interchangeable (see the offsetof static_asserts below).
   uint8_t mqtt_neighbors_enabled;
   uint32_t mqtt_neighbors_interval;
+
+  // Per-slot payload-type allow masks. Bit N controls MeshCore packet type N
+  // for both packets and raw MQTT topics. Appended so older v1 payloads load
+  // with the default all-types masks intact.
+  uint16_t mqtt_slot_packet_filter[MQTT_PREFS_SLOT_COUNT];
 };
 
 // Neighbor discovery is scheduled with the wrap-safe millis() helpers, whose
@@ -129,14 +134,28 @@ static const uint32_t MQTT_NEIGHBORS_MIN_INTERVAL_MS = MQTT_NEIGHBORS_MIN_INTERV
 static const uint32_t MQTT_NEIGHBORS_MAX_INTERVAL_MS = MQTT_NEIGHBORS_MAX_INTERVAL_HOURS * 3600000UL;
 static const uint32_t MQTT_NEIGHBORS_DEFAULT_INTERVAL_MS = MQTT_NEIGHBORS_DEFAULT_INTERVAL_HOURS * 3600000UL;
 
-// Version-1 has three payload layouts this firmware can decode. Never infer a
-// compatible payload from an arbitrary shorter size: raw prefs have no checksum.
+// Version-1 has four payload layouts this firmware can decode. Never infer a
+// compatible payload from an arbitrary SHORTER size: raw prefs have no
+// checksum, so a short length has to match a boundary that was really shipped.
+//
+// A LONGER v1 payload is different and is always readable: within a version tag
+// the layout is append-only, so a later build's file still starts with this
+// binary's exact baseline. classify() reads that prefix and ignores the tail
+// rather than rejecting the file -- see the downgrade contract there. Any change
+// that is not a pure append MUST bump MQTT_PREFS_VERSION instead.
 //   - PRE_OBSERVER  (2736): stops before the observer tail (snmp_*/alert_*).
 //   - PRE_NEIGHBORS (2860): full observer tail, no neighbors fields yet.
-//   - FULL          (2864): current baseline, with the neighbors tail.
+//   - PRE_FILTER    (2864): neighbors tail, no per-slot packet filters.
+//   - FULL          (2876): current baseline, with six uint16_t filter masks.
+//
+// FULL is the maximum written, not the default: MQTTPrefsCodec::payloadLenFor()
+// keeps emitting PRE_FILTER while every slot holds the all-types default, so a
+// node that never touches a filter stays readable by pre-filter firmware. See
+// the rollback note there -- /mqtt_prefs also carries the WiFi credentials.
 static const size_t MQTT_PREFS_V1_PRE_OBSERVER_PAYLOAD_SIZE = 2736;
 static const size_t MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE = 2860;
-static const size_t MQTT_PREFS_V1_FULL_PAYLOAD_SIZE = 2864;
+static const size_t MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE = 2864;
+static const size_t MQTT_PREFS_V1_FULL_PAYLOAD_SIZE = 2876;
 
 // /mqtt_prefs starts with a self-describing 8-byte header. Headerless files
 // are deployed legacy layouts and continue to be distinguished by size.
@@ -266,6 +285,8 @@ static_assert(offsetof(MQTTPrefs, mqtt_neighbors_enabled) == 2857,
               "neighbors enable flag must sit at the flex-compatible offset");
 static_assert(offsetof(MQTTPrefs, mqtt_neighbors_interval) == MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE,
               "neighbors interval offset must equal the pre-neighbors payload size");
+static_assert(offsetof(MQTTPrefs, mqtt_slot_packet_filter) == MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE,
+              "packet filters must begin at the pre-filter payload boundary");
 static_assert(sizeof(OldMQTTPrefs) == 472, "frozen pre-slot /mqtt_prefs layout changed");
 static_assert(sizeof(PreWifiPowerOldMQTTPrefs) == 472, "frozen pre-WiFi-power /mqtt_prefs layout changed");
 static_assert(offsetof(OldMQTTPrefs, wifi_power_save) == 144,

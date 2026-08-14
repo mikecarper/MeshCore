@@ -63,9 +63,17 @@ LAN page is intentionally unauthenticated; use a trusted WiFi network.
 
 ### CLI setup and fallback
 
+For CLI setup, you need console access over serial (115200 baud) or a repeater
+login through the companion app.
+
 **1. Flash the observer firmware to your device**
 
-Use one of the observer build targets (e.g., `heltec_v4_repeater_observer_mqtt`). After flashing, connect to the device console via serial (115200 baud) or repeater login.
+The easiest route is the [MeshCore Observer Flasher](https://observer.gessaman.com/) -- pick
+**MQTT Observer Firmware**, select your device, and flash from the browser (Chrome or Edge).
+To build it yourself instead, use one of the observer build targets (e.g.
+`heltec_v4_repeater_observer_mqtt`) -- see [Build Configuration](#build-configuration).
+
+After flashing, connect to the device console via serial (115200 baud) or repeater login.
 
 **2. Configure radio settings**
 
@@ -96,21 +104,39 @@ set wifi.ssid YourWiFiNetwork
 set wifi.pwd YourWiFiPassword
 ```
 
-**5. (Optional) Disable packet repeating**
+**5. (Optional) Choose which brokers to publish to**
+
+Slots 1 and 2 default to Let's Mesh Analyzer US and EU. To add or change a broker, pick a
+name from [Broker Presets](#broker-presets):
+```bash
+set mqtt3.preset meshmapper
+```
+
+**6. (Optional) Configure timezone**
+
+```bash
+set timezone America/New_York
+```
+
+Or use a plain offset as a fallback: `set timezone.offset -5`. Published timestamps are
+always UTC either way -- see [Timezone Commands](#timezone-commands).
+
+**7. (Optional) Disable packet repeating**
 
 If this observer is receive-only (e.g., using a PCB antenna in a location where repeating would be harmful), disable forwarding:
 ```bash
 set repeat off
 ```
 
-**6. Reboot to connect**
+**8. Reboot to connect**
 ```bash
 reboot
 ```
 
-**7. Verify configuration**
+**9. Verify configuration**
 ```bash
 get wifi.ssid
+get wifi.status
 get bridge.enabled
 get mqtt.rx
 get mqtt.tx
@@ -133,63 +159,89 @@ get mqtt.status
 ## Overview
 
 The MQTT bridge implementation provides:
-- Up to 6 MQTT connection slots with built-in presets
-- Built-in presets for many community brokers (see the [preset table](#slot-based-preset-system) for the full list)
-- Custom broker support with username/password authentication
-- JWT (Ed25519 device signing) authentication for most preset brokers; TennMesh uses a fixed username/password (plain MQTT)
-- WSS (WebSocket Secure), direct MQTT/TLS, and plain MQTT (TennMesh) transport
+- Up to 6 MQTT connection slots, each holding a built-in preset for a community broker or a custom broker of your own -- see [Broker Presets](#broker-presets)
+- Per-preset authentication over WSS, MQTT/TLS, or plain MQTT: Ed25519-signed JWT, fixed or per-slot username/password, or none -- see [Authentication](#authentication)
 - Automatic reconnection with exponential backoff
-- JSON message formatting for status, packets, and raw data
+- JSON message formatting for status, packet, raw, and neighbors data
 - Packet queuing during connection issues
 - Automatic migration from old configuration format
 
-## Architecture
+## Broker Presets
 
-### Slot-Based Preset System
+Each of the 6 slots holds one preset. Point a slot at a community broker with:
 
-The MQTT bridge uses a slot-based architecture with up to 6 concurrent connections. Each slot can be configured with a built-in preset or custom broker settings.
+```bash
+set mqtt3.preset meshmapper    # slot 3 -> MeshMapper
+```
 
-**Built-in Presets:**
+Most presets need nothing else -- the broker address, transport, and credentials all ship
+in the firmware. The **Extra setup** column below lists the exceptions. Presets using the
+`meshcore/{iata}/...` topic layout (every built-in except `meshrank`) also need `set mqtt.iata`.
 
-| Preset | Server | Auth | Transport |
-|--------|--------|------|-----------|
-| `analyzer-us` | mqtt-us-v1.letsmesh.net:443 | JWT (Ed25519) | WSS |
-| `analyzer-eu` | mqtt-eu-v1.letsmesh.net:443 | JWT (Ed25519) | WSS |
-| `nz-analyzer` | meshcore-mqtt-1.baird.io:443 | JWT (Ed25519) | WSS |
-| `meshmapper` | mqtt.meshmapper.net:443 | JWT (Ed25519) | WSS |
-| `meshrank` | meshrank.net:8883 | None (token in topic) | MQTT over TLS |
-| `waev` | mqtt.waev.app:443 | JWT (Ed25519) | WSS |
-| `meshomatic` | us-east.meshomatic.net:443 | JWT (Ed25519) | WSS |
-| `cascadiamesh` | mqtt-v1.cascadiamesh.org:443 | JWT (Ed25519) | WSS |
-| `tennmesh` | mqtt.tennmesh.com:1883 | Username/password (fixed in firmware) | Plain MQTT |
-| `nashmesh` | mqtt://mqtt.nashme.sh:1883 | Username/password (fixed in firmware) | Plain MQTT |
-| `ctmesh` | mqtt.ctmesh.org:1883 | Username/password (fixed in firmware) | Plain MQTT |
-| `chimesh` | wss://mqtt.chimesh.org:443 | JWT (Ed25519) | WSS |
-| `meshat.se` | meshcore-mqtt.meshat.se:443 | JWT (Ed25519) | WSS |
-| `eastidahomesh` | wss://broker.eastidahomesh.net:443 | None | WSS |
-| `coloradomesh` | wss://mqtt.meshcore.coloradomesh.org:1883 | JWT (Ed25519) | WSS |
-| `dutchmeshcore-1` | collector1.dutchmeshcore.nl:443 | JWT (Ed25519) | WSS |
-| `dutchmeshcore-2` | collector2.dutchmeshcore.nl:443 | JWT (Ed25519) | WSS |
-| `meshcore-ca-1` | mqtt1.meshcore.ca:443 | JWT (Ed25519) | WSS |
-| `meshcore-ca-2` | mqtt2.meshcore.ca:443 | JWT (Ed25519) | WSS |
-| `bostonmesh` | mqttmc01.bostonme.sh:443 | JWT (Ed25519) | WSS |
-| `ipnt.uk` | mqtt.ipnt.uk:443 | JWT (Ed25519) | WSS |
-| `flmesh` | mcmqtt.jntconnections.com:443 | JWT (Ed25519) | WSS |
-| `inwmesh` | scope.inwmesh.org:8883 | Username/password (per slot via `mqttN.username` / `mqttN.password`) | MQTT over TLS |
-| `rflab` | mqtt.rflab.io:443 | JWT (Ed25519) | WSS |
-| `custom` | User-configured | Username/Password | MQTT or WSS |
-| `none` | (disabled) | - | - |
+Run `get mqtt.presets` on the device for the list this firmware actually ships; the table
+below documents the current build.
 
-**Default Configuration:**
-- Slot 1: `analyzer-us`
-- Slot 2: `analyzer-eu`
-- Slots 3-6: `none`
+| Preset | Broker | Auth | Extra setup |
+|--------|--------|------|-------------|
+| `analyzer-us` | `wss://mqtt-us-v1.letsmesh.net:443/mqtt` | JWT | -- (default slot 1) |
+| `analyzer-eu` | `wss://mqtt-eu-v1.letsmesh.net:443/mqtt` | JWT | -- (default slot 2) |
+| `nz-analyzer` | `wss://meshcore-mqtt-1.baird.io:443` | JWT | -- |
+| `meshmapper` | `wss://mqtt.meshmapper.net:443/mqtt` | JWT | -- |
+| `meshrank` | `mqtts://meshrank.net:8883` | None (token in topic) | `set mqttN.token <token>` |
+| `waev` | `wss://mqtt.waev.app:443/mqtt` | JWT | -- |
+| `meshomatic` | `wss://us-east.meshomatic.net:443/mqtt` | JWT | -- |
+| `cascadiamesh` | `wss://mqtt-v1.cascadiamesh.org:443/mqtt` | JWT | -- |
+| `tennmesh` | `mqtt://mqtt.tennmesh.com:1883` | User/pass (in firmware) | -- |
+| `nashmesh` | `mqtt://mqtt.nashme.sh:1883` | User/pass (in firmware) | -- |
+| `ctmesh` | `mqtt://mqtt.ctmesh.org:1883` | User/pass (in firmware) | -- |
+| `chimesh` | `wss://mqtt.chimesh.org:443` | JWT | -- |
+| `meshat.se` | `wss://meshcore-mqtt.meshat.se:443` | JWT | -- |
+| `eastidahomesh` | `mqtt://live.eastidahomesh.com:1883` | None | -- |
+| `coloradomesh` | `wss://mqtt.meshcore.coloradomesh.org:443` | JWT | -- |
+| `dutchmeshcore-1` | `wss://collector1.dutchmeshcore.nl:443/mqtt` | JWT | -- |
+| `dutchmeshcore-2` | `wss://collector2.dutchmeshcore.nl:443/mqtt` | JWT | -- |
+| `meshcore-ca-1` | `wss://mqtt1.meshcore.ca:443/mqtt` | JWT | -- |
+| `meshcore-ca-2` | `wss://mqtt2.meshcore.ca:443/mqtt` | JWT | -- |
+| `meshcore-fi` | `wss://mc-mqtt.meshcore.fi:443/` | JWT | -- |
+| `okimesh-1` | `wss://mqtt1.okimesh.org:9002/mqtt` | JWT | -- |
+| `okimesh-2` | `wss://mqtt2.okimesh.org:9002/mqtt` | JWT | -- |
+| `inwmesh` | `mqtts://scope.inwmesh.org:8883` | User/pass (per slot) | `set mqttN.username` + `set mqttN.password` |
+| `bostonmesh` | `wss://mqttmc01.bostonme.sh:443/mqtt` | JWT | -- |
+| `rflab` | `wss://mqtt.rflab.io:443` | JWT | -- |
+| `ipnt.uk` | `wss://mqtt.ipnt.uk:443` | JWT | -- |
+| `flmesh` | `wss://mcmqtt.jntconnections.com:443` | JWT | -- |
+| `corecomms` | `wss://mqtt.corecomms.net:443/mqtt` | JWT | -- |
+| `meshtexas` | `wss://mqtt.meshtexas.org:443/mqtt` | JWT | -- |
+| `mesh-chaun14` | `mqtt://mqtt.mesh.chaun14.fr:1884` | User/pass (username is the device public key) | `set mqttN.password` |
+| `wcmesh` | `wss://mqtt.wcmesh.com:443` | JWT | -- |
+| `atvirastinklas` | `wss://mqtt-mc.atvirastinklas.lt:443` | JWT | -- |
+| `gomesh` | `wss://mqtt.gomesh.dev:443` | JWT | -- |
+| `idahomesh` | `wss://mqtt.idahomesh.org:443/mqtt` | JWT | -- |
+| `custom` | your own broker | User/pass, or JWT when `mqttN.audience` is set | `set mqttN.server` (see [custom broker setup](#custom-brokers)) |
+| `none` | (slot disabled) | -- | -- |
 
-**Memory Limits:**
-- With PSRAM: All slots can be active simultaneously
-- Without PSRAM: Maximum 2 active TLS/WSS slots (each WSS/TLS connection requires ~40KB internal heap)
-- If more slots are configured than the device supports, excess slots show as `(inactive)` in `get mqtt.status`
-- Slot configurations are preserved in preferences - moving firmware to a PSRAM device activates all slots
+Transport is the URL scheme: `wss://` is WebSocket Secure, `mqtts://` is MQTT over TLS,
+and `mqtt://` is plain unencrypted MQTT. The two TLS schemes are what count against the
+non-PSRAM slot limit below.
+
+### Slots and Memory Limits
+
+Fresh installs default to slot 1 `analyzer-us`, slot 2 `analyzer-eu`, and slots 3-6 `none`.
+
+- **With PSRAM:** all 6 slots can be active simultaneously
+- **Without PSRAM:** maximum 2 active TLS/WSS slots (each WSS/TLS connection requires ~40KB internal heap)
+- Slots configured beyond what the device supports show as `(inactive)` in `get mqtt.status`
+- Slot configuration is preserved in preferences -- moving the firmware to a PSRAM device activates the rest
+
+**Neighbors publication without PSRAM.** PSRAM boards get `WITH_MQTT_NEIGHBORS`
+automatically. Non-PSRAM boards opt in per variant with
+`-D MQTT_NEIGHBORS_WITHOUT_PSRAM=1`, which is set on the ESP32-S3 observer envs
+(Heltec V3/WSL3, RAK3112, Heltec Tracker v1.1/v2). It costs ~7.4 KB of static DRAM
+(~9.6 KB on room servers) and up to ~13 KB transiently per publish, and caps the
+table at 20 entries -- so the feature is deliberately **not** enabled on the classic
+ESP32 T-LoRa V2.1-1.6 observer builds, which are already down to one active TLS
+slot. Publishing peaks while the table is built, so keep the slot guidance above
+in mind: the peak lands on the same internal heap the TLS stack draws from.
 
 ## Build Configuration
 
@@ -211,10 +263,24 @@ pio run -e heltec_tracker_v2_room_server_observer_mqtt
 # Station G2
 pio run -e Station_G2_repeater_observer_mqtt
 
+# Station G3 (ESP32)
+pio run -e Station_G3_ESP32_repeater_observer_mqtt
+pio run -e Station_G3_ESP32_room_server_observer_mqtt
+
 # LilyGo T-LoRa V2.1-1.6 (TTGO LoRa32 V1.0)
 pio run -e LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt
 pio run -e LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt
+
+# Elecrow ThinkNode M7
+pio run -e ThinkNode_M7_repeater_observer_mqtt
+pio run -e ThinkNode_M7_room_server_observer_mqtt
 ```
+
+**ThinkNode M7 -- WiFi only:** the M7 has an onboard CH390 Ethernet controller,
+and `ThinkNode_M7_companion_radio_ethernet` uses it, but the MQTT bridge link
+management is bound to the WiFi station API, so observer environments uplink
+over WiFi. See `UPSTREAM_BUGS.md` for the Ethernet gap. The board has PSRAM, so
+these builds get neighbors publication (`WITH_MQTT_NEIGHBORS`) automatically.
 
 **TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo's **T-LoRa V2.1-1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so they retain dual-app OTA on the 4 MB flash; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The repeater observer also keeps 256 recent-repeater entries instead of the normal ESP32 default of 2,048. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
 
@@ -232,10 +298,13 @@ Some MQTT observer builds use a non-default partition table to accommodate the l
 | `LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt` | `min_spiffs.csv` | 4 MB | 1.875 MB | TTGO LoRa32 V1.0; observer omits `sensor_base`; one active WSS broker recommended. |
 | `Station_G2_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
 | `Station_G2_room_server_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
+| `Station_G3_ESP32_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
+| `Station_G3_ESP32_room_server_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | 16 MB flash board |
 | `LilyGo_TBeam_1W_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | Set in `boards/t_beam_1w.json`; required vs implicit `default.csv` |
 | `LilyGo_TBeam_1W_room_server_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | same |
 
-**NVS / settings when the partition layout changes**
+Boards absent from this table need no special first flash: their observer envs use the
+same partition table as the board's other firmwares.
 
 Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new bootloader **and** partition table. If that layout **differs** from what is already on the device, **NVS is typically wiped or invalidated** - expect to lose stored configuration (admin preferences, WiFi, MQTT slots, name, etc.) and reconfigure from scratch.
 
@@ -247,7 +316,7 @@ Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new b
 
 You can flash the merged firmware using either the web flasher or the command line:
 
-- **Web flasher (recommended):** Use the [MeshCore Web Flasher](https://meshcore.io/flasher) to flash the `*-merged.bin` file directly from your browser - no tools to install.
+- **Web flasher (recommended):** Use the [MeshCore Observer Flasher](https://observer.gessaman.com/) to flash from your browser - no tools to install. Pick **MQTT Observer Firmware** and your device. Its Download menu also serves the individual `*-merged.bin`, erase, and bootloader files. Requires Chrome or Edge.
 - **Command line:**
   ```bash
   # Build the merged binary
@@ -258,7 +327,6 @@ You can flash the merged firmware using either the web flasher or the command li
   ```
 
 > **Note:** If the **partition layout is unchanged** (e.g. updating the MQTT observer build in place), device configuration in NVS is usually retained; Bluetooth pairings may still be cleared on some upgrade paths. If the **partition table is new to the device**, see **NVS / settings when the partition layout changes** above - stored settings are typically lost. After the first merged flash **for a given layout**, subsequent updates on that board can use OTA or the standard non-merged binary when applicable.
-
 ### Build Flags
 - `WITH_MQTT_BRIDGE=1` - Enable MQTT bridge (required)
 - `WITH_SNMP=1` - Enable SNMP agent (optional, see [MQTT_SNMP.md](MQTT_SNMP.md))
@@ -306,6 +374,7 @@ The MQTT bridge comes with the following defaults for fresh installs (unless ove
 - **Slot 1**: `analyzer-us`
 - **Slot 2**: `analyzer-eu`
 - **Slots 3-6**: `none` (disabled)
+- **Per-slot packet filters**: `all` (every payload type is uploaded)
 - **WiFi SSID**: (blank - must be configured)
 - **WiFi Password**: (blank - optional for open networks)
 - **WiFi Power Save**: `none` (no power save)
@@ -330,11 +399,10 @@ Each slot (1-6) supports the following commands:
 - `get mqttN.token` - Get per-slot token (e.g., MeshRank account token)
 - `get mqttN.topic` - Get custom topic template for slot N
 - `get mqttN.audience` - Get JWT audience for slot N (custom slots only)
+- `get mqttN.filter` - Get the slot's packet-type allowlist (`all`, `none`, or numeric CSV)
 
 #### Set Commands
-- `set mqttN.preset <name>` - Set slot N to a built-in preset. Use any `name` from the [preset table](#slot-based-preset-system) (run `get mqtt.presets` on-device for the full list). Most presets need no further configuration; the exceptions are:
-  - `meshrank` - requires a per-slot token (`set mqttN.token <token>`)
-  - `inwmesh` - requires per-slot credentials (`set mqttN.username` / `set mqttN.password`)
+- `set mqttN.preset <name>` - Set slot N to a built-in preset. Use any `name` from [Broker Presets](#broker-presets), which also lists the few presets needing extra setup.
 - `set mqttN.preset custom` - Set slot N to custom broker (configure server/port/username/password)
 - `set mqttN.preset none` - Disable slot N
 - `set mqttN.server <hostname>` - Set custom server hostname for slot N
@@ -345,23 +413,92 @@ Each slot (1-6) supports the following commands:
 - `set mqttN.topic <template>` - Set custom topic template (custom preset only, see below)
 - `set mqttN.audience <audience>` - Set JWT audience for custom slot (enables Ed25519 JWT auth)
 - `set mqttN.audience` - Clear JWT audience (reverts to username/password auth)
+- `set mqttN.filter <all|none|list>` - Select payload types uploaded to this slot
 
 **Note:** Custom server/port settings only apply when the slot's preset is `custom`. Username/password also apply to built-in presets that use per-slot credentials (e.g. `inwmesh`); other userpass presets (`tennmesh`, `nashmesh`, `ctmesh`) ship fixed credentials in firmware.
 
-#### Example: Configure MeshRank on Slot 3
+#### Per-broker packet filters
+
+Each slot has an independent allowlist. List entries may be payload-type names
+or numbers, and the two can be mixed. These are all equivalent, sending only
+text messages and adverts to slot 1:
+
+```bash
+set mqtt1.filter txt_msg,advert
+set mqtt1.filter 2,4
+set mqtt1.filter advert, 2
+```
+
+Use `none` when a broker should remain connected for status/neighbors but
+receive no packet traffic. A bare `set mqttN.filter` resets the slot to `all`.
+`get mqttN.filter` always answers in the canonical numeric form (`all`, `none`,
+or an ascending CSV), whichever spelling was used to set it.
+
+| Type | Name | Type | Name |
+|------|------|------|------|
+| 0 | `req` | 8 | `path` |
+| 1 | `response` | 9 | `trace` |
+| 2 | `txt_msg` | 10 | `multipart` |
+| 3 | `ack` | 11 | `control` |
+| 4 | `advert` | 12-14 | reserved (number only) |
+| 5 | `grp_txt` | 15 | `raw_custom` |
+| 6 | `grp_data` | | |
+| 7 | `anon_req` | | |
+
+Names are lowercase and exact; types 12-14 are reserved upstream and have no
+name, so they are selectable by number only.
+
+The filter applies to both structured `packets` and `raw` publications for RX
+packets and for TX packets permitted by `mqtt.tx`. It does not affect local
+packet processing, forwarding, capture logs, status, or neighbors. Changes
+apply live without reconnecting the broker.
+
+A rejected packet is dropped before it is copied into the publish queue, so a
+narrow filter saves the queue slot and the per-packet work, not just the
+upload. `get mqtt.stats` reports the running count as `filt=<n>`, and a slot
+whose filter is not `all` shows it in `get mqttN.diag` and on the WebConfig
+Stats tab -- a filtered slot otherwise looks identical to an idle healthy one.
+
+The diag reply is capped at 160 characters. When a slot is also reporting a
+long error tail, the filter is summarised as `filter:<n>/16` rather than
+listed, because a list clipped mid-way would read as a different, valid
+allowlist. `get mqttN.filter` always gives the exact value.
+
+In WebConfig the allowlist is a checkbox per type under each configured slot,
+with **All** / **None** shortcuts. Clearing every box is `none` (nothing
+uploaded).
+
+**Downgrade note:** rolling back to any build from this release onward is safe --
+the older firmware reads the settings it understands and simply ignores the
+packet filters, which revert to `all` if it saves.
+
+Rolling back to a build released *before* this one is the case to watch: that
+firmware rejects the longer settings file outright and falls back to defaults,
+losing the stored WiFi credentials along with the broker config. Slots left at
+the `all` default keep the file in the shorter layout those builds can read, so
+if you may need to roll a node back that far, reset every slot to `all` first.
+
+
+#### Example: MeshRank
+
+MeshRank needs an account token, generated on the MeshRank website and tied to your account:
 ```bash
 set mqtt3.preset meshrank
 set mqtt3.token FE1B34242C5938C39225310081FD6718
 ```
 
-The token is generated on the MeshRank website and is tied to your account. MeshRank only receives packet data (no status or raw messages).
+It receives status, packets, and neighbors under `meshrank/uplink/{token}/{device}/`, using
+the same type suffixes as the MeshCore layout. Raw is **not** sent to MeshRank -- it is the
+highest-volume topic and the broker does not consume it -- so `set mqtt.raw on` has no effect
+on a MeshRank slot. Its broker does not accept the retain flag, so those publishes go out
+unretained.
 
-#### Example: Configure MeshMapper on Slot 3
-```bash
-set mqtt3.preset meshmapper
-```
+### Custom Brokers
 
-#### Example: Configure Custom Broker on Slot 3
+Set the preset to `custom` and supply the broker address, plus credentials in whichever style
+the broker expects.
+
+**Username/password:**
 ```bash
 set mqtt3.preset custom
 set mqtt3.server your-broker.example.com
@@ -370,9 +507,8 @@ set mqtt3.username your-username
 set mqtt3.password your-password
 ```
 
-#### Example: Custom Broker with JWT Authentication (Ed25519)
-
-For community brokers that support the MeshCore JWT auth protocol (same as the built-in presets), set the `audience` field to enable Ed25519-signed JWT authentication:
+**Ed25519 JWT** -- for community brokers implementing the same JWT auth protocol as the
+built-in presets. Setting `audience` is what switches the slot to JWT:
 ```bash
 set mqtt3.preset custom
 set mqtt3.server wss://my-broker.example.com:443/mqtt
@@ -381,34 +517,28 @@ set mqtt3.audience my-broker.example.com
 
 When the server is given as a full URL with a scheme (`mqtt://`, `mqtts://`, `ws://`, `wss://`), `set mqttN.port` is optional - an explicit port in the URL is used as-is, and without one the scheme's default port applies.
 
-When `audience` is set, the device will:
-- Connect with username `v1_{PUBLIC_KEY}` and an Ed25519-signed JWT as the password
-- Automatically renew tokens before expiry (default 24h lifetime)
-- Include owner public key and email in the JWT payload (if configured via `set mqtt.owner` / `set mqtt.email`)
+With `audience` set, the device connects as `v1_{PUBLIC_KEY}` with an Ed25519-signed JWT as
+the password, renews tokens before expiry (default 24h lifetime), and includes the owner
+public key and email in the JWT payload if `set mqtt.owner` / `set mqtt.email` are
+configured. Clear it with a bare `set mqtt3.audience` to revert to username/password.
 
-To revert a slot back to username/password auth, clear the audience:
-```bash
-set mqtt3.audience
-```
-
-#### Example: Local Development Broker (plain WebSocket, no TLS)
-
-For local development (e.g. a LAN broker without SSL termination), use a full `ws://` URL. Non-TLS transports (`ws://`, `mqtt://`) skip certificate verification entirely:
+**Local development broker** -- a LAN broker with no SSL termination. Non-TLS transports
+(`ws://`, `mqtt://`) skip certificate verification entirely:
 ```bash
 set mqtt3.preset custom
 set mqtt3.server ws://192.168.1.50:9001/mqtt
-set mqtt3.audience my-local-broker
 ```
 
 The `audience` line is optional - set it if your local broker uses the same JWT auth as the production presets, or use `set mqtt3.username` / `set mqtt3.password` instead.
 
 #### Example: Custom Broker with Custom Topic Template
 ```bash
-set mqtt3.preset custom
-set mqtt3.server my-broker.local
-set mqtt3.port 1883
 set mqtt3.topic mynetwork/{device}/{type}
 ```
+
+When the server is given as a full URL with a scheme (`mqtt://`, `mqtts://`, `ws://`,
+`wss://`), `set mqttN.port` is optional -- an explicit port in the URL is used as-is, and
+without one the scheme's default port applies.
 
 ### Custom Topic Templates
 
@@ -434,14 +564,14 @@ These settings apply across all MQTT slots:
 - `get mqtt.iata` - Get IATA code
 - `get mqtt.presets` - List available MQTT presets (paginated, comma-separated)
 - `get mqtt.presets <start>` - Continue list from index shown in `... next:<idx>`
-- `get mqtt.status` - Get MQTT status summary (connection info per slot)
+- `get mqtt.status` - Get MQTT status summary (connection info per slot, plus the periodic neighbors schedule when `mqtt.neighbors` is on)
 - `get mqtt.packets` - Get packet message setting (on/off)
 - `get mqtt.raw` - Get raw message setting (on/off)
 - `get mqtt.rx` - Get RX packet uplinking setting (on/off)
 - `get mqtt.tx` - Get TX packet uplinking setting (on/off/advert)
 - `get mqtt.interval` - Get status publish interval
-- `get mqtt.neighbors` - Get periodic neighbors publishing setting (on/off; PSRAM only)
-- `get mqtt.neighbors.interval` - Get neighbors publish interval in hours (PSRAM only)
+- `get mqtt.neighbors` - Get periodic neighbors publishing setting (on/off; neighbors-enabled builds)
+- `get mqtt.neighbors.interval` - Get neighbors publish interval in hours (neighbors-enabled builds)
 - `get mqtt.ntp` - Get effective NTP server hostname
 - `get mqtt.ntp.diag` - Probe every configured NTP server for connectivity (does not change the clock; serial console shows each server's reported time, LoRa shows a compact `<server> ok|fail` list)
 - `get mqtt.owner` - Get owner public key (serial console only)
@@ -459,8 +589,8 @@ These settings apply across all MQTT slots:
   - `advert` - Uplink only this node's own advert packets (self-originated)
   - `off` - Disable TX packet uplinking
 - `set mqtt.interval <minutes>` - Set status publish interval (1-60 minutes)
-- `set mqtt.neighbors on|off` - Enable/disable periodic neighbors publishing (PSRAM only; read live, no restart)
-- `set mqtt.neighbors.interval <hours>` - Set neighbors publish interval (12-336 hours, default 24; PSRAM only)
+- `set mqtt.neighbors on|off` - Enable/disable periodic neighbors publishing (neighbors-enabled builds; read live, no restart)
+- `set mqtt.neighbors.interval <hours>` - Set neighbors publish interval (12-336 hours, default 24; neighbors-enabled builds)
 - `set mqtt.ntp <hostname>` - Set custom NTP server (validated with immediate sync); `none` reverts to default
 - `set mqtt.owner <64-hex-char-public-key>` - Set owner public key
 - `set mqtt.email <email>` - Set owner email address
@@ -524,7 +654,14 @@ These are standard MeshCore commands, not MQTT-specific, but important for obser
 - `set bridge.source rx|tx` - Set packet source (rx for received, tx for transmitted)
 - `set bridge.enabled on|off` - Enable/disable bridge
 
+> **Note:** `bridge.enabled` is the master switch for the whole bridge system. `bridge.source`
+> applies to non-MQTT bridges (RS232, ESP-NOW) only -- for MQTT use `mqtt.rx` and `mqtt.tx`,
+> which control each direction independently.
+
 ### SNMP Commands
+
+Observer nodes include an optional SNMP v2c agent that exposes radio stats, MQTT
+connectivity, memory usage, and network information to standard monitoring tools.
 
 #### Get Commands
 - `get snmp` - Get SNMP agent status (on/off)
@@ -534,7 +671,7 @@ These are standard MeshCore commands, not MQTT-specific, but important for obser
 - `set snmp on|off` - Enable/disable SNMP agent (restart required)
 - `set snmp.community <string>` - Set SNMP community string (restart required, default: `public`)
 
-See [MQTT_SNMP.md](MQTT_SNMP.md) for full SNMP documentation.
+See [MQTT_SNMP.md](MQTT_SNMP.md) for setup and the full OID reference.
 
 ### Web Configuration Portal
 
@@ -616,29 +753,13 @@ Two ways to iterate on observer/WiFi functionality without flashing a device:
 Backend handler logic is covered by host unit tests under `test/` (`pio test -e
 native`); see [test/README.md](test/README.md) for the suites and how to run them.
 
-## Command Architecture
-
-The CLI commands are organized into two levels:
-
-### Bridge Commands (`bridge.*`)
-**Low-level bridge control** - These settings apply to all bridge types (MQTT, RS232, ESP-NOW, etc.):
-- `bridge.enabled` - Master switch for the entire bridge system
-- `bridge.source` - Controls which packet events to capture for non-MQTT bridges (RS232, ESP-NOW). For MQTT, use `mqtt.rx` and `mqtt.tx` instead.
-
-### Bridge-Specific Commands (`mqtt.*`, `mqttN.*`, `wifi.*`, `timezone.*`)
-**Implementation-specific settings** - These only apply to the MQTT bridge:
-- `mqtt.rx` / `mqtt.tx` - Independent per-direction packet uplinking control
-- `mqttN.*` - Per-slot MQTT broker configuration (N = 1-6)
-- `mqtt.*` - Shared MQTT settings (message types, origin, IATA, etc.)
-- `wifi.*` - WiFi connection settings for MQTT connectivity
-- `timezone.*` - Timezone configuration for accurate timestamps
 
 ## MQTT Topics
 
-The bridge publishes to three main topics with the following structure:
+The bridge publishes to four main topics with the following structure:
 
 ### Status Topic: `meshcore/{IATA}/{DEVICE_PUBLIC_KEY}/status`
-Device connection status and metadata (retained messages).
+Device connection status and metadata, QoS 1. Retained, except on presets whose broker rejects the retain flag (`meshrank`, `waev`).
 
 ### Packets Topic: `meshcore/{IATA}/{DEVICE_PUBLIC_KEY}/packets`
 Full packet data with RF characteristics and metadata.
@@ -647,12 +768,15 @@ Full packet data with RF characteristics and metadata.
 Minimal raw packet data for map integration.
 
 ### Neighbors Topic: `meshcore/{IATA}/{DEVICE_PUBLIC_KEY}/neighbors`
-Periodic snapshot of this node's zero-hop neighbor table plus each neighbor's
-region scopes (PSRAM boards only; disabled by default). Published non-retained at
-QoS 1 on the interval set by `mqtt.neighbors.interval` (12-336 h, default 24 h).
-Like status/raw, this topic is **not** sent to MeshRank slots (packets-only contract).
+Cached zero-hop repeater neighbors with SNR, last-heard age, and flood-allowed scopes. Published on `discover.scopes` or periodically when `mqtt.neighbors` is enabled (observer builds with neighbors compiled in; non-PSRAM builds cap the table at 20 entries and set `truncated`). Goes to every configured slot's `neighbors` topic at QoS 0, retained only where the preset allows it.
 
-**Note**: `{DEVICE_PUBLIC_KEY}` is the device's public key in hexadecimal format (64 characters).
+Periodic publishing first runs a 60-second zero-hop neighbor refresh equivalent to `discover.neighbors`, then queries the refreshed table for scopes and publishes when the scope-query phase completes.
+
+Manual `discover.scopes` normally queries the current cache in one shot. If a `discover.neighbors` refresh is already collecting responses -- whether started from the CLI or by the periodic timer -- the scope queries are queued behind its 60-second window instead, so they run against the refreshed table. The reply reports the wait, e.g. `OK - scopes queued (47s discovery remaining)`. A queued one-shot request survives `set mqtt.neighbors off`; only the periodic timer's own refresh is cancelled by it.
+
+While `mqtt.neighbors` is on, `get mqtt.status` appends `nbr: <next>/<last>` -- time to the next automatic publish (`3h12m`, `12m`, `45s`, or `active`/`due`) and the last publish result (`ok`, `failed`, or `none`).
+
+**Note**: `{DEVICE_PUBLIC_KEY}` is the device's public key in hexadecimal format (64 characters). MeshRank slots use `meshrank/uplink/{token}/{DEVICE_PUBLIC_KEY}/neighbors` instead.
 
 ## JSON Message Formats
 
@@ -730,13 +854,16 @@ Like status/raw, this topic is **not** sent to MeshRank slots (packets-only cont
 }
 ```
 
-### Neighbors Message
+### Neighbors Message (neighbors-enabled observer builds)
 ```json
 {
   "timestamp": "2024-01-01T12:00:00.000000+00:00",
   "origin": "MeshCore-HOWL",
   "origin_id": "A1B2C3D4E5F67890...",
-  "self": { "scopes": "DEN,APRS" },
+  "total_neighbors": 2,
+  "queried_neighbors": 2,
+  "truncated": false,
+  "self": { "scopes": "DEN,APRS", "default_scope": "*" },
   "neighbors": [
     {
       "pubkey": "0011223344556677...",
@@ -744,39 +871,58 @@ Like status/raw, this topic is **not** sent to MeshRank slots (packets-only cont
       "heard_secs_ago": 42,
       "scopes": "DEN,APRS",
       "status": "responded"
+    },
+    {
+      "pubkey": "8899AABBCCDDEEFF...",
+      "snr": 12.5,
+      "heard_secs_ago": null,
+      "scopes": "DEN",
+      "status": "responded"
     }
   ]
 }
 ```
-Entries are ordered most- to least-useful (most recently heard, then stronger
-SNR); the tail is dropped if the payload would exceed the 10 KB publish buffer.
-`status` is `responded`, `timeout`, or `send_failed` per neighbor.
+Entries are ordered most- to least-useful (usable age first, then most recently
+heard, then stronger SNR); the tail is dropped if the payload would exceed the
+10 KB publish buffer. `status` is `responded`, `timeout`, or `send_failed` per
+neighbor.
+
+`total_neighbors` is the size of the neighbor-table snapshot the cycle started
+from, `queried_neighbors` how many scope requests were confirmed transmitted, and
+`truncated` whether the buffer filled before every entry fit. All three are
+always present. The `neighbors` array can therefore be shorter than
+`total_neighbors` -- compare its length against that field rather than assuming
+the table is complete.
+
+`heard_secs_ago` is `null`, as in the second entry above, when the age cannot be
+computed: the neighbor was last heard before the clock was set, so the stored
+stamp and the current clock come from different epochs and their difference is
+meaningless (see `UPSTREAM_BUGS.md` #1). **Consumers must treat `null` as
+unknown, not as zero** -- the key is always present, so a missing key means an
+older firmware, and a `null` never means "heard just now". A neighbor that
+answers the scope query has its stamp refreshed, so a `null` age normally clears
+itself on the next publish cycle.
+
+`self.default_scope` is the region name this node floods to by default (`region
+default`); it is `*` when no default region is set, matching the unscoped flood
+the radio actually performs in that case.
 
 ## Key Features
 
-### Slot-Based Preset System
-- Up to 6 concurrent MQTT connections (with PSRAM), 2 without PSRAM
-- Built-in presets for many community brokers (see the [preset table](#slot-based-preset-system))
-- Custom broker support with username/password auth and custom topic templates
-- JWT (Ed25519) for most preset brokers; MeshRank uses token-in-topic; TennMesh uses fixed username/password over plain MQTT
-- WSS (WebSocket Secure), direct MQTT over TLS, and plain MQTT (TennMesh)
-- Automatic reconnection with exponential backoff per slot
-- Circuit breaker pattern with periodic probes for recovery from prolonged outages
-- JWT token buffers only allocated for JWT-auth slots (memory efficient)
-- Deferred construction: MQTTBridge is heap-allocated in `begin()` to avoid ESP32 static init crashes
+### Connection Handling
+- Automatic reconnection with exponential backoff per slot; a slot that stays down through
+  the full backoff ladder is retried on a slow periodic probe instead of hammering the broker
+- Packets are queued while a slot is disconnected and flushed when it recovers
 
 ### Raw Radio Data Capture
 - Captures actual raw radio transmission data (including radio headers)
-- Uses proper MeshCore packet hashing (SHA256-based)
 - Provides accurate SNR/RSSI values from actual radio reception (RX packets only)
 - Independent RX and TX packet uplinking - both can be active simultaneously
 - TX advert mode: selectively uplink only this node's own advert packets
 
 ### Timezone Support
-- Full timezone support with automatic DST handling
-- Supports IANA timezone strings, common abbreviations, and UTC offsets
-- Separates local time (for timestamps) and UTC time (for time/date fields)
-- Uses JChristensen/Timezone library for accurate timezone conversions
+- Accepts IANA timezone strings, common abbreviations, and UTC offsets, with automatic DST handling
+- Note: all published MQTT timestamps are UTC regardless of the configured timezone
 
 ### WiFi Configuration
 - Runtime WiFi credential management via CLI
@@ -794,7 +940,7 @@ SNR); the tail is dropped if the payload would exceed the 10 KB publish buffer.
 - Proper UTC system time handling
 
 ### Authentication
-The auth mode is fixed per preset (see the [preset table](#slot-based-preset-system)). Three modes are used:
+The auth mode is fixed per preset (see [Broker Presets](#broker-presets)). Three modes are used:
 - **JWT Authentication**: Ed25519-signed tokens for brokers that expect JWT (most WSS presets). For `custom` slots, JWT is used when `audience` is set.
 - **Username/Password**: Some presets ship fixed credentials embedded in firmware (`tennmesh`, `nashmesh`, `ctmesh` - plain MQTT, no TLS); others (`inwmesh`, `custom`) take per-slot credentials via `mqttN.username` / `mqttN.password`.
 - **None**: `meshrank` (account token carried in the topic) and `eastidahomesh` connect without broker auth.
@@ -803,90 +949,22 @@ The auth mode is fixed per preset (see the [preset table](#slot-based-preset-sys
 
 ## Migration from Old Configuration
 
-When upgrading from a firmware version that used the old MQTT configuration format (`mqtt.analyzer.us`, `mqtt.analyzer.eu`, `mqtt.server`, `mqtt.port`, `mqtt.username`, `mqtt.password`), the device automatically migrates settings:
+Upgrading from firmware that used an older settings layout -- including the pre-slot format
+(`mqtt.analyzer.us`, `mqtt.server`, ...) -- needs no manual intervention: the device converts
+its stored configuration on the first boot after the update and keeps your brokers, origin,
+IATA, message types, WiFi, and timezone. Verify with `get mqtt.status` afterwards.
 
 - `mqtt.analyzer.us = on` -> Slot 1 preset: `analyzer-us`
 - `mqtt.analyzer.eu = on` -> Slot 2 preset: `analyzer-eu`
 - Custom server configured -> Slot 3 preset: `custom` with host/port/username/password preserved
 - All other settings (origin, IATA, message types, WiFi, timezone) are preserved as-is
 
-The migration happens automatically on first boot after firmware update. No manual intervention is needed.
+The one exception is firmware old enough to predate the separate observer settings file: on
+that upgrade path the MQTT slot and WiFi configuration cannot be recovered and must be
+re-entered. For the per-format details, see
+[MQTT_INTERNALS.md](MQTT_INTERNALS.md#settings-upgrade--migration).
 
-## First-Time Setup
-
-### Prerequisites
-- MeshCore device with observer MQTT firmware flashed
-- WiFi network credentials
-- Serial console access (115200 baud) or repeater login via companion app
-
-### Step 1: Configure Radio (after fresh flash/full erase)
-
-If this is a fresh flash, radio parameters must be set to match your mesh network:
-```
-set radio 910.525,62.5,7,5
-set tx 22
-```
-
-### Step 2: Configure Device Identity
-```
-set name MyObserver
-set mqtt.iata SEA
-```
-
-If migrating from an existing device, restore the private key to keep the same identity:
-```
-set prv.key <your_64_hex_char_private_key>
-```
-
-### Step 3: Configure WiFi
-
-Use the rest of the line as the value (spaces allowed; no quotes). See [WiFi Commands](#wifi-commands).
-
-```
-set wifi.ssid YourWiFiNetwork
-set wifi.pwd YourWiFiPassword
-reboot
-```
-
-### Step 4: Configure Timezone (optional)
-```
-set timezone America/New_York
-```
-
-Or use an offset as a fallback:
-```
-set timezone.offset -5
-```
-
-### Step 5: (Optional) Disable Repeating
-
-For receive-only observers (e.g., using a PCB antenna or in a location where repeating is not desired):
-```
-set repeat off
-```
-
-### Step 6: Verify Slot Configuration
-```
-get mqtt1.preset    # Should show: analyzer-us
-get mqtt2.preset    # Should show: analyzer-eu
-get mqtt3.preset    # Should show: none
-```
-
-### Step 7: (Optional) Add Additional Presets
-```
-set mqtt3.preset meshmapper
-```
-
-### Step 8: Verify Connection
-```
-get bridge.enabled
-get mqtt.rx
-get mqtt.tx
-get mqtt.status
-get wifi.status
-```
-
-### Troubleshooting
+## Troubleshooting
 
 #### Device Won't Connect to WiFi
 ```
@@ -913,15 +991,10 @@ get mqtt.iata              # IATA must be set for MeshCore-topic presets (e.g. A
 #### Timezone Issues
 ```
 get timezone
-set timezone America/New_York    # IANA format
-set timezone EST                 # Abbreviation
-set timezone UTC-5               # UTC offset
+get timezone.offset
 ```
-
-## SNMP Monitoring
-
-Observer nodes include an optional SNMP v2c agent that exposes radio stats, MQTT connectivity, memory usage, and network information to standard monitoring tools. See [MQTT_SNMP.md](MQTT_SNMP.md) for setup and OID reference.
-
+See [Supported Timezone Formats](#supported-timezone-formats) for the accepted values.
+Note that published timestamps are UTC regardless of this setting.
 
 ## Fault Alerts
 

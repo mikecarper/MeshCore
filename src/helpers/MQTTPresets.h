@@ -33,7 +33,7 @@ enum MQTTAuthType : uint8_t {
 
 enum MQTTTopicStyle : uint8_t {
   MQTT_TOPIC_MESHCORE,   // meshcore/{iata}/{device_id}/{status|packets|raw}
-  MQTT_TOPIC_MESHRANK,   // meshrank/uplink/{token}/{device_id}/packets (packets only)
+  MQTT_TOPIC_MESHRANK,   // meshrank/uplink/{token}/{device_id}/{type} (no raw)
 };
 
 struct MQTTPresetDef {
@@ -79,7 +79,7 @@ static inline bool mqttPresetNeedsSlotCredentials(const MQTTPresetDef* preset) {
 }
 
 // Number of built-in presets
-static const int MQTT_PRESET_COUNT = 29;
+static const int MQTT_PRESET_COUNT = 34;
 
 // Keep the certificate and preset tables in one translation unit. Defining
 // these as header-local constants created a complete flash copy in every MQTT
@@ -165,13 +165,15 @@ extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     { "ctmesh",        "mqtt://mqtt.ctmesh.org:1883",             nullptr,                           nullptr,       MQTT_AUTH_USERPASS,  MQTT_TOPIC_MESHCORE,  0,       true,   60,      "meshdev",    "large4cats"},
     { "chimesh",       "wss://mqtt.chimesh.org:443",              "mqtt.chimesh.org",                ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "meshat.se",     "wss://meshcore-mqtt.meshat.se:443",       "meshcore-mqtt.meshat.se",         ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
-    { "eastidahomesh", "wss://broker.eastidahomesh.net:443",      nullptr,                           ISRG_ROOT_X1,  MQTT_AUTH_NONE,     MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "eastidahomesh", "mqtt://live.eastidahomesh.com:1883",      nullptr,                           nullptr,       MQTT_AUTH_NONE,     MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "coloradomesh",  "wss://mqtt.meshcore.coloradomesh.org:443","mqtt.meshcore.coloradomesh.org", ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "dutchmeshcore-1", "wss://collector1.dutchmeshcore.nl:443/mqtt", "collector1.dutchmeshcore.nl",     GTS_ROOT_R4,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "dutchmeshcore-2", "wss://collector2.dutchmeshcore.nl:443/mqtt", "collector2.dutchmeshcore.nl",     GTS_ROOT_R4,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "meshcore-ca-1",   "wss://mqtt1.meshcore.ca:443/mqtt",          "mqtt1.meshcore.ca",               ISRG_ROOT_X1, MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "meshcore-ca-2",   "wss://mqtt2.meshcore.ca:443/mqtt",          "mqtt2.meshcore.ca",               ISRG_ROOT_X1, MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "meshcore-fi",     "wss://mc-mqtt.meshcore.fi:443/",            "mc-mqtt.meshcore.fi",             ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "okimesh-1",     "wss://mqtt1.okimesh.org:9002/mqtt",       "mqtt1.okimesh.org",               ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "okimesh-2",     "wss://mqtt2.okimesh.org:9002/mqtt",       "mqtt2.okimesh.org",               ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "inwmesh",         "mqtts://scope.inwmesh.org:8883",            nullptr,                           ISRG_ROOT_X1,  MQTT_AUTH_USERPASS,  MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "bostonmesh",      "wss://mqttmc01.bostonme.sh:443/mqtt",       "mqttmc01.bostonme.sh",            GTS_ROOT_R4,   MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "rflab",           "wss://mqtt.rflab.io:443",                   "mqtt.rflab.io",                   ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
@@ -183,6 +185,10 @@ extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     { "mesh-chaun14",  "mqtt://mqtt.mesh.chaun14.fr:1884",        nullptr,                           nullptr,       MQTT_AUTH_USERPASS,  MQTT_TOPIC_MESHCORE,  0,       true,   60,      MQTT_USERPASS_USERNAME_PUBKEY, nullptr },
     // LetsMesh-compatible JWT; TLS is Let's Encrypt (ISRG Root X1), not GTS.
     { "wcmesh",        "wss://mqtt.wcmesh.com:443",               "mqtt.wcmesh.com",                 ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "atvirastinklas","wss://mqtt-mc.atvirastinklas.lt:443",      "mqtt-mc.atvirastinklas.lt",       GTS_ROOT_R4,   MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    // JWT token auth; LE Gen-Y ECDSA chain (YE2 -> Root YE -> X2) still anchors at ISRG Root X1.
+    { "gomesh",        "wss://mqtt.gomesh.dev:443",               "mqtt.gomesh.dev",                 ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "idahomesh",     "wss://mqtt.idahomesh.org:443/mqtt",       "mqtt.idahomesh.org",              ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
 };
 
 #else

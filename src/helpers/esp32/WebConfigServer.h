@@ -117,6 +117,7 @@ public:
   // repeater/room-server builds), false when the companion/MQTT runtime owns it.
   WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool owns_wifi,
                   const uint8_t* pub_key, const char* fw_ver,
+                  const char* build_date,
                   const char* role, const char* board_name);
   ~WebConfigServer();
 
@@ -179,18 +180,26 @@ private:
   static const size_t MAX_BODY = 4096;
   static const uint32_t STOP_WARN_MS = WebConfigBatch::kStopWarnMs;
   enum BatchState : uint8_t { BATCH_IDLE = 0, BATCH_PENDING, BATCH_DONE };
-  enum CliState : uint8_t { CLI_IDLE = 0, CLI_PENDING, CLI_DONE };
-  static WebConfigBatch::State toSpecState(BatchState state) {
-    switch (state) {
+  // What filled the shared slot. A config save comes from allowlisted form
+  // fields; a CLI sequence is arbitrary commands typed into the terminal. They
+  // share the slot (see WebConfigBatch.h) but differ in how results are read
+  // and in whether `key` means anything, so every reader checks the kind.
+  enum BatchKind : uint8_t { BATCH_CONFIG = 0, BATCH_CLI };
+
+  // BatchState and WebConfigBatch::State are deliberately kept as separate
+  // types (the enum is stored in a volatile member and used in prints); this
+  // is the one conversion point.
+  static WebConfigBatch::State toSpecState(BatchState s) {
+    switch (s) {
       case BATCH_PENDING: return WebConfigBatch::State::Pending;
       case BATCH_DONE: return WebConfigBatch::State::Done;
       default: return WebConfigBatch::State::Idle;
     }
   }
   struct BatchEntry {
-    char key[24];     // allowlisted config key (echoed back to the UI)
+    char key[24];     // allowlisted config key (echoed back to the UI); empty for CLI entries
     char cmd[160];    // full CLI command (may contain secrets - never echoed)
-    char reply[160];
+    char reply[160];  // CLI reply budget, same 160 bytes the serial console gets
   };
 
   Callbacks* _cb;
@@ -198,6 +207,7 @@ private:
   bool _owns_wifi;
   const uint8_t* _pub_key;
   const char* _fw_ver;
+  const char* _build_date;
   const char* _role;
   const char* _board_name;
 
@@ -213,6 +223,10 @@ private:
   char _wifi_password[64] = {0};
   uint8_t _wifi_power_save = 1;
   bool _cli_enabled = true;
+  // A `password` command has succeeded this session. Lets the CLI satisfy the
+  // initial-setup invariant across separate submissions; the form batch always
+  // sends the password with the rest, so it never needed the memory.
+  bool _admin_pwd_set = false;
   char _ap_ssid[33] = {0};
   WiFiReconnectPolicy::Tracker _wifi_reconnect_tracker;
   bool _retry_saved_wifi_in_setup = false;
@@ -227,6 +241,7 @@ private:
 
   // Command batch: filled by async_tcp under _mux, drained by tick().
   volatile BatchState _batch_state = BATCH_IDLE;
+  volatile BatchKind _batch_kind = BATCH_CONFIG;
   uint8_t _batch_count = 0;
   uint8_t _batch_next = 0;        // drain progress (one command per tick)
   uint32_t _batch_last_cmd = 0;
@@ -239,13 +254,6 @@ private:
   uint32_t _setup_wifi_handoff_deadline = 0;
   char _setup_wifi_handoff_ip[16] = {0};
   BatchEntry _batch[MAX_BATCH];
-
-  // Browser terminal command: filled by async_tcp under _mux and executed by
-  // tick() on the loop task. Separate from the allowlisted config batch.
-  volatile CliState _cli_state = CLI_IDLE;
-  char _cli_reqid[24] = {0};
-  char _cli_command[160] = {0};
-  char _cli_reply[160] = {0};
 
   // LAN-mode session (single slot; new login evicts the old session)
   char _session_token[33] = {0};
@@ -282,7 +290,6 @@ private:
   void drainBatch(uint32_t now);
   void serviceSetupWiFiHandoff(uint32_t now);
   void finishBatch(uint32_t now);
-  void drainCliCommand();
   void finalizeTeardown();
   bool checkAuth(AsyncWebServerRequest* req);
   static void collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,

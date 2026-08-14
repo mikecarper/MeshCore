@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - mqtt-bridge-implementation-flex
+      - observer-firmware
     # Only rebuild firmware when something that affects the binaries changes.
     # Docs, the changelog, the changelog generator, CI files, and repo-meta
     # files do not change firmware output - docs/changelog are handled by
@@ -25,19 +25,29 @@ on:
       - 'LICENSE'
       - '.vscode/**'
       - '.claude/**'
+      # Throwaway build worktrees never affect the binaries.
+      - '.build-wt-*'
+      - '.build-wt-*/**'
 
-# Serialize with sync-flasher-content.yml so the two workflows never push to the
-# flasher repo at the same time (shared group name across both workflows).
+# Own group: serialize builds against each other only. Do NOT share this group
+# with sync-flasher-content.yml -- a mixed code+docs commit triggers both, and a
+# run that is still pending when its sibling is queued gets cancelled, which
+# silently skipped the firmware build. Concurrent flasher pushes are instead made
+# safe by the rebase-retry in "Commit & Push Flasher Config".
 concurrency:
-  group: flasher-publish
+  group: observer-firmware-build
   cancel-in-progress: false
 
 env:
   # Version embedded in firmware filenames; must match the version key in the
   # flasher's config.json. Bump here when the observer version changes.
-  FIRMWARE_VERSION: v1.16.0
+  FIRMWARE_VERSION: v1.17.0
   # Rolling release tag that hosts the latest observer binaries.
   RELEASE_TAG: observer-mqtt-latest
+  # Download host serving RELEASE_TAG's assets (cloudflare-worker in the flasher
+  # repo). Baked into the slim OTA manifests' file URLs; must stay consistent
+  # with config.json's staticPath.
+  STATIC_PATH: https://observer-fw.gessaman.com
 
 jobs:
 
@@ -185,6 +195,13 @@ jobs:
           # not published as release assets (and they'd break the hash-based prune).
           gh release upload "$RELEASE_TAG" $(find out -maxdepth 1 -type f ! -name '*.partsig') --clobber
 
+          # Keep the release body in sync with the repo's notes source: the
+          # /releases feed serves it as the flasher dropdown's changelog
+          # (config.json no longer carries per-version notes). Non-fatal --
+          # stale notes beat a red build whose binaries are already live.
+          gh release edit "$RELEASE_TAG" --notes-file firmware-notes.html \
+            || echo "WARNING: release notes sync failed" >&2
+
           # Prune old assets, but RETAIN the most recent KEEP_BUILDS build hashes
           # (not just the current one). The flasher SPA reads config.json once at
           # page load and the embedded git short-hash is what links it to assets;
@@ -222,22 +239,23 @@ jobs:
           token: ${{ secrets.FLASHER_DISPATCH_TOKEN }}
           path: flasher
 
-      - name: Update Flasher Config
-        run: |
-          python3 flasher/scripts/update-firmware.py \
-            "${{ steps.sha.outputs.short }}" \
-            "$GITHUB_WORKSPACE/firmware-notes.html"
+      # update-firmware.py is no longer called here: config.json's observer
+      # entries are github release defs (no embedded filenames to rewrite), the
+      # flasher's versions come from the Worker's /releases feed, and the
+      # changelog notes ride the release body (see the publish step).
 
       - name: Generate Slim Per-Variant Manifests + Persist Build Counter
         env:
           BUILD_NUMBER: ${{ needs.enumerate.outputs.build_number }}
         run: |
           # Derive the slim per-variant manifests (flasher/v/<env>.json) that the
-          # firmware fetches for `ota check`/`ota update`, from the just-updated
-          # config.json (single source of truth), stamping this build's number.
-          # Then persist the counter so the next run increments from here.
+          # firmware fetches for `ota check`/`ota update`, from the build output
+          # in out/ -- the assets actually uploaded to the release -- stamping this
+          # build's number. Then persist the counter so the next run increments
+          # from here.
           python3 flasher/scripts/gen-slim-manifests.py \
-            --config flasher/config.json \
+            --bin-dir out \
+            --static-path "$STATIC_PATH" \
             --out-dir flasher/v \
             --base-version "$FIRMWARE_VERSION" \
             --build "$BUILD_NUMBER" \
@@ -294,4 +312,24 @@ jobs:
           git config user.name "meshcore-bot"
           git config user.email "noreply@gessaman.com"
           git commit -m "Update observer firmware to ${{ steps.sha.outputs.short }} (build ${FIRMWARE_VERSION}.${{ needs.enumerate.outputs.build_number }})"
-          git push
+          # sync-flasher-content.yml can be pushing the same docs/changelog right
+          # now (a mixed code+docs commit triggers both), so a non-fast-forward is
+          # expected rather than fatal: rebase onto the sibling's commit and retry.
+          # If the rebase leaves nothing, git reports up-to-date and we exit clean.
+          br=$(git rev-parse --abbrev-ref HEAD)
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:$br"; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto origin/$br"
+            git fetch origin "$br"
+            # --autostash so a dirty tree can never make the rebase refuse to run;
+            # nothing unstaged gets published either way.
+            git rebase --autostash "origin/$br" || {
+              git rebase --abort || true
+              echo "::error::flasher rebase conflicted; re-run this workflow to republish"
+              exit 1
+            }
+          done
+          echo "::error::could not push flasher changes after 3 attempts"
+          exit 1

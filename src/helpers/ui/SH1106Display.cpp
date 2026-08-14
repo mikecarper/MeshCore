@@ -29,6 +29,7 @@ bool SH1106Display::begin()
   // preferred alternate explicitly; otherwise try the other address in the
   // pair. Always run the Adafruit init so its buffer and device objects exist,
   // even when no panel answers the probe.
+  _initialized = false;
   uint8_t addr = 0;
   if (i2c_probe(Wire, DISPLAY_ADDRESS)) {
     addr = DISPLAY_ADDRESS;
@@ -43,17 +44,23 @@ bool SH1106Display::begin()
     addr = DISPLAY_ADDRESS ^ 1;
   }
   bool ok = display.begin(addr ? addr : DISPLAY_ADDRESS, true);
-  return addr != 0 && ok;
+  _initialized = addr != 0 && ok;
+  return _initialized;
 }
 
 void SH1106Display::turnOn()
 {
+  if (!_initialized) return;
   display.oled_command(SH110X_DISPLAYON);
   _isOn = true;
 }
 
 void SH1106Display::turnOff()
 {
+  if (!_initialized) {
+    _isOn = false;
+    return;
+  }
   display.oled_command(SH110X_DISPLAYOFF);
   _isOn = false;
 }

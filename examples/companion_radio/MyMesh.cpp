@@ -1353,7 +1353,6 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   send_unscoped = false;
 
   // defaults
-  memset(&_prefs, 0, sizeof(_prefs));
   _prefs.airtime_factor = 1.0; // one half
   strcpy(_prefs.node_name, "NONAME");
   _prefs.freq = LORA_FREQ;
@@ -1540,6 +1539,7 @@ void MyMesh::begin(bool has_display) {
 #endif
   _webconfig = new WebConfigServer(this, web_mqtt_prefs, false,
                                    self_id.pub_key, FIRMWARE_VERSION,
+                                   FIRMWARE_BUILD_DATE,
                                    "companion", board.getManufacturerName());
 #endif
 }

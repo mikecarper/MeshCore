@@ -10,6 +10,7 @@
 #include <WiFiUdp.h>
 #include <Timezone.h>
 #include "helpers/JWTHelper.h"
+#include "helpers/MQTTPacketFilter.h"
 #include "helpers/MQTTPresets.h"
 #include "helpers/MQTTLifecycle.h"
 #include <atomic>
@@ -52,11 +53,15 @@ struct MQTTNodeInfo {
   bool repeat_when_nonzero = true;
 };
 
-// Periodic neighbors publication is PSRAM-only: it needs a persistent ~10 KB JSON
-// buffer plus a second transient one while the mesh builds the table, and it keys
-// off the mesh neighbor cache (sized by MAX_NEIGHBOURS). Every neighbors-specific
-// member, method, and code block in this bridge is gated on WITH_MQTT_NEIGHBORS.
-#if defined(BOARD_HAS_PSRAM) && defined(MAX_NEIGHBOURS) && MAX_NEIGHBOURS > 0
+// Periodic neighbors publication keys off the mesh neighbor cache (sized by
+// MAX_NEIGHBOURS) and needs a persistent JSON buffer plus a second transient one
+// while the mesh builds the table. PSRAM boards get it automatically; non-PSRAM
+// boards must opt in per variant with MQTT_NEIGHBORS_WITHOUT_PSRAM, which spends
+// internal DRAM the TLS stack also needs (see NEIGHBORS_JSON_BUFFER_SIZE). Every
+// neighbors-specific member, method, and code block here is gated on
+// WITH_MQTT_NEIGHBORS.
+#if defined(MAX_NEIGHBOURS) && MAX_NEIGHBOURS > 0 && \
+    (defined(BOARD_HAS_PSRAM) || defined(MQTT_NEIGHBORS_WITHOUT_PSRAM))
 #define WITH_MQTT_NEIGHBORS 1
 #endif
 
@@ -349,6 +354,10 @@ private:
   unsigned long _last_memory_check;
   bool _memory_pressure = false;  // Cached max-alloc verdict; re-sampled at most once per interval in publishPacket() so the heap walk isn't paid per-packet under pressure
   int _skipped_publishes;  // Exposed via SNMP; count of publishes skipped when max_alloc is too low
+  // Packets rejected by the per-slot filters before reaching the queue. Written
+  // on Core 1 (radio callbacks), read on Core 0 for `mqtt.stats`; a torn read of
+  // a diagnostic counter is harmless, so no atomic is warranted.
+  unsigned long _filtered_packets = 0;
 
   // Status publish retry tracking
   unsigned long _last_status_retry;  // Track last retry attempt (separate from successful publish)
@@ -393,6 +402,8 @@ private:
   enum MQTTMessageType { MSG_STATUS, MSG_PACKETS, MSG_RAW, MSG_NEIGHBORS };
   bool buildTopicForSlot(int index, MQTTMessageType type, char* topic_buf, size_t buf_size);
   bool substituteTopicTemplate(const char* tmpl, MQTTMessageType type, int slot_index, char* buf, size_t buf_size);
+  uint8_t eligiblePacketSlots(uint8_t packet_type, MQTTMessageType type);
+  bool shouldQueuePacketType(uint8_t packet_type, bool& filtered);
 
   // Internal methods - slot management
   // Lifetime model (Phase 1 of MQTT memory-defrag):
@@ -428,10 +439,10 @@ private:
   void mqttTaskLoop();  // Main loop for MQTT task
   void initializeWiFiInTask();  // WiFi initialization moved to task
   #endif
-  bool publishPacket(mesh::Packet* packet, bool is_tx,
+  bool publishPacket(mesh::Packet* packet, bool is_tx, bool& has_eligible_target,
                      const uint8_t* raw_data = nullptr, int raw_len = 0,
                      float snr = 0.0f, float rssi = 0.0f);
-  bool publishRaw(mesh::Packet* packet);
+  bool publishRaw(mesh::Packet* packet, bool& has_eligible_target);
 #if defined(WITH_MQTT_NEIGHBORS)
   // Publishes the pending _neighbors_json_buffer to every connected slot's
   // neighbors topic. Runs on the MQTT task (Core 0) only.
@@ -537,7 +548,38 @@ public:
 #if defined(WITH_MQTT_NEIGHBORS)
   // Single source of truth for the neighbors JSON size, used by both the bridge's
   // persistent buffer and the mesh's transient build buffer.
+  #if defined(BOARD_HAS_PSRAM)
   static const size_t NEIGHBORS_JSON_BUFFER_SIZE = 10240;
+  #else
+  // Without PSRAM all three neighbors allocations (persistent buffer, transient
+  // build buffer, ArduinoJson pool) come out of internal DRAM, which each TLS
+  // slot also needs ~40 KB of. A quarter-size buffer keeps the peak near 13 KB
+  // instead of ~35 KB; the builder drops the tail and sets "truncated" once the
+  // next entry will not fit, so the table degrades instead of failing.
+  static const size_t NEIGHBORS_JSON_BUFFER_SIZE = 4096;
+  #endif
+
+  // The ArduinoJson pool is NOT bounded by the text buffer: v7 hands out pool
+  // blocks in fixed 4096-byte chunks, so a table that just fits the text buffer
+  // can still need well over it in pool. Budgeting the pool at the text size
+  // starves it, and a starved pool sets doc.overflowed() -- which drops the whole
+  // publish instead of truncating. Measured need is 12541 B for 50 entries and
+  // 4286 B for 21, so allow a spare block over each.
+  #if defined(BOARD_HAS_PSRAM)
+  static const size_t NEIGHBORS_DOC_POOL_BUDGET = 16384;
+  #else
+  static const size_t NEIGHBORS_DOC_POOL_BUDGET = 12288;
+  #endif
+
+  // Entries per publish. One 4096-byte pool block holds 21, so staying under
+  // that keeps the non-PSRAM pool to a single block (~4.3 KB rather than
+  // ~8.4 KB) and the whole publish peak near 13 KB of internal DRAM. PSRAM
+  // boards are limited only by the text buffer and the neighbour cache.
+  #if defined(BOARD_HAS_PSRAM)
+  static const int NEIGHBORS_MAX_PUBLISH_ENTRIES = MAX_NEIGHBOURS;
+  #else
+  static const int NEIGHBORS_MAX_PUBLISH_ENTRIES = 20;
+  #endif
 
   // Called by the mesh (Core 1) once a neighbor-discovery pass has built the
   // table JSON. Copies it into the persistent PSRAM buffer and raises the
@@ -629,6 +671,9 @@ public:
     bool has_publish_counts;
     unsigned long publish_ok;
     unsigned long publish_err;
+    // Raw packet-type allowlist. Kept as the mask rather than canonical text so
+    // the 1 KB stats JSON stays compact; the portal renders it.
+    uint16_t filter_mask;
   };
   static bool getSlotStatusSnapshot(int slot_index, SlotStatusSnapshot* out);
   /** True when WiFi is set and at least one MQTT slot can run (preset + custom host if needed). */

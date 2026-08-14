@@ -31,3 +31,10 @@ platformio.local.ini
 .claude/*
 .cursorrules
 __pycache__/
+# Worktrees checked out inside the repo. Committing one adds a stray gitlink
+# that makes every CI checkout warn "No url found for submodule path ... in
+# .gitmodules", and leaves `git status` permanently dirty so the next `git add
+# -A` re-commits it. .wt-* covers the hand-made ones; .build-wt-* the CI ones.
+.build-wt-*/
+.wt-*/
+scripts/__pycache__/*

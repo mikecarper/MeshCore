@@ -268,9 +268,10 @@ scopes and publishes the assembled table to the MQTT `neighbors` topic once.
 **Usage:**
 - `discover.scopes`
 
-**Note:** Requires a PSRAM board with the MQTT bridge running. On non-PSRAM MQTT
-builds it replies `Err - not supported (requires PSRAM)`. If a `discover.neighbors`
-refresh is already in flight, the scope pass is queued behind it.
+**Note:** Requires an MQTT observer build with the neighbors feature compiled in
+(all PSRAM boards, plus non-PSRAM boards built with `MQTT_NEIGHBORS_WITHOUT_PSRAM`).
+Elsewhere it replies `Err - neighbors not enabled in this build`. If a
+`discover.neighbors` refresh is already in flight, the scope pass is queued behind it.
 
 ---
 
@@ -3012,9 +3013,13 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 
 **Default:** `off`
 
-> **Note:** Requires a PSRAM board. On non-PSRAM MQTT builds this replies
-> `Err - not supported (requires PSRAM)`. The setting is read live by the mesh
-> loop -- no restart required; enabling it triggers a discovery on the next pass.
+> **Note:** Requires a build with the neighbors feature compiled in (all PSRAM
+> boards, plus non-PSRAM boards built with `MQTT_NEIGHBORS_WITHOUT_PSRAM`);
+> elsewhere this replies `Err - neighbors not enabled in this build`. Non-PSRAM
+> builds publish at most 20 neighbours per pass to bound internal-DRAM use, and
+> set `truncated` with the true `total_neighbors` when the table is larger.
+> The setting is read live by the mesh
+> loop - no restart required; enabling it triggers a discovery on the next pass.
 > While enabled, `get mqtt.status` gains a trailing `nbr: <next>/<last>` field
 > (time to next publish, and how the last publish went).
 

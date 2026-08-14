@@ -31,6 +31,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
 };
 static const char* const WC_ALLOWED_SLOT_KEYS[] = {
   "preset", "server", "port", "username", "password", "token", "topic", "audience",
+  "filter",
 };
 
 // True when `key` is a well-formed per-slot key ("mqttN.<field>" with N in
@@ -80,6 +81,28 @@ static inline bool wcIsSecretKey(const char* key) {
   if (wcIsSlotKeyPrefix(key)
       && (strcmp(&key[6], "password") == 0 || strcmp(&key[6], "token") == 0)) return true;
   return false;
+}
+
+// CommonCLI answers a secret getter in plaintext only for the serial console
+// (sender_timestamp 0) and masks it for remote callers. The web CLI executes
+// with sender_timestamp 0 -- that is what makes `erase`, `stats-*` and `set freq`
+// reachable -- so it would otherwise inherit the serial console's plaintext
+// answers for an HTTP request. This says which `get` commands must be masked
+// back down, restoring the distinction for a caller not at the serial port.
+//
+// Writing these has always been possible from the portal; reading them never
+// was, because handleConfigGet masks them (wcIsSecretKey). The two are different
+// capabilities: replacing a WiFi password does not reveal the current one, and
+// replacing an identity does not reveal the existing private key.
+static inline bool wcIsSecretReadCommand(const char* cmd) {
+  if (strncmp(cmd, "get ", 4) != 0) return false;
+  const char* key = cmd + 4;
+  while (*key == ' ') key++;
+  if (strcmp(key, "prv.key") == 0) return true;         // this node's identity
+  if (strcmp(key, "guest.password") == 0) return true;
+  if (strcmp(key, "alert.psk") == 0) return true;
+  if (strcmp(key, "bridge.secret") == 0) return true;
+  return wcIsSecretKey(key);   // wifi.pwd, mqttN.password, mqttN.token
 }
 
 // Browser-generated request IDs are exactly eight random bytes encoded as

@@ -351,10 +351,17 @@ void MQTTBridge::formatMqttStatsReply(char* buf, size_t bufsize) {
 
   // drops=<outbox>/<skipped>: outbox-cap drops vs. memory-pressure skips.
   int pos = 0;
-  replyAppendf(buf, bufsize, &pos, "> Free=%d Max=%d q:%d/%d Outbox=%u drops=%lu/%d |",
+  replyAppendf(buf, bufsize, &pos, "> Free=%d Max=%d q:%d/%d Outbox=%u drops=%lu/%d",
                (int)ESP.getFreeHeap(), (int)ESP.getMaxAllocHeap(),
                q, MAX_QUEUE_SIZE, (unsigned)outbox_total,
                outbox_drops, b->_skipped_publishes);
+  // filt=<n>: packets the per-slot type filters rejected before the queue.
+  // Omitted while zero so an unfiltered node's reply keeps its former length --
+  // the per-slot list below is what usually gets clamped away first.
+  if (b->_filtered_packets > 0) {
+    replyAppendf(buf, bufsize, &pos, " filt=%lu", b->_filtered_packets);
+  }
+  replyAppendf(buf, bufsize, &pos, " |");
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
     if (!b->_slots[i].enabled || !b->_slots[i].client) continue;
     replyAppendf(buf, bufsize, &pos, " s%d=%lu/%lu", i + 1,
@@ -392,6 +399,9 @@ bool MQTTBridge::getSlotStatusSnapshot(int slot_index, SlotStatusSnapshot* out) 
   out->has_publish_counts = true;
   out->publish_ok = slot.client ? slot.client->getPublishOk() : 0;
   out->publish_err = slot.client ? slot.client->getPublishErr() : 0;
+  // Lets the portal show why a healthy slot is quiet.
+  out->filter_mask = b->_obs ? b->_obs->mqtt_slot_packet_filter[slot_index]
+                             : MQTTPacketFilter::kAllPacketTypes;
   return true;
 }
 
@@ -498,6 +508,17 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
 
   // replyAppendf clamps pos on every call, so the chained appends below can't
   // walk past the reply buffer even if the accumulated text exceeds it (A1).
+  // A non-default filter is the one healthy-looking reason for a slot to stop
+  // publishing, so it has to appear -- but appended last. replyAppendf clamps at
+  // the 160-byte reply, and an error tail (TLS + mbedTLS + errno + age) can
+  // already reach ~117 chars, so putting the filter first would push the
+  // operator's diagnostic detail off the end of a failing slot's line.
+  const uint16_t filter_mask = b->_obs ? b->_obs->mqtt_slot_packet_filter[slot_index]
+                                       : MQTTPacketFilter::kAllPacketTypes;
+  char filter_text[MQTTPacketFilter::kFilterTextSize];
+  const bool show_filter = filter_mask != MQTTPacketFilter::kAllPacketTypes &&
+      MQTTPacketFilter::format(filter_mask, filter_text, sizeof(filter_text));
+
   int pos = 0;
   replyAppendf(buf, bufsize, &pos, "> mqtt%d: %s", slot_index + 1, state);
   if (slot.disconnect_count > 0) {
@@ -508,14 +529,10 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
     }
   }
 
-  // If connected with no errors, we're done
+  // Connected with no errors: nothing more to say about the connection.
   if (slot.connected && slot.last_error_time == 0) {
     replyAppendf(buf, bufsize, &pos, ", no errors");
-    return;
-  }
-
-  // Show last error if we have one
-  if (slot.last_error_time > 0) {
+  } else if (slot.last_error_time > 0) {
     // TLS error with human-friendly description
     if (slot.last_tls_err != 0) {
       const char* desc = tlsErrorStr(slot.last_tls_err);
@@ -544,6 +561,26 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
     }
   } else if (!slot.connected) {
     replyAppendf(buf, bufsize, &pos, ", no error info");
+  }
+
+  // Appended last so it never displaces connection diagnostics. replyAppendf
+  // clamps rather than overflows, but a clipped type list is worse than no
+  // list: "...,13,14," parses as a real, different allowlist, and this is the
+  // one line an operator reads to find out why a slot is quiet. So the exact
+  // text is only emitted when it fits whole; otherwise fall back to a count,
+  // which cannot be misread. `get mqttN.filter` always has the exact value.
+  if (show_filter) {
+    static const int kFilterLabelLen = (int)sizeof(", filter:") - 1;
+    const int remaining = pos < (int)bufsize ? (int)bufsize - 1 - pos : 0;
+    const uint8_t allowed = MQTTPacketFilter::countTypes(filter_mask);
+    const int compact_len = kFilterLabelLen + (allowed >= 10 ? 5 : 4);  // "N/16"
+    if (kFilterLabelLen + (int)strlen(filter_text) <= remaining) {
+      replyAppendf(buf, bufsize, &pos, ", filter:%s", filter_text);
+    } else if (compact_len <= remaining) {
+      replyAppendf(buf, bufsize, &pos, ", filter:%u/16", (unsigned)allowed);
+    }
+    // Neither fits: the slot is reporting so much error detail that the filter
+    // is the least useful field on the line. Omit it rather than mislead.
   }
 }
 
@@ -718,18 +755,23 @@ void MQTTBridge::allocateRuntimeBuffers() {
       _publish_json_buffer, PUBLISH_JSON_BUFFER_SIZE, psram_malloc));
   _status_json_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::allocateIfMissing(
       _status_json_buffer, STATUS_JSON_BUFFER_SIZE, psram_malloc));
-#if defined(WITH_MQTT_NEIGHBORS)
-  // Persistent neighbors JSON buffer. Unlike status/packet there is no stack
-  // fallback: the feature is PSRAM-gated, so a nullptr simply disables publishing
-  // (requestPublishNeighbors/publishNeighbors both no-op on nullptr).
-  _neighbors_json_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::allocateIfMissing(
-      _neighbors_json_buffer, NEIGHBORS_JSON_BUFFER_SIZE, psram_malloc));
-#endif
   MQTT_DEBUG_PRINTLN("Runtime buffers: raw=%s publish=%s status=%s",
       _last_raw_data ? "PSRAM" : "unavailable",
       _publish_json_buffer ? "PSRAM" : "stack fallback",
       _status_json_buffer ? "PSRAM" : "stack fallback");
   #endif
+
+#if defined(WITH_MQTT_NEIGHBORS)
+  // Persistent neighbors JSON buffer, heap-allocated on every board: too large to
+  // keep inline in the bridge object the way the non-PSRAM status/packet buffers
+  // are. psram_malloc() falls back to internal DRAM, so this works without PSRAM.
+  // Unlike status/packet there is no stack fallback -- a nullptr simply disables
+  // publishing (requestPublishNeighbors/publishNeighbors both no-op on nullptr).
+  _neighbors_json_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::allocateIfMissing(
+      _neighbors_json_buffer, NEIGHBORS_JSON_BUFFER_SIZE, psram_malloc));
+  MQTT_DEBUG_PRINTLN("Neighbors buffer: %s",
+      _neighbors_json_buffer ? "ready" : "unavailable");
+#endif
 }
 
 void MQTTBridge::releaseRuntimeBuffers() {
@@ -740,13 +782,15 @@ void MQTTBridge::releaseRuntimeBuffers() {
       _publish_json_buffer, psram_free));
   _status_json_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::release(
       _status_json_buffer, psram_free));
+  #endif
+
 #if defined(WITH_MQTT_NEIGHBORS)
+  // Paired with the unconditional allocation in allocateRuntimeBuffers().
   _neighbors_json_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::release(
       _neighbors_json_buffer, psram_free));
   _neighbors_publish_len = 0;
   _neighbors_publish_pending.store(false, std::memory_order_release);
 #endif
-  #endif
 
   // Never pair a newly allocated raw buffer with metadata from a prior bridge
   // run. This also makes non-PSRAM restarts discard their stale raw cache.
@@ -2322,7 +2366,7 @@ void MQTTBridge::publishStatusToSlot(int index) {
   // Build per-slot topic (handles IATA check for meshcore, token check for meshrank)
   char status_topic[128];
   if (!buildTopicForSlot(index, MSG_STATUS, status_topic, sizeof(status_topic))) {
-    return;  // Slot doesn't support status (e.g., meshrank) or missing required config
+    return;  // Slot is missing required topic configuration
   }
 
   // Reuse pre-allocated buffer to avoid heap alloc/free churn under memory pressure.
@@ -2804,15 +2848,16 @@ void MQTTBridge::loop() {
 void MQTTBridge::onPacketReceived(mesh::Packet *packet) {
   if (!_initialized || !_obs->mqtt_packets_enabled || !_obs->mqtt_rx_enabled) return;
 
-  // Check if we have any enabled slots to send to
-  bool has_valid_slots = false;
-  for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-    if (_slots[i].enabled && _slots[i].client) {
-      has_valid_slots = true;
-      break;
-    }
+  // Drop before the queue copy when no configured slot allows this payload
+  // type. A QueuedPacket carries the packet plus up to 256 bytes of raw radio
+  // data and crosses to Core 0, so filtering here (not at publish time) is
+  // what actually saves the queue slot and the memcpy. This also subsumes the
+  // older "is any slot configured at all?" pre-check.
+  bool filtered = false;
+  if (!shouldQueuePacketType(packet->getPayloadType(), filtered)) {
+    if (filtered) _filtered_packets++;
+    return;
   }
-  if (!has_valid_slots) return;
 
   // Queue packet for transmission
   queuePacket(packet, false);
@@ -2828,6 +2873,13 @@ void MQTTBridge::sendPacket(mesh::Packet *packet) {
     if (packet->payload_len < PUB_KEY_SIZE) return;
     // Advert payload starts with advertiser's 32-byte public key - compare to our identity
     if (!_identity || memcmp(_identity->pub_key, packet->payload, PUB_KEY_SIZE) != 0) return;
+  }
+
+  // Same pre-queue filter gate as the RX path.
+  bool filtered = false;
+  if (!shouldQueuePacketType(packet->getPayloadType(), filtered)) {
+    if (filtered) _filtered_packets++;
+    return;
   }
 
   // Queue packet for transmission
@@ -2921,7 +2973,9 @@ void MQTTBridge::processPacketQueue() {
       _last_raw_timestamp = millis();
     }
 
+    bool packet_eligible = false;
     bool packet_published = publishPacket(&queued.packet_copy, queued.is_tx,
+                                          packet_eligible,
                                           queued.has_raw_data ? queued.raw_data : nullptr,
                                           queued.has_raw_data ? queued.raw_len  : 0,
                                           queued.snr, queued.rssi);
@@ -2929,15 +2983,21 @@ void MQTTBridge::processPacketQueue() {
 
     // Publish raw if enabled (live from prefs so `set mqtt.raw` applies without
     // a bridge restart)
+    bool raw_eligible = false;
     bool raw_published = false;
     if (_obs->mqtt_raw_enabled) {
-      raw_published = publishRaw(&queued.packet_copy);
+      raw_published = publishRaw(&queued.packet_copy, raw_eligible);
     }
 
-    bool any_published = MQTTPacketQueuePolicy::queuedPacketPublished(packet_published, raw_published);
+    // Decide intentional completion once across the entire queue item. An
+    // ineligible raw path (for example, MeshRank, which does not take raw)
+    // must not hide a failed eligible structured publish.
+    const bool queue_complete = MQTTPacketFilter::publishComplete(
+        packet_eligible || raw_eligible,
+        MQTTPacketQueuePolicy::queuedPacketPublished(packet_published, raw_published));
     const MQTTPacketQueuePolicy::RetryDecision retry =
         MQTTPacketQueuePolicy::retryDecision(
-            any_published, queued.retry_attempts,
+            queue_complete, queued.retry_attempts,
             static_cast<uint32_t>(now_ms));
     if (retry.action == MQTTPacketQueuePolicy::RetryAction::Schedule) {
       queued.retry_attempts = retry.retry_attempts;
@@ -3048,22 +3108,30 @@ void MQTTBridge::processPacketQueue() {
       _last_raw_timestamp = millis();
     }
 
+    bool packet_eligible = false;
     bool packet_published = publishPacket(&queued.packet_copy, queued.is_tx,
+                                          packet_eligible,
                                           queued.has_raw_data ? queued.raw_data : nullptr,
                                           queued.has_raw_data ? queued.raw_len  : 0,
                                           queued.snr, queued.rssi);
     // No taskYIELD() on non-ESP32 platforms (non-FreeRTOS, cooperative scheduling not needed)
 
     // Live from prefs so `set mqtt.raw` applies without a bridge restart.
+    bool raw_eligible = false;
     bool raw_published = false;
     if (_obs->mqtt_raw_enabled) {
-      raw_published = publishRaw(&queued.packet_copy);
+      raw_published = publishRaw(&queued.packet_copy, raw_eligible);
     }
 
-    bool any_published = MQTTPacketQueuePolicy::queuedPacketPublished(packet_published, raw_published);
+    // Decide intentional completion once across the entire queue item. An
+    // ineligible raw path (for example, MeshRank, which does not take raw)
+    // must not hide a failed eligible structured publish.
+    const bool queue_complete = MQTTPacketFilter::publishComplete(
+        packet_eligible || raw_eligible,
+        MQTTPacketQueuePolicy::queuedPacketPublished(packet_published, raw_published));
     const MQTTPacketQueuePolicy::RetryDecision retry =
         MQTTPacketQueuePolicy::retryDecision(
-            any_published, queued.retry_attempts,
+            queue_complete, queued.retry_attempts,
             static_cast<uint32_t>(now_ms));
     if (retry.action == MQTTPacketQueuePolicy::RetryAction::Schedule) {
       queued.retry_attempts = retry.retry_attempts;
@@ -3109,6 +3177,69 @@ void MQTTBridge::processPacketQueue() {
 // ---------------------------------------------------------------------------
 // Publishing
 // ---------------------------------------------------------------------------
+
+// Which slots will actually take this payload type, resolved in two stages so
+// the cheap test runs first: the filter/enabled check costs a bit test, while
+// the topic build costs an snprintf. Both are far cheaper than the ~2 KB JSON
+// serialisation they gate, so this must complete before a caller builds a
+// message -- a slot that cannot form a topic (MeshRank raw, or a meshcore
+// preset with no IATA set) would otherwise pay for a document nobody receives.
+//
+// A slot's connection state is deliberately not consulted: a configured but
+// disconnected broker is still a target, so the packet stays on the queue for
+// the existing bounded retry rather than being dropped as complete.
+uint8_t MQTTBridge::eligiblePacketSlots(uint8_t packet_type, MQTTMessageType type) {
+  static_assert(RUNTIME_MQTT_SLOTS <= 8, "eligible slot mask must fit in uint8_t");
+  // Per-slot filters cover packet traffic only. Status and neighbors are
+  // documented as never filtered, so refuse those publication types here
+  // rather than silently applying a packet mask if a caller is added later.
+  if (!_obs || (type != MSG_PACKETS && type != MSG_RAW)) return 0;
+
+  uint8_t eligible_slots = 0;
+  char topic[128];
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    const bool slot_enabled = _slots[i].enabled && _slots[i].client != nullptr;
+    // Load once so a live CLI/WebConfig update cannot split this packet's
+    // decision across two different masks.
+    const uint16_t filter_mask = _obs->mqtt_slot_packet_filter[i];
+    if (!MQTTPacketFilter::slotCandidate(slot_enabled, filter_mask, packet_type)) continue;
+
+    const bool topic_supported = buildTopicForSlot(i, type, topic, sizeof(topic));
+    if (MQTTPacketFilter::slotEligible(slot_enabled, topic_supported,
+                                       filter_mask, packet_type)) {
+      eligible_slots |= static_cast<uint8_t>(1u << i);
+    }
+  }
+  return eligible_slots;
+}
+
+// Conservative pre-queue gate: the OR of every configured slot's mask. Runs on
+// Core 1 in the radio callback, so it must stay cheap -- a packet no broker
+// wants is rejected before it is copied into the queue at all. `filtered`
+// separates "a broker is configured but none wants this type" (worth counting)
+// from "no broker configured at all" (the pre-existing silent drop).
+bool MQTTBridge::shouldQueuePacketType(uint8_t packet_type, bool& filtered) {
+  filtered = false;
+  if (!_obs) return false;
+
+  uint16_t masks[RUNTIME_MQTT_SLOTS];
+  bool enabled[RUNTIME_MQTT_SLOTS];
+  bool any_enabled = false;
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    masks[i] = _obs->mqtt_slot_packet_filter[i];
+    enabled[i] = _slots[i].enabled && _slots[i].client != nullptr;
+    any_enabled = any_enabled || enabled[i];
+  }
+  if (!any_enabled) return false;
+
+  if (MQTTPacketFilter::allows(
+          MQTTPacketFilter::enabledUnion(masks, enabled, RUNTIME_MQTT_SLOTS),
+          packet_type)) {
+    return true;
+  }
+  filtered = true;
+  return false;
+}
 
 bool MQTTBridge::publishStatus() {
   if (!_cached_has_connected_slots) {
@@ -3200,8 +3331,8 @@ bool MQTTBridge::publishStatus() {
         }
       }
     }
-    // If no connected slot accepts status topics (e.g. meshrank is packets-only),
-    // treat as success to avoid infinite retry loops
+    // If no connected slot accepts status topics, treat as success to avoid
+    // infinite retry loops
     if (published || !any_slot_wants_status) {
       if (published) MQTT_DEBUG_PRINTLN("Status published");
       return true;
@@ -3212,9 +3343,18 @@ bool MQTTBridge::publishStatus() {
 }
 
 bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
+                                bool& has_eligible_target,
                                 const uint8_t* raw_data, int raw_len,
                                 float snr, float rssi) {
+  has_eligible_target = false;
   if (!packet) return false;
+
+  const uint8_t packet_type = packet->getPayloadType();
+  const uint8_t eligible_slots = eligiblePacketSlots(packet_type, MSG_PACKETS);
+  has_eligible_target = eligible_slots != 0;
+  // Filtered out everywhere, or no slot can form a packets topic: intentionally
+  // complete, and nothing below (JSON build included) is worth paying for.
+  if (!has_eligible_target) return false;
 
   refreshOriginFromPrefs();
 
@@ -3321,7 +3461,11 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
     bool published = false;
     char topic[128];
     for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-      if (_slots[i].enabled && _slots[i].client && _slots[i].connected) {
+      // Eligibility already proved this slot's topic builds; rebuilding it is
+      // one snprintf, cheaper than carrying a RUNTIME_MQTT_SLOTS x 128 topic
+      // cache on the MQTT task's 8 KB stack alongside the JSON buffer.
+      if ((eligible_slots & static_cast<uint8_t>(1u << i)) != 0 &&
+          _slots[i].enabled && _slots[i].client && _slots[i].connected) {
         if (buildTopicForSlot(i, MSG_PACKETS, topic, sizeof(topic))) {
           if (publishToSlot(i, topic, active_buffer, false)) {
             published = true;
@@ -3331,7 +3475,6 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
     }
     return published;
   } else {
-    uint8_t packet_type = packet->getPayloadType();
     if (packet_type == 4 || packet_type == 9) {
       MQTT_DEBUG_PRINTLN("Failed to build packet JSON for type=%d (len=%d), packet not published", packet_type, len);
     }
@@ -3339,8 +3482,16 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
   return false;
 }
 
-bool MQTTBridge::publishRaw(mesh::Packet* packet) {
+bool MQTTBridge::publishRaw(mesh::Packet* packet, bool& has_eligible_target) {
+  has_eligible_target = false;
   if (!packet) return false;
+
+  const uint8_t packet_type = packet->getPayloadType();
+  const uint8_t eligible_slots = eligiblePacketSlots(packet_type, MSG_RAW);
+  has_eligible_target = eligible_slots != 0;
+  // Filtered out everywhere, or no slot has a raw topic (MeshRank does not take
+  // raw): intentionally complete, and no JSON is built.
+  if (!has_eligible_target) return false;
 
   refreshOriginFromPrefs();
 
@@ -3372,7 +3523,8 @@ bool MQTTBridge::publishRaw(mesh::Packet* packet) {
     bool published = false;
     char topic[128];
     for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-      if (_slots[i].enabled && _slots[i].client && _slots[i].connected) {
+      if ((eligible_slots & static_cast<uint8_t>(1u << i)) != 0 &&
+          _slots[i].enabled && _slots[i].client && _slots[i].connected) {
         if (buildTopicForSlot(i, MSG_RAW, topic, sizeof(topic))) {
           if (publishToSlot(i, topic, active_buffer, false)) {
             published = true;
@@ -3419,11 +3571,12 @@ bool MQTTBridge::publishNeighbors() {
   char topic[128];
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
     if (_slots[i].enabled && _slots[i].client && _slots[i].connected) {
-      // MeshRank slots reject non-packets by contract, so buildTopicForSlot
-      // returns false for them here and the slot is skipped.
+      // Slots that cannot form a neighbors topic are skipped here.
       if (buildTopicForSlot(i, MSG_NEIGHBORS, topic, sizeof(topic))) {
+        // Neighbor snapshots are periodically refreshed. Publish synchronously
+        // at QoS 0 to avoid the QoS 1 outbox, retaining where the broker allows.
         bool use_retain = _slots[i].preset ? _slots[i].preset->allow_retain : false;
-        if (publishToSlot(i, topic, _neighbors_json_buffer, use_retain, 1)) {
+        if (publishToSlot(i, topic, _neighbors_json_buffer, use_retain, 0)) {
           published = true;
         }
       }

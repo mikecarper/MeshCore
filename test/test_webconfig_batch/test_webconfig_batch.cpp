@@ -211,6 +211,108 @@ TEST(WebConfigBatch, StopWarnsOnceAfterTheDeadlineThenKeepsWaiting) {
 }
 
 // --------------------------------------------------------------------------
+// CLI sequences (/api/cli), which share the deferred-command slot
+// --------------------------------------------------------------------------
+TEST(WebConfigBatch, CliReadPagesResultsAndNeverOverrunsWhatHasDrained) {
+  const int page = Batch::kCliResultPage;
+  // Nothing drained past the cursor yet.
+  EXPECT_EQ(0, Batch::cliPageCount(/*from=*/0, /*produced=*/0, page));
+  EXPECT_EQ(0, Batch::cliPageCount(/*from=*/3, /*produced=*/3, page));
+  // Partial progress: hand back exactly what exists.
+  EXPECT_EQ(3, Batch::cliPageCount(0, 3, page));
+  EXPECT_EQ(2, Batch::cliPageCount(5, 7, page));
+  // More available than fits in one read: cap at the page size.
+  EXPECT_EQ(page, Batch::cliPageCount(0, page + 5, page));
+  // A cursor beyond what has drained (stale or crafted) yields nothing rather
+  // than a negative count that would index backwards through the batch.
+  EXPECT_EQ(0, Batch::cliPageCount(/*from=*/9, /*produced=*/4, page));
+}
+
+TEST(WebConfigBatch, CliReadIsDoneOnlyOnceEveryResultHasBeenHandedOver) {
+  // Still executing: never final, however much has been read.
+  EXPECT_FALSE(Batch::cliReadIsFinal(State::Pending, /*from=*/0, /*page=*/8, /*total=*/8));
+  // Execution finished but the client has only seen the first page. Reporting
+  // "done" here would make a client that stops polling lose the rest.
+  EXPECT_FALSE(Batch::cliReadIsFinal(State::Done, /*from=*/0, /*page=*/8, /*total=*/20));
+  EXPECT_FALSE(Batch::cliReadIsFinal(State::Done, /*from=*/8, /*page=*/8, /*total=*/20));
+  // The read that hands over the last result is the final one.
+  EXPECT_TRUE(Batch::cliReadIsFinal(State::Done, /*from=*/16, /*page=*/4, /*total=*/20));
+  // Re-reading past the end stays final (polls after the last page).
+  EXPECT_TRUE(Batch::cliReadIsFinal(State::Done, /*from=*/20, /*page=*/0, /*total=*/20));
+}
+
+// Every string below is a literal lifted from CommonCLI.cpp /
+// CommonCLI_Observer.cpp. Testing only for an "Err" prefix passed five of these
+// off as success, which both coloured them green and let a queued reboot go
+// ahead after them.
+TEST(WebConfigBatch, CliFailureRepliesAreRecognisedInEveryShapeCommonCLIEmits) {
+  const char* failures[] = {
+    "Err - bad params",                          // MyMesh setperm
+    "ERR: bad pubkey",                           // neighbor.remove
+    "Error: IATA code must be exactly 3 letters",// observer setters
+    "(ERR: clock cannot go backwards)",          // clock sync, parenthesised
+    "Unknown command",                           // top-level fallthrough
+    "unknown config: mqtt.nope",                 // set fallthrough
+    "??: mqtt.nope",                             // get fallthrough
+    "Can't find GPS",                            // gps
+    "File system erase: Err",                    // failure reported at the end
+  };
+  for (const char* f : failures) {
+    EXPECT_TRUE(Batch::cliReplyIsFailure(f)) << f;
+  }
+
+  const char* successes[] = {
+    "OK",
+    "OK - slot 1 preset: meshrank",
+    "> 22",                                      // getter value
+    "> msgs: on, 1: analyzer-us (ok)",           // getter, contains "ok"
+    "File system erase: OK",                     // same shape, succeeded
+    "Free: 142832, Min: 126808",                 // memory
+    "v1.16.0 (Build: 6 Jun 2026)",               // ver
+  };
+  for (const char* s : successes) {
+    EXPECT_FALSE(Batch::cliReplyIsFailure(s)) << s;
+  }
+  // An empty reply is normalised to "OK" before it ever reaches the client.
+  EXPECT_FALSE(Batch::cliReplyIsFailure(""));
+  EXPECT_FALSE(Batch::cliReplyIsFailure(NULL));
+}
+
+TEST(WebConfigBatch, OnlyWritesGateTheDeferredReboot) {
+  // Writes gate it: these are what can leave a config not worth rebooting into.
+  EXPECT_TRUE(Batch::cliReplyGatesReboot("set tx 22"));
+  EXPECT_TRUE(Batch::cliReplyGatesReboot("set mqtt1.preset meshrank"));
+  EXPECT_TRUE(Batch::cliReplyGatesReboot("password hunter2"));
+  // Diagnostics do not. `memory` answering "Free: ..." must not be read as a
+  // failure and strand the operator's reboot, and a getter's "> value" must not
+  // be read as a success either -- neither is asked.
+  EXPECT_FALSE(Batch::cliReplyGatesReboot("memory"));
+  EXPECT_FALSE(Batch::cliReplyGatesReboot("get tx"));
+  EXPECT_FALSE(Batch::cliReplyGatesReboot("reboot"));
+  EXPECT_FALSE(Batch::cliReplyGatesReboot("advert"));
+  EXPECT_FALSE(Batch::cliReplyGatesReboot(NULL));
+  // "settle" must not be mistaken for a `set`; the space is part of the token.
+  EXPECT_FALSE(Batch::cliReplyGatesReboot("settle"));
+
+  // A write counts only on the "OK" prefix every setter keeps.
+  EXPECT_TRUE(Batch::cliWriteSucceeded("OK"));
+  EXPECT_TRUE(Batch::cliWriteSucceeded("OK - reboot to apply"));
+  EXPECT_FALSE(Batch::cliWriteSucceeded("unknown config: nope"));
+  EXPECT_FALSE(Batch::cliWriteSucceeded("Error: expected a number"));
+  EXPECT_FALSE(Batch::cliWriteSucceeded(""));
+}
+
+TEST(WebConfigBatch, CliRebootIsWithheldWhenAnyCommandInTheSequenceFailed) {
+  EXPECT_TRUE(Batch::cliRebootAllowed(/*has_reboot=*/true, /*all_ok=*/true));
+  // Same rule a config save follows: do not reboot into a half-applied config
+  // over a link the operator may not get back.
+  EXPECT_FALSE(Batch::cliRebootAllowed(true, false));
+  // No `reboot` in the sequence: nothing to allow either way.
+  EXPECT_FALSE(Batch::cliRebootAllowed(false, true));
+  EXPECT_FALSE(Batch::cliRebootAllowed(false, false));
+}
+
+// --------------------------------------------------------------------------
 // Wrap-around guard shared with the production _reboot_at assignments
 // --------------------------------------------------------------------------
 TEST(WebConfigBatch, ScheduleAtNeverReturnsTheUnscheduledSentinel) {

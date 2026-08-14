@@ -358,6 +358,7 @@ public:
   uint32_t getNumRecvDirect() const { return n_recv_direct; }
   uint16_t getErrFlags() const { return _err_flags; }  // Get error flags
   bool hasOutbound() const { return outbound != NULL; }
+  bool isCurrentOutbound(const Packet* packet) const { return outbound == packet; }
   void resetStats() {
     n_sent_flood = n_sent_direct = n_recv_flood = n_recv_direct = 0;
     _err_flags = 0;

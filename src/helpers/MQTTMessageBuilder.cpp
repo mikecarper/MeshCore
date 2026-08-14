@@ -1,6 +1,9 @@
-#include "MQTTMessageBuilder.h"
-
+// MQTT-only translation unit. 22 variants re-glob helpers/*.cpp past the
+// arduino_base exclusion, so the contents are guarded here rather than in
+// the build filter -- same idiom as helpers/esp32/WebConfigServer.cpp.
 #ifdef WITH_MQTT_BRIDGE
+
+#include "MQTTMessageBuilder.h"
 
 #include "MQTTPayloadBuilder.h"
 #include <ArduinoJson.h>
@@ -114,14 +117,38 @@ int MQTTMessageBuilder::buildNeighborsMessage(
   const char* origin_id,
   const char* timestamp,
   const char* self_scopes,
+  const char* self_default_scope,
   const NeighborsMessageEntry* neighbors,
   int neighbor_count,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  int total_neighbors,
+  int queried_neighbors,
+  bool truncated
 ) {
   return MQTTPayloadBuilder::buildNeighborsMessage(
-      doc, origin, origin_id, timestamp, self_scopes, neighbors, neighbor_count,
-      buffer, buffer_size);
+      doc, origin, origin_id, timestamp, self_scopes, self_default_scope,
+      neighbors, neighbor_count, buffer, buffer_size, total_neighbors,
+      queried_neighbors, truncated);
+}
+
+size_t MQTTMessageBuilder::measureNeighborsMessageBase(
+  const char* origin,
+  const char* origin_id,
+  const char* timestamp,
+  const char* self_scopes,
+  const char* self_default_scope,
+  int total_neighbors
+) {
+  return MQTTPayloadBuilder::measureNeighborsMessageBase(
+      origin, origin_id, timestamp, self_scopes, self_default_scope,
+      total_neighbors);
+}
+
+size_t MQTTMessageBuilder::measureNeighborsMessageEntry(
+  const NeighborsMessageEntry& neighbor
+) {
+  return MQTTPayloadBuilder::measureNeighborsMessageEntry(neighbor);
 }
 
 int MQTTMessageBuilder::buildPacketJSON(
@@ -348,4 +375,4 @@ void MQTTMessageBuilder::packetToHex(mesh::Packet* packet, char* hex, size_t hex
   bytesToHex(raw_buf, raw_len, hex, hex_size);
 }
 
-#endif
+#endif  // WITH_MQTT_BRIDGE

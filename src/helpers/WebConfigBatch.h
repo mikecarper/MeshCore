@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>   // size_t / NULL for the reply classifiers below
 #include <stdint.h>
 
 // Fork-owned, dependency-free spec for the WebConfig "config batch / reboot /
@@ -191,6 +192,110 @@ static inline uint32_t confirmRebootAt(uint32_t now) {
 // only a brief response-flush delay is needed before rebooting.
 static inline uint32_t confirmSetupHandoffRebootAt(uint32_t now) {
   return scheduleAt(now, kSetupHandoffRebootConfirmMs);
+}
+
+// --------------------------------------------------------------------------
+// CLI sequences (/api/cli). The terminal shares this one deferred-command slot
+// with config saves rather than owning a second MAX_BATCH array: both drain on
+// the loop task, both are single-slot, and a duplicate would cost ~8 KB of
+// permanently resident RAM. Sharing also makes a save and a CLI run mutually
+// exclusive, which they must be.
+//
+// Two things differ from a config save:
+//  1. results stream. A save's results appear only when the whole batch is
+//     Done; a CLI read hands back whatever has executed so far, so a pasted
+//     sequence fills the terminal command by command.
+//  2. the reboot is not requested by a `reboot` flag on the request but by the
+//     word `reboot` appearing in the sequence. It is deferred rather than
+//     executed, because Board::reboot() does not return and would take the node
+//     down before the client could read a single result.
+// --------------------------------------------------------------------------
+
+// Results returned by one read. Bounds the JSON document built on the
+// async_tcp task; a longer sequence pages across successive reads.
+static const int kCliResultPage = 8;
+
+static inline int cliPageCount(int from, int produced, int page) {
+  const int pending = produced - from;
+  if (pending <= 0) return 0;
+  return pending > page ? page : pending;
+}
+
+// "done" means the client has been handed every result, not merely that
+// execution finished: the last page may still be unread, and a client that
+// stops polling at "done" would lose it.
+static inline bool cliReadIsFinal(State state, int from, int page_count, int total) {
+  return state == State::Done && from + page_count >= total;
+}
+
+// A trailing `reboot` is withheld when any command in the sequence failed,
+// exactly as a config save's is. The operator asked for the reboot, but
+// rebooting into a half-applied config -- over a link they may not get back --
+// is the worse failure, and the result body reports the refusal.
+static inline bool cliRebootAllowed(bool has_reboot, bool all_ok) {
+  return has_reboot && all_ok;
+}
+
+// CommonCLI has no single failure convention. Testing only for an "Err" prefix
+// let five other shapes through as success -- including "Unknown command" and
+// "unknown config: x", the two an operator hits most -- which coloured them
+// green AND let a queued reboot proceed after them.
+//
+// Every shape below is a literal from CommonCLI.cpp / CommonCLI_Observer.cpp.
+// This list is the fragile part of the design: a new failure string added there
+// is silently a success here. Which is exactly why it must not be what decides
+// whether to reboot -- see cliReplyConfirmsWrite.
+static inline bool cliReplyIsFailure(const char* r) {
+  if (r == NULL || r[0] == 0) return false;    // empty is normalised to "OK"
+  static const char* const kPrefixes[] = {
+    "Err", "ERR", "err",          // "Err - ", "ERR: ", "Error: "
+    "(ERR",                       // "(ERR: clock cannot go backwards)"
+    "Unknown command",
+    "unknown config",
+    "??",                         // "??: <key>" from the get fallthrough
+    "Can't find",                 // "Can't find GPS"
+  };
+  for (size_t i = 0; i < sizeof(kPrefixes) / sizeof(kPrefixes[0]); i++) {
+    const char* p = kPrefixes[i];
+    size_t n = 0;
+    while (p[n]) n++;
+    bool match = true;
+    for (size_t j = 0; j < n; j++) {
+      if (r[j] != p[j]) { match = false; break; }
+    }
+    if (match) return true;
+  }
+  // "File system erase: Err" reports the failure at the END of the reply.
+  for (size_t i = 0; r[i]; i++) {
+    if (r[i] == ':' && r[i + 1] == ' ' && r[i + 2] == 'E' && r[i + 3] == 'r' &&
+        r[i + 4] == 'r') return true;
+  }
+  return false;
+}
+
+// Whether a command's reply is allowed to gate the deferred reboot.
+//
+// Only writes are, and only writes have a reply convention worth trusting:
+// every setter answers with an "OK" prefix. Diagnostics do not -- `memory`
+// answers "Free: ...", a getter answers "> value" -- so letting them gate would
+// mean guessing, and guessing wrong here either strands the operator (a
+// harmless `memory` blocks their reboot) or reboots into a config that did not
+// apply. The question the gate exists to answer is narrower than "did anything
+// fail": it is "did every setting I asked for actually take".
+static inline bool cliReplyGatesReboot(const char* cmd) {
+  if (cmd == NULL) return false;
+  const char* set = "set ";
+  const char* pwd = "password ";
+  bool is_set = true, is_pwd = true;
+  for (int i = 0; i < 4; i++) if (cmd[i] != set[i]) { is_set = false; break; }
+  for (int i = 0; i < 9; i++) if (cmd[i] != pwd[i]) { is_pwd = false; break; }
+  return is_set || is_pwd;
+}
+
+// A write took effect iff its reply starts with "OK" -- the one convention every
+// setter in CommonCLI actually keeps.
+static inline bool cliWriteSucceeded(const char* reply) {
+  return reply != NULL && reply[0] == 'O' && reply[1] == 'K';
 }
 
 // --------------------------------------------------------------------------

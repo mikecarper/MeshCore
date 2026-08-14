@@ -180,37 +180,55 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
   enum NeighborDiscoverStatus : uint8_t {
-    ND_PENDING = 1,
-    ND_RESPONDED = 2,
-    ND_TIMEOUT = 3,
-    ND_SEND_FAILED = 4,
+    ND_UNSENT = 0,
+    ND_QUEUED = 1,
+    ND_PENDING = 2,
+    ND_RESPONDED = 3,
+    ND_TIMEOUT = 4,
+    ND_SEND_FAILED = 5,
   };
   struct NeighborDiscoverEntry {
-    uint8_t neighbour_idx;
+    mesh::Identity id;
+    uint32_t heard_timestamp;
+    int8_t snr;
     uint32_t tag;
     char scopes[96];
     uint8_t status;
   };
   NeighborDiscoverEntry neighbor_discover[MAX_NEIGHBOURS];
   uint8_t neighbor_discover_count;
+  uint8_t neighbor_discover_next;
+  uint8_t neighbor_discover_publish_count;
+  uint8_t neighbor_discover_queried_count;    // requests confirmed transmitted
+  size_t neighbor_discover_json_size;
+  bool neighbor_discover_truncated;
   bool neighbor_discover_active;
   bool neighbor_table_refresh_active;
   bool neighbor_table_refresh_periodic;
   unsigned long neighbor_discover_until;
+  mesh::Packet* neighbor_discover_request;
   unsigned long next_neighbors_publish;
   char self_scopes_buf[96];
+  char self_default_scope_buf[31];
+  char neighbor_discover_origin[32];
 
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
   void sendNodeDiscoverReq();
-  bool sendAnonRegionsReq(const mesh::Identity& target, uint32_t& tag);
+  mesh::Packet* sendAnonRegionsReq(const mesh::Identity& target, uint32_t& tag);
+  bool cancelNeighborDiscoverRequest();
+  uint32_t neighborDiscoverQueryTimeoutMs() const;
+  bool completeNeighborDiscoverEntry();
+  void resetNeighborDiscoverJsonBudget();
   bool neighborDiscoverReady(char* reply);
   bool startNeighborDiscover(char* reply);
   void loopNeighborDiscover();
   void finishNeighborDiscover();
   bool handleNeighborDiscoverResponse(int overlay_idx, const uint8_t* data, size_t len);
+  void touchNeighbourHeard(const mesh::Identity& id, uint32_t heard_timestamp);
   void getLocalScopes(char* buf, size_t len);
   static const int NEIGHBOR_DISCOVER_PEER_BASE = 1000;
-  static const unsigned long NEIGHBOR_DISCOVER_TIMEOUT_MS = 30000;
+  static const unsigned long NEIGHBOR_DISCOVER_QUEUE_TIMEOUT_MS = 29000;
+  static const int NEIGHBOR_DISCOVER_MIN_FREE_PACKETS = 5;
 #endif
 #ifdef WITH_MQTT_BRIDGE
   MQTTBridge* bridge;

@@ -44,24 +44,27 @@ TEST(MQTTTopicRouter, EveryMeshCorePresetSupportsEveryPublicationType) {
   }
 }
 
-TEST(MQTTTopicRouter, MeshRankContractIsPacketsOnly) {
+// Guards the raw exclusion: a merge from observer-firmware must not re-enable it.
+TEST(MQTTTopicRouter, MeshRankTakesEveryTypeExceptRaw) {
   const MQTTPresetDef* preset = findMQTTPreset("meshrank");
   ASSERT_NE(nullptr, preset);
   ASSERT_EQ(MQTT_TOPIC_MESHRANK, preset->topic_style);
 
-  char topic[128];
-  EXPECT_FALSE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, MQTT_PUBLICATION_STATUS,
-                                         nullptr, IATA, DEVICE, TOKEN, topic, sizeof(topic)));
-  EXPECT_STREQ("", topic);
-  ASSERT_TRUE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, MQTT_PUBLICATION_PACKETS,
-                                        nullptr, IATA, DEVICE, TOKEN, topic, sizeof(topic)));
-  EXPECT_STREQ("meshrank/uplink/account-token/0123456789ABCDEF/packets", topic);
-  EXPECT_FALSE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, MQTT_PUBLICATION_RAW,
-                                         nullptr, IATA, DEVICE, TOKEN, topic, sizeof(topic)));
-  EXPECT_STREQ("", topic);
-  EXPECT_FALSE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, MQTT_PUBLICATION_NEIGHBORS,
-                                         nullptr, IATA, DEVICE, TOKEN, topic, sizeof(topic)));
-  EXPECT_STREQ("", topic);
+  for (const TypeCase& type : kTypes) {
+    char topic[128];
+    if (type.type == MQTT_PUBLICATION_RAW) {
+      EXPECT_FALSE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, type.type, nullptr,
+                                             IATA, DEVICE, TOKEN, topic, sizeof(topic)));
+      EXPECT_STREQ("", topic);
+      continue;
+    }
+    ASSERT_TRUE(mqttBuildPublicationTopic(MQTT_ROUTE_MESHRANK, type.type, nullptr,
+                                          IATA, DEVICE, TOKEN, topic, sizeof(topic)))
+        << type.name;
+    EXPECT_EQ(std::string("meshrank/uplink/account-token/0123456789ABCDEF/") + type.name,
+              topic)
+        << type.name;
+  }
 }
 
 TEST(MQTTTopicRouter, MeshCoreRequiresUsableIataAndDevice) {

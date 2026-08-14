@@ -32,6 +32,8 @@ index.
 | -- | OTA teardown barrier | Implemented -- flash gated on a clean MQTT stop in `simple_repeater`; not hardware-validated |
 | 6 | Request/queue/connection/publication integration tests | Partial: WiFi-backoff + publish-outcome + enum-alignment gaps extracted and host-tested; WebConfig batch/reboot/stop spec (`WebConfigBatch.h`) **now wired into `WebConfigServer.cpp`** (2026-07-19) so the host tests cover production; queue-orchestration coverage still open, and the wired path is not yet exercised over real HTTP |
 | 7 | Uptime, memory, and fault-injection gates | Representative HW matrix run 2026-07-19: V3 non-PSRAM + V4 PSRAM done (no leak/crash; forced-path OTA-withhold + ~15-27 s loop stall observed). Multi-day soak + stack-HWM build pending |
+| -- | Non-PSRAM neighbors publication | Enabled on the ESP32-S3 non-PSRAM observer envs via `MQTT_NEIGHBORS_WITHOUT_PSRAM` (`feat/non-psram-neighbors`). Bench-verified 2026-08-03 at the 2-wss-slot non-PSRAM maximum (see "Hardware Characterization -- Non-PSRAM Neighbors"). Found and fixed a pre-existing PSRAM bug on the dev/beta channel: the JSON pool budget starved at ~40+ neighbours and dropped the whole publish (`34037f20`). Production is on ArduinoJson v6 and unaffected. Truncation above 20 neighbours is still unverified on hardware. |
+| -- | Upstream merge (latest) | `upstream/dev` `9d902e63` merged 2026-08-03 as `126a2564`: 13 commits, 6 files, zero conflicts. Carries an LR1110 RX-timeout fix affecting the ThinkNode M7 observer envs and switches all nRF52 boards to CC310 hardware Ed25519. See "Upstream Merge Record -- 2026-08-03". It exposed that nRF52/RP2040 had been unbuildable since 2026-04-10; nRF52 was fixed in `45379ad7`, while RP2040 remained open. |
 | -- | Upstream merge | `upstream/dev` merged 2026-07-19 on `observer-firmware-dev` (191 commits, 14 conflicted files). See "Upstream Merge Record". Not yet promoted to `webconfig` |
 | -- | Dev release channel | `observer-firmware-dev` publishes the dev/beta firmware channel (see "Release Channels"). Manual dispatch; separate from production |
 
@@ -198,6 +200,86 @@ exceeds 8 s -> forced/dirty):
   failure, and `millis()`-rollover scenarios need external network control /
   time injection and were not driven over serial.
 - Both devices left restored to their original slot config with the bridge on.
+
+## Hardware Characterization -- Non-PSRAM Neighbors (2026-08-03)
+
+Records the bench verification of neighbors publication on a non-PSRAM board
+(branch `feat/non-psram-neighbors`). Previously the feature was gated on
+`BOARD_HAS_PSRAM`; it is now available on the ESP32-S3 non-PSRAM observer envs
+via the per-variant `MQTT_NEIGHBORS_WITHOUT_PSRAM` opt-in.
+
+### Setup
+
+- Non-PSRAM ESP32-S3 observer node (`memory` reports `PSRAM: 0/0`); one of the
+  newly enabled envs -- exact board not recorded. Origin `MQTT Observer 63`.
+- **2 active preset slots, both connected**: `meshmapper` and `waev`, both
+  `wss://` -- i.e. the documented non-PSRAM design maximum of 2 TLS/WSS slots.
+- Driven over the serial CLI (`memory`, `neighbors`, `get mqtt.status`) with the
+  published payload captured off the broker's `neighbors` topic.
+
+### Result -- publishes cleanly at the 2-slot maximum
+
+| Signal | Observed | Note |
+|--------|----------|------|
+| `get mqtt.status` | `nbr: 23h54m/ok` | periodic publish succeeded (`NBR_RESULT_OK`) |
+| Free / min-ever internal heap | 70136 / **53776** | worst witnessed free still ~53.8 KB |
+| Largest contiguous block | 55284 | vs a 4096 B largest single request |
+| Payload size | **1252 B of 4096** (31%) | 6 neighbours, 272 B base |
+| `total` / `queried` / `truncated` | 6 / 6 / `false` | self-consistent with array length |
+
+Publish peak is **near entry-count-independent** below the cap, because three of
+the four allocations are fixed size: persistent buffer 4096 + transient build
+buffer 4096 + one 4096 ArduinoJson pool block, plus only 89 B/entry of scratch.
+So ~13.0 KB at 6 entries vs ~14.3 KB at the 20-entry cap -- this run already
+covered most of the worst-case peak.
+
+Correctness cross-checks, all passing: every pubkey distinct and correctly
+prefixed (validates the shared-scratch `&pubkey_hex[i * hex_size]` indexing that
+replaced the old stack arrays); all six SNRs match the `neighbors` CLI raw x4
+values (29->7.25, 50->12.5, 48->12, 42->10.5, 46->11.5, 48->12); ordering newest-first
+(0/1/2/4/11/398 s); the 398 s non-responder rendered `scopes: ""` +
+`status: "timeout"` rather than a fabricated "responded"; `heard_secs_ago: 0` on
+the zero-hop responder confirms `neighborHeardAgeUsable` is not misfiring into
+the `null` path.
+
+**Capacity for this mesh** (scopes ranged `""`/`"*"` up to 49 chars): the 4 KB
+text budget admits 22 entries, so the 20-entry
+`NEIGHBORS_MAX_PUBLISH_ENTRIES` cap binds first -- as designed, keeping the pool
+to a single block. No retuning needed.
+
+### Pre-existing bug found while verifying -- dev/beta channel only
+
+Sizing the ArduinoJson pool budget at `NEIGHBORS_JSON_BUFFER_SIZE` starved it:
+v7 hands out pool blocks in fixed 4096-byte chunks, so a 50-entry table needs
+12541 B of pool against the 10240 B cap. A starved pool sets `doc.overflowed()`,
+which makes `buildNeighborsMessage` return 0 and drop the **entire** publish
+rather than truncating. PSRAM repeaters running a `observer-firmware-dev` build
+with roughly 40+ neighbours were therefore publishing no neighbors message at
+all, silently. Fixed in `34037f20` with a separate `NEIGHBORS_DOC_POOL_BUDGET`.
+
+**Production (`observer-firmware`) is NOT affected, so this does not need a
+hand-port.** The failure requires ArduinoJson v7's fixed 4096-byte pool blocks
+plus dev's custom budget-capped `NeighborsDocAllocator`. Prod is still on v6 --
+`MQTTMessageBuilder.cpp` uses `createNestedArray`, removed in 7.0 -- where
+`DynamicJsonDocument(10240)` is a real compact slot pool needing only ~3.8 KB
+for 50 entries. **Action:** check `get mqtt.status` for `nbr: <next>/fail` only
+on dev/beta-channel PSRAM nodes.
+
+Noted in passing: prod's `platformio.ini` has **no ArduinoJson pin** (it resolves
+transitively), so a clean dependency resolve could pull v7 and fail to compile
+the v6-only API. That is the same gap Phase 1's "ArduinoJson pin enforcement"
+covers on dev.
+
+### Limitations / not covered
+
+- **The truncation path is untested on hardware.** This site has 6 neighbours;
+  `truncated: true` with `total_neighbors` exceeding the array length needs a
+  site with >20. The arithmetic is host-verified against the real builder.
+- Both slots were steady-connected throughout, so a publish coinciding with a
+  **slot reconnect** -- the case the reduced buffer sizing exists for -- was not
+  driven. That is the remaining memory-pressure scenario.
+- Single bench run; no multi-day soak, and no stack high-water-mark build. The
+  4752->304 byte stack-frame reduction was verified by disassembly, not at runtime.
 
 ## Current Baseline
 
@@ -762,6 +844,75 @@ receives OTA updates from the channel it was flashed from. Both channels
 deliberately share `FIRMWARE_VERSION`: the OTA logic treats a differing base
 version as "always an update", so channels must separate by manifest URL, never
 by base version.
+
+## Upstream Merge Record -- 2026-08-03 (`observer-firmware-dev`)
+
+`upstream/dev` `9d902e63` merged into `observer-firmware-dev` as `126a2564`,
+starting from `db232808` (the 2026-07-30 merge). **13 upstream commits, 6 files,
+zero conflicts** -- no `rerere` resolutions needed. This is what merging
+frequently buys: the whole merge is attributable at a glance.
+
+Baseline before and after, on the two named smoke builds, is **byte-identical**:
+
+| Target | RAM | Flash |
+|--------|-----|-------|
+| `Heltec_v3_repeater_observer_mqtt` | 74656 -> 74656 | 1592513 -> 1592513 |
+| `T_Beam_S3_Supreme_SX1262_repeater_observer_mqtt` | 71780 -> 71780 | 1596977 -> 1596977 |
+
+Native suite 267/267 before and after. The nRF52 crypto below is fully
+`#ifdef`-guarded, which is why ESP32 output does not move a byte.
+
+### The finding that matters most: the smoke pair is blind to this merge
+
+Both named smoke builds are ESP32; this merge is entirely nRF52 crypto and
+LR1110 radio. A green smoke run said nothing about any of it. Targets that
+actually exercise the change had to be chosen by hand.
+
+**LR1110 RX fix -- this is the one that reaches shipped hardware.**
+`CustomLR1110::startReceive()` was passing `RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED`
+(`0x01 << 4` = 16) as the **RX timeout** argument instead of
+`RADIOLIB_LR11X0_RX_TIMEOUT_INF` (`0xFFFFFF`, RX continuous). At the LR11x0's
+1/32768 s tick, that is a ~0.49 ms receive window rather than continuous receive.
+Fork LR1110 variants: `thinknode_m7`, `thinknode_m3`, `thinknode_m9`,
+`wio_wm1110`, `t1000-e`, `minewsemi_me25ls01` -- including the ThinkNode M7
+observer envs added in `37444be7`. Confirmed the fix compiles into a shipped
+artifact: `ThinkNode_M7_repeater_observer_mqtt` flash 1554917 -> 1554921 (+4 B).
+Constants and arithmetic verified; the practical RX improvement is **inferred,
+not measured** -- worth a before/after on M7 hardware.
+
+**All nRF52 boards silently switched to CC310 hardware Ed25519.** Upstream
+`783b21bb` moved `USE_CC310_HW_CRYPTO=1` from 4 individual variants into
+`nrf52_base`. Pre-merge no fork nRF52 build had it (the fork's copies of those 4
+variants already lacked the flag); post-merge all 35 nRF52 variants do.
+`Identity::verify()` now runs on CryptoCell. Upstream's rationale is sound -- the
+software path needs ~3 KB of stack and can overflow the Adafruit core's 4 KB loop
+task from the advert receive path, versus ~600-700 B for hardware. Note it uses a
+**`static CRYS_ECEDW_TempBuff_t` workspace**, i.e. shared mutable state that
+assumes `verify()` is never called concurrently. Disable per-board with
+`-U USE_CC310_HW_CRYPTO` if a board proves quirky.
+
+### Verification
+
+- ESP32: both smoke builds plus `ThinkNode_M7_repeater_observer_mqtt` (LR1110)
+  and `Heltec_v3_room_server_observer_mqtt`. All green, sizes unmoved.
+- Native: 267/267.
+- nRF52: **not buildable at merge time.** Every nRF52/RP2040 target had been
+  broken since `7e4f75c9` (2026-04-10) by observer-only dependencies leaking into
+  shared files -- confirmed pre-existing by building `RAK_4631_repeater` at the
+  pre-merge commit. Fixed immediately after in `45379ad7`, after which RAK4631
+  (both roles), Heltec T114, T1000-E, Wio WM1110, Xiao nRF52 and ThinkNode M1 all
+  build. The incoming CC310 path therefore compiles, though it is still untested
+  on nRF52 hardware.
+- RP2040 remains broken for an unrelated reason: `PicoWBoard`, `WaveshareBoard`,
+  `XiaoRP2040Board` and `RAK11310Board` still declare the pre-`force_ap`
+  `startOTAUpdate` signature and no longer override the base.
+
+### Recommendation
+
+Add an LR1110 target (`ThinkNode_M7_repeater_observer_mqtt`) and one nRF52
+target to the PR-CI smoke set. The current ESP32-only pair cannot see radio or
+platform-crypto changes, and it did not notice that nRF52 had been unbuildable
+for nearly four months.
 
 ## Upstream Merge Record -- 2026-07-19 (`observer-firmware-dev`)
 

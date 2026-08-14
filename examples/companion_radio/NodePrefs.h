@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 #include <cstdint> // For uint8_t, uint32_t
 
 #define TELEM_MODE_DENY            0

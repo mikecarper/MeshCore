@@ -45,11 +45,12 @@ static inline bool mqttWriteTopic(char* buf, size_t buf_size, const char* format
   return written > 0 && (size_t)written < buf_size;
 }
 
-// Build the complete topic for one publication. MeshRank is deliberately
-// packets-only; status, raw, and neighbors are unsupported by the current
-// broker contract (the type != PACKETS guard below rejects them all).
-// MeshCore routes require a configured IATA and device id. Custom templates may
-// omit either placeholder, so their individual values are allowed to be empty.
+// Build the complete topic for one publication. MeshRank takes status, packets,
+// and neighbors under meshrank/uplink/{token}/{device}/, using the same type
+// suffixes as the MeshCore layout, and requires a per-slot token rather than an
+// IATA. MeshCore routes require a configured IATA and device id. Custom
+// templates may omit either placeholder, so their individual values are allowed
+// to be empty.
 static inline bool mqttBuildPublicationTopic(MQTTTopicRouteStyle style, int type,
                                              const char* custom_template,
                                              const char* iata, const char* device,
@@ -69,7 +70,9 @@ static inline bool mqttBuildPublicationTopic(MQTTTopicRouteStyle style, int type
       return mqttWriteTopic(buf, buf_size, "meshcore/%s/%s/%s", iata, device, type_name);
 
     case MQTT_ROUTE_MESHRANK:
-      if (type != MQTT_PUBLICATION_PACKETS || !token || token[0] == '\0' ||
+      // Raw is deliberately withheld: highest-volume topic, and the broker does
+      // not consume it. observer-firmware still sends it -- keep this on merge.
+      if (type == MQTT_PUBLICATION_RAW || !token || token[0] == '\0' ||
           !device || device[0] == '\0') {
         return false;
       }
