@@ -25,13 +25,18 @@ bool SerialMotaSource::readExact(uint8_t* b, uint32_t n) {
 bool SerialMotaSource::txn(uint8_t op, const uint8_t* args, uint8_t arglen,
                            uint8_t* payload, uint32_t payload_len) {
   while (_io.read() >= 0) {}                       // drop any stale/partial bytes before a fresh request
+  if (arglen > 7) return false;                    // largest source request is READ(idx,off,len)
   uint8_t xs = op;
   for (uint8_t i = 0; i < arglen; i++) xs ^= args[i];
-  _io.write(MOTA_SEEDER_REQ_MAGIC0); _io.write(MOTA_SEEDER_REQ_MAGIC1);
-  _io.write(op);
-  if (arglen) _io.write(args, arglen);
-  _io.write(xs);
-  _io.flush();
+  uint8_t frame[11];
+  uint8_t frame_len = 0;
+  frame[frame_len++] = MOTA_SEEDER_REQ_MAGIC0;
+  frame[frame_len++] = MOTA_SEEDER_REQ_MAGIC1;
+  frame[frame_len++] = op;
+  if (arglen) { memcpy(frame + frame_len, args, arglen); frame_len += arglen; }
+  frame[frame_len++] = xs;
+  if (_io.write(frame, frame_len) != frame_len) return false;
+  if (_flush_after_write) _io.flush();
 
   // scan for response magic 'm' 's' (tolerate leading noise)
   uint32_t t0 = millis(); bool got = false;

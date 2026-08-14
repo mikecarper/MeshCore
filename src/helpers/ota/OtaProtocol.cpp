@@ -110,6 +110,30 @@ bool decode_req(const uint8_t* buf, uint16_t len, ReqMsg& m) {
   return r.ok;
 }
 
+uint16_t encode_req_window(uint8_t* buf, uint16_t cap, const ReqWindowMsg& m) {
+  if (m.n_items == 0 || m.n_items > OTA_REQ_MAX_ITEMS) return 0;
+  W w(buf, cap); w.u8(OTA_REQ); w.raw(m.manifest_id, 4);
+  for (uint8_t i = 0; i < m.n_items; i++) {
+    w.u16(m.items[i].block_idx); w.u16(m.items[i].want_mask);
+  }
+  return w.ok ? w.n : 0;
+}
+
+bool decode_req_window(const uint8_t* buf, uint16_t len, ReqWindowMsg& m) {
+  // Five-byte prefix plus one or more complete four-byte rows. Requiring exact row framing keeps a
+  // truncated request from silently turning into a request for the wrong fragments.
+  if (len < 9 || ((len - 5) % 4) != 0) return false;
+  uint16_t count = (len - 5) / 4;
+  if (count == 0 || count > OTA_REQ_MAX_ITEMS) return false;
+  R r(buf, len); if (r.u8() != OTA_REQ) return false;
+  const uint8_t* id = r.raw(4); if (id) memcpy(m.manifest_id, id, 4);
+  m.n_items = (uint8_t)count;
+  for (uint8_t i = 0; i < m.n_items; i++) {
+    m.items[i].block_idx = r.u16(); m.items[i].want_mask = r.u16();
+  }
+  return r.ok && r.remaining() == 0;
+}
+
 uint16_t encode_data(uint8_t* buf, uint16_t cap, const DataMsg& m) {
   W w(buf, cap); w.u8(OTA_DATA); w.raw(m.manifest_id, 4); w.u16(m.block_idx); w.u16(m.frag_off);
   w.raw(m.data, m.data_len);

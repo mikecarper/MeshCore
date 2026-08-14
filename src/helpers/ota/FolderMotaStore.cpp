@@ -27,11 +27,18 @@ bool FolderMotaStore::txn(uint8_t op, const uint8_t* args, uint16_t arglen,
   while (_io.read() >= 0) {}                        // drop any stale/partial bytes before a fresh request
   uint8_t xs = op;
   for (uint16_t i = 0; i < arglen; i++) xs ^= args[i];
-  _io.write(MOTA_SEEDER_REQ_MAGIC0); _io.write(MOTA_SEEDER_REQ_MAGIC1);
-  _io.write(op);
-  if (arglen) _io.write(args, arglen);
-  _io.write(xs);
-  _io.flush();
+  // Keep one contiguous write for TCP (and fewer calls on UART). The largest
+  // request is OP_WRITE's fixed header plus one bounded data chunk.
+  if (arglen > 10 + MOTA_SEEDER_WRITE_MAX) return false;
+  uint8_t frame[4 + 10 + MOTA_SEEDER_WRITE_MAX];
+  uint16_t frame_len = 0;
+  frame[frame_len++] = MOTA_SEEDER_REQ_MAGIC0;
+  frame[frame_len++] = MOTA_SEEDER_REQ_MAGIC1;
+  frame[frame_len++] = op;
+  if (arglen) { memcpy(frame + frame_len, args, arglen); frame_len += arglen; }
+  frame[frame_len++] = xs;
+  if (_io.write(frame, frame_len) != frame_len) return false;
+  if (_flush_after_write) _io.flush();
 
   uint32_t t0 = millis(); bool got = false; uint8_t prev = 0;
   while ((millis() - t0) < _to) {                   // scan for response magic 'm' 's' (tolerate noise)

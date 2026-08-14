@@ -490,7 +490,10 @@ class DownloadSessionTests(unittest.TestCase):
         args = argparse.Namespace(
             target="remote", transfer_timeout_minutes=1, poll_seconds=1,
         )
-        with self.assertRaisesRegex(ota.OtaError, "switched to mOTA"):
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "switched to mOTA"),
+        ):
             ota.monitor_download(controller, args, self.package)
 
     def test_monitor_accepts_only_the_expected_ready_session(self) -> None:
@@ -500,8 +503,10 @@ class DownloadSessionTests(unittest.TestCase):
         args = argparse.Namespace(
             target="remote", transfer_timeout_minutes=1, poll_seconds=1,
         )
-        status = ota.monitor_download(controller, args, self.package)
+        with mock.patch.object(ota.time, "sleep") as sleep:
+            status = ota.monitor_download(controller, args, self.package)
         self.assertIn(self.package.manifest_id, status)
+        sleep.assert_called_once_with(1.0)
 
     def test_monitor_stops_immediately_when_seeder_exits(self) -> None:
         controller = self.Controller([])
@@ -516,6 +521,40 @@ class DownloadSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(ota.OtaError, "seeder exited"):
             ota.monitor_download(controller, args, self.package, Seeder())
         self.assertEqual(controller.commands, [])
+
+    def test_monitor_uses_advancing_source_log_without_airtime_queries(self) -> None:
+        controller = self.Controller([
+            f"OTA | download: ready to install 9/9 id={self.package.manifest_id} 2s"
+        ])
+        args = argparse.Namespace(
+            target="remote", transfer_timeout_minutes=1, poll_seconds=1,
+        )
+        total = (
+            self.package.payload_size + self.package.block_size - 1
+        ) // self.package.block_size
+
+        class Seeder:
+            calls = 0
+
+            def ensure_running(self, _context: str) -> None:
+                return None
+
+            def payload_read_progress(
+                self, _package: ota.MotaInfo
+            ) -> tuple[int, int, int]:
+                self.calls += 1
+                progress = min(self.calls, total)
+                return progress, total, progress
+
+        seeder = Seeder()
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            mock.patch.object(ota, "transfer_tail_guard_seconds", return_value=0),
+        ):
+            status = ota.monitor_download(controller, args, self.package, seeder)
+        self.assertIn(self.package.manifest_id, status)
+        self.assertEqual(controller.commands, ["ota status"])
+        self.assertEqual(seeder.calls, total)
 
     def test_lost_pull_reply_is_resolved_without_blind_replay(self) -> None:
         controller = self.Controller([
@@ -638,6 +677,51 @@ class ReliabilityTests(unittest.TestCase):
             67.5,
         )
         self.assertEqual(ota.adaptive_poll_ceiling(60), 180)
+
+    def test_first_status_wait_scales_with_radio_and_relay_airtime(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"A" * 50_000, VERSION_NEW)))
+        direct = argparse.Namespace(
+            poll_seconds=30,
+            temp_values=(909.95, 500.0, 5, 5, 120),
+            relay=[],
+        )
+        relayed = argparse.Namespace(
+            poll_seconds=30,
+            temp_values=(909.95, 62.5, 7, 5, 120),
+            relay=["relay"],
+        )
+        self.assertGreaterEqual(ota.initial_status_wait_seconds(direct, package), 30)
+        self.assertGreater(
+            ota.initial_status_wait_seconds(relayed, package),
+            ota.initial_status_wait_seconds(direct, package),
+        )
+        self.assertLessEqual(
+            ota.initial_status_wait_seconds(relayed, package),
+            ota.adaptive_poll_ceiling(30),
+        )
+        self.assertGreater(
+            ota.passive_progress_stall_seconds(relayed, package),
+            ota.passive_progress_stall_seconds(direct, package),
+        )
+
+    def test_seeder_progress_counts_only_payload_block_boundaries(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"B" * 2500, VERSION_NEW)))
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "serve.log"
+            expected = [
+                package.payload_offset + index * package.block_size
+                for index in range(3)
+            ]
+            log.write_text(
+                "[dev] READ 0 @8 OK\n"
+                f"[dev] READ 0 @{expected[0]} OK\n"
+                f"[dev] READ 0 @{expected[2]} OK\n",
+                encoding="utf-8",
+            )
+            seeder = object.__new__(ota.SeederProcess)
+            seeder.log_path = log
+            seeder.log_file = None
+            self.assertEqual(seeder.payload_read_progress(package), (2, 3, 2))
 
     def test_marked_output_excludes_queued_messages(self) -> None:
         controller = object.__new__(ota.Controller)

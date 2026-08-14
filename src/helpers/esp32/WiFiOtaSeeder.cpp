@@ -19,8 +19,11 @@ namespace {
 
 WiFiServer seeder_server(OTA_SEEDER_TCP_PORT);
 WiFiClient seeder_client;
-SerialMotaSource seeder_source(seeder_client, 3000);
-FolderMotaStore folder_store(seeder_client, 3000);
+// WiFiClient::flush() clears received bytes rather than flushing TX. Disabling
+// the serial-only flush prevents a fast host reply from being discarded and
+// turning every block read into a three-second timeout/retry.
+SerialMotaSource seeder_source(seeder_client, 3000, false);
+FolderMotaStore folder_store(seeder_client, 3000, false);
 bool listener_active = false;
 bool tcp_folder_attached = false;
 
@@ -79,6 +82,8 @@ void WiFiOtaSeeder::loop() {
   stopClient();
   WiFiClient incoming = seeder_server.available();
   if (!incoming) return;
+
+  incoming.setNoDelay(true);                       // tiny framed requests should leave immediately
 
   if (!WiFiOtaSeederPolicy::canAttachTcpFolder(context.folder_active,
                                                 tcp_folder_attached)) {

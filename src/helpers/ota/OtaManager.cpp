@@ -435,33 +435,42 @@ bool OtaManager::loadActiveServeBlock() {
   return true;
 }
 
-void OtaManager::handleReq(const uint8_t* m, uint16_t n) {
-  ReqMsg rq;
-  if (!decode_req(m, n, rq)) return;
-  uint32_t idx = rq.block_idx;
+bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
+  ReqWindowMsg rq;
+  if (!decode_req_window(m, n, rq)) return false;
   ServeView* v = resolve(rq.manifest_id);
-  if (!v || idx >= v->m.block_count || idx > 0xFFFFu) return;
-  uint32_t blen = v->m.block_size();
-  uint32_t off = idx * blen;
-  if (off + blen > v->m.payload_size) blen = v->m.payload_size - off;
-  uint16_t valid_mask = frag_full_mask((blen + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
-  uint16_t want = (uint16_t)(rq.want_mask & valid_mask);
-  if (want != 0) queueServeJob(v->m.merkle_root, (uint16_t)idx, want);
+  if (!v) return false;
+  bool accepted = false;
+  const uint32_t block_size = v->m.block_size();
+  for (uint8_t i = 0; i < rq.n_items; i++) {
+    const uint32_t idx = rq.items[i].block_idx;
+    if (idx >= v->m.block_count) continue;
+    uint32_t blen = block_size;
+    const uint32_t off = idx * block_size;
+    if (off + blen > v->m.payload_size) blen = v->m.payload_size - off;
+    const uint16_t valid_mask = frag_full_mask((blen + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
+    const uint16_t want = (uint16_t)(rq.items[i].want_mask & valid_mask);
+    if (want != 0) accepted |= queueServeJob(v->m.merkle_root, (uint16_t)idx, want);
+  }
+  return accepted;
 }
 
-void OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
+bool OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
   ReqProofMsg rp;
-  if (!decode_req_proof(m, n, rp)) return;
+  if (!decode_req_proof(m, n, rp)) return false;
   ServeView* v = resolve(rp.manifest_id);
-  if (!v || rp.block_idx >= v->m.block_count) return;
-  if ((uint64_t)v->m.block_count * 4 > v->scratch_sz) return;
-  queueServeJob(v->m.merkle_root, rp.block_idx, 0);     // proof-only, or merge with queued DATA
+  if (!v || rp.block_idx >= v->m.block_count) return false;
+  if ((uint64_t)v->m.block_count * 4 > v->scratch_sz) return false;
+  return queueServeJob(v->m.merkle_root, rp.block_idx, 0); // proof-only, or merge with queued DATA
 }
 
 void OtaManager::serviceEgress() {
   // A proactive proof normally follows the final DATA fragment. If it was lost, or the source is older and
-  // never sent one, issue the legacy proof request after a short grace. Admit at most one fallback per call.
-  if (_fstate == FETCHING) {
+  // never sent one, issue the legacy proof request after a short grace. Stay RX-silent while another slot
+  // still expects DATA, and restart the grace on every new packet, so this fallback cannot collide with a
+  // legitimate multi-block response train. Admit at most one fallback per call.
+  if (_fstate == FETCHING && !flightHasPendingData()
+      && (uint32_t)(_now_ms - _fetch_wait_since_ms) >= proofGraceMs()) {
     for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; i++) {
       ReassemblySlot& slot = _reasm[i];
       if (!slot.awaiting_proof || slot.proof_request_at == 0
@@ -714,8 +723,8 @@ void OtaManager::clearReassembly() {
   _retry_slot = 0;
   _req_count = 0;
   _pipeline_width = OTA_FETCH_PIPELINE_INITIAL;
-  _pipeline_success_streak = 0;
-  _pipeline_stall_streak = 0;
+  _flight_dirty = false;
+  noteFetchActivity();
 }
 
 int OtaManager::findReassemblySlot(uint32_t block) const {
@@ -732,42 +741,96 @@ int OtaManager::findEmptyReassemblySlot() const {
   return -1;
 }
 
-void OtaManager::notePipelineBlockVerified() {
-  _pipeline_stall_streak = 0;
-  if (_pipeline_width >= OTA_FETCH_PIPELINE) return;
-  if (++_pipeline_success_streak < OTA_FETCH_PIPELINE_GROW_BLOCKS) return;
-  _pipeline_success_streak = 0;
-  _pipeline_width++;
-  OTA_DBG("OTA: request pipeline grew to %u/%u after clean block progress\n",
-          (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
+uint8_t OtaManager::activePipelineSlots() const {
+  uint8_t active = 0;
+  for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) {
+    if (_reasm[slot].block != NO_BLOCK) active++;
+  }
+  return active;
+}
+
+bool OtaManager::flightHasPendingData() const {
+  for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) {
+    if (_reasm[slot].block != NO_BLOCK && !_reasm[slot].awaiting_proof) return true;
+  }
+  return false;
+}
+
+static uint8_t count_mask_bits(uint16_t mask) {
+  uint8_t count = 0;
+  while (mask) { count += (uint8_t)(mask & 1u); mask >>= 1; }
+  return count;
+}
+
+uint32_t OtaManager::fetchRetryTimeoutMs() const {
+  if (_radio_packet_airtime_ms == 0) return OTA_FETCH_RETRY_FALLBACK_MS;
+
+  // Estimate every packet still owed in the current flight, plus the recovery request itself. DATA uses
+  // the measured maximum packet airtime; smaller REQ/PROOF packets are deliberately overestimated. Each
+  // packet must traverse the source+relay path and each transmitter is paced by its configured duty budget.
+  uint32_t packets = 1;
+  uint8_t active = 0;
+  for (uint8_t slot_index = 0; slot_index < OTA_FETCH_PIPELINE; slot_index++) {
+    const ReassemblySlot& slot = _reasm[slot_index];
+    if (slot.block == NO_BLOCK) continue;
+    active++;
+    packets += slot.awaiting_proof ? 1u
+        : (uint32_t)count_mask_bits((uint16_t)(slot.need & ~slot.mask)) + 1u;
+  }
+  if (active == 0) {
+    const uint32_t fragments = (_fbs + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+    packets += (fragments + 1) * _pipeline_width;
+  }
+  uint32_t path_transmissions = _observed_path_transmissions;
+  if (path_transmissions == 0) path_transmissions = (uint32_t)_max_hops + 1u;
+  uint64_t service = (uint64_t)packets * _radio_packet_airtime_ms * path_transmissions;
+  service = (service * _tx_spacing_permille + 999u) / 1000u;
+  service = (service * 5u + 3u) / 4u;                    // 25% CAD/relay contention allowance
+  service += OTA_FETCH_RETRY_GUARD_MS;
+  if (service < OTA_FETCH_RETRY_MIN_MS) service = OTA_FETCH_RETRY_MIN_MS;
+  if (service > OTA_FETCH_RETRY_MAX_MS) service = OTA_FETCH_RETRY_MAX_MS;
+  return (uint32_t)service;
+}
+
+uint32_t OtaManager::proofGraceMs() const {
+  if (_radio_packet_airtime_ms == 0) return OTA_PROOF_GRACE_MS;
+  uint32_t path_transmissions = _observed_path_transmissions;
+  if (path_transmissions == 0) path_transmissions = (uint32_t)_max_hops + 1u;
+  uint64_t grace = (uint64_t)_radio_packet_airtime_ms * path_transmissions;
+  grace = (grace * _tx_spacing_permille + 999u) / 1000u;
+  grace += 100u;
+  if (grace < OTA_PROOF_GRACE_MS) grace = OTA_PROOF_GRACE_MS;
+  if (grace > OTA_FETCH_RETRY_MAX_MS) grace = OTA_FETCH_RETRY_MAX_MS;
+  return (uint32_t)grace;
+}
+
+void OtaManager::finishFlight() {
+  const uint8_t old_width = _pipeline_width;
+  if (_flight_dirty) {
+    if (_pipeline_width > OTA_FETCH_PIPELINE_INITIAL) {
+      _pipeline_width = (uint8_t)((_pipeline_width + 1u) / 2u);
+      if (_pipeline_width < OTA_FETCH_PIPELINE_INITIAL) _pipeline_width = OTA_FETCH_PIPELINE_INITIAL;
+    }
+  } else if (_pipeline_width < OTA_FETCH_PIPELINE) {
+    _pipeline_width++;
+  }
+  if (_pipeline_width != old_width) {
+    OTA_DBG("OTA: adaptive flight %s to %u/%u\n", _flight_dirty ? "shrunk" : "grew",
+            (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
+  }
+  _flight_dirty = false;
 }
 
 void OtaManager::notePipelineStall() {
-  _pipeline_success_streak = 0;
-  if (_pipeline_width <= OTA_FETCH_PIPELINE_INITIAL) {
-    _pipeline_stall_streak = 0;
-    return;
+  if (!_flight_dirty) {
+    OTA_DBG("OTA: adaptive flight recovery at width %u/%u\n",
+            (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
   }
-  if (++_pipeline_stall_streak < OTA_FETCH_PIPELINE_SHRINK_TICKS) return;
-  _pipeline_stall_streak = 0;
-  _pipeline_width--;
-  OTA_DBG("OTA: request pipeline shrank to %u/%u after stalled ticks\n",
-          (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
+  _flight_dirty = true;
 }
 
 bool OtaManager::blockInPipeline(uint32_t block) const {
   return findReassemblySlot(block) >= 0;
-}
-
-uint32_t OtaManager::pipelineProgress() const {
-  // A small stable fingerprint is sufficient here: equality only suppresses a retry for one service tick.
-  uint32_t progress = 2166136261u;
-  for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) {
-    progress = (progress ^ _reasm[slot].block) * 16777619u;
-    progress = (progress ^ _reasm[slot].mask) * 16777619u;
-    progress = (progress ^ (_reasm[slot].awaiting_proof ? 1u : 0u)) * 16777619u;
-  }
-  return progress;
 }
 
 // Begin (or resume) fetching a chosen mid: try a staged-partial resume first, else request the manifest.
@@ -781,6 +844,7 @@ void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) 
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
   if (!validate && resumeStaged(mid)) return;    // (non-validate) resume a partial container left in flash
   memcpy(_fid, mid, 4);
+  _observed_path_transmissions = 0;              // learn the actual source/relay path from this fetch's replies
   _fstate = WANT_MANIFEST;
   _mf_total = 0; _mf_mask = 0; _mf_len = 0; _mf_retries = 0; _loop_last_mfmask = 0;   // fresh manifest reassembly
   memset(_mf_buf, 0, sizeof(_mf_buf));
@@ -859,7 +923,6 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   _fpoff = payload_off; _floff = leaves_off; _fpsize = payload_size; _fbc = bc; _fbs = bs;
   _ftotal = total; _have = 0;
   clearReassembly();                             // fresh transfer: drop any prior per-block state
-  _loop_last_have = 0; _loop_last_progress = pipelineProgress();
   // Warm-start (folder-capture): if requested and the image is small enough for the fixed leaves bitmap,
   // bulk-fetch the target leaves and diff the seed already staged in the store; else just transfer normally.
   if (_validate && beginLeafDiff()) {
@@ -868,6 +931,7 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   }
   _fstate = FETCHING;
   OTA_DBG("OTA: FETCHING bc=%u bs=%u total=%u\n", (unsigned)bc, (unsigned)bs, (unsigned)total);
+  requestMissing();                              // final manifest fragment arrived: open flight 1 immediately
 }
 
 // --- leaf-diff warm-start (fetcher side; motatool folder-capture only) -----------------------------
@@ -980,7 +1044,7 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   _fpoff = payload_off; _floff = leaves_off; _fpsize = m.payload_size; _fbc = bc; _fbs = bs;
   _ftotal = total;
   clearReassembly();
-  _loop_last_have = 0; _loop_last_progress = 0;
+  _observed_path_transmissions = 0;
   beginStagedVerification();
   OTA_DBG("OTA: RESUME verifying %u blocks total=%u\n",
           (unsigned)bc, (unsigned)total);
@@ -1077,53 +1141,58 @@ void OtaManager::verifyStagedStep() {
         ? COMPLETE : FAILED;
   } else {
     _fstate = FETCHING;
-    _loop_last_have = _have;
-    _loop_last_progress = pipelineProgress();
     requestMissing();
   }
   _resume_merkle.reset();
 }
 
-void OtaManager::handleData(const uint8_t* m, uint16_t n) {
+bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   DataMsg dm;
-  if (!decode_data(m, n, dm) || !_fetch) return;
-  if (_fstate != FETCHING || memcmp(dm.manifest_id, _fid, 4) != 0) return;
-  if (dm.block_idx >= _fbc) return;
-  if (blockPresent(dm.block_idx)) return;                   // already stored + verified
+  if (!decode_data(m, n, dm) || !_fetch) return false;
+  if (_fstate != FETCHING || memcmp(dm.manifest_id, _fid, 4) != 0) return false;
+  if (dm.block_idx >= _fbc) return false;
+  if (blockPresent(dm.block_idx)) return true;              // late duplicate for this terminal
   int slot_index = findReassemblySlot(dm.block_idx);
-  if (slot_index < 0) return;                               // accept only blocks inside our bounded window
+  if (slot_index < 0) return false;                         // not one of this node's requested blocks
   ReassemblySlot& slot = _reasm[slot_index];
   uint32_t blen = blockLen(dm.block_idx);
-  if (dm.frag_off % OTA_FRAG_DATA != 0) return;             // canonical FRAG_DATA-aligned slices only
-  if ((uint32_t)dm.frag_off + dm.data_len > blen) return;   // slice out of the block
+  if (dm.frag_off % OTA_FRAG_DATA != 0) return false;       // canonical FRAG_DATA-aligned slices only
+  if ((uint32_t)dm.frag_off + dm.data_len > blen) return false; // slice out of the block
   uint32_t expected_len = blen - dm.frag_off;
   if (expected_len > OTA_FRAG_DATA) expected_len = OTA_FRAG_DATA;
-  if (dm.data_len != expected_len) return;                  // do not mark a short slice as complete
+  if (dm.data_len != expected_len) return false;            // do not mark a short slice as complete
   uint32_t kf = dm.frag_off / OTA_FRAG_DATA;
-  if (kf >= 16) return;
+  if (kf >= 16) return false;
+  const uint16_t bit = (uint16_t)(1u << kf);
+  if (slot.mask & bit) return true;                         // duplicate flood/retry copy is terminal too
   memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
-  slot.mask |= (uint16_t)(1u << kf);
-  if (slot.mask != slot.need || slot.awaiting_proof) return;
+  slot.mask |= bit;
+  noteFetchActivity();
+  if (slot.mask != slot.need || slot.awaiting_proof) return true;
   // The paced server sends a proof immediately after this block's requested DATA. Wait briefly so that proof
   // can arrive without another request/response turn. An older server, or a lost proof, falls back through
   // serviceEgress() to the existing REQ_PROOF wire message.
   slot.awaiting_proof = true;
-  slot.proof_request_at = _now_ms + OTA_PROOF_GRACE_MS;
+  slot.proof_request_at = _now_ms + proofGraceMs();
+  return true;
 }
 
-void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
+bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   ProofMsg pm;
-  if (!decode_proof(m, n, pm) || !_fetch) return;
-  if (_fstate != FETCHING || memcmp(pm.manifest_id, _fid, 4) != 0) return;
+  if (!decode_proof(m, n, pm) || !_fetch) return false;
+  if (_fstate != FETCHING || memcmp(pm.manifest_id, _fid, 4) != 0) return false;
+  if (pm.block_idx >= _fbc) return false;
   int slot_index = findReassemblySlot(pm.block_idx);
-  if (slot_index < 0 || !_reasm[slot_index].awaiting_proof) return;
+  if (slot_index < 0 || !_reasm[slot_index].awaiting_proof) return blockPresent(pm.block_idx);
   ReassemblySlot& slot = _reasm[slot_index];
   uint32_t block = slot.block;
   uint32_t blen = blockLen(block);
+  noteFetchActivity();
   if (!merkle_verify(slot.buf, blen, block, pm.proof, pm.n_proof, _froot, _fbc)) {
+    notePipelineStall();
     clearReassemblySlot((uint8_t)slot_index);                   // bad -> drop and re-fetch only this block
-    requestMissing();
-    return;
+    if (activePipelineSlots() == 0) { finishFlight(); requestMissing(); }
+    return true;
   }
   // verified -> commit the payload block, then its leaf (the present marker). A write failure here means a
   // FOLDER destination's seeder link dropped mid-transfer: PAUSE (hold progress on the host, stop
@@ -1132,22 +1201,27 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   uint8_t leaf[4]; merkle_leaf(leaf, slot.buf, blen);
   if (!_fetch->write(_fpoff + block * _fbs, slot.buf, blen) ||
       !_fetch->write(_floff + block * 4, leaf, 4)) {
-    _fstate = PAUSED; clearReassembly(); return;
+    _fstate = PAUSED; clearReassembly(); return true;
   }
   _have++;
   OTA_DBG("OTA: block %u OK  have=%u/%u\n", (unsigned)block, (unsigned)_have, (unsigned)_fbc);
-  notePipelineBlockVerified();
   clearReassemblySlot((uint8_t)slot_index);
   // periodically persist progress (meta/leaf page + open payload) so a reboot can resume (no-op for RAM);
   // cadence is runtime-tunable via `ota config checkpoint <N>` (0 = never)
   if (_checkpoint_blocks && _have % _checkpoint_blocks == 0) _fetch->checkpoint();
-  if (_have < _fbc) { requestMissing(); return; }            // keep the client window full
+  if (_have < _fbc) {
+    // Do not continuously refill a partially completed flight: the remaining response packets are already
+    // queued at the source/relays. Staying silent here is what prevents the old threefold request amplification.
+    if (activePipelineSlots() == 0) { finishFlight(); requestMissing(); }
+    return true;
+  }
   // Every leaf must be readable and collectively match the manifest root.
   // A scratch allocation/read failure is an integrity failure, never success.
   clearReassembly();
   _fstate = storedLeavesRootMatches() ? COMPLETE : FAILED;
   if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
   OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");
+  return true;
 }
 
 bool OtaManager::requestSlot(uint8_t slot_index) {
@@ -1155,16 +1229,14 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
   ReassemblySlot& slot = _reasm[slot_index];
   if (slot.block >= _fbc) return false;
   _req_start = slot.block;
-  _req_count = 0;
-  for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; i++) {
-    if (_reasm[i].block != NO_BLOCK) _req_count++;
-  }
+  _req_count = activePipelineSlots();
   if (slot.awaiting_proof) {
     ReqProofMsg rp; memcpy(rp.manifest_id, _fid, 4); rp.block_idx = (uint16_t)slot.block;
     uint8_t b[16];
     bool sent = emit(b, encode_req_proof(b, sizeof(b), rp), false);
     if (sent) {
       slot.proof_request_at = 0;
+      noteFetchActivity();
       OTA_DBG("OTA: REQ_PROOF fallback block=%u (have=%u/%u window=%u)\n",
               (unsigned)slot.block, (unsigned)_have, (unsigned)_fbc, (unsigned)_req_count);
     }
@@ -1178,11 +1250,38 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
   OTA_DBG("OTA: REQ block=%u want=%04x (have=%u/%u mask=%04x window=%u)\n",
           (unsigned)slot.block, (unsigned)want, (unsigned)_have, (unsigned)_fbc,
           (unsigned)slot.mask, (unsigned)_req_count);
-  return emit(b, encode_req(b, sizeof(b), rq), false);
+  bool sent = emit(b, encode_req(b, sizeof(b), rq), false);
+  if (sent) noteFetchActivity();
+  return sent;
+}
+
+bool OtaManager::requestFlight() {
+  if (_fstate != FETCHING) return false;
+  ReqWindowMsg request = {};
+  memcpy(request.manifest_id, _fid, 4);
+  for (uint8_t slot_index = 0; slot_index < OTA_FETCH_PIPELINE; slot_index++) {
+    const ReassemblySlot& slot = _reasm[slot_index];
+    if (slot.block == NO_BLOCK || slot.awaiting_proof) continue;
+    ReqItem& item = request.items[request.n_items++];
+    item.block_idx = (uint16_t)slot.block;
+    item.want_mask = (uint16_t)(slot.need & ~slot.mask);
+    if (item.want_mask == 0) item.want_mask = slot.need;
+  }
+  if (request.n_items == 0) return false;
+  _req_start = request.items[0].block_idx;
+  _req_count = request.n_items;
+  uint8_t b[5 + OTA_REQ_MAX_ITEMS * 4];
+  OTA_DBG("OTA: REQ flight first=%u blocks=%u width=%u/%u\n",
+          (unsigned)_req_start, (unsigned)_req_count,
+          (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
+  bool sent = emit(b, encode_req_window(b, sizeof(b), request), false);
+  if (sent) noteFetchActivity();
+  return sent;
 }
 
 bool OtaManager::fillPipeline() {
-  bool requested = false;
+  if (activePipelineSlots() != 0) return false;             // flights never overlap/refill
+  uint8_t assigned = 0;
   while (true) {
     int slot_index = findEmptyReassemblySlot();
     if (slot_index < 0) break;
@@ -1194,24 +1293,26 @@ bool OtaManager::fillPipeline() {
     slot.need = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
     slot.awaiting_proof = false;
     slot.proof_request_at = 0;
-    requestSlot((uint8_t)slot_index);
-    requested = true;
+    assigned++;
   }
-  return requested;
+  if (assigned == 0) return false;
+  _flight_dirty = false;
+  requestFlight();
+  return true;
 }
 
 void OtaManager::requestMissing() {
   if (_fstate != FETCHING) return;
-  if (fillPipeline()) return;
+  if (activePipelineSlots() == 0) { fillPipeline(); return; }
 
-  // A full window with no progress is stalled. Retry one slot per service tick, round-robin, so a weak
-  // block cannot trigger a simultaneous multi-block re-burst on a half-duplex channel.
+  // The airtime-aware deadline expired. Retry one slot's holes per deadline, round-robin, so a weak block
+  // cannot trigger a simultaneous multi-block re-burst on a half-duplex channel. Recovery dirties the
+  // flight; its successor is reduced (4->2, 3->2, 2->1) after all current slots finish.
   notePipelineStall();
   for (uint8_t offset = 0; offset < OTA_FETCH_PIPELINE; offset++) {
     uint8_t slot = (uint8_t)((_retry_slot + offset) % OTA_FETCH_PIPELINE);
     if (_reasm[slot].block == NO_BLOCK) continue;
-    requestSlot(slot);
-    _retry_slot = (uint8_t)((slot + 1) % OTA_FETCH_PIPELINE);
+    if (requestSlot(slot)) _retry_slot = (uint8_t)((slot + 1) % OTA_FETCH_PIPELINE);
     return;
   }
 }
@@ -1290,30 +1391,32 @@ void OtaManager::loop() {
     return;
   }
   if (_fstate != FETCHING) return;
-  // Retry only when a whole tick passed with no committed block, fragment, proof transition, or window
-  // assignment. This avoids re-request spam while any pipelined block is making progress.
-  uint32_t progress = pipelineProgress();
-  if (_have == _loop_last_have && progress == _loop_last_progress) requestMissing();
-  _loop_last_have = _have;
-  _loop_last_progress = pipelineProgress();
+  if (activePipelineSlots() == 0) {
+    requestMissing();
+    return;
+  }
+  // The main loop may still tick each second for discovery, but block recovery waits for the calculated
+  // response train: current SF/BW airtime * outstanding packets * source/relay transmissions * duty pacing.
+  // Every newly accepted fragment/proof restarts the deadline; duplicate flood copies do not.
+  if ((uint32_t)(_now_ms - _fetch_wait_since_ms) >= fetchRetryTimeoutMs()) requestMissing();
 }
 
 // ---------------- dispatch ----------------
 
-void OtaManager::on_message(const uint8_t* msg, uint16_t len) {
+bool OtaManager::on_message(const uint8_t* msg, uint16_t len) {
   switch (ota_msg_type(msg, len)) {
-    case OTA_ADV:          handleAdv(msg, len); break;
-    case OTA_QUERY:        handleQuery(msg, len); break;
-    case OTA_HAVE:         handleHave(msg, len); break;
-    case OTA_GET_MANIFEST: handleGetManifest(msg, len); break;
-    case OTA_MANIFEST:     handleManifest(msg, len); break;
-    case OTA_GET_LEAVES:   handleGetLeaves(msg, len); break;
-    case OTA_LEAVES:       handleLeaves(msg, len); break;
-    case OTA_REQ:          handleReq(msg, len); break;
-    case OTA_DATA:         handleData(msg, len); break;
-    case OTA_REQ_PROOF:    handleReqProof(msg, len); break;
-    case OTA_PROOF:        handleProof(msg, len); break;
-    default: break;
+    case OTA_ADV:          handleAdv(msg, len); return false;
+    case OTA_QUERY:        handleQuery(msg, len); return false;
+    case OTA_HAVE:         handleHave(msg, len); return false;
+    case OTA_GET_MANIFEST: handleGetManifest(msg, len); return false;
+    case OTA_MANIFEST:     handleManifest(msg, len); return false;
+    case OTA_GET_LEAVES:   handleGetLeaves(msg, len); return false;
+    case OTA_LEAVES:       handleLeaves(msg, len); return false;
+    case OTA_REQ:          return handleReq(msg, len);
+    case OTA_DATA:         return handleData(msg, len);
+    case OTA_REQ_PROOF:    return handleReqProof(msg, len);
+    case OTA_PROOF:        return handleProof(msg, len);
+    default: return false;
   }
 }
 

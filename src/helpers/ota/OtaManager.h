@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "OtaFormat.h"
+#include "OtaProtocol.h"
 #include "OtaByteIO.h"
 #include "OtaStore.h"
 #include "MotaContainer.h"
@@ -139,32 +140,31 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_PROOF_GRACE_MS 500      // wait for the server's proactive proof before legacy REQ_PROOF fallback
 #endif
 #ifndef OTA_FETCH_PIPELINE
-#define OTA_FETCH_PIPELINE 2        // concurrent client block slots; keeps one block ready behind proof/flash work
+#define OTA_FETCH_PIPELINE 2        // max blocks in one adaptive request flight
 #endif
 #if OTA_FETCH_PIPELINE < 1
 #error "OTA_FETCH_PIPELINE must be at least 1"
 #endif
+#if OTA_FETCH_PIPELINE > OTA_REQ_MAX_ITEMS
+#error "OTA_FETCH_PIPELINE exceeds the OTA_REQ window wire limit"
+#endif
 #ifndef OTA_FETCH_PIPELINE_INITIAL
-  #if OTA_FETCH_PIPELINE >= 2
-    #define OTA_FETCH_PIPELINE_INITIAL 2
-  #else
-    #define OTA_FETCH_PIPELINE_INITIAL 1
-  #endif
+#define OTA_FETCH_PIPELINE_INITIAL 1 // probe every session conservatively, then grow one block per clean flight
 #endif
 #if OTA_FETCH_PIPELINE_INITIAL < 1 || OTA_FETCH_PIPELINE_INITIAL > OTA_FETCH_PIPELINE
 #error "OTA_FETCH_PIPELINE_INITIAL must be between 1 and OTA_FETCH_PIPELINE"
 #endif
-#ifndef OTA_FETCH_PIPELINE_GROW_BLOCKS
-#define OTA_FETCH_PIPELINE_GROW_BLOCKS 4  // clean verified blocks before adding one concurrent request slot
+#ifndef OTA_FETCH_RETRY_MIN_MS
+#define OTA_FETCH_RETRY_MIN_MS 5000       // quiet-time floor: covers host/queue/turnaround latency on fast links
 #endif
-#if OTA_FETCH_PIPELINE_GROW_BLOCKS < 1
-#error "OTA_FETCH_PIPELINE_GROW_BLOCKS must be at least 1"
+#ifndef OTA_FETCH_RETRY_MAX_MS
+#define OTA_FETCH_RETRY_MAX_MS 60000      // bound loss recovery when configured radio settings are impractical
 #endif
-#ifndef OTA_FETCH_PIPELINE_SHRINK_TICKS
-#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive no-progress retry ticks before removing one slot
+#ifndef OTA_FETCH_RETRY_GUARD_MS
+#define OTA_FETCH_RETRY_GUARD_MS 500      // processing/CAD/queue jitter beyond calculated on-air service
 #endif
-#if OTA_FETCH_PIPELINE_SHRINK_TICKS < 1
-#error "OTA_FETCH_PIPELINE_SHRINK_TICKS must be at least 1"
+#ifndef OTA_FETCH_RETRY_FALLBACK_MS
+#define OTA_FETCH_RETRY_FALLBACK_MS 5000  // portable-host fallback until the Mesh adapter supplies airtime
 #endif
 // nRF52 note: a flash page-erase halts the CPU (~85 ms, code runs from flash) and starves the LoRa RX,
 // so writing to flash on every received packet drops in-flight DATA and the transfer stalls. The SD-safe
@@ -301,6 +301,18 @@ public:
   void queryAll();
   // Coarse clock for source/catalog ages + LRU (the Mesh adapter feeds millis; 0 in host tests is fine).
   void set_clock(uint32_t ms) { _now_ms = ms; }
+  // Feed the actual TempRadio packet airtime and dispatcher transmit-spacing factor. The fetch retry
+  // deadline then follows SF/BW, configured airtime budget, flight width, and observed/configured path.
+  void set_link_timing(uint32_t max_packet_airtime_ms, uint16_t tx_spacing_permille) {
+    _radio_packet_airtime_ms = max_packet_airtime_ms;
+    _tx_spacing_permille = tx_spacing_permille < 1000 ? 1000 : tx_spacing_permille;
+  }
+  // `relay_hops` is the received packet's path-hash count; one more radio transmission originated it.
+  // Keep the longest path seen in this fetch so a shorter duplicate cannot make recovery premature.
+  void note_rx_path_hops(uint8_t relay_hops) {
+    uint8_t transmissions = relay_hops == 0xFF ? 0xFF : (uint8_t)(relay_hops + 1);
+    if (transmissions > _observed_path_transmissions) _observed_path_transmissions = transmissions;
+  }
 
   // Codec compatibility: a node only fetches/accepts firmware it can actually apply. ESP32 A/B accepts
   // full images; nRF52 single-slot does not and disables them (it requires an in-place delta). A manual
@@ -346,7 +358,10 @@ public:
   // This node's id (pubkey[0:4]), stamped into adverts we send so receivers can count distinct seeders.
   void set_seeder_id(const uint8_t* id4) { if (id4) for (int i = 0; i < 4; i++) _seeder_id[i] = id4[i]; }
 
-  void on_message(const uint8_t* msg, uint16_t len);   // feed one received OTA message
+  // Feed one received OTA message. True means this node terminally consumed a
+  // bulk request/response, so Mesh must not echo it as if this node were an
+  // intermediate relay.
+  bool on_message(const uint8_t* msg, uint16_t len);
   void loop();                                         // drive fetch (re-request missing blocks)
   // Fast, non-blocking service called from the main radio loop. It admits at most one retained server
   // response or proof fallback per call; the send callback provides packet-pool/queue backpressure.
@@ -358,7 +373,7 @@ public:
   void reset_session() {
     _fstate = IDLE; _have = 0; _req_count = 0; _mf_retries = 0;
     clearReassembly();
-    _loop_last_have = 0; _loop_last_progress = pipelineProgress();
+    _observed_path_transmissions = 0;
     _mf_total = 0; _mf_mask = 0; _mf_len = 0; _loop_last_mfmask = 0;
     freeLeaves(); _validate = false; _archive_fetch = false;
     _lv_retries = 0; _loop_last_lvmask = 0;
@@ -371,6 +386,8 @@ public:
   uint32_t blocksTotal() const { return _fbc; }
   uint8_t fetchPipelineWidth() const { return _pipeline_width; }
   static constexpr uint8_t fetchPipelineCapacity() { return OTA_FETCH_PIPELINE; }
+  uint32_t fetchRetryTimeoutMs() const;
+  uint32_t proofGraceMs() const;
   const uint8_t* fetchManifestId() const { return _fid; }
 
   // --- discovery catalog (for `ota neighbors`): mOTAs heard around us via OTA_HAVE, deduped by mid ---
@@ -412,10 +429,10 @@ private:
   bool beginLeafDiff();                                  // enter WANT_LEAVES if a seed diff is viable
   void diffStep();                                       // diff one batch of seed blocks per loop tick
   void freeLeaves();                                     // release the heap leaves buffer + diff state
-  void handleReq(const uint8_t* m, uint16_t n);
-  void handleData(const uint8_t* m, uint16_t n);
-  void handleReqProof(const uint8_t* m, uint16_t n);
-  void handleProof(const uint8_t* m, uint16_t n);
+  bool handleReq(const uint8_t* m, uint16_t n);
+  bool handleData(const uint8_t* m, uint16_t n);
+  bool handleReqProof(const uint8_t* m, uint16_t n);
+  bool handleProof(const uint8_t* m, uint16_t n);
   void startFetch(const uint8_t* mid, uint32_t target, bool validate = false);   // begin/resume a fetch
   bool wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const;  // fetch this row?
   void clearReassembly();                                 // forget every in-flight pipeline slot
@@ -423,9 +440,11 @@ private:
   int findReassemblySlot(uint32_t block) const;
   int findEmptyReassemblySlot() const;
   bool blockInPipeline(uint32_t block) const;
-  void notePipelineBlockVerified();
   void notePipelineStall();
-  uint32_t pipelineProgress() const;
+  void finishFlight();
+  uint8_t activePipelineSlots() const;
+  bool flightHasPendingData() const;
+  void noteFetchActivity() { _fetch_wait_since_ms = _now_ms; }
   uint32_t pickMissingBlock();                            // choose the next missing block not already in flight
   int  serveEntryIndex(const uint8_t* mid) const;         // registry slot serving this mid (-1 if none)
   ServeView* resolve(const uint8_t* mid);                 // pick/load the ServeView for this mid (nullptr)
@@ -455,8 +474,9 @@ private:
   void beginStagedVerification();
   void verifyStagedStep();
   bool requestSlot(uint8_t slot);                         // request DATA holes or the proof for one slot
-  bool fillPipeline();                                    // assign and request blocks until the window is full
-  void requestMissing();                                  // fill the window, or retry one stalled slot
+  bool requestFlight();                                   // send all newly assigned blocks in one OTA_REQ
+  bool fillPipeline();                                    // assign + send a new flight only when the old one ended
+  void requestMissing();                                  // start a flight, or recover one stalled slot
   uint32_t blockLen(uint32_t i) const;
 
   uint32_t _target = 0;
@@ -507,8 +527,7 @@ private:
   uint32_t   _resume_verify_idx = 0;
   bool       _resume_invalidated = false;
   MerkleAccumulator _resume_merkle;
-  uint32_t   _req_start = 0, _req_count = 0;   // most recently requested block + active window size
-  uint32_t   _loop_last_have = 0;              // for stall detection in loop()
+  uint32_t   _req_start = 0, _req_count = 0;   // most recently requested block + active flight size
   uint32_t   _desired_target = 0;              // manual cross-target override (0 = auto / own target)
   uint8_t    _desired_mid[4] = {0,0,0,0};      // pull a specific manifest_id (see want_mid)
   bool       _have_desired_mid = false;
@@ -523,9 +542,10 @@ private:
   uint16_t   _advert_mins = OTA_ADVERT_INTERVAL_MINS;    // beacon re-advertise cadence, minutes; 0=off (persisted)
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
   uint8_t    _fflags = 0;                       // flags of the manifest currently being fetched
-  // Bounded adaptive multi-block client pipeline. Each slot independently reassembles DATA and awaits its
-  // Merkle proof, so proof/flash work for one block can overlap radio delivery of the next. The live window
-  // grows on clean verified blocks and contracts after stalled service ticks; the wire protocol is unchanged.
+  // Bounded adaptive multi-block client flight. Each slot independently reassembles DATA and awaits its
+  // Merkle proof. One append-only OTA_REQ packet opens the whole flight; the receiver then stays quiet until
+  // every slot completes or an airtime-aware deadline expires. Clean flights grow 1->2->3->4; any recovery
+  // makes the next flight smaller. Logical/signed block geometry remains 1 KB.
   struct ReassemblySlot {
     uint32_t block = NO_BLOCK;
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
@@ -535,11 +555,13 @@ private:
     uint8_t buf[OTA_MAX_BLOCK];
   };
   ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
-  uint32_t   _loop_last_progress = 0;           // aggregate pipeline progress for stall detection
   uint8_t    _retry_slot = 0;                   // round-robin stalled-slot retry cursor
   uint8_t    _pipeline_width = OTA_FETCH_PIPELINE_INITIAL; // live request window, adaptive up to array capacity
-  uint8_t    _pipeline_success_streak = 0;      // verified blocks since the last grow/stall decision
-  uint8_t    _pipeline_stall_streak = 0;        // consecutive no-progress service ticks
+  bool       _flight_dirty = false;             // a timeout/bad proof required recovery in this flight
+  uint32_t   _fetch_wait_since_ms = 0;           // last new fragment/proof/request; retry deadline anchor
+  uint32_t   _radio_packet_airtime_ms = 0;       // measured for MAX_TRANS_UNIT at active SF/BW
+  uint16_t   _tx_spacing_permille = 2000;        // 1/duty-cycle; default airtime factor 1 => 50% TX
+  uint8_t    _observed_path_transmissions = 0;   // source + relays; 0 falls back to configured max_hops+1
   // multi-fragment manifest reassembly (a signed v2 manifest exceeds one packet)
   uint8_t    _mf_buf[OTA_MF_MAXFRAG * OTA_MF_FRAG];   // sized to the fragment cap so no valid manifest is silently dropped
   uint16_t   _mf_retries = 0;                          // GET_MANIFEST retries while WANT_MANIFEST (give up after a cap)

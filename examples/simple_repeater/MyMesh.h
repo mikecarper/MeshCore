@@ -725,7 +725,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 protected:
   bool isTempRadioActive() const override;
   float getAirtimeBudgetFactor() const override {
-    return _prefs.airtime_factor;
+    // A bounded TempRadio window is an explicitly coordinated private OTA
+    // channel. Use its full TX budget without changing the saved normal-radio
+    // duty factor; restoring the ordinary tuple restores ordinary pacing too.
+    return isTempRadioActive() ? 0.0f : _prefs.airtime_factor;
   }
   bool getCADEnabled() const override {
     return _prefs.cad_enabled;

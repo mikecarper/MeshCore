@@ -359,7 +359,7 @@ Message types:
 | `OTA_HAVE`         | 0x03 | discovery | the catalog reply (fragmented, digest-tagged) |
 | `OTA_GET_MANIFEST` | 0x04 | transfer | request a manifest's fragments (`want_mask`) by `manifest_id` |
 | `OTA_MANIFEST`     | 0x05 | transfer | the manifest-minus-leaves, fragmented |
-| `OTA_REQ`          | 0x06 | transfer | request specific DATA fragments of one block (`want_mask`) |
+| `OTA_REQ`          | 0x06 | transfer | request fragments from an adaptive flight of 1-4 blocks (`want_mask` per block) |
 | `OTA_DATA`         | 0x07 | transfer | one self-describing fragment of a block's data |
 | `OTA_REQ_PROOF`    | 0x08 | transfer | request/re-request a missing proof |
 | `OTA_PROOF`        | 0x09 | transfer | the merkle proof for one block |
@@ -371,8 +371,10 @@ Message types:
 - **Priority:** `OTA_ADV`, `OTA_QUERY`, and `OTA_HAVE` enqueue at background priority 250. Once a fetch is
   active, manifest, block request, data, and proof messages enqueue at primary priority 0. Relay-only
   nodes classify the wire message identically, so a transfer stays primary across the complete path.
-- **Reliability is *eventual*:** the fetcher re-requests only missing fragments after a one-second stalled
-  service tick. No hard ACKs or global ordering are required.
+- **Reliability is *eventual*:** the fetcher re-requests only missing fragments after an adaptive deadline
+  derived from packet airtime, outstanding response packets, duty pacing, and path length. The manager may
+  still run a one-second maintenance tick, but that tick is not itself a retry timer. No hard ACKs or global
+  ordering are required.
 - **Relay envelope:** OTA still uses a bounded flood-shaped mesh header so the same packets can cross the
   configured number of hops without first discovering an addressed return path. During TempRadio each node
   forwards one copy; active OTA packets do not use the generic flood-retry subsystem. The fetcher verifies
@@ -454,13 +456,13 @@ fetcher                                   server (any node that has the mid)
   OTA_GET_MANIFEST(mid, want_mask)  >     (want_mask=0xFFFF first; only missing fragments on retry)
                                <-------   OTA_MANIFEST(mid, frag_idx, frag_total, bytes)   x requested frags
   (reassemble manifest, verify, compute geometry: BC, block_size, payload_size)
-  for each missing block:
-    OTA_REQ(mid, block_idx, want_mask) >  (want_mask=all fragments first; only the holes on retry)
-                               <-------   OTA_DATA(mid, block_idx, frag_off, data) x requested frags
-    (reassemble block from frag_off slices)
-                               <-------   OTA_PROOF(mid, block_idx, n_proof, proof)  (proactive)
-    [if proof is absent after grace: OTA_REQ_PROOF(mid, block_idx) -> legacy/loss fallback]
-    (verify proof vs merkle_root -> write block -> write leaves[i])
+  for each adaptive flight of missing blocks (starts at 1, grows on clean flights):
+    OTA_REQ(mid, {block_idx, want_mask}[]) >  (one packet; all fragments first, only holes on recovery)
+                               <-------   OTA_DATA(mid, block_idx, frag_off, data) x requested frags/block
+                               <-------   OTA_PROOF(mid, block_idx, n_proof, proof) x requested blocks
+    (independently reassemble + verify each block, but remain RX-silent until the flight drains)
+    [after adaptive deadline: recover one block's holes, or OTA_REQ_PROOF for a missing proof]
+    (clean flight grows by one block; recovered flight halves the next width)
   when all blocks present: verify full merkle_root + image_hash -> COMPLETE
 ```
 
@@ -471,7 +473,8 @@ All offsets after the 1-byte type. Encoders/decoders in `OtaProtocol.cpp`; const
 ```
 OTA_GET_MANIFEST:  manifest_id[4]  want_mask(uint16)   # bit k = send manifest fragment k; 0xFFFF = all
 OTA_MANIFEST:      manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]     # up to OTA_MF_FRAG=176 B/frag
-OTA_REQ:           manifest_id[4]  block_idx(uint16)  want_mask(uint16)    # bit k = send fragment k of block
+OTA_REQ:           manifest_id[4]  { block_idx(uint16)  want_mask(uint16) }[1..4]
+                   # one or more rows; bit k = send fragment k of that block
 OTA_DATA:          manifest_id[4]  block_idx(uint16)  frag_off(uint16)  data[]   # up to OTA_FRAG_DATA=160 B
 OTA_REQ_PROOF:     manifest_id[4]  block_idx(uint16)
 OTA_PROOF:         manifest_id[4]  block_idx(uint16)  n_proof(1)  proof[]   # n_proof x 4 bytes
@@ -496,6 +499,17 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   byte offset of `data` within the block, so the global position is `block_idx*block_size + frag_off` -
   a fragment is self-placing when returned by the source. The fetcher tracks a
   per-block slice bitmap and reassembles before requesting the proof.
+- **Adaptive flight size is not signed block size.** The container continues to use 1 KiB Merkle leaves and
+  each slot is one existing 1 KiB block. A clean link changes how many of those blocks one `OTA_REQ` names:
+  1, then 2, then 3, then the compiled cap. The manifest stores `block_size_log2`, so 3 KiB is not a valid
+  logical geometry; enabling 2 KiB would require larger device reassembly buffers and new-package/bootloader
+  validation while saving only one request/proof pair per 2 KiB. It does not address premature retries, which
+  were the dominant packet multiplier.
+- **Append-only request-window compatibility:** the first four-byte request row is exactly the original
+  `block_idx + want_mask` body. Old sources decode that row and ignore appended bytes. New sources queue all
+  rows. If a new fetcher meets an old source, the unserved tail rows eventually time out and are recovered as
+  ordinary single-row requests; the dirty flight then contracts. Old fetchers continue sending nine-byte
+  single-row requests, which new sources accept normally.
 - **Fragment-level requests (anti-deadlock + anti-congestion):** `OTA_REQ`, `OTA_GET_MANIFEST`, and `OTA_QUERY`
   carry fragment masks. For catalog discovery, `want_fragments` is a 32-bit bitmap and covers the protocol
   maximum 255-row catalog (26 fragments at the current packet size). For block and manifest transfer, the
@@ -508,10 +522,10 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   reassembly bitmap (<=16 fragments/block; 1 KB blocks = 7). `OTA_PROOF` is a single packet and needs no mask.
 - **Data and proof remain separate packets, without a normal extra round trip.** A server retains requested
   blocks in a bounded descriptor queue, admits at most one response per main-loop pass, and sends one
-  `OTA_PROOF` after the requested fragments. The receiver waits 500 ms after completing a block, then uses
-  `OTA_REQ_PROOF` only as a loss/legacy-server fallback. It keeps a bounded multi-block window, so one block
-  can await proof or flash commit while DATA for the next block arrives. Slots retry independently and only
-  one stalled slot is retried per service tick.
+  `OTA_PROOF` after each block's requested fragments. The receiver uses an airtime/path-aware proof grace
+  (never less than 500 ms) and defers `OTA_REQ_PROOF` while any flight slot still expects DATA. Thus a missing
+  early proof cannot make the receiver transmit into the rest of a legitimate half-duplex response train.
+  After the complete-flight deadline, only one slot's missing fragments/proof is requested at a time.
 
 ### 8.5 Sizing against `MAX_PACKET_PAYLOAD = 184`
 
@@ -529,9 +543,11 @@ payload); larger self-images pass a bigger scratch buffer.
 
 OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
 its `tempradio` window is actually running. A receiver selects missing blocks in serial order into a bounded
-request pipeline. The default capacity is two blocks. Targets with a larger compiled capacity begin at two,
-grow the live window by one after four clean verified blocks, and shrink it after two consecutive no-progress
-service ticks; the RAK3401 LoRa-OTA target currently adapts from two through four blocks. It never serves
+request flight. Every session starts with one block. A clean completed flight increases the next request by
+one block; a flight requiring fragment/proof recovery halves the next width (`4 -> 2`, `3 -> 2`, `2 -> 1`).
+The default compiled cap is two blocks; the RAK3401 LoRa-OTA target caps at four, so it probes
+`1 -> 2 -> 3 -> 4`. All rows are sent in one backward-compatible `OTA_REQ`, and no freed slot is refilled
+until the current flight is finished. It never serves
 partial blocks. A normal install receiver never re-advertises its completed
 download. An SD archive node is the deliberate exception: after a fully proof-verified container is published
 to its persistent archive, it registers that complete file as a MotaSource and advertises it as a new seeder.
@@ -543,8 +559,12 @@ public-flood receive holdoff and relay jitter, and do not schedule generic flood
 queue admits at most two DATA/PROOF packets ahead of the radio while preserving at least four free packet-pool
 entries. CAD remains enabled to arbitrate the half-duplex channel, but its busy retry is scaled to one-quarter
 of a packet airtime and clamped to 5-50 ms instead of the ordinary 120-360 ms cadence. Discovery traffic keeps
-collision jitter and background priority. These changes remove software waits and duplicate bursts; they do
-not remove the one required forwarding transmission per hop.
+collision jitter and background priority. The fetch deadline uses the active radio's measured maximum-packet
+airtime, remaining DATA/PROOF packet count, dispatcher airtime factor, and longest observed path (falling back
+to the configured hop horizon before one is observed), with bounded guard time. Faster SF/BW settings
+therefore recover loss sooner; slower or multi-hop settings do not spuriously re-request a response still on
+air. These changes remove software waits and duplicate bursts; they do not remove the one required forwarding
+transmission per hop.
 
 ---
 

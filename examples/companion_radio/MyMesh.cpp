@@ -359,6 +359,12 @@ int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
 }
 
 float MyMesh::getAirtimeBudgetFactor() const {
+  // TempRadio is a short-lived, explicitly coordinated OTA channel. Let its
+  // primary transfer use the full dispatcher budget; the persisted public
+  // channel duty factor becomes authoritative again as soon as TempRadio ends.
+#if defined(COMPANION_RADIO_FULL)
+  if (isTempRadioActive()) return 0.0f;
+#endif
   return _prefs.airtime_factor;
 }
 

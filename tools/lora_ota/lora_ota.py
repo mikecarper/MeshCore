@@ -290,6 +290,106 @@ def adaptive_poll_ceiling(baseline_seconds: float) -> float:
     return max(baseline_seconds, baseline_seconds * ADAPTIVE_POLL_MAX_FACTOR)
 
 
+def lora_airtime_seconds(
+    payload_bytes: int,
+    bandwidth_khz: float,
+    spreading_factor: int,
+    coding_rate: int,
+    *,
+    preamble_symbols: int = 16,
+) -> float:
+    """Estimate explicit-header LoRa airtime for one Mesh packet."""
+    symbol_seconds = (2 ** spreading_factor) / (bandwidth_khz * 1000.0)
+    low_data_rate = 1 if symbol_seconds >= 0.016 else 0
+    numerator = (
+        8 * payload_bytes - 4 * spreading_factor + 28 + 16
+    )
+    denominator = 4 * (spreading_factor - 2 * low_data_rate)
+    payload_symbols = 8 + max(
+        math.ceil(numerator / denominator) * coding_rate,
+        0,
+    )
+    return (preamble_symbols + 4.25 + payload_symbols) * symbol_seconds
+
+
+def ota_path_transmissions(args: argparse.Namespace) -> int:
+    # The source always transmits once; every explicitly managed relay adds
+    # one forwarding transmission to the response train.
+    return 1 + len(getattr(args, "relay", []) or [])
+
+
+def initial_status_wait_seconds(
+    args: argparse.Namespace,
+    package: MotaInfo,
+) -> float:
+    """Choose a quiet first-poll window from package and TempRadio airtime."""
+    baseline = float(args.poll_seconds)
+    temp_values = getattr(args, "temp_values", None)
+    if not temp_values:
+        return baseline
+    _frequency, bandwidth, sf, cr, _minutes = temp_values
+    blocks = math.ceil(package.payload_size / package.block_size)
+    fragments = math.ceil(package.block_size / 160)
+    # DATA dominates. Treat proofs and the roughly one request per three
+    # adaptive blocks as maximum-size packets, then apply a measured 4x guard
+    # for CAD, RX/TX turnarounds, flash commits, and scheduler latency.
+    packets = blocks * (fragments + 1) + math.ceil(blocks / 3)
+    estimated = (
+        packets
+        * lora_airtime_seconds(184, bandwidth, sf, cr)
+        * ota_path_transmissions(args)
+        * 4.0
+    )
+    return min(adaptive_poll_ceiling(baseline), max(baseline, estimated))
+
+
+def transfer_tail_guard_seconds(args: argparse.Namespace) -> float:
+    """Drain the last loaded block after the host-read progress signal."""
+    temp_values = getattr(args, "temp_values", None)
+    if not temp_values:
+        return 3.0
+    _frequency, bandwidth, sf, cr, _minutes = temp_values
+    return max(
+        2.0,
+        10
+        * lora_airtime_seconds(184, bandwidth, sf, cr)
+        * ota_path_transmissions(args)
+        * 4.0,
+    )
+
+
+def passive_progress_stall_seconds(
+    args: argparse.Namespace,
+    package: MotaInfo,
+) -> float:
+    """Return the no-progress interval that justifies an OTA status packet.
+
+    A healthy transfer can legitimately spend a long time transmitting the
+    fragments for one block before it asks the host for another. Scale that
+    interval with the selected LoRa modulation and managed relay count so a
+    slow/two-hop deployment is not mistaken for a stall. Fast TempRadio links
+    retain a 20-second floor, which is long enough to cover scheduler and flash
+    jitter without hiding a genuinely lost pull indefinitely.
+    """
+    baseline = float(args.poll_seconds)
+    temp_values = getattr(args, "temp_values", None)
+    if not temp_values:
+        return max(20.0, baseline)
+    _frequency, bandwidth, sf, cr, _minutes = temp_values
+    fragments = math.ceil(package.block_size / 160)
+    one_block_packets = fragments + 2  # request/proof plus DATA fragments
+    estimated = (
+        one_block_packets
+        * lora_airtime_seconds(184, bandwidth, sf, cr)
+        * ota_path_transmissions(args)
+        * 6.0
+    )
+    return min(
+        max(20.0, adaptive_poll_ceiling(baseline)),
+        max(20.0, estimated),
+    )
+
+
 def format_decimal(value: float) -> str:
     return f"{value:.6f}".rstrip("0").rstrip(".")
 
@@ -1710,6 +1810,33 @@ class SeederProcess:
                 f"{self._log_tail()}"
             )
 
+    def payload_read_progress(self, package: MotaInfo) -> tuple[int, int, int]:
+        """Return unique, total, and aggregate payload-block host reads.
+
+        ``motatool serve -v`` logs each successful random-access read. A read
+        at a payload block boundary means the source has reached that block's
+        response job. This is a passive progress signal: unlike remote
+        ``ota status``, reading it consumes no LoRa airtime and cannot collide
+        with the transfer it is observing.
+        """
+        if self.log_file is not None and not self.log_file.closed:
+            self.log_file.flush()
+        try:
+            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return 0, math.ceil(package.payload_size / package.block_size)
+        offsets = [
+            int(match)
+            for match in re.findall(r"\bREAD\s+\d+\s+@(\d+)\s+OK\b", detail)
+        ]
+        total = math.ceil(package.payload_size / package.block_size)
+        boundaries = {
+            package.payload_offset + index * package.block_size
+            for index in range(total)
+        }
+        payload_reads = [offset for offset in offsets if offset in boundaries]
+        return len(set(payload_reads)), total, len(payload_reads)
+
     def stop(self) -> None:
         if self.process is None:
             return
@@ -1977,6 +2104,76 @@ def monitor_download(
 ) -> str:
     deadline = time.monotonic() + args.transfer_timeout_minutes * 60
     poll_seconds = float(args.poll_seconds)
+    # A status command is ordinary half-duplex LoRa traffic. Asking immediately
+    # after `ota pull` can occupy the link for a full reply timeout and was
+    # measured adding tens of seconds to an otherwise short transfer. First
+    # watch the local seeder log, which is airtime-free, and query only after
+    # every payload block has reached the source (plus a bounded final-packet
+    # drain). If verbose progress is unavailable, fall back to an airtime-based
+    # quiet window before the first query.
+    first_wait = initial_status_wait_seconds(args, package)
+    ensure_seeder_running(seeder, "before first transfer status check")
+    if seeder is not None and hasattr(seeder, "payload_read_progress"):
+        stall_wait = passive_progress_stall_seconds(args, package)
+        tail_wait = transfer_tail_guard_seconds(args)
+        last_seen = -1
+        last_activity = -1
+        last_progress = time.monotonic()
+        last_status_activity = -1
+        last_reported_quarter = -1
+        while time.monotonic() < deadline:
+            ensure_seeder_running(seeder, "before first transfer status check")
+            seen, total, activity = seeder.payload_read_progress(package)
+            now = time.monotonic()
+            if activity > last_activity:
+                last_activity = activity
+                last_progress = now
+            if seen > last_seen:
+                last_seen = seen
+                quarter = (seen * 4 // total) if total else 0
+                if seen and quarter > last_reported_quarter:
+                    print(f"[download] passive source progress {seen}/{total}")
+                    last_reported_quarter = quarter
+            quiet_for = now - last_progress
+            query_reason: str | None = None
+            if (
+                total > 0
+                and seen >= total
+                and activity > last_status_activity
+                and quiet_for >= tail_wait
+            ):
+                query_reason = (
+                    f"source read all {total} payload blocks and has been quiet "
+                    f"for {quiet_for:.1f}s"
+                )
+            elif quiet_for >= stall_wait:
+                query_reason = f"no new source block read for {quiet_for:.0f}s"
+
+            if query_reason is not None:
+                print(
+                    f"[download] {query_reason}; checking destination status"
+                )
+                status = remote_command_with_seeder(
+                    controller, args.target, "ota status", seeder,
+                    "during transfer",
+                )
+                require_package_session(status, package)
+                if "ready to install" in status.lower():
+                    return status
+                # A status exchange can overlap a useful retry read. Snapshot
+                # it on the next loop and remain passive until that activity
+                # drains. If nothing else moves, use the radio-scaled stall
+                # interval before the next diagnostic query.
+                last_status_activity = activity
+                last_progress = time.monotonic()
+                continue
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+        raise OtaError(
+            "transfer timeout; the partial download remains staged and can "
+            "resume when the same mOTA is served again"
+        )
+
+    time.sleep(min(first_wait, max(0.0, deadline - time.monotonic())))
     while time.monotonic() < deadline:
         query_started = time.monotonic()
         status = remote_command_with_seeder(
@@ -2199,15 +2396,17 @@ def request_install(
 def shorten_relay_temp_windows(
     controller: Controller,
     args: argparse.Namespace,
+    relay_values: list[tuple[str, str]] | None = None,
 ) -> None:
-    if not args.relay_values:
+    values = args.relay_values if relay_values is None else relay_values
+    if not values:
         return
     command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
     print(
         f"[relays] scheduling return to the normal channel in "
         f"{TEMP_RADIO_RETURN_MINUTES} minute"
     )
-    for relay_name, relay_password in args.relay_values:
+    for relay_name, relay_password in values:
         reply = controller.remote_command(
             relay_name, command, password=relay_password
         )
@@ -2744,10 +2943,13 @@ def main(
     work_dir: Path | None = None
     controller: Controller | None = controller_override
     original_radio: RadioSettings | None = None
+    temp_radio: RadioSettings | None = None
     controller_changed = False
     seeder: SeederProcess | None = None
     seeder_attempted = False
     source_temp_owned = False
+    target_temp_owned = False
+    armed_relay_values: list[tuple[str, str]] = []
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
     try:
         preflight_inputs(args)
@@ -2815,11 +3017,13 @@ def main(
         arm_target_temp_radio(
             controller, args, temp_command, temp_radio, original_radio
         )
+        target_temp_owned = True
         for relay_name, relay_password in args.relay_values:
             temp_reply = controller.remote_command(
                 relay_name, temp_command, password=relay_password
             )
             require_temp_radio_reply(relay_name, temp_reply)
+            armed_relay_values.append((relay_name, relay_password))
         if not args.source_already_temp and not args.source_shares_controller:
             source_cli_command(args, temp_command)
             source_temp_owned = True
@@ -2850,7 +3054,9 @@ def main(
                 )
             else:
                 shorten_target_temp_window(controller, args)
+                target_temp_owned = False
                 shorten_relay_temp_windows(controller, args)
+                armed_relay_values.clear()
                 seeder.stop()
                 seeder = None
                 if source_temp_owned:
@@ -2859,6 +3065,9 @@ def main(
             return 0
 
         install_confirmed = request_install(controller, args, package)
+        # The install path replaces the long download lease with a bounded
+        # three-minute window, then either reboots or is safely self-restoring.
+        target_temp_owned = False
         if install_confirmed:
             print(f"[install] {args.target} accepted the image and is rebooting")
         else:
@@ -2871,6 +3080,7 @@ def main(
         # the relays are no longer needed on TempRadio. Give each a short,
         # bounded window, then verify through the restored normal route.
         shorten_relay_temp_windows(controller, args)
+        armed_relay_values.clear()
 
         # Stop seeding before returning the controller to its ordinary channel.
         seeder.stop()
@@ -2922,6 +3132,51 @@ def main(
             # this is harmless on TCP and explicitly cleans the serial case.
             if seeder_attempted and args.source_serial:
                 source_cli_command(args, "ota folder off", check=False)
+            needs_remote_cleanup = target_temp_owned or bool(armed_relay_values)
+            if (
+                needs_remote_cleanup
+                and not args.leave_controller_radio
+                and controller is not None
+                and original_radio is not None
+                and temp_radio is not None
+            ):
+                if not controller_changed:
+                    try:
+                        controller.set_radio(
+                            temp_radio,
+                            "return controller to TempRadio for failure cleanup",
+                        )
+                        controller_changed = True
+                        time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+                    except (OtaError, OSError) as exc:
+                        print(
+                            "WARNING: could not reach TempRadio to shorten remote "
+                            f"leases; their configured windows remain bounded: {exc}",
+                            file=sys.stderr,
+                        )
+                if controller_changed:
+                    if target_temp_owned:
+                        try:
+                            shorten_target_temp_window(controller, args)
+                            target_temp_owned = False
+                        except (OtaError, OSError) as exc:
+                            print(
+                                "WARNING: could not shorten the destination "
+                                f"TempRadio lease: {exc}",
+                                file=sys.stderr,
+                            )
+                    if armed_relay_values:
+                        try:
+                            shorten_relay_temp_windows(
+                                controller, args, armed_relay_values
+                            )
+                            armed_relay_values.clear()
+                        except (OtaError, OSError) as exc:
+                            print(
+                                "WARNING: could not shorten every relay TempRadio "
+                                f"lease: {exc}",
+                                file=sys.stderr,
+                            )
             if source_temp_owned and not args.leave_controller_radio:
                 shorten_source_temp_window(args, check=False)
             if (

@@ -356,6 +356,12 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     _ota_announce_count = 0;
   }
   ota::ota_ctx().manager.set_clock(_ms->getMillis());
+  float ota_spacing = 1.0f + getAirtimeBudgetFactor();
+  if (ota_spacing < 1.0f) ota_spacing = 1.0f;
+  if (ota_spacing > 10.0f) ota_spacing = 10.0f;
+  ota::ota_ctx().manager.set_link_timing(
+      _radio->getEstAirtimeFor(MAX_TRANS_UNIT),
+      (uint16_t)(ota_spacing * 1000.0f + 0.5f));
   ota::ota_ctx().manager.serviceEgress();
   if (millisHasNowPassed(_next_ota_tick)) {
     // one-shot on first tick: resume an interrupted fetch left staged in flash before a reboot. Only adopt
@@ -1061,17 +1067,19 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       if (!seen) _tables->markSeen(pkt);
       const bool primary_ota = isPrimaryOtaTraffic(pkt->payload, pkt->payload_len);
       const uint8_t ota_priority = otaTrafficPriority(pkt->payload, pkt->payload_len);
+      bool terminal_ota = false;
 #if defined(ENABLE_OTA)
       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
-      ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);  // central OTA receive (beacon/query/
-                                                                         // have/manifest/data/proof; all roles)
+      ota::ota_ctx().manager.note_rx_path_hops(n);                        // adaptive fetch timing
+      terminal_ota = ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);
+                                                                         // central OTA receive (all roles)
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook
 #endif
       // Re-flood discovery at background priority, but keep an active transfer primary at every relay hop.
       // The free-pool reserve still sheds periodic discovery under pressure; requested transfer packets are
       // protected from that background-only gate. Ordinary hop and forwarding policy remain authoritative.
-      if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
+      if (!terminal_ota && !seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
 #if defined(ENABLE_OTA)
           && n < getOtaHopLimit()
 #endif

@@ -63,12 +63,24 @@ struct ManifestMsg {
   const uint8_t* bytes; uint16_t len;
 };
 
-// ---- OTA_REQ: request specific fragments of ONE block (direct) ----
-// body: manifest_id(4) block_idx(2) want_mask(2). want_mask bit k = "send fragment k" (the slice at byte
-// offset k*OTA_FRAG_DATA). A fetcher requests the full mask ((1<<nf)-1) for a fresh block and only the
-// missing bits to recover holes, so a lost fragment costs one fragment to re-send - not the whole block
-// (saves airtime and avoids the re-REQ colliding with a multi-fragment burst on half-duplex radios).
+// ---- OTA_REQ: request specific fragments of one or more blocks (direct) ----
+// body: manifest_id(4) { block_idx(2) want_mask(2) }[1..4]. The first row is exactly the original
+// single-block OTA_REQ body, so an older source safely serves that row and ignores appended rows. A newer
+// source queues every row. This lets a fetcher open one adaptive flight with one packet, then remain silent
+// while the source and relays return the requested DATA/PROOF train.
+//
+// want_mask bit k = "send fragment k" (the slice at byte offset k*OTA_FRAG_DATA). A recovery request uses
+// only the missing bits, so one lost fragment costs one fragment to re-send rather than the whole block.
 struct ReqMsg { uint8_t manifest_id[4]; uint16_t block_idx; uint16_t want_mask; };
+struct ReqItem { uint16_t block_idx; uint16_t want_mask; };
+#ifndef OTA_REQ_MAX_ITEMS
+#define OTA_REQ_MAX_ITEMS 4
+#endif
+struct ReqWindowMsg {
+  uint8_t manifest_id[4];
+  uint8_t n_items;
+  ReqItem items[OTA_REQ_MAX_ITEMS];
+};
 
 // ---- OTA_DATA: one self-describing fragment of a block's data (proof stays in a separate packet) ----
 // body: manifest_id(4) block_idx(2) frag_off(2) data[]
@@ -122,6 +134,8 @@ bool     decode_manifest(const uint8_t* buf, uint16_t len, ManifestMsg& m);
 
 uint16_t encode_req(uint8_t* buf, uint16_t cap, const ReqMsg& m);
 bool     decode_req(const uint8_t* buf, uint16_t len, ReqMsg& m);
+uint16_t encode_req_window(uint8_t* buf, uint16_t cap, const ReqWindowMsg& m);
+bool     decode_req_window(const uint8_t* buf, uint16_t len, ReqWindowMsg& m);
 
 uint16_t encode_data(uint8_t* buf, uint16_t cap, const DataMsg& m);
 bool     decode_data(const uint8_t* buf, uint16_t len, DataMsg& m);
