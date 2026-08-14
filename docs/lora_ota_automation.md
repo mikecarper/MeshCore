@@ -418,9 +418,11 @@ the destination.
 7. Recheck that exact ID, give the target a short final TempRadio safety window,
    and request `ota install`. Then shorten each relay's TempRadio window so the
    normal multi-hop route returns, stop the seeder, shorten the source window,
-   restore the controller, wait for reboot, and require the new running identity
-   and exact package version. A source supplied with `--source-already-temp` is
-   never modified.
+   restore the controller, and probe `ota self` at 10 and 20 seconds instead of
+   sleeping for 90 seconds. The exact new body hash is the readiness signal;
+   only then does the runner require the exact package version. A relayed run
+   continues the 10-second probes through the mandatory relay-return window. A
+   source supplied with `--source-already-temp` is never modified.
    `--leave-controller-radio` moves the controller back to TempRadio only after
    this normal-channel verification.
 

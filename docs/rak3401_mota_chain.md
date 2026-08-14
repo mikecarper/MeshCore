@@ -199,8 +199,11 @@ The runner performs the following guarded sequence:
 2. Recheck destination identity, OTA reach, source identity, and exact package
    base before every step.
 3. Require `system.watchdog` to report `off` immediately before every install.
-4. After every reboot, require the exact version and EndF body hash, then prove
-   the rescue command is present before exposing that bridge to another step.
+4. After every install, probe `ota self` at 10 and 20 seconds rather than
+   sleeping for 90 seconds. Require the exact version and EndF body hash, then
+   prove the rescue command is present before exposing that bridge to another
+   step. Relayed runs keep the same 10-second probe cadence until the relays'
+   mandatory return-to-normal window has elapsed.
 5. Re-enable the watchdog only after the exact step-29 endpoint boots.
 
 Success requires all of the following:

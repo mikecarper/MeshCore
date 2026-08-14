@@ -708,6 +708,31 @@ class ReliabilityTests(unittest.TestCase):
         controller._remote_command_once("remote", "ota status", "secret")
         self.assertIn("login", commands_seen[2])
 
+    def test_remote_command_can_bound_one_reply_wait(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 45
+        controller._authenticated_targets = {"remote"}
+        key = "A1" * 32
+        commands_seen: list[str] = []
+
+        def run_marked(commands: list[str], _label: str, _marker: str):
+            commands_seen.extend(commands)
+            return (
+                [{"adv_name": "remote", "public_key": key}],
+                [{
+                    "txt_type": 1,
+                    "text": "OTA | no download | target:1234ABCD",
+                    "pubkey_prefix": key[:12],
+                }],
+            )
+
+        controller._run_marked = run_marked
+        controller._remote_command_once(
+            "remote", "ota status", "secret", reply_timeout=10
+        )
+        wait_index = commands_seen.index("trywait_msg")
+        self.assertEqual(commands_seen[wait_index + 1], "10")
+
     def test_silent_commands_retain_cached_admin_session(self) -> None:
         controller = object.__new__(ota.Controller)
         controller.reply_timeout = 20
@@ -1015,6 +1040,80 @@ class ReliabilityTests(unittest.TestCase):
             ota.verify_installed(
                 Controller("v1.16.9 (Build: old)"), args, package, expected_hash
             )
+
+    def test_post_install_ready_probe_runs_at_ten_and_twenty_seconds(self) -> None:
+        expected_hash = bytes.fromhex("0011223344556677")
+        old_hash = bytes.fromhex("8899AABBCCDDEEFF")
+
+        class Controller:
+            reply_timeout = 45
+
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def remote_command(
+                self, _target: str, command: str, **kwargs: object
+            ) -> str:
+                self.calls.append((command, kwargs))
+                if len(self.calls) == 1:
+                    raise ota.TransmissionError("still rebooting")
+                return (
+                    "self body=1 image=2 "
+                    f"base_hash={expected_hash.hex().upper()}"
+                )
+
+        controller = Controller()
+        with (
+            mock.patch.object(
+                ota.time, "monotonic", side_effect=[0.0, 0.0, 10.0]
+            ),
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            reply = ota.wait_for_post_install_identity(
+                controller,
+                argparse.Namespace(target="remote"),
+                expected_hash,
+                old_hash,
+                20,
+            )
+
+        self.assertIn(expected_hash.hex().upper(), reply)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [10, 10])
+        self.assertEqual([item[0] for item in controller.calls], ["ota self"] * 2)
+        self.assertTrue(all(
+            item[1] == {"retry": False, "reply_timeout": 10}
+            for item in controller.calls
+        ))
+
+    def test_post_install_ready_probe_rejects_no_endf_reply(self) -> None:
+        class Controller:
+            reply_timeout = 45
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return "ERR no EndF (firmware lacks the trailer?)"
+
+        with (
+            mock.patch.object(ota.time, "monotonic", side_effect=[0.0, 0.0]),
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "without a running body hash"),
+        ):
+            ota.wait_for_post_install_identity(
+                Controller(),
+                argparse.Namespace(target="remote"),
+                bytes.fromhex("0011223344556677"),
+                bytes.fromhex("8899AABBCCDDEEFF"),
+                20,
+            )
+
+    def test_reboot_ready_probe_defaults_to_twenty_seconds(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.mota", "remote",
+            "--controller-serial", "/dev/controller",
+            "--source-serial", "/dev/source",
+        ])
+        self.assertEqual(args.reboot_wait, 20)
+        self.assertEqual(rak_chain.build_parser().parse_args([]).reboot_wait, 20)
 
     def test_post_install_version_falls_back_to_runtime_ver(self) -> None:
         image = firmware(b"verify-fallback" * 700, VERSION_NEW)

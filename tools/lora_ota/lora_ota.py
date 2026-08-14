@@ -63,6 +63,8 @@ TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
 TEMP_RADIO_RETURN_MINUTES = 1
 TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
 INSTALL_TARGET_WINDOW_MINUTES = 3
+DEFAULT_POST_INSTALL_READY_WAIT_SECONDS = 20
+POST_INSTALL_READY_PROBE_INTERVAL_SECONDS = 10
 COMPANION_TERMINAL_START = "+++MESHCORE-TERM-START"
 COMPANION_TERMINAL_STOP = "+++MESHCORE-TERM-STOP"
 # Firmware may hold the apply reboot for up to 15 seconds while its reply
@@ -1289,7 +1291,13 @@ class Controller:
         target: str,
         command_text: str,
         password: str,
+        reply_timeout: int | None = None,
     ) -> str:
+        command_reply_timeout = (
+            self.reply_timeout if reply_timeout is None else reply_timeout
+        )
+        if command_reply_timeout <= 0:
+            raise OtaError("remote-command reply timeout must be positive")
         marker = f"MESHCORE_OTA_{secrets.token_hex(16)}"
         login_required = not self._remote_auth_is_cached(target)
         commands = ["contact_info", target]
@@ -1299,7 +1307,7 @@ class Controller:
             "sync_msgs",
             "echo", marker,
             "cmd", target, command_text,
-            "trywait_msg", str(self.reply_timeout),
+            "trywait_msg", str(command_reply_timeout),
             "sync_msgs",
         ])
         try:
@@ -1364,6 +1372,7 @@ class Controller:
         *,
         password: str | None = None,
         retry: bool = True,
+        reply_timeout: int | None = None,
     ) -> str:
         login_password = self.password if password is None else password
         normalized = command_text.strip().lower()
@@ -1374,7 +1383,7 @@ class Controller:
                 f"{command_text!r} requires state-aware retry handling"
             )
         action = lambda: self._remote_command_once(
-            target, command_text, login_password
+            target, command_text, login_password, reply_timeout
         )
         if retry:
             return retry_transmission(
@@ -2259,8 +2268,10 @@ def verify_installed(
     package: MotaInfo,
     expected_body_hash: bytes | None,
     previous_body_hash: bytes | None = None,
+    identity_reply: str | None = None,
 ) -> None:
-    identity_reply = controller.remote_command(args.target, "ota self")
+    if identity_reply is None:
+        identity_reply = controller.remote_command(args.target, "ota self")
     hash_match = re.search(r"\bbase_hash=([0-9A-Fa-f]{16})\b", identity_reply)
     if not hash_match:
         raise OtaError("post-reboot `ota self` did not report a running body hash")
@@ -2319,6 +2330,99 @@ def verify_installed(
         f"[verified] {args.target}: {package.version} "
         f"body={installed_hash.hex().upper()}"
     )
+
+
+def wait_for_post_install_identity(
+    controller: Controller,
+    args: argparse.Namespace,
+    expected_body_hash: bytes | None,
+    previous_body_hash: bytes | None,
+    wait_seconds: int,
+) -> str:
+    """Probe the exact running identity instead of sleeping through reboot."""
+    if wait_seconds <= 0:
+        raise OtaError("post-install ready-probe window must be positive")
+    if expected_body_hash is None and previous_body_hash is None:
+        raise OtaError(
+            "post-install readiness needs an expected or previous body hash"
+        )
+
+    started = time.monotonic()
+    probe_at = min(POST_INSTALL_READY_PROBE_INTERVAL_SECONDS, wait_seconds)
+    last_failure = "no identity reply"
+    while True:
+        delay = started + probe_at - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        print(
+            f"[reboot] probing `ota self` at {probe_at}s "
+            f"(window {wait_seconds}s)"
+        )
+        try:
+            reply = controller.remote_command(
+                args.target,
+                "ota self",
+                retry=False,
+                reply_timeout=min(
+                    POST_INSTALL_READY_PROBE_INTERVAL_SECONDS,
+                    getattr(
+                        controller,
+                        "reply_timeout",
+                        POST_INSTALL_READY_PROBE_INTERVAL_SECONDS,
+                    ),
+                ),
+            )
+        except TransmissionError as exc:
+            last_failure = str(exc)
+        else:
+            match = re.search(r"\bbase_hash=([0-9A-Fa-f]{16})\b", reply)
+            if match is None:
+                raise OtaError(
+                    "post-reboot `ota self` replied without a running body "
+                    f"hash: {reply}"
+                )
+            running_hash = bytes.fromhex(match.group(1))
+            if expected_body_hash is not None:
+                if running_hash == expected_body_hash:
+                    print(
+                        f"[reboot] expected body "
+                        f"{running_hash.hex().upper()} is ready"
+                    )
+                    return reply
+                if (
+                    previous_body_hash is not None
+                    and running_hash == previous_body_hash
+                ):
+                    last_failure = (
+                        "destination still reports its pre-install body "
+                        f"{running_hash.hex().upper()}"
+                    )
+                else:
+                    raise OtaError(
+                        "post-reboot `ota self` reports an unexpected running "
+                        f"body {running_hash.hex().upper()}"
+                    )
+            elif running_hash != previous_body_hash:
+                print(
+                    f"[reboot] new body {running_hash.hex().upper()} is ready"
+                )
+                return reply
+            else:
+                last_failure = (
+                    "destination still reports its pre-install body "
+                    f"{running_hash.hex().upper()}"
+                )
+
+        if probe_at >= wait_seconds:
+            raise OtaError(
+                f"destination did not report its installed identity during "
+                f"the {wait_seconds}s ready-probe window; last result: "
+                f"{last_failure}"
+            )
+        probe_at = min(
+            probe_at + POST_INSTALL_READY_PROBE_INTERVAL_SECONDS,
+            wait_seconds,
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2385,7 +2489,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--transfer-timeout-minutes", type=int, default=110)
     parser.add_argument("--seeder-start-wait", type=int, default=5)
-    parser.add_argument("--reboot-wait", type=int, default=90)
+    parser.add_argument(
+        "--reboot-wait",
+        type=int,
+        default=DEFAULT_POST_INSTALL_READY_WAIT_SECONDS,
+        help=(
+            "post-install identity-probe window in seconds; `ota self` is "
+            "scheduled every 10 seconds"
+        ),
+    )
     parser.add_argument(
         "--source-already-temp", action="store_true",
         help="do not configure a TCP source; assert it is already on --temp-radio",
@@ -2772,10 +2884,22 @@ def main(
             TEMP_RADIO_RETURN_MINUTES * 60 + TEMP_RADIO_RETURN_MARGIN_SECONDS
             if args.relay_values else 0
         )
-        time.sleep(max(args.reboot_wait, relay_wait))
+        ready_probe_window = max(args.reboot_wait, relay_wait)
+        identity_reply = wait_for_post_install_identity(
+            controller,
+            args,
+            expected_body_hash,
+            target.base_hash,
+            ready_probe_window,
+        )
         try:
             verify_installed(
-                controller, args, package, expected_body_hash, target.base_hash
+                controller,
+                args,
+                package,
+                expected_body_hash,
+                target.base_hash,
+                identity_reply,
             )
         finally:
             if args.leave_controller_radio:

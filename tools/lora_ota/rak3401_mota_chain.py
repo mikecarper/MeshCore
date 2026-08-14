@@ -1035,7 +1035,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--transfer-timeout-minutes", type=int, default=90)
     parser.add_argument("--seeder-start-wait", type=int, default=5)
-    parser.add_argument("--reboot-wait", type=int, default=90)
+    parser.add_argument(
+        "--reboot-wait",
+        type=int,
+        default=ota.DEFAULT_POST_INSTALL_READY_WAIT_SECONDS,
+        help=(
+            "post-install identity-probe window in seconds; `ota self` is "
+            "scheduled every 10 seconds"
+        ),
+    )
     parser.add_argument("--keep-watchdog-off", action="store_true")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
