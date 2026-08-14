@@ -684,7 +684,6 @@ class ReliabilityTests(unittest.TestCase):
         controller = object.__new__(ota.Controller)
         controller.reply_timeout = 20
         controller._authenticated_targets = set()
-        controller._authenticated_target_failures = {}
         key = "A1" * 32
         commands_seen: list[list[str]] = []
 
@@ -709,11 +708,10 @@ class ReliabilityTests(unittest.TestCase):
         controller._remote_command_once("remote", "ota status", "secret")
         self.assertIn("login", commands_seen[2])
 
-    def test_two_silent_commands_refresh_cached_admin_session(self) -> None:
+    def test_silent_commands_retain_cached_admin_session(self) -> None:
         controller = object.__new__(ota.Controller)
         controller.reply_timeout = 20
         controller._authenticated_targets = {"remote"}
-        controller._authenticated_target_failures = {}
         key = "A1" * 32
         commands_seen: list[list[str]] = []
 
@@ -722,13 +720,13 @@ class ReliabilityTests(unittest.TestCase):
             objects = [{"adv_name": "remote", "public_key": key}]
             if "login" in commands:
                 objects.append({"login_success": True})
+            replies = []
+            if len(commands_seen) == 3:
                 replies = [{
                     "txt_type": 1,
                     "text": "OTA | no download | target:1234ABCD",
                     "pubkey_prefix": key[:12],
                 }]
-            else:
-                replies = []
             return objects, replies
 
         controller._run_marked = run_marked
@@ -739,7 +737,7 @@ class ReliabilityTests(unittest.TestCase):
         controller._remote_command_once("remote", "ota status", "secret")
         self.assertNotIn("login", commands_seen[0])
         self.assertNotIn("login", commands_seen[1])
-        self.assertIn("login", commands_seen[2])
+        self.assertNotIn("login", commands_seen[2])
 
     def test_generic_retry_rejects_state_changing_ota_commands(self) -> None:
         controller = object.__new__(ota.Controller)
@@ -1316,24 +1314,20 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=True), steps
             )
 
-    def test_fresh_29_step_candidate_requires_explicit_lab_gate(self) -> None:
+    def test_physically_passed_29_step_release_needs_no_lab_gate(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(29)]
-        for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
+        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
-        with self.assertRaisesRegex(
-            rak_chain.KnownUnsafeReleaseError,
-            "requires --accept-test-candidate",
-        ):
-            rak_chain.require_live_release_safe(
-                argparse.Namespace(accept_test_candidate=False), steps
-            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=False), steps
+        )
         rak_chain.require_live_release_safe(
             argparse.Namespace(accept_test_candidate=True), steps
         )
 
-    def test_fresh_29_step_candidate_rejects_changed_anchor(self) -> None:
+    def test_physically_passed_29_step_release_rejects_changed_anchor(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(29)]
-        for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
+        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
         steps[10].target_sha256 = "00" * 32
         with self.assertRaisesRegex(

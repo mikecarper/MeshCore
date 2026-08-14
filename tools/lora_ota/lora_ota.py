@@ -1126,10 +1126,10 @@ class Controller:
         else:
             self.connection = ["-a", args.controller_ble]
         # Remote-admin authentication belongs to the radio node, not to each
-        # host command. Reuse it across application reboots; only repeated
-        # silence suggests that the session needs to be refreshed.
+        # host command. Reuse it across application reboots. A silent command
+        # is packet loss or an airtime-starved reply, not evidence that the
+        # authenticated session was lost.
         self._authenticated_targets: set[str] = set()
-        self._authenticated_target_failures: dict[str, int] = {}
         self._meshcli_session = (
             PersistentMeshcliSession([
                 self.meshcli, "-j", "-c", "off", *self.connection,
@@ -1148,9 +1148,6 @@ class Controller:
         authenticated = getattr(self, "_authenticated_targets", None)
         if authenticated is not None:
             authenticated.discard(target)
-        failures = getattr(self, "_authenticated_target_failures", None)
-        if failures is not None:
-            failures.pop(target, None)
 
     def _remote_auth_is_cached(self, target: str) -> bool:
         return target in getattr(self, "_authenticated_targets", set())
@@ -1158,25 +1155,7 @@ class Controller:
     def _cache_remote_auth(self, target: str) -> None:
         if not hasattr(self, "_authenticated_targets"):
             self._authenticated_targets = set()
-        if not hasattr(self, "_authenticated_target_failures"):
-            self._authenticated_target_failures = {}
         self._authenticated_targets.add(target)
-        self._authenticated_target_failures.pop(target, None)
-
-    def _note_remote_silence(self, target: str) -> bool:
-        if not hasattr(self, "_authenticated_target_failures"):
-            self._authenticated_target_failures = {}
-        failures = self._authenticated_target_failures.get(target, 0) + 1
-        self._authenticated_target_failures[target] = failures
-        if failures < 2:
-            return False
-        self.forget_remote_auth(target)
-        return True
-
-    def _note_remote_reply(self, target: str) -> None:
-        failures = getattr(self, "_authenticated_target_failures", None)
-        if failures is not None:
-            failures.pop(target, None)
 
     def _execute(
         self, commands: list[str], label: str
@@ -1369,17 +1348,12 @@ class Controller:
             and reply_matches_command(command_text, item["text"])
         ]
         if not messages:
-            refresh = self._note_remote_silence(target)
-            refresh_note = (
-                "; cached admin session will be refreshed on the next retry"
-                if refresh else ""
-            )
             raise TransmissionError(
                 f"no matching CLI reply from {target} for {command_text!r}; "
-                f"check its path and reply timeout{refresh_note}"
+                "check its path and reply timeout; the cached admin session "
+                "was retained"
             )
         reply = messages[-1]["text"]
-        self._note_remote_reply(target)
         print(f"[{target}] {reply}")
         return reply
 

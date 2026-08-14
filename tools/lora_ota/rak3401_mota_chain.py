@@ -35,8 +35,8 @@ ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "f843221aa9b33c452351b49e80c3cc9c8cc2ae9bfe80b68e0e83506583f5d12b"
-CHECKSUM_LIST_SHA256 = "f30eb5169d21f09800eea89d30452c89118b62386e8cb0fb47c7682f06f37c2c"
+ASSET_SHA256 = "eac67a0be12690b7e22c4d1f6a15bfdeb5bd627c4850b246b1be4220e5607b34"
+CHECKSUM_LIST_SHA256 = "8097d75c5d11b9e32e3ebd4971068bf743eaa108054ab39eb0049016f89d185d"
 BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765"
 
 # This 27-step candidate passed steps 1 and 2, then its test was deliberately
@@ -105,8 +105,8 @@ WATCHDOG_STABILITY_WAIT_SECONDS = 90
 # steps 1 through 14, but the first v1.17.01 candidate failed at step 15 because
 # that retained 386ae4a5 bridge still used unchecked CC310 SHA. Keep both
 # bundles useful for offline diagnosis, but fail closed before a live
-# connection. The second corrected replacement remains behind an explicit
-# lab-only gate until its end-to-end physical-board test is complete.
+# connection. The exact 29-step replacement below passed its complete direct
+# physical-board run on 14-Aug-2026.
 KNOWN_UNSAFE_STEP = 6
 KNOWN_UNSAFE_VERSION = "1.16.8.7"
 KNOWN_UNSAFE_IMAGE_SHA256 = (
@@ -141,10 +141,10 @@ SUPERSEDED_27_FINAL_IMAGE_SHA256 = (
     "e1376869da043c05792b3458e505e67e818f58d94d3fc050d22ab68578a2f2e8"
 )
 
-# Exact anchors for the fresh 29-step candidate. The pinned checksum list
-# covers every byte; these anchors also make the live gate fail closed if its
-# structural checks are ever reused independently.
-CURRENT_CANDIDATE_ANCHORS = (
+# Exact anchors for the physically passed 29-step release. The pinned checksum
+# list covers every byte; these anchors also make the live gate fail closed if
+# its structural checks are ever reused independently.
+PHYSICALLY_PASSED_ANCHORS = (
     (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
     (6, "4909b5cd50ca86e00b1583bf9ca50e0fc69808a4bebbec8b5e368304145e5d43"),
     (11, "28ba025251b9cf11376e09c2dc91619d9cc216de9f4998a5eeec7438b689d1c4"),
@@ -183,7 +183,7 @@ SUPERSEDED_27_MESSAGE = (
     "live installation of the superseded 27-step candidate is disabled: its "
     "physical test was stopped after step 2 so the adaptive primary requester "
     "could be moved into every historical bridge. Use --verify-only for that "
-    "bundle and use the fresh 29-step candidate for the lab rerun."
+    "bundle and use the physically passed 29-step release."
 )
 
 
@@ -196,18 +196,12 @@ def require_live_release_safe(
     steps: list[ChainStep],
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in CURRENT_CANDIDATE_ANCHORS:
+        for number, expected_sha256 in PHYSICALLY_PASSED_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise KnownUnsafeReleaseError(
-                    "live installation is disabled: the 29-step candidate has "
+                    "live installation is disabled: the 29-step release has "
                     f"an unrecognized step-{number} image"
                 )
-        if not args.accept_test_candidate:
-            raise KnownUnsafeReleaseError(
-                "live installation of the fresh 29-step chain requires "
-                "--accept-test-candidate until its complete physical-board "
-                "test passes"
-            )
         return
 
     step6_sha256 = steps[KNOWN_UNSAFE_STEP - 1].target_sha256
@@ -527,10 +521,10 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in CURRENT_CANDIDATE_ANCHORS:
+        for number, expected_sha256 in PHYSICALLY_PASSED_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise ota.OtaError(
-                    f"fresh candidate step {number} does not match its audited "
+                    f"physically passed step {number} does not match its audited "
                     "image pin"
                 )
         expected_final_version = EXPECTED_FINAL_VERSION
@@ -995,8 +989,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-test-candidate",
         action="store_true",
         help=(
-            "allow the pinned fresh 29-step chain for its direct physical lab test; "
-            "it never overrides a bundle known to have failed physical testing"
+            "deprecated compatibility flag; the exact physically passed 29-step "
+            "release no longer requires it, and it never overrides a failed bundle"
         ),
     )
 
@@ -1186,8 +1180,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"WARNING: {SUPERSEDED_27_MESSAGE}", file=sys.stderr)
             else:
                 print(
-                    "Unfailed candidate verified offline; complete physical-board testing "
-                    "is still required before production use."
+                    "Physically passed release verified offline: all 29 direct "
+                    "BW500/SF5 transitions passed on a RAK3401."
                 )
             return 0
 
