@@ -1418,8 +1418,11 @@ still requires local USB recovery.</p>
 <li>Recheck destination identity, OTA reach, source identity, and exact package
    base before every step.</li>
 <li>Require <code>system.watchdog</code> to report <code>off</code> immediately before every install.</li>
-<li>After every reboot, require the exact version and EndF body hash, then prove
-   the rescue command is present before exposing that bridge to another step.</li>
+<li>After every install, probe <code>ota self</code> at 10 and 20 seconds rather than
+   sleeping for 90 seconds. Require the exact version and EndF body hash, then
+   prove the rescue command is present before exposing that bridge to another
+   step. Relayed runs keep the same 10-second probe cadence until the relays'
+   mandatory return-to-normal window has elapsed.</li>
 <li>Re-enable the watchdog only after the exact step-29 endpoint boots.</li>
 </ol>
 <p>Success requires all of the following:</p>
