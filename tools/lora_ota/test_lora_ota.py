@@ -1316,8 +1316,8 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=True), steps
             )
 
-    def test_fresh_28_step_candidate_requires_explicit_lab_gate(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(28)]
+    def test_fresh_29_step_candidate_requires_explicit_lab_gate(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(29)]
         for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
         with self.assertRaisesRegex(
@@ -1331,8 +1331,8 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             argparse.Namespace(accept_test_candidate=True), steps
         )
 
-    def test_fresh_28_step_candidate_rejects_changed_anchor(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(28)]
+    def test_fresh_29_step_candidate_rejects_changed_anchor(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(29)]
         for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
         steps[10].target_sha256 = "00" * 32

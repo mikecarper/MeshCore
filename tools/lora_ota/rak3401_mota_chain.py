@@ -30,14 +30,14 @@ except ImportError:
 
 RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e"
 RELEASE_URL = f"https://github.com/mikecarper/MeshCore/releases/tag/{RELEASE_TAG}"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-f7c2d382.zip"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765.zip"
 ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "7dbfc603056a05e7e0a7db6d16bf21fa37d758f1fdd74766dc0adc79d6a85dbb"
-CHECKSUM_LIST_SHA256 = "1223d01863d52e55774af0e44efd77730e860183fa80741488eecd0e0efe803a"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-f7c2d382"
+ASSET_SHA256 = "f843221aa9b33c452351b49e80c3cc9c8cc2ae9bfe80b68e0e83506583f5d12b"
+CHECKSUM_LIST_SHA256 = "f30eb5169d21f09800eea89d30452c89118b62386e8cb0fb47c7682f06f37c2c"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765"
 
 # This 27-step candidate passed steps 1 and 2, then its test was deliberately
 # stopped so the adaptive primary requester could be backported into every
@@ -93,7 +93,7 @@ DEFAULT_TARGET_KEY = (
 )
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
-EXPECTED_STEP_COUNT = 28
+EXPECTED_STEP_COUNT = 29
 EXPECTED_START_VERSION = "1.16.7.0"
 EXPECTED_FINAL_VERSION = "1.17.1.0"
 MIN_MESHCLI_VERSION = (1, 6, 0)
@@ -141,18 +141,20 @@ SUPERSEDED_27_FINAL_IMAGE_SHA256 = (
     "e1376869da043c05792b3458e505e67e818f58d94d3fc050d22ab68578a2f2e8"
 )
 
-# Exact anchors for the fresh 28-step candidate. The pinned checksum list
+# Exact anchors for the fresh 29-step candidate. The pinned checksum list
 # covers every byte; these anchors also make the live gate fail closed if its
 # structural checks are ever reused independently.
 CURRENT_CANDIDATE_ANCHORS = (
-    (1, "09638e0e67faabdba97c621178294a5279c2d379540593738e2abad7afdc40cc"),
-    (6, "f5908b1e823b85268de8986871e10a78d288014a584e604254477520386daeaf"),
-    (11, "fa3e15db6a1818b5f4399a795d78f9274f709b58ccbd3268fda4e5973fa554af"),
-    (12, "959c4a98bf5d54c7aa17bad014830c0549b8439c3de6075ee97fea56849acb06"),
-    (13, "03b401f2752b9ed2aa442e86a49049aecd614fcdf9941beef0f77d3005b65471"),
-    (16, "ef06aad907d5822663bd0b7b46e189bc69e3b70e6b4474e8c004afb49ebdd828"),
-    (17, "c5defba43c561c4c73d49f557f5bc063b5db41ebcf5495934a64c003a652c009"),
-    (28, "c1d165a50ef2447d857f24af624e927a4f2e59978b6d072dbfc4a16189ea40da"),
+    (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
+    (6, "4909b5cd50ca86e00b1583bf9ca50e0fc69808a4bebbec8b5e368304145e5d43"),
+    (11, "28ba025251b9cf11376e09c2dc91619d9cc216de9f4998a5eeec7438b689d1c4"),
+    (12, "43ee2ae539aca7cbdc032eb142474459c9873a9462846b660fad3565f4ad1290"),
+    (13, "011bf1fe6a51d98b8498b4be85b65ce55f9398bcf17d57355362e913a77dd303"),
+    (16, "f625e66396658704984aa5b31d2e322087a5c882a63f438e28b9972eeca619ca"),
+    (17, "3c38377fcf6de36627018b04ed980a4f73ac4646f0c1ff7eaa25fe246dc837ca"),
+    (25, "af25fcc8cf0932d6962958402ab1f8e718720ae34fff26383f45bc85cf277eef"),
+    (26, "c9a4887774d4ca8d20f3cec8611ba7ce28611dfedd9bbed624e9578f83a2c85c"),
+    (29, "5c8d94bb23e87c23b0374ffb5a46e0c1205d6eebcb9d8bae3be6fda2613f9f79"),
 )
 KNOWN_UNSAFE_RELEASE_MESSAGE = (
     f"live installation of {KNOWN_UNSAFE_RELEASE_TAG} is disabled: a physical RAK3401 "
@@ -181,7 +183,7 @@ SUPERSEDED_27_MESSAGE = (
     "live installation of the superseded 27-step candidate is disabled: its "
     "physical test was stopped after step 2 so the adaptive primary requester "
     "could be moved into every historical bridge. Use --verify-only for that "
-    "bundle and use the fresh 28-step candidate for the lab rerun."
+    "bundle and use the fresh 29-step candidate for the lab rerun."
 )
 
 
@@ -197,12 +199,12 @@ def require_live_release_safe(
         for number, expected_sha256 in CURRENT_CANDIDATE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise KnownUnsafeReleaseError(
-                    "live installation is disabled: the 28-step candidate has "
+                    "live installation is disabled: the 29-step candidate has "
                     f"an unrecognized step-{number} image"
                 )
         if not args.accept_test_candidate:
             raise KnownUnsafeReleaseError(
-                "live installation of the fresh 28-step chain requires "
+                "live installation of the fresh 29-step chain requires "
                 "--accept-test-candidate until its complete physical-board "
                 "test passes"
             )
@@ -973,8 +975,8 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download, verify, resume, and install the exact 28-step RAK3401 "
-            "mOTA chain from c1caa5ad to f7c2d382."
+            "Download, verify, resume, and install the exact 29-step RAK3401 "
+            "mOTA chain from c1caa5ad to cd824765."
         )
     )
     parser.add_argument(
@@ -993,7 +995,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-test-candidate",
         action="store_true",
         help=(
-            "allow the pinned fresh 28-step chain for its direct physical lab test; "
+            "allow the pinned fresh 29-step chain for its direct physical lab test; "
             "it never overrides a bundle known to have failed physical testing"
         ),
     )
