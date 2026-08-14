@@ -1568,9 +1568,13 @@ no guessing. <strong><code>validate</code> is the switch:</strong> a plain <code
 re-running a <code>validate</code> pull re-begins fresh (it never resumes a stale partial). Nothing about the seed is
 trusted - every kept block is checked against the target's own fingerprints, so a mismatched or missing seed
 just means those blocks are fetched over the radio (correct result, only slower).</p>
-<p>The node fetches from one source as <strong>primary traffic</strong>, with a bounded adaptive block-request window.
-RAK3401 OTA builds start with two concurrent block requests, grow to four on a clean link, and contract on
-repeated stalls. Mesh repeaters carry the packets only while their temporary-radio windows are active.
+<p>The node fetches from one source as <strong>primary traffic</strong>, with bounded adaptive request flights. Every session
+probes with one 1 KiB block, then clean flights grow <code>1 -&gt; 2 -&gt; 3 -&gt; 4</code> blocks on RAK3401 OTA builds. All blocks
+in a flight share one request packet, and the receiver stays silent until the source/relays finish returning
+them. A recovery halves the next flight. Retry timing follows the active SF/BW airtime, duty budget, and path
+length, so faster settings recover sooner without a fixed one-second request colliding with a valid multi-hop
+response. The signed block size itself remains 1 KiB. Mesh repeaters carry the packets only while their
+temporary-radio windows are active.
 Check progress with <code>ota status</code>.</p>
 <p>If a <code>folder</code> pull loses its link mid-transfer, <code>ota status</code> shows <strong>paused</strong> - the host keeps the
 partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
