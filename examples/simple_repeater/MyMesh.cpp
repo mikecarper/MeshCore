@@ -990,13 +990,15 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   // other forwarding gate has accepted the packet. Quota is then spent only
   // for a message this repeater will actually retransmit.
 #if !defined(PORTABLE_MQTT_OBSERVER)
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
   if (packet->isRouteFlood() && shouldBlockFloodGroupTextForward(packet)) return false;
+#endif
   if (packet->isRouteFlood()) commitFloodPacketFilterRates(packet);
   // Normal path mode accepts clock evidence only from packets this node would
   // forward. Edge mode observes verified evidence on the receive path instead,
   // so repeat off and other forwarding filters do not hide a single upstream
   // path from a node at the edge of the network.
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
   if (!clock_sync_mesh_edge_enabled) recordAcceptedFloodClockSample(packet);
 #endif
 #endif
@@ -2551,7 +2553,7 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
   // Mesh calls this hook only after verifying the advert's Ed25519 signature.
   // Edge mode observes it here rather than in allowPacketForward(), because
   // forwarding can be disabled on a receive-only edge node.
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
   if (clock_sync_mesh_edge_enabled && isClockSyncCollectionActive()) {
     uint8_t source_id[4];
     mesh::Utils::sha256(source_id, sizeof(source_id), id.pub_key, PUB_KEY_SIZE);
@@ -2570,7 +2572,7 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
 }
 
 void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
   // The base Mesh calls this for every unseen, structurally valid group packet
   // before the forwarding decision. Public-channel decryption below also
   // verifies its MAC, so unrelated or forged channel packets are ignored.
@@ -2986,7 +2988,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
          sizeof(flood_channel_direct_scopes));
   memset(flood_channel_scope_requirements, 0,
          sizeof(flood_channel_scope_requirements));
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
   memset(flood_group_moderation, 0, sizeof(flood_group_moderation));
+#endif
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   flood_policy_has_embedded_sections = false;
   flood_channel_data_rule_slot = 0xFF;
@@ -3177,8 +3181,10 @@ void MyMesh::begin(FILESYSTEM *fs) {
   loadFloodChannelScopes();
 #endif
   loadFloodChannelScopeRequirements();
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
   loadFloodGroupModeration();
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#endif
+#if MESH_ENABLE_CLOCK_SYNC
   loadClockSyncPrefs();
 #endif
 #endif
@@ -8327,6 +8333,8 @@ void MyMesh::deleteFloodChannelScopeRequirement(const char* args,
   }
 }
 
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
+
 static bool parseFloodModerationPath(const char* text, uint8_t& hash_size, uint8_t& path_hops,
                                      uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]) {
   memset(path, 0, FLOOD_GROUP_MODERATION_PATH_BYTES_MAX);
@@ -8475,6 +8483,8 @@ bool MyMesh::saveFloodGroupModeration() {
   return success;
 }
 
+#endif
+
 bool MyMesh::decodeFloodGroupPlainText(const mesh::Packet* packet, const uint8_t* secret, uint8_t key_len,
                                        uint32_t& timestamp, char* sender, size_t sender_len) const {
   if (sender != NULL && sender_len > 0) sender[0] = 0;
@@ -8508,6 +8518,8 @@ bool MyMesh::decodeFloodGroupPlainText(const mesh::Packet* packet, const uint8_t
   sender[parsed_len] = 0;
   return true;
 }
+
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
 
 bool MyMesh::shouldBlockFloodGroupTextForward(const mesh::Packet* packet) {
   if (packet == NULL || !packet->isRouteFlood() || packet->getPayloadType() != PAYLOAD_TYPE_GRP_TXT
@@ -8849,7 +8861,9 @@ void MyMesh::deleteFloodGroupModeration(const char* args, char* reply) {
   }
 }
 
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#endif
+
+#if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
 
 void MyMesh::loadClockSyncPrefs() {
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
@@ -9489,9 +9503,9 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
 
 #else
 
-// Portable MQTT observers use their bridge's NTP source. Omitting the mesh
-// consensus implementation keeps these legacy-slot images update-compatible;
-// FULL MQTT images retain both NTP and mesh clock synchronization.
+// Portable MQTT observers use their bridge's NTP source. Flash-constrained
+// repeaters can also omit mesh consensus while retaining manual clock setting
+// and scheduled radio changes.
 static const char* clockSyncMeshSuppressionName(uint8_t source) {
   (void)source;
   return "unavailable";
@@ -10474,13 +10488,18 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   } else if (commandFamilyMatches(command, "del flood.rule")) {
     deleteFloodPacketFilter(command + strlen("del flood.rule"), reply);
 #endif
-  } else if (commandFamilyMatches(command, "get flood.moderation")) {
+  }
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
+  else if (commandFamilyMatches(command, "get flood.moderation")) {
     formatFloodGroupModeration(command + strlen("get flood.moderation"), reply);
   } else if (commandFamilyMatches(command, "set flood.moderation")) {
     setFloodGroupModeration(command + strlen("set flood.moderation"), reply);
   } else if (commandFamilyMatches(command, "del flood.moderation")) {
     deleteFloodGroupModeration(command + strlen("del flood.moderation"), reply);
-  } else if (commandFamilyMatches(command, "get clock.sync.status")) {
+  }
+#endif
+#if MESH_ENABLE_CLOCK_SYNC
+  else if (commandFamilyMatches(command, "get clock.sync.status")) {
     formatClockSyncStatus(command + strlen("get clock.sync.status"), reply, 160);
   } else if (strcmp(command, "get clock.sync") == 0) {
     formatClockSyncStatus("", reply, 160);
@@ -10613,7 +10632,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         sprintf(reply, "OK - clock sync requires %u samples", (unsigned int)required);
       }
     }
-  } else if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
+  }
+#endif
+  else if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
     char* hex = &command[8];
     char* sp = strchr(hex, ' ');   // look for separator char
     if (sp == NULL) {
@@ -11120,7 +11141,7 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   uint32_t now = millis();
   uptime_millis += now - last_millis;
   last_millis = now;
-#if !defined(PORTABLE_MQTT_OBSERVER)
+#if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
   checkGpsClockSyncOverride();
   checkClockSync();
 #endif

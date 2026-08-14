@@ -210,6 +210,9 @@ struct NeighbourInfo {
   #define FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS FLOOD_CHANNEL_SCOPE_SLOTS
 #endif
 
+#ifndef MESH_ENABLE_FLOOD_GROUP_MODERATION
+  #define MESH_ENABLE_FLOOD_GROUP_MODERATION 1
+#endif
 #ifndef FLOOD_GROUP_MODERATION_SLOTS
   #define FLOOD_GROUP_MODERATION_SLOTS 16
 #endif
@@ -218,6 +221,10 @@ struct NeighbourInfo {
 #define FLOOD_GROUP_MODERATION_PATH_BYTES_MAX (FLOOD_GROUP_MODERATION_PATH_HOPS_MAX * 3)
 #define FLOOD_GROUP_MODERATION_HOPS_ALL       0xFF
 #define FLOOD_GROUP_MODERATION_RATE_UNLIMITED 0xFFFF
+
+#ifndef MESH_ENABLE_CLOCK_SYNC
+  #define MESH_ENABLE_CLOCK_SYNC 1
+#endif
 
 #ifndef CLOCK_SYNC_SAMPLE_SLOTS
   #define CLOCK_SYNC_SAMPLE_SLOTS 16
@@ -399,7 +406,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                   [FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
   FloodChannelScopeRequireEntry
       flood_channel_scope_requirements[FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS];
+#if MESH_ENABLE_FLOOD_GROUP_MODERATION
   FloodGroupModerationEntry flood_group_moderation[FLOOD_GROUP_MODERATION_SLOTS];
+#endif
   uint64_t recv_pkt_filter_match_mask;
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   bool flood_policy_has_embedded_sections;

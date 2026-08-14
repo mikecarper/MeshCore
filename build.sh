@@ -1971,11 +1971,12 @@ requires_esp32_companion_full_ota_fallback() {
 }
 
 requires_dram_limited_neighbors() {
-  # These classic ESP32 MQTT observers keep their persistent neighbor and MQTT
-  # discovery tables in internal DRAM. Their GPS, TLS, and OTA state leave too
-  # little linker margin for the protocol maximum, even when PSRAM is present.
+  # These targets cannot hold the protocol-maximum neighbor table. Classic
+  # ESP32 MQTT observers exhaust internal DRAM, while the 256 KiB STM32WL
+  # targets exhaust their fixed application region because initialized table
+  # storage is part of the image.
   case "${1,,}" in
-    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt) return 0 ;;
+    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt|rak_3x72_repeater|tiny_relay_repeater|wio-e5-mini_repeater|wio-e5-repeater_bridge_rs232|wio-e5_repeater) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -2173,8 +2174,7 @@ apply_repeater_neighbor_capacity() {
   fi
 
   # Repeater discovery uses one-byte indexes, so 254 is the largest usable
-  # table. Keep the two classic T-Beam MQTT observers at their measured safe
-  # capacity; their 254-entry builds leave less than 256 bytes of DRAM margin.
+  # table. Keep explicitly constrained targets at their measured safe capacity.
   if requires_dram_limited_neighbors "$env_name"; then
     max_neighbours=$DRAM_LIMITED_MAX_NEIGHBOURS
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=8 -DMAX_NEIGHBOURS=254"

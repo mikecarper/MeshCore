@@ -116,6 +116,12 @@ public:
 
   virtual bool supportsRxPowerSaving() const { return false; }
   virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
+  virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
+  virtual bool setRxPowerSavingRfRxDisabled(bool disabled) {
+    (void)disabled;
+    return false;
+  }
+  virtual bool isRxPowerSavingRfRxDisabled() const { return false; }
 
   /**
    * \brief Attempts to change the radio modulation parameters without waiting.
