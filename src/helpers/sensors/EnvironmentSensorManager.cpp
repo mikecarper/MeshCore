@@ -217,22 +217,22 @@ public:
   void begin() override { }
   void stop() override { }
   void loop() override {
-    if (ublox_GNSS.getGnssFixOk(8)) {
-      _fix = true;
-      _lat = ublox_GNSS.getLatitude(2) / 10;
-      _lng = ublox_GNSS.getLongitude(2) / 10;
-      _alt = ublox_GNSS.getAltitude(2);
-      _sats = ublox_GNSS.getSIV(2);
-    } else {
-      _fix = false;
-    }
-    bool date_valid = ublox_GNSS.getDateValid(2);
-    bool time_valid = ublox_GNSS.getTimeValid(2);
-    _epoch = ublox_GNSS.getUnixEpoch(2);
-
     unsigned long now = millis();
-    if ((long)(now - _next_time_check) >= 0) {
+    if ((int32_t)(now - _next_time_check) >= 0) {
       _next_time_check = now + 1000;
+
+      if (ublox_GNSS.getGnssFixOk(8)) {
+        _fix = true;
+        _lat = ublox_GNSS.getLatitude(2) / 10;
+        _lng = ublox_GNSS.getLongitude(2) / 10;
+        _alt = ublox_GNSS.getAltitude(2);
+        _sats = ublox_GNSS.getSIV(2);
+      } else {
+        _fix = false;
+      }
+      bool date_valid = ublox_GNSS.getDateValid(2);
+      bool time_valid = ublox_GNSS.getTimeValid(2);
+      _epoch = ublox_GNSS.getUnixEpoch(2);
 
       if (_fix && _sats >= 5 && date_valid && time_valid && _epoch > 0) {
         if (_valid_time_samples < 0xFF) _valid_time_samples++;
@@ -953,8 +953,14 @@ void EnvironmentSensorManager::start_gps() {
   if (gps_active) return;
   gps_active = true;
 #ifdef RAK_WISBLOCK_GPS
+#ifdef FORCE_GPS_ALIVE
+  // The UART L76K has no power-save command. Keep the shared rail enabled;
+  // an I2C u-blox receiver can also be explicitly returned to full power.
+  if (i2cGPSFlag) ublox_GNSS.powerSaveMode(false);
+#else
   pinMode(gpsResetPin, OUTPUT);
   digitalWrite(gpsResetPin, HIGH); // WB_IO2 is the shared sensor power rail
+#endif
 #else
   _location->begin();
   _location->reset();
@@ -978,7 +984,10 @@ void EnvironmentSensorManager::stop_gps() {
   }
 
 #ifdef RAK_WISBLOCK_GPS
-#ifndef FORCE_GPS_ALIVE
+#ifdef FORCE_GPS_ALIVE
+  // Keep the shared rail alive. The UART L76K cannot be put to sleep here.
+  if (i2cGPSFlag) ublox_GNSS.powerSaveMode(false);
+#else
   pinMode(gpsResetPin, OUTPUT);
   digitalWrite(gpsResetPin, LOW); // WB_IO2
 #endif
