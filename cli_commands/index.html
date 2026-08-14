@@ -4922,9 +4922,10 @@ require MQTT or PSRAM.</p>
 scopes and publishes the assembled table to the MQTT <code>neighbors</code> topic once.</p>
 <p><strong>Usage:</strong>
 - <code>discover.scopes</code></p>
-<p><strong>Note:</strong> Requires a PSRAM board with the MQTT bridge running. On non-PSRAM MQTT
-builds it replies <code>Err - not supported (requires PSRAM)</code>. If a <code>discover.neighbors</code>
-refresh is already in flight, the scope pass is queued behind it.</p>
+<p><strong>Note:</strong> Requires an MQTT observer build with the neighbors feature compiled in
+(all PSRAM boards, plus non-PSRAM boards built with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>).
+Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If a
+<code>discover.neighbors</code> refresh is already in flight, the scope pass is queued behind it.</p>
 <hr />
 <h2 id="statistics">Statistics</h2>
 <h3 id="clear-stats">Clear Stats</h3>
@@ -5299,7 +5300,9 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <h4 id="view-or-change-rx-duty-cycle-power-saving">View or change RX duty-cycle power saving</h4>
 <p><strong>Usage:</strong>
 - <code>get radio.rxps</code>
+- <code>get radio.rxps.rfrx_disabled</code>
 - <code>get rxps.wd</code>
+- <code>set radio.rxps.rfrx_disabled &lt;state&gt;</code>
 - <code>set radio.rxps off</code>
 - <code>set radio.rxps on</code>
 - <code>set radio.rxps conservative</code>
@@ -5311,9 +5314,13 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <p><strong>Parameters:</strong>
 - <code>rx_us</code>, <code>sleep_us</code>: Receive and sleep durations in microseconds (<code>1000</code>-<code>30000000</code>).
 - <code>level</code>: A power-saving level from <code>1</code> (most conservative) to <code>10</code> (least power saving).
-- <code>preamble</code>: LoRa preamble length in symbols; <code>16</code> or <code>32</code>.</p>
+- <code>preamble</code>: LoRa preamble length in symbols; <code>16</code> or <code>32</code>.
+- <code>state</code>: <code>on</code> or <code>off</code>.</p>
 <p><strong>Notes:</strong>
 - <code>get rxps.wd</code> reports the RXPS watchdog's soft and hard recovery counts.
+- <code>radio.rxps.rfrx_disabled</code> is a runtime-only diagnostic setting and resets to <code>off</code> after reboot.
+- Its default <code>off</code> state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to <code>on</code> reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
+- <code>radio.rxps.rfrx_disabled</code> is supported only on SX1262 targets with a host-controlled RX enable pin.
 - <code>on</code> and <code>conservative</code> select level <code>1</code> with a 16-symbol preamble; <code>balanced</code> selects level <code>5</code> with a 16-symbol preamble.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom <code>&lt;rx_us&gt; &lt;sleep_us&gt;</code> timings remain fixed.
 - The selected mode is applied immediately, persisted, and restored after reboot.</p>
@@ -7209,9 +7216,13 @@ sleep, this command schedules a sync and wakes it; after <code>gps off</code>, i
 - <code>off</code>: disable periodic neighbors publishing</p>
 <p><strong>Default:</strong> <code>off</code></p>
 <blockquote>
-<p><strong>Note:</strong> Requires a PSRAM board. On non-PSRAM MQTT builds this replies
-<code>Err - not supported (requires PSRAM)</code>. The setting is read live by the mesh
-loop -- no restart required; enabling it triggers a discovery on the next pass.
+<p><strong>Note:</strong> Requires a build with the neighbors feature compiled in (all PSRAM
+boards, plus non-PSRAM boards built with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>);
+elsewhere this replies <code>Err - neighbors not enabled in this build</code>. Non-PSRAM
+builds publish at most 20 neighbours per pass to bound internal-DRAM use, and
+set <code>truncated</code> with the true <code>total_neighbors</code> when the table is larger.
+The setting is read live by the mesh
+loop - no restart required; enabling it triggers a discovery on the next pass.
 While enabled, <code>get mqtt.status</code> gains a trailing <code>nbr: &lt;next&gt;/&lt;last&gt;</code> field
 (time to next publish, and how the last publish went).</p>
 </blockquote>
