@@ -4,10 +4,25 @@
   const TYPE_TEMPERATURE = 0x11;
   const TYPE_VOLTAGE = 0x12;
   const TYPE_GPS = 0x13;
+  const BINARY_TEMPERATURE_MAGIC = "TTB1";
+  const BINARY_VOLTAGE_MAGIC = "TVB1";
+  const BINARY_HEADER_SIZE = 19;
+  const BINARY_MAX_SAMPLES = 165;
+  const PAYLOAD_TYPE_RAW_CUSTOM = 0x0f;
   const METERS_PER_DEGREE = 111320;
   const DEGREES_TO_RADIANS = Math.PI / 180;
 
   const EXAMPLES = Object.freeze({
+    packetTemperature: Object.freeze({
+      label: "Analyzer temperature packet",
+      command: "send telemetry.tx now",
+      reply: "3E00545442311122334455667788800092651E0008000102354A4E5082",
+    }),
+    packetVoltage: Object.freeze({
+      label: "Analyzer voltage packet",
+      command: "send telemetry.tx now",
+      reply: "3E00545642311122334455667788800092651E000800010264C8FEFFDC",
+    }),
     temperature: Object.freeze({
       label: "Temperature example",
       command: "get telemetry.temp",
@@ -95,6 +110,78 @@
     return bytes;
   }
 
+  function bytesToHex(bytes) {
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, "0"))
+      .join("")
+      .toUpperCase();
+  }
+
+  function asciiAt(bytes, offset, length) {
+    let value = "";
+    for (let index = 0; index < length; index += 1) {
+      value += String.fromCharCode(bytes[offset + index]);
+    }
+    return value;
+  }
+
+  function extractHexBytes(input) {
+    if (typeof input !== "string" || input.trim() === "") {
+      throw new TelemetryDecodeError("Paste raw packet hex from the analyzer first.");
+    }
+    if (input.length > 32768) {
+      throw new TelemetryDecodeError("The pasted value is too large to be a MeshCore packet.");
+    }
+
+    const text = input
+      .trim()
+      .replace(/^```(?:text|json)?\s*/i, "")
+      .replace(/```\s*$/, "");
+    const candidates = [text];
+    text.split(/\r?\n/).forEach((line) => {
+      candidates.push(line);
+      const separator = line.search(/[:=]/);
+      if (separator >= 0) candidates.push(line.slice(separator + 1));
+    });
+    const streams = text.match(
+      /(?:0x)?[0-9a-f]{2}(?:(?:[\s:,_-]*)(?:0x)?[0-9a-f]{2}){18,}/gi
+    );
+    if (streams) candidates.push(...streams);
+
+    let firstValid = null;
+    for (const candidate of candidates) {
+      const normalized = candidate
+        .trim()
+        .replace(/^['"]|['",;]$/g, "")
+        .replace(/0x/gi, "")
+        .replace(/[\s:,_-]/g, "");
+      if (normalized.length < BINARY_HEADER_SIZE * 2
+          || normalized.length % 2 !== 0
+          || !/^[0-9a-f]+$/i.test(normalized)) {
+        continue;
+      }
+      const bytes = new Uint8Array(normalized.length / 2);
+      for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] = Number.parseInt(normalized.slice(index * 2, index * 2 + 2), 16);
+      }
+      if (firstValid === null) firstValid = bytes;
+      for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
+        const magic = asciiAt(bytes, offset, 4);
+        if (magic === BINARY_TEMPERATURE_MAGIC || magic === BINARY_VOLTAGE_MAGIC) {
+          return bytes;
+        }
+      }
+    }
+
+    if (firstValid) {
+      throw new TelemetryDecodeError(
+        "Hex was found, but it does not contain TTB1 temperature or TVB1 voltage telemetry."
+      );
+    }
+    throw new TelemetryDecodeError(
+      "Raw packet data must contain complete two-character hexadecimal bytes."
+    );
+  }
+
   function uint32LE(bytes, offset) {
     return (
       bytes[offset] |
@@ -155,6 +242,156 @@
 
   function sampleEpoch(header, index) {
     return header.firstEpoch + index * header.intervalMinutes * 60;
+  }
+
+  function decodePacketEnvelope(bytes, payloadOffset) {
+    if (bytes.length < 2) return null;
+    const headerByte = bytes[0];
+    const routeCode = headerByte & 0x03;
+    const payloadType = (headerByte >> 2) & 0x0f;
+    const payloadVersion = (headerByte >> 6) + 1;
+    let pathLengthOffset = 1;
+    if (routeCode === 0 || routeCode === 3) pathLengthOffset += 4;
+    if (pathLengthOffset >= bytes.length) return null;
+    const pathMetadata = bytes[pathLengthOffset];
+    const hashSizeCode = pathMetadata >> 6;
+    if (hashSizeCode === 3) return null;
+    const hopCount = pathMetadata & 0x3f;
+    const pathHashBytes = hashSizeCode + 1;
+    const expectedPayloadOffset = pathLengthOffset + 1 + hopCount * pathHashBytes;
+    if (expectedPayloadOffset !== payloadOffset || expectedPayloadOffset > bytes.length) return null;
+
+    const routeNames = ["transport flood", "flood", "direct", "transport direct"];
+    return {
+      headerByte,
+      routeCode,
+      routeName: routeNames[routeCode],
+      payloadType,
+      payloadVersion,
+      hopCount,
+      pathHashBytes,
+      payloadOffset,
+      isRawCustom: payloadType === PAYLOAD_TYPE_RAW_CUSTOM,
+    };
+  }
+
+  function decodeBinarySnapshot(bytes, offset) {
+    if (bytes.length - offset < BINARY_HEADER_SIZE) {
+      throw new TelemetryDecodeError("The binary telemetry header is incomplete.");
+    }
+    const magic = asciiAt(bytes, offset, 4);
+    const count = bytes[offset + 18];
+    const intervalMinutes = bytes[offset + 16] | (bytes[offset + 17] << 8);
+    if (count < 1 || count > BINARY_MAX_SAMPLES) {
+      throw new TelemetryDecodeError(
+        `Binary telemetry sample count ${count} is outside the supported 1-${BINARY_MAX_SAMPLES} range.`
+      );
+    }
+    if (intervalMinutes === 0) {
+      throw new TelemetryDecodeError("Binary telemetry sample interval cannot be zero.");
+    }
+    const payloadLength = BINARY_HEADER_SIZE + count;
+    if (bytes.length - offset < payloadLength) {
+      throw new TelemetryDecodeError(
+        `Binary telemetry declares ${count} samples but ${payloadLength - (bytes.length - offset)} payload bytes are missing.`
+      );
+    }
+
+    const header = {
+      typeCode: magic,
+      firstEpoch: uint32LE(bytes, offset + 12),
+      intervalMinutes,
+      count,
+      byteLength: payloadLength,
+      sourceId: bytesToHex(bytes.slice(offset + 4, offset + 12)),
+      format: "binary",
+      payloadOffset: offset,
+      inputByteLength: bytes.length,
+      trailingBytes: bytes.length - offset - payloadLength,
+      packet: decodePacketEnvelope(bytes, offset),
+    };
+    const rows = [];
+    for (let index = 0; index < count; index += 1) {
+      const rawCode = bytes[offset + BINARY_HEADER_SIZE + index];
+      if (magic === BINARY_TEMPERATURE_MAGIC) {
+        let status = "Value";
+        let valueC = null;
+        if (rawCode === 0) status = "Missing";
+        else if (rawCode === 1) status = "Below range";
+        else if (rawCode === 2) status = "Above range";
+        else if (rawCode <= 130) valueC = rawCode - 53;
+        else status = "Reserved code";
+        rows.push({
+          index,
+          epoch: sampleEpoch(header, index),
+          status,
+          statusCode: null,
+          rawCode,
+          valueC,
+        });
+      } else {
+        let status = "Value";
+        let millivolts = null;
+        if (rawCode === 0) status = "Missing";
+        else if (rawCode === 1) status = "Below range";
+        else if (rawCode === 255) status = "Above range";
+        else millivolts = 1880 + (rawCode - 2) * 10;
+        rows.push({
+          index,
+          epoch: sampleEpoch(header, index),
+          status,
+          rawCode,
+          millivolts,
+        });
+      }
+    }
+    const warnings = [];
+    if (header.packet && !header.packet.isRawCustom) {
+      warnings.push(
+        `The enclosing packet type is 0x${header.packet.payloadType.toString(16)}, not RAW_CUSTOM (0x0f).`
+      );
+    }
+    if (header.trailingBytes > 0) {
+      warnings.push(`${header.trailingBytes} byte(s) after the declared telemetry payload were ignored.`);
+    }
+    if (magic === BINARY_TEMPERATURE_MAGIC
+        && rows.some((row) => row.status === "Reserved code")) {
+      warnings.push("One or more temperature samples use a reserved code and may be corrupt.");
+    }
+    return {
+      ...header,
+      kind: magic === BINARY_TEMPERATURE_MAGIC ? "temperature" : "voltage",
+      label: magic === BINARY_TEMPERATURE_MAGIC ? "Temperature" : "Battery voltage",
+      rows,
+      warnings,
+    };
+  }
+
+  function decodeRawTelemetryHex(input) {
+    const bytes = extractHexBytes(input);
+    const decodedCandidates = [];
+    let lastError = null;
+    for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
+      const magic = asciiAt(bytes, offset, 4);
+      if (magic !== BINARY_TEMPERATURE_MAGIC && magic !== BINARY_VOLTAGE_MAGIC) continue;
+      try {
+        decodedCandidates.push(decodeBinarySnapshot(bytes, offset));
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (decodedCandidates.length === 0) {
+      if (lastError) throw lastError;
+      throw new TelemetryDecodeError("No supported telemetry snapshot was found in the hex data.");
+    }
+    if (decodedCandidates.length > 1) {
+      throw new TelemetryDecodeError(
+        "More than one telemetry snapshot was found; paste one analyzer packet at a time."
+      );
+    }
+    const decoded = decodedCandidates[0];
+    decoded.encoded = bytesToHex(bytes);
+    return decoded;
   }
 
   function decodeTemperature(bytes, header) {
@@ -353,6 +590,17 @@
   }
 
   function decodeTelemetry(input) {
+    const compactHex = typeof input === "string"
+      ? input.replace(/^```(?:text|json)?\s*/i, "")
+        .replace(/```\s*$/, "")
+        .replace(/0x/gi, "")
+        .replace(/[\s:,_-]/g, "")
+        .replace(/^['"]|['",;]$/g, "")
+      : "";
+    if ((/^[0-9a-f]+$/i.test(compactHex) && compactHex.length % 2 === 0)
+        || /54544231|54564231/i.test(String(input))) {
+      return decodeRawTelemetryHex(input);
+    }
     const encoded = extractBase64(input);
     const bytes = base64ToBytes(encoded);
     if (bytes.length === 0) {
@@ -398,7 +646,13 @@
 
     if (decoded.kind === "temperature") {
       return {
-        headers: ["#", timestampHeader, "Status", "Temperature", "Raw status/code"],
+        headers: [
+          "#",
+          timestampHeader,
+          "Status",
+          "Temperature",
+          decoded.format === "binary" ? "Raw code" : "Raw status/code",
+        ],
         rows: decoded.rows.map((row) => ({
           muted: row.status === "Missing",
           values: [
@@ -412,7 +666,7 @@
                 : row.valueC === null
                   ? "—"
                   : `${row.valueC} °C`,
-            `${row.statusCode} / ${row.rawCode}`,
+            row.statusCode === null ? row.rawCode : `${row.statusCode} / ${row.rawCode}`,
           ],
         })),
       };
@@ -468,13 +722,35 @@
   function summaryItems(decoded, localTime) {
     const lastEpoch = sampleEpoch(decoded, decoded.count - 1);
     const items = [
-      ["Payload", `${decoded.label} (0x${decoded.typeCode.toString(16)})`],
+      [
+        "Payload",
+        decoded.format === "binary"
+          ? `${decoded.label} (${decoded.typeCode})`
+          : `${decoded.label} (0x${decoded.typeCode.toString(16)})`,
+      ],
       ["Samples", String(decoded.count)],
       ["Interval", `${decoded.intervalMinutes} minutes`],
       ["First sample", timestampText(decoded.firstEpoch, localTime)],
       ["Last sample", timestampText(lastEpoch, localTime)],
       ["Decoded size", `${decoded.byteLength} bytes`],
     ];
+    if (decoded.format === "binary") {
+      items.splice(1, 0, ["Repeater ID", decoded.sourceId]);
+      items.push([
+        "Input",
+        decoded.packet
+          ? `MeshCore ${decoded.packet.routeName}, ${decoded.packet.hopCount} path hops`
+          : decoded.payloadOffset === 0
+            ? "Telemetry payload hex"
+            : `Embedded payload at byte ${decoded.payloadOffset}`,
+      ]);
+      if (decoded.packet) {
+        items.push([
+          "Packet header",
+          `0x${decoded.packet.headerByte.toString(16).padStart(2, "0")} / payload v${decoded.packet.payloadVersion}`,
+        ]);
+      }
+    }
     if (decoded.kind === "gps") {
       items.push([
         "Origin",
@@ -624,7 +900,8 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `meshcore-telemetry-${current.kind}.csv`;
+      const sourcePart = current.sourceId ? `${current.sourceId.toLowerCase()}-` : "";
+      link.download = `meshcore-telemetry-${sourcePart}${current.kind}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -642,6 +919,8 @@
     EXAMPLES,
     TelemetryDecodeError,
     decodeTelemetry,
+    decodeRawTelemetryHex,
+    extractHexBytes,
     extractBase64,
     tableModel,
     modelToCsv,

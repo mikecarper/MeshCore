@@ -9,6 +9,7 @@ out/
 site/
 # Local firmware archives and build logs
 out.*/
+out-*/
 build-logs/
 .direnv/
 .DS_Store

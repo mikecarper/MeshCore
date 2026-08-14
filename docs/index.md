@@ -7,7 +7,7 @@ Below are a few quick start guides.
 - [Frequently Asked Questions](./faq.md)
 - [CLI Commands](./cli_commands.md)
 - [Filter Policy Playground](./filter_tool.md)
-- [Telemetry History Decoder](./telemetry_decoder.md)
+- [Telemetry Decoder](./telemetry_decoder.md)
 - [CLI Availability by Firmware Build](./cli_build_matrix.md)
 - [Easy LoRa OTA: ESP32 full images and nRF52 deltas](./ota_easy.md)
 - [Scripted LoRa OTA: Bash and PowerShell](./lora_ota_automation.md)
