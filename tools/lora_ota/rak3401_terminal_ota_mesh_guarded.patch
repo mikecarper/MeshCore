@@ -1,0 +1,18 @@
+diff --git a/src/Mesh.cpp b/src/Mesh.cpp
+--- a/src/Mesh.cpp
++++ b/src/Mesh.cpp
+@@ -899,8 +899,10 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
+       // ONLY to avoid re-flooding the same packet more than once.
+       bool seen = _tables->wasSeen(pkt);
+       if (!seen) _tables->markSeen(pkt);
++      bool terminal_ota = false;
+ #if defined(ENABLE_OTA)
+       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
++      terminal_ota = ota::ota_ctx().manager.terminallyConsumes(pkt->payload, pkt->payload_len);
+       ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);  // central OTA receive (beacon/query/
+                                                                          // have/manifest/data/proof; all roles)
+       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
+@@ -913,2 +915,2 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
+-      if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
++      if (!terminal_ota && !seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
+ #if defined(ENABLE_OTA)

@@ -30,14 +30,28 @@ except ImportError:
 
 RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e"
 RELEASE_URL = f"https://github.com/mikecarper/MeshCore/releases/tag/{RELEASE_TAG}"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765.zip"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-8c5262c6.zip"
 ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "eac67a0be12690b7e22c4d1f6a15bfdeb5bd627c4850b246b1be4220e5607b34"
-CHECKSUM_LIST_SHA256 = "8097d75c5d11b9e32e3ebd4971068bf743eaa108054ab39eb0049016f89d185d"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765"
+ASSET_SHA256 = "b2781e02460b200a7c37bfae352bad81618716e550d1d042dca8aa29bfc73c29"
+CHECKSUM_LIST_SHA256 = "1f7add658ae5771451cd66a0e5c58a5e461983c1b36029ef480093ae5d5f1020"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-8c5262c6"
+
+# This exact 29-step release completed its full direct physical-board test. It
+# is now superseded because its historical targets echo terminal OTA bulk
+# packets back into mesh dispatch. Keep it available for offline provenance,
+# but require the rebuilt 30-step chain for any new live run.
+SUPERSEDED_29_ASSET_SHA256 = (
+    "eac67a0be12690b7e22c4d1f6a15bfdeb5bd627c4850b246b1be4220e5607b34"
+)
+SUPERSEDED_29_CHECKSUM_LIST_SHA256 = (
+    "8097d75c5d11b9e32e3ebd4971068bf743eaa108054ab39eb0049016f89d185d"
+)
+SUPERSEDED_29_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-cd824765"
+)
 
 # This 27-step candidate passed steps 1 and 2, then its test was deliberately
 # stopped so the adaptive primary requester could be backported into every
@@ -93,7 +107,7 @@ DEFAULT_TARGET_KEY = (
 )
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
-EXPECTED_STEP_COUNT = 29
+EXPECTED_STEP_COUNT = 30
 EXPECTED_START_VERSION = "1.16.7.0"
 EXPECTED_FINAL_VERSION = "1.17.1.0"
 MIN_MESHCLI_VERSION = (1, 6, 0)
@@ -105,8 +119,10 @@ WATCHDOG_STABILITY_WAIT_SECONDS = 90
 # steps 1 through 14, but the first v1.17.01 candidate failed at step 15 because
 # that retained 386ae4a5 bridge still used unchecked CC310 SHA. Keep both
 # bundles useful for offline diagnosis, but fail closed before a live
-# connection. The exact 29-step replacement below passed its complete direct
-# physical-board run on 14-Aug-2026.
+# connection. A prior exact 29-step replacement passed its complete direct
+# physical-board run on 14-Aug-2026. The pinned 30-step release is rebuilt and
+# exhaustively verified offline, but still requires an explicit candidate
+# acknowledgement until that exact byte sequence completes a physical run.
 KNOWN_UNSAFE_STEP = 6
 KNOWN_UNSAFE_VERSION = "1.16.8.7"
 KNOWN_UNSAFE_IMAGE_SHA256 = (
@@ -141,10 +157,8 @@ SUPERSEDED_27_FINAL_IMAGE_SHA256 = (
     "e1376869da043c05792b3458e505e67e818f58d94d3fc050d22ab68578a2f2e8"
 )
 
-# Exact anchors for the physically passed 29-step release. The pinned checksum
-# list covers every byte; these anchors also make the live gate fail closed if
-# its structural checks are ever reused independently.
-PHYSICALLY_PASSED_ANCHORS = (
+# Exact anchors for the superseded, physically passed 29-step release.
+SUPERSEDED_29_ANCHORS = (
     (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
     (6, "4909b5cd50ca86e00b1583bf9ca50e0fc69808a4bebbec8b5e368304145e5d43"),
     (11, "28ba025251b9cf11376e09c2dc91619d9cc216de9f4998a5eeec7438b689d1c4"),
@@ -155,6 +169,43 @@ PHYSICALLY_PASSED_ANCHORS = (
     (25, "af25fcc8cf0932d6962958402ab1f8e718720ae34fff26383f45bc85cf277eef"),
     (26, "c9a4887774d4ca8d20f3cec8611ba7ce28611dfedd9bbed624e9578f83a2c85c"),
     (29, "5c8d94bb23e87c23b0374ffb5a46e0c1205d6eebcb9d8bae3be6fda2613f9f79"),
+)
+
+# Exact anchors for every image in the accelerated 30-step release. The outer
+# asset and inner checksum-list pins cover every byte as well; the complete
+# anchor table keeps structural validation fail-closed if those layers are
+# ever reused independently.
+PINNED_RELEASE_ANCHORS = (
+    (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
+    (2, "e98d286b493570b25c361521f7287bcd70ee1ab15f74cb7936582736694dd330"),
+    (3, "25ab4bee0eabc782c507311e32a08382cc74c612c8d8570582e2fb9546c2f34c"),
+    (4, "149528bec52820f48dda92969a077ec2ba15afce05fbd8c208b9200fcbfa6607"),
+    (5, "9512c7aaec3fe2958a28b52e152c85f3f581b8eb2513ab18969c822ada5c545b"),
+    (6, "8a1df70b769db9e87d944d7a48300138151ca0c9b37d71ff320778cefe899652"),
+    (7, "d2f75a6cdbab4eed1fce6677fbbce933b72f8353c57258c9b0adf1dbcb97da03"),
+    (8, "067f92aa93e38cdead54d3d3c76327bf1474ef7b9459d8cb53cd0d8a2d3252ed"),
+    (9, "a4ddc5ca224710f07894044c119e66019976e61e2fc4c4f3a0878bcbe5c6be74"),
+    (10, "cbb16110f73fbf5835acab7565d1d30305417ad0f9ec5293ca252238024a5cff"),
+    (11, "75e5c1f6571f7ffe3c441431de97f4f69ed8b732415b694841b85cf7ab359144"),
+    (12, "99e7eb953585a1ff4075a5e375320544a1127089e1f801a793fc65ec021104b1"),
+    (13, "9391d954bba77378dd84d04c0aaef344305cab311d71889caedfa48f3c3ea71b"),
+    (14, "93c5c9498a1099c79f79d1de48621964c559b3d437d308883ecafa03d2300840"),
+    (15, "523eadb3328d74ad3021e89201fab356559b678a7df17a9c10ab3c4ebbd3b615"),
+    (16, "c8355b3bfd5327419b06389af5903641a3c4b55bb2084f92e4c5b4cbf34fb09e"),
+    (17, "2019e3cb1dcb6d065a3f7f3e8c4c1b9a86338dac125a5bb0e69fe5f0cc79f69f"),
+    (18, "69da55eda227ec22e5777f04a08bf9af89e49abc89fbc8312119daa797ceb393"),
+    (19, "f20fbcc4a7140e85d81393beebb2df60f343f869905a8cf06ce82c0d52f61275"),
+    (20, "5c1d6c8a92722fd88bc37a104b1804814d528b1a04663ffd42dece0d79474278"),
+    (21, "5ee82703357377ff55a39d808749133bca0ef101ab0569e71f9fad54a706d570"),
+    (22, "036a8614d47e0a532d8092a30958edd0bb28fdb2c23d5b4b773e5e141a054377"),
+    (23, "22993f7a228caed4a8d625972d61b5307c528ac2013362199c8747d1348fd2ec"),
+    (24, "c0e3192471cb23d2fb6c2df6e97a0adddb659420edfe3637d864c747cfd660da"),
+    (25, "a25f3e94b967d88846dfc4664d34ce80ac0108c12cd5c88efe9e4b70a71ec3e5"),
+    (26, "37b2687e5f53b82b6785ebcae26d4a465b94d02db4875b5784aae64fcdf6d7d4"),
+    (27, "ade7ac8c7195c3e3287c3fdf5a4bd03e548f40f338488249bae45f9f75665be3"),
+    (28, "12f4fe3a2bc59c28d11cb241fe669eea228b4db4fb5001f1878585b1320b2fe5"),
+    (29, "166b8555b354103bd7a467f9d97cd78dd91a4dd00505c6e2c5ae0e06cc1cdf7f"),
+    (30, "a08b5791419410c760f31c26bb45c77d776eb7bbf68fde656e19bcd616a6227d"),
 )
 KNOWN_UNSAFE_RELEASE_MESSAGE = (
     f"live installation of {KNOWN_UNSAFE_RELEASE_TAG} is disabled: a physical RAK3401 "
@@ -183,7 +234,19 @@ SUPERSEDED_27_MESSAGE = (
     "live installation of the superseded 27-step candidate is disabled: its "
     "physical test was stopped after step 2 so the adaptive primary requester "
     "could be moved into every historical bridge. Use --verify-only for that "
-    "bundle and use the physically passed 29-step release."
+    "bundle and use the pinned 30-step release."
+)
+SUPERSEDED_29_MESSAGE = (
+    "live installation of the superseded 29-step release is disabled: that "
+    "exact chain passed its direct physical run, but its historical targets "
+    "do not consume terminal OTA bulk packets before mesh dispatch. Use "
+    "--verify-only for provenance and deploy the accelerated 30-step release."
+)
+CANDIDATE_ACK_MESSAGE = (
+    "live installation of the accelerated 30-step release requires "
+    "--accept-test-candidate: all 30 transitions passed independent offline "
+    "reconstruction and bootloader simulation, but this exact byte sequence "
+    "has not yet completed a full physical-chain run"
 )
 
 
@@ -196,13 +259,26 @@ def require_live_release_safe(
     steps: list[ChainStep],
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in PHYSICALLY_PASSED_ANCHORS:
+        for number, expected_sha256 in PINNED_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise KnownUnsafeReleaseError(
-                    "live installation is disabled: the 29-step release has "
+                    "live installation is disabled: the 30-step release has "
                     f"an unrecognized step-{number} image"
                 )
+        if not getattr(args, "accept_test_candidate", False):
+            raise KnownUnsafeReleaseError(CANDIDATE_ACK_MESSAGE)
         return
+
+    if len(steps) == 29:
+        if all(
+            steps[number - 1].target_sha256 == expected_sha256
+            for number, expected_sha256 in SUPERSEDED_29_ANCHORS
+        ):
+            raise KnownUnsafeReleaseError(SUPERSEDED_29_MESSAGE)
+        raise KnownUnsafeReleaseError(
+            "live installation is disabled: this is an unrecognized variant "
+            "of the superseded 29-step release"
+        )
 
     step6_sha256 = steps[KNOWN_UNSAFE_STEP - 1].target_sha256
     if step6_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
@@ -326,6 +402,7 @@ def download_release_asset(destination: Path) -> None:
 def extract_bundle(archive_path: Path, destination: Path) -> Path:
     root_names = (
         BUNDLE_ROOT_NAME,
+        SUPERSEDED_29_ROOT_NAME,
         KNOWN_FAILED_V11701_ROOT_NAME,
         KNOWN_UNSAFE_ROOT_NAME,
     )
@@ -378,6 +455,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
         nested_roots = [
             supplied / name for name in (
                 BUNDLE_ROOT_NAME,
+                SUPERSEDED_29_ROOT_NAME,
                 KNOWN_FAILED_V11701_ROOT_NAME,
                 KNOWN_UNSAFE_ROOT_NAME,
             )
@@ -393,6 +471,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     actual = sha256_file(supplied)
     if actual not in {
         ASSET_SHA256,
+        SUPERSEDED_29_ASSET_SHA256,
         SUPERSEDED_27_ASSET_SHA256,
         KNOWN_FAILED_V11701_ASSET_SHA256,
         KNOWN_FAILED_V11701_STEP16_ASSET_SHA256,
@@ -411,6 +490,7 @@ def verify_checksum_list(bundle_root: Path) -> None:
     checksum_digest = sha256_file(checksum_path)
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        SUPERSEDED_29_CHECKSUM_LIST_SHA256,
         SUPERSEDED_27_CHECKSUM_LIST_SHA256,
         KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256,
         KNOWN_FAILED_V11701_STEP16_CHECKSUM_LIST_SHA256,
@@ -467,9 +547,9 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             rows = list(csv.DictReader(source))
     except OSError as exc:
         raise ota.OtaError(f"cannot read {chain_path}: {exc}") from exc
-    if len(rows) not in (26, 27, EXPECTED_STEP_COUNT):
+    if len(rows) not in (26, 27, 29, EXPECTED_STEP_COUNT):
         raise ota.OtaError(
-            f"chain contains {len(rows)} steps, expected 26, 27, or "
+            f"chain contains {len(rows)} steps, expected 26, 27, 29, or "
             f"{EXPECTED_STEP_COUNT}"
         )
 
@@ -521,11 +601,17 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in PHYSICALLY_PASSED_ANCHORS:
+        for number, expected_sha256 in PINNED_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise ota.OtaError(
-                    f"physically passed step {number} does not match its audited "
-                    "image pin"
+                    f"pinned release step {number} does not match its audited image pin"
+                )
+        expected_final_version = EXPECTED_FINAL_VERSION
+    elif len(steps) == 29:
+        for number, expected_sha256 in SUPERSEDED_29_ANCHORS:
+            if steps[number - 1].target_sha256 != expected_sha256:
+                raise ota.OtaError(
+                    f"superseded step {number} does not match its audited image pin"
                 )
         expected_final_version = EXPECTED_FINAL_VERSION
     else:
@@ -969,8 +1055,8 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download, verify, resume, and install the exact 29-step RAK3401 "
-            "mOTA chain from c1caa5ad to cd824765."
+            "Download, verify, resume, and install the exact accelerated "
+            "30-step RAK3401 mOTA chain from c1caa5ad to 8c5262c6."
         )
     )
     parser.add_argument(
@@ -989,8 +1075,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-test-candidate",
         action="store_true",
         help=(
-            "deprecated compatibility flag; the exact physically passed 29-step "
-            "release no longer requires it, and it never overrides a failed bundle"
+            "acknowledge that the exact accelerated 30-step byte sequence is "
+            "offline-validated but awaits its complete physical-chain run; this "
+            "never overrides a failed or superseded bundle"
         ),
     )
 
@@ -1166,7 +1253,9 @@ def main(argv: list[str] | None = None) -> int:
         verify_motatool(args, steps)
         if args.verify_only:
             print(f"Verified release bundle: {bundle_root}")
-            if steps[KNOWN_UNSAFE_STEP - 1].target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
+            if len(steps) == 29:
+                print(f"WARNING: {SUPERSEDED_29_MESSAGE}", file=sys.stderr)
+            elif steps[KNOWN_UNSAFE_STEP - 1].target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
                 print(f"WARNING: {KNOWN_UNSAFE_RELEASE_MESSAGE}", file=sys.stderr)
             elif (
                 steps[KNOWN_FAILED_V11701_STEP - 1].target_sha256
@@ -1188,8 +1277,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"WARNING: {SUPERSEDED_27_MESSAGE}", file=sys.stderr)
             else:
                 print(
-                    "Physically passed release verified offline: all 29 direct "
-                    "BW500/SF5 transitions passed on a RAK3401."
+                    "Accelerated release verified offline: all 30 transitions "
+                    "passed zero-filled and erased-workspace reconstruction, "
+                    "independent motatool verification, and bootloader simulation."
                 )
             return 0
 

@@ -1,0 +1,2 @@
+tools/lora_ota/rak3401_four_component_endf_backport.patch whitespace=-blank-at-eol,-blank-at-eof
+tools/lora_ota/rak3401_terminal_ota_backport.patch whitespace=-blank-at-eol,-blank-at-eof

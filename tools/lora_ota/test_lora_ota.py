@@ -1497,25 +1497,41 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=True), steps
             )
 
-    def test_physically_passed_29_step_release_needs_no_lab_gate(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(29)]
-        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_ANCHORS:
+    def test_accelerated_30_step_release_requires_candidate_ack(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(30)]
+        for number, image_sha256 in rak_chain.PINNED_RELEASE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
-        rak_chain.require_live_release_safe(
-            argparse.Namespace(accept_test_candidate=False), steps
-        )
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "requires --accept-test-candidate",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
         rak_chain.require_live_release_safe(
             argparse.Namespace(accept_test_candidate=True), steps
         )
 
-    def test_physically_passed_29_step_release_rejects_changed_anchor(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(29)]
-        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_ANCHORS:
+    def test_accelerated_30_step_release_rejects_changed_anchor(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(30)]
+        for number, image_sha256 in rak_chain.PINNED_RELEASE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
         steps[10].target_sha256 = "00" * 32
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
             "unrecognized step-11 image",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_superseded_physically_passed_29_step_release_is_blocked(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(29)]
+        for number, image_sha256 in rak_chain.SUPERSEDED_29_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "superseded 29-step release",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=True), steps
