@@ -104,6 +104,14 @@ public:
     return getOtaRetransmitDelay(packet);
   }
 
+  int receiveDelay(const mesh::Packet* packet, float score, uint32_t air_time) {
+    return calcRxDelayForPacket(packet, score, air_time);
+  }
+
+  uint32_t cadRetryDelay() const {
+    return getCADFailRetryDelay();
+  }
+
   void completePacketSend(mesh::Packet* packet) {
     onSendComplete(packet);
   }
@@ -246,7 +254,7 @@ TEST(RepeaterTransport, OtaTransferRelaysAsPrimaryTrafficWithoutOtaManager) {
   EXPECT_EQ(1, request.getPathHashCount());
 }
 
-TEST(RepeaterTransport, OtaRelayDelayIsQuarterToHalfAirtime) {
+TEST(RepeaterTransport, OtaDiscoveryRelayKeepsCollisionJitter) {
   TraceTestClock clock;
   TraceTestRTC rtc;
   TraceTestRNG rng;
@@ -255,6 +263,7 @@ TEST(RepeaterTransport, OtaRelayDelayIsQuarterToHalfAirtime) {
   StaticPoolPacketManager manager(12);
   TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
   mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  packet.payload[0] = mesh::ota::OTA_ADV;
 
   rng.value = 0;
   EXPECT_EQ(node.otaRelayDelay(&packet), 3u);  // ceil(0.25 * 10 ms)
@@ -262,7 +271,7 @@ TEST(RepeaterTransport, OtaRelayDelayIsQuarterToHalfAirtime) {
   EXPECT_EQ(node.otaRelayDelay(&packet), 5u);  // 0.5 * 10 ms
 }
 
-TEST(RepeaterTransport, OtaRelayDelayEscalatesAndCapsAtThreeAirtimes) {
+TEST(RepeaterTransport, OtaTransferRelayIsImmediateEvenUnderRequestPressure) {
   TraceTestClock clock;
   TraceTestRTC rtc;
   TraceTestRNG rng;
@@ -282,17 +291,36 @@ TEST(RepeaterTransport, OtaRelayDelayEscalatesAndCapsAtThreeAirtimes) {
 
   mesh::Packet request = make_request();
   node.receivePacket(&request);                  // first request establishes the key
+  EXPECT_EQ(node.otaRelayDelay(&request), 0u);
   for (uint32_t retry = 1; retry <= 3; retry++) {
     clock.now = retry * 3000;
     request = make_request();                    // a fresh origin copy has the same zero-hop request key
     node.receivePacket(&request);                // frequent repeats raise one level each
   }
-  rng.value = 20;                                // last value in inclusive [10, 30]
-  EXPECT_EQ(node.otaRelayDelay(&request), 30u);  // hard maximum = 3 * 10 ms
+  rng.value = 20;
+  EXPECT_EQ(node.otaRelayDelay(&request), 0u);   // private transfer never inherits flood backoff
 
-  clock.now = 100000;                            // three clean 30-second decay periods
+  clock.now = 100000;
   rng.value = 2;
-  EXPECT_EQ(node.otaRelayDelay(&request), 5u);   // returned to the 0.25-0.5 baseline
+  EXPECT_EQ(node.otaRelayDelay(&request), 0u);
+}
+
+TEST(RepeaterTransport, TempRadioOtaBypassesReceiveHoldoffAndUsesFastCadRetry) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;                         // fixed 10 ms full-packet airtime
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  packet.payload[0] = mesh::ota::OTA_DATA;
+
+  EXPECT_GT(node.receiveDelay(&packet, 0.0f, 10), 0);
+  EXPECT_EQ(node.cadRetryDelay(), 120u);
+  node.tempRadioActive = true;
+  EXPECT_EQ(node.receiveDelay(&packet, 0.0f, 10), 0);
+  EXPECT_EQ(node.cadRetryDelay(), 5u);
 }
 
 TEST(RepeaterTransport, OpaqueKnownFloodPayloadsAreRelayed) {
@@ -517,7 +545,7 @@ TEST(FloodRetry, PayloadAndPathPolicyCapsEveryFloodType) {
     packet.setPathHashSizeAndCount(1, 0);
 
     uint8_t origin_limit;
-    if (type == PAYLOAD_TYPE_REQ) {
+    if (type == PAYLOAD_TYPE_REQ || type == PAYLOAD_TYPE_OTA) {
       origin_limit = 0;
     } else if (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_RESPONSE
                || type == PAYLOAD_TYPE_TXT_MSG || type == PAYLOAD_TYPE_ANON_REQ
@@ -531,7 +559,7 @@ TEST(FloodRetry, PayloadAndPathPolicyCapsEveryFloodType) {
 
     packet.setPathHashSizeAndCount(1, 1);
     uint8_t transit_limit;
-    if (type == PAYLOAD_TYPE_REQ) {
+    if (type == PAYLOAD_TYPE_REQ || type == PAYLOAD_TYPE_OTA) {
       transit_limit = 0;
     } else if (type == PAYLOAD_TYPE_GRP_TXT) {
       transit_limit = 15;

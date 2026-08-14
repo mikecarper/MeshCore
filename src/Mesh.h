@@ -17,6 +17,19 @@
 #ifndef OTA_FWD_MIN_FREE
 #define OTA_FWD_MIN_FREE 4
 #endif
+// The OTA manager emits one retained response at a time, and this adapter keeps only a small number of OTA
+// responses queued behind the packet currently on air. Unrelated queued traffic does not block the primary
+// transfer. The free-pool floor preserves RX capacity and gives private-network relays a chance to forward
+// each fragment before the origin fills the channel again.
+#ifndef OTA_EGRESS_QUEUE_CREDIT
+#define OTA_EGRESS_QUEUE_CREDIT 2
+#endif
+#ifndef OTA_EGRESS_MIN_FREE
+#define OTA_EGRESS_MIN_FREE 4
+#endif
+#ifndef OTA_RETRY_TICK_MS
+#define OTA_RETRY_TICK_MS 1000
+#endif
 
 namespace mesh {
 
@@ -214,9 +227,14 @@ protected:
   virtual uint32_t getRetransmitDelay(const Packet* packet);
 
   /**
-   * \returns  Adaptive TempRadio-only OTA relay delay, from 0.25-0.5 airtimes up to a 3-airtime cap.
+   * \returns  TempRadio OTA relay delay. Primary transfer packets forward immediately on the private
+   *           network; discovery retains collision jitter.
    */
   virtual uint32_t getOtaRetransmitDelay(const Packet* packet);
+
+  // Private TempRadio traffic has one intended path, so do not pay the public-flood receive holdoff. Keep
+  // CAD enabled, but retry it at radio-time scale instead of the ordinary 200 ms control-traffic cadence.
+  int calcRxDelayForPacket(const Packet* packet, float score, uint32_t air_time) override;
 
   /**
    * \returns  number of milliseconds delay to apply to retransmitting the given packet, for DIRECT mode.
@@ -481,7 +499,7 @@ protected:
 
   // OTA mesh-integration is centralized in Mesh::begin()/loop()/dispatch, so every role (repeater,
   // companion, room, sensor, ...) gets fetch/serve/apply without per-example wiring.
-  static void otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
+  static bool otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
   unsigned long _next_ota_tick = 0;
   unsigned long _next_ota_announce = 0;   // advertisements are scheduled only while temp radio is active
   uint8_t       _ota_announce_count = 0;  // adverts sent so far (boot burst before settling to daily)
@@ -549,9 +567,9 @@ public:
 #if defined(ENABLE_OTA)
   // Build a PAYLOAD_TYPE_OTA packet from raw OTA message bytes (route set by sendOtaFlood).
   Packet* createOtaPacket(const uint8_t* data, size_t len);
-  // Flood-send at the priority derived from the OTA message: discovery is background, active transfer is
-  // primary. Relay-only nodes use the same classification.
-  void sendOtaFlood(Packet* packet, uint32_t delay_millis = 0);
+  // The flood-shaped header is only the bounded multi-hop/dedup envelope inside TempRadio. Active transfer
+  // packets are primary and do not use generic flood retries or public-network relay backoff.
+  bool sendOtaFlood(Packet* packet, uint32_t delay_millis = 0);
 #endif
   Packet* createTrace(uint32_t tag, uint32_t auth_code, uint8_t flags = 0);
   Packet* createControlData(const uint8_t* data, size_t len);

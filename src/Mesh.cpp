@@ -153,13 +153,37 @@ static uint8_t otaTrafficPriority(const uint8_t* msg, uint16_t len) {
   return isPrimaryOtaTraffic(msg, len) ? OTA_TRANSFER_TX_PRIORITY : OTA_TX_PRIORITY;
 }
 
+static bool isPacedOtaResponse(const uint8_t* msg, uint16_t len) {
+  if (!msg || len == 0) return false;
+  return msg[0] == ota::OTA_DATA || msg[0] == ota::OTA_PROOF;
+}
+
 #if defined(ENABLE_OTA)
+static int queuedPacedOtaResponses(PacketManager* manager) {
+  int paced = 0;
+  const int total = manager->getOutboundTotal();
+  for (int i = 0; i < total; i++) {
+    Packet* packet = manager->getOutboundByIdx(i);
+    if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+        && isPacedOtaResponse(packet->payload, packet->payload_len)) {
+      paced++;
+    }
+  }
+  return paced;
+}
+
 // Adapter so the portable OtaManager can emit packets through the mesh (message-priority, hop-capped).
-void Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+// DATA/PROOF admission is credit-limited; false leaves the manager's response descriptor intact.
+bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
-  if (!m->isTempRadioActive()) return;
+  if (!m->isTempRadioActive()) return false;
+  if (isPacedOtaResponse(msg, len)
+      && (queuedPacedOtaResponses(m->_mgr) >= OTA_EGRESS_QUEUE_CREDIT
+          || m->_mgr->getFreeCount() <= OTA_EGRESS_MIN_FREE)) {
+    return false;
+  }
   Packet* p = m->createOtaPacket(msg, len);
-  if (p) m->sendOtaFlood(p);
+  return p && m->sendOtaFlood(p);
 }
 
 // Runtime OTA flood reach (`ota config hops`, persisted in NodePrefs): accept packets up to N hops away and
@@ -318,6 +342,10 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 #endif
   const bool ota_active = isTempRadioActive();
   if (!ota_active) {
+    if (_ota_temp_was_active) {
+      ota::ota_ctx().manager.clearPendingEgress();
+      resetOtaRelayBackoff();
+    }
     _ota_temp_was_active = false;
     return;
   }
@@ -327,6 +355,8 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     _next_ota_announce = 0;
     _ota_announce_count = 0;
   }
+  ota::ota_ctx().manager.set_clock(_ms->getMillis());
+  ota::ota_ctx().manager.serviceEgress();
   if (millisHasNowPassed(_next_ota_tick)) {
     // one-shot on first tick: resume an interrupted fetch left staged in flash before a reboot. Only adopt
     // a PARTIAL container (continue fetching the holes); a COMPLETE one is left for manual/auto-install,
@@ -341,12 +371,11 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
       }
     }
 #endif
-    ota::ota_ctx().manager.set_clock(_ms->getMillis());   // for discovery jitter/ages + the pending-query timer
     ota::ota_ctx().manager.loop();         // re-request still-missing OTA blocks + fire scheduled queries
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     ota::ota_ctx().serviceSdCache(_ms->getMillis());  // archive unseen mOTAs only while the receive slot is idle
 #endif
-    _next_ota_tick = futureMillis(3000);
+    _next_ota_tick = futureMillis(OTA_RETRY_TICK_MS);
   }
   if (millisHasNowPassed(_next_ota_announce)) {   // auto-advertise so peers discover us (tiny beacon)
     ota::OtaContext& oc = ota::ota_ctx();
@@ -485,6 +514,7 @@ void Mesh::decayOtaRelayBackoff() {
 
 uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
   if (packet == NULL) return 0;
+  if (isPrimaryOtaTraffic(packet->payload, packet->payload_len)) return 0;
   decayOtaRelayBackoff();
   uint32_t airtime = _radio->getEstAirtimeFor(packet->getRawLength());
   if (airtime == 0) return 0;
@@ -497,6 +527,23 @@ uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
   uint32_t max_delay = (airtime * max_quarters[level]) / 4;
   if (max_delay < min_delay) max_delay = min_delay;
   return _rng->nextInt(min_delay, max_delay + 1);
+}
+
+int Mesh::calcRxDelayForPacket(const Packet* packet, float score, uint32_t air_time) {
+  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && isTempRadioActive()) {
+    return 0;
+  }
+  return Dispatcher::calcRxDelayForPacket(packet, score, air_time);
+}
+
+uint32_t Mesh::getCADFailRetryDelay() const {
+  if (!isTempRadioActive()) return _rng->nextInt(1, 4) * 120;
+  uint32_t airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
+  uint32_t retry = airtime / 4;
+  if (retry < 5) retry = 5;
+  if (retry > 50) retry = 50;
+  return retry;
 }
 uint32_t Mesh::getDirectRetransmitDelay(const Packet* packet) {
   return 0;  // by default, no delay
@@ -582,6 +629,7 @@ uint8_t Mesh::applyFloodRetryAttemptPolicy(const Packet* packet,
 
   switch (packet->getPayloadType()) {
     case PAYLOAD_TYPE_REQ:
+    case PAYLOAD_TYPE_OTA:
       return 0;
     case PAYLOAD_TYPE_GRP_TXT:
       return attempts;
@@ -652,10 +700,6 @@ void Mesh::onTracePacketQueuedForSend(Packet* packet) {
 void Mesh::onSendFail(Packet* packet) {
   clearPendingDirectRetryOnSendFail(packet);
   clearPendingFloodRetryOnSendFail(packet);
-}
-
-uint32_t Mesh::getCADFailRetryDelay() const {
-  return _rng->nextInt(1, 4)*120;
 }
 
 int Mesh::searchPeersByHash(const uint8_t* hash) {
@@ -2639,12 +2683,12 @@ Packet* Mesh::createOtaPacket(const uint8_t* data, size_t len) {
   return packet;
 }
 
-void Mesh::sendOtaFlood(Packet* packet, uint32_t delay_millis) {
+bool Mesh::sendOtaFlood(Packet* packet, uint32_t delay_millis) {
   packet->header &= ~PH_ROUTE_MASK;
   packet->header |= ROUTE_TYPE_FLOOD;
   packet->setPathHashSizeAndCount(1, 0);
   _tables->markSeen(packet);   // mark as sent, in case it floods back to us
-  sendPacket(packet, otaTrafficPriority(packet->payload, packet->payload_len), delay_millis);
+  return sendPacket(packet, otaTrafficPriority(packet->payload, packet->payload_len), delay_millis);
 }
 #endif
 

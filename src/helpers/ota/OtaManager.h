@@ -14,15 +14,16 @@
 // the signed merkle root via proofs). It is portable (no Arduino / radio / Ed25519) so it can be
 // driven by a host simulation; a thin Mesh adapter wires it to PAYLOAD_TYPE_OTA on device.
 //
-// Transfer is per-block and 2-phase: a 1 KB logical block is fetched as self-describing DATA fragments
-// (frag_off), reassembled, then its merkle PROOF
-// is requested separately and verified against the signed root before the block is committed.
+// Transfer keeps 1 KB logical blocks. A server paces each block's self-describing DATA fragments through a
+// bounded response queue and follows them with the Merkle PROOF. A newer fetcher waits briefly for that
+// proactive proof; the existing REQ_PROOF message remains as a loss/legacy-server fallback.
 
 namespace mesh {
 namespace ota {
 
-// Emit an OTA message (one packet payload). `flood`=true for announce/query, false for direct replies.
-typedef void (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
+// Try to emit one OTA message (one packet payload). `flood`=true for announce/query, false for direct
+// replies. False applies backpressure: the manager retains paced DATA/PROOF egress and tries it again.
+typedef bool (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
 
 // Read `len` payload bytes at offset `off` from the serve source (flash-backed self-serve); false on
 // error. nullptr means the payload is a contiguous RAM buffer (the staged `.mota`).
@@ -128,6 +129,15 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #ifndef OTA_FRAG_DATA
 #define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)
 #endif
+#ifndef OTA_SERVE_QUEUE
+#define OTA_SERVE_QUEUE 4           // requested blocks retained without allocating one packet per fragment
+#endif
+#if OTA_SERVE_QUEUE < 1
+#error "OTA_SERVE_QUEUE must be at least 1"
+#endif
+#ifndef OTA_PROOF_GRACE_MS
+#define OTA_PROOF_GRACE_MS 500      // wait for the server's proactive proof before legacy REQ_PROOF fallback
+#endif
 #ifndef OTA_FETCH_PIPELINE
 #define OTA_FETCH_PIPELINE 2        // concurrent client block slots; keeps one block ready behind proof/flash work
 #endif
@@ -151,7 +161,7 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #error "OTA_FETCH_PIPELINE_GROW_BLOCKS must be at least 1"
 #endif
 #ifndef OTA_FETCH_PIPELINE_SHRINK_TICKS
-#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive 3-second no-progress ticks before removing one slot
+#define OTA_FETCH_PIPELINE_SHRINK_TICKS 2 // consecutive no-progress retry ticks before removing one slot
 #endif
 #if OTA_FETCH_PIPELINE_SHRINK_TICKS < 1
 #error "OTA_FETCH_PIPELINE_SHRINK_TICKS must be at least 1"
@@ -338,6 +348,11 @@ public:
 
   void on_message(const uint8_t* msg, uint16_t len);   // feed one received OTA message
   void loop();                                         // drive fetch (re-request missing blocks)
+  // Fast, non-blocking service called from the main radio loop. It admits at most one retained server
+  // response or proof fallback per call; the send callback provides packet-pool/queue backpressure.
+  void serviceEgress();
+  void clearPendingEgress();
+  uint8_t pendingServeJobs() const { return _n_serve_jobs; }
 
   // Drop the current fetch session back to IDLE so a fresh `ota pull` / advert starts a new one.
   void reset_session() {
@@ -384,7 +399,9 @@ private:
   uint16_t catalogCapacity() const { return _catalog_heap ? OTA_MAX_CATALOG : OTA_INLINE_CATALOG; }
   bool expandCatalog();
 
-  void emit(const uint8_t* b, uint16_t n, bool flood) { if (_send && n) _send(_ctx, b, n, flood); }
+  bool emit(const uint8_t* b, uint16_t n, bool flood) {
+    return _send && n && _send(_ctx, b, n, flood);
+  }
   void handleAdv(const uint8_t* m, uint16_t n);     // beacon -> sources table (+ query if interested)
   void handleQuery(const uint8_t* m, uint16_t n);   // serve: reply OTA_HAVE catalog
   void handleHave(const uint8_t* m, uint16_t n);    // peer: catalog rows (+ startFetch if a row matches)
@@ -415,8 +432,9 @@ private:
   bool loadSource(const ServeEntry& e);                   // load an external mota into _srcv (head+leaves)
   void registerSelfEntry();                               // (re)build entry[0] from view0
   static bool srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len);  // source payload reader
-  void emitBlockData(const uint8_t* mid, uint32_t idx, const uint8_t* data, uint32_t blen,
-                     uint16_t want_mask);   // emit only the requested DATA fragments of one block
+  bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask);
+  bool loadActiveServeBlock();
+  void popServeJob();
   void sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
                  uint32_t want_fragments);                  // ask a source for all/selected catalog fragments
   void scheduleQuery(const uint8_t* seeder, const uint8_t* digest);   // jittered + suppressible
@@ -436,7 +454,7 @@ private:
   bool storedLeavesRootMatches() const;
   void beginStagedVerification();
   void verifyStagedStep();
-  void requestSlot(uint8_t slot);                         // request DATA holes or the proof for one slot
+  bool requestSlot(uint8_t slot);                         // request DATA holes or the proof for one slot
   bool fillPipeline();                                    // assign and request blocks until the window is full
   void requestMissing();                                  // fill the window, or retry one stalled slot
   uint32_t blockLen(uint32_t i) const;
@@ -464,6 +482,20 @@ private:
   uint8_t     _src_leaves[OTA_PROOFGEN_SCRATCH];     // leaves[] of the loaded source mota (<=1024 blocks)
   uint8_t     _scratch[OTA_PROOFGEN_SCRATCH];        // proof-gen / fetch root-check working buffer
 #endif
+
+  // Server-side response descriptors are tiny. The active 1 KB block has its own buffer so proof generation
+  // or a simultaneous fetch cannot overwrite DATA retained behind radio-queue backpressure.
+  struct ServeJob {
+    uint8_t mid[4] = {0};
+    uint16_t block = 0;
+    uint16_t pending_mask = 0;
+    uint16_t emitted_mask = 0;
+  };
+  ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
+  uint8_t    _n_serve_jobs = 0;
+  uint8_t    _serve_block[OTA_MAX_BLOCK];
+  uint16_t   _serve_block_len = 0;
+  bool       _serve_block_loaded = false;
 
   // fetch
   OtaStore*  _fetch = nullptr;
@@ -499,6 +531,7 @@ private:
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
     uint16_t need = 0;                         // full bitmap for this block
     bool awaiting_proof = false;
+    uint32_t proof_request_at = 0;              // proactive-proof grace deadline; 0 after fallback is sent
     uint8_t buf[OTA_MAX_BLOCK];
   };
   ReassemblySlot _reasm[OTA_FETCH_PIPELINE];

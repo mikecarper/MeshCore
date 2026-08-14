@@ -1147,12 +1147,16 @@ bool MyMesh::evaluateScopeRewriteTiming(const mesh::Packet* packet,
 }
 
 bool MyMesh::shouldBypassRxDelay(const mesh::Packet* packet) {
+  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && isTempRadioActive()) return true;
   bool fast_track = false;
   return evaluateScopeRewriteTiming(packet, fast_track) && fast_track;
 }
 
 int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
                                  uint32_t air_time) {
+  if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && isTempRadioActive()) return 0;
   bool fast_track = false;
   if (!evaluateScopeRewriteTiming(packet, fast_track)) {
     return calcRxDelay(score, air_time);

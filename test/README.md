@@ -49,7 +49,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp`, `src/helpers/MultiSerialInterface.h` | independent terminal/seeder control-sequence recognition across reads and binary-frame boundaries; passthrough ownership of USB input and suppression of binary output; Bluetooth-only connection and pairing-request routing |
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_ota` | `src/helpers/ota/` | container and EndF integrity; protocol codecs; transfer, resume, and apply safety; adaptive 2-to-4 block-request window growth and stall contraction; active-transfer priority classification |
-| `test_trace_retry` | `src/Mesh.cpp` retry and relay policy | opaque OTA relay behavior during TempRadio; background discovery priority; primary active-transfer priority and packet-reserve bypass; trace and flood retry timing |
+| `test_trace_retry` | `src/Mesh.cpp` retry and relay policy | opaque OTA relay behavior during TempRadio; background discovery priority; immediate primary transfer relay, receive-delay bypass, fast CAD retry, and no generic flood retry; trace and non-OTA flood retry timing |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 
 ## Conventions (and how to add a suite)

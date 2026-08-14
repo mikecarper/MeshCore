@@ -30,14 +30,37 @@ except ImportError:
 
 RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e"
 RELEASE_URL = f"https://github.com/mikecarper/MeshCore/releases/tag/{RELEASE_TAG}"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e.zip"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-f7c2d382.zip"
 ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "46c7480ed6bdc2aa01fb23a0f70e34c4012ffdd42b616d07bde66cf66d594630"
-CHECKSUM_LIST_SHA256 = "8c74bbf9ae244f8c32041c68791b2780650c8a9321c23d32206614009739be5f"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e"
+ASSET_SHA256 = "7dbfc603056a05e7e0a7db6d16bf21fa37d758f1fdd74766dc0adc79d6a85dbb"
+CHECKSUM_LIST_SHA256 = "1223d01863d52e55774af0e44efd77730e860183fa80741488eecd0e0efe803a"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-f7c2d382"
+
+# This 27-step candidate passed steps 1 and 2, then its test was deliberately
+# stopped so the adaptive primary requester could be backported into every
+# historical source family. It remains valid for offline diagnosis only.
+SUPERSEDED_27_ASSET_SHA256 = (
+    "2f81eec1f6cc2f3ab0fc246d7254766582118400f7b7de5e66ef4af582b0c337"
+)
+SUPERSEDED_27_CHECKSUM_LIST_SHA256 = (
+    "8861c6ecb7f9c805f5e87fb422a057f0b9d4b21099ee5dbc8aa96c557f7d87f9"
+)
+
+# The second v1.17.01 candidate reached step 16 before its checked CC310 path
+# returned an incorrect digest for application flash. Preserve its exact pins
+# for offline diagnosis, but never permit it to reach a live device.
+KNOWN_FAILED_V11701_STEP16_ASSET_SHA256 = (
+    "46c7480ed6bdc2aa01fb23a0f70e34c4012ffdd42b616d07bde66cf66d594630"
+)
+KNOWN_FAILED_V11701_STEP16_CHECKSUM_LIST_SHA256 = (
+    "8c74bbf9ae244f8c32041c68791b2780650c8a9321c23d32206614009739be5f"
+)
+KNOWN_FAILED_V11701_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-c96bdd6e"
+)
 
 # The first v1.17.01 candidate reused an unsafe source-transition bridge at
 # step 15. Keep its hashes recognizable for offline diagnosis, but never allow
@@ -70,7 +93,7 @@ DEFAULT_TARGET_KEY = (
 )
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
-EXPECTED_STEP_COUNT = 26
+EXPECTED_STEP_COUNT = 28
 EXPECTED_START_VERSION = "1.16.7.0"
 EXPECTED_FINAL_VERSION = "1.17.1.0"
 MIN_MESHCLI_VERSION = (1, 6, 0)
@@ -89,21 +112,47 @@ KNOWN_UNSAFE_VERSION = "1.16.8.7"
 KNOWN_UNSAFE_IMAGE_SHA256 = (
     "61ced8b63953c614748c2fa1b04c2c01e8eb6626a604f6ef95fd2594d6d8ce71"
 )
-SAFE_CANDIDATE_STEP6_IMAGE_SHA256 = (
+KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256 = (
     "4bab3d2d6f6d3a033713d2db87565cb5f7fabe29b2b902b911724dd602fb7df8"
+)
+SUPERSEDED_27_STEP6_IMAGE_SHA256 = (
+    "16cd12a3cbbb563baf546191dc841b1255f11d3957d8c636366145430e31b617"
 )
 KNOWN_FAILED_V11701_STEP = 15
 KNOWN_FAILED_V11701_VERSION = "1.16.9.111"
 KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256 = (
     "e8d9d1bd06217c7fd8d7fd333c6fcfde79000838550aa149b10be12fdc64fccb"
 )
-SAFE_CANDIDATE_STEP15_IMAGE_SHA256 = (
+KNOWN_FAILED_V11701_SAFE_STEP15_IMAGE_SHA256 = (
     "1124247f65772f11f9527408e51971eb9633ed656206276fa95019275bb8fdd2"
+)
+SUPERSEDED_27_STEP15_IMAGE_SHA256 = (
+    "82880e72dbbae41847ade865da06ed26f90d239a7716b1415cfe729b2d35bd94"
 )
 KNOWN_FAILED_V11701_STEP16 = 16
 KNOWN_FAILED_V11701_STEP16_VERSION = "1.16.9.112"
 KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256 = (
     "35211ea70be635376b366a90afc74fcd8a7695f744f9c21a50bc872455ec5b21"
+)
+SUPERSEDED_27_STEP16_IMAGE_SHA256 = (
+    "5fd19be1cda7a0e9bdc9464be78abb238a3db5966538b1a1efdb949e8510e1d9"
+)
+SUPERSEDED_27_FINAL_IMAGE_SHA256 = (
+    "e1376869da043c05792b3458e505e67e818f58d94d3fc050d22ab68578a2f2e8"
+)
+
+# Exact anchors for the fresh 28-step candidate. The pinned checksum list
+# covers every byte; these anchors also make the live gate fail closed if its
+# structural checks are ever reused independently.
+CURRENT_CANDIDATE_ANCHORS = (
+    (1, "09638e0e67faabdba97c621178294a5279c2d379540593738e2abad7afdc40cc"),
+    (6, "f5908b1e823b85268de8986871e10a78d288014a584e604254477520386daeaf"),
+    (11, "fa3e15db6a1818b5f4399a795d78f9274f709b58ccbd3268fda4e5973fa554af"),
+    (12, "959c4a98bf5d54c7aa17bad014830c0549b8439c3de6075ee97fea56849acb06"),
+    (13, "03b401f2752b9ed2aa442e86a49049aecd614fcdf9941beef0f77d3005b65471"),
+    (16, "ef06aad907d5822663bd0b7b46e189bc69e3b70e6b4474e8c004afb49ebdd828"),
+    (17, "c5defba43c561c4c73d49f557f5bc063b5db41ebcf5495934a64c003a652c009"),
+    (28, "c1d165a50ef2447d857f24af624e927a4f2e59978b6d072dbfc4a16189ea40da"),
 )
 KNOWN_UNSAFE_RELEASE_MESSAGE = (
     f"live installation of {KNOWN_UNSAFE_RELEASE_TAG} is disabled: a physical RAK3401 "
@@ -128,6 +177,12 @@ KNOWN_FAILED_V11701_STEP16_MESSAGE = (
     "flash, so return-code fallback is not sufficient. Use --verify-only for "
     "artifact inspection. Do not deploy this replaced candidate."
 )
+SUPERSEDED_27_MESSAGE = (
+    "live installation of the superseded 27-step candidate is disabled: its "
+    "physical test was stopped after step 2 so the adaptive primary requester "
+    "could be moved into every historical bridge. Use --verify-only for that "
+    "bundle and use the fresh 28-step candidate for the lab rerun."
+)
 
 
 class KnownUnsafeReleaseError(ota.OtaError):
@@ -138,28 +193,65 @@ def require_live_release_safe(
     args: argparse.Namespace,
     steps: list[ChainStep],
 ) -> None:
+    if len(steps) == EXPECTED_STEP_COUNT:
+        for number, expected_sha256 in CURRENT_CANDIDATE_ANCHORS:
+            if steps[number - 1].target_sha256 != expected_sha256:
+                raise KnownUnsafeReleaseError(
+                    "live installation is disabled: the 28-step candidate has "
+                    f"an unrecognized step-{number} image"
+                )
+        if not args.accept_test_candidate:
+            raise KnownUnsafeReleaseError(
+                "live installation of the fresh 28-step chain requires "
+                "--accept-test-candidate until its complete physical-board "
+                "test passes"
+            )
+        return
+
     step6_sha256 = steps[KNOWN_UNSAFE_STEP - 1].target_sha256
     if step6_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
         raise KnownUnsafeReleaseError(KNOWN_UNSAFE_RELEASE_MESSAGE)
-    if step6_sha256 != SAFE_CANDIDATE_STEP6_IMAGE_SHA256:
+    if step6_sha256 == KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256:
+        if len(steps) < KNOWN_FAILED_V11701_STEP:
+            raise KnownUnsafeReleaseError(
+                "live installation is disabled: the failed v1.17.01 chain is "
+                "missing its audited step 15"
+            )
+        step15_sha256 = steps[KNOWN_FAILED_V11701_STEP - 1].target_sha256
+        if step15_sha256 == KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256:
+            raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_MESSAGE)
+        if step15_sha256 != KNOWN_FAILED_V11701_SAFE_STEP15_IMAGE_SHA256:
+            raise KnownUnsafeReleaseError(
+                "live installation is disabled: step 15 is not a recognized, "
+                "audited RAK3401 SHA-safe bridge image"
+            )
+        if len(steps) < KNOWN_FAILED_V11701_STEP16:
+            raise KnownUnsafeReleaseError(
+                "live installation is disabled: the failed v1.17.01 chain is "
+                "missing its audited step 16"
+            )
+        step16_sha256 = steps[KNOWN_FAILED_V11701_STEP16 - 1].target_sha256
+        if step16_sha256 == KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256:
+            raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_STEP16_MESSAGE)
         raise KnownUnsafeReleaseError(
-            "live installation is disabled: step 6 is not a recognized, "
-            "audited RAK3401 bridge image"
+            "live installation is disabled: this is an unrecognized replacement "
+            "for a physically failed v1.17.01 chain"
         )
-    step15_sha256 = steps[KNOWN_FAILED_V11701_STEP - 1].target_sha256
-    if step15_sha256 == KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256:
-        raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_MESSAGE)
-    if step15_sha256 != SAFE_CANDIDATE_STEP15_IMAGE_SHA256:
+    if step6_sha256 == SUPERSEDED_27_STEP6_IMAGE_SHA256:
+        if (
+            len(steps) == 27
+            and steps[14].target_sha256 == SUPERSEDED_27_STEP15_IMAGE_SHA256
+            and steps[15].target_sha256 == SUPERSEDED_27_STEP16_IMAGE_SHA256
+            and steps[-1].target_sha256 == SUPERSEDED_27_FINAL_IMAGE_SHA256
+        ):
+            raise KnownUnsafeReleaseError(SUPERSEDED_27_MESSAGE)
         raise KnownUnsafeReleaseError(
-            "live installation is disabled: step 15 is not a recognized, "
-            "audited RAK3401 SHA-safe bridge image"
+            "live installation is disabled: this is an unrecognized variant "
+            "of the superseded 27-step candidate"
         )
-    step16_sha256 = steps[KNOWN_FAILED_V11701_STEP16 - 1].target_sha256
-    if step16_sha256 == KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256:
-        raise KnownUnsafeReleaseError(KNOWN_FAILED_V11701_STEP16_MESSAGE)
     raise KnownUnsafeReleaseError(
-        "live installation is disabled: step 16 is not a recognized, "
-        "physically tested software-SHA bridge image"
+        "live installation is disabled: step 6 is not a recognized, audited "
+        "RAK3401 bridge image"
     )
 
 
@@ -236,7 +328,11 @@ def download_release_asset(destination: Path) -> None:
 
 
 def extract_bundle(archive_path: Path, destination: Path) -> Path:
-    root_names = (BUNDLE_ROOT_NAME, KNOWN_UNSAFE_ROOT_NAME)
+    root_names = (
+        BUNDLE_ROOT_NAME,
+        KNOWN_FAILED_V11701_ROOT_NAME,
+        KNOWN_UNSAFE_ROOT_NAME,
+    )
     existing_roots = [destination / name for name in root_names if (destination / name).is_dir()]
     if len(existing_roots) == 1:
         return existing_roots[0]
@@ -284,7 +380,11 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     if supplied.is_dir():
         direct = supplied / "CHAIN.csv"
         nested_roots = [
-            supplied / name for name in (BUNDLE_ROOT_NAME, KNOWN_UNSAFE_ROOT_NAME)
+            supplied / name for name in (
+                BUNDLE_ROOT_NAME,
+                KNOWN_FAILED_V11701_ROOT_NAME,
+                KNOWN_UNSAFE_ROOT_NAME,
+            )
             if (supplied / name / "CHAIN.csv").is_file()
         ]
         if direct.is_file():
@@ -297,7 +397,9 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     actual = sha256_file(supplied)
     if actual not in {
         ASSET_SHA256,
+        SUPERSEDED_27_ASSET_SHA256,
         KNOWN_FAILED_V11701_ASSET_SHA256,
+        KNOWN_FAILED_V11701_STEP16_ASSET_SHA256,
         KNOWN_UNSAFE_ASSET_SHA256,
     }:
         raise ota.OtaError(
@@ -313,7 +415,9 @@ def verify_checksum_list(bundle_root: Path) -> None:
     checksum_digest = sha256_file(checksum_path)
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        SUPERSEDED_27_CHECKSUM_LIST_SHA256,
         KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256,
+        KNOWN_FAILED_V11701_STEP16_CHECKSUM_LIST_SHA256,
         KNOWN_UNSAFE_CHECKSUM_LIST_SHA256,
     }
     if checksum_digest not in expected_lists:
@@ -367,9 +471,10 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             rows = list(csv.DictReader(source))
     except OSError as exc:
         raise ota.OtaError(f"cannot read {chain_path}: {exc}") from exc
-    if len(rows) != EXPECTED_STEP_COUNT:
+    if len(rows) not in (26, 27, EXPECTED_STEP_COUNT):
         raise ota.OtaError(
-            f"chain contains {len(rows)} steps, expected {EXPECTED_STEP_COUNT}"
+            f"chain contains {len(rows)} steps, expected 26, 27, or "
+            f"{EXPECTED_STEP_COUNT}"
         )
 
     steps: list[ChainStep] = []
@@ -419,38 +524,52 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
 
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
-    step6 = steps[KNOWN_UNSAFE_STEP - 1]
-    recognized_step6_hashes = {
-        KNOWN_UNSAFE_IMAGE_SHA256,
-        SAFE_CANDIDATE_STEP6_IMAGE_SHA256,
-    }
-    if (
-        step6.to_version != KNOWN_UNSAFE_VERSION
-        or step6.target_sha256 not in recognized_step6_hashes
-    ):
-        raise ota.OtaError(
-            "bundle does not contain a recognized audited step-6 image; "
-            "review and repin the runner before using it"
-        )
-    if step6.target_sha256 == SAFE_CANDIDATE_STEP6_IMAGE_SHA256:
-        step15 = steps[KNOWN_FAILED_V11701_STEP - 1]
-        recognized_step15_hashes = {
-            KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256,
-            SAFE_CANDIDATE_STEP15_IMAGE_SHA256,
+    if len(steps) == EXPECTED_STEP_COUNT:
+        for number, expected_sha256 in CURRENT_CANDIDATE_ANCHORS:
+            if steps[number - 1].target_sha256 != expected_sha256:
+                raise ota.OtaError(
+                    f"fresh candidate step {number} does not match its audited "
+                    "image pin"
+                )
+        expected_final_version = EXPECTED_FINAL_VERSION
+    else:
+        step6 = steps[KNOWN_UNSAFE_STEP - 1]
+        recognized_step6_hashes = {
+            KNOWN_UNSAFE_IMAGE_SHA256,
+            KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256,
+            SUPERSEDED_27_STEP6_IMAGE_SHA256,
         }
         if (
-            step15.to_version != KNOWN_FAILED_V11701_VERSION
-            or step15.target_sha256 not in recognized_step15_hashes
+            step6.to_version != KNOWN_UNSAFE_VERSION
+            or step6.target_sha256 not in recognized_step6_hashes
         ):
             raise ota.OtaError(
-                "bundle does not contain a recognized audited step-15 image; "
+                "bundle does not contain a recognized audited step-6 image; "
                 "review and repin the runner before using it"
             )
-    expected_final_version = (
-        "1.17.2.0"
-        if step6.target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256
-        else EXPECTED_FINAL_VERSION
-    )
+        if step6.target_sha256 in {
+            KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256,
+            SUPERSEDED_27_STEP6_IMAGE_SHA256,
+        }:
+            step15 = steps[KNOWN_FAILED_V11701_STEP - 1]
+            recognized_step15_hashes = {
+                KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256,
+                KNOWN_FAILED_V11701_SAFE_STEP15_IMAGE_SHA256,
+                SUPERSEDED_27_STEP15_IMAGE_SHA256,
+            }
+            if (
+                step15.to_version != KNOWN_FAILED_V11701_VERSION
+                or step15.target_sha256 not in recognized_step15_hashes
+            ):
+                raise ota.OtaError(
+                    "bundle does not contain a recognized audited step-15 image; "
+                    "review and repin the runner before using it"
+                )
+        expected_final_version = (
+            "1.17.2.0"
+            if step6.target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256
+            else EXPECTED_FINAL_VERSION
+        )
     if steps[-1].to_version != expected_final_version:
         raise ota.OtaError(
             f"chain ends at {steps[-1].to_version}, expected {expected_final_version}"
@@ -854,8 +973,8 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download, verify, resume, and install the exact 26-step RAK3401 "
-            "mOTA chain from c1caa5ad to c96bdd6e."
+            "Download, verify, resume, and install the exact 28-step RAK3401 "
+            "mOTA chain from c1caa5ad to f7c2d382."
         )
     )
     parser.add_argument(
@@ -874,8 +993,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-test-candidate",
         action="store_true",
         help=(
-            "reserved lab gate for a future pinned candidate; it never overrides "
-            "a bundle known to have failed physical testing"
+            "allow the pinned fresh 28-step chain for its direct physical lab test; "
+            "it never overrides a bundle known to have failed physical testing"
         ),
     )
 
@@ -1058,6 +1177,11 @@ def main(argv: list[str] | None = None) -> int:
                     f"WARNING: {KNOWN_FAILED_V11701_STEP16_MESSAGE}",
                     file=sys.stderr,
                 )
+            elif (
+                len(steps) == 27
+                and steps[-1].target_sha256 == SUPERSEDED_27_FINAL_IMAGE_SHA256
+            ):
+                print(f"WARNING: {SUPERSEDED_27_MESSAGE}", file=sys.stderr)
             else:
                 print(
                     "Unfailed candidate verified offline; complete physical-board testing "
@@ -1168,7 +1292,7 @@ def main(argv: list[str] | None = None) -> int:
             if not enabled.lower().startswith("ok - system watchdog enabled"):
                 raise ota.OtaError(f"could not enable system watchdog: {enabled}")
             require_watchdog_state(controller, target_name, "on")
-            print("[watchdog] re-enabled after verified step 26 boot")
+            print(f"[watchdog] re-enabled after verified step {len(steps)} boot")
         print(
             f"RAK3401 update complete: {final_target.current_version} "
             f"{final_target.base_hash.hex().upper()}"

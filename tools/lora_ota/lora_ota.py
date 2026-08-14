@@ -2034,38 +2034,76 @@ def arm_target_temp_radio(
     normal_radio: RadioSettings,
 ) -> None:
     """Resolve a lost TempRadio reply without blindly replaying the command."""
-    try:
-        reply = controller.remote_command(args.target, command, retry=False)
-    except TransmissionError as command_error:
-        print(
-            "[destination] TempRadio reply was lost; probing the declared "
-            "temporary channel"
-        )
-        controller.set_radio(temp_radio, "probe destination TempRadio state")
+    retries = 0
+    while True:
         try:
-            identity = controller.remote_command(
-                args.target, "ota self", retry=False
+            reply = controller.remote_command(args.target, command, retry=False)
+        except TransmissionError as command_error:
+            print(
+                "[destination] TempRadio reply was lost; probing the declared "
+                "temporary channel"
             )
-            if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
-                raise OtaError(
-                    "destination replied on TempRadio but did not return a valid "
-                    "running EndF identity"
+            controller.set_radio(temp_radio, "probe destination TempRadio state")
+            found_on_temp = False
+            try:
+                identity = controller.remote_command(
+                    args.target, "ota self", retry=False
                 )
-        except (OtaError, TransmissionError) as probe_error:
-            raise OtaError(
-                "destination TempRadio outcome is ambiguous; the controller was "
-                "restored to its normal channel and the command was not replayed"
-            ) from probe_error
-        finally:
-            controller.set_radio(
-                normal_radio, "restore controller after TempRadio probe"
+                if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
+                    raise OtaError(
+                        "destination replied on TempRadio but did not return a valid "
+                        "running EndF identity"
+                    )
+                found_on_temp = True
+            except (OtaError, TransmissionError):
+                pass
+            finally:
+                controller.set_radio(
+                    normal_radio, "restore controller after TempRadio probe"
+                )
+            if found_on_temp:
+                print(
+                    "[destination] resolved lost TempRadio reply from the exact "
+                    "target identity; continuing"
+                )
+                return
+
+            # The 2-second scheduled handoff is long past by the time the
+            # temporary-channel probe times out. An exact identity reply back
+            # on the normal channel therefore proves that the target did not
+            # remain on TempRadio, making a bounded replay safe.
+            try:
+                identity = controller.remote_command(
+                    args.target, "ota self", retry=False
+                )
+                if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
+                    raise OtaError(
+                        "destination replied on the normal channel but did not "
+                        "return a valid running EndF identity"
+                    )
+            except (OtaError, TransmissionError) as normal_probe_error:
+                raise OtaError(
+                    "destination TempRadio outcome is ambiguous; the controller "
+                    "was restored to its normal channel and the command was not "
+                    "replayed"
+                ) from normal_probe_error
+
+            if retries >= TRANSMISSION_RETRY_LIMIT:
+                raise OtaError(
+                    "destination remained on the normal channel after "
+                    f"{retries + 1} verified TempRadio delivery attempts"
+                ) from command_error
+            retries += 1
+            delay = transmission_retry_delay(retries)
+            print(
+                "[destination] exact normal-channel identity proves TempRadio is "
+                f"inactive; safe retry {retries}/{TRANSMISSION_RETRY_LIMIT} "
+                f"in {format_decimal(delay)}s"
             )
-        print(
-            "[destination] resolved lost TempRadio reply from the exact target "
-            "identity; continuing"
-        )
+            time.sleep(delay)
+            continue
+        require_temp_radio_reply(args.target, reply)
         return
-    require_temp_radio_reply(args.target, reply)
 
 
 def temp_radio_command_for_minutes(

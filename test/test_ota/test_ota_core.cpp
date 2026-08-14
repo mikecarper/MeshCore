@@ -538,26 +538,48 @@ namespace {
 struct SimMsg { OtaManager* dest; std::vector<uint8_t> bytes; };
 static std::vector<SimMsg> g_q;
 struct SendTo { OtaManager* dest; };
-static void sim_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+static bool sim_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   g_q.push_back({((SendTo*)ctx)->dest, std::vector<uint8_t>(msg, msg + len)});
+  return true;
 }
 struct CapturedMessages { std::vector<std::vector<uint8_t>> items; };
-static void capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+static bool capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   ((CapturedMessages*)ctx)->items.emplace_back(msg, msg + len);
+  return true;
+}
+struct GatedCapture {
+  bool accept = false;
+  std::vector<std::vector<uint8_t>> items;
+};
+static bool gated_capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+  GatedCapture* capture = (GatedCapture*)ctx;
+  if (!capture->accept) return false;
+  capture->items.emplace_back(msg, msg + len);
+  return true;
 }
 // Drive the bus to quiescence: deliver queued messages; when idle, advance the client's clock (monotonic
 // across calls, so a jittered query scheduled in a prior pump still comes due) and call loop() (fires the
 // scheduled catalog query / block re-requests). Two idle ticks in a row = quiescent.
 static uint32_t g_clk = 0;
-static void pump(OtaManager& client, int guard_max = 200000) {
+static void pump(OtaManager& client, OtaManager* server = nullptr, int guard_max = 200000) {
   int idle = 0, guard = 0;
   while (guard++ < guard_max) {
+    if (server) server->serviceEgress();
+    client.serviceEgress();
     if (!g_q.empty()) {
       SimMsg m = std::move(g_q.front()); g_q.erase(g_q.begin());
       m.dest->on_message(m.bytes.data(), (uint16_t)m.bytes.size());
       idle = 0;
     } else {
-      g_clk += 5000; client.set_clock(g_clk); client.loop();
+      g_clk += 5000;
+      client.set_clock(g_clk);
+      client.loop();
+      if (server) {
+        server->set_clock(g_clk);
+        server->loop();
+        server->serviceEgress();
+      }
+      client.serviceEgress();
       if (!g_q.empty()) { idle = 0; continue; }
       if (++idle >= 2) break;
     }
@@ -682,7 +704,7 @@ TEST(OtaTransfer, TwoManagersFullTransfer) {
   ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
   server.announce();   // -> client hears the beacon, queries, catalogs, then fetches
 
-  pump(client);        // beacon -> query -> have -> startFetch -> full transfer
+  pump(client, &server);        // beacon -> query -> have -> startFetch -> full transfer
 
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   EXPECT_EQ(client.blocksHave(), client.blocksTotal());
@@ -711,6 +733,102 @@ static void deliver_manifest_fragment(OtaManager& client, const uint8_t mid[4], 
   uint16_t wire_len = encode_manifest(wire, sizeof(wire), msg);
   ASSERT_GT(wire_len, 0);
   client.on_message(wire, wire_len);
+}
+
+TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 1024u);
+
+  OtaManager server;
+  GatedCapture sent;
+  server.begin(0, gated_capture_send, &sent);
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+
+  ReqMsg request;
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.block_idx = 0;
+  request.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t wire_len = encode_req(wire, sizeof(wire), request);
+  ASSERT_GT(wire_len, 0);
+  server.on_message(wire, wire_len);
+  server.on_message(wire, wire_len);                     // identical in-flight retry merges
+  EXPECT_EQ(server.pendingServeJobs(), 1u);
+  EXPECT_TRUE(sent.items.empty());                        // receive handler never allocates a packet burst
+
+  server.serviceEgress();                                 // callback applies packet-queue backpressure
+  EXPECT_TRUE(sent.items.empty());
+  EXPECT_EQ(server.pendingServeJobs(), 1u);
+
+  sent.accept = true;
+  const uint32_t fragment_count = (1024 + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  for (uint32_t i = 0; i < fragment_count; i++) {
+    server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), i + 1);
+    DataMsg data;
+    ASSERT_TRUE(decode_data(sent.items.back().data(),
+                            (uint16_t)sent.items.back().size(), data));
+    EXPECT_EQ(data.block_idx, 0);
+    EXPECT_EQ(data.frag_off, i * OTA_FRAG_DATA);
+  }
+  EXPECT_EQ(server.pendingServeJobs(), 1u);                // proof is retained behind DATA
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), fragment_count + 1);
+  ProofMsg proof;
+  ASSERT_TRUE(decode_proof(sent.items.back().data(),
+                           (uint16_t)sent.items.back().size(), proof));
+  EXPECT_EQ(proof.block_idx, 0);
+  EXPECT_EQ(server.pendingServeJobs(), 0u);
+}
+
+TEST(OtaTransfer, MissingProactiveProofFallsBackAfterGrace) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  client.set_clock(100);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 2u);
+
+  const uint32_t block_len = manifest.block_size();
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  for (uint32_t offset = 0; offset < block_len; offset += OTA_FRAG_DATA) {
+    uint32_t length = block_len - offset;
+    if (length > OTA_FRAG_DATA) length = OTA_FRAG_DATA;
+    DataMsg data;
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.block_idx = 0;
+    data.frag_off = (uint16_t)offset;
+    data.data = manifest.payload + offset;
+    data.data_len = (uint16_t)length;
+    uint16_t length_on_wire = encode_data(wire, sizeof(wire), data);
+    ASSERT_GT(length_on_wire, 0);
+    client.on_message(wire, length_on_wire);
+  }
+  EXPECT_EQ(sent.items.size(), 2u);
+
+  client.set_clock(100 + OTA_PROOF_GRACE_MS - 1);
+  client.serviceEgress();
+  EXPECT_EQ(sent.items.size(), 2u);
+  client.set_clock(100 + OTA_PROOF_GRACE_MS);
+  client.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 3u);
+  ReqProofMsg fallback;
+  ASSERT_TRUE(decode_req_proof(sent.items.back().data(),
+                               (uint16_t)sent.items.back().size(), fallback));
+  EXPECT_EQ(fallback.block_idx, 0);
 }
 
 TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
@@ -742,8 +860,8 @@ TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
   EXPECT_EQ(request0.block_idx, 0);
   EXPECT_EQ(request1.block_idx, 1);
 
-  // Deliver block 1 first and its fragments in reverse order. Its independent slot must request and
-  // accept a proof without disturbing the still-empty slot reserved for block 0.
+  // Deliver block 1 first and its fragments in reverse order. Its independent slot must accept the
+  // proactive proof without spending a REQ_PROOF round trip or disturbing block 0's reserved slot.
   const uint32_t block = 1;
   const uint32_t block_size = manifest.block_size();
   const uint32_t block_len = block + 1 < manifest.block_count
@@ -765,10 +883,7 @@ TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
     client.on_message(wire, wire_len);
   }
 
-  ASSERT_EQ(sent.items.size(), 3u);
-  ReqProofMsg proof_request;
-  ASSERT_TRUE(decode_req_proof(sent.items[2].data(), (uint16_t)sent.items[2].size(), proof_request));
-  EXPECT_EQ(proof_request.block_idx, block);
+  ASSERT_EQ(sent.items.size(), 2u);                       // no immediate proof request
 
   uint8_t scratch[SIM_MOTA_1K_BLOCKS * 4];
   uint8_t siblings[32 * 4];
@@ -784,9 +899,9 @@ TEST(OtaTransfer, ClientPipelinesAndRefillsOutOfOrderBlocks) {
   client.on_message(wire, wire_len);
 
   EXPECT_EQ(client.blocksHave(), 1u);
-  ASSERT_EQ(sent.items.size(), 4u);                       // freed slot was immediately refilled
+  ASSERT_EQ(sent.items.size(), 3u);                       // freed slot was immediately refilled
   ReqMsg refill;
-  ASSERT_TRUE(decode_req(sent.items[3].data(), (uint16_t)sent.items[3].size(), refill));
+  ASSERT_TRUE(decode_req(sent.items[2].data(), (uint16_t)sent.items[2].size(), refill));
   EXPECT_EQ(refill.block_idx, 2);
 }
 
@@ -992,7 +1107,7 @@ TEST(OtaTransfer, MultiFragmentBlocks) {
   ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
   server.announce();
 
-  pump(client);
+  pump(client, &server);
 
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   EXPECT_EQ(client.blocksTotal(), SIM_MOTA_1K_BLOCKS);   // 1 KB blocks => fewer, larger blocks
@@ -1036,14 +1151,14 @@ TEST(OtaFolder, ServesSelfPlusFolderAndFetchesExternal) {
   // discovery: beacon -> the client catalogs the source, queries it, and the broadcast HAVE fills the
   // catalog with BOTH served mids.
   server.announce();
-  pump(client);
+  pump(client, &server);
   client.queryAll();
-  pump(client);
+  pump(client, &server);
   EXPECT_EQ(client.catalogCount(), 2);
 
   // fetch the EXTERNAL (folder) mota by mid -> served via the source, relayed block-by-block.
   client.pull(mExt.merkle_root, mExt.target_id);
-  pump(client);
+  pump(client, &server);
 
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   EXPECT_EQ(client.blocksHave(), client.blocksTotal());
@@ -1189,12 +1304,16 @@ TEST(OtaTransfer, ResumeAfterReboot) {
   // drive only until the first block commits, then "crash"
   int idle = 0, guard = 0;
   while (guard++ < 100000) {
+    server.serviceEgress();
+    client.serviceEgress();
     if (!g_q.empty()) {
       SimMsg msg = std::move(g_q.front()); g_q.erase(g_q.begin());
       msg.dest->on_message(msg.bytes.data(), (uint16_t)msg.bytes.size());
       idle = 0;
     } else {
-      g_clk += 5000; client.set_clock(g_clk); client.loop();
+      g_clk += 5000;
+      client.set_clock(g_clk); client.loop(); client.serviceEgress();
+      server.set_clock(g_clk); server.loop(); server.serviceEgress();
       if (!g_q.empty()) { idle = 0; } else if (++idle >= 2) break;
     }
     if (client.blocksHave() >= 1) break;
@@ -1217,7 +1336,7 @@ TEST(OtaTransfer, ResumeAfterReboot) {
   EXPECT_EQ(client2.fetchState(), OtaManager::FETCHING);
   EXPECT_EQ(client2.blocksTotal(), SIM_MOTA_1K_BLOCKS);
 
-  pump(client2);
+  pump(client2, &server);
   EXPECT_EQ(client2.fetchState(), OtaManager::COMPLETE);
   ASSERT_EQ(store.staged_size(), SIM_MOTA_1K_LEN);
   EXPECT_EQ(0, std::memcmp(store.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN));   // byte-identical to the original
@@ -1234,7 +1353,7 @@ TEST(OtaTransfer, ResumeRehashesPayloadBeforeTrustingPresentLeaf) {
   client.set_autofetch(OtaManager::AUTOFETCH_ANY);
   ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
   server.announce();
-  pump(client);
+  pump(client, &server);
   ASSERT_EQ(client.fetchState(), OtaManager::COMPLETE);
 
   MotaManifest staged;
@@ -1270,7 +1389,7 @@ TEST(OtaTransfer, ResumeReadFailureCanNeverBecomeComplete) {
   client.set_autofetch(OtaManager::AUTOFETCH_ANY);
   ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
   server.announce();
-  pump(client);
+  pump(client, &server);
   ASSERT_EQ(client.fetchState(), OtaManager::COMPLETE);
 
   MotaManifest staged;
@@ -1296,7 +1415,7 @@ TEST(OtaTransfer, ClientRejectsWrongTarget) {
   client.set_autofetch(OtaManager::AUTOFETCH_ANY);   // tests exercise fetch-on-advert; policy default is OFF
   ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
   server.announce();
-  pump(client);   // catalogs the row but wantRow rejects it (wrong target) -> never fetches
+  pump(client, &server);   // catalogs the row but wantRow rejects it (wrong target) -> never fetches
   EXPECT_EQ(client.fetchState(), OtaManager::IDLE);   // never started
 }
 
@@ -1315,13 +1434,13 @@ TEST(OtaTransfer, ManualCrossTargetFetch) {
 
   // without the override: catalogs the row but won't fetch (wrong target)
   server.announce();
-  pump(client);
+  pump(client, &server);
   EXPECT_EQ(client.fetchState(), OtaManager::IDLE);
 
   // with want(): deliberately fetch the different-target firmware to completion
   client.want(SIM_TARGET_ID);
   server.announce();
-  pump(client);
+  pump(client, &server);
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   ASSERT_EQ(store.staged_size(), SIM_MOTA_LEN);
   EXPECT_EQ(0, std::memcmp(store.data(), SIM_MOTA, SIM_MOTA_LEN));
@@ -1387,7 +1506,7 @@ TEST(OtaTransfer, ArchivePullAcceptsCrossTargetUnsupportedCodec) {
   MotaManifest m;
   ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, m));
   client.pull_archive(m.merkle_root, m.target_id);  // capture ignores local target + install codec
-  pump(client);
+  pump(client, &server);
 
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   ASSERT_EQ(store.staged_size(), SIM_MOTA_LEN);
@@ -1451,7 +1570,7 @@ TEST(OtaTransfer, ReceiverDoesNotReSeed) {
   client.set_autofetch(OtaManager::AUTOFETCH_ANY);
   ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
   server.announce();
-  pump(client);
+  pump(client, &server);
   ASSERT_EQ(client.fetchState(), OtaManager::COMPLETE);
   EXPECT_EQ(client.servedCount(), 0);
   client.reset_session();

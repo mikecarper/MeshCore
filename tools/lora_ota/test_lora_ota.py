@@ -835,9 +835,59 @@ class ReliabilityTests(unittest.TestCase):
             )
         self.assertEqual(
             controller.commands,
-            ["tempradio 909.95,250,5,5,120", "ota self"],
+            ["tempradio 909.95,250,5,5,120", "ota self", "ota self"],
         )
         self.assertEqual(controller.radios, [temporary, normal])
+
+    @mock.patch.object(ota.time, "sleep")
+    def test_target_temp_retries_only_after_exact_normal_identity(
+        self, sleep: mock.Mock
+    ) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.radios: list[ota.RadioSettings] = []
+                self.replies = iter([
+                    ota.TransmissionError("lost command reply"),
+                    ota.TransmissionError("not on temporary channel"),
+                    "self body=1 image=2 base_hash=0011223344556677",
+                    "OK - temp params for 120 mins",
+                ])
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                reply = next(self.replies)
+                if isinstance(reply, Exception):
+                    raise reply
+                return reply
+
+            def set_radio(self, radio: ota.RadioSettings, _label: str) -> None:
+                self.radios.append(radio)
+
+        controller = Controller()
+        ota.arm_target_temp_radio(
+            controller,
+            argparse.Namespace(target="remote"),
+            "tempradio 909.95,500,5,5,120",
+            temporary,
+            normal,
+        )
+        self.assertEqual(
+            controller.commands,
+            [
+                "tempradio 909.95,500,5,5,120",
+                "ota self",
+                "ota self",
+                "tempradio 909.95,500,5,5,120",
+            ],
+        )
+        self.assertEqual(controller.radios, [temporary, normal])
+        sleep.assert_called_once_with(ota.transmission_retry_delay(1))
 
     def test_install_retries_only_after_still_ready_is_confirmed(self) -> None:
         image = firmware(b"install" * 900, VERSION_NEW)
@@ -1191,10 +1241,14 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=False), steps
             )
 
-    def test_corrected_chain_requires_explicit_lab_gate(self) -> None:
+    def test_second_failed_chain_is_always_blocked(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(16)]
-        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
-        steps[14].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP15_IMAGE_SHA256
+        steps[5].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256
+        )
+        steps[14].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP15_IMAGE_SHA256
+        )
         steps[15].target_sha256 = (
             rak_chain.KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256
         )
@@ -1215,8 +1269,12 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
 
     def test_checked_cc310_step16_is_always_blocked(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(16)]
-        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
-        steps[14].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP15_IMAGE_SHA256
+        steps[5].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256
+        )
+        steps[14].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP15_IMAGE_SHA256
+        )
         steps[15].target_sha256 = (
             rak_chain.KNOWN_FAILED_V11701_STEP16_IMAGE_SHA256
         )
@@ -1230,7 +1288,9 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
 
     def test_first_v11701_candidate_is_blocked_after_failed_step15(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(15)]
-        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[5].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256
+        )
         steps[14].target_sha256 = (
             rak_chain.KNOWN_FAILED_V11701_STEP15_IMAGE_SHA256
         )
@@ -1244,11 +1304,55 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
 
     def test_unrecognized_step15_is_blocked(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(15)]
-        steps[5].target_sha256 = rak_chain.SAFE_CANDIDATE_STEP6_IMAGE_SHA256
+        steps[5].target_sha256 = (
+            rak_chain.KNOWN_FAILED_V11701_SAFE_STEP6_IMAGE_SHA256
+        )
         steps[14].target_sha256 = "00" * 32
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
             "step 15 is not a recognized",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_fresh_28_step_candidate_requires_explicit_lab_gate(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(28)]
+        for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "requires --accept-test-candidate",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=True), steps
+        )
+
+    def test_fresh_28_step_candidate_rejects_changed_anchor(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(28)]
+        for number, image_sha256 in rak_chain.CURRENT_CANDIDATE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        steps[10].target_sha256 = "00" * 32
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "unrecognized step-11 image",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_superseded_27_step_candidate_is_always_blocked(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(27)]
+        steps[5].target_sha256 = rak_chain.SUPERSEDED_27_STEP6_IMAGE_SHA256
+        steps[14].target_sha256 = rak_chain.SUPERSEDED_27_STEP15_IMAGE_SHA256
+        steps[15].target_sha256 = rak_chain.SUPERSEDED_27_STEP16_IMAGE_SHA256
+        steps[-1].target_sha256 = rak_chain.SUPERSEDED_27_FINAL_IMAGE_SHA256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "superseded 27-step candidate",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=True), steps

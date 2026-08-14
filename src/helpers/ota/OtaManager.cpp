@@ -48,6 +48,7 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _resume_merkle.reset();
   _n_serve = 0; _n_src_obj = 0; _view0.valid = false; _srcv.valid = false;
   _n_src = 0; _n_cat = 0;
+  clearPendingEgress();
 }
 
 // ---------------- serve (multi-mota registry) ----------------
@@ -65,6 +66,7 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
   _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 blocks (RAM .mota is small)
   _view0.valid = true;
+  clearPendingEgress();
   registerSelfEntry();
   return true;
 }
@@ -81,6 +83,7 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
   _view0.mfl = mfl; _view0.read = read; _view0.read_ctx = ctx;
   _view0.scratch = proof_scratch; _view0.scratch_sz = proof_scratch_sz;   // sized for our (large) image
   _view0.valid = true;
+  clearPendingEgress();
   registerSelfEntry();
   return true;
 }
@@ -127,6 +130,7 @@ bool OtaManager::remove_source(MotaSource* src) {
 }
 
 void OtaManager::refresh_sources() {
+  clearPendingEgress();
   _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
   for (uint8_t s = 0; s < _n_src_obj; s++) {
@@ -163,12 +167,14 @@ void OtaManager::refresh_sources() {
 }
 
 void OtaManager::clear_sources() {
+  clearPendingEgress();
   _n_src_obj = 0; _srcv.valid = false;
   _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
 }
 
 void OtaManager::clear_primary() {
+  clearPendingEgress();
   _view0.valid = false;
   if (_n_serve > 0 && _serve[0].is_self) {
     for (uint8_t i = 1; i < _n_serve; i++) {
@@ -377,21 +383,56 @@ static inline uint16_t frag_full_mask(uint32_t nf) {
   return (nf >= 16) ? 0xFFFFu : (uint16_t)((1u << nf) - 1);
 }
 
-// Emit one block's data as self-describing DATA fragments (frag_off); only the fragments whose bit is set
-// in `want_mask` are sent (bit k = the slice at k*OTA_FRAG_DATA). The proof is fetched separately.
-void OtaManager::emitBlockData(const uint8_t* mid, uint32_t idx, const uint8_t* data, uint32_t blen,
-                               uint16_t want_mask) {
-  uint32_t k = 0;
-  for (uint32_t fo = 0; fo < blen; fo += OTA_FRAG_DATA, k++) {
-    if (!(want_mask & (1u << k))) continue;         // fetcher didn't ask for this fragment
-    uint32_t fl = (fo + OTA_FRAG_DATA <= blen) ? OTA_FRAG_DATA : (blen - fo);
-    DataMsg dm;
-    memcpy(dm.manifest_id, mid, 4);
-    dm.block_idx = (uint16_t)idx; dm.frag_off = (uint16_t)fo;
-    dm.data = data + fo; dm.data_len = (uint16_t)fl;
-    uint8_t b[MAX_PACKET_PAYLOAD];
-    emit(b, encode_data(b, sizeof(b), dm), false);
+// Retain a bounded descriptor instead of allocating every DATA packet inline. Repeated requests that arrive
+// while a block is already queued merge only fragments not yet admitted to the radio queue; a later retry can
+// enqueue the block again if one of those admitted packets was actually lost over the air.
+bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask) {
+  for (uint8_t i = 0; i < _n_serve_jobs; i++) {
+    ServeJob& job = _serve_jobs[i];
+    if (job.block != block || memcmp(job.mid, mid, 4) != 0) continue;
+    job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
+    return true;
   }
+  if (_n_serve_jobs >= OTA_SERVE_QUEUE) return false;
+  ServeJob& job = _serve_jobs[_n_serve_jobs++];
+  memcpy(job.mid, mid, 4);
+  job.block = block;
+  job.pending_mask = want_mask;
+  job.emitted_mask = 0;
+  return true;
+}
+
+void OtaManager::clearPendingEgress() {
+  _n_serve_jobs = 0;
+  _serve_block_len = 0;
+  _serve_block_loaded = false;
+}
+
+void OtaManager::popServeJob() {
+  if (_n_serve_jobs == 0) return;
+  for (uint8_t i = 1; i < _n_serve_jobs; i++) _serve_jobs[i - 1] = _serve_jobs[i];
+  _n_serve_jobs--;
+  _serve_block_len = 0;
+  _serve_block_loaded = false;
+}
+
+bool OtaManager::loadActiveServeBlock() {
+  if (_n_serve_jobs == 0) return false;
+  ServeJob& job = _serve_jobs[0];
+  ServeView* v = resolve(job.mid);
+  if (!v || job.block >= v->m.block_count) return false;
+  uint32_t bs = v->m.block_size();
+  if (bs == 0 || bs > OTA_MAX_BLOCK) return false;
+  uint32_t off = (uint32_t)job.block * bs;
+  uint32_t blen = (off + bs <= v->m.payload_size) ? bs : (v->m.payload_size - off);
+  if (v->read) {
+    if (!v->read(v->read_ctx, off, _serve_block, blen)) return false;
+  } else {
+    memcpy(_serve_block, v->m.payload + off, blen);
+  }
+  _serve_block_len = (uint16_t)blen;
+  _serve_block_loaded = true;
+  return true;
 }
 
 void OtaManager::handleReq(const uint8_t* m, uint16_t n) {
@@ -399,33 +440,84 @@ void OtaManager::handleReq(const uint8_t* m, uint16_t n) {
   if (!decode_req(m, n, rq)) return;
   uint32_t idx = rq.block_idx;
   ServeView* v = resolve(rq.manifest_id);
-  if (v) {                                          // serve a fully-held mota (own fw or attached folder)
-    if (idx >= v->m.block_count) return;
-    uint32_t bs = v->m.block_size();
-    uint32_t off = idx * bs;
-    uint32_t blen = (off + bs <= v->m.payload_size) ? bs : (v->m.payload_size - off);
-    uint8_t blk[OTA_MAX_BLOCK];
-    const uint8_t* data;
-    if (v->read) { if (!v->read(v->read_ctx, off, blk, blen)) return; data = blk; }
-    else         { data = v->m.payload + off; }
-    emitBlockData(v->m.merkle_root, idx, data, blen, rq.want_mask);
-  }
+  if (!v || idx >= v->m.block_count || idx > 0xFFFFu) return;
+  uint32_t blen = v->m.block_size();
+  uint32_t off = idx * blen;
+  if (off + blen > v->m.payload_size) blen = v->m.payload_size - off;
+  uint16_t valid_mask = frag_full_mask((blen + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
+  uint16_t want = (uint16_t)(rq.want_mask & valid_mask);
+  if (want != 0) queueServeJob(v->m.merkle_root, (uint16_t)idx, want);
 }
 
 void OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
   ReqProofMsg rp;
   if (!decode_req_proof(m, n, rp)) return;
   ServeView* v = resolve(rp.manifest_id);
-  if (!v) return;
-  if (rp.block_idx >= v->m.block_count) return;
-  if ((uint64_t)v->m.block_count * 4 > v->scratch_sz) return;     // proof-gen needs block_count*4 scratch
+  if (!v || rp.block_idx >= v->m.block_count) return;
+  if ((uint64_t)v->m.block_count * 4 > v->scratch_sz) return;
+  queueServeJob(v->m.merkle_root, rp.block_idx, 0);     // proof-only, or merge with queued DATA
+}
+
+void OtaManager::serviceEgress() {
+  // A proactive proof normally follows the final DATA fragment. If it was lost, or the source is older and
+  // never sent one, issue the legacy proof request after a short grace. Admit at most one fallback per call.
+  if (_fstate == FETCHING) {
+    for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; i++) {
+      ReassemblySlot& slot = _reasm[i];
+      if (!slot.awaiting_proof || slot.proof_request_at == 0
+          || (int32_t)(_now_ms - slot.proof_request_at) < 0) continue;
+      if (requestSlot(i)) return;
+      break;
+    }
+  }
+
+  if (_n_serve_jobs == 0) return;
+  ServeJob& job = _serve_jobs[0];
+  ServeView* v = resolve(job.mid);
+  if (!v || job.block >= v->m.block_count
+      || (uint64_t)v->m.block_count * 4 > v->scratch_sz) {
+    popServeJob();
+    return;
+  }
+
+  if (job.pending_mask != 0) {
+    if (!_serve_block_loaded && !loadActiveServeBlock()) {
+      popServeJob();
+      return;
+    }
+    uint8_t fragment = 0;
+    while (fragment < 16 && !(job.pending_mask & (1u << fragment))) fragment++;
+    uint32_t frag_off = (uint32_t)fragment * OTA_FRAG_DATA;
+    if (fragment >= 16 || frag_off >= _serve_block_len) {
+      job.pending_mask = 0;
+      return;
+    }
+    uint32_t frag_len = _serve_block_len - frag_off;
+    if (frag_len > OTA_FRAG_DATA) frag_len = OTA_FRAG_DATA;
+    DataMsg dm;
+    memcpy(dm.manifest_id, job.mid, 4);
+    dm.block_idx = job.block;
+    dm.frag_off = (uint16_t)frag_off;
+    dm.data = _serve_block + frag_off;
+    dm.data_len = (uint16_t)frag_len;
+    uint8_t b[MAX_PACKET_PAYLOAD];
+    if (emit(b, encode_data(b, sizeof(b), dm), false)) {
+      const uint16_t bit = (uint16_t)(1u << fragment);
+      job.pending_mask &= (uint16_t)~bit;
+      job.emitted_mask |= bit;
+    }
+    return;
+  }
+
   uint8_t proof[32 * 4];
-  uint8_t np = merkle_gen_proof(v->m.leaves, v->m.block_count, rp.block_idx, v->scratch, proof);
+  uint8_t np = merkle_gen_proof(v->m.leaves, v->m.block_count, job.block, v->scratch, proof);
   ProofMsg pm;
-  memcpy(pm.manifest_id, v->m.merkle_root, 4);
-  pm.block_idx = rp.block_idx; pm.n_proof = np; pm.proof = proof;
+  memcpy(pm.manifest_id, job.mid, 4);
+  pm.block_idx = job.block;
+  pm.n_proof = np;
+  pm.proof = proof;
   uint8_t b[MAX_PACKET_PAYLOAD];
-  emit(b, encode_proof(b, sizeof(b), pm), false);
+  if (emit(b, encode_proof(b, sizeof(b), pm), false)) popServeJob();
 }
 
 // ---------------- fetch ----------------
@@ -613,6 +705,7 @@ void OtaManager::clearReassemblySlot(uint8_t slot) {
   _reasm[slot].mask = 0;
   _reasm[slot].need = 0;
   _reasm[slot].awaiting_proof = false;
+  _reasm[slot].proof_request_at = 0;
 }
 
 // Forget all blocks currently being reassembled or awaiting proofs.
@@ -1010,10 +1103,12 @@ void OtaManager::handleData(const uint8_t* m, uint16_t n) {
   if (kf >= 16) return;
   memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
   slot.mask |= (uint16_t)(1u << kf);
-  if (slot.mask != slot.need || slot.awaiting_proof) return;  // wait for all slices (or proof already asked)
-  // block fully reassembled -> request its proof (data + proof are fetched separately)
+  if (slot.mask != slot.need || slot.awaiting_proof) return;
+  // The paced server sends a proof immediately after this block's requested DATA. Wait briefly so that proof
+  // can arrive without another request/response turn. An older server, or a lost proof, falls back through
+  // serviceEgress() to the existing REQ_PROOF wire message.
   slot.awaiting_proof = true;
-  requestSlot((uint8_t)slot_index);
+  slot.proof_request_at = _now_ms + OTA_PROOF_GRACE_MS;
 }
 
 void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
@@ -1055,10 +1150,10 @@ void OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");
 }
 
-void OtaManager::requestSlot(uint8_t slot_index) {
-  if (_fstate != FETCHING || slot_index >= OTA_FETCH_PIPELINE) return;
+bool OtaManager::requestSlot(uint8_t slot_index) {
+  if (_fstate != FETCHING || slot_index >= OTA_FETCH_PIPELINE) return false;
   ReassemblySlot& slot = _reasm[slot_index];
-  if (slot.block >= _fbc) return;
+  if (slot.block >= _fbc) return false;
   _req_start = slot.block;
   _req_count = 0;
   for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; i++) {
@@ -1066,10 +1161,14 @@ void OtaManager::requestSlot(uint8_t slot_index) {
   }
   if (slot.awaiting_proof) {
     ReqProofMsg rp; memcpy(rp.manifest_id, _fid, 4); rp.block_idx = (uint16_t)slot.block;
-    uint8_t b[16]; emit(b, encode_req_proof(b, sizeof(b), rp), false);
-    OTA_DBG("OTA: REQ_PROOF block=%u (have=%u/%u window=%u)\n",
-            (unsigned)slot.block, (unsigned)_have, (unsigned)_fbc, (unsigned)_req_count);
-    return;
+    uint8_t b[16];
+    bool sent = emit(b, encode_req_proof(b, sizeof(b), rp), false);
+    if (sent) {
+      slot.proof_request_at = 0;
+      OTA_DBG("OTA: REQ_PROOF fallback block=%u (have=%u/%u window=%u)\n",
+              (unsigned)slot.block, (unsigned)_have, (unsigned)_fbc, (unsigned)_req_count);
+    }
+    return sent;
   }
   uint16_t want = (uint16_t)(slot.need & ~slot.mask);
   if (want == 0) want = slot.need;                  // safety: never send an empty request
@@ -1079,7 +1178,7 @@ void OtaManager::requestSlot(uint8_t slot_index) {
   OTA_DBG("OTA: REQ block=%u want=%04x (have=%u/%u mask=%04x window=%u)\n",
           (unsigned)slot.block, (unsigned)want, (unsigned)_have, (unsigned)_fbc,
           (unsigned)slot.mask, (unsigned)_req_count);
-  emit(b, encode_req(b, sizeof(b), rq), false);
+  return emit(b, encode_req(b, sizeof(b), rq), false);
 }
 
 bool OtaManager::fillPipeline() {
@@ -1094,6 +1193,7 @@ bool OtaManager::fillPipeline() {
     slot.mask = 0;
     slot.need = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
     slot.awaiting_proof = false;
+    slot.proof_request_at = 0;
     requestSlot((uint8_t)slot_index);
     requested = true;
   }

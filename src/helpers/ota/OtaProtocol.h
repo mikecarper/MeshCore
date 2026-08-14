@@ -70,7 +70,7 @@ struct ManifestMsg {
 // (saves airtime and avoids the re-REQ colliding with a multi-fragment burst on half-duplex radios).
 struct ReqMsg { uint8_t manifest_id[4]; uint16_t block_idx; uint16_t want_mask; };
 
-// ---- OTA_DATA: one self-describing fragment of a block's data (proof is fetched separately) ----
+// ---- OTA_DATA: one self-describing fragment of a block's data (proof stays in a separate packet) ----
 // body: manifest_id(4) block_idx(2) frag_off(2) data[]
 // `frag_off` is the byte offset of `data` within block `block_idx` (global position = block_idx*block_size
 // + frag_off), so a fragment is self-placing when received from the selected source.
@@ -96,7 +96,7 @@ struct LeavesMsg {
   const uint8_t* bytes; uint16_t len;
 };
 
-// ---- OTA_REQ_PROOF: request the merkle proof for one (reassembled) block (direct) ----
+// ---- OTA_REQ_PROOF: proof fallback for an older source or a lost proactive proof (direct) ----
 struct ReqProofMsg { uint8_t manifest_id[4]; uint16_t block_idx; };
 
 // ---- OTA_PROOF: the merkle proof (ordered sibling digests) for one block (direct) ----
