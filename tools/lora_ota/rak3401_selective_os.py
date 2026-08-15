@@ -3,8 +3,8 @@
 Stage 1 size-optimizes crypto/Curve25519 units first. The remaining C/C++
 units are assigned deterministically to stages 2 through 13. A stage includes
 all earlier stages, so every intermediate is a normal bootable build and stage
-13 is equivalent to globally selecting ``-Os``. The last two primary buckets
-are subdivided because their measured nRF52 deltas exceeded internal staging.
+13 is equivalent to globally selecting ``-Os``. A selected stage can also be
+enabled cumulatively in deterministic parts when a board needs smaller deltas.
 """
 
 import hashlib
@@ -21,6 +21,21 @@ except ValueError as exc:
 
 if STAGE < 1 or STAGE > 13:
     raise RuntimeError("MOTA_BRIDGE_OS_STAGE must be in 1..13")
+
+try:
+    STAGE_PART = int(os.environ.get("MOTA_BRIDGE_OS_STAGE_PART", "1"))
+    STAGE_PARTS = int(os.environ.get("MOTA_BRIDGE_OS_STAGE_PARTS", "1"))
+    STAGE_SUBPART = int(os.environ.get("MOTA_BRIDGE_OS_STAGE_SUBPART", "1"))
+    STAGE_SUBPARTS = int(os.environ.get("MOTA_BRIDGE_OS_STAGE_SUBPARTS", "1"))
+except ValueError as exc:
+    raise RuntimeError("MOTA bridge stage part values must be integers") from exc
+
+if STAGE_PARTS < 1 or STAGE_PART < 1 or STAGE_PART > STAGE_PARTS:
+    raise RuntimeError("MOTA bridge stage part must be in 1..stage parts")
+if STAGE_SUBPARTS < 1 or STAGE_SUBPART < 1 or STAGE_SUBPART > STAGE_SUBPARTS:
+    raise RuntimeError("MOTA bridge stage subpart must be in 1..stage subparts")
+if STAGE_PARTS == 1 and STAGE_SUBPARTS != 1:
+    raise RuntimeError("MOTA bridge stage subparts require multiple stage parts")
 
 CRYPTO_MARKERS = (
     "ed25519",
@@ -152,6 +167,18 @@ def _size_optimize_selected(env, node):
     unit_stage = _unit_stage(path, env)
     if unit_stage > STAGE:
         return node
+    if unit_stage == STAGE and STAGE_PARTS > 1:
+        normalized = _normalized_unit_path(path, env)
+        digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+        bucket = digest[4] % STAGE_PARTS
+        if bucket >= STAGE_PART:
+            return node
+        if (
+            bucket == STAGE_PART - 1
+            and STAGE_SUBPARTS > 1
+            and digest[5] % STAGE_SUBPARTS >= STAGE_SUBPART
+        ):
+            return node
     if (
         STAGE == 5
         and unit_stage == 5
@@ -175,6 +202,13 @@ def _size_optimize_selected(env, node):
 
 
 print(f"MOTA bridge selective optimizer stage {STAGE}/13")
+if STAGE_PARTS > 1:
+    print(f"MOTA bridge stage {STAGE} cumulative part {STAGE_PART}/{STAGE_PARTS}")
+if STAGE_SUBPARTS > 1:
+    print(
+        f"MOTA bridge stage {STAGE} current bucket subpart "
+        f"{STAGE_SUBPART}/{STAGE_SUBPARTS}"
+    )
 if STAGE == 5 and os.environ.get("MOTA_BRIDGE_SPLIT_STAGE5") == "first":
     print("MOTA bridge stage 5 split: first half")
 env.AddBuildMiddleware(_size_optimize_selected)

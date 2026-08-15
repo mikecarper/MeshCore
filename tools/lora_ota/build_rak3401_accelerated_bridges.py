@@ -44,6 +44,10 @@ class Target:
     source_commit: str
     bridge_stage: int = 0
     os_stage: int = 0
+    os_stage_part: int = 0
+    os_stage_parts: int = 0
+    os_stage_subpart: int = 0
+    os_stage_subparts: int = 0
     split_stage5: str = ""
     mymesh_opt: str = ""
     flood_rule_engine: bool = True
@@ -255,7 +259,9 @@ def main() -> int:
             firmware_version = f"v{target.version}-{VERSION_SUFFIX}"
             build_env = dict(os.environ)
             for name in (
-                "MOTA_BRIDGE_OS_STAGE", "MOTA_BRIDGE_SPLIT_STAGE5",
+                "MOTA_BRIDGE_OS_STAGE", "MOTA_BRIDGE_OS_STAGE_PART",
+                "MOTA_BRIDGE_OS_STAGE_PARTS", "MOTA_BRIDGE_OS_STAGE_SUBPART",
+                "MOTA_BRIDGE_OS_STAGE_SUBPARTS", "MOTA_BRIDGE_SPLIT_STAGE5",
                 "MOTA_BRIDGE_MY_MESH_OPT", "MOTA_BRIDGE_OS_VERBOSE",
                 "PLATFORMIO_BUILD_FLAGS", "PLATFORMIO_EXTRA_SCRIPTS",
             ):
@@ -272,6 +278,12 @@ def main() -> int:
             if target.os_stage:
                 build_env["MOTA_BRIDGE_OS_STAGE"] = str(target.os_stage)
                 build_env["PLATFORMIO_EXTRA_SCRIPTS"] = f"pre:{SELECTIVE_OS_HOOK}"
+            if target.os_stage_parts:
+                build_env["MOTA_BRIDGE_OS_STAGE_PART"] = str(target.os_stage_part)
+                build_env["MOTA_BRIDGE_OS_STAGE_PARTS"] = str(target.os_stage_parts)
+            if target.os_stage_subparts:
+                build_env["MOTA_BRIDGE_OS_STAGE_SUBPART"] = str(target.os_stage_subpart)
+                build_env["MOTA_BRIDGE_OS_STAGE_SUBPARTS"] = str(target.os_stage_subparts)
             if target.split_stage5:
                 build_env["MOTA_BRIDGE_SPLIT_STAGE5"] = target.split_stage5
             if target.mymesh_opt:
@@ -315,6 +327,10 @@ def main() -> int:
             record["build_flags"] = flags
             record["bridge_stage"] = target.bridge_stage
             record["os_stage"] = target.os_stage
+            record["os_stage_part"] = target.os_stage_part
+            record["os_stage_parts"] = target.os_stage_parts
+            record["os_stage_subpart"] = target.os_stage_subpart
+            record["os_stage_subparts"] = target.os_stage_subparts
             record["split_stage5"] = target.split_stage5
             record["mymesh_opt"] = target.mymesh_opt
             record["flood_rule_engine"] = target.flood_rule_engine
