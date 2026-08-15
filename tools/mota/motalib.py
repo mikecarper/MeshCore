@@ -129,6 +129,12 @@ def hardware_id_for_env(env_name: str) -> str:
         r"[_-](?:repeater|repeatr|room_server|room_svr|sensor|terminal_chat|kiss_modem|"
         r"companion_radio|companion|comp_radio)(?=[_-]|$)", env_name, re.IGNORECASE)
     family = (env_name[:role.start()] if role else env_name).strip("_-") or env_name.strip("_-")
+    # Match the explicit MOTA_HW_ID shared by every role in these variant
+    # families. The environment spelling is not always the physical-board tag.
+    family = {
+        "Heltec_t114_without_display": "Heltec_t114",
+        "RAK_4631": "RAK4631",
+    }.get(family, family)
     if len(family) <= 32:
         return family
     suffix = hashlib.sha256(family.encode()).hexdigest()[:8]

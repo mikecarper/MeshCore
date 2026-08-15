@@ -33,6 +33,26 @@ hardware guidance; validates every referenced artifact; routes URLs to the
 correct GitHub release page; and replaces legacy FULL MQTT choices with the
 matching portable MQTT observer builds.
 
+The logging catalog tracks the diagnostic and expanded-partition profiles in
+the supplemental v1.17.1.1 release pages. Update it from the same completed
+matrix with:
+
+```text
+python3 mesh-america/update-logging-provider-release.py \
+  --release-dir /path/to/release \
+  --artifact-version v1.17.1.1-759a35fc \
+  --logging-main-tag logging-v1.17.1.1-halo-keymind-cascade-759a35fc \
+  --logging-utility-tag logging-utility-v1.17.1.1-halo-keymind-cascade-759a35fc \
+  --full-tag full-profiles-v1.17.1.1-halo-keymind-cascade-759a35fc \
+  --main-tag v1.17.1.1-halo-keymind-cascade-759a35fc \
+  --advanced-tag lora-ota-v1.17.1.1-halo-keymind-cascade-759a35fc \
+  --utility-tag kiss-v1.17.1.1-halo-keymind-cascade-759a35fc
+```
+
+This updater preserves the logging catalog's curated role and hardware
+guidance, validates all 648 referenced firmware identities, and selects the
+release page that owns each file.
+
 The older PowerShell generator remains available for the historical standard
 and logging source folders:
 

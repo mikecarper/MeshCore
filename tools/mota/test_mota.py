@@ -52,8 +52,12 @@ def test_ota_target_generation_honors_explicit_disable():
 
 
 def test_hardware_id_for_env():
-    assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK_4631"
-    assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK_4631"
+    assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK4631"
+    assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK4631"
+    assert (
+        ml.hardware_id_for_env("Heltec_t114_without_display_repeater")
+        == "Heltec_t114"
+    )
     assert ml.hardware_id_for_env("ThinkNode_M2_Repeater_bridge_espnow") == "ThinkNode_M2"
     assert ml.hardware_id_for_env("wio-e5-repeater_bridge_rs232") == "wio-e5"
     long_env = "ikoka_handheld_nrf_e22_30dbm_096_rotated_room_server"

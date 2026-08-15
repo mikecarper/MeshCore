@@ -1975,6 +1975,26 @@ requires_dram_limited_neighbors() {
   # ESP32 MQTT observers exhaust internal DRAM, while the 256 KiB STM32WL
   # targets exhaust their fixed application region because initialized table
   # storage is part of the image.
+  #
+  # Classic ESP32 bridge targets only need the lower limit when the expanded
+  # FULL profile also enables packet logging. Keep their ordinary and
+  # non-logging FULL profiles at the protocol maximum.
+  if [ "$ESP32_FULL_BUILD" = "1" ] \
+      && [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ]; then
+    case "${1,,}" in
+      generic_e22_sx1262_repeater_bridge_espnow \
+        |generic_e22_sx1268_repeater_bridge_espnow \
+        |heltec_v2_repeater_bridge_espnow \
+        |lilygo_tlora_v2_1_1_6_repeater_bridge_espnow \
+        |lilygo_tlora_v2_1_1_6_repeater_bridge_rs232 \
+        |meshadventurer_sx1262_repeater_bridge_espnow \
+        |meshadventurer_sx1268_repeater_bridge_espnow \
+        |tbeam_sx1262_repeater_bridge_espnow \
+        |tbeam_sx1276_repeater_bridge_espnow)
+        return 0
+        ;;
+    esac
+  fi
   case "${1,,}" in
     tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt|rak_3x72_repeater|tiny_relay_repeater|wio-e5-mini_repeater|wio-e5-repeater_bridge_rs232|wio-e5_repeater) return 0 ;;
     *) return 1 ;;
