@@ -173,12 +173,6 @@ class CustomSX1262 : public SX1262 {
       static const uint32_t pins[Module::RFSWITCH_MAX_PINS] = {
         SX126X_RXEN, tx_en, RADIOLIB_NC, RADIOLIB_NC, RADIOLIB_NC,
       };
-      static const Module::RfSwitchMode_t lna_enabled_table[] = {
-        { Module::MODE_IDLE, { LOW,  LOW } },
-        { Module::MODE_RX,   { HIGH, LOW } },
-        { Module::MODE_TX,   { LOW,  HIGH } },
-        END_OF_MODE_TABLE,
-      };
       static const Module::RfSwitchMode_t lna_disabled_table[] = {
         { Module::MODE_IDLE, { LOW, LOW } },
         { Module::MODE_RX,   { LOW, LOW } },
@@ -186,8 +180,12 @@ class CustomSX1262 : public SX1262 {
         END_OF_MODE_TABLE,
       };
 
-      this->mod->setRfSwitchTable(
-          pins, enabled ? lna_enabled_table : lna_disabled_table);
+      if (enabled) {
+        // Restore RadioLib's standard RXEN/TXEN behavior exactly.
+        setRfSwitchPins(SX126X_RXEN, tx_en);
+      } else {
+        this->mod->setRfSwitchTable(pins, lna_disabled_table);
+      }
       return true;
     #else
       (void)enabled;

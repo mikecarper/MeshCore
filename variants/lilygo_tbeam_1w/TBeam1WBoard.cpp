@@ -10,10 +10,8 @@ void TBeam1WBoard::begin() {
   radio_powered = true;
   delay(10);  // Allow radio to power up
 
-  // Keep the external LNA off until RadioLib deliberately enters RX. GPIO21
-  // is subsequently controlled by RadioLib's target-specific RF switch table.
-  pinMode(SX126X_RXEN, OUTPUT);
-  digitalWrite(SX126X_RXEN, LOW);
+  // GPIO21/CTRL is initialized by RadioLib with the normal RXEN mode table.
+  // Do not drive it independently during board startup.
 
   // Initialize LED
   pinMode(LED_PIN, OUTPUT);
@@ -71,6 +69,13 @@ void TBeam1WBoard::attachRadioDriver(CustomSX1262Wrapper* driver) {
 }
 
 bool TBeam1WBoard::setLoRaFemLnaEnabled(bool enable) {
+  // The normal/default ON state is already installed by radio.std_init().
+  // Avoid touching GPIO21 or reconfiguring the radio during boot unless the
+  // saved setting actually requests a different state.
+  if (lna_enabled == enable) {
+    return radio_driver != nullptr;
+  }
+
   if (radio_driver == nullptr || !radio_driver->setExternalRxLnaEnabled(enable)) {
     return false;
   }
