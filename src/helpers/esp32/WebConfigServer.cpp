@@ -1433,6 +1433,11 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     radio["cad"] = (bool)node.cad;
     radio["rxgain"] = (bool)node.rx_gain;
     radio["fem_rxgain"] = (bool)node.fem_rx_gain;
+    radio["rxps_enabled"] = (bool)node.rx_ps_enabled;
+    radio["rxps_level"] = node.rx_ps_level;
+    radio["rxps_preamble"] = node.rx_ps_preamble;
+    radio["rxps_rx_us"] = node.rx_ps_rx_us;
+    radio["rxps_sleep_us"] = node.rx_ps_sleep_us;
     radio["repeat"] = (bool)node.repeat;
     radio["flood_max"] = node.flood_max;
     radio["flood_max_advert"] = node.flood_max_advert;

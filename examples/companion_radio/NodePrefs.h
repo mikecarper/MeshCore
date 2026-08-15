@@ -39,6 +39,11 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t radio_fem_rxgain_override; // 1 once the user overrides the build default
   uint8_t vibe_quiet;          // haptic quiet mode; appended for prefs compatibility
   uint8_t radio_fem_txgain;    // LoRa FEM TX gain; appended for prefs compatibility
+  uint8_t rx_powersaving_enabled; // SX126x/LR11xx receive duty cycling
+  uint32_t rx_ps_rx_us;           // receive window in microseconds
+  uint32_t rx_ps_sleep_us;        // sleep window in microseconds
+  uint8_t rx_ps_level;            // 0=manual timings, 1..10=level-derived
+  uint8_t rx_ps_preamble;         // 0=auto from SF, otherwise 16 or 32
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

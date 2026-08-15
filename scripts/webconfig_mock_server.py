@@ -30,6 +30,7 @@ Stdlib only; no pip install.
 import argparse
 import copy
 import json
+import math
 import os
 import re
 import secrets
@@ -101,6 +102,8 @@ def default_config(setup_mode):
         "radio": {
             "freq": 910.525, "bw": 62.5, "sf": 7, "cr": 5, "tx": 22, "af": 1.0,
             "rxdelay": 0.0, "txdelay": 0.5, "cad": False, "rxgain": True,
+            "rxps_enabled": True, "rxps_level": 5, "rxps_preamble": 16,
+            "rxps_rx_us": 20936, "rxps_sleep_us": 13425,
             "repeat": True, "flood_max": 64, "flood_max_advert": 8,
             "flood_max_unscoped": 8, "loop_detect": "moderate",
             "name": "MockNode", "lat": 39.7392, "lon": -104.9903,
@@ -192,6 +195,9 @@ class State:
             "role": "Repeater", "board": "Heltec V3 (mock)",
             "uptime_s": int(time.time() - self.start),
             "runtime_slots": 6, "max_slots": 6, "active_slots": self.active_slots,
+            # Every ordinary repeater feature except an external FEM, plus
+            # radio RX power saving (bit 12).
+            "capabilities": 0x17FF,
             "max_cmds": CLI_MAX_CMDS,
         }
 
@@ -238,6 +244,19 @@ def _hex64(v):
     return len(v) == 64 and all(c in "0123456789abcdefABCDEF" for c in v)
 
 
+def _rxps_level_timings(level, sf, bw, preamble):
+    """Mirror calcRxPowerSavingLevel() for realistic portal round-trips."""
+    actual_preamble = preamble or (32 if sf <= 8 else 16)
+    symbol_us = 1000.0 * (1 << sf) / bw
+    amount = (level - 1) / 9.0
+    rx_start = 12.0 if actual_preamble == 16 else 16.0
+    sleep_start = 2.0 if actual_preamble == 16 else 15.0
+    rx_symbols = rx_start + amount * (8.0 - rx_start)
+    sleep_edge = actual_preamble + 4.25 - 8.0
+    sleep_symbols = sleep_start + amount * (sleep_edge - sleep_start)
+    return math.ceil(rx_symbols * symbol_us), int(sleep_symbols * symbol_us)
+
+
 def apply_set(cfg, key, val):
     """Return (ok, reply) and mutate cfg. Mirrors the firmware's validation for
     the fields where it matters (length, IATA, owner key, port, radio combo)."""
@@ -255,6 +274,39 @@ def apply_set(cfg, key, val):
 
     if key == "radio.fem.rxgain":
         return False, "Error: unsupported"   # no FEM on the mock board, see GETTERS
+
+    if key == "radio.rxps":
+        radio = cfg["radio"]
+        if val == "off":
+            radio["rxps_enabled"] = False
+            return True, "OK - off,%d,%d" % (radio["rxps_rx_us"], radio["rxps_sleep_us"])
+
+        if val in ("on", "conservative", "balanced"):
+            level = 5 if val == "balanced" else 1
+            preamble = 16
+        else:
+            match = re.fullmatch(r"(?:level )?(\d+)(?: preamble (\d+))?", val)
+            if match:
+                level = int(match.group(1))
+                preamble = int(match.group(2) or 0)
+                if not 1 <= level <= 10 or preamble not in (0, 16, 32):
+                    return False, "Error: level must be 1-10; preamble must be auto, 16, or 32"
+            else:
+                match = re.fullmatch(r"(\d+) (\d+)", val)
+                if not match:
+                    return False, "Error: use off, level 1-10, or RX/SLEEP microseconds"
+                rx_us, sleep_us = map(int, match.groups())
+                if not (1000 <= rx_us <= 30000000 and 1000 <= sleep_us <= 30000000):
+                    return False, "Error: RX/SLEEP must be 1000-30000000 us"
+                radio.update(rxps_enabled=True, rxps_level=0, rxps_preamble=0,
+                             rxps_rx_us=rx_us, rxps_sleep_us=sleep_us)
+                return True, "OK - on,%d,%d" % (rx_us, sleep_us)
+
+        rx_us, sleep_us = _rxps_level_timings(
+            level, radio["sf"], radio["bw"], preamble)
+        radio.update(rxps_enabled=True, rxps_level=level, rxps_preamble=preamble,
+                     rxps_rx_us=rx_us, rxps_sleep_us=sleep_us)
+        return True, "OK - on,%d,%d" % (rx_us, sleep_us)
 
     if key == "dutycycle":
         try:
@@ -514,6 +566,9 @@ GETTERS = {
     # compiled out -- the command exists everywhere and the board answers for
     # itself. The mock board is a Heltec V3, which has no FEM.
     "radio.fem.rxgain": lambda c: None,
+    "radio.rxps": lambda c: "%s,%d,%d" % (
+        "on" if c["radio"]["rxps_enabled"] else "off",
+        c["radio"]["rxps_rx_us"], c["radio"]["rxps_sleep_us"]),
 }
 
 
@@ -570,6 +625,8 @@ def cli_read_key(cfg, key):
     return {
         "name": r["name"], "lat": r["lat"], "lon": r["lon"],
         "radio": "%.3f,%.2f,%d,%d" % (r["freq"], r["bw"], r["sf"], r["cr"]),
+        "radio.rxps": "%s,%d,%d" % (
+            "on" if r["rxps_enabled"] else "off", r["rxps_rx_us"], r["rxps_sleep_us"]),
         "bw": r["bw"], "sf": r["sf"], "cr": r["cr"],
         "mqtt.iata": cfg["mqtt"]["iata"], "mqtt.owner": cfg["mqtt"]["owner"],
     }.get(key)

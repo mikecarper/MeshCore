@@ -323,6 +323,17 @@ void DataStore::loadPrefsInt(const char *filename, CompanionNodePrefs& _prefs, d
     if (file.available() >= (int)sizeof(_prefs.radio_fem_txgain)) {
       file.read((uint8_t *)&_prefs.radio_fem_txgain, sizeof(_prefs.radio_fem_txgain));      // 125
     }
+    const size_t rxps_tail_size = sizeof(_prefs.rx_powersaving_enabled)
+        + sizeof(_prefs.rx_ps_rx_us) + sizeof(_prefs.rx_ps_sleep_us)
+        + sizeof(_prefs.rx_ps_level) + sizeof(_prefs.rx_ps_preamble);
+    if (file.available() >= (int)rxps_tail_size) {
+      file.read((uint8_t *)&_prefs.rx_powersaving_enabled,
+                sizeof(_prefs.rx_powersaving_enabled));                                    // 126
+      file.read((uint8_t *)&_prefs.rx_ps_rx_us, sizeof(_prefs.rx_ps_rx_us));                // 127
+      file.read((uint8_t *)&_prefs.rx_ps_sleep_us, sizeof(_prefs.rx_ps_sleep_us));          // 131
+      file.read((uint8_t *)&_prefs.rx_ps_level, sizeof(_prefs.rx_ps_level));                // 135
+      file.read((uint8_t *)&_prefs.rx_ps_preamble, sizeof(_prefs.rx_ps_preamble));          // 136
+    }
 
     file.close();
   }
@@ -374,6 +385,16 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                sizeof(_prefs.vibe_quiet)) == sizeof(_prefs.vibe_quiet);                    // 124
     success = success && file.write((uint8_t *)&_prefs.radio_fem_txgain,
                sizeof(_prefs.radio_fem_txgain)) == sizeof(_prefs.radio_fem_txgain);        // 125
+    success = success && file.write((uint8_t *)&_prefs.rx_powersaving_enabled,
+               sizeof(_prefs.rx_powersaving_enabled)) == sizeof(_prefs.rx_powersaving_enabled); // 126
+    success = success && file.write((uint8_t *)&_prefs.rx_ps_rx_us,
+               sizeof(_prefs.rx_ps_rx_us)) == sizeof(_prefs.rx_ps_rx_us);                  // 127
+    success = success && file.write((uint8_t *)&_prefs.rx_ps_sleep_us,
+               sizeof(_prefs.rx_ps_sleep_us)) == sizeof(_prefs.rx_ps_sleep_us);            // 131
+    success = success && file.write((uint8_t *)&_prefs.rx_ps_level,
+               sizeof(_prefs.rx_ps_level)) == sizeof(_prefs.rx_ps_level);                  // 135
+    success = success && file.write((uint8_t *)&_prefs.rx_ps_preamble,
+               sizeof(_prefs.rx_ps_preamble)) == sizeof(_prefs.rx_ps_preamble);            // 136
 
 #if defined(NRF52_PLATFORM)
     success = file.commit(success);

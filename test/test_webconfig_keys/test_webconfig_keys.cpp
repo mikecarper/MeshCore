@@ -9,6 +9,7 @@
 TEST(WebConfigKeys, AllowsKnownScalarKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("name"));
   EXPECT_TRUE(wcIsAllowedSetKey("radio"));
+  EXPECT_TRUE(wcIsAllowedSetKey("radio.rxps"));
   EXPECT_TRUE(wcIsAllowedSetKey("repeat"));
   EXPECT_TRUE(wcIsAllowedSetKey("wifi.ssid"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt.iata"));

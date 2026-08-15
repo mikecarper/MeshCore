@@ -13,7 +13,8 @@
 #define RX_POWERSAVING_BALANCED_LEVEL     5
 #define RX_POWERSAVING_PROFILE_PREAMBLE   16
 
-// Fixed settings for companions. Build flags can still override these defaults.
+// Initial settings for companions. Build flags can override the defaults;
+// roles with runtime RXPS controls persist the operator's selection afterward.
 #ifndef RXPS_FIXED_ENABLED
 #define RXPS_FIXED_ENABLED                1
 #endif

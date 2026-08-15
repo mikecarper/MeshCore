@@ -1563,6 +1563,11 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.cad = _prefs.cad_enabled;
   s.rx_gain = _prefs.rx_boosted_gain;
   s.fem_rx_gain = board.isLoRaFemLnaEnabled();
+  s.rx_ps_enabled = _prefs.rx_powersaving_enabled;
+  s.rx_ps_level = _prefs.rx_ps_level;
+  s.rx_ps_preamble = _prefs.rx_ps_preamble;
+  s.rx_ps_rx_us = _prefs.rx_ps_rx_us;
+  s.rx_ps_sleep_us = _prefs.rx_ps_sleep_us;
   s.repeat = !_prefs.disable_fwd;
   s.advert_interval = _prefs.advert_interval * 2;
   s.flood_advert_interval = _prefs.flood_advert_interval;
@@ -1577,6 +1582,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
       | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE;
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
+  }
+  if (radio_driver.supportsRxPowerSaving()) {
+    s.capabilities |= WebConfigServer::CAP_RX_POWER_SAVING;
   }
 }
 

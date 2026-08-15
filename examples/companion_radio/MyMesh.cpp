@@ -376,32 +376,6 @@ int MyMesh::getInterferenceThreshold() const {
   return 0; // disabled for now, until currentRSSI() problem is resolved
 }
 
-#if RXPS_FIXED_ENABLED
-static mesh::RadioParamApplyResult applyFixedRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
-  uint32_t rx_us, sleep_us;
-  if (!calcRxPowerSavingLevel(RXPS_FIXED_LEVEL, sf, bw, RXPS_FIXED_PREAMBLE, &rx_us, &sleep_us)) {
-    POWERSAVING_DEBUG_PRINTLN("RX Power Saving fixed profile invalid");
-    return mesh::RadioParamApplyResult::FAILED;
-  }
-
-  uint32_t timings[2] = {rx_us, sleep_us};
-  const bool supports_rxps = radio_driver.supportsRxPowerSaving();
-  // Keep ordinary radio configuration working on companion targets whose
-  // radio does not implement RX duty cycling. This matches the former
-  // setParams()+setRxPowerSaving() behavior while retaining one atomic
-  // transition on radios that do support it.
-  mesh::RadioParamApplyResult result =
-      radio_driver.trySetParams(freq, bw, sf, cr, supports_rxps ? timings : NULL);
-  POWERSAVING_DEBUG_PRINTLN(
-      "RX Power Saving fixed level %d p%d: %s (%lu/%lu us)", RXPS_FIXED_LEVEL,
-      RXPS_FIXED_PREAMBLE,
-      result == mesh::RadioParamApplyResult::APPLIED
-          ? (supports_rxps ? "Enabled" : "Unsupported")
-          : (result == mesh::RadioParamApplyResult::BUSY ? "Busy" : "Apply failed"),
-      (unsigned long)rx_us, (unsigned long)sleep_us);
-  return result;
-}
-#endif
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   if (_prefs.rx_delay_base <= 0.0f) return 0;
   return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
@@ -1376,6 +1350,14 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = DEFAULT_FEM_RX_GAIN;
+  _prefs.rx_powersaving_enabled = RXPS_FIXED_ENABLED ? 1 : 0;
+  _prefs.rx_ps_level = RXPS_FIXED_LEVEL;
+  _prefs.rx_ps_preamble = RXPS_FIXED_PREAMBLE;
+  _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
+  _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
+  recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                               _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                               &_prefs.rx_ps_sleep_us);
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   memset(&_mqtt_prefs, 0, sizeof(_mqtt_prefs));
@@ -1454,6 +1436,15 @@ void MyMesh::begin(bool has_display) {
   }
   _prefs.radio_fem_rxgain = constrain(_prefs.radio_fem_rxgain, 0, 1);
   _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
+  _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
+  _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
+  if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
+    _prefs.rx_ps_preamble = 0;
+  }
+  ensureRxPowerSavingDefaults(&_prefs.rx_ps_rx_us, &_prefs.rx_ps_sleep_us);
+  recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                               _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                               &_prefs.rx_ps_sleep_us);
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
@@ -1545,11 +1536,17 @@ void MyMesh::begin(bool has_display) {
 }
 
 mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
-#if RXPS_FIXED_ENABLED
-  return applyFixedRadioParams(freq, bw, sf, cr);
-#else
-  return radio_driver.trySetParams(freq, bw, sf, cr);
-#endif
+  uint32_t rx_us = _prefs.rx_ps_rx_us;
+  uint32_t sleep_us = _prefs.rx_ps_sleep_us;
+  if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0
+      && !recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, sf, bw,
+                                       _prefs.rx_ps_preamble, &rx_us, &sleep_us)) {
+    return mesh::RadioParamApplyResult::FAILED;
+  }
+  uint32_t timings[2] = {rx_us, sleep_us};
+  const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
+      && radio_driver.supportsRxPowerSaving() ? timings : NULL;
+  return radio_driver.trySetParams(freq, bw, sf, cr, applied_timings);
 }
 
 bool MyMesh::applySavedRadioParams() {
@@ -1563,6 +1560,9 @@ void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr,
   _prefs.freq = freq;
   _prefs.bw = bw;
   _prefs.client_repeat = repeat;
+  recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                               _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                               &_prefs.rx_ps_sleep_us);
   savePrefs();
 
   saved_radio_apply_pending = false;
@@ -1878,11 +1878,19 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.rx_delay = _prefs.rx_delay_base;
   s.rx_gain = _prefs.rx_boosted_gain;
   s.fem_rx_gain = board.isLoRaFemLnaEnabled();
+  s.rx_ps_enabled = _prefs.rx_powersaving_enabled;
+  s.rx_ps_level = _prefs.rx_ps_level;
+  s.rx_ps_preamble = _prefs.rx_ps_preamble;
+  s.rx_ps_rx_us = _prefs.rx_ps_rx_us;
+  s.rx_ps_sleep_us = _prefs.rx_ps_sleep_us;
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
       | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN;
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
+  }
+  if (radio_driver.supportsRxPowerSaving()) {
+    s.capabilities |= WebConfigServer::CAP_RX_POWER_SAVING;
   }
 }
 
@@ -2008,6 +2016,9 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       _prefs.bw = bw;
       _prefs.sf = static_cast<uint8_t>(sf);
       _prefs.cr = static_cast<uint8_t>(cr);
+      recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                                   _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                                   &_prefs.rx_ps_sleep_us);
       savePrefs();
       strcpy(reply, "OK - reboot required");
     }
@@ -2052,6 +2063,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       savePrefs();
       strcpy(reply, "OK");
     }
+    return;
+  }
+  if (strcmp(key, "radio.rxps") == 0) {
+    applyAndSaveRxPowerSaving(value, reply);
     return;
   }
   if (strcmp(key, "radio.fem.rxgain") == 0) {
@@ -3489,6 +3504,115 @@ bool MyMesh::applyAndSaveFemTxGain(bool enabled) {
 
   _prefs.radio_fem_txgain = enabled ? 1 : 0;
   savePrefs();
+  return true;
+}
+
+bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
+  if (!radio_driver.supportsRxPowerSaving()) {
+    strcpy(reply, "Error: RX power saving unsupported");
+    return false;
+  }
+
+  uint8_t enabled = _prefs.rx_powersaving_enabled;
+  uint8_t level = _prefs.rx_ps_level;
+  uint8_t preamble = _prefs.rx_ps_preamble;
+  uint32_t rx_us = _prefs.rx_ps_rx_us;
+  uint32_t sleep_us = _prefs.rx_ps_sleep_us;
+  bool level_requested = false;
+  bool manual_requested = false;
+
+  unsigned long parsed_level = 0;
+  unsigned long parsed_preamble = 0;
+  unsigned long parsed_rx = 0;
+  unsigned long parsed_sleep = 0;
+  char extra = 0;
+
+  if (strcmp(value, "off") == 0) {
+    enabled = 0;
+  } else if (strcmp(value, "on") == 0 || strcmp(value, "conservative") == 0) {
+    enabled = 1;
+    level = RX_POWERSAVING_CONSERVATIVE_LEVEL;
+    preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
+    level_requested = true;
+  } else if (strcmp(value, "balanced") == 0) {
+    enabled = 1;
+    level = RX_POWERSAVING_BALANCED_LEVEL;
+    preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
+    level_requested = true;
+  } else if (sscanf(value, "level %lu preamble %lu %c",
+                    &parsed_level, &parsed_preamble, &extra) == 2) {
+    if (parsed_level < 1 || parsed_level > 10
+        || (parsed_preamble != 16 && parsed_preamble != 32)) {
+      strcpy(reply, "Error: level must be 1-10; preamble must be 16 or 32");
+      return false;
+    }
+    enabled = 1;
+    level = static_cast<uint8_t>(parsed_level);
+    preamble = static_cast<uint8_t>(parsed_preamble);
+    level_requested = true;
+  } else if (sscanf(value, "level %lu %c", &parsed_level, &extra) == 1
+             || sscanf(value, "%lu %c", &parsed_level, &extra) == 1) {
+    if (parsed_level < 1 || parsed_level > 10) {
+      strcpy(reply, "Error: level must be 1-10");
+      return false;
+    }
+    enabled = 1;
+    level = static_cast<uint8_t>(parsed_level);
+    preamble = 0;
+    level_requested = true;
+  } else if (sscanf(value, "%lu %lu %c", &parsed_rx, &parsed_sleep, &extra) == 2) {
+    if (parsed_rx < RX_POWERSAVING_MIN_PERIOD_US
+        || parsed_rx > RX_POWERSAVING_MAX_PERIOD_US
+        || parsed_sleep < RX_POWERSAVING_MIN_PERIOD_US
+        || parsed_sleep > RX_POWERSAVING_MAX_PERIOD_US) {
+      snprintf(reply, 160, "Error: RX/SLEEP must be %lu-%lu us",
+               (unsigned long)RX_POWERSAVING_MIN_PERIOD_US,
+               (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
+      return false;
+    }
+    enabled = 1;
+    rx_us = static_cast<uint32_t>(parsed_rx);
+    sleep_us = static_cast<uint32_t>(parsed_sleep);
+    level = 0;
+    preamble = 0;
+    manual_requested = true;
+  } else {
+    strcpy(reply, "Error: use off, level 1-10, or RX/SLEEP microseconds");
+    return false;
+  }
+
+  if (level_requested) {
+    if (level < 1 || level > 10
+        || (preamble != 0 && preamble != 16 && preamble != 32)
+        || !recalcRxPowerSavingFromLevel(level, _prefs.sf, _prefs.bw, preamble,
+                                         &rx_us, &sleep_us)) {
+      strcpy(reply, "Error: level must be 1-10; preamble must be auto, 16, or 32");
+      return false;
+    }
+  }
+  if ((manual_requested || enabled)
+      && (!isValidRxPowerSavingPeriod(rx_us)
+          || !isValidRxPowerSavingPeriod(sleep_us))) {
+    snprintf(reply, 160, "Error: RX/SLEEP must be %lu-%lu us",
+             (unsigned long)RX_POWERSAVING_MIN_PERIOD_US,
+             (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
+    return false;
+  }
+
+  if (!radio_driver.setRxPowerSaving(enabled != 0, rx_us, sleep_us)) {
+    strcpy(reply, "Error: radio busy; retry");
+    return false;
+  }
+
+  _prefs.rx_powersaving_enabled = enabled;
+  _prefs.rx_ps_rx_us = rx_us;
+  _prefs.rx_ps_sleep_us = sleep_us;
+  _prefs.rx_ps_level = level;
+  _prefs.rx_ps_preamble = preamble;
+  savePrefs();
+  snprintf(reply, 160, "OK - %s,%lu,%lu",
+           enabled ? "on" : "off", (unsigned long)rx_us,
+           (unsigned long)sleep_us);
   return true;
 }
 

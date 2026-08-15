@@ -387,6 +387,22 @@ body.tab-cli{padding-bottom:0}
         <span class="tgl"><input type="checkbox" data-k="radio.rxgain"><u></u></span></div>
       <div class="sw" data-cap="2048"><span><b>FEM RX boost</b><i>External front-end-module LNA</i></span>
         <span class="tgl"><input type="checkbox" data-k="radio.fem.rxgain"><u></u></span></div>
+      <div data-cap="4096" id="rxps-wrap">
+        <div class="sw"><span><b>RX power saving</b><i>Duty-cycle the LoRa receiver; off keeps continuous receive</i></span>
+          <span class="tgl"><input type="checkbox" data-rxps="enabled"><u></u></span></div>
+        <div class="row" id="rxps-options">
+          <div class="f"><label>RXPS level</label>
+            <select data-rxps="level"><option value="1">1 (conservative)</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 (balanced)</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="manual">Manual timings</option></select>
+            <input type="hidden" data-k="radio.rxps"></div>
+          <div class="f" id="rxps-preamble-field"><label>Preamble</label>
+            <select data-rxps="preamble"><option value="0">Auto from spreading factor</option><option value="16">16 symbols</option><option value="32">32 symbols</option></select></div>
+        </div>
+        <div class="row hide" id="rxps-manual">
+          <div class="f"><label>Receive window (&micro;s)</label><input type="number" data-rxps="rx" min="1000" max="30000000" step="1"></div>
+          <div class="f"><label>Sleep window (&micro;s)</label><input type="number" data-rxps="sleep" min="1000" max="30000000" step="1"></div>
+        </div>
+        <div class="hint" id="rxps-hint"></div>
+      </div>
       <div class="sw" data-cap="32"><span><b>Repeat</b><i>Forward mesh traffic. Off = listen-only (still observes and publishes).</i></span>
         <span class="tgl"><input type="checkbox" data-k="repeat"><u></u></span></div>
       <div class="row" style="margin-top:6px" data-cap="64">
@@ -721,6 +737,7 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"rxdelay":return String(r.rxdelay);case"txdelay":return String(r.txdelay);
     case"cad":return r.cad?"on":"off";case"radio.rxgain":return r.rxgain?"on":"off";
     case"radio.fem.rxgain":return r.fem_rxgain?"on":"off";
+    case"radio.rxps":return rxpsCfgValue(r);
     case"repeat":return r.repeat?"on":"off";
     case"flood.max":return String(r.flood_max);
     case"flood.max.advert":return String(r.flood_max_advert);
@@ -750,6 +767,43 @@ function setEl(el,v){
   if(el.type==="checkbox")el.checked=(v==="on");
   else el.value=v;
 }
+function rxpsCfgValue(r){
+  if(!r.rxps_enabled)return"off";
+  var level=Number(r.rxps_level)||0,preamble=Number(r.rxps_preamble)||0;
+  if(level>=1&&level<=10)return"level "+level+((preamble===16||preamble===32)?" preamble "+preamble:"");
+  return String(r.rxps_rx_us||65625)+" "+String(r.rxps_sleep_us||60000);
+}
+function loadRxps(r){
+  var enabled=$('[data-rxps="enabled"]'),level=$('[data-rxps="level"]');
+  if(!enabled||!level)return;
+  enabled.checked=!!r.rxps_enabled;
+  var n=Number(r.rxps_level)||0;level.value=n>=1&&n<=10?String(n):"manual";
+  $('[data-rxps="preamble"]').value=String(r.rxps_preamble===16||r.rxps_preamble===32?r.rxps_preamble:0);
+  $('[data-rxps="rx"]').value=String(r.rxps_rx_us||65625);
+  $('[data-rxps="sleep"]').value=String(r.rxps_sleep_us||60000);
+  refreshRxps(false);
+}
+function refreshRxps(mark){
+  var enabled=$('[data-rxps="enabled"]').checked,level=$('[data-rxps="level"]').value;
+  var manual=level==="manual",preamble=$('[data-rxps="preamble"]').value;
+  $("#rxps-manual").classList.toggle("hide",!manual);
+  $("#rxps-preamble-field").classList.toggle("hide",manual);
+  var value="off";
+  if(enabled){
+    value=manual
+      ? $('[data-rxps="rx"]').value+" "+$('[data-rxps="sleep"]').value
+      : "level "+level+(preamble!=="0"?" preamble "+preamble:"");
+  }
+  var hidden=$('[data-k="radio.rxps"]');hidden.value=value;
+  var dirty=mark&&value!==st.orig["radio.rxps"];
+  $$('[data-rxps]').forEach(function(el){el.classList.toggle("dirty",dirty)});
+  if(mark)markDirty("radio.rxps",value,hidden);
+  $("#rxps-hint").textContent=!enabled
+    ? "Off: the LoRa receiver listens continuously."
+    : manual
+      ? "Custom receive/sleep windows are applied immediately and retained after reboot."
+      : "Level timing is recalculated for the selected SF and bandwidth when saved.";
+}
 function radioCombo(){
   var p={};$$("[data-rg]").forEach(function(el){p[el.dataset.rg]=el.value});
   return p.freq+","+p.bw+","+p.sf+","+p.cr;
@@ -765,6 +819,7 @@ function loadConfig(){
     });
     $$("[data-cfm]").forEach(function(el){el.value=""});
     $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg]);el.classList.remove("dirty")});
+    loadRxps(c.radio);
     st.orig.radio=radioCombo();afHint();
     for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
     syncPacketFilters();
@@ -787,7 +842,9 @@ function afHint(){
 }
 document.addEventListener("input",function(ev){
   var el=ev.target;
-  if(el.dataset.k){
+  if(el.dataset.rxps){
+    refreshRxps(true);
+  }else if(el.dataset.k){
     // keep duplicate fields (wizard vs app share keys) in sync
     $$('[data-k="'+el.dataset.k+'"]').forEach(function(o){if(o!==el)setEl(o,elVal(el))});
     markDirty(el.dataset.k,elVal(el),el);
@@ -1519,6 +1576,7 @@ var CLI_KEYS=[
   ["cad","Listen before transmit",0,"on|off"],
   ["radio.rxgain","SX126x RX boosted gain",0,"on|off"],
   ["radio.fem.rxgain","Front-end module RX gain",0],
+  ["radio.rxps","RX duty-cycle power saving",0,"off|level 1-10|level 1-10 preamble 16|32|rx_us sleep_us"],
   ["radio.watchdog","Restart the radio if silent this long {0-120 min}",0],
   ["int.thresh","Interference threshold",0],
   ["agc.reset.interval","AGC reset interval in seconds",0],

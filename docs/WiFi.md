@@ -196,6 +196,13 @@ WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
 a trusted LAN.
 
+On radio chips that support receive duty cycling, the WebConfig **Advanced**
+card also exposes RX power saving. Its master switch selects continuous receive
+when off or RX/sleep duty cycling when on. Levels 1-10, automatic or explicit
+16/32-symbol preambles, and manual receive/sleep windows are persisted across
+reboots. This radio setting is separate from whole-device sleep; the WiFi
+companion remains awake so its TCP service and configuration page stay reachable.
+
 When `ENABLE_OTA` is included, a WiFi companion also listens on:
 
 - TCP 5001 for the OTA folder seeder used by `motatool serve --tcp`;

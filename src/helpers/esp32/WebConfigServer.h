@@ -58,6 +58,7 @@ public:
     CAP_TX_DELAY = 1UL << 9,
     CAP_WIFI_POWER_SAVE = 1UL << 10,
     CAP_FEM_RX_GAIN = 1UL << 11,
+    CAP_RX_POWER_SAVING = 1UL << 12,
     CAP_DELAYS = CAP_RX_DELAY | CAP_TX_DELAY,
   };
 
@@ -80,6 +81,11 @@ public:
     uint8_t cad;
     uint8_t rx_gain;
     uint8_t fem_rx_gain;
+    uint8_t rx_ps_enabled;
+    uint8_t rx_ps_level;
+    uint8_t rx_ps_preamble;
+    uint32_t rx_ps_rx_us;
+    uint32_t rx_ps_sleep_us;
     uint8_t repeat;
     uint16_t advert_interval;
     uint8_t flood_advert_interval;
