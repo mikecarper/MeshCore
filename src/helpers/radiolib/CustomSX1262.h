@@ -156,6 +156,45 @@ class CustomSX1262 : public SX1262 {
       return _rx_ps_rf_rx_disabled;
     }
 
+    // Select whether a host-controlled RXEN pin is asserted in receive mode.
+    // Some FEM modules (notably the LilyGo T-Beam 1W XY16P35) expose their
+    // external LNA supply on RXEN while DIO2 independently selects the RF
+    // switch.  Swapping RadioLib's table keeps the requested state intact
+    // across RX, CAD, TX, standby, and duty-cycle transitions; a one-shot
+    // digitalWrite() would be overwritten on the next mode change.
+    bool setExternalRxLnaEnabled(bool enabled) {
+    #if defined(SX126X_RXEN)
+      #if defined(SX126X_TXEN)
+        static constexpr uint32_t tx_en = SX126X_TXEN;
+      #else
+        static constexpr uint32_t tx_en = RADIOLIB_NC;
+      #endif
+
+      static const uint32_t pins[Module::RFSWITCH_MAX_PINS] = {
+        SX126X_RXEN, tx_en, RADIOLIB_NC, RADIOLIB_NC, RADIOLIB_NC,
+      };
+      static const Module::RfSwitchMode_t lna_enabled_table[] = {
+        { Module::MODE_IDLE, { LOW,  LOW } },
+        { Module::MODE_RX,   { HIGH, LOW } },
+        { Module::MODE_TX,   { LOW,  HIGH } },
+        END_OF_MODE_TABLE,
+      };
+      static const Module::RfSwitchMode_t lna_disabled_table[] = {
+        { Module::MODE_IDLE, { LOW, LOW } },
+        { Module::MODE_RX,   { LOW, LOW } },
+        { Module::MODE_TX,   { LOW, HIGH } },
+        END_OF_MODE_TABLE,
+      };
+
+      this->mod->setRfSwitchTable(
+          pins, enabled ? lna_enabled_table : lna_disabled_table);
+      return true;
+    #else
+      (void)enabled;
+      return false;
+    #endif
+    }
+
     // BUSY high means the chip is asleep (RX duty-cycle sleep window) or mid
     // command; any SPI access would stall until the chip's next listen window.
     bool isChipBusy() {

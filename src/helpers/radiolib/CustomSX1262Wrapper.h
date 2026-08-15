@@ -78,6 +78,25 @@ public:
     return ((CustomSX1262 *)_radio)->isRxPowerSavingRfRxDisabled();
   }
 
+  // Reconfigure through the normal bounded radio transition so RXEN is never
+  // asserted while a transmission or unread packet owns the radio.  The
+  // selected table is then honored by every RadioLib mode transition.
+  bool setExternalRxLnaEnabled(bool enabled) {
+  #if defined(SX126X_RXEN)
+    if (SX126X_RXEN == RADIOLIB_NC) return false;
+
+    uint8_t resume_rx = beginReconfigure();
+    if (resume_rx > 1) return false;
+
+    bool success = ((CustomSX1262 *)_radio)->setExternalRxLnaEnabled(enabled);
+    endReconfigure(resume_rx);
+    return success;
+  #else
+    (void)enabled;
+    return false;
+  #endif
+  }
+
 protected:
   int startReceiveMode() override {
     if (_rx_ps_armed) {
@@ -118,7 +137,16 @@ protected:
   bool radioDeepInit() override {
     // std_init() re-runs RadioLib begin(), which starts with a hardware reset
     // via NRST - the only way out of a hard-locked chip (BUSY stuck high).
-    return ((CustomSX1262 *)_radio)->std_init();
+    bool success = ((CustomSX1262 *)_radio)->std_init();
+#if defined(TBEAM_1W)
+    // std_init() restores RadioLib's default RXEN table. Reapply the T-Beam
+    // 1W's persisted external-LNA selection before receive mode is re-armed.
+    if (success && _board->canControlLoRaFemLna()) {
+      success = ((CustomSX1262 *)_radio)->setExternalRxLnaEnabled(
+          _board->isLoRaFemLnaEnabled());
+    }
+#endif
+    return success;
   }
   bool supportsRadioDeepInit() const override { return true; }
 

@@ -1,4 +1,5 @@
 #include "TBeam1WBoard.h"
+#include <helpers/radiolib/CustomSX1262Wrapper.h>
 
 void TBeam1WBoard::begin() {
   ESP32Board::begin();
@@ -9,7 +10,10 @@ void TBeam1WBoard::begin() {
   radio_powered = true;
   delay(10);  // Allow radio to power up
 
-  // RF switch RXEN pin handled by RadioLib via setRfSwitchPins()
+  // Keep the external LNA off until RadioLib deliberately enters RX. GPIO21
+  // is subsequently controlled by RadioLib's target-specific RF switch table.
+  pinMode(SX126X_RXEN, OUTPUT);
+  digitalWrite(SX126X_RXEN, LOW);
 
   // Initialize LED
   pinMode(LED_PIN, OUTPUT);
@@ -60,6 +64,29 @@ void TBeam1WBoard::powerOff() {
   digitalWrite(FAN_CTRL_PIN, LOW);
 
   ESP32Board::powerOff();
+}
+
+void TBeam1WBoard::attachRadioDriver(CustomSX1262Wrapper* driver) {
+  radio_driver = driver;
+}
+
+bool TBeam1WBoard::setLoRaFemLnaEnabled(bool enable) {
+  if (radio_driver == nullptr || !radio_driver->setExternalRxLnaEnabled(enable)) {
+    return false;
+  }
+
+  // This is the requested RX-mode state. TX and standby always force CTRL low
+  // regardless of this preference, protecting both the LNA and PA paths.
+  lna_enabled = enable;
+  return true;
+}
+
+bool TBeam1WBoard::canControlLoRaFemLna() const {
+  return radio_driver != nullptr;
+}
+
+bool TBeam1WBoard::isLoRaFemLnaEnabled() const {
+  return lna_enabled;
 }
 
 void TBeam1WBoard::setFanEnabled(bool enabled) {

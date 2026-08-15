@@ -4,6 +4,8 @@
 #include <helpers/ESP32Board.h>
 #include "variant.h"
 
+class CustomSX1262Wrapper;
+
 // LilyGo T-Beam 1W with SX1262 + external PA (XY16P35 module)
 //
 // Power architecture (LDO is separate chip on T-Beam board, not inside XY16P35):
@@ -30,6 +32,8 @@
 class TBeam1WBoard : public ESP32Board {
 private:
   bool radio_powered = false;
+  bool lna_enabled = true;
+  CustomSX1262Wrapper* radio_driver = nullptr;
 
 public:
   void begin();
@@ -38,6 +42,11 @@ public:
   uint16_t getBattMilliVolts() override;
   const char* getManufacturerName() const override;
   void powerOff() override;
+
+  void attachRadioDriver(CustomSX1262Wrapper* driver);
+  bool setLoRaFemLnaEnabled(bool enable) override;
+  bool canControlLoRaFemLna() const override;
+  bool isLoRaFemLnaEnabled() const override;
 
   // Fan control methods
   void setFanEnabled(bool enabled);
