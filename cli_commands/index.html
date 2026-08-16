@@ -1118,10 +1118,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-this-nodes-power-saving-flag-repeater-only" class="md-nav__link">
+  <a href="#view-or-change-this-nodes-power-saving-flag" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change this node's power saving flag (Repeater Only)
+        View or change this node's power saving flag
       
     </span>
   </a>
@@ -3591,10 +3591,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-this-nodes-power-saving-flag-repeater-only" class="md-nav__link">
+  <a href="#view-or-change-this-nodes-power-saving-flag" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change this node's power saving flag (Repeater Only)
+        View or change this node's power saving flag
       
     </span>
   </a>
@@ -5650,7 +5650,7 @@ get clock.sync.status
 <h4 id="view-this-nodes-configured-role">View this node's configured role</h4>
 <p><strong>Usage:</strong> <code>get role</code></p>
 <hr />
-<h4 id="view-or-change-this-nodes-power-saving-flag-repeater-only">View or change this node's power saving flag (Repeater Only)</h4>
+<h4 id="view-or-change-this-nodes-power-saving-flag">View or change this node's power saving flag</h4>
 <p><strong>Usage:</strong>
 - <code>powersaving</code>
 - <code>powersaving on</code>
@@ -5659,7 +5659,8 @@ get clock.sync.status
 - <code>on</code>: enable power saving
 - <code>off</code>: disable power saving</p>
 <p><strong>Default:</strong> <code>off</code></p>
-<p><strong>Note:</strong> When enabled, device enters sleep mode between radio transmissions. Enabling is refused from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
+<p><strong>Note:</strong> Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
+<p>Full Companion firmware accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>).</p>
 <hr />
 <h4 id="control-an-exposed-gpio">Control an exposed GPIO</h4>
 <p><strong>Availability:</strong> ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.</p>
