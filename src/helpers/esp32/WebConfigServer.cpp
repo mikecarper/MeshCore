@@ -585,17 +585,31 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   // AP_STA (not pure AP) so the WiFi scan for the SSID picker works while
   // the AP is up. STA stays unconnected - the bridge won't touch WiFi
   // while wifi_ssid is empty, and `start webconfig ap` requires it stopped.
-  WiFi.mode(WIFI_AP_STA);
+  bool mode_ok = WiFi.mode(WIFI_AP_STA);
   // Setup mode has no login. Drop any STA association so the open setup API is
   // reachable only from the setup AP, not from the operator's LAN.
   WiFi.setAutoReconnect(false);
-  WiFi.disconnect(false, true);
+  bool disconnect_ok = WiFi.disconnect(false, true);
+  delay(100);
   snprintf(_ap_ssid, sizeof(_ap_ssid), "MeshCore-Setup-%02X%02X", _pub_key[0], _pub_key[1]);
+  bool ap_ok = false;
+  for (uint8_t attempt = 1; attempt <= 6 && !ap_ok; ++attempt) {
 #ifdef WEBCONFIG_AP_PASSWORD
-  bool ap_ok = WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD);
+    ap_ok = WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD);
 #else
-  bool ap_ok = WiFi.softAP(_ap_ssid);
+    ap_ok = WiFi.softAP(_ap_ssid);
 #endif
+    if (ap_ok) break;
+
+    Serial.printf(
+        "WebConfig AP attempt %u failed: mode_ok=%d disconnect_ok=%d mode=%d heap=%u largest=%u\n",
+        (unsigned)attempt, mode_ok, disconnect_ok, (int)WiFi.getMode(),
+        (unsigned)ESP.getFreeHeap(),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    WiFi.softAPdisconnect(true);
+    delay(250);
+    mode_ok = WiFi.mode(WIFI_AP_STA);
+  }
   if (!ap_ok) {
     if (!promote_lan) WiFi.mode(WIFI_OFF);
     strcpy(reply, "Err: failed to start AP");
@@ -782,7 +796,11 @@ void WebConfigServer::tick(uint32_t now) {
     } else if (_connect_deadline && (int32_t)(now - _connect_deadline) >= 0) {
       Serial.printf("WebConfig: WiFi '%s' unavailable; opening setup AP\n", _wifi_ssid);
       const bool retry_saved_wifi = _wifi_ssid[0] != 0;
-      WiFi.disconnect(true);
+      // Keep the WiFi driver running while changing from STA to AP+STA.
+      // Powering it off here and starting an AP immediately can race the
+      // asynchronous ESP32-S3 netif teardown and make softAP() return false.
+      WiFi.disconnect(false, false);
+      delay(50);
       _mode = MODE_OFF;
       _connect_deadline = 0;
       char ignored[160];

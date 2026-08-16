@@ -35,6 +35,28 @@ static uint32_t scaleCADDelayForQueue(uint32_t normal_delay, int ready_count,
   return scaled < floor ? floor : scaled;
 }
 
+void Dispatcher::setRadioAvailable(bool available) {
+  if (radio_available == available) return;
+
+  radio_available = available;
+  if (!dispatcher_started || !radio_available) return;
+
+  const unsigned long now = _ms->getMillis();
+  radio_nonrx_start = now;
+  next_floor_calib_time = now;
+  next_agc_reset_time = now;
+  _radio->begin();
+  prev_isrecv_mode = _radio->isInRecvMode();
+  last_observed_radio_irq = _radio->getLastRadioInterruptMillis();
+#ifdef RADIO_LIVENESS_SOFT_ONLY
+  last_radio_activity_ms = now;
+#else
+  radio_liveness.begin(now);
+  nonrx_soft_recovery_attempted = false;
+#endif
+  MESH_DEBUG_PRINTLN("Dispatcher: radio transport activated");
+}
+
 void Dispatcher::begin() {
   n_sent_flood = n_sent_direct = 0;
   n_recv_flood = n_recv_direct = 0;
@@ -49,10 +71,17 @@ void Dispatcher::begin() {
   tx_budget_ms = (unsigned long)(duty_cycle_window_ms * duty_cycle);
   last_budget_update = _ms->getMillis();
 
-  _radio->begin();
-  prev_isrecv_mode = _radio->isInRecvMode();
   const unsigned long now = _ms->getMillis();
-  last_observed_radio_irq = _radio->getLastRadioInterruptMillis();
+  dispatcher_started = true;
+  if (radio_available) {
+    _radio->begin();
+    prev_isrecv_mode = _radio->isInRecvMode();
+    last_observed_radio_irq = _radio->getLastRadioInterruptMillis();
+  } else {
+    prev_isrecv_mode = false;
+    last_observed_radio_irq = 0;
+    MESH_DEBUG_PRINTLN("Dispatcher: starting without a radio transport");
+  }
 #ifdef RADIO_LIVENESS_SOFT_ONLY
   last_radio_activity_ms = now;
 #else
@@ -267,6 +296,14 @@ uint32_t Dispatcher::getRadioWatchdogMillis() const {
 #endif
 
 void Dispatcher::loop() {
+  if (!radio_available) {
+    // Keep packet-manager cleanup alive, but never touch an uninitialized or
+    // physically unavailable radio. sendPacket() rejects new outbound work
+    // while this state is active, so no queue can silently fill up.
+    releaseDroppedOutbound();
+    return;
+  }
+
   if (millisHasNowPassed(next_floor_calib_time)) {
     _radio->triggerNoiseFloorCalibrate(getInterferenceThreshold());
     _radio->setCADEnabled(getCADEnabled());
@@ -713,6 +750,10 @@ void Dispatcher::releasePacket(Packet* packet) {
 }
 
 bool Dispatcher::queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t delay_millis) {
+  if (!radio_available) {
+    MESH_DEBUG_PRINTLN("%s Dispatcher::sendPacket(): radio unavailable", getLogDateTime());
+    return false;
+  }
   if (!Packet::isValidPathLen(packet->path_len) || packet->payload_len > MAX_PACKET_PAYLOAD) {
     MESH_DEBUG_PRINTLN("%s Dispatcher::sendPacket(): ERROR: invalid packet... path_len=%d, payload_len=%d", getLogDateTime(), (uint32_t) packet->path_len, (uint32_t) packet->payload_len);
     return false;

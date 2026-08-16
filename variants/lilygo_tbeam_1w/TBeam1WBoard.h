@@ -33,6 +33,7 @@ class TBeam1WBoard : public ESP32Board {
 private:
   bool radio_powered = false;
   bool lna_enabled = true;
+  bool lna_driver_synced = false;
   CustomSX1262Wrapper* radio_driver = nullptr;
 
 public:
@@ -42,6 +43,7 @@ public:
   uint16_t getBattMilliVolts() override;
   const char* getManufacturerName() const override;
   void powerOff() override;
+  void powerCycleRadio();
 
   void attachRadioDriver(CustomSX1262Wrapper* driver);
   bool setLoRaFemLnaEnabled(bool enable) override;

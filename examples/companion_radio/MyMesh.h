@@ -112,7 +112,9 @@ class MyMesh : public BaseChatMesh, public DataStoreHost
 public:
   MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store, AbstractUITask* ui=NULL);
 
-  void begin(bool has_display);
+  void begin(bool has_display, bool radio_available = true);
+  void activateRadio();
+  bool isRadioReady() const { return _radio_available; }
   void startInterface(BaseSerialInterface &serial);
 
   const char *getNodeName();
@@ -311,6 +313,7 @@ private:
   void updateGpsTelemetryPolicy();
   mesh::RadioParamApplyResult tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
   bool applySavedRadioParams();
+  void configureRadioFromPrefs();
   void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat);
   void cancelPendingRadioParamApply();
   void servicePendingRadioParamApply();
@@ -373,6 +376,7 @@ private:
   char _terminal_trace_target[32];
 #endif
   bool saved_radio_apply_pending;
+  bool _radio_available;
   unsigned long radio_apply_retry_at;
   uint8_t radio_apply_failures;
   bool command_radio_apply_pending;

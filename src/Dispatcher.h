@@ -245,6 +245,8 @@ class Dispatcher {
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
   bool  prev_isrecv_mode;
+  bool  radio_available;
+  bool  dispatcher_started;
   bool  outbound_radio_retry_pending;
   bool  outbound_radio_retry_used;
 #ifndef RADIO_LIVENESS_SOFT_ONLY
@@ -286,6 +288,8 @@ protected:
     _err_flags = 0;
     radio_nonrx_start = 0;
     prev_isrecv_mode = true;
+    radio_available = true;
+    dispatcher_started = false;
     tx_budget_ms = 0;
     last_budget_update = 0;
     duty_cycle_window_ms = 3600000;
@@ -346,6 +350,8 @@ protected:
   }
   bool queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t delay_millis);
   bool tryParsePacket(Packet* pkt, const uint8_t* raw, int len);
+  void setRadioAvailable(bool available);
+  bool isRadioAvailable() const { return radio_available; }
 
 public:
   void begin();

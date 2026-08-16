@@ -9,6 +9,7 @@ public:
 
 class TestRadio : public mesh::Radio {
 public:
+  int begins = 0;
   uint8_t pending_rx[MAX_TRANS_UNIT];
   int pending_rx_len = 0;
   int send_starts = 0;
@@ -26,6 +27,7 @@ public:
   uint8_t sent_raw[3][MAX_TRANS_UNIT] = {};
   int sent_len[3] = {};
 
+  void begin() override { begins++; }
   int recvRaw(uint8_t* dest, int max_len) override {
     if (pending_rx_len == 0) return 0;
     int len = pending_rx_len < max_len ? pending_rx_len : max_len;
@@ -118,7 +120,36 @@ public:
   bool parse(mesh::Packet* packet, const uint8_t* raw, int len) {
     return tryParsePacket(packet, raw, len);
   }
+  void makeRadioAvailable(bool available) { setRadioAvailable(available); }
 };
+
+TEST(Dispatcher, UnavailableRadioDoesNotBlockStartupAndRejectsSends) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+
+  dispatcher.makeRadioAvailable(false);
+  dispatcher.begin();
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.begins);
+  EXPECT_EQ(0, radio.cad_set_calls);
+
+  mesh::Packet* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload[0] = 0x42;
+  packet->payload_len = 1;
+  EXPECT_FALSE(dispatcher.sendPacket(packet, 0));
+  EXPECT_EQ(4, manager.getFreeCount());
+  EXPECT_EQ(packet, dispatcher.failed_packet);
+
+  dispatcher.makeRadioAvailable(true);
+  EXPECT_EQ(1, radio.begins);
+  clock.now = 1;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.cad_set_calls);
+}
 
 TEST(Packet, ReadFromRejectsTruncatedHeadersAndPaths) {
   mesh::Packet packet;

@@ -1293,6 +1293,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   clearTerminalTrace();
 #endif
   saved_radio_apply_pending = false;
+  _radio_available = true;
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
   command_radio_apply_pending = false;
@@ -1373,7 +1374,9 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 #endif
 }
 
-void MyMesh::begin(bool has_display) {
+void MyMesh::begin(bool has_display, bool radio_available) {
+  _radio_available = radio_available;
+  setRadioAvailable(radio_available);
   BaseChatMesh::begin();
 
   const bool is_new_install = !_store->loadMainIdentity(self_id)
@@ -1487,19 +1490,7 @@ void MyMesh::begin(bool has_display) {
     _store->saveChannels(this);
   }
 
-  saved_radio_apply_pending = !applySavedRadioParams();
-  if (!saved_radio_apply_pending) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-  }
-  const bool fem_gain_changed = board.canControlLoRaFemLna()
-      && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
-  if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
-    _radio->recalibrateNoiseFloor();
-  }
-  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
-  MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
-                     radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
+  configureRadioFromPrefs();
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   applyMQTTDefaults(&_mqtt_prefs);
@@ -1539,7 +1530,42 @@ void MyMesh::begin(bool has_display) {
 #endif
 }
 
+void MyMesh::configureRadioFromPrefs() {
+  if (!_radio_available) {
+    saved_radio_apply_pending = false;
+    board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);
+    board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
+    MESH_DEBUG_PRINTLN("Radio unavailable: companion services are running in recovery mode");
+    return;
+  }
+
+  saved_radio_apply_pending = !applySavedRadioParams();
+  if (!saved_radio_apply_pending) {
+    radio_driver.setTxPower(_prefs.tx_power_dbm);
+    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+  }
+  const bool fem_gain_changed = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
+  if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
+    _radio->recalibrateNoiseFloor();
+  }
+  board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
+  MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
+                     radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
+}
+
+void MyMesh::activateRadio() {
+  if (_radio_available) return;
+
+  _radio_available = true;
+  setRadioAvailable(true);
+  configureRadioFromPrefs();
+  MESH_DEBUG_PRINTLN("Radio recovery completed; mesh transport is active");
+}
+
 mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+  if (!_radio_available) return mesh::RadioParamApplyResult::FAILED;
+
   uint32_t rx_us = _prefs.rx_ps_rx_us;
   uint32_t sleep_us = _prefs.rx_ps_sleep_us;
   if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0
@@ -2045,7 +2071,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       snprintf(reply, 160, "Error: TX power must be -9 to %d", MAX_LORA_TX_POWER);
     } else {
       _prefs.tx_power_dbm = static_cast<int8_t>(parsed);
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      if (_radio_available) radio_driver.setTxPower(_prefs.tx_power_dbm);
       savePrefs();
       strcpy(reply, "OK");
     }
@@ -2071,7 +2097,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     } else {
       if (strcmp(key, "radio.rxgain") == 0) {
         _prefs.rx_boosted_gain = enabled;
-        radio_driver.setRxBoostedGainMode(enabled);
+        if (_radio_available) radio_driver.setRxBoostedGainMode(enabled);
       } else {
         _prefs.client_repeat = enabled;
       }
@@ -2837,7 +2863,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       _prefs.tx_power_dbm = power;
       savePrefs();
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
+      if (_radio_available) radio_driver.setTxPower(_prefs.tx_power_dbm);
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_SET_TUNING_PARAMS) {
@@ -3510,7 +3536,7 @@ bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
   const bool changed = board.isLoRaFemLnaEnabled() != enabled;
   if (!board.setLoRaFemLnaEnabled(enabled)) return false;
 
-  if (changed) _radio->recalibrateNoiseFloor();
+  if (changed && _radio_available) _radio->recalibrateNoiseFloor();
   _prefs.radio_fem_rxgain = enabled ? 1 : 0;
   _prefs.radio_fem_rxgain_override = 1;
   savePrefs();
@@ -3636,7 +3662,8 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
     return false;
   }
 
-  if (!radio_driver.setRxPowerSaving(enabled != 0, rx_us, sleep_us)) {
+  if (_radio_available
+      && !radio_driver.setRxPowerSaving(enabled != 0, rx_us, sleep_us)) {
     strcpy(reply, "Error: radio busy; retry");
     return false;
   }
@@ -4846,7 +4873,9 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
-  if (radio_driver.isWatchdogObserving() || radio_driver.isCalibratingNoiseFloor()) return true;
+  if (_radio_available
+      && (radio_driver.isWatchdogObserving()
+          || radio_driver.isCalibratingNoiseFloor())) return true;
   return (_serial != NULL && _serial->hasPendingIO())
       || (_iter_started && _serial != NULL && _serial->isConnected())
       || command_radio_apply_pending

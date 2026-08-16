@@ -6,6 +6,9 @@
 #ifdef ESP32_PLATFORM
 #include "esp_bt.h"
 #endif
+#ifdef TBEAM_1W
+#include <esp_random.h>
+#endif
 
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -121,6 +124,29 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 );
 
 /* END GLOBAL OBJECTS */
+
+#ifdef TBEAM_1W
+static bool companion_radio_available = true;
+static unsigned long companion_radio_retry_at = 0;
+static const unsigned long COMPANION_RADIO_RETRY_MS = 60000UL;
+
+static void serviceCompanionRadioRecovery() {
+  if (companion_radio_available
+      || (long)(millis() - companion_radio_retry_at) < 0) return;
+
+  companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
+  Serial.println("Radio recovery probe starting");
+  board.powerCycleRadio();
+  if (!radio_init()) {
+    Serial.println("Radio recovery probe failed; companion services remain available");
+    return;
+  }
+
+  companion_radio_available = true;
+  the_mesh.activateRadio();
+  Serial.println("Radio recovered; mesh transport is active");
+}
+#endif
 
 #ifdef ESP32_PLATFORM
 static int8_t applied_power_saving = -1;
@@ -705,17 +731,39 @@ void setup() {
 #endif
 
   int radioinit_attempts = 0;
-  while (!radio_init()) {
+  bool radio_available = false;
+  while (!(radio_available = radio_init())) {
     ++radioinit_attempts;
     MESH_DEBUG_PRINTLN("Radio init failed! (attempt %d)", radioinit_attempts);
     if (radioinit_attempts >= 3) {
+#if defined(TBEAM_1W)
+      // Continue into a recovery-capable Companion instead of trapping native
+      // USB in a reboot loop. The main loop retries the radio independently.
+      Serial.println("Radio unavailable; starting display, USB, BLE, and WiFi recovery services");
+      break;
+#else
       MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
       board.reboot();
+#endif
     }
     delay(500);
   }
 
+#ifdef TBEAM_1W
+  companion_radio_available = radio_available;
+  companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
+  fast_rng.begin(radio_available ? radio_driver.getRngSeed() : esp_random());
+#ifdef DISPLAY_CLASS
+  if (!radio_available && disp != NULL) {
+    disp->startFrame();
+    disp->drawTextCentered(disp->width() / 2, 20, "Radio unavailable");
+    disp->drawTextCentered(disp->width() / 2, 40, "Starting WiFi...");
+    disp->endFrame();
+  }
+#endif
+#else
   fast_rng.begin(radio_driver.getRngSeed());
+#endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   InternalFS.begin();
@@ -748,6 +796,8 @@ void setup() {
     #else
         false
     #endif
+        ,
+        radio_available
   );
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
@@ -758,6 +808,8 @@ void setup() {
     #else
         false
     #endif
+        ,
+        radio_available
   );
 #elif defined(ESP32)
   SPIFFS.begin(true);
@@ -768,6 +820,8 @@ void setup() {
     #else
         false
     #endif
+        ,
+        radio_available
   );
 #else
   #error "need to define filesystem"
@@ -874,6 +928,9 @@ void loop() {
   board.feedWatchdog();
 #endif
   the_mesh.loop();
+#ifdef TBEAM_1W
+  serviceCompanionRadioRecovery();
+#endif
 #if defined(ENABLE_USB_INTERFACE)
   serviceUsbTerminal();
 #endif
