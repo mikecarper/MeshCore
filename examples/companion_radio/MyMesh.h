@@ -278,6 +278,7 @@ private:
   void checkSerialInterface();
   bool applyAndSaveFemRxGain(bool enabled);
   bool applyAndSaveFemTxGain(bool enabled);
+  bool applyAndSavePowerSaving(const char* value, char* reply);
   bool applyAndSaveRxPowerSaving(const char* value, char* reply);
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();

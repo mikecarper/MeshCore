@@ -104,6 +104,7 @@ def default_config(setup_mode):
             "rxdelay": 0.0, "txdelay": 0.5, "cad": False, "rxgain": True,
             "rxps_enabled": True, "rxps_level": 5, "rxps_preamble": 16,
             "rxps_rx_us": 20936, "rxps_sleep_us": 13425,
+            "powersaving": False,
             "repeat": True, "flood_max": 64, "flood_max_advert": 8,
             "flood_max_unscoped": 8, "loop_detect": "moderate",
             "name": "MockNode", "lat": 39.7392, "lon": -104.9903,
@@ -196,8 +197,8 @@ class State:
             "uptime_s": int(time.time() - self.start),
             "runtime_slots": 6, "max_slots": 6, "active_slots": self.active_slots,
             # Every ordinary repeater feature except an external FEM, plus
-            # radio RX power saving (bit 12).
-            "capabilities": 0x17FF,
+            # radio RX power saving (bit 12) and device power saving (bit 13).
+            "capabilities": 0x37FF,
             "max_cmds": CLI_MAX_CMDS,
         }
 
@@ -207,6 +208,7 @@ class State:
 # to produce realistic per-field OK / Error replies for the UI chips).
 # ---------------------------------------------------------------------------
 BOOL_KEYS = {"cad": ("radio", "cad"), "radio.rxgain": ("radio", "rxgain"),
+             "powersaving": ("radio", "powersaving"),
              "repeat": ("radio", "repeat"), "mqtt.status": ("mqtt", "status"),
              "mqtt.packets": ("mqtt", "packets"), "mqtt.raw": ("mqtt", "raw"),
              "mqtt.rx": ("mqtt", "rx"), "snmp": ("mqtt", "snmp"),

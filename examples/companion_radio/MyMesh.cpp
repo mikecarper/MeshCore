@@ -1355,6 +1355,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.rx_ps_preamble = RXPS_FIXED_PREAMBLE;
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
+  _prefs.powersaving_enabled = 0;
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
@@ -1437,6 +1438,7 @@ void MyMesh::begin(bool has_display) {
   _prefs.radio_fem_rxgain = constrain(_prefs.radio_fem_rxgain, 0, 1);
   _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
   _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
+  _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
     _prefs.rx_ps_preamble = 0;
@@ -1883,9 +1885,11 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.rx_ps_preamble = _prefs.rx_ps_preamble;
   s.rx_ps_rx_us = _prefs.rx_ps_rx_us;
   s.rx_ps_sleep_us = _prefs.rx_ps_sleep_us;
+  s.power_saving = _prefs.powersaving_enabled;
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
-      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN;
+      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN
+      | WebConfigServer::CAP_POWER_SAVING;
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
   }
@@ -2067,6 +2071,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
   }
   if (strcmp(key, "radio.rxps") == 0) {
     applyAndSaveRxPowerSaving(value, reply);
+    return;
+  }
+  if (strcmp(key, "powersaving") == 0) {
+    applyAndSavePowerSaving(value, reply);
     return;
   }
   if (strcmp(key, "radio.fem.rxgain") == 0) {
@@ -3507,6 +3515,24 @@ bool MyMesh::applyAndSaveFemTxGain(bool enabled) {
   return true;
 }
 
+bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
+  bool enabled;
+  if (strcmp(value, "on") == 0) {
+    enabled = true;
+  } else if (strcmp(value, "off") == 0) {
+    enabled = false;
+  } else {
+    strcpy(reply, "Error: use powersaving on or powersaving off");
+    return false;
+  }
+
+  _prefs.powersaving_enabled = enabled ? 1 : 0;
+  sensors.setPowerSavingEnabled(enabled);
+  savePrefs();
+  snprintf(reply, 160, "OK - powersaving %s", enabled ? "on" : "off");
+  return true;
+}
+
 bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   if (!radio_driver.supportsRxPowerSaving()) {
     strcpy(reply, "Error: RX power saving unsupported");
@@ -4395,6 +4421,14 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
   } else if (strncmp(command, "import ", 7) == 0) {
     importTerminalCard(command + 7);
+  } else if (strcmp(command, "powersaving") == 0
+             || strcmp(command, "get powersaving") == 0) {
+    Serial.printf("  powersaving %s\r\n",
+                  _prefs.powersaving_enabled ? "on" : "off");
+  } else if (strncmp(command, "powersaving ", 12) == 0) {
+    char reply[160];
+    applyAndSavePowerSaving(command + 12, reply);
+    Serial.printf("  %s\r\n", reply);
   } else if (strcmp(command, "get radio.fem.rxgain") == 0) {
     if (!board.canControlLoRaFemLna()) {
       Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
@@ -4411,7 +4445,11 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
   } else if (strncmp(command, "set ", 4) == 0) {
     const char* config = command + 4;
-    if (strncmp(config, "af ", 3) == 0) {
+    if (strncmp(config, "powersaving ", 12) == 0) {
+      char reply[160];
+      applyAndSavePowerSaving(config + 12, reply);
+      Serial.printf("  %s\r\n", reply);
+    } else if (strncmp(config, "af ", 3) == 0) {
       _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
       savePrefs();
       Serial.print("  OK\r\n");
@@ -4472,6 +4510,7 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "help") == 0) {
     Serial.print("Commands:\r\n");
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    Serial.print("  powersaving [on|off]\r\n");
     Serial.print("  get radio.fem.rxgain\r\n");
     Serial.print("  set radio.fem.rxgain <on|off>\r\n");
     Serial.print("  get radio.fem.txgain\r\n");

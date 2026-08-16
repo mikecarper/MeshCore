@@ -50,6 +50,21 @@ public:
   const std::string& text() const { return _text; }
 };
 
+TEST(CompanionNodePrefs, DevicePowerSavingIsIndependentFromRxps) {
+  CompanionNodePrefs prefs = {};
+  prefs.rx_powersaving_enabled = 1;
+  prefs.powersaving_enabled = 0;
+
+  EXPECT_EQ(1, prefs.rx_powersaving_enabled);
+  EXPECT_EQ(0, prefs.powersaving_enabled);
+
+  prefs.powersaving_enabled = 1;
+  prefs.rx_powersaving_enabled = 0;
+
+  EXPECT_EQ(0, prefs.rx_powersaving_enabled);
+  EXPECT_EQ(1, prefs.powersaving_enabled);
+}
+
 #if 0
 // Re-enable test once we can SET fem_ values in companion
 TEST(CompanionNodePrefs, RxGainSettingsRoundTripIndependently) {

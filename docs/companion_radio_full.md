@@ -65,6 +65,21 @@ set radio.fem.txgain on
 The selected states are applied immediately and retained after reboot. FEM TX
 gain is reported as unsupported on boards without software-selectable PA gain.
 
+Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
+with the **Device power saving** switch or from the USB terminal:
+
+```text
+powersaving
+powersaving on
+powersaving off
+```
+
+On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
+and enables the configured GPS duty cycle. Disabling it restores the normal CPU
+clock and keeps GPS awake. Full Companion transports remain available in both
+states; WiFi modem sleep stays enabled when BLE is present because coexistence
+requires it. The selected state is retained after reboot.
+
 Artifacts are written to `out/` by default.
 
 On 4 MB ESP32 boards, the full target uses a single 3 MB application

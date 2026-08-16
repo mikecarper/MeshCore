@@ -387,6 +387,8 @@ body.tab-cli{padding-bottom:0}
         <span class="tgl"><input type="checkbox" data-k="radio.rxgain"><u></u></span></div>
       <div class="sw" data-cap="2048"><span><b>FEM RX boost</b><i>External front-end-module LNA</i></span>
         <span class="tgl"><input type="checkbox" data-k="radio.fem.rxgain"><u></u></span></div>
+      <div class="sw" data-cap="8192"><span><b>Device power saving</b><i>Reduce CPU and GPS idle power; USB, BLE, and WiFi stay available</i></span>
+        <span class="tgl"><input type="checkbox" data-k="powersaving"><u></u></span></div>
       <div data-cap="4096" id="rxps-wrap">
         <div class="sw"><span><b>RX power saving</b><i>Duty-cycle the LoRa receiver; off keeps continuous receive</i></span>
           <span class="tgl"><input type="checkbox" data-rxps="enabled"><u></u></span></div>
@@ -738,6 +740,7 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"cad":return r.cad?"on":"off";case"radio.rxgain":return r.rxgain?"on":"off";
     case"radio.fem.rxgain":return r.fem_rxgain?"on":"off";
     case"radio.rxps":return rxpsCfgValue(r);
+    case"powersaving":return r.powersaving?"on":"off";
     case"repeat":return r.repeat?"on":"off";
     case"flood.max":return String(r.flood_max);
     case"flood.max.advert":return String(r.flood_max_advert);

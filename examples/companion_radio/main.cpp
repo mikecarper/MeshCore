@@ -3,7 +3,6 @@
 #include "MyMesh.h"
 
 #ifdef ESP32_PLATFORM
-#include "esp_pm.h"
 #include "esp_bt.h"
 #endif
 
@@ -121,6 +120,74 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 );
 
 /* END GLOBAL OBJECTS */
+
+#ifdef ESP32_PLATFORM
+static int8_t applied_power_saving = -1;
+static int8_t attempted_power_saving = -1;
+static unsigned long power_saving_retry_at = 0;
+
+static uint32_t companionNominalCpuMhz() {
+#ifdef ESP32_CPU_FREQ
+  return ESP32_CPU_FREQ;
+#else
+  return F_CPU / 1000000UL;
+#endif
+}
+
+static bool applyCompanionPowerSaving(bool enabled) {
+  const uint32_t nominal_mhz = companionNominalCpuMhz();
+  const uint32_t target_mhz = enabled && nominal_mhz > 80 ? 80 : nominal_mhz;
+  if (!setCpuFrequencyMhz(target_mhz)) {
+    Serial.printf("Device power saving failed: CPU %lu MHz is unsupported\r\n",
+                  (unsigned long)target_mhz);
+    return false;
+  }
+
+#if defined(BLE_PIN_CODE) && !CONFIG_IDF_TARGET_ESP32C6
+  esp_err_t bt_result = enabled ? esp_bt_sleep_enable()
+                                : esp_bt_sleep_disable();
+  if (bt_result != ESP_OK) {
+    Serial.printf("Bluetooth sleep %s failed: %s\r\n",
+                  enabled ? "enable" : "disable",
+                  esp_err_to_name(bt_result));
+  }
+#endif
+
+#ifdef WIFI_SSID
+#if defined(BLE_PIN_CODE)
+  // WiFi modem sleep is required for WiFi/BLE coexistence in Full Companion.
+  WiFi.setSleep(true);
+#else
+  WiFi.setSleep(enabled);
+#endif
+#endif
+
+  Serial.printf("Device power saving %s: CPU %lu MHz\r\n",
+                enabled ? "on" : "off", (unsigned long)target_mhz);
+  return true;
+}
+
+static void serviceCompanionPowerSaving(bool force = false) {
+  const int8_t requested = the_mesh.getNodePrefs()->powersaving_enabled ? 1 : 0;
+  if (!force && applied_power_saving == requested) return;
+
+  const unsigned long now = millis();
+  if (!force && attempted_power_saving == requested
+      && power_saving_retry_at != 0
+      && (int32_t)(now - power_saving_retry_at) < 0) {
+    return;
+  }
+
+  attempted_power_saving = requested;
+  if (applyCompanionPowerSaving(requested != 0)) {
+    applied_power_saving = requested;
+    power_saving_retry_at = 0;
+  } else {
+    power_saving_retry_at = now + 5000;
+    if (power_saving_retry_at == 0) power_saving_retry_at = 1;
+  }
+}
+#endif
 
 #if defined(ENABLE_USB_INTERFACE)
 static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
@@ -664,12 +731,12 @@ void setup() {
   the_mesh.startInterface(interface_manager);
   sensors.begin();
 
-#if ENV_INCLUDE_GPS == 1 && defined(BLE_PIN_CODE)
-  // BLE companions keep GPS duty cycling enabled by default: at most 10
-  // minutes awake, followed by 5 minutes asleep.
+#if ENV_INCLUDE_GPS == 1
+  // Device power saving applies a 10-minute awake, 5-minute sleep GPS cycle.
   if (sensors.getLocationProvider() != NULL) {
     sensors.getLocationProvider()->setPowerSavingProfile(600, 300);
-    sensors.setPowerSavingEnabled(true);
+    sensors.setPowerSavingEnabled(
+        the_mesh.getNodePrefs()->powersaving_enabled != 0);
   }
 #endif
 #if ENV_INCLUDE_GPS == 1
@@ -683,34 +750,7 @@ void setup() {
   board.onBootComplete();
 
 #ifdef ESP32_PLATFORM
-#if !CONFIG_IDF_TARGET_ESP32C6
-  // Enable BLE sleep
-  esp_err_t errBLESleep = esp_bt_sleep_enable();
-  if (errBLESleep == ESP_OK) {
-    Serial.println("Bluetooth sleep enabled successfully");
-  } else {
-    Serial.printf("Bluetooth sleep enable failed: %s\n", esp_err_to_name(errBLESleep));
-  }
-#endif
-
-#if CONFIG_IDF_TARGET_ESP32C3
-  esp_pm_config_esp32c3_t pm_config;
-#elif CONFIG_IDF_TARGET_ESP32S3
-  esp_pm_config_esp32s3_t pm_config;
-#elif CONFIG_IDF_TARGET_ESP32
-  esp_pm_config_esp32_t pm_config;
-#elif CONFIG_IDF_TARGET_ESP32C6
-  esp_pm_config_t pm_config;
-#endif
-
-  // Configure Power Management
-  pm_config = { .max_freq_mhz = 80, .min_freq_mhz = 40, .light_sleep_enable = true };
-  esp_err_t errPM = esp_pm_configure(&pm_config);
-  if (errPM == ESP_OK) {
-    Serial.println("Power Management configured successfully");
-  } else {
-    Serial.printf("Power Management failed to configure: %d\r\n", errPM);
-  }
+  serviceCompanionPowerSaving(true);
 #endif
 }
 
@@ -744,9 +784,14 @@ void loop() {
   external_watchdog.loop();
 #endif
 
+#ifdef ESP32_PLATFORM
+  serviceCompanionPowerSaving();
+#endif
+
   // USB power alone (for example, a wall charger) must not disable power
   // saving. Stay awake only while a computer has an active USB data session.
-  bool can_sleep = !the_mesh.hasPendingWork();
+  bool can_sleep = the_mesh.getNodePrefs()->powersaving_enabled
+      && !the_mesh.hasPendingWork();
 #if defined(NRF52_PLATFORM)
   can_sleep = can_sleep && !board.isUsbHostConnected();
 #endif

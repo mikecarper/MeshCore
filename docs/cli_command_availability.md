@@ -96,7 +96,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get/set system.watchdog`](cli_commands.md#enable-or-disable-the-nrf52-system-watchdog) | nRF52 | Yes | Yes | Yes |
 | System | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | All text CLI roles | Yes | Yes | Yes |
 | System | [`get role`](cli_commands.md#view-this-nodes-configured-role) | All text CLI roles | Yes | Yes | Yes |
-| System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag-repeater-only) | Supported repeater board | Feature | Feature | Feature |
+| System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag) | Supported repeater board | Feature | Feature | Feature |
 | System | [`get/set reboot.interval`](#reboot-interval) | Full parser | Yes | Yes | Yes |
 | Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-infrastructure-node-time-after-startup) | Repeater, sensor, and room server; `clock.sync.internet` needs MQTT repeater | Yes | Yes | Yes |
 | Routing | [`get/set repeat`](cli_commands.md#view-or-change-this-nodes-repeat-flag) | Forwarding-capable role | Yes | Yes | Yes |
@@ -253,7 +253,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get/set system.watchdog`](cli_commands.md#enable-or-disable-the-nrf52-system-watchdog) | nRF52 only | No | No | No | No | No | No | No |
 | System | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | Full parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | System | [`get role`](cli_commands.md#view-this-nodes-configured-role) | All text CLI roles | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag-repeater-only) | Supported repeater board | Feature | Feature | Feature | No | No | Feature | Feature |
+| System | [`powersaving`; `powersaving on/off`](cli_commands.md#view-or-change-this-nodes-power-saving-flag) | Supported repeater board | Feature | Feature | Feature | No | No | Feature | Feature |
 | System | [`get/set reboot.interval`](#reboot-interval) | Full parser | Yes | Yes | Yes | No | No | Yes | Yes |
 | Clock sync | [`get/set clock.sync.*`; `clock.sync.mesh now`](cli_commands.md#estimate-and-correct-infrastructure-node-time-after-startup) | Repeater, sensor, and room server; `clock.sync.internet` needs MQTT repeater | Yes | Yes | Yes | No | Yes | Yes | Yes |
 | Routing | [`get/set repeat`](cli_commands.md#view-or-change-this-nodes-repeat-flag) | Forwarding-capable role | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
