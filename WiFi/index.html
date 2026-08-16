@@ -1553,11 +1553,12 @@ once: USB, BLE, and TCP port 5000. It also provides a source-only LoRa mOTA
 service on ports 5001 and 5002. See the
 <a href="../companion_radio_full/">full Companion guide</a> for its build, terminal mode,
 and complete update-source workflow.</p>
-<p>The LilyGo T-Beam 1W Full Companion maps a triple click of the physical button
-labeled <code>17</code> to a persistent WiFi on/off toggle. Turning WiFi off closes the
-WebConfig, Companion TCP, mOTA, and MQTT network services while USB, BLE, the
-display, GPS, and LoRa remain available. The same triple click turns WiFi back
-on even after reboot.</p>
+<p>The LilyGo T-Beam 1W Full Companion maps one press of the physical <code>BOOT</code> button
+(GPIO0) to a persistent WiFi on/off toggle. Turning WiFi off closes WebConfig,
+Companion TCP, mOTA, and MQTT network services while USB, BLE, the display, GPS,
+and LoRa remain available. Another BOOT press turns WiFi back on even after
+reboot. WiFi/WebConfig starts first; BLE starts two seconds later so the ESP32-S3
+can reserve the setup server's internal heap before both radios run together.</p>
 <p>The companion loads runtime credentials saved in NVS. A non-placeholder
 compile-time <code>WIFI_SSID</code>/<code>WIFI_PWD</code> can be used as a first-boot fallback, but
 saved credentials take priority. With no credentials, its WebConfig portal
