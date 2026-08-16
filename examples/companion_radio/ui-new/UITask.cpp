@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include "../CompanionWiFi.h"
 #include "target.h"
 #ifdef WIFI_SSID
   #include <WiFi.h>
@@ -234,8 +235,12 @@ public:
       display.drawTextCentered(display.width() / 2, 22, tmp);
 
       #ifdef WIFI_SSID
-        IPAddress ip = WiFi.localIP();
-        snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        if (isCompanionWiFiEnabled()) {
+          IPAddress ip = WiFi.localIP();
+          snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        } else {
+          strcpy(tmp, "WiFi: OFF");
+        }
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 54, tmp);
       #endif
@@ -622,6 +627,14 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   setCurrScreen(splash);
 }
 
+void UITask::serviceWiFiToggleButton() {
+#if defined(TBEAM_1W) && defined(WIFI_SSID) && defined(PIN_USER_BTN)
+  if (user_btn.check() == BUTTON_EVENT_TRIPLE_CLICK) {
+    handleTripleClick(KEY_SELECT);
+  }
+#endif
+}
+
 void UITask::showAlert(const char* text, int duration_millis) {
   strcpy(_alert, text);
   _alert_expiry = millis() + duration_millis;
@@ -1000,7 +1013,13 @@ char UITask::handleDoubleClick(char c) {
 char UITask::handleTripleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
   checkDisplayOn(c);
+#if defined(TBEAM_1W) && defined(WIFI_SSID)
+  const bool enabled = toggleCompanionWiFi();
+  showAlert(enabled ? "WiFi: ON" : "WiFi: OFF", 1200);
+  _next_refresh = 0;
+#else
   toggleBuzzer();
+#endif
   c = 0;
   return c;
 }

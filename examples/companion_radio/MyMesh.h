@@ -121,6 +121,7 @@ public:
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   void serviceMQTT(const char* wifi_ssid, const char* wifi_password);
+  void stopMQTT();
   bool isMQTTConfigured() const { return _mqtt_configured; }
 #endif
 
@@ -128,6 +129,7 @@ public:
   bool startWebConfig(bool force_ap, char* reply);
   void stopWebConfig();
   void serviceWebConfig();
+  bool isWebConfigActiveOrStopping() const;
   bool isWebConfigSetupActive() const;
   bool isWebConfigWiFiRecoveryActive() const;
 

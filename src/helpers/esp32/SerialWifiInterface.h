@@ -45,6 +45,7 @@ public:
   }
 
   void begin(int port);
+  void end();
 
   // BaseSerialInterface methods
   void enable() override;

@@ -321,6 +321,15 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
   return true;
 }
 
+void WiFiSetupPortal::stop() {
+  _active = false;
+}
+
+bool WiFiSetupPortal::isStopping() const {
+  const PortalImpl* impl = static_cast<const PortalImpl*>(_impl);
+  return impl && impl->task != nullptr;
+}
+
 void WiFiSetupPortal::configureRecovery(const char* ssid, const char* password,
                                         uint32_t interval_ms,
                                         uint32_t initial_delay_ms) {

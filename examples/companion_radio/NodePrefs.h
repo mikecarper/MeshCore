@@ -45,6 +45,7 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t rx_ps_level;            // 0=manual timings, 1..10=level-derived
   uint8_t rx_ps_preamble;         // 0=auto from SF, otherwise 16 or 32
   uint8_t powersaving_enabled;    // device CPU/GPS idle power saving
+  uint8_t wifi_enabled;           // Companion WiFi radio and services
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

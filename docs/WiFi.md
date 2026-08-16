@@ -181,6 +181,12 @@ service on ports 5001 and 5002. See the
 [full Companion guide](./companion_radio_full.md) for its build, terminal mode,
 and complete update-source workflow.
 
+The LilyGo T-Beam 1W Full Companion maps a triple click of the physical button
+labeled `17` to a persistent WiFi on/off toggle. Turning WiFi off closes the
+WebConfig, Companion TCP, mOTA, and MQTT network services while USB, BLE, the
+display, GPS, and LoRa remain available. The same triple click turns WiFi back
+on even after reboot.
+
 The companion loads runtime credentials saved in NVS. A non-placeholder
 compile-time `WIFI_SSID`/`WIFI_PWD` can be used as a first-boot fallback, but
 saved credentials take priority. With no credentials, its WebConfig portal

@@ -14,6 +14,7 @@ public:
   // Starts an open setup AP and captive HTTP form. The AP remains available
   // after a failed association and shuts down shortly after a successful one.
   bool begin(const char* ap_name, SaveCallback save_callback, void* context);
+  void stop();
   // Retry interval is the steady-state cadence. initial_delay_ms defaults to
   // that interval, but callers that opened the portal partway through an
   // outage can preserve the original reconnect schedule with a shorter delay.
@@ -21,6 +22,7 @@ public:
                          uint32_t interval_ms, uint32_t initial_delay_ms = 0);
 
   bool isActive() const { return _active; }
+  bool isStopping() const;
   IPAddress apIP() const { return IPAddress(192, 168, 4, 1); }
 
   // Companion WiFi builds keep their runtime credentials in NVS.

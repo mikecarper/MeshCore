@@ -1356,6 +1356,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
   _prefs.powersaving_enabled = 0;
+  _prefs.wifi_enabled = 1;
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
@@ -1439,6 +1440,7 @@ void MyMesh::begin(bool has_display) {
   _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
   _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
   _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
+  _prefs.wifi_enabled = constrain(_prefs.wifi_enabled, 0, 1);
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
     _prefs.rx_ps_preamble = 0;
@@ -1813,6 +1815,11 @@ void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password) {
     }
   }
 }
+
+void MyMesh::stopMQTT() {
+  if (_mqtt_started && _mqtt_bridge) _mqtt_bridge->end();
+  _mqtt_started = false;
+}
 #endif
 
 #ifdef WITH_WEBCONFIG
@@ -1936,6 +1943,10 @@ void MyMesh::stopWebConfig() {
 
 void MyMesh::serviceWebConfig() {
   if (_webconfig) _webconfig->tick(millis());
+}
+
+bool MyMesh::isWebConfigActiveOrStopping() const {
+  return _webconfig && (_webconfig->isRunning() || _webconfig->isStopping());
 }
 
 bool MyMesh::isWebConfigSetupActive() const {

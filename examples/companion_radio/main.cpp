@@ -1,6 +1,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include "MyMesh.h"
+#include "CompanionWiFi.h"
 
 #ifdef ESP32_PLATFORM
 #include "esp_bt.h"
@@ -431,6 +432,27 @@ void halt() {
   bool wifi_setup_recovery_mode = false;
   static char configured_wifi_ssid[32];
   static char configured_wifi_password[64];
+  static bool companion_wifi_has_credentials = false;
+  static bool companion_wifi_requested = true;
+  static bool companion_wifi_active = false;
+  static bool companion_wifi_disable_in_progress = false;
+  static bool companion_wifi_services_stopped = false;
+
+  bool isCompanionWiFiEnabled() {
+    return companion_wifi_requested;
+  }
+
+  bool toggleCompanionWiFi() {
+    companion_wifi_requested = !companion_wifi_requested;
+    the_mesh.getNodePrefs()->wifi_enabled = companion_wifi_requested ? 1 : 0;
+    the_mesh.savePrefs();
+    if (!companion_wifi_requested && companion_wifi_active) {
+      companion_wifi_disable_in_progress = true;
+    }
+    WIFI_DEBUG_PRINTLN("GPIO 17 triple click requested WiFi %s",
+                       companion_wifi_requested ? "on" : "off");
+    return companion_wifi_requested;
+  }
 
   #if defined(WITH_WEBCONFIG) && defined(DISPLAY_CLASS)
     static DisplayDriver* companion_setup_display = nullptr;
@@ -492,6 +514,7 @@ void halt() {
     configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
     strncpy(configured_wifi_password, password ? password : "", sizeof(configured_wifi_password) - 1);
     configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
+    companion_wifi_has_credentials = true;
     return true;
   }
 #endif
@@ -502,6 +525,7 @@ void halt() {
    `normalradio` here so a host can run an end-to-end mOTA source without occupying the binary port. */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaCli.h>          // mesh::ota::handle_ota_command(line, reply, board)
+  #include <helpers/esp32/WiFiOtaSeeder.h>
   #ifndef OTA_CONSOLE_TCP_PORT
     #define OTA_CONSOLE_TCP_PORT 5002
   #endif
@@ -509,6 +533,18 @@ void halt() {
   static WiFiClient ota_console_client;
   static char    ota_console_line[128];
   static uint8_t  ota_console_len = 0;
+
+  static void ota_console_start() {
+    ota_console_server.begin();
+    WIFI_DEBUG_PRINTLN("OTA console listening on :%d  (nc <ip> %d, type `ota ...`)",
+                       OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
+  }
+
+  static void ota_console_stop() {
+    if (ota_console_client) ota_console_client.stop();
+    ota_console_server.end();
+    ota_console_len = 0;
+  }
 
   static void ota_console_loop() {
     if (!ota_console_client || !ota_console_client.connected()) {
@@ -539,6 +575,107 @@ void halt() {
       } else if (ota_console_len < sizeof(ota_console_line) - 1) {
         ota_console_line[ota_console_len++] = ch;
       }
+    }
+  }
+#endif
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  static void resetCompanionWiFiRecoveryState() {
+    wifi_reconnect_tracker = WiFiReconnectPolicy::Tracker();
+    wifi_setup_attempted = false;
+    last_wifi_setup_attempt = 0;
+    wifi_setup_recovery_mode = false;
+  }
+
+  static void startCompanionWiFi() {
+    if (companion_wifi_active) return;
+
+    board.setInhibitSleep(true);
+    WiFi.setAutoReconnect(true);
+    resetCompanionWiFiRecoveryState();
+
+    if (companion_wifi_has_credentials) {
+      WiFi.mode(WIFI_STA);
+      wifi_reconnect_tracker.noteDisconnected(millis());
+      WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+    }
+#ifndef WITH_WEBCONFIG
+    else if (!wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP,
+                                      saveCompanionWiFi, nullptr)) {
+      WIFI_DEBUG_PRINTLN("WiFi setup: could not start setup portal");
+    }
+#endif
+#ifdef WITH_WEBCONFIG
+    if (WebConfigServer::loadEnabled(true)) {
+      char web_reply[160];
+      the_mesh.startWebConfig(!companion_wifi_has_credentials, web_reply);
+      WIFI_DEBUG_PRINTLN("%s", web_reply);
+    }
+#endif
+
+#if defined(BLE_PIN_CODE)
+    WiFi.setSleep(true);
+#else
+    WiFi.setSleep(false);
+#endif
+    wifi_interface.begin(TCP_PORT);
+    wifi_interface.enable();
+#ifdef ENABLE_OTA
+    ota_console_start();
+#endif
+    companion_wifi_active = true;
+    companion_wifi_services_stopped = false;
+    WIFI_DEBUG_PRINTLN("WiFi enabled by GPIO 17 control");
+  }
+
+  static void stopCompanionWiFiServices() {
+    if (companion_wifi_services_stopped) return;
+    wifi_interface.end();
+#ifdef ENABLE_OTA
+    ota_console_stop();
+    mesh::ota::WiFiOtaSeeder::stop();
+#endif
+#ifdef WITH_MQTT_BRIDGE
+    the_mesh.stopMQTT();
+#endif
+    companion_wifi_services_stopped = true;
+  }
+
+  static bool finishStoppingCompanionWiFi() {
+    stopCompanionWiFiServices();
+#ifdef WITH_WEBCONFIG
+    if (the_mesh.isWebConfigActiveOrStopping()) {
+      the_mesh.stopWebConfig();
+      return false;
+    }
+#else
+    if (wifiSetupPortal().isActive()) {
+      wifiSetupPortal().stop();
+      return false;
+    }
+    if (wifiSetupPortal().isStopping()) return false;
+#endif
+
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_OFF);
+    board.setInhibitSleep(false);
+    resetCompanionWiFiRecoveryState();
+    companion_wifi_active = false;
+    WIFI_DEBUG_PRINTLN("WiFi radio disabled by GPIO 17 control");
+    return true;
+  }
+
+  static void serviceCompanionWiFiState() {
+    if (!companion_wifi_requested && companion_wifi_active) {
+      companion_wifi_disable_in_progress = true;
+    }
+    if (companion_wifi_disable_in_progress) {
+      if (!finishStoppingCompanionWiFi()) return;
+      companion_wifi_disable_in_progress = false;
+    }
+    if (companion_wifi_requested && !companion_wifi_active) {
+      startCompanionWiFi();
     }
   }
 #endif
@@ -644,64 +781,39 @@ void setup() {
 
 // add wifi interface
 #ifdef WIFI_SSID
-  board.setInhibitSleep(true);   // prevent sleep when WiFi is active
-  WiFi.setAutoReconnect(true);
-
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-          WIFI_DEBUG_PRINTLN("WiFi disconnected; automatic recovery is active");
+          if (companion_wifi_requested) {
+            WIFI_DEBUG_PRINTLN("WiFi disconnected; automatic recovery is active");
+          }
       } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
           WIFI_DEBUG_PRINTLN("connected! IP %s  (companion app on :%d)",
                              WiFi.localIP().toString().c_str(), TCP_PORT);
       }
   });
 
-  bool have_wifi = WiFiSetupPortal::loadStoredCredentials(
+  companion_wifi_has_credentials = WiFiSetupPortal::loadStoredCredentials(
       configured_wifi_ssid, sizeof(configured_wifi_ssid),
       configured_wifi_password, sizeof(configured_wifi_password));
-  if (!have_wifi && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
+  if (!companion_wifi_has_credentials
+      && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
     strncpy(configured_wifi_ssid, WIFI_SSID, sizeof(configured_wifi_ssid) - 1);
     configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
     strncpy(configured_wifi_password, WIFI_PWD, sizeof(configured_wifi_password) - 1);
     configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
-    have_wifi = true;
+    companion_wifi_has_credentials = true;
   }
 
-  if (have_wifi) {
-    WiFi.mode(WIFI_STA);
-    wifi_reconnect_tracker.noteDisconnected(millis());
-    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
-  }
-#ifndef WITH_WEBCONFIG
-  else if (!wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP, saveCompanionWiFi, nullptr)) {
-    WIFI_DEBUG_PRINTLN("WiFi setup: could not start setup portal");
-  }
-#endif
-  #ifdef WITH_WEBCONFIG
-    // WiFi companions expose the shared WebUI by default. With no stored
-    // credentials it opens the captive setup AP; otherwise it waits for the
-    // station connection and serves the same page on the LAN.
-    if (WebConfigServer::loadEnabled(true)) {
-      char web_reply[160];
-      the_mesh.startWebConfig(!have_wifi, web_reply);
-      WIFI_DEBUG_PRINTLN("%s", web_reply);
-    }
-  #endif
-  // ESP-IDF requires WiFi modem sleep when Bluetooth is active. Full ESP32
-  // companions provide both transports, so use the lowest sleep policy there;
-  // WiFi-only companions keep modem sleep disabled to avoid pauses in SX1262
-  // SPI/DIO service.
-#if defined(BLE_PIN_CODE)
-  WiFi.setSleep(true);
-#else
-  WiFi.setSleep(false);
-#endif
-  wifi_interface.begin(TCP_PORT);
   interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
-  #ifdef ENABLE_OTA
-    ota_console_server.begin();  // dedicated OTA text-console port (`nc <ip> 5002` -> `ota ...`)
-    WIFI_DEBUG_PRINTLN("OTA console listening on :%d  (nc <ip> %d, type `ota ...`)", OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
-  #endif
+  companion_wifi_requested = the_mesh.getNodePrefs()->wifi_enabled != 0;
+  if (companion_wifi_requested) {
+    startCompanionWiFi();
+  } else {
+    WiFi.setAutoReconnect(false);
+    WiFi.mode(WIFI_OFF);
+    board.setInhibitSleep(false);
+    WIFI_DEBUG_PRINTLN("WiFi remains off from the saved GPIO 17 setting");
+  }
 #endif
 
 // add usb interface
@@ -729,6 +841,9 @@ void setup() {
 #endif
 
   the_mesh.startInterface(interface_manager);
+#if defined(ESP32) && defined(WIFI_SSID)
+  if (!companion_wifi_requested) wifi_interface.disable();
+#endif
   sensors.begin();
 
 #if ENV_INCLUDE_GPS == 1
@@ -766,11 +881,12 @@ void loop() {
   sensors.loop();
 #ifdef DISPLAY_CLASS
   #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)
-  if (the_mesh.isWebConfigSetupActive()
+  if (isCompanionWiFiEnabled() && (the_mesh.isWebConfigSetupActive()
   #ifdef WITH_MQTT_BRIDGE
       || !the_mesh.isMQTTConfigured()
   #endif
-     ) {
+     )) {
+    ui_task.serviceWiFiToggleButton();
     renderCompanionSetupDisplay();
   } else {
     ui_task.loop();
@@ -807,6 +923,8 @@ void loop() {
   #ifdef WITH_WEBCONFIG
     the_mesh.serviceWebConfig();
   #endif
+  serviceCompanionWiFiState();
+  if (companion_wifi_requested && companion_wifi_active) {
   #ifdef ENABLE_OTA
     ota_console_loop();  // service the OTA text console (port 5002)
   #endif
@@ -903,5 +1021,6 @@ void loop() {
 #ifdef WITH_MQTT_BRIDGE
   the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password);
 #endif
+  }
 #endif
 }

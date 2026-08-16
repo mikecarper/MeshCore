@@ -65,6 +65,21 @@ TEST(CompanionNodePrefs, DevicePowerSavingIsIndependentFromRxps) {
   EXPECT_EQ(1, prefs.powersaving_enabled);
 }
 
+TEST(CompanionNodePrefs, WiFiStateIsIndependentFromPowerSaving) {
+  CompanionNodePrefs prefs = {};
+  prefs.wifi_enabled = 1;
+  prefs.powersaving_enabled = 0;
+
+  EXPECT_EQ(1, prefs.wifi_enabled);
+  EXPECT_EQ(0, prefs.powersaving_enabled);
+
+  prefs.wifi_enabled = 0;
+  prefs.powersaving_enabled = 1;
+
+  EXPECT_EQ(0, prefs.wifi_enabled);
+  EXPECT_EQ(1, prefs.powersaving_enabled);
+}
+
 #if 0
 // Re-enable test once we can SET fem_ values in companion
 TEST(CompanionNodePrefs, RxGainSettingsRoundTripIndependently) {

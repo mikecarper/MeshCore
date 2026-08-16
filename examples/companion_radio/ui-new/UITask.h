@@ -80,6 +80,7 @@ public:
     curr = NULL;
   }
   void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
+  void serviceWiFiToggleButton();
 
   void gotoHomeScreen() { setCurrScreen(home); }
   void showAlert(const char* text, int duration_millis);
