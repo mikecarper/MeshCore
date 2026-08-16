@@ -80,21 +80,24 @@ clock and keeps GPS awake. Full Companion transports remain available in both
 states; WiFi modem sleep stays enabled when BLE is present because coexistence
 requires it. The selected state is retained after reboot.
 
-On the LilyGo T-Beam 1W Full Companion, triple-click the physical button
-labeled `17` to turn the ESP32 WiFi radio and all WiFi services off or on. The
-screen confirms `WiFi: OFF` or `WiFi: ON`, and the selected state is retained
-after reboot. When WiFi is off, TCP ports 5000-5002, WebConfig, and MQTT are
-stopped; USB, BLE, the display, GPS, and LoRa continue to operate. Triple-click
-button 17 again to restore WiFi, including the saved station or setup-AP mode.
+On the LilyGo T-Beam 1W Full Companion, press the physical `BOOT` button once
+to turn the ESP32 WiFi radio and all WiFi services off or on. The screen confirms
+`WiFi: OFF` or `WiFi: ON`, and the selected state is retained after reboot. When
+WiFi is off, TCP ports 5000-5002, WebConfig, and MQTT are stopped; USB, BLE, the
+display, GPS, and LoRa continue to operate. Press BOOT again to restore WiFi,
+including the saved station or setup-AP mode. On boot, BLE starts two seconds
+after WiFi/WebConfig so their peak startup allocations do not overlap.
 
 Artifacts are written to `out/` by default.
 
-On 4 MB ESP32 boards, the full target uses a single 3 MB application
-partition so WiFi, BLE, WebConfig, and source-only mOTA fit together. Flash
-the generated `-merged.bin` when first installing this partition layout.
-Boards with 8 MB or more retain dual application partitions. Heltec V2 and
-TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline queue in
-this combined profile because of internal DRAM limits.
+On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
+so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
+Companion uses that same LilyGo factory-compatible boot layout on its 16 MB
+flash because this source-only role does not install updates into a second app
+slot. Flash the generated `-merged.bin` when first installing this partition
+layout. Other boards with 8 MB or more retain dual application partitions.
+Heltec V2 and TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline
+queue in this combined profile because of internal DRAM limits.
 
 The nRF52 target inherits the board's ordinary USB Companion installation
 format and adds BLE plus the serial mOTA source. It does not enable an SD cache

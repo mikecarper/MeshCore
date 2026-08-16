@@ -13,6 +13,9 @@
   #include <helpers/ui/MomentaryButton.h>
   extern DISPLAY_CLASS display;
   extern MomentaryButton user_btn;
+  #ifdef PIN_WIFI_BTN
+    extern MomentaryButton wifi_btn;
+  #endif
 #endif
 
 extern TBeam1WBoard board;
@@ -22,4 +25,3 @@ extern EnvironmentSensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

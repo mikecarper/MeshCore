@@ -18,8 +18,15 @@ if os.environ.get("MESHCORE_ESP32_FULL_BUILD") == "1":
     companion_radio_full = (
         os.environ.get("MESHCORE_COMPANION_RADIO_FULL") == "1"
     )
+    tbeam_1w = board.get("build.variant", "") == "lilygo_tbeam_1w"
 
-    if flash_size >= 16 * 1024 * 1024:
+    if companion_radio_full and tbeam_1w:
+        # The Full Companion is an mOTA source only and never installs into a
+        # second local app slot. Match LilyGo's factory T-Beam 1W boot layout so
+        # a merged recovery image changes only the application, not the proven
+        # boot/partition chain. The 3 MiB app slot has ample room for this role.
+        partitions = "huge_app.csv"
+    elif flash_size >= 16 * 1024 * 1024:
         partitions = "default_16MB.csv"
     elif flash_size >= 8 * 1024 * 1024:
         partitions = "default_8MB.csv"

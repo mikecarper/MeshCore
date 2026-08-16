@@ -5,6 +5,9 @@
 
 #ifdef ESP32_PLATFORM
 #include "esp_bt.h"
+#if defined(COMPANION_RADIO_FULL)
+#include <esp_heap_caps.h>
+#endif
 #endif
 #ifdef TBEAM_1W
 #include <esp_random.h>
@@ -464,6 +467,20 @@ void halt() {
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
 
+  static void loadCompanionWiFiCredentials() {
+    companion_wifi_has_credentials = WiFiSetupPortal::loadStoredCredentials(
+        configured_wifi_ssid, sizeof(configured_wifi_ssid),
+        configured_wifi_password, sizeof(configured_wifi_password));
+    if (!companion_wifi_has_credentials
+        && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
+      strncpy(configured_wifi_ssid, WIFI_SSID, sizeof(configured_wifi_ssid) - 1);
+      configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
+      strncpy(configured_wifi_password, WIFI_PWD, sizeof(configured_wifi_password) - 1);
+      configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
+      companion_wifi_has_credentials = true;
+    }
+  }
+
   bool isCompanionWiFiEnabled() {
     return companion_wifi_requested;
   }
@@ -475,7 +492,7 @@ void halt() {
     if (!companion_wifi_requested && companion_wifi_active) {
       companion_wifi_disable_in_progress = true;
     }
-    WIFI_DEBUG_PRINTLN("GPIO 17 triple click requested WiFi %s",
+    WIFI_DEBUG_PRINTLN("BOOT/GPIO 0 click requested WiFi %s",
                        companion_wifi_requested ? "on" : "off");
     return companion_wifi_requested;
   }
@@ -651,7 +668,7 @@ void halt() {
 #endif
     companion_wifi_active = true;
     companion_wifi_services_stopped = false;
-    WIFI_DEBUG_PRINTLN("WiFi enabled by GPIO 17 control");
+    WIFI_DEBUG_PRINTLN("WiFi enabled by BOOT/GPIO 0 control");
   }
 
   static void stopCompanionWiFiServices() {
@@ -688,7 +705,7 @@ void halt() {
     board.setInhibitSleep(false);
     resetCompanionWiFiRecoveryState();
     companion_wifi_active = false;
-    WIFI_DEBUG_PRINTLN("WiFi radio disabled by GPIO 17 control");
+    WIFI_DEBUG_PRINTLN("WiFi radio disabled by BOOT/GPIO 0 control");
     return true;
   }
 
@@ -703,6 +720,47 @@ void halt() {
     if (companion_wifi_requested && !companion_wifi_active) {
       startCompanionWiFi();
     }
+  }
+#endif
+
+#if defined(BLE_PIN_CODE)
+  static bool companion_bluetooth_initialized = false;
+#if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
+  static uint32_t companion_bluetooth_start_at = 0;
+#endif
+
+  static void startCompanionBluetooth() {
+    if (companion_bluetooth_initialized) return;
+
+    Serial.println("Companion: starting Bluetooth");
+    bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name,
+                              the_mesh.getBLEPin());
+    if (!interface_manager.addInterface(InterfaceType::Bluetooth,
+                                        &bluetooth_interface)) {
+      Serial.println("Companion: no interface slot available for Bluetooth");
+      return;
+    }
+    companion_bluetooth_initialized = true;
+    if (interface_manager.isEnabled()) bluetooth_interface.enable();
+  }
+
+  static void serviceDeferredCompanionBluetooth() {
+    if (companion_bluetooth_initialized) return;
+#if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
+    if (companion_bluetooth_start_at == 0
+        || (int32_t)(millis() - companion_bluetooth_start_at) < 0) return;
+#endif
+    startCompanionBluetooth();
+  }
+#endif
+
+#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+  static void logFullCompanionMemory(const char* stage) {
+    Serial.printf(
+        "Full Companion memory %s: heap=%u largest_internal=%u psram_free=%u/%u\r\n",
+        stage, (unsigned)ESP.getFreeHeap(),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned)ESP.getFreePsram(), (unsigned)ESP.getPsramSize());
   }
 #endif
 
@@ -827,10 +885,13 @@ void setup() {
   #error "need to define filesystem"
 #endif
 
-// add bluetooth interface
-#if defined(BLE_PIN_CODE)
-  bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
-  interface_manager.addInterface(InterfaceType::Bluetooth, &bluetooth_interface);
+// Load WiFi state before bringing up either wireless stack.
+#ifdef WIFI_SSID
+  loadCompanionWiFiCredentials();
+#endif
+
+#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+  logFullCompanionMemory("before interfaces");
 #endif
 
 // add wifi interface
@@ -846,18 +907,6 @@ void setup() {
       }
   });
 
-  companion_wifi_has_credentials = WiFiSetupPortal::loadStoredCredentials(
-      configured_wifi_ssid, sizeof(configured_wifi_ssid),
-      configured_wifi_password, sizeof(configured_wifi_password));
-  if (!companion_wifi_has_credentials
-      && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
-    strncpy(configured_wifi_ssid, WIFI_SSID, sizeof(configured_wifi_ssid) - 1);
-    configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
-    strncpy(configured_wifi_password, WIFI_PWD, sizeof(configured_wifi_password) - 1);
-    configured_wifi_password[sizeof(configured_wifi_password) - 1] = '\0';
-    companion_wifi_has_credentials = true;
-  }
-
   interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
   companion_wifi_requested = the_mesh.getNodePrefs()->wifi_enabled != 0;
   if (companion_wifi_requested) {
@@ -866,8 +915,25 @@ void setup() {
     WiFi.setAutoReconnect(false);
     WiFi.mode(WIFI_OFF);
     board.setInhibitSleep(false);
-    WIFI_DEBUG_PRINTLN("WiFi remains off from the saved GPIO 17 setting");
+    WIFI_DEBUG_PRINTLN("WiFi remains off from the saved BOOT/GPIO 0 setting");
   }
+#endif
+
+#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+  logFullCompanionMemory("after WiFi start");
+#endif
+
+// The Full ESP32 profile starts WiFi/WebConfig first, gives its AP/server two
+// seconds to settle and reserve heap, then starts BLE from loop(). Other BLE
+// companions keep their existing immediate startup.
+#if defined(BLE_PIN_CODE)
+  #if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
+    companion_bluetooth_start_at = millis() + 2000UL;
+    if (companion_bluetooth_start_at == 0) companion_bluetooth_start_at = 1;
+    Serial.println("Companion: Bluetooth starts in 2 seconds");
+  #else
+    startCompanionBluetooth();
+  #endif
 #endif
 
 // add usb interface
@@ -1079,5 +1145,8 @@ void loop() {
   the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password);
 #endif
   }
+#endif
+#if defined(BLE_PIN_CODE)
+  serviceDeferredCompanionBluetooth();
 #endif
 }

@@ -8,6 +8,12 @@ TBeam1WBoard board;
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display;
   MomentaryButton user_btn(PIN_USER_BTN, 1000, true);
+  #ifdef PIN_WIFI_BTN
+    // The BOOT switch is also a normal active-low GPIO after startup. Treat it
+    // as a dedicated single-click control; the board supplies a 10K pull-up,
+    // and enabling the ESP32 pull-up as well keeps the input deterministic.
+    MomentaryButton wifi_btn(PIN_WIFI_BTN, 0, true, true, false);
+  #endif
 #endif
 
 static SPIClass spi;

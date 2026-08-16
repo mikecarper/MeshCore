@@ -598,6 +598,9 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 #if defined(PIN_USER_BTN)
   user_btn.begin();
 #endif
+#if defined(TBEAM_1W) && defined(WIFI_SSID) && defined(PIN_WIFI_BTN)
+  wifi_btn.begin();
+#endif
 #if defined(PIN_USER_BTN_ANA)
   analog_btn.begin();
 #endif
@@ -628,9 +631,11 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 }
 
 void UITask::serviceWiFiToggleButton() {
-#if defined(TBEAM_1W) && defined(WIFI_SSID) && defined(PIN_USER_BTN)
-  if (user_btn.check() == BUTTON_EVENT_TRIPLE_CLICK) {
-    handleTripleClick(KEY_SELECT);
+#if defined(TBEAM_1W) && defined(WIFI_SSID) && defined(PIN_WIFI_BTN)
+  if (wifi_btn.check() == BUTTON_EVENT_CLICK) {
+    const bool enabled = toggleCompanionWiFi();
+    showAlert(enabled ? "WiFi: ON" : "WiFi: OFF", 1200);
+    _next_refresh = 0;
   }
 #endif
 }
@@ -812,6 +817,8 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
+  serviceWiFiToggleButton();
+
   if (_interfaceManager->takePairingRequest()) {
     showPairingPin();
   }
@@ -1013,13 +1020,7 @@ char UITask::handleDoubleClick(char c) {
 char UITask::handleTripleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: triple click triggered");
   checkDisplayOn(c);
-#if defined(TBEAM_1W) && defined(WIFI_SSID)
-  const bool enabled = toggleCompanionWiFi();
-  showAlert(enabled ? "WiFi: ON" : "WiFi: OFF", 1200);
-  _next_refresh = 0;
-#else
   toggleBuzzer();
-#endif
   c = 0;
   return c;
 }
