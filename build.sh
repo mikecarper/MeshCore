@@ -84,6 +84,7 @@ Commands:
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
   build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures.
+  build-companion-firmwares-logging-matrix: Build every Companion target (including Full Companion and legacy FEM variants) in each applicable standard, logging, MQTT, and expanded FULL profile.
   build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with up to 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
@@ -127,6 +128,9 @@ $ bash build.sh build-full-esp32-logging-firmwares
 
 Build all companion firmwares
 $ bash build.sh build-companion-firmwares
+
+Build the complete Companion-only release matrix
+$ bash build.sh build-companion-firmwares-logging-matrix
 
 Build all full Companion firmwares
 $ bash build.sh build-full-companion-firmwares
@@ -607,7 +611,14 @@ prompt_for_mqtt_bridge_build_setting() {
 }
 
 is_logging_matrix_command() {
-  [ "$1" == "build-firmwares-logging-matrix" ]
+  case "$1" in
+    build-firmwares-logging-matrix|build-companion-firmwares-logging-matrix)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 is_full_esp32_command() {
@@ -2845,6 +2856,13 @@ resolve_companion_firmwares() {
   done < <(get_pio_envs_for_variant_role companion)
 }
 
+resolve_all_companion_firmwares() {
+  # Corrective/replacement releases must cover every published Companion
+  # artifact, including generated Full Companion aliases and the legacy
+  # _femoff variants omitted from the canonical day-to-day bulk command.
+  get_pio_envs_for_variant_role companion
+}
+
 resolve_full_companion_firmwares() {
   local env_name
 
@@ -2893,6 +2911,9 @@ get_bulk_build_resolver_name() {
       ;;
     build-firmwares-logging-matrix)
       echo "resolve_all_firmwares"
+      ;;
+    build-companion-firmwares-logging-matrix)
+      echo "resolve_all_companion_firmwares"
       ;;
     build-full-esp32-firmwares)
       echo "resolve_full_esp32_firmwares"
