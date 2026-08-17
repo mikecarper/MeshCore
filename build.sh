@@ -3392,7 +3392,11 @@ run_full_esp32_profile() {
 
   run_logged_build_targets "${full_targets[@]}"
   pass_status=$?
-  if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  if [ "$pass_status" -eq 130 ]; then
+    build_status=130
+  elif [ "$pass_status" -ne 0 ]; then
+    build_status=1
+  fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override
   PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
@@ -3476,6 +3480,7 @@ run_logging_matrix_build_targets() {
   if [ ${#standard_targets[@]} -gt 0 ]; then
     run_logged_build_targets "${standard_targets[@]}"
     pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
@@ -3520,6 +3525,7 @@ run_logging_matrix_build_targets() {
     FIRMWARE_FILENAME_INFIX="logging"
     run_logged_build_targets "${logging_targets[@]}"
     pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
@@ -3531,6 +3537,7 @@ run_logging_matrix_build_targets() {
     FIRMWARE_FILENAME_INFIX="logging"
     run_logged_build_targets "${constrained_logging_targets[@]}"
     pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
@@ -3543,6 +3550,7 @@ run_logging_matrix_build_targets() {
     FIRMWARE_FILENAME_INFIX=""
     run_logged_build_targets "${mqtt_targets[@]}"
     pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   else
     echo "No MQTT bridge targets are configured; skipping profile 3/5."
@@ -3550,10 +3558,12 @@ run_logging_matrix_build_targets() {
 
   run_full_esp32_profile "Profile 4/5" "off" "${targets[@]}"
   pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
   run_full_esp32_profile "Profile 5/5" "on" "${targets[@]}"
   pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
   MESHDEBUG_OVERRIDE=$original_meshdebug_override

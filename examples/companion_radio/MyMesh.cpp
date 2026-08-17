@@ -1451,9 +1451,6 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
   _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
   _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
-  _prefs.powersaving_policy_version = constrain(
-      _prefs.powersaving_policy_version, 0,
-      COMPANION_POWERSAVING_POLICY_VERSION);
   _prefs.wifi_enabled = constrain(_prefs.wifi_enabled, 0, 1);
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {

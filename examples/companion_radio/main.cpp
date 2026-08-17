@@ -1009,7 +1009,9 @@ void loop() {
       || !the_mesh.isMQTTConfigured()
   #endif
      )) {
+  #if defined(TBEAM_1W) && defined(PIN_WIFI_BTN)
     ui_task.serviceWiFiToggleButton();
+  #endif
     renderCompanionSetupDisplay();
   } else {
     ui_task.loop();
