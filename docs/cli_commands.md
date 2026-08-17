@@ -1086,11 +1086,11 @@ get clock.sync.status
 - `on`: enable power saving
 - `off`: disable power saving
 
-**Default:** `off`
+**Default:** `off` for infrastructure roles; `on` for Companion firmware
 
 **Note:** Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.
 
-Full Companion firmware accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. `powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`).
+Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. `powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`).
 
 ---
 

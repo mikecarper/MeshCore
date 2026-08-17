@@ -80,6 +80,23 @@ TEST(CompanionNodePrefs, WiFiStateIsIndependentFromPowerSaving) {
   EXPECT_EQ(1, prefs.powersaving_enabled);
 }
 
+TEST(CompanionNodePrefs, MigratesRegressedPowerSavingDefaultOnce) {
+  CompanionNodePrefs prefs = {};
+  prefs.powersaving_enabled = 0;
+  prefs.powersaving_policy_version = 0;
+
+  EXPECT_TRUE(migrateCompanionPowerSavingDefault(prefs));
+  EXPECT_EQ(1, prefs.powersaving_enabled);
+  EXPECT_EQ(COMPANION_POWERSAVING_POLICY_VERSION,
+            prefs.powersaving_policy_version);
+
+  // Once migrated, an explicit user choice to turn power saving off remains
+  // untouched on later boots.
+  prefs.powersaving_enabled = 0;
+  EXPECT_FALSE(migrateCompanionPowerSavingDefault(prefs));
+  EXPECT_EQ(0, prefs.powersaving_enabled);
+}
+
 #if 0
 // Re-enable test once we can SET fem_ values in companion
 TEST(CompanionNodePrefs, RxGainSettingsRoundTripIndependently) {

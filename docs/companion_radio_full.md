@@ -74,6 +74,11 @@ powersaving on
 powersaving off
 ```
 
+Companion firmware defaults device power saving to on. Version 1.17.1.2 also
+turns it on once when upgrading an older Companion preference file, including
+one written by the short-lived default-off regression. After that one-time
+migration, an explicit `powersaving off` selection remains persistent.
+
 On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
 and enables the configured GPS duty cycle. Disabling it restores the normal CPU
 clock and keeps GPS awake. Full Companion transports remain available in both

@@ -339,6 +339,10 @@ void DataStore::loadPrefsInt(const char *filename, CompanionNodePrefs& _prefs, d
         if (file.available() >= (int)sizeof(_prefs.wifi_enabled)) {
           file.read((uint8_t *)&_prefs.wifi_enabled,
                     sizeof(_prefs.wifi_enabled));                                         // 138
+          if (file.available() >= (int)sizeof(_prefs.powersaving_policy_version)) {
+            file.read((uint8_t *)&_prefs.powersaving_policy_version,
+                      sizeof(_prefs.powersaving_policy_version));                         // 139
+          }
         }
       }
     }
@@ -407,6 +411,9 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                sizeof(_prefs.powersaving_enabled)) == sizeof(_prefs.powersaving_enabled); // 137
     success = success && file.write((uint8_t *)&_prefs.wifi_enabled,
                sizeof(_prefs.wifi_enabled)) == sizeof(_prefs.wifi_enabled);               // 138
+    success = success && file.write((uint8_t *)&_prefs.powersaving_policy_version,
+               sizeof(_prefs.powersaving_policy_version))
+               == sizeof(_prefs.powersaving_policy_version);                              // 139
 
 #if defined(NRF52_PLATFORM)
     success = file.commit(success);

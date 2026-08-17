@@ -1356,7 +1356,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.rx_ps_preamble = RXPS_FIXED_PREAMBLE;
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
-  _prefs.powersaving_enabled = 0;
+  _prefs.powersaving_enabled = 1;
+  _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
@@ -1420,6 +1421,13 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   // load persisted prefs
   _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
 
+  // v1.17.1.2 repairs the Companion default-off regression for both fresh
+  // installs and devices that already persisted the regressed value. The
+  // appended policy marker makes this a one-time migration, so a later
+  // explicit `powersaving off` choice remains persistent.
+  const bool power_saving_default_migrated =
+      migrateCompanionPowerSavingDefault(_prefs);
+
   // sanitise bad pref values
   _prefs.rx_delay_base = constrain(_prefs.rx_delay_base, 0, 20.0f);
   _prefs.airtime_factor = constrain(_prefs.airtime_factor, 0, 9.0f);
@@ -1443,6 +1451,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   _prefs.radio_fem_txgain = constrain(_prefs.radio_fem_txgain, 0, 1);
   _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
   _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
+  _prefs.powersaving_policy_version = constrain(
+      _prefs.powersaving_policy_version, 0,
+      COMPANION_POWERSAVING_POLICY_VERSION);
   _prefs.wifi_enabled = constrain(_prefs.wifi_enabled, 0, 1);
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
@@ -1452,6 +1463,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
+  if (power_saving_default_migrated) {
+    _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  }
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {

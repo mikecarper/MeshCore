@@ -9,6 +9,12 @@
 #define ADVERT_LOC_NONE       0
 #define ADVERT_LOC_SHARE      1
 
+// Increment when a release must migrate the persisted Companion device-power
+// policy. Version 1 corrects the short-lived default-off regression: old
+// preference files are upgraded to power saving on exactly once, after which
+// an explicit user choice remains persistent.
+#define COMPANION_POWERSAVING_POLICY_VERSION 1
+
 struct CompanionNodePrefs {  // persisted to file
   float airtime_factor;
   char node_name[32];
@@ -46,9 +52,20 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t rx_ps_preamble;         // 0=auto from SF, otherwise 16 or 32
   uint8_t powersaving_enabled;    // device CPU/GPS idle power saving
   uint8_t wifi_enabled;           // Companion WiFi radio and services
+  uint8_t powersaving_policy_version; // one-time default migration marker
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.
   bool isRepeatEn() const { return client_repeat != 0; }
   void setRepeatEn(bool enabled) { client_repeat = enabled ? 1 : 0; }
 };
+
+inline bool migrateCompanionPowerSavingDefault(CompanionNodePrefs& prefs) {
+  if (prefs.powersaving_policy_version == COMPANION_POWERSAVING_POLICY_VERSION) {
+    return false;
+  }
+
+  prefs.powersaving_enabled = 1;
+  prefs.powersaving_policy_version = COMPANION_POWERSAVING_POLICY_VERSION;
+  return true;
+}
