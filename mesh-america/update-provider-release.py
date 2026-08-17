@@ -36,6 +36,15 @@ LEGACY_PORTABLE_CEILING_EXCEPTIONS = {
     "t_beam_s3_supreme_sx1262_repeater_observer_mqtt",
 }
 
+LEGACY_COMPANION_IDENTITY_ALIASES = {
+    # The short-lived install-capable LoRa-OTA Wi-Fi Companion profile was
+    # replaced by the ordinary Wi-Fi Companion plus the safer, serve-only Full
+    # Companion profile. Keep the curated role available without claiming that
+    # the replacement can LoRa-install firmware onto itself.
+    "LilyGo_TBeam_1W_companion_radio_wifi-ota":
+        "LilyGo_TBeam_1W_companion_radio_wifi",
+}
+
 
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
@@ -61,6 +70,14 @@ def parse_args() -> argparse.Namespace:
         "--check-only",
         action="store_true",
         help="validate and report without writing the output catalog",
+    )
+    parser.add_argument(
+        "--companion-only",
+        action="store_true",
+        help=(
+            "update only Companion roles, preserving the versions and files for "
+            "all unaffected roles"
+        ),
     )
     return parser.parse_args()
 
@@ -116,6 +133,10 @@ def resolve_release_identity(
     if old_identity in release_files:
         return old_identity, False
 
+    alias = LEGACY_COMPANION_IDENTITY_ALIASES.get(old_identity)
+    if alias is not None and alias in release_files:
+        return alias, False
+
     # The previous catalog used expanded-partition FULL MQTT images. The new
     # standard matrix emits a portable MQTT observer under the same target name
     # without the build-only "-full-ota" filename marker.
@@ -126,6 +147,25 @@ def resolve_release_identity(
             return portable_identity, True
 
     raise ValueError(f"no new release artifact matches catalog target {old_identity!r}")
+
+
+def replace_legacy_companion_ota_notes(notes: str) -> str:
+    paragraphs: list[str] = []
+    for paragraph in notes.split("\n\n"):
+        if paragraph.startswith("PROFILE ") and "LoRa OTA companion:" in paragraph:
+            paragraphs.append(
+                "PROFILE - Standard Wi-Fi Companion: keeps the normal Wi-Fi and "
+                "USB Companion interfaces with LoRa self-update off. Use Full "
+                "Companion when the complete transports and host-backed LoRa-OTA "
+                "seeding tools are needed."
+            )
+        elif paragraph.startswith("LORA OTA "):
+            continue
+        elif paragraph.startswith("SELECTION "):
+            paragraphs.append(paragraph.replace(", OTA.", "."))
+        else:
+            paragraphs.append(paragraph)
+    return "\n\n".join(paragraphs)
 
 
 def release_tag_for_identity(identity: str, args: argparse.Namespace) -> str:
@@ -144,6 +184,7 @@ def release_tag_for_identity(identity: str, args: argparse.Namespace) -> str:
         return args.utility_tag
     if (
         "companion" in lowered
+        or "comp_radio" in lowered
         or "repeater" in lowered
         or "room_server" in lowered
     ):
@@ -217,6 +258,21 @@ def append_partition_warning(notes: str, identities: list[str]) -> str:
     return notes + "\n\n" + warning
 
 
+def append_companion_power_saving_note(notes: str, display_version: str) -> str:
+    paragraph = (
+        f"POWER SAVING - {display_version} enables Companion device power saving "
+        "by default. On first boot it migrates the saved Companion setting to on "
+        "once, repairing devices that carried the regressed off value. A later "
+        "explicit `powersaving off` choice remains persistent. This controls "
+        "MCU/GPS idle saving and is separate from LoRa receive power saving "
+        "(RXPS). On nRF52, an active USB data-host connection can intentionally "
+        "keep the device awake; USB power from a charger alone does not."
+    )
+    if paragraph in notes:
+        return notes
+    return notes + "\n\n" + paragraph
+
+
 def observer_notes(
     role: str, display_version: str, identities: list[str], old_notes: str
 ) -> str:
@@ -270,16 +326,27 @@ def observer_notes(
 
 def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: argparse.Namespace) -> dict:
     display_version = args.artifact_version.rsplit("-", 1)[0]
-    catalog["description"] = (
-        f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
-        "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
-        "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
-        "Companion builds, compact LoRa-OTA builds, and portable MQTT observer "
-        "builds with USB debug/packet logging off. On nRF52, Full Companion "
-        "replaces separate BLE and USB choices; on ESP32, Full Companion is "
-        "offered next to the BLE/USB variants. Open Release notes for role, "
-        "hardware, installation, and partition requirements."
-    )
+    if args.companion_only:
+        catalog["description"] = (
+            "Keymind Cascade MeshCore v1.17.1.1 infrastructure firmware plus "
+            f"corrected {display_version} Companion firmware, with Halo/Keymind "
+            "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / "
+            "SF7 / BW62.5 / CR5 preset. Companion device power saving is enabled "
+            "by default and migrated on once in the corrected release. Unaffected "
+            "roles remain on v1.17.1.1. Open Release notes for role, hardware, "
+            "installation, and partition requirements."
+        )
+    else:
+        catalog["description"] = (
+            f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
+            "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
+            "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
+            "Companion builds, compact LoRa-OTA builds, and portable MQTT observer "
+            "builds with USB debug/packet logging off. On nRF52, Full Companion "
+            "replaces separate BLE and USB choices; on ESP32, Full Companion is "
+            "offered next to the BLE/USB variants. Open Release notes for role, "
+            "hardware, installation, and partition requirements."
+        )
 
     updated_entries = 0
     updated_files = 0
@@ -289,13 +356,20 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
     for device in catalog["device"]:
         device_type = device["type"]
         for firmware in device["firmware"]:
+            if args.companion_only and not firmware["role"].startswith("companion"):
+                continue
             old_keys = list(firmware["version"])
             old_notes = next(iter(firmware["version"].values()))["notes"]
             resolved_identities: list[str] = []
             converted_observer = False
+            converted_legacy_companion_ota = False
 
             for old_identity in ordered_catalog_identities(firmware):
                 identity, converted = resolve_release_identity(old_identity, release_files)
+                converted_legacy_companion_ota = (
+                    converted_legacy_companion_ota
+                    or old_identity in LEGACY_COMPANION_IDENTITY_ALIASES
+                )
                 if identity not in resolved_identities:
                     resolved_identities.append(identity)
                 converted_observer = (
@@ -337,12 +411,21 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             else:
                 version_key = replacement_version_key(old_keys[0], args.artifact_version)
                 notes = replace_release_version(old_notes, display_version)
+                if converted_legacy_companion_ota:
+                    notes = replace_legacy_companion_ota_notes(notes)
                 notes = append_partition_warning(notes, resolved_identities)
+
+            if firmware["role"].startswith("companion"):
+                notes = append_companion_power_saving_note(notes, display_version)
 
             firmware["version"] = {version_key: {"notes": notes, "files": files}}
             updated_entries += 1
             updated_files += len(files)
 
+    if args.companion_only and updated_entries != 216:
+        raise ValueError(
+            f"expected 216 curated Companion entries, found {updated_entries}"
+        )
     if updated_entries == 0 or updated_files == 0:
         raise ValueError("catalog update produced no firmware entries")
 
@@ -353,6 +436,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 "catalog_files": updated_files,
                 "observer_entries": observer_entries,
                 "release_identities_used": len(used_identities),
+                "update_mode": "companion-only" if args.companion_only else "all",
             },
             sort_keys=True,
         )

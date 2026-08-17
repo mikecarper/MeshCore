@@ -54,6 +54,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo", default="mikecarper/MeshCore")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument(
+        "--companion-only",
+        action="store_true",
+        help=(
+            "update only Companion roles, preserving the versions and files for "
+            "all unaffected roles"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -83,23 +91,37 @@ def release_tag(identity: str, args: argparse.Namespace) -> str:
         return args.advanced_tag
     if is_logging_utility(identity):
         return args.utility_tag
-    if any(marker in lowered for marker in ("companion", "repeater", "room_server")):
+    if any(
+        marker in lowered
+        for marker in ("companion", "comp_radio", "repeater", "room_server")
+    ):
         return args.main_tag
     return args.utility_tag
 
 
 def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: argparse.Namespace) -> dict:
     display_version = args.artifact_version.rsplit("-", 1)[0]
-    catalog["description"] = (
-        f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
-        "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
-        "BW62.5 / CR5 preset. This catalog contains packet-logging builds with "
-        "USB debug enabled except on seven flash-constrained STM32 targets, "
-        "selected non-logging utility and portable MQTT observer builds, "
-        "and expanded-partition FULL USB-logging LoRa-OTA builds. Host software "
-        "can consume the USB serial log and publish it separately. Open Release "
-        "notes for role, hardware, installation, and partition requirements."
-    )
+    if args.companion_only:
+        catalog["description"] = (
+            "Keymind Cascade MeshCore v1.17.1.1 infrastructure firmware plus "
+            f"corrected {display_version} Companion firmware, with Halo/Keymind "
+            "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / "
+            "SF7 / BW62.5 / CR5 preset. Companion device power saving is enabled "
+            "by default and migrated on once in the corrected release. Logging "
+            "profiles are intended for a USB-connected MQTT/logging host. "
+            "Unaffected roles remain on v1.17.1.1."
+        )
+    else:
+        catalog["description"] = (
+            f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
+            "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
+            "BW62.5 / CR5 preset. This catalog contains packet-logging builds with "
+            "USB debug enabled except on seven flash-constrained STM32 targets, "
+            "selected non-logging utility and portable MQTT observer builds, "
+            "and expanded-partition FULL USB-logging LoRa-OTA builds. Host software "
+            "can consume the USB serial log and publish it separately. Open Release "
+            "notes for role, hardware, installation, and partition requirements."
+        )
 
     entry_count = 0
     file_count = 0
@@ -116,6 +138,8 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
     for device in catalog["device"]:
         device_type = device["type"]
         for firmware in device["firmware"]:
+            if args.companion_only and not firmware["role"].startswith("companion"):
+                continue
             old_keys = list(firmware["version"])
             old_version = next(iter(firmware["version"].values()))
             old_notes = old_version["notes"]
@@ -123,7 +147,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             paths: list[Path] = []
             for identity in identities:
                 if identity not in release_files:
-                    raise ValueError(f"no v1.17.1.1 artifact matches {identity!r}")
+                    raise ValueError(f"no release artifact matches {identity!r}")
                 used_identities.add(identity)
                 paths.extend(release_files[identity])
 
@@ -181,7 +205,9 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     "turns packet logging ON while keeping USB debug OFF to fit this "
                     "flash-constrained STM32 target."
                 )
-                if old_profile in notes:
+                if replacement in notes:
+                    pass
+                elif old_profile in notes:
                     notes = notes.replace(old_profile, replacement, 1)
                 elif standard_profile in notes:
                     notes = notes.replace(
@@ -196,14 +222,34 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                         "cannot update constrained logging guidance for "
                         f"{identities!r}"
                     )
+            if firmware["role"].startswith("companion"):
+                notes = common.append_companion_power_saving_note(
+                    notes, display_version
+                )
+            if any("-logging" in identity.lower() for identity in identities):
+                logging_note = (
+                    "LOGGING USE - This USB packet-logging build is for a "
+                    "USB-connected MQTT/logging host that reads the serial stream "
+                    "and publishes it. It is not the direct on-device Wi-Fi MQTT "
+                    "bridge."
+                )
+                if logging_note not in notes:
+                    notes += "\n\n" + logging_note
             firmware["version"] = {version_key: {"notes": notes, "files": files}}
             entry_count += 1
             file_count += len(files)
 
-    if entry_count != 596:
-        raise ValueError(f"expected 596 curated firmware entries, found {entry_count}")
-    if len(used_identities) != 648:
-        raise ValueError(f"expected 648 curated identities, found {len(used_identities)}")
+    expected_entries = 129 if args.companion_only else 596
+    expected_identities = None if args.companion_only else 648
+    if entry_count != expected_entries:
+        raise ValueError(
+            f"expected {expected_entries} curated firmware entries, found {entry_count}"
+        )
+    if expected_identities is not None and len(used_identities) != expected_identities:
+        raise ValueError(
+            f"expected {expected_identities} curated identities, "
+            f"found {len(used_identities)}"
+        )
     if file_count == 0:
         raise ValueError("catalog update produced no files")
     print(
@@ -213,6 +259,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 "catalog_files": file_count,
                 "release_identities_used": len(used_identities),
                 "identity_categories": category_counts,
+                "update_mode": "companion-only" if args.companion_only else "all",
             },
             sort_keys=True,
         )
