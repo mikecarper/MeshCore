@@ -1474,6 +1474,8 @@ the node from forwarding it over LoRa.</p>
 <li>slot 1 set to <code>analyzer-us</code>;</li>
 <li>slot 2 set to <code>analyzer-eu</code>;</li>
 <li>slots 3 through 6 disabled;</li>
+<li>WiFi modem power saving set to <code>min</code> in the Cascade profile and <code>none</code> in
+  target-default builds;</li>
 <li>WiFi SSID and IATA code empty.</li>
 </ul>
 <p>Up to six broker configurations can be saved. The number that can be active at
@@ -1566,8 +1568,16 @@ starts in setup-AP mode. With credentials, the WebUI is enabled by default on
 the station IP.</p>
 <p>If the configured network remains unavailable for two minutes, the companion
 opens its setup AP so the credentials can be repaired. It continues retrying
-the saved network. WiFi modem sleep is forced off on WiFi companions because
-modem-sleep pauses can interfere with timely LoRa radio servicing.</p>
+the saved network. WiFi modem sleep has its own persisted <code>wifi.powersave</code>
+setting and is independent of the Companion device <code>powersaving</code> setting. The
+WiFi card in Companion WebConfig exposes <code>none</code>, <code>min</code>, and <code>max</code>. Fresh
+Cascade-profile builds select <code>min</code>; target-default builds select <code>none</code>.
+A saved setting takes precedence after an upgrade.</p>
+<p>WiFi-only Companions can use all three modes. A Full Companion also runs BLE,
+so ESP32 WiFi/Bluetooth coexistence requires at least minimum modem sleep. It
+reports <code>min</code> when an old or target-default <code>none</code> value is found and rejects a
+new <code>none</code> selection while Bluetooth is compiled in. Device power saving can
+therefore be turned on or off without changing the selected WiFi modem policy.</p>
 <p>WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
 a trusted LAN.</p>
@@ -1575,13 +1585,15 @@ a trusted LAN.</p>
 repeater, and room-server builds. It also exposes RX power saving on radio chips
 that support receive duty cycling. RXPS can select continuous receive, levels
 1-10, automatic or explicit 16/32-symbol preambles, or manual receive/sleep
-windows. Both settings are persisted across reboots.</p>
-<p>The two settings are independent. A WiFi Companion keeps its transports
+windows. The WebConfig <strong>WiFi</strong> card exposes WiFi modem power saving. All three
+settings are persisted across reboots.</p>
+<p>The three settings are independent. A WiFi Companion keeps its transports
 available while device power saving reduces CPU and GPS idle power. An
 infrastructure node can sleep when device power saving is enabled, so its WiFi
 services may be temporarily unavailable. RXPS only duty-cycles the LoRa
-receiver. Fresh Cascade-profile builds default to device power saving on and
-RXPS on at level 8 with a 16-symbol preamble.</p>
+receiver. Fresh Cascade-profile builds default to device power saving on,
+RXPS on at level 8 with a 16-symbol preamble, and WiFi modem power saving at
+<code>min</code> on every build that includes ESP32 WiFi.</p>
 <p>When <code>ENABLE_OTA</code> is included, a WiFi companion also listens on:</p>
 <ul>
 <li>TCP 5001 for the OTA folder seeder used by <code>motatool serve --tcp</code>;</li>
@@ -1589,8 +1601,8 @@ RXPS on at level 8 with a 16-symbol preamble.</p>
 </ul>
 <p>These ports do not replace the companion protocol on TCP 5000.
 On a <code>companion_radio_full</code> build, port 5002 additionally accepts bounded
-<code>tempradio</code> and <code>normalradio</code> commands, while LoRa staging and installation on
-the Companion itself are disabled.</p>
+<code>tempradio</code>, <code>normalradio</code>, and <code>get/set wifi.powersave</code> commands, while LoRa
+staging and installation on the Companion itself are disabled.</p>
 <p>FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
 role has a usable WiFi station or setup access point and stops when WiFi stops.
 For example, a FULL repeater can run <code>start webconfig</code> to join its saved
@@ -1749,17 +1761,25 @@ updates using the same layout normally preserve them.</p>
 set wifi.powersave min
 set wifi.powersave max
 </code></pre>
-<p>The default is <code>none</code>, which gives the most predictable MQTT and radio
-performance at the highest power use. <code>min</code> and <code>max</code> reduce power but may add
-latency or reduce reliability on busy nodes. WiFi companions always disable
-modem sleep regardless of this observer setting.</p>
+<p>Fresh Cascade-profile builds default to <code>min</code>; target-default builds use
+<code>none</code>, which gives the most predictable MQTT and radio performance at the
+highest power use. <code>min</code> and <code>max</code> reduce power but may add latency or reduce
+reliability on busy nodes. A saved operator setting takes precedence on an
+upgrade. ESP32 WiFi Companions expose the same values in their WebConfig WiFi
+card. Full Companion also accepts the text commands from its USB terminal and
+TCP port 5002. The normal binary Companion protocol can read or write the
+setting over USB, BLE, or TCP port 5000 without entering terminal mode. Full
+Companion rejects <code>none</code> because its simultaneous BLE transport requires WiFi
+modem sleep.</p>
 <p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
 the board configuration overrides <code>MQTT_WIFI_TX_POWER</code>. This setting affects
 WiFi only, not LoRa transmit power.</p>
 <h2 id="recognizing-the-wrong-firmware">Recognizing the wrong firmware</h2>
 <p><code>get wifi.status</code>, <code>get wifi.ssid</code>, <code>get wifi.powersave</code>, and <code>get wifi.cli</code>
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
-builds with WebConfig.
+builds with WebConfig. ESP32 WiFi Companions expose <code>wifi.powersave</code> through
+their role-specific interfaces described above; they do not expose the full
+infrastructure WiFi CLI family.
 MQTT commands such as <code>get mqtt.status</code> and <code>set mqtt1.preset ...</code> still require
 an MQTT observer target. Unknown settings return <code>Error: unknown setting:
 &lt;name&gt;</code>. Older portable builds can instead report <code>Unsupported in this

@@ -1175,16 +1175,36 @@ opening that port from an app.</p>
 <pre><code>set af {air-time-factor}
 </code></pre>
 <p>Sets the transmit air-time-factor. Deprecated - use <code>set dutycycle</code> instead.</p>
-<pre><code>get radio.fem.rxgain
+<pre><code>powersaving
+powersaving {on|off}
+set powersaving {on|off}
+</code></pre>
+<p>Shows or changes Companion device power saving. On ESP32 this controls CPU and
+GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.</p>
+<pre><code>get radio.rxps
+set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
+</code></pre>
+<p>Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
+builds select level 8 with a 16-symbol preamble.</p>
+<pre><code>get wifi.powersave
+set wifi.powersave {none|min|max}
+</code></pre>
+<p>Shows or changes the persisted WiFi modem-sleep policy on ESP32 WiFi Companion
+builds. Full Companion requires at least <code>min</code> while BLE is present and rejects
+<code>none</code>. The WebConfig WiFi card and the normal binary Companion protocol expose
+the same setting; binary clients do not need the terminal-start token.</p>
+<pre><code>get radio.rxgain
+set radio.rxgain {on|off}
+get radio.fem.rxgain
 set radio.fem.rxgain {on|off}
 get radio.fem.txgain
 set radio.fem.txgain {on|off}
 </code></pre>
-<p>Shows or changes the external FEM receive-path LNA or transmit-path gain on
+<p><code>radio.rxgain</code> changes the radio chip's boosted receive-gain mode. The FEM
+settings control the external receive-path LNA or transmit-path gain on
 supported boards. Changes are applied immediately and saved across reboots;
-changing RX gain also recalibrates the radio noise floor. These settings are
-separate from the SX126x <code>radio.rxgain</code> setting. Boards without the respective
-control report it as unsupported.</p>
+changing either receive-gain path also recalibrates the radio noise floor.
+Boards without the respective control report it as unsupported.</p>
 <pre><code>time {epoch-secs}
 </code></pre>
 <p>Set the device clock using UNIX epoch seconds. Example:  time 1738242833</p>

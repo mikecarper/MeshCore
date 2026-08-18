@@ -1339,7 +1339,9 @@ does not exist on that target:</p>
 <li>WebConfig and the <code>wifi.ssid</code>, <code>wifi.status</code>, <code>wifi.powersave</code>, and <code>wifi.cli</code> command
   family require an ESP32 WebConfig build. FULL standalone repeater and
   room-server builds support the corresponding WiFi setters and status
-  commands.</li>
+  commands. ESP32 WiFi Companion exposes <code>wifi.powersave</code> in its WebConfig
+  form and binary protocol; Full Companion also exposes the text getter and
+  setter on its USB terminal and TCP port 5002.</li>
 <li>MQTT commands require an MQTT observer target.</li>
 <li><code>discover.scopes</code> requires an MQTT observer with compiled neighbor support;
   it does not independently require PSRAM or the FULL parser.</li>

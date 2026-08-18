@@ -4922,7 +4922,9 @@ SSID, LAN IP, and RSSI. When the shared OTA seeder is running, the reply appends
 <code>OTA TCP 5001: listening</code> or <code>OTA TCP 5001: client connected</code>. WiFi being off
 is normal while WebConfig is inactive; run <code>start webconfig</code> when a temporary
 connection is wanted. <code>get wifi.powersave</code> reports the saved standalone setting
-as <code>none</code>, <code>min</code>, or <code>max</code>; the default is <code>none</code>.</p>
+as <code>none</code>, <code>min</code>, or <code>max</code>. Fresh Cascade-profile builds default to <code>min</code>;
+target-default builds use <code>none</code>. A saved setting takes precedence after an
+upgrade.</p>
 <p>The WiFi <code>set</code> commands work on MQTT observers and on FULL standalone
 ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
 password stops an active WebConfig session; run <code>start webconfig</code> again to use
@@ -4930,6 +4932,13 @@ the new credentials. <code>set wifi.pwd</code> with no value selects an open net
 Power-save changes are applied immediately when WiFi is running and otherwise
 take effect on the next connection. <code>get wifi.pwd</code> is intentionally unavailable
 so the standalone password is never returned by the CLI.</p>
+<p>ESP32 WiFi Companion WebConfig exposes the same <code>wifi.powersave</code> values in its
+WiFi card. Full Companion also accepts <code>get/set wifi.powersave</code> from its USB
+terminal and TCP port 5002. Binary Companion clients can use command bytes
+<code>0x46</code> and <code>0x47</code> over USB, BLE, or TCP port 5000 without the terminal-start
+token. WiFi-only Companions accept all three modes; Full Companion rejects
+<code>none</code> because its simultaneous BLE transport requires modem sleep. Companion
+device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent.</p>
 <p>The browser portal is not compiled into the two 4 MB
 <code>LilyGo_TLora_V2_1_1_6_*_observer_mqtt</code> targets because it does not fit while
 retaining the two app slots required for LoRa OTA. Their normal CLI settings
