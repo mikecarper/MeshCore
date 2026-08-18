@@ -1428,6 +1428,20 @@ TEST(OtaCatalog, RejectsAdvertisedSourceWithOversizedBlocks) {
   EXPECT_EQ(server.servedCount(), 0);
 }
 
+TEST(OtaFolder, ReportsEntriesOmittedByServeRegistryCapacity) {
+  OtaManager server;
+  server.begin(0, nullptr, nullptr);
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+  SyntheticCatalogSource source((uint8_t)(OTA_MAX_SERVE + 3));
+  ASSERT_TRUE(server.add_source(&source));
+
+  uint16_t offered = 0, advertised = 0;
+  ASSERT_TRUE(server.sourceStats(&source, offered, advertised));
+  EXPECT_EQ(offered, (uint16_t)(OTA_MAX_SERVE + 3));
+  EXPECT_EQ(advertised, (uint16_t)(OTA_MAX_SERVE - 1)); // primary image occupies slot zero
+  EXPECT_EQ(server.servedCount(), OTA_MAX_SERVE);
+}
+
 // Fetch-resume across a reboot: a client commits some blocks, "reboots" (a fresh OtaManager on the SAME
 // persisted store), and resumeStaged() re-adopts the partial container and finishes the remaining blocks -
 // without re-fetching the manifest or the blocks already present.
@@ -1633,6 +1647,49 @@ TEST(OtaTransfer, RejectsIncompatibleCodec) {
   g_q.clear();
 }
 
+TEST(OtaTransfer, ManualPullReportsIncompatibleManifestInsteadOfGoingIdle) {
+  g_q.clear();
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  SendTo to_client{&client}, to_server{&server};
+  server.begin(0, sim_send, &to_client);
+  client.begin(SIM_TARGET_ID, sim_send, &to_server);
+  client.set_fetch_store(&store);
+  client.set_apply_codec(CODEC_DETOOLS_INPLACE);
+  client.set_accept_full(false);
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+
+  EXPECT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+  pump(client, &server);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::FAILED);
+  EXPECT_EQ(client.fetchError(), OtaManager::FETCH_ERROR_CODEC);
+  EXPECT_EQ(client.wanted(), 0u);                    // terminal rejection no longer leaves discovery armed
+  EXPECT_EQ(store.staged_size(), 0u);                // compatibility is rejected before the store is begun
+}
+
+TEST(OtaTransfer, PullAdmissionReportsNoStoreAndBusyWithoutReplacingIntent) {
+  g_q.clear();
+  OtaManager client;
+  SendTo to_none{&client};
+  client.begin(SIM_TARGET_ID, sim_send, &to_none);
+  uint8_t first[4] = {1, 2, 3, 4}, second[4] = {5, 6, 7, 8};
+  EXPECT_EQ(client.pull(first, SIM_TARGET_ID), OtaManager::PULL_NO_STORE);
+  EXPECT_EQ(client.fetchState(), OtaManager::IDLE);
+  EXPECT_EQ(client.wanted(), 0u);
+
+  OtaStoreRam<4096> store;
+  client.set_fetch_store(&store);
+  EXPECT_EQ(client.pull(first, SIM_TARGET_ID), OtaManager::PULL_STARTED);
+  EXPECT_EQ(client.pull(second, SIM_TARGET_ID ^ 0x55AAu), OtaManager::PULL_BUSY);
+  EXPECT_EQ(client.fetchState(), OtaManager::WANT_MANIFEST);
+  EXPECT_EQ(client.wanted(), SIM_TARGET_ID);
+  EXPECT_EQ(0, memcmp(client.fetchManifestId(), first, sizeof(first)));
+  g_q.clear();
+}
+
 // An archive capture is not an install. It must retain cross-target and otherwise unsupported containers
 // byte-for-byte so this node can relay them to hardware that does understand their codec.
 TEST(OtaTransfer, ArchivePullAcceptsCrossTargetUnsupportedCodec) {
@@ -1660,14 +1717,16 @@ TEST(OtaTransfer, ArchivePullAcceptsCrossTargetUnsupportedCodec) {
 // Encode a 1-row OTA_HAVE from a specific seeder, carrying have_count (Phase-2 awareness).
 static uint16_t make_have_row(uint8_t* buf, uint16_t cap, const uint8_t mid[4], uint32_t target,
                               uint32_t fwver, uint8_t codec, uint8_t flags,
-                              const uint8_t seeder[4], uint16_t have_count) {
+                              const uint8_t seeder[4], uint16_t have_count,
+                              const uint8_t digest[4] = nullptr) {
   uint8_t row[OTA_HAVE_ROW_BYTES];
   memcpy(row, mid, 4);
   row[4]=target; row[5]=target>>8; row[6]=target>>16; row[7]=target>>24;
   row[8]=fwver; row[9]=fwver>>8; row[10]=fwver>>16; row[11]=fwver>>24;
   row[12]=codec; row[13]=flags;
   row[14]=(uint8_t)(have_count & 0xFF); row[15]=(uint8_t)(have_count >> 8);
-  HaveMsg hv; memcpy(hv.seeder_id, seeder, 4); memset(hv.set_digest, 0, 4);
+  HaveMsg hv; memcpy(hv.seeder_id, seeder, 4);
+  if (digest) memcpy(hv.set_digest, digest, 4); else memset(hv.set_digest, 0, 4);
   hv.frag_idx=0; hv.frag_total=1; hv.n_rows=1; hv.rows=row;
   return encode_have(buf, cap, hv);
 }
@@ -1689,6 +1748,49 @@ TEST(OtaCatalog, DistinctSeederCountAndHaveCount) {
   g_q.clear();
 }
 
+TEST(OtaCatalog, DigestChangePurgesOnlyThatSeedersRowsAndProgress) {
+  OtaManager m; SendTo none{&m}; m.begin(SIM_TARGET_ID, sim_send, &none);
+  m.set_archive_interest(true);
+  uint8_t wire[64], mid[4] = {9, 8, 7, 6};
+  uint8_t s1[4] = {1, 0, 0, 0}, s2[4] = {2, 0, 0, 0};
+  uint8_t d1[4] = {0x11, 0, 0, 0}, d2[4] = {0x22, 0, 0, 0}, changed[4] = {0x33, 0, 0, 0};
+
+  auto advertise = [&](const uint8_t sid[4], const uint8_t digest[4], uint8_t count = 1) {
+    AdvMsg adv{}; memcpy(adv.seeder_id, sid, 4); memcpy(adv.set_digest, digest, 4); adv.n_motas = count;
+    uint16_t n = encode_adv(wire, sizeof(wire), adv);
+    ASSERT_GT(n, 0);
+    m.on_message(wire, n);
+  };
+  advertise(s1, d1);
+  advertise(s2, d2);
+  m.set_clock(100);
+  m.on_message(wire, make_have_row(wire, sizeof(wire), mid, SIM_TARGET_ID, 0x01020300,
+                                   CODEC_FULL, MFLAG_FULL, s1, 7, d1));
+  m.set_clock(200);
+  m.on_message(wire, make_have_row(wire, sizeof(wire), mid, SIM_TARGET_ID, 0x01020300,
+                                   CODEC_FULL, MFLAG_FULL, s2, 3, d2));
+  ASSERT_EQ(m.catalogCount(), 1);
+  ASSERT_EQ(m.catalogRow(0)->n_seeders, 2);
+  ASSERT_EQ(m.catalogRow(0)->have_max, 7u);
+
+  advertise(s1, changed);
+  ASSERT_EQ(m.catalogCount(), 1);
+  EXPECT_EQ(m.catalogRow(0)->n_seeders, 1);
+  EXPECT_EQ(m.catalogRow(0)->have_max, 3u);
+  EXPECT_EQ(m.catalogRow(0)->last_ms, 200u);
+
+  m.set_clock(300);
+  m.on_message(wire, make_have_row(wire, sizeof(wire), mid, SIM_TARGET_ID, 0x01020300,
+                                   CODEC_FULL, MFLAG_FULL, s1, 9, d1)); // delayed row from the old digest
+  ASSERT_EQ(m.catalogCount(), 1);
+  EXPECT_EQ(m.catalogRow(0)->n_seeders, 1);
+  EXPECT_EQ(m.catalogRow(0)->have_max, 3u);
+
+  advertise(s2, changed, 0);                         // an explicit empty advert withdraws the source
+  EXPECT_EQ(m.catalogCount(), 0);                    // nobody still advertises the old set
+  g_q.clear();
+}
+
 // An unanswered GET_MANIFEST must not pin the fetch slot forever: after OTA_MANIFEST_MAX_RETRY ticks with
 // no manifest, the session gives up (FAILED) so a new pull can take the slot. (Bounded primary operation.)
 TEST(OtaTransfer, ManifestGiveUpAfterRetries) {
@@ -1701,6 +1803,8 @@ TEST(OtaTransfer, ManifestGiveUpAfterRetries) {
   EXPECT_EQ(client.fetchState(), OtaManager::WANT_MANIFEST);
   for (int i = 0; i < OTA_MANIFEST_MAX_RETRY + 2; i++) { g_clk += 5000; client.set_clock(g_clk); client.loop(); g_q.clear(); }
   EXPECT_EQ(client.fetchState(), OtaManager::FAILED);
+  EXPECT_EQ(client.fetchError(), OtaManager::FETCH_ERROR_MANIFEST_TIMEOUT);
+  EXPECT_EQ(client.wanted(), 0u);
 }
 
 // A receiver never becomes a source, either while fetching or after completion.

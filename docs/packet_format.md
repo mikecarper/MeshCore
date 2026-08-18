@@ -9,7 +9,8 @@ This document describes the MeshCore packet format.
 
 ## Version 1 Packet Format
 
-This is the protocol level packet structure used in MeshCore firmware v1.12.0
+This is the current version-1 MeshCore wire packet structure. Older firmware may
+support only a subset of the path encodings and payload types described here.
 
 ```
 [header][transport_codes(optional)][path_length][path][payload]
@@ -35,7 +36,7 @@ This is the protocol level packet structure used in MeshCore firmware v1.12.0
         - `0x09`/`0b1001` - `PAYLOAD_TYPE_TRACE` - Trace a path, collecting SNR for each hop
         - `0x0A`/`0b1010` - `PAYLOAD_TYPE_MULTIPART` - Packet is part of a sequence of packets
         - `0x0B`/`0b1011` - `PAYLOAD_TYPE_CONTROL` - Control packet data (unencrypted)
-        - `0x0C`/`0b1100` - reserved
+        - `0x0C`/`0b1100` - `PAYLOAD_TYPE_OTA` - OTA-over-LoRa firmware distribution
         - `0x0D`/`0b1101` - reserved
         - `0x0E`/`0b1110` - reserved
         - `0x0F`/`0b1111` - `PAYLOAD_TYPE_RAW_CUSTOM` - Custom packet (raw bytes, custom encryption)
@@ -137,7 +138,7 @@ Examples:
 | `0x09` | `PAYLOAD_TYPE_TRACE`      | Trace a path, collecting SNR for each hop    |
 | `0x0A` | `PAYLOAD_TYPE_MULTIPART`  | Packet is part of a sequence of packets      |
 | `0x0B` | `PAYLOAD_TYPE_CONTROL`    | Control packet data (unencrypted)            |
-| `0x0C` | reserved                  | reserved                                     |
+| `0x0C` | `PAYLOAD_TYPE_OTA`        | OTA-over-LoRa firmware distribution          |
 | `0x0D` | reserved                  | reserved                                     |
 | `0x0E` | reserved                  | reserved                                     |
 | `0x0F` | `PAYLOAD_TYPE_RAW_CUSTOM` | Custom packet (raw bytes, custom encryption) |

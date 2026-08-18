@@ -75,8 +75,10 @@ matching FULL ESP32 build when those commands are required.
 
 Some observer commands have their own hardware limit:
 
-- MQTT neighbor-table publishing requires PSRAM. `discover.scopes` also
-  requires PSRAM and the FULL MQTT parser; the portable MQTT profile omits it.
+- MQTT neighbor-table publishing and `discover.scopes` require the compiled
+  `WITH_MQTT_NEIGHBORS` feature. PSRAM boards enable it automatically; selected
+  non-PSRAM variants opt in with `MQTT_NEIGHBORS_WITHOUT_PSRAM`. The commands
+  can therefore be present in either portable or FULL MQTT profiles.
 - `discover.neighbors` does **not** require MQTT or PSRAM.
 - full NTP connectivity diagnostics are omitted from the portable profile.
 
@@ -113,8 +115,8 @@ does not exist on that target:
   room-server builds support the corresponding WiFi setters and status
   commands.
 - MQTT commands require an MQTT observer target.
-- `discover.scopes` requires a FULL MQTT build, MQTT neighbor support, and
-  PSRAM.
+- `discover.scopes` requires an MQTT observer with compiled neighbor support;
+  it does not independently require PSRAM or the FULL parser.
 - GPS and external-sensor commands require their drivers and pins.
 - Ethernet and bridge commands require the corresponding transport.
 - LoRa OTA commands require an artifact with OTA enabled.

@@ -4,7 +4,7 @@
 #include "OtaStore.h"
 
 // An OtaStore that captures an in-transit `.mota` onto a HOST folder over the mota-seeder link (the WRITE
-// half of MotaSeederProto: OP_STAT/BEGIN/WRITE/SREAD/FIN). This is the destination for `ota pull <#> folder`:
+// half of MotaSeederProto: OP_STAT/BEGIN/WRITE/SREAD/FIN). This is the destination for `ota pull <id> folder`:
 // blocks stream straight to the host `<mid>.mota` - the device holds NO RAM/flash staging for it.
 //
 //   begin(total)      -> OP_BEGIN  (host creates a 0xFF-filled <midhex>.mota.part)

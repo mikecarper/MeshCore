@@ -102,9 +102,9 @@ def default_config(setup_mode):
         "radio": {
             "freq": 910.525, "bw": 62.5, "sf": 7, "cr": 5, "tx": 22, "af": 1.0,
             "rxdelay": 0.0, "txdelay": 0.5, "cad": False, "rxgain": True,
-            "rxps_enabled": True, "rxps_level": 5, "rxps_preamble": 16,
-            "rxps_rx_us": 20936, "rxps_sleep_us": 13425,
-            "powersaving": False,
+            "rxps_enabled": True, "rxps_level": 8, "rxps_preamble": 16,
+            "rxps_rx_us": 18205, "rxps_sleep_us": 20423,
+            "powersaving": True,
             "repeat": True, "flood_max": 64, "flood_max_advert": 8,
             "flood_max_unscoped": 8, "loop_detect": "moderate",
             "name": "MockNode", "lat": 39.7392, "lon": -104.9903,

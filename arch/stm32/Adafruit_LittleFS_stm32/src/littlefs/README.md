@@ -129,17 +129,17 @@ hits the memory, the `sync` function can simply return 0.
 
 ## Reference material
 
-[DESIGN.md](DESIGN.md) - DESIGN.md contains a fully detailed dive into how
+[DESIGN.md](https://github.com/littlefs-project/littlefs/blob/v1.7.0/DESIGN.md) - DESIGN.md contains a fully detailed dive into how
 littlefs actually works. I would encourage you to read it since the
 solutions and tradeoffs at work here are quite interesting.
 
-[SPEC.md](SPEC.md) - SPEC.md contains the on-disk specification of littlefs
+[SPEC.md](https://github.com/littlefs-project/littlefs/blob/v1.7.0/SPEC.md) - SPEC.md contains the on-disk specification of littlefs
 with all the nitty-gritty details. Can be useful for developing tooling.
 
 ## Testing
 
 The littlefs comes with a test suite designed to run on a PC using the
-[emulated block device](emubd/lfs_emubd.h) found in the emubd directory.
+[emulated block device](https://github.com/littlefs-project/littlefs/blob/v1.7.0/emubd/lfs_emubd.h) found in the upstream emubd directory.
 The tests assume a Linux environment and can be started with make:
 
 ``` bash
@@ -157,21 +157,19 @@ Individual files contain the following tag instead of the full license text.
     SPDX-License-Identifier:    BSD-3-Clause
 
 This enables machine processing of license information based on the SPDX
-License Identifiers that are here available: http://spdx.org/licenses/
+License Identifiers available at https://spdx.org/licenses/
 
 ## Related projects
 
-[Mbed OS](https://github.com/ARMmbed/mbed-os/tree/master/features/filesystem/littlefs) -
-The easiest way to get started with littlefs is to jump into [Mbed](https://os.mbed.com/),
-which already has block device drivers for most forms of embedded storage. The
-littlefs is available in Mbed OS as the [LittleFileSystem](https://os.mbed.com/docs/latest/reference/littlefilesystem.html)
-class.
+[Mbed OS](https://github.com/ARMmbed/mbed-os/tree/master/storage/filesystem/littlefs) -
+The archived Mbed OS tree includes a `LittleFileSystem` wrapper and block-device
+drivers for several forms of embedded storage.
 
-[littlefs-fuse](https://github.com/geky/littlefs-fuse) - A [FUSE](https://github.com/libfuse/libfuse)
+[littlefs-fuse](https://github.com/littlefs-project/littlefs-fuse) - A [FUSE](https://github.com/libfuse/libfuse)
 wrapper for littlefs. The project allows you to mount littlefs directly on a
 Linux machine. Can be useful for debugging littlefs if you have an SD card
 handy.
 
-[littlefs-js](https://github.com/geky/littlefs-js) - A javascript wrapper for
+[littlefs-js](https://github.com/littlefs-project/littlefs-js) - A JavaScript wrapper for
 littlefs. I'm not sure why you would want this, but it is handy for demos.
 You can see it in action [here](http://littlefs.geky.net/demo.html).

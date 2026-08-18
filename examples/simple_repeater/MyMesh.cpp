@@ -3079,13 +3079,20 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.battery_alert_enabled = 0;
   _prefs.battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
   _prefs.battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
+  _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
 #ifdef WITH_MQTT_BRIDGE
   _prefs.agc_reset_interval = 7;    // 28 seconds (secs/4) - prevents AGC drift on long-running observers
 #endif
   // Observer defaults (radio_watchdog, alert.*, snmp.*) moved to applyMQTTDefaults()
   // in MQTTDefaults.h - they live in /mqtt_prefs now, not NodePrefs.
+  _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
+  _prefs.rx_ps_level = DEFAULT_RXPS_LEVEL;
+  _prefs.rx_ps_preamble = DEFAULT_RXPS_PREAMBLE;
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
+  recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                               _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                               &_prefs.rx_ps_sleep_us);
 
   // bridge defaults
   _prefs.bridge_enabled = 1;    // enabled
@@ -9574,6 +9581,7 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.rx_ps_preamble = _prefs.rx_ps_preamble;
   s.rx_ps_rx_us = _prefs.rx_ps_rx_us;
   s.rx_ps_sleep_us = _prefs.rx_ps_sleep_us;
+  s.power_saving = _prefs.powersaving_enabled;
   s.repeat = !_prefs.disable_fwd;
   s.advert_interval = _prefs.advert_interval * 2;
   s.flood_advert_interval = _prefs.flood_advert_interval;
@@ -9585,7 +9593,8 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
       | WebConfigServer::CAP_DELAYS | WebConfigServer::CAP_CAD
       | WebConfigServer::CAP_RX_GAIN | WebConfigServer::CAP_REPEAT
       | WebConfigServer::CAP_ADVERT | WebConfigServer::CAP_FLOOD
-      | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE;
+      | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE
+      | WebConfigServer::CAP_POWER_SAVING;
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
   }

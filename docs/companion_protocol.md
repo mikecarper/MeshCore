@@ -1,13 +1,23 @@
 # Companion Protocol
 
-- **Last Updated**: 2026-03-08
-- **Protocol Version**: Companion Firmware v1.12.0+
+- **Last Updated**: 2026-08-18
+- **Protocol Version**: 13 (`FIRMWARE_VER_CODE`)
 
-> NOTE: This document is still in development. Some information may be inaccurate.
+> The command and response catalogs track
+> `examples/companion_radio/MyMesh.cpp`. Applications should negotiate the
+> protocol and validate lengths because older firmware exposes a subset.
 
-This document provides a comprehensive guide for communicating with MeshCore devices over Bluetooth Low Energy (BLE).
+This document is a practical guide to MeshCore's binary companion protocol.
+The same protocol frames can be carried by the enabled BLE, USB serial, Wi-Fi,
+or Ethernet companion interface; connection details differ by build.
 
-It is platform-agnostic and can be used for Android, iOS, Python, JavaScript, or any other platform that supports BLE.
+On builds exposing more than one transport, delivery-required replies follow
+the interface which supplied the command. The multi-frame contact-list response
+holds that route until `END_OF_CONTACTS`; best-effort asynchronous observations
+may still be broadcast to enabled clients. Treat the device as one Companion
+session rather than as independent per-transport sessions.
+
+The examples focus on BLE, but the packet formats are transport-independent.
 
 ## Official Libraries
 
@@ -160,6 +170,59 @@ The first byte indicates the packet type (see [Response Parsing](#response-parsi
 
 ## Commands
 
+The first byte selects the command. This is the current protocol-v13 command
+catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
+
+| Byte | Firmware name | Purpose |
+|---|---|---|
+| `0x01` | `CMD_APP_START` | Start an app session and request self information. |
+| `0x02` | `CMD_SEND_TXT_MSG` | Send text to a contact. |
+| `0x03` | `CMD_SEND_CHANNEL_TXT_MSG` | Send channel text. |
+| `0x04` | `CMD_GET_CONTACTS` | Enumerate contacts, optionally modified since a timestamp. |
+| `0x05` / `0x06` | `CMD_GET_DEVICE_TIME` / `CMD_SET_DEVICE_TIME` | Read or set the device clock. |
+| `0x07` / `0x08` | `CMD_SEND_SELF_ADVERT` / `CMD_SET_ADVERT_NAME` | Advertise self or change the advertised name. |
+| `0x09` | `CMD_ADD_UPDATE_CONTACT` | Add or update a contact. |
+| `0x0A` | `CMD_SYNC_NEXT_MESSAGE` | Dequeue the next pending message. |
+| `0x0B` / `0x0C` | `CMD_SET_RADIO_PARAMS` / `CMD_SET_RADIO_TX_POWER` | Set radio parameters or transmit power. |
+| `0x0D` | `CMD_RESET_PATH` | Reset a contact's learned path. |
+| `0x0E` | `CMD_SET_ADVERT_LATLON` | Set advertised coordinates. |
+| `0x0F` | `CMD_REMOVE_CONTACT` | Remove a contact. |
+| `0x10` / `0x11` / `0x12` | `CMD_SHARE_CONTACT` / `CMD_EXPORT_CONTACT` / `CMD_IMPORT_CONTACT` | Share, export, or import contact data. |
+| `0x13` | `CMD_REBOOT` | Reboot after the required confirmation body. |
+| `0x14` | `CMD_GET_BATT_AND_STORAGE` | Read battery and storage usage. |
+| `0x15` | `CMD_SET_TUNING_PARAMS` | Set tuning parameters. |
+| `0x16` | `CMD_DEVICE_QUERY` | Negotiate protocol support and read device information. |
+| `0x17` / `0x18` | `CMD_EXPORT_PRIVATE_KEY` / `CMD_IMPORT_PRIVATE_KEY` | Export or import identity key material when enabled. |
+| `0x19` | `CMD_SEND_RAW_DATA` | Send an application raw-data packet. |
+| `0x1A`-`0x1D` | `CMD_SEND_LOGIN` through `CMD_LOGOUT` | Manage a server connection. |
+| `0x1E` | `CMD_GET_CONTACT_BY_KEY` | Look up a contact by public-key prefix. |
+| `0x1F` / `0x20` | `CMD_GET_CHANNEL` / `CMD_SET_CHANNEL` | Read or write a channel slot. |
+| `0x21`-`0x23` | `CMD_SIGN_START` through `CMD_SIGN_FINISH` | Stream data for identity signing. |
+| `0x24` | `CMD_SEND_TRACE_PATH` | Trace a direct route. |
+| `0x25` | `CMD_SET_DEVICE_PIN` | Set or clear the device PIN. |
+| `0x26` | `CMD_SET_OTHER_PARAMS` | Set telemetry, location, ACK, and related preferences. |
+| `0x27` | `CMD_SEND_TELEMETRY_REQ` | Send the legacy telemetry request. |
+| `0x28` / `0x29` | `CMD_GET_CUSTOM_VARS` / `CMD_SET_CUSTOM_VAR` | Read or set custom variables. |
+| `0x2A` | `CMD_GET_ADVERT_PATH` | Read a cached advertisement path. |
+| `0x2B` | `CMD_GET_TUNING_PARAMS` | Read tuning parameters. |
+| `0x32` | `CMD_SEND_BINARY_REQ` | Send an application binary request. |
+| `0x33` | `CMD_FACTORY_RESET` | Factory-reset after the required confirmation body. |
+| `0x34` | `CMD_SEND_PATH_DISCOVERY_REQ` | Request path discovery. |
+| `0x36` | `CMD_SET_FLOOD_SCOPE_KEY` | Select scoped or unscoped flood behavior. |
+| `0x37` | `CMD_SEND_CONTROL_DATA` | Send zero-hop control data. |
+| `0x38` | `CMD_GET_STATS` | Read core, radio, or packet statistics. |
+| `0x39` | `CMD_SEND_ANON_REQ` | Send an anonymous request. |
+| `0x3A` / `0x3B` | `CMD_SET_AUTOADD_CONFIG` / `CMD_GET_AUTOADD_CONFIG` | Write or read automatic-contact policy. |
+| `0x3C` | `CMD_GET_ALLOWED_REPEAT_FREQ` | Read allowed client-repeat frequency ranges. |
+| `0x3D` | `CMD_SET_PATH_HASH_MODE` | Set path-hash width mode. |
+| `0x3E` | `CMD_SEND_CHANNEL_DATA` | Send a channel binary datagram. |
+| `0x3F` / `0x40` | `CMD_SET_DEFAULT_FLOOD_SCOPE` / `CMD_GET_DEFAULT_FLOOD_SCOPE` | Write or read the default flood scope. |
+| `0x41` | `CMD_SEND_RAW_PACKET` | Queue a fully encoded raw mesh packet. |
+| `0x42` / `0x43` | `CMD_GET_RADIO_FEM_RXGAIN` / `CMD_SET_RADIO_FEM_RXGAIN` | Read or set FEM receive gain. |
+
+The sections below detail the most common frames. Refer to the source named
+above for command bodies that are not expanded here.
+
 ### 1. App Start
 
 **Purpose**: Initialize communication with the device. Must be sent first after connection.
@@ -187,12 +250,12 @@ Bytes 8+: Application name (UTF-8, optional)
 **Command Format**:
 ```
 Byte 0: 0x16
-Byte 1: 0x03
+Byte 1: Highest companion protocol version understood by the app
 ```
 
 **Example** (hex):
 ```
-16 03
+16 0D
 ```
 
 **Response**: `PACKET_DEVICE_INFO` (0x0D) with device information
@@ -206,7 +269,7 @@ Byte 1: 0x03
 **Command Format**:
 ```
 Byte 0: 0x1F
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 ```
 
 **Example** (get channel 1):
@@ -225,16 +288,17 @@ Byte 1: Channel Index (0-7)
 **Command Format**:
 ```
 Byte 0: 0x20
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 Bytes 2-33: Channel Name (32 bytes, UTF-8, null-padded)
 Bytes 34-49: Secret (16 bytes)
 ```
 
 **Total Length**: 50 bytes
 
-**Channel Index**:
-- Index 0: Reserved for public channels (no secret)
-- Indices 1-7: Available for private channels
+**Channel index**:
+- Slot count is build-specific. Read `max_channels` from byte 3 of
+  `PACKET_DEVICE_INFO`; current profiles commonly expose 1, 8, or 40 slots.
+- No slot number has an intrinsic public/private meaning.
 
 **Channel Name**:
 - UTF-8 encoded
@@ -242,10 +306,12 @@ Bytes 34-49: Secret (16 bytes)
 - Padded with null bytes (0x00) if shorter
 
 **Secret Field** (16 bytes):
-- For **private channels**: 16-byte secret
-- For **public channels**: All zeros (0x00)
+- Supply the exact 16-byte channel key. A private channel normally uses a
+  cryptographically random key; known public and hashtag channels use their
+  defined or derived key.
+- An all-zero key is not the public-channel key.
 
-**Example** (create channel "YourChannelName" at index 1 with secret):
+**Example** (create channel "SMS" at index 1 with secret):
 ```
 20 01 53 4D 53 00 00 ... (name padded to 32 bytes)
     [16 bytes of secret]
@@ -265,7 +331,7 @@ Bytes 34-49: Secret (16 bytes)
 ```
 Byte 0: 0x03
 Byte 1: 0x00
-Byte 2: Channel Index (0-7)
+Byte 2: Channel index (0 through max_channels - 1)
 Bytes 3-6: Timestamp (32-bit little-endian Unix timestamp, seconds)
 Bytes 7+: Message Text (UTF-8, variable length)
 ```
@@ -288,12 +354,18 @@ Bytes 7+: Message Text (UTF-8, variable length)
 **Command Format**:
 ```
 Byte 0:                         0x3E
-Byte 1:                         Channel Index (0-7)
-Byte 2:                         Path Length (0xFF = flood, otherwise actual path length)
-Bytes 3 .. 2+path_len:          Path (omitted when path_len == 0xFF)
+Byte 1:                         Channel index (0 through max_channels - 1)
+Byte 2:                         Encoded path descriptor (0xFF = flood)
+Bytes 3+:                       Encoded path bytes (omitted for 0xFF)
 Next 2 bytes (little-endian):   Data Type (`data_type`, uint16)
 Remaining bytes:                Binary payload (variable length)
 ```
+
+For a direct send, the descriptor's low six bits are the hash count and its
+high two bits are the hash size minus one. Current mesh packets accept one-,
+two-, or three-byte hashes; the four-byte code is reserved. The following path
+therefore occupies `hash_count * hash_size` bytes; the descriptor itself is not
+a raw byte count.
 
 **Example** (flood, `DATA_TYPE_DEV`, payload `A1 B2 C3`, channel 1):
 ```
@@ -303,10 +375,10 @@ Remaining bytes:                Binary payload (variable length)
 **Data Type / Transport Mapping**:
 - `0x0000` (`DATA_TYPE_RESERVED`) is invalid and rejected with `PACKET_ERROR`.
 - `0xFFFF` (`DATA_TYPE_DEV`) is the developer namespace for experimenting and developing apps.
-- Values `0x0001`-`0xFFFE` are available for registered application/community namespaces. See the [Registered data_type values](#registered-data_type-values) table below.
+- Registered application/community namespaces occupy `0x0100`-`0xFEFF`; the remaining nonzero ranges are reserved for internal or development use. See the [Registered data_type values](#registered-data_type-values) table below.
 
 **Limits**:
-- Maximum payload length is `MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 163` bytes.
+- Maximum payload length is `MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 167` bytes.
 - Larger payloads are rejected with `PACKET_ERROR` (`ERR_CODE_ILLEGAL_ARG`).
 
 **Response**: `PACKET_OK` (0x00) on success, or `PACKET_ERROR` (0x01) with one of:
@@ -341,7 +413,7 @@ Inbound group datagrams (radio-level `PAYLOAD_TYPE_GRP_DATA`, 0x06) are forwarde
 Byte 0:                 0x1B (packet type)
 Byte 1:                 SNR (signed int8, scaled x4 - divide by 4.0 to recover dB)
 Bytes 2-3:              Reserved (clients MUST ignore)
-Byte 4:                 Channel Index (0-7)
+Byte 4:                 Channel index (0 through max_channels - 1)
 Byte 5:                 Path Length (actual path length when flooded, otherwise 0xFF for direct)
 Bytes 6-7:              Data Type (uint16 little-endian)
 Byte 8:                 Data Length
@@ -452,7 +524,8 @@ Byte 0: 0x14
 ### Channel Lifecycle
 
 1. **Set Channel**:
-    - Fetch all channel slots, and find one with empty name and all-zero secret
+    - Read `max_channels` from device info, fetch those slots, and choose an
+      unused slot (normally an empty name and zeroed key)
     - Generate or provide a 16-byte secret
     - Send `CMD_SET_CHANNEL` with name and a 16-byte secret
 2. **Get Channel**:
@@ -550,7 +623,7 @@ def parse_contact_message(data):
 **Standard Format** (`PACKET_CHANNEL_MSG_RECV`, 0x08):
 ```
 Byte 0: 0x08 (packet type)
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 Byte 2: Path Length
 Byte 3: Text Type
 Bytes 4-7: Timestamp (32-bit little-endian)
@@ -562,7 +635,7 @@ Bytes 8+: Message Text (UTF-8)
 Byte 0: 0x11 (packet type)
 Byte 1: SNR (signed byte, multiplied by 4)
 Bytes 2-3: Reserved
-Byte 4: Channel Index (0-7)
+Byte 4: Channel index (0 through max_channels - 1)
 Byte 5: Path Length
 Byte 6: Text Type
 Bytes 7-10: Timestamp (32-bit little-endian)
@@ -600,8 +673,11 @@ def parse_channel_message(data):
 Use the `SEND_CHANNEL_MESSAGE` command (see [Commands](#commands)).
 
 **Important**: 
-- Messages are limited to 133 characters per MeshCore specification
-- Long messages should be split into chunks
+- The shared text envelope permits up to 160 UTF-8 bytes. For channel text,
+  firmware prepends `<sender name>: ` inside that envelope, so the available
+  message body is `160 - prefix_bytes` and varies with the configured name.
+- Count encoded UTF-8 bytes, not Unicode characters. Split a longer message at
+  valid UTF-8 boundaries.
 - Include a chunk indicator (e.g., "[1/3] message text")
 
 ---
@@ -617,31 +693,57 @@ This document uses a spec-level naming convention (`PACKET_*`) for bytes the fir
 
 Byte values are authoritative; names are aliases. When reading firmware source, `RESP_CODE_X` / `PUSH_CODE_X` correspond to this doc's `PACKET_X` of the same numeric value.
 
-### Packet Types
+### Response types
 
-| Value | Name                       | Description                   |
-|-------|----------------------------|-------------------------------|
-| 0x00  | PACKET_OK                  | Command succeeded             |
-| 0x01  | PACKET_ERROR               | Command failed                |
-| 0x02  | PACKET_CONTACT_START       | Start of contact list         |
-| 0x03  | PACKET_CONTACT             | Contact information           |
-| 0x04  | PACKET_CONTACT_END         | End of contact list           |
-| 0x05  | PACKET_SELF_INFO           | Device self-information       |
-| 0x06  | PACKET_MSG_SENT            | Message sent confirmation     |
-| 0x07  | PACKET_CONTACT_MSG_RECV    | Contact message (standard)    |
-| 0x08  | PACKET_CHANNEL_MSG_RECV    | Channel message (standard)    |
-| 0x09  | PACKET_CURRENT_TIME        | Current time response         |
-| 0x0A  | PACKET_NO_MORE_MSGS        | No more messages available    |
-| 0x0C  | PACKET_BATTERY             | Battery level                 |
-| 0x0D  | PACKET_DEVICE_INFO         | Device information            |
-| 0x10  | PACKET_CONTACT_MSG_RECV_V3 | Contact message (V3 with SNR) |
-| 0x11  | PACKET_CHANNEL_MSG_RECV_V3 | Channel message (V3 with SNR) |
-| 0x12  | PACKET_CHANNEL_INFO        | Channel information           |
-| 0x1B  | PACKET_CHANNEL_DATA_RECV   | Channel data datagram         |
-| 0x80  | PACKET_ADVERTISEMENT       | Advertisement packet          |
-| 0x82  | PACKET_ACK                 | Acknowledgment                |
-| 0x83  | PACKET_MESSAGES_WAITING    | Messages waiting notification |
-| 0x88  | PACKET_LOG_DATA            | RF log data (can be ignored)  |
+| Value | Firmware name | Description |
+|---|---|---|
+| `0x00` | `RESP_CODE_OK` | Command succeeded. |
+| `0x01` | `RESP_CODE_ERR` | Command failed; byte 1 is the error code. |
+| `0x02` | `RESP_CODE_CONTACTS_START` | Contact enumeration started. |
+| `0x03` | `RESP_CODE_CONTACT` | One contact record. |
+| `0x04` | `RESP_CODE_END_OF_CONTACTS` | Contact enumeration ended. |
+| `0x05` | `RESP_CODE_SELF_INFO` | Device self-information. |
+| `0x06` | `RESP_CODE_SENT` | Send accepted, with route/tag/timeout data. |
+| `0x07` / `0x08` | `RESP_CODE_CONTACT_MSG_RECV` / `RESP_CODE_CHANNEL_MSG_RECV` | Queued legacy-format message. |
+| `0x09` | `RESP_CODE_CURR_TIME` | Current device time. |
+| `0x0A` | `RESP_CODE_NO_MORE_MESSAGES` | Offline queue is empty. |
+| `0x0B` | `RESP_CODE_EXPORT_CONTACT` | Exported contact bytes. |
+| `0x0C` | `RESP_CODE_BATT_AND_STORAGE` | Battery and storage values. |
+| `0x0D` | `RESP_CODE_DEVICE_INFO` | Protocol and build information. |
+| `0x0E` | `RESP_CODE_PRIVATE_KEY` | Exported identity key, when enabled. |
+| `0x0F` | `RESP_CODE_DISABLED` | Requested sensitive feature is disabled. |
+| `0x10` / `0x11` | `RESP_CODE_CONTACT_MSG_RECV_V3` / `RESP_CODE_CHANNEL_MSG_RECV_V3` | Queued message with SNR fields. |
+| `0x12` | `RESP_CODE_CHANNEL_INFO` | Channel slot information. |
+| `0x13` / `0x14` | `RESP_CODE_SIGN_START` / `RESP_CODE_SIGNATURE` | Signing capacity or completed signature. |
+| `0x15` | `RESP_CODE_CUSTOM_VARS` | Custom-variable data. |
+| `0x16` | `RESP_CODE_ADVERT_PATH` | Cached advertisement path. |
+| `0x17` | `RESP_CODE_TUNING_PARAMS` | Tuning parameters. |
+| `0x18` | `RESP_CODE_STATS` | Requested statistics subtype. |
+| `0x19` | `RESP_CODE_AUTOADD_CONFIG` | Automatic-contact policy. |
+| `0x1A` | `RESP_ALLOWED_REPEAT_FREQ` | Allowed repeat-frequency ranges. |
+| `0x1B` | `RESP_CODE_CHANNEL_DATA_RECV` | Queued channel datagram. |
+| `0x1C` | `RESP_CODE_DEFAULT_FLOOD_SCOPE` | Default flood-scope data. |
+
+### Asynchronous push types
+
+| Value | Firmware name | Description |
+|---|---|---|
+| `0x80` | `PUSH_CODE_ADVERT` | Advertisement received. |
+| `0x81` | `PUSH_CODE_PATH_UPDATED` | A contact path changed. |
+| `0x82` | `PUSH_CODE_SEND_CONFIRMED` | A sent message was acknowledged. |
+| `0x83` | `PUSH_CODE_MSG_WAITING` | One or more offline frames are waiting. |
+| `0x84` | `PUSH_CODE_RAW_DATA` | Raw application data received. |
+| `0x85` / `0x86` | `PUSH_CODE_LOGIN_SUCCESS` / `PUSH_CODE_LOGIN_FAIL` | Server login result. |
+| `0x87` | `PUSH_CODE_STATUS_RESPONSE` | Server status response. |
+| `0x88` | `PUSH_CODE_LOG_RX_DATA` | Radio receive log data. |
+| `0x89` | `PUSH_CODE_TRACE_DATA` | Completed trace data. |
+| `0x8A` | `PUSH_CODE_NEW_ADVERT` | Newly stored contact advertisement. |
+| `0x8B` | `PUSH_CODE_TELEMETRY_RESPONSE` | Telemetry response. |
+| `0x8C` | `PUSH_CODE_BINARY_RESPONSE` | Binary request response. |
+| `0x8D` | `PUSH_CODE_PATH_DISCOVERY_RESPONSE` | Path-discovery response. |
+| `0x8E` | `PUSH_CODE_CONTROL_DATA` | Control/discovery data. |
+| `0x8F` | `PUSH_CODE_CONTACT_DELETED` | Oldest contact was deleted while making room. |
+| `0x90` | `PUSH_CODE_CONTACTS_FULL` | Contact storage is full. |
 
 ### Parsing Responses
 
@@ -700,6 +802,11 @@ def parse_device_info(data):
         info['fw_build'] = data[8:20].decode('utf-8').rstrip('\x00').strip()
         info['model'] = data[20:60].decode('utf-8').rstrip('\x00').strip()
         info['ver'] = data[60:80].decode('utf-8').rstrip('\x00').strip()
+
+    if fw_ver >= 9 and len(data) >= 81:
+        info['client_repeat'] = data[80] != 0
+    if fw_ver >= 10 and len(data) >= 82:
+        info['path_hash_mode'] = data[81]
     
     return info
 ```
@@ -801,10 +908,11 @@ Bytes 2-5: Tag / Expected ACK (4 bytes, little-endian)
 Bytes 6-9: Suggested Timeout (32-bit little-endian, milliseconds)
 ```
 
-**PACKET_ACK** (0x82):
+**PACKET_SEND_CONFIRMED** (0x82):
 ```
 Byte 0: 0x82
-Bytes 1-6: ACK Code (6 bytes, hex)
+Bytes 1-4: ACK code (32-bit little-endian)
+Bytes 5-8: Round-trip time (32-bit little-endian, milliseconds)
 ```
 
 ### Error Codes
@@ -835,7 +943,8 @@ BLE implementations enqueue and deliver one protocol frame per BLE write/notific
 1. **Command-Response Pattern**:
    - Send command via RX characteristic
    - Wait for response via TX characteristic (notification)
-   - Match response to command using sequence numbers or command type
+   - Match the response by the expected response type; frames do not carry a
+     general command sequence number
    - Handle timeout (typically 5 seconds)
    - Use command queue to prevent concurrent commands
 
@@ -902,7 +1011,7 @@ secret_hex = secret_16_bytes.hex()
 
 # 2. Build SET_CHANNEL command
 channel_name = "YourChannelName"
-channel_index = 1  # Use 1-7 for private channels
+channel_index = choose_unused_slot(max_channels)
 command = build_set_channel(channel_index, channel_name, secret_16_bytes)
 
 # 3. Send command

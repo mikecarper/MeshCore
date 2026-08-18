@@ -13,6 +13,36 @@
 #define RX_POWERSAVING_BALANCED_LEVEL     5
 #define RX_POWERSAVING_PROFILE_PREAMBLE   16
 
+// Optional initial settings for infrastructure roles. They are intentionally
+// disabled unless a build profile supplies them, so upstream/default builds
+// retain continuous receive. Companion has its own historical defaults below.
+#ifndef DEFAULT_RXPS_ENABLED
+#define DEFAULT_RXPS_ENABLED              0
+#endif
+#ifndef DEFAULT_RXPS_LEVEL
+#if DEFAULT_RXPS_ENABLED
+#define DEFAULT_RXPS_LEVEL                RX_POWERSAVING_BALANCED_LEVEL
+#else
+#define DEFAULT_RXPS_LEVEL                0
+#endif
+#endif
+#ifndef DEFAULT_RXPS_PREAMBLE
+#if DEFAULT_RXPS_ENABLED
+#define DEFAULT_RXPS_PREAMBLE             RX_POWERSAVING_PROFILE_PREAMBLE
+#else
+#define DEFAULT_RXPS_PREAMBLE             0
+#endif
+#endif
+
+#if DEFAULT_RXPS_ENABLED
+#if DEFAULT_RXPS_LEVEL < 1 || DEFAULT_RXPS_LEVEL > 10
+#error "DEFAULT_RXPS_LEVEL must be between 1 and 10"
+#endif
+#if DEFAULT_RXPS_PREAMBLE != 16 && DEFAULT_RXPS_PREAMBLE != 32
+#error "DEFAULT_RXPS_PREAMBLE must be 16 or 32"
+#endif
+#endif
+
 // Initial settings for companions. Build flags can override the defaults;
 // roles with runtime RXPS controls persist the operator's selection afterward.
 #ifndef RXPS_FIXED_ENABLED

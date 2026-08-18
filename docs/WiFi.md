@@ -93,7 +93,7 @@ best effort rather than durable storage. Each enabled slot publishes
 independently, so one failed broker does not intentionally stop the other
 slots.
 
-See [MQTT_IMPLEMENTATION.md](../MQTT_IMPLEMENTATION.md) for the complete preset
+See [MQTT_IMPLEMENTATION.md](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md) for the complete preset
 list, custom broker configuration, topic formats, authentication, diagnostics,
 and memory limits.
 
@@ -203,12 +203,18 @@ WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
 a trusted LAN.
 
-On radio chips that support receive duty cycling, the WebConfig **Advanced**
-card also exposes RX power saving. Its master switch selects continuous receive
-when off or RX/sleep duty cycling when on. Levels 1-10, automatic or explicit
-16/32-symbol preambles, and manual receive/sleep windows are persisted across
-reboots. This radio setting is separate from whole-device sleep; the WiFi
-companion remains awake so its TCP service and configuration page stay reachable.
+The WebConfig **Advanced** card exposes device power saving on WiFi Companion,
+repeater, and room-server builds. It also exposes RX power saving on radio chips
+that support receive duty cycling. RXPS can select continuous receive, levels
+1-10, automatic or explicit 16/32-symbol preambles, or manual receive/sleep
+windows. Both settings are persisted across reboots.
+
+The two settings are independent. A WiFi Companion keeps its transports
+available while device power saving reduces CPU and GPS idle power. An
+infrastructure node can sleep when device power saving is enabled, so its WiFi
+services may be temporarily unavailable. RXPS only duty-cycles the LoRa
+receiver. Fresh Cascade-profile builds default to device power saving on and
+RXPS on at level 8 with a 16-symbol preamble.
 
 When `ENABLE_OTA` is included, a WiFi companion also listens on:
 

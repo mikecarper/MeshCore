@@ -32,7 +32,6 @@ Cell values mean:
 - **Feature** - available only when the target compiles the feature or hardware
   named in Scope.
 - **Serial** - available only from the local serial console.
-- **PSRAM** - available only on an MQTT target with PSRAM neighbor support.
 - **Manifest** - available only when the MQTT target defines
   `OTA_MANIFEST_BASE`.
 - **Limited** - the family exists, but the limitation in Scope applies.
@@ -63,12 +62,12 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Neighbors | [`neighbors`](cli_commands.md#list-nearby-neighbors) | Role with a neighbor table | Yes | Yes | Yes |
 | Neighbors | [`neighbor.remove <pubkey_prefix>`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table | Yes | Yes | Yes |
 | Neighbors | [`discover.neighbors`](cli_commands.md#discover-zero-hop-neighbors) | Repeater; some MQTT room servers | Yes | Yes | Yes |
-| Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-psram-only) | MQTT observer with PSRAM | No | No | No |
+| Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No |
 | Statistics | [`clear stats`](cli_commands.md#clear-stats) | All full-parser text CLI roles | Yes | Yes | Yes |
-| Statistics | [`stats-core`](cli_commands.md#system-stats---battery-uptime-queue-length-and-debug-flags) | Local serial | Serial | Serial | Serial |
-| Statistics | [`stats-radio`](cli_commands.md#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors) | Local serial | Serial | Serial | Serial |
+| Statistics | [`stats-core`](cli_commands.md#stats-core) | Local serial | Serial | Serial | Serial |
+| Statistics | [`stats-radio`](cli_commands.md#stats-radio) | Local serial | Serial | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial |
-| Statistics | [`stats-packets`](cli_commands.md#packet-stats---packet-counters-received-sent) | Local serial | Serial | Serial | Serial |
+| Statistics | [`stats-packets`](cli_commands.md#stats-packets) | Local serial | Serial | Serial | Serial |
 | Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data; other roles can return empty data | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial |
@@ -160,7 +159,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Ethernet | [`eth.status`](cli_commands.md#view-ethernet-connection-status) | Ethernet target | Feature | Feature | No |
 | Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | ESP32 browser uploader | No | No | No |
 | WebConfig | [`start webconfig [ap]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WebConfig | No | No | No |
-| WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](../MQTT_IMPLEMENTATION.md#wifi-commands) | ESP32 WiFi | No | No | No |
+| WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands) | ESP32 WiFi | No | No | No |
 | WiFi | [`get/set wifi.cli`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WebConfig | No | No | No |
 | LoRa OTA | [`ota help`; `ota ?`; `ota h`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota`; `ota status`; `ota st`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
@@ -168,7 +167,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota ls`; `ota neighbors`; `ota nbrs`; `ota updates`; `ota n`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build; nRF52 installs in-place deltas | No | No | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible bootloader and completed update | No | No | Yes |
-| LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply--bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature |
+| LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes |
@@ -176,24 +175,24 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota config`; `ota cfg`; `ota set`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota key`; `ota keys`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota dev ...`](ota_protocol.md#11-cli-surface-otaclicpp) | Developer diagnostics | No | No | Yes |
-| MQTT | [`get/set mqttN.preset`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqttN.server`; `get/set mqttN.port`; `get/set mqttN.username`; `get/set mqttN.password`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqttN.token`; `get/set mqttN.topic`; `get/set mqttN.audience`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqttN.preset`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqttN.server`; `get/set mqttN.port`; `get/set mqttN.username`; `get/set mqttN.password`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqttN.token`; `get/set mqttN.topic`; `get/set mqttN.audience`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No |
 | MQTT | [`get mqttN.diag`](#mqtt-slot-diagnostics) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqtt.origin`; `get/set mqtt.iata`; `get mqtt.presets`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqtt.origin`; `get/set mqtt.iata`; `get mqtt.presets`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No |
 | MQTT | [`get mqtt.stats`](#mqtt-stats) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqtt.status`; `get/set mqtt.packets`; `get/set mqtt.raw`; `get/set mqtt.interval`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqtt.status`; `get/set mqtt.packets`; `get/set mqtt.raw`; `get/set mqtt.interval`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No |
 | MQTT | [`get/set mqtt.rx`](cli_commands.md#view-or-change-mqtt-rx-packet-uplinking); [`get/set mqtt.tx`](cli_commands.md#view-or-change-mqtt-tx-packet-uplinking) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqtt.neighbors`](cli_commands.md#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only); [`get/set mqtt.neighbors.interval`](cli_commands.md#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only) | MQTT observer with PSRAM | No | No | No |
+| MQTT | [`get/set mqtt.neighbors`](cli_commands.md#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature); [`get/set mqtt.neighbors.interval`](cli_commands.md#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No |
 | MQTT | [`get/set mqtt.ntp`](cli_commands.md#view-or-change-the-ntp-server-mqtt-observer-only) | MQTT observer | No | No | No |
 | MQTT | [`get mqtt.ntp.diag`](cli_commands.md#diagnose-ntp-server-connectivity-mqtt-observer-only) | Full MQTT observer | No | No | No |
-| MQTT | [`get/set timezone`; `get/set timezone.offset`](../MQTT_IMPLEMENTATION.md#timezone-commands) | MQTT observer | No | No | No |
-| MQTT | [`get/set mqtt.analyzer.us`; `get/set mqtt.analyzer.eu`](../MQTT_IMPLEMENTATION.md#migration-from-old-configuration) | Legacy MQTT aliases | No | No | No |
-| MQTT | [`get/set mqtt.owner`; `get/set mqtt.email`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer; `get` is local serial only | No | No | No |
+| MQTT | [`get/set timezone`; `get/set timezone.offset`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#timezone-commands) | MQTT observer | No | No | No |
+| MQTT | [`get/set mqtt.analyzer.us`; `get/set mqtt.analyzer.eu`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#migration-from-old-configuration) | Legacy MQTT aliases | No | No | No |
+| MQTT | [`get/set mqtt.owner`; `get/set mqtt.email`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer; `get` is local serial only | No | No | No |
 | MQTT | [`get mqtt.config.valid`](#mqtt-config-valid) | MQTT observer | No | No | No |
-| SNMP | [`get/set snmp`; `get/set snmp.community`](../MQTT_SNMP.md#cli-commands) | MQTT target compiled with SNMP | No | No | No |
-| Alerts | [`get/set alert`; `get/set alert.psk`; `get/set alert.hashtag`; `get/set alert.region`; `get/set alert.wifi`; `get/set alert.mqtt`; `get/set alert.interval`](../ALERTS.md#cli) | MQTT observer | No | No | No |
-| Alerts | [`alert test [message]`](../ALERTS.md#cli) | MQTT observer with configured alert channel | No | No | No |
+| SNMP | [`get/set snmp`; `get/set snmp.community`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_SNMP.md#cli-commands) | MQTT target compiled with SNMP | No | No | No |
+| Alerts | [`get/set alert`; `get/set alert.psk`; `get/set alert.hashtag`; `get/set alert.region`; `get/set alert.wifi`; `get/set alert.mqtt`; `get/set alert.interval`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli) | MQTT observer | No | No | No |
+| Alerts | [`alert test [message]`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli) | MQTT observer with configured alert channel | No | No | No |
 | TLS | [`tls.bundletest <host>`](#tls-bundle-test) | MQTT target with embedded certificate bundle | No | No | No |
 | Manifest OTA | [`ota check`](#manifest-ota) | MQTT target with `OTA_MANIFEST_BASE` | No | No | No |
 | Manifest OTA | [`ota update`](#manifest-ota) | MQTT target with `OTA_MANIFEST_BASE` | No | No | No |
@@ -220,12 +219,12 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Neighbors | [`neighbors`](cli_commands.md#list-nearby-neighbors) | Role with a neighbor table | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Neighbors | [`neighbor.remove <pubkey_prefix>`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table | Yes | Yes | Yes | No | No | Yes | Yes |
 | Neighbors | [`discover.neighbors`](cli_commands.md#discover-zero-hop-neighbors) | Repeater; some MQTT room servers | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-psram-only) | MQTT observer with PSRAM | No | No | No | No | No | PSRAM | No |
+| Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No | Feature | No | Feature | No |
 | Statistics | [`clear stats`](cli_commands.md#clear-stats) | Full parser | Yes | Yes | Yes | No | No | Yes | Yes |
-| Statistics | [`stats-core`](cli_commands.md#system-stats---battery-uptime-queue-length-and-debug-flags) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
-| Statistics | [`stats-radio`](cli_commands.md#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
+| Statistics | [`stats-core`](cli_commands.md#stats-core) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
+| Statistics | [`stats-radio`](cli_commands.md#stats-radio) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
-| Statistics | [`stats-packets`](cli_commands.md#packet-stats---packet-counters-received-sent) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
+| Statistics | [`stats-packets`](cli_commands.md#stats-packets) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
 | Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data | Yes | Yes | Yes | No | No | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial | No | No | Serial | Serial |
@@ -317,7 +316,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Ethernet | [`eth.status`](cli_commands.md#view-ethernet-connection-status) | Ethernet target | Feature | Feature | No | No | No | No | Feature |
 | Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | Compiled browser uploader | No | No | Yes | Yes | No | Feature | Feature |
 | WebConfig | [`start webconfig [ap]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | No | No | Feature | Feature |
-| WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](../MQTT_IMPLEMENTATION.md#wifi-commands) | MQTT WiFi, or standalone FULL WebConfig; standalone has no `get wifi.pwd` | No | No | No | Yes | No | Yes | Feature |
+| WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands) | MQTT WiFi, or standalone FULL WebConfig; standalone has no `get wifi.pwd` | No | No | No | Yes | No | Yes | Feature |
 | WiFi | [`get/set wifi.cli`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | No | No | Feature | Feature |
 | LoRa OTA | [`ota help`; `ota ?`; `ota h`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota`; `ota status`; `ota st`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
@@ -325,7 +324,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota ls`; `ota neighbors`; `ota nbrs`; `ota updates`; `ota n`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible completed update | No | No | Yes | No | No | Yes | Yes |
-| LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply--bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature | No | No | No | No |
+| LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature | No | No | No | No |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes | No | No | Yes | Yes |
@@ -333,24 +332,24 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota config`; `ota cfg`; `ota set`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota key`; `ota keys`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | No | No | Yes | Yes |
 | LoRa OTA | [`ota dev ...`](ota_protocol.md#11-cli-surface-otaclicpp) | Developer diagnostics | No | No | Yes | No | No | Yes | Yes |
-| MQTT | [`get/set mqttN.preset`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqttN.server`; `get/set mqttN.port`; `get/set mqttN.username`; `get/set mqttN.password`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqttN.token`; `get/set mqttN.topic`; `get/set mqttN.audience`](../MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqttN.preset`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqttN.server`; `get/set mqttN.port`; `get/set mqttN.username`; `get/set mqttN.password`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqttN.token`; `get/set mqttN.topic`; `get/set mqttN.audience`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
 | MQTT | [`get mqttN.diag`](#mqtt-slot-diagnostics) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqtt.origin`; `get/set mqtt.iata`; `get mqtt.presets`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqtt.origin`; `get/set mqtt.iata`; `get mqtt.presets`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
 | MQTT | [`get mqtt.stats`](#mqtt-stats) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqtt.status`; `get/set mqtt.packets`; `get/set mqtt.raw`; `get/set mqtt.interval`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqtt.status`; `get/set mqtt.packets`; `get/set mqtt.raw`; `get/set mqtt.interval`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
 | MQTT | [`get/set mqtt.rx`](cli_commands.md#view-or-change-mqtt-rx-packet-uplinking); [`get/set mqtt.tx`](cli_commands.md#view-or-change-mqtt-tx-packet-uplinking) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqtt.neighbors`](cli_commands.md#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only); [`get/set mqtt.neighbors.interval`](cli_commands.md#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only) | MQTT observer with PSRAM | No | No | No | PSRAM | No | PSRAM | No |
+| MQTT | [`get/set mqtt.neighbors`](cli_commands.md#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature); [`get/set mqtt.neighbors.interval`](cli_commands.md#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No | Feature | No | Feature | No |
 | MQTT | [`get/set mqtt.ntp`](cli_commands.md#view-or-change-the-ntp-server-mqtt-observer-only) | MQTT observer | No | No | No | Yes | No | Yes | No |
 | MQTT | [`get mqtt.ntp.diag`](cli_commands.md#diagnose-ntp-server-connectivity-mqtt-observer-only) | Full MQTT observer; intentionally cut from portable | No | No | No | No | No | Yes | No |
-| MQTT | [`get/set timezone`; `get/set timezone.offset`](../MQTT_IMPLEMENTATION.md#timezone-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqtt.analyzer.us`; `get/set mqtt.analyzer.eu`](../MQTT_IMPLEMENTATION.md#migration-from-old-configuration) | Legacy MQTT aliases | No | No | No | Yes | No | Yes | No |
-| MQTT | [`get/set mqtt.owner`; `get/set mqtt.email`](../MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer; `get` is local serial only | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set timezone`; `get/set timezone.offset`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#timezone-commands) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqtt.analyzer.us`; `get/set mqtt.analyzer.eu`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#migration-from-old-configuration) | Legacy MQTT aliases | No | No | No | Yes | No | Yes | No |
+| MQTT | [`get/set mqtt.owner`; `get/set mqtt.email`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands) | MQTT observer; `get` is local serial only | No | No | No | Yes | No | Yes | No |
 | MQTT | [`get mqtt.config.valid`](#mqtt-config-valid) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| SNMP | [`get/set snmp`; `get/set snmp.community`](../MQTT_SNMP.md#cli-commands) | MQTT target compiled with SNMP | No | No | No | No | No | Feature | No |
-| Alerts | [`get/set alert`; `get/set alert.psk`; `get/set alert.hashtag`; `get/set alert.region`; `get/set alert.wifi`; `get/set alert.mqtt`; `get/set alert.interval`](../ALERTS.md#cli) | MQTT observer | No | No | No | Yes | No | Yes | No |
-| Alerts | [`alert test [message]`](../ALERTS.md#cli) | MQTT observer with configured alert channel | No | No | No | Yes | No | Yes | No |
+| SNMP | [`get/set snmp`; `get/set snmp.community`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_SNMP.md#cli-commands) | MQTT target compiled with SNMP | No | No | No | No | No | Feature | No |
+| Alerts | [`get/set alert`; `get/set alert.psk`; `get/set alert.hashtag`; `get/set alert.region`; `get/set alert.wifi`; `get/set alert.mqtt`; `get/set alert.interval`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli) | MQTT observer | No | No | No | Yes | No | Yes | No |
+| Alerts | [`alert test [message]`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli) | MQTT observer with configured alert channel | No | No | No | Yes | No | Yes | No |
 | TLS | [`tls.bundletest <host>`](#tls-bundle-test) | MQTT target with embedded certificate bundle | No | No | No | Feature | No | Feature | No |
 | Manifest OTA | [`ota check`](#manifest-ota) | MQTT target with `OTA_MANIFEST_BASE` | No | No | No | Manifest | No | Manifest | No |
 | Manifest OTA | [`ota update`](#manifest-ota) | MQTT target with `OTA_MANIFEST_BASE` | No | No | No | Manifest | No | Manifest | No |

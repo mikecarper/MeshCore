@@ -1,12 +1,18 @@
 # Stability, Testability, and Upstream-Merge Handoff
 
+> **Archived roadmap snapshot.** This document records work and hardware results
+> through 2026-08-03; it is no longer the live plan of record. Internal status
+> sections are retained to explain the sequence in which work landed. For the
+> current tree, use [test/README.md](test/README.md),
+> [MQTT_OWNERSHIP.md](MQTT_OWNERSHIP.md), and the implementation itself. The
+> status corrections below were reconciled on 2026-08-18.
+
 ## Purpose
 
-This document is the plan of record for refining the fork-owned WebConfig and
-MQTT observer code after the initial policy extraction and host-test work. The
-goal is to improve runtime stability, long-uptime confidence, and serviceability
-without broad rewrites of upstream-heavy files or creating unnecessary merge
-conflicts.
+This document was the plan of record for refining the fork-owned WebConfig and
+MQTT observer code after the initial policy extraction and host-test work. It is
+kept as a dated engineering record, not as an instruction to resume every item
+whose original phase text says “pending.”
 
 The order is deliberate: cheap CI and persistence guardrails land first, then
 tests and ownership boundaries needed to make lifecycle work safe, and only
@@ -15,11 +21,10 @@ result; it is not the first line of defense for the riskiest change.
 
 ## Roadmap Status
 
-The guardrail phases have already landed on this branch; the remaining work is
-the lifecycle refactor and its safety net. Phases are intentionally not
-renumbered so cross-references and the completed acceptance criteria stay stable;
-each phase below carries an explicit status line, and this table is the quick
-index.
+At the final recorded state, the guardrails and minimal lifecycle refactor had
+landed, while the table still tracked validation and explicitly deferred work.
+Phases are intentionally not renumbered so historical cross-references and
+acceptance criteria stay stable.
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -27,18 +32,18 @@ index.
 | 2 | PSRAM restart resource symmetry | Done |
 | 3 | MQTT preference migration fixtures | Done (filesystem adapter still lives in `CommonCLI`) |
 | 0 | Pre-change lifecycle characterization | Hardware run 2026-07-19 (see "Hardware Characterization Results"): teardown timing measured on V3+V4. Finding: flat `MQTT_STOP_TIMEOUT_MS=8000` too small -> **FIXED** with slot-scaled timeout (`5s + 8sxslots`), hardware-verified (2-slot stop now clean) |
-| 4 | Ownership and teardown test seams | Seams + ownership doc + teardown tests done; production rewiring deferred to Phase 5 |
-| 5 | Cooperative MQTT shutdown | Minimal cooperative `end()` + `begin()` guard + OTA barrier implemented on branch `phase5/cooperative-mqtt-shutdown` (native green, firmware smoke build green); NOT hardware-validated. Volatile-handshake replacement + snapshot-consumer repointing deferred |
-| -- | OTA teardown barrier | Implemented -- flash gated on a clean MQTT stop in `simple_repeater`; not hardware-validated |
+| 4 | Ownership and teardown test seams | Seams + ownership doc + teardown tests done. Minimal production lifecycle wiring landed in Phase 5; snapshots and remaining handshake replacement stayed deferred |
+| 5 | Cooperative MQTT shutdown | Minimal cooperative `end()` + `begin()` guard + OTA barrier implemented and hardware-characterized; slot-scaled stop timeout verified with a two-WSS-slot clean stop. Volatile-handshake replacement + snapshot-consumer repointing remain deferred |
+| -- | OTA teardown barrier | Implemented; clean/dirty latch inputs hardware-verified. The live deferred `ota update` flash action was not exercised end-to-end in the recorded bench run |
 | 6 | Request/queue/connection/publication integration tests | Partial: WiFi-backoff + publish-outcome + enum-alignment gaps extracted and host-tested; WebConfig batch/reboot/stop spec (`WebConfigBatch.h`) **now wired into `WebConfigServer.cpp`** (2026-07-19) so the host tests cover production; queue-orchestration coverage still open, and the wired path is not yet exercised over real HTTP |
 | 7 | Uptime, memory, and fault-injection gates | Representative HW matrix run 2026-07-19: V3 non-PSRAM + V4 PSRAM done (no leak/crash; forced-path OTA-withhold + ~15-27 s loop stall observed). Multi-day soak + stack-HWM build pending |
 | -- | Non-PSRAM neighbors publication | Enabled on the ESP32-S3 non-PSRAM observer envs via `MQTT_NEIGHBORS_WITHOUT_PSRAM` (`feat/non-psram-neighbors`). Bench-verified 2026-08-03 at the 2-wss-slot non-PSRAM maximum (see "Hardware Characterization -- Non-PSRAM Neighbors"). Found and fixed a pre-existing PSRAM bug on the dev/beta channel: the JSON pool budget starved at ~40+ neighbours and dropped the whole publish (`34037f20`). Production is on ArduinoJson v6 and unaffected. Truncation above 20 neighbours is still unverified on hardware. |
-| -- | Upstream merge (latest) | `upstream/dev` `9d902e63` merged 2026-08-03 as `126a2564`: 13 commits, 6 files, zero conflicts. Carries an LR1110 RX-timeout fix affecting the ThinkNode M7 observer envs and switches all nRF52 boards to CC310 hardware Ed25519. See "Upstream Merge Record -- 2026-08-03". It exposed that nRF52/RP2040 had been unbuildable since 2026-04-10; nRF52 was fixed in `45379ad7`, while RP2040 remained open. |
+| -- | Upstream merge (recorded 2026-08-03) | `upstream/dev` `9d902e63` merged 2026-08-03 as `126a2564`: 13 commits, 6 files, zero conflicts. Carries an LR1110 RX-timeout fix affecting the ThinkNode M7 observer envs and switches all nRF52 boards to CC310 hardware Ed25519. See "Upstream Merge Record -- 2026-08-03". It exposed that nRF52/RP2040 had been unbuildable since 2026-04-10; nRF52 was fixed in `45379ad7`, while RP2040 remained open. |
 | -- | Upstream merge | `upstream/dev` merged 2026-07-19 on `observer-firmware-dev` (191 commits, 14 conflicted files). See "Upstream Merge Record". Not yet promoted to `webconfig` |
 | -- | Dev release channel | `observer-firmware-dev` publishes the dev/beta firmware channel (see "Release Channels"). Manual dispatch; separate from production |
 
-Phases 0, 4, and 5 (with the OTA teardown barrier) are landed and
-hardware-validated. **Remaining work, in execution order:**
+Phases 0, 4, and 5 (with the OTA teardown barrier) were landed and
+hardware-validated. **The remaining-work list recorded at that snapshot was:**
 
 1. Exercise the wired WebConfig batch machine over real HTTP (Phase 6) -- the
    only untested part of a change that is already in the branch.
@@ -56,9 +61,9 @@ Do not reopen a "Done" phase without a deliberate reason (see
 ## Hardware Characterization Results (Phase 0 & Phase 7) -- 2026-07-19
 
 Hardware run of the outstanding Phase 0 (pre-change/cooperative teardown timing)
-and Phase 7 (uptime/memory/fault-injection) items against two live observer
-nodes. **Not yet committed as a plan change -- this section records measured
-results and a release-gating recommendation for review.**
+and representative Phase 7 (uptime/memory/fault-injection) items against two
+live observer nodes. This section records the measured results; it does not
+claim the unrun multi-day soak or stack-HWM work was completed.
 
 ### Setup
 
@@ -281,7 +286,7 @@ covers on dev.
 - Single bench run; no multi-day soak, and no stack high-water-mark build. The
   4752->304 byte stack-frame reduction was verified by disassembly, not at runtime.
 
-## Current Baseline
+## Baseline recorded by this handoff
 
 The current branch has:
 
@@ -290,7 +295,8 @@ The current branch has:
   construction, WebConfig keys, the WebConfig batch state machine, the MQTT
   lifecycle/teardown seam, the `/mqtt_prefs` codec, the atomic prefs store, the
   runtime-buffer lifecycle, and upstream `Utils::toHex` and mesh-table behavior.
-  15 suites as of the 2026-07-19 upstream merge.
+  15 suites as of the 2026-07-19 upstream merge. The 2026-08-18 tree has 49
+  suite directories; use [test/README.md](test/README.md) for the current list.
 - ArduinoJson pinned to 7.4.3 across the native and all firmware environments,
   enforced in CI by `scripts/check_arduinojson_pin.py`.
 - PR CI (`.github/workflows/`) that runs the native suite and compiles both
@@ -390,8 +396,10 @@ persistence change across a fleet of thousands of devices is not.
 
 ### Phase 0: Record the pre-change lifecycle characterization
 
-**Status: Not started -- the next actionable step, and prerequisite for Phases 4
-and 5.**
+**Final recorded status: representative hardware characterization completed
+2026-07-19.** It found the flat 8-second stop timeout was too short and led to
+the verified slot-scaled timeout described earlier. Task-stack HWM and a
+multi-day soak remained open.
 
 Capture current behavior before changing shutdown mechanics. This provides a
 reference for the lifecycle fakes and lets the later state-machine refactor
@@ -520,17 +528,16 @@ Acceptance criteria:
 
 ### Phase 4: Establish ownership and teardown test seams
 
-**Status: Seams, ownership doc, and teardown tests landed; production rewiring
-deferred to Phase 5 by explicit decision (scope: "seams + tests only").** The
+**Final recorded status: seams, ownership doc, and teardown tests landed;
+cooperative production shutdown and the OTA barrier subsequently landed in
+Phase 5.** The
 fork-owned pure lifecycle state machine and narrow dependency seam
 (`src/helpers/MQTTLifecycle.h`), the teardown-focused test matrix
 (`test/test_mqtt_lifecycle/`), and the ownership model (`MQTT_OWNERSHIP.md`) are
-in place. `MQTTBridge.cpp` was intentionally left untouched to keep the
-merge-sensitive file free of churn until the Phase 5 change lands as one
-reviewable unit. The invasive production work -- publishing the plain-data
-snapshot and repointing consumers at it, replacing the `volatile` handshakes
-with a command queue / task notifications, and the cooperative-shutdown `end()`
-rewrite with a `begin()` double-call guard -- is carried into Phase 5.
+in place. `MQTTBridge.cpp` was intentionally left untouched during Phase 4.
+Publishing the plain-data snapshot and replacing the remaining `volatile`
+NTP/reconfigure handshakes were not included in the later minimal Phase 5
+change and remain deferred.
 
 Verified premise (with Phase 4 refinements): the loop task, WebConfig, CLI, and
 `AlertReporter` currently read the MQTT task's live, mutable slot objects and
@@ -603,8 +610,10 @@ Required teardown-focused tests:
 
 ### OTA Teardown Barrier: release-critical scenario
 
-**Status: Not started. This is the fix for a known shipping crash, not a
-hypothetical hardening target.** With a broker down over `wss`, the abrupt
+**Final recorded status: implemented.** Clean and timed-out stop inputs were
+hardware-verified; the live deferred `ota update` flash action itself was not
+driven end-to-end in the recorded bench run. The original failure premise was:
+with a broker down over `wss`, the abrupt
 `vTaskDelete` in `end()` can kill the MQTT task inside mbedTLS; `destroySlotClients()`
 then frees client buffers on a possibly-corrupted heap and OTA begins flashing
 with no barrier -- the observed teardown heap panic. There is no coordination
@@ -639,11 +648,11 @@ to bridge teardown, OTA sequencing, MQTT client lifetime, or task ownership.
 
 ### Phase 5: Implement cooperative MQTT shutdown
 
-**Status: Minimal cooperative shutdown implemented on branch
-`phase5/cooperative-mqtt-shutdown` (scope: "the smallest change that fixes the
-OTA teardown panic as one reviewable unit"). Native suite green; the non-PSRAM
-observer firmware smoke build compiles. NOT yet hardware-validated -- that is the
-Phase 7 gate -- and the stop timeout is a Phase-0 placeholder (see below).**
+**Final recorded status: minimal cooperative shutdown implemented and
+hardware-characterized.** Native tests and representative firmware builds were
+green. The original flat timeout was replaced with the slot-scaled timeout and
+a two-WSS-slot clean stop was verified on hardware. Immutable status snapshots
+and replacement of the remaining volatile handshakes were outside this phase.
 
 What landed (wiring the Phase 4 `MQTTLifecycle` state machine into the bridge):
 
@@ -782,8 +791,10 @@ prerequisite for the stability work.
 
 ### Phase 7: Establish uptime, memory, and fault-injection gates
 
-**Status: Not started.** The final validation gate; runs after the lifecycle and
-OTA-barrier work is in place.
+**Final recorded status: partial.** Representative V3 non-PSRAM and V4 PSRAM
+fault-injection/start-stop matrices were run without a leak or crash. The
+multi-day soak, stack-HWM build, and the complete network/OTA matrix below were
+not run.
 
 Use hardware soak tests to validate the already-tested design, not to discover
 basic lifecycle errors for the first time.

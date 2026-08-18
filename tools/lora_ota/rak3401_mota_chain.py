@@ -1216,6 +1216,10 @@ def confirm_chain(
     print(f"  public key  : {full_key}")
     print(f"  target      : {target.target_id:08X} hw={target.hw_id}")
     print(f"  running     : {target.current_version} {target.base_hash.hex().upper()}")
+    print(
+        f"  bootloader  : {target.bootloader_version or 'unknown'} "
+        f"(ABI {target.bootloader_abi}, codecs 0x{target.bootloader_codecs:X}; ready)"
+    )
     if first_index == len(steps):
         print("  action      : endpoint already installed")
     else:

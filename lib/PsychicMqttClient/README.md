@@ -1,6 +1,6 @@
 # PsychicMqttClient
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/MIT)
 [![Continuous Integration](https://github.com/theelims/PsychicMqttClient/actions/workflows/ci.yml/badge.svg)](https://github.com/theelims/PsychicMqttClient/actions/workflows/ci.yml)
 [![PlatformIO Registry](https://badges.registry.platformio.org/packages/elims/library/PsychicMqttClient.svg)](https://registry.platformio.org/libraries/elims/PsychicMqttClient)
 
@@ -121,15 +121,15 @@ That's it. Your MQTT connection is encrypted now.
 
 ### X509 CA Root Certificate Bundles
 
-If you require universal connectivity to more then one server with different root certificate authorities you can use the python script in the `/scripts` folder. It will either download a standard set of the most popular root CA's or use a set of certificates in \*.PEM or \*.DEM file format located in the folder `/ssl_certs`. For the download either the Mozilla collection at [https://curl.se/ca/cacert.pem](https://curl.se/ca/cacert.pem) is used or a collection curated by [Adafruit](https://github.com/adafruit/certificates/) specifically adjusted for the constraints of embedded systems.
+If you require connectivity to more than one server with different root certificate authorities, you can use the Python script in the `/scripts` folder. It either downloads a standard set of popular root CAs or uses a set of certificates in \*.PEM or \*.DER format from `/ssl_certs`. The download source can be either the Mozilla collection at [https://curl.se/ca/cacert.pem](https://curl.se/ca/cacert.pem) or a collection curated by [Adafruit](https://github.com/adafruit/certificates/) specifically for the constraints of embedded systems.
 
 Copy the script from the library folder into your platformio project folder `./scripts` so that it can be found. In the `platformio.ini` add the following lines
 
 ```ini
 extra_scripts = pre:scripts/generate_cert_bundle.py
 ; Source for SSL Cert Store can bei either downloaded from Mozilla with 'mozilla' ('https://curl.se/ca/cacert.pem')
-; or from a curated Adafruit repository with 'adafruit' (https://raw.githubusercontent.com/adafruit/certificates/main/data/roots.pem)
-; or complied from a 'folder' full of *.pem / *.dem files stored in the ./ssl_certs folder
+; or from a curated Adafruit repository with 'adafruit' (https://raw.githubusercontent.com/adafruit/certificates/main/data/roots-filtered.pem)
+; or compiled from a folder of *.pem / *.der files stored in ./ssl_certs
 board_ssl_cert_source = adafruit
 board_build.embed_files = src/certs/x509_crt_bundle.bin
 ```
@@ -166,8 +166,15 @@ mqttClient.attachArduinoCACertBundle();
 
 Otherwise the bundle will be overwritten by the MQTT client with unwanted side effects.
 
-> [!IMPORTANT]  
-> Currently there is a bug in mbedtls which prevents the proper certificate validation for all certificates signed by `Let's encrypt`. For this reason working directly with the ISRG Root X1 CA certificate or the bundle downloaded from Mozilla might result in SSL failing. You need to include the DST Root CA X3 certificate as well. Currently this is only done by the Adafruit repository. You can [read](https://github.com/adafruit/certificates/pull/1) here and [here](https://github.com/espressif/arduino-esp32/issues/8626) about the details.
+> [!NOTE]
+> Older Let's Encrypt servers could send a cross-signed chain that exposed an
+> mbedTLS validation problem and required the expired DST Root CA X3 workaround.
+> Let's Encrypt stopped serving that chain in 2024. Current deployments should
+> trust ISRG Root X1 through a maintained Mozilla or Adafruit bundle; retain the
+> old workaround only when connecting to a deliberately preserved legacy chain.
+> See the [Adafruit certificate change](https://github.com/adafruit/certificates/pull/1)
+> and the [archived ESP32 report](https://github.com/espressif/arduino-esp32/issues/8626)
+> for the historical details.
 
 ## Advanced Usage
 

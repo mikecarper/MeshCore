@@ -260,7 +260,7 @@ require MQTT or PSRAM.
 
 ---
 
-### Discover neighbor scopes (MQTT observer, PSRAM only)
+### Discover neighbor scopes (MQTT observer, neighbors feature)
 
 Refreshes the zero-hop neighbor table, then queries each neighbor for its region
 scopes and publishes the assembled table to the MQTT `neighbors` topic once.
@@ -282,6 +282,7 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 ---
 
+<a id="stats-core"></a>
 ### System Stats - Battery, Uptime, Queue Length and Debug Flags
 **Usage:** 
 - `stats-core`
@@ -290,6 +291,7 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 ---
 
+<a id="stats-radio"></a>
 ### Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors
 **Usage:** `stats-radio`
 
@@ -297,6 +299,7 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 ---
 
+<a id="stats-packets"></a>
 ### Packet stats - Packet counters: Received, Sent
 **Usage:** `stats-packets`
 
@@ -645,6 +648,7 @@ Station G2/G3 targets default to `off`.
 - Its default `off` state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to `on` reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - `radio.rxps.rfrx_disabled` is supported only on SX1262 targets with a host-controlled RX enable pin.
 - `on` and `conservative` select level `1` with a 16-symbol preamble; `balanced` selects level `5` with a 16-symbol preamble.
+- Fresh Cascade-profile builds start with RXPS on at level `8` and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom `<rx_us> <sleep_us>` timings remain fixed.
 - The selected mode is applied immediately, persisted, and restored after reboot.
 
@@ -1081,16 +1085,18 @@ get clock.sync.status
 - `powersaving`
 - `powersaving on`
 - `powersaving off`
+- `set powersaving on`
+- `set powersaving off`
 
 **Parameters:** 
 - `on`: enable power saving
 - `off`: disable power saving
 
-**Default:** `off` for infrastructure roles; `on` for Companion firmware
+**Default:** `on` for fresh Cascade-profile builds and Companion firmware; `off` for other infrastructure profiles
 
 **Note:** Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.
 
-Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. `powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`).
+Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. `powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`). Infrastructure WebConfig uses the `set powersaving` form; enabling it can put the node to sleep and make WiFi temporarily unavailable.
 
 ---
 
@@ -3035,7 +3041,7 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 
 ---
 
-#### View or change periodic neighbors publishing (MQTT observer, PSRAM only)
+#### View or change periodic neighbors publishing (MQTT observer, neighbors feature)
 **Usage:**
 - `get mqtt.neighbors`
 - `set mqtt.neighbors <on|off>`
@@ -3058,7 +3064,7 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 
 ---
 
-#### View or change the neighbors publish interval (MQTT observer, PSRAM only)
+#### View or change the neighbors publish interval (MQTT observer, neighbors feature)
 **Usage:**
 - `get mqtt.neighbors.interval`
 - `set mqtt.neighbors.interval <hours>`
@@ -3068,7 +3074,9 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
 
 **Default:** `24` (hours)
 
-> **Note:** Out-of-range values are rejected (not clamped). Requires a PSRAM board.
+> **Note:** Out-of-range values are rejected (not clamped). Requires a build
+> with `WITH_MQTT_NEIGHBORS`; PSRAM boards enable it automatically and selected
+> non-PSRAM variants opt in with `MQTT_NEIGHBORS_WITHOUT_PSRAM`.
 
 ---
 

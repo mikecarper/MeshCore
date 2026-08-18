@@ -84,7 +84,7 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
   #if defined(OTA_SD_STORE)
     #define OTA_MAX_SERVE 255        // protocol maximum: own fw plus up to 254 persistent SD archive entries
   #else
-    #define OTA_MAX_SERVE 12         // mOTAs THIS node offers (own fw + external folder); == one HAVE fragment
+    #define OTA_MAX_SERVE 24         // own fw plus a 23-step external bridge chain (fragmented OTA_HAVE)
   #endif
 #endif
 #ifndef OTA_MAX_SOURCE_OBJ
@@ -190,6 +190,27 @@ public:
     COMPLETE, FAILED, PAUSED
   };
 
+  // A manual pull is acknowledged only after the manager has actually acquired the receive slot. This
+  // keeps the CLI from reporting "OK pulling" when there is no store or another transfer is still active.
+  enum PullResult : uint8_t {
+    PULL_STARTED, PULL_RESUMED, PULL_NO_STORE, PULL_BUSY, PULL_BAD_MID
+  };
+
+  // Terminal failures remain visible in `ota status` instead of collapsing back to an indistinguishable
+  // IDLE/no-download state. Values are deliberately coarse: they are operator diagnostics, not wire data.
+  enum FetchError : uint8_t {
+    FETCH_ERROR_NONE,
+    FETCH_ERROR_MANIFEST,
+    FETCH_ERROR_HASH_ALGO,
+    FETCH_ERROR_CODEC,
+    FETCH_ERROR_GEOMETRY,
+    FETCH_ERROR_TOO_LARGE,
+    FETCH_ERROR_STORAGE,
+    FETCH_ERROR_INTEGRITY,
+    FETCH_ERROR_MANIFEST_TIMEOUT,
+    FETCH_ERROR_LEAVES_TIMEOUT
+  };
+
   // Sentinel for "no block" in the reassembly / peer-REQ / recently-served slots (a real block index is
   // a small uint16, so 0xFFFFFFFF is never valid).
   static const uint32_t NO_BLOCK = 0xFFFFFFFFu;
@@ -247,6 +268,9 @@ public:
   // Call this before releasing or overwriting the primary image's backing buffer.
   void clear_primary();
   uint8_t servedCount() const { return _n_serve; }   // total mOTAs we offer (own fw + folder)
+  // Per-source enumeration accounting. `offered` is what the attached host/source reported; `advertised`
+  // is what fit in this build's serve registry after validation/deduplication/capacity limits.
+  bool sourceStats(const MotaSource* src, uint16_t& offered, uint16_t& advertised) const;
   // Read-only view of one served entry (for `ota serve` listing): mid/target/fwver/codec/flags + is_self.
   const ServeEntry* servedEntry(uint8_t i) const { return i < _n_serve ? &_serve[i] : nullptr; }
   // 4-byte fingerprint of our served set (== the set_digest carried in the beacon); for admin OTA stats.
@@ -274,7 +298,7 @@ public:
   uint32_t wanted() const { return _desired_target; }
   uint32_t target() const { return _target; }   // this node's own OTA target_id (set in begin)
 
-  // Pull a SPECIFIC advertised mOTA by manifest_id (e.g. `ota pull <#>` picks the one more peers have),
+  // Pull a SPECIFIC advertised mOTA by manifest_id (the CLI also accepts a current catalog index),
   // not just any firmware for the target. mid=nullptr clears the filter (accept any mid for the target).
   void want_mid(const uint8_t* mid) {
     if (mid) { for (int i = 0; i < 4; i++) _desired_mid[i] = mid[i]; _have_desired_mid = true; }
@@ -287,16 +311,10 @@ public:
   // `validate` enables the motatool folder-capture warm-start: bulk-fetch the target leaves, diff a seed
   // build already staged in the destination, and pull DATA only for the differing blocks. Ignored unless a
   // seed is present (a plain fetch just re-transfers everything). Normal P2P pulls pass false.
-  void pull(const uint8_t* mid, uint32_t target, bool validate = false) {
-    _archive_fetch = false;
-    want(target); want_mid(mid); startFetch(mid, target, validate);
-  }
+  PullResult pull(const uint8_t* mid, uint32_t target, bool validate = false);
   // Capture an advertised container for relaying, not installation. Archive pulls accept every codec and
   // target because the receiver only verifies and stores bytes; it never tries to apply the result locally.
-  void pull_archive(const uint8_t* mid, uint32_t target) {
-    _archive_fetch = true;
-    want(target); want_mid(mid); startFetch(mid, target, false);
-  }
+  PullResult pull_archive(const uint8_t* mid, uint32_t target, bool validate = false);
   // Ask every known source for its catalog (populates `ota neighbors`). Async - rows arrive via OTA_HAVE.
   void queryAll();
   // Coarse clock for source/catalog ages + LRU (the Mesh adapter feeds millis; 0 in host tests is fine).
@@ -371,7 +389,10 @@ public:
 
   // Drop the current fetch session back to IDLE so a fresh `ota pull` / advert starts a new one.
   void reset_session() {
-    _fstate = IDLE; _have = 0; _req_count = 0; _mf_retries = 0;
+    _fstate = IDLE; _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
+    _req_count = 0; _mf_retries = 0;
+    _fetch_error = FETCH_ERROR_NONE;
+    clearFetchIntent();
     clearReassembly();
     _observed_path_transmissions = 0;
     _mf_total = 0; _mf_mask = 0; _mf_len = 0; _loop_last_mfmask = 0;
@@ -382,6 +403,7 @@ public:
   }
 
   FetchState fetchState() const { return _fstate; }
+  FetchError fetchError() const { return _fetch_error; }
   uint32_t blocksHave() const { return _have; }
   uint32_t blocksTotal() const { return _fbc; }
   uint8_t fetchPipelineWidth() const { return _pipeline_width; }
@@ -397,6 +419,8 @@ public:
     uint32_t target_id, fw_version;
     uint8_t  codec, flags;
     uint8_t  seeders[OTA_CAT_SEEDERS][4];  // distinct sources advertising this mid (deduped; capped)
+    uint16_t seeder_have[OTA_CAT_SEEDERS];  // progress reported by each tracked source
+    uint32_t seeder_last_ms[OTA_CAT_SEEDERS]; // age of each tracked source's latest HAVE
     uint8_t  n_seeders;                    // count of the above (capped at OTA_CAT_SEEDERS) - "N+ nodes have it"
     uint32_t have_max;                     // best block-count any source reported (== total when a full copy exists)
     uint32_t last_ms;
@@ -433,8 +457,13 @@ private:
   bool handleData(const uint8_t* m, uint16_t n);
   bool handleReqProof(const uint8_t* m, uint16_t n);
   bool handleProof(const uint8_t* m, uint16_t n);
-  void startFetch(const uint8_t* mid, uint32_t target, bool validate = false);   // begin/resume a fetch
+  PullResult startFetch(const uint8_t* mid, uint32_t target, bool validate = false); // begin/resume a fetch
   bool wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const;  // fetch this row?
+  bool fetchActive() const;
+  void clearFetchIntent();
+  void failFetch(FetchError error);
+  void completeFetch();
+  void invalidateCatalogSeeder(const uint8_t* seeder);
   void clearReassembly();                                 // forget every in-flight pipeline slot
   void clearReassemblySlot(uint8_t slot);
   int findReassemblySlot(uint32_t block) const;
@@ -491,6 +520,8 @@ private:
   ServeEntry  _serve[OTA_MAX_SERVE];                 // catalog (what we advertise) - entry 0 is view0
   uint8_t     _n_serve = 0;
   MotaSource* _src_list[OTA_MAX_SOURCE_OBJ] = {nullptr};
+  uint16_t    _src_offered[OTA_MAX_SOURCE_OBJ] = {0};
+  uint16_t    _src_advertised[OTA_MAX_SOURCE_OBJ] = {0};
   uint8_t     _n_src_obj = 0;
   uint8_t     _src_manifest[OTA_SRC_MANIFEST_MAX];   // manifest-minus-leaves of the loaded source mota
 #if defined(ESP32_PLATFORM)
@@ -520,6 +551,7 @@ private:
   // fetch
   OtaStore*  _fetch = nullptr;
   FetchState _fstate = IDLE;
+  FetchError _fetch_error = FETCH_ERROR_NONE;
   uint8_t    _fid[4] = {0};
   uint8_t    _froot[4] = {0};
   uint32_t   _ftotal = 0, _fpoff = 0, _floff = 0, _fpsize = 0, _fbc = 0, _fbs = 0;

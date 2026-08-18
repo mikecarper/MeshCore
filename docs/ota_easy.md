@@ -164,10 +164,12 @@ similar board's bootloader.
 Before preparing or downloading a LoRa update, run this on the destination:
 
 ```text
+get bootloader.ver
 ota self
 ```
 
-Continue only if the reply includes:
+The first command identifies the installed nRF52 bootloader. Continue only if
+the `ota self` reply includes:
 
 ```text
 bootloader: apply OK
@@ -272,13 +274,18 @@ ota status
 ota ls
 ```
 
-Discovery is asynchronous. Wait a few seconds and run `ota ls` again if the list is initially empty. Select
-the entry marked `[yours]`: it should say `full` for the ESP32 path or `delta` for the nRF52 path. If it is
-entry 1, run:
+Discovery is asynchronous. `ota ls` says `refreshing`; wait a few seconds and run it again even if it first
+shows an older row. Select `[same target]`: it should say `full` for the ESP32 path or `delta` for the nRF52
+path. Do not select `[unsupported]` (for example, a source's self-served full image on a single-slot nRF52).
+Use the row's stable eight-hex manifest ID rather than its changing list position:
 
 ```text
-ota pull 1 flash
+ota pull 838B8169 flash
 ```
+
+If an internal-flash nRF52 reports `no EndF`, only a row marked `[rescue]` is eligible. Current rescue-capable
+firmware requires `ota pull <mid8> flash rescue`, followed after completion by
+`ota rescue install <base_hash16>`. Older running firmware without those commands must be recovered over USB.
 
 Monitor the transfer:
 
@@ -322,9 +329,10 @@ ota status
 - **The CLI says LoRa OTA is not included:** that firmware does not contain the LoRa OTA feature.
   If it is the source or destination, install a supported `-ota-` build over WiFi or USB first. An intermediate
   repeater does not need the OTA CLI and can relay opaquely while its matching `tempradio` window is active.
-- **The update is marked `[other hw]`:** it is for a different board or firmware role. Do not install it.
-- **An nRF52 node does not list a full update:** this is intentional for internal-flash targets. The
-  MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.
+- **The update shows another environment or a raw `[hw XXXXXXXX]`:** it is for a different board or firmware
+  role. Do not install it.
+- **An internal-flash nRF52 marks a full update `[unsupported]`:** it can install only an in-place delta.
+  The MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.
 - **nRF52 reports a base mismatch:** the file passed to `--base` is not the exact application running on

@@ -264,15 +264,16 @@ then run:
 ```text
 ota ls
 ota ls 2
-ota get 1 flash
+ota get <mid8> flash
 ota status
 ```
 
 Use `ota ls 2`, `ota ls 3`, and so on when the source advertises more than the
-two rows that fit in one remote CLI reply. The update numbers are global across
-pages, so select the displayed number for the desired target instead of assuming
-it is always `1`. A receiver retains the complete protocol catalog and verifies
-every transferred block. It still applies its normal target, hardware, codec,
+two rows that fit in one remote CLI reply. Each row includes a stable
+eight-hex-digit manifest ID. Use that ID instead of a list number, because
+asynchronous catalog refreshes can reorder rows between the list and pull
+commands. A receiver retains the complete protocol catalog and verifies every
+transferred block. It still applies its normal target, hardware, codec,
 signature, and installation checks. The SD
 repeater may advertise images for many hardware families; it never installs
 those archive files merely because it serves them.

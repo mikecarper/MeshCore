@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <deque>
+#include <limits>
 #include <vector>
 
 #include "helpers/ArduinoSerialInterface.h"
@@ -10,6 +12,8 @@ class BufferStream : public Stream {
 public:
   std::deque<uint8_t> input;
   std::vector<uint8_t> output;
+  int write_capacity = 4096;
+  size_t max_write = std::numeric_limits<size_t>::max();
 
   void push(const char* data) {
     while (*data) input.push_back((uint8_t)*data++);
@@ -20,6 +24,7 @@ public:
   }
 
   int available() override { return (int)input.size(); }
+  int availableForWrite() override { return write_capacity; }
 
   int read() override {
     if (input.empty()) return -1;
@@ -29,13 +34,15 @@ public:
   }
 
   size_t write(uint8_t value) override {
-    output.push_back(value);
-    return 1;
+    return write(&value, 1);
   }
 
   size_t write(const uint8_t* data, size_t len) override {
-    output.insert(output.end(), data, data + len);
-    return len;
+    size_t accepted = std::min(len, max_write);
+    accepted = std::min(accepted, (size_t)std::max(write_capacity, 0));
+    output.insert(output.end(), data, data + accepted);
+    write_capacity -= (int)accepted;
+    return accepted;
   }
 };
 
@@ -47,20 +54,32 @@ public:
   bool enabled = false;
   bool connected = false;
   bool pairing_request = false;
+  bool write_busy = false;
+  std::deque<std::vector<uint8_t>> received_frames;
+  std::vector<std::vector<uint8_t>> sent_frames;
 
   void enable() override { enabled = true; }
   void disable() override { enabled = false; }
   bool isEnabled() const override { return enabled; }
   bool isConnected() const override { return connected; }
   bool isReadBusy() const override { return false; }
-  bool isWriteBusy() const override { return false; }
+  bool isWriteBusy() const override { return write_busy; }
   bool takePairingRequest() override {
     bool pending = pairing_request;
     pairing_request = false;
     return pending;
   }
-  size_t writeFrame(const uint8_t[], size_t len) override { return len; }
-  size_t checkRecvFrame(uint8_t[]) override { return 0; }
+  size_t writeFrame(const uint8_t src[], size_t len) override {
+    sent_frames.emplace_back(src, src + len);
+    return len;
+  }
+  size_t checkRecvFrame(uint8_t dest[]) override {
+    if (received_frames.empty()) return 0;
+    const std::vector<uint8_t> frame = received_frames.front();
+    received_frames.pop_front();
+    memcpy(dest, frame.data(), frame.size());
+    return frame.size();
+  }
 };
 
 TEST(MultiSerialInterface, TracksBluetoothConnectionSeparately) {
@@ -97,6 +116,120 @@ TEST(MultiSerialInterface, PairingRequestsComeOnlyFromBluetooth) {
   bluetooth.pairing_request = true;
   EXPECT_TRUE(manager.takePairingRequest());
   EXPECT_FALSE(manager.takePairingRequest());
+}
+
+TEST(MultiSerialInterface, RoutesRequiredRepliesToTheirRequestingInterface) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface wifi;
+  usb.connected = true;
+  wifi.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::WiFi, &wifi));
+  manager.enable();
+
+  usb.received_frames.push_back({0x01});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+
+  const uint8_t response[] = {0x05, 0xAA};
+  EXPECT_EQ(manager.writeFrame(response, sizeof(response)), sizeof(response));
+  ASSERT_EQ(usb.sent_frames.size(), 1u);
+  EXPECT_TRUE(wifi.sent_frames.empty());
+
+  // Login/status-style pushes complete a client operation and follow the same
+  // requester route rather than exposing the result on another transport.
+  const uint8_t required_push[] = {0x85, 0xBB};
+  EXPECT_EQ(manager.writeFrame(required_push, sizeof(required_push)),
+            sizeof(required_push));
+  ASSERT_EQ(usb.sent_frames.size(), 2u);
+  EXPECT_TRUE(wifi.sent_frames.empty());
+
+  // Passive observations remain visible to every enabled client.
+  const uint8_t best_effort_push[] = {0x80, 0xCC};
+  EXPECT_EQ(manager.writeFrame(best_effort_push, sizeof(best_effort_push)),
+            sizeof(best_effort_push));
+  ASSERT_EQ(usb.sent_frames.size(), 3u);
+  ASSERT_EQ(wifi.sent_frames.size(), 1u);
+}
+
+TEST(MultiSerialInterface, LocksMultiFrameRepliesToOneRequester) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface wifi;
+  usb.connected = true;
+  wifi.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::WiFi, &wifi));
+  manager.enable();
+
+  usb.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  manager.lockReplyRoute();
+
+  wifi.received_frames.push_back({0x16});
+  EXPECT_EQ(manager.checkRecvFrame(command), 0u);
+  EXPECT_EQ(wifi.received_frames.size(), 1u);
+
+  const uint8_t contact[] = {0x03, 0x42};
+  EXPECT_EQ(manager.writeFrame(contact, sizeof(contact)), sizeof(contact));
+  ASSERT_EQ(usb.sent_frames.size(), 1u);
+  EXPECT_TRUE(wifi.sent_frames.empty());
+
+  manager.unlockReplyRoute();
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_EQ(command[0], 0x16);
+  const uint8_t device_info[] = {0x0D, 0x43};
+  EXPECT_EQ(manager.writeFrame(device_info, sizeof(device_info)),
+            sizeof(device_info));
+  ASSERT_EQ(wifi.sent_frames.size(), 1u);
+}
+
+TEST(MultiSerialInterface, LosingLockedRequesterCannotFallBackToBroadcast) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface bluetooth;
+  usb.connected = true;
+  bluetooth.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  bluetooth.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  manager.lockReplyRoute();
+  manager.disableBluetooth();
+
+  EXPECT_FALSE(manager.isConnected());
+  const uint8_t contact[] = {0x03, 0x42};
+  EXPECT_EQ(manager.writeFrame(contact, sizeof(contact)), 0u);
+  EXPECT_TRUE(usb.sent_frames.empty());
+
+  manager.unlockReplyRoute();
+  EXPECT_TRUE(manager.isConnected());
+}
+
+TEST(MultiSerialInterface, PacesOnlyTheActiveReplyTransport) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface wifi;
+  usb.connected = true;
+  wifi.connected = true;
+  wifi.write_busy = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::WiFi, &wifi));
+  manager.enable();
+
+  usb.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_FALSE(manager.isWriteBusy());
+
+  wifi.received_frames.push_back({0x04});
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_TRUE(manager.isWriteBusy());
 }
 
 TEST(SerialModeSwitch, RecognizesControlSequenceAcrossReads) {
@@ -228,6 +361,123 @@ TEST(SerialModeSwitch, PassthroughLeavesInputAndSuppressesBinaryOutput) {
   EXPECT_EQ(interface.writeFrame(payload, sizeof(payload)), sizeof(payload));
   ASSERT_EQ(stream.output.size(), 6u);
   EXPECT_EQ(stream.output[0], '>');
+}
+
+TEST(SerialFlowControl, KeepsAFrameQueuedUntilUsbHasSpace) {
+  BufferStream stream;
+  stream.write_capacity = 0;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.enable();
+
+  const uint8_t payload[] = {0x05, 0xA5, 0x5A};
+  EXPECT_EQ(interface.writeFrame(payload, sizeof(payload)), sizeof(payload));
+  EXPECT_TRUE(stream.output.empty());
+  EXPECT_TRUE(interface.hasPendingIO());
+  EXPECT_TRUE(interface.isWriteBusy());
+
+  stream.write_capacity = MAX_FRAME_SIZE + 3;
+  interface.loop();
+  const std::vector<uint8_t> expected = {'>', 3, 0, 0x05, 0xA5, 0x5A};
+  EXPECT_EQ(stream.output, expected);
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
+TEST(SerialFlowControl, FinishesAnUnexpectedShortWriteBeforeNextFrame) {
+  BufferStream stream;
+  stream.write_capacity = MAX_FRAME_SIZE + 3;
+  stream.max_write = 2;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.enable();
+
+  const uint8_t first[] = {0x05, 0x11, 0x22};
+  const uint8_t second[] = {0x00};
+  EXPECT_EQ(interface.writeFrame(first, sizeof(first)), sizeof(first));
+  ASSERT_EQ(stream.output.size(), 2u);
+  EXPECT_EQ(interface.writeFrame(second, sizeof(second)), sizeof(second));
+
+  stream.max_write = std::numeric_limits<size_t>::max();
+  interface.loop();
+  const std::vector<uint8_t> expected = {
+      '>', 3, 0, 0x05, 0x11, 0x22,
+      '>', 1, 0, 0x00};
+  EXPECT_EQ(stream.output, expected);
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
+TEST(SerialFlowControl, DrainsFramesThroughAFifoSmallerThanTheFrame) {
+  BufferStream stream;
+  stream.write_capacity = 4;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.enable();
+
+  const uint8_t payload[] = {0x05, 1, 2, 3, 4, 5};
+  EXPECT_EQ(interface.writeFrame(payload, sizeof(payload)), sizeof(payload));
+  ASSERT_EQ(stream.output.size(), 4u);
+  EXPECT_TRUE(interface.hasPendingIO());
+
+  stream.write_capacity = 4;
+  interface.loop();
+  ASSERT_EQ(stream.output.size(), 8u);
+  EXPECT_TRUE(interface.hasPendingIO());
+
+  stream.write_capacity = 4;
+  interface.loop();
+  const std::vector<uint8_t> expected = {'>', 6, 0, 0x05, 1, 2, 3, 4, 5};
+  EXPECT_EQ(stream.output, expected);
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
+TEST(SerialFlowControl, PartialInboundFrameKeepsTransportBusy) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enable();
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  const uint8_t partial[] = {'<', 2};
+  stream.push(partial, sizeof(partial));
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_TRUE(interface.isReadBusy());
+  EXPECT_TRUE(interface.hasPendingIO());
+
+  const uint8_t remainder[] = {0, 0xA5, 0x5A};
+  stream.push(remainder, sizeof(remainder));
+  EXPECT_EQ(interface.checkRecvFrame(frame), 2u);
+  EXPECT_FALSE(interface.isReadBusy());
+  EXPECT_EQ(frame[0], 0xA5);
+  EXPECT_EQ(frame[1], 0x5A);
+}
+
+TEST(SerialFlowControl, AbandonsATruncatedInboundFrameAfterTimeout) {
+  resetArduinoMock();
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enable();
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  const uint8_t partial[] = {'<', 2, 0, 0xA5};
+  stream.push(partial, sizeof(partial));
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_TRUE(interface.isReadBusy());
+
+  delay(999);
+  interface.loop();
+  EXPECT_TRUE(interface.isReadBusy());
+  delay(1);
+  interface.loop();
+  EXPECT_FALSE(interface.isReadBusy());
+
+  const uint8_t complete[] = {'<', 1, 0, 0x5A};
+  stream.push(complete, sizeof(complete));
+  EXPECT_EQ(interface.checkRecvFrame(frame), 1u);
+  EXPECT_EQ(frame[0], 0x5A);
 }
 
 int main(int argc, char** argv) {

@@ -57,11 +57,12 @@ scheduled time are expired at dequeue, so under throttle the queue holds only fr
 traffic and admin responses reach the trickle of TX budget. Non-observer builds keep
 the upstream pool behavior.
 
-### Neighbors publication path (PSRAM only)
+### Neighbors publication path (feature-gated)
 
-Periodic neighbors publishing is gated on `WITH_MQTT_NEIGHBORS`
-(`defined(BOARD_HAS_PSRAM) && defined(MAX_NEIGHBOURS) && MAX_NEIGHBOURS > 0`,
-defined in `MQTTBridge.h`). It spans two subsystems and two cores:
+Periodic neighbors publishing is gated on `WITH_MQTT_NEIGHBORS`, defined in
+`MQTTBridge.h` when `MAX_NEIGHBOURS > 0` and either `BOARD_HAS_PSRAM` or the
+variant opt-in `MQTT_NEIGHBORS_WITHOUT_PSRAM` is present. It spans two
+subsystems and two cores:
 
 - **Mesh side (Core 1), `MyMesh`**: the `loop()` runs a two-stage refresh driven by
   `mqtt_neighbors_interval`. Stage 1 sends a zero-hop `sendNodeDiscoverReq()` and waits

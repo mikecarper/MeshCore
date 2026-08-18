@@ -114,12 +114,13 @@ struct OtaContext {
   bool     config_dirty = false;            // CLI set a policy/key -> CommonCLI persists + clears
   char     hw_id[33] = {0};                 // this device's hardware tag (from board.getOtaHwId(), set in begin)
 
-  // ---- Pull destinations (`ota pull <#> <dest>`): where a fetched .mota is staged. `flash` (fetch_store,
+  // ---- Pull destinations (`ota pull <id> <dest>`): where a fetched .mota is staged. `flash` (fetch_store,
   //      always present) or `folder` - an external host folder over the seeder link, registered by the app
   //      while a motatool `serve` connection is attached (else no `folder` dest is offered). Captures the
   //      container to the host as <mid>.mota so an exact firmware copy can be pulled for delta-building. ----
   FolderMotaStore* folder_dest = nullptr;   // non-null == a folder destination is currently connected
   char     folder_dest_info[24] = {0};      // human id of the link (e.g. "tcp 192.168.4.5", "serial")
+  bool     fetch_to_folder = false;          // COMPLETE belongs to a capture destination, never install it
   void set_folder_dest(FolderMotaStore* fs, const char* info) {
     folder_dest = fs;
     strncpy(folder_dest_info, info ? info : "?", sizeof(folder_dest_info) - 1);
@@ -150,6 +151,11 @@ struct OtaContext {
   }
 
   bool apply_fetched_impl(const uint8_t* rescue_base_hash, char* msg) {
+    if (fetch_to_folder) {
+      strncpy(msg, "refused: completed fetch was captured to a folder, not local install storage", 96);
+      msg[95] = 0;
+      return false;
+    }
 #if defined(OTA_SEEDER_ONLY)
     strncpy(msg, "refused: this build serves mOTA images but cannot install one", 96);
     msg[95] = 0;
@@ -234,6 +240,9 @@ struct OtaContext {
     FOLDER_LINK_TCP,
   };
   FolderLink folderLink() const { return _folder_link; }
+  bool folderSourceStats(uint16_t& offered, uint16_t& advertised) const {
+    return manager.sourceStats(_folder_source, offered, advertised);
+  }
 
   bool attach_folder_source(MotaSource* source, FolderLink link, const char* label,
                             char* msg, size_t cap) {
@@ -250,8 +259,11 @@ struct OtaContext {
     }
     if (folder_active && _folder_source == source) {
       manager.refresh_sources();
-      snprintf(msg, cap, "OK folder refreshed (%s) - serving %u mOTA total",
-               label ? label : "external", (unsigned)manager.servedCount());
+      uint16_t offered = 0, advertised = 0;
+      manager.sourceStats(source, offered, advertised);
+      snprintf(msg, cap, "OK folder refreshed (%s): advertising %u/%u host mOTAs%s",
+               label ? label : "external", (unsigned)advertised, (unsigned)offered,
+               advertised < offered ? " (some omitted: serve cap/invalid/duplicate)" : "");
       return true;
     }
     if (folder_active && _folder_source) {
@@ -268,13 +280,11 @@ struct OtaContext {
     folder_active = true;
     _folder_link = link;
     _folder_source = source;
-#if defined(OTA_SEEDER_ONLY)
-    snprintf(msg, cap, "OK folder attached (%s) - serving %u host mOTA total",
-             label ? label : "external", (unsigned)manager.servedCount());
-#else
-    snprintf(msg, cap, "OK folder attached (%s) - serving %u mOTA total (own fw + folder)",
-             label ? label : "external", (unsigned)manager.servedCount());
-#endif
+    uint16_t offered = 0, advertised = 0;
+    manager.sourceStats(source, offered, advertised);
+    snprintf(msg, cap, "OK folder attached (%s): advertising %u/%u host mOTAs%s",
+             label ? label : "external", (unsigned)advertised, (unsigned)offered,
+             advertised < offered ? " (some omitted: serve cap/invalid/duplicate)" : "");
     return true;
   }
 
@@ -333,6 +343,7 @@ struct OtaContext {
     manager.want(0);
     manager.want_mid(nullptr);
     manager.set_fetch_store(&fetch_store);
+    fetch_to_folder = false;
     _sd_cache_fetching = false;
   }
 
@@ -398,6 +409,7 @@ struct OtaContext {
       memcpy(_sd_cache_mid, row->mid, 4);
       sd_cache.set_mid(row->mid);
       manager.set_fetch_store(&sd_cache);
+      fetch_to_folder = false;
       _sd_cache_fetching = true;
       manager.pull_archive(row->mid, row->target_id);
       return;
@@ -427,6 +439,7 @@ struct OtaContext {
     target_id = 0;
 #endif
     manager.begin(target_id, send, ctx);
+    fetch_to_folder = false;
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place
 #if defined(OTA_SEEDER_ONLY)

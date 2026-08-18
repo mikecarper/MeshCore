@@ -13,6 +13,9 @@
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
 #endif
+#ifndef DEFAULT_POWERSAVING_ENABLED
+  #define DEFAULT_POWERSAVING_ENABLED 0
+#endif
 
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpio.h>

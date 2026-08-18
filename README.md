@@ -18,7 +18,7 @@ MeshCore provides the ability to create wireless mesh networks, similar to Mesht
 * Multi-Hop Packet Routing
   * Devices can forward messages across multiple nodes, extending range beyond a single radio's reach.
   * Supports up to a configurable number of hops to balance network efficiency and prevent excessive traffic.
-  * Nodes use fixed roles where "Companion" nodes are not repeating messages at all to prevent adverse routing paths from being used.
+  * Companion nodes do not repeat by default. Supported Companion builds can opt into bounded client repeating on permitted frequencies, while dedicated repeaters remain the normal way to extend coverage.
 * Supports LoRa Radios - Works with Heltec, RAK Wireless, and other LoRa-based hardware.
 * Decentralized & Resilient - No central server or internet required; the network is self-healing.
 * Low Power Consumption - Ideal for battery-powered or solar-powered devices.
@@ -73,8 +73,8 @@ The companion firmware can be connected to via BLE, USB or Wi-Fi depending on th
 - Web: https://app.meshcore.nz
 - Android: https://play.google.com/store/apps/details?id=com.liamcottle.meshcore.android
 - iOS: https://apps.apple.com/us/app/meshcore/id6742354151?platform=iphone
-- NodeJS: https://github.com/liamcottle/meshcore.js
-- Python: https://github.com/fdlamotte/meshcore-cli
+- NodeJS: https://github.com/meshcore-dev/meshcore.js
+- Python: https://github.com/meshcore-dev/meshcore-cli
 
 **Repeater and Room Server Firmware**
 
@@ -100,7 +100,7 @@ For minor changes just submit your PR and we'll try to review it, but for anythi
 Here are some general principles you should try to adhere to:
 * Keep it simple. Please, don't think like a high-level lang programmer. Think embedded, and keep code concise, without any unnecessary layers.
 * No dynamic memory allocation, except during setup/begin functions.
-* Use the same brace and indenting style that's in the core source modules. (A .clang-format is probably going to be added soon, but please do NOT retroactively re-format existing code. This just creates unnecessary diffs that make finding problems harder)
+* Follow the repository's `.clang-format` and the surrounding source style. Do not retroactively reformat unrelated code; that creates noisy diffs and makes functional changes harder to review.
 
 Help us prioritize! Please react with thumbs-up to issues/PRs you care about most. We look at reaction counts when planning work.
 
@@ -120,15 +120,16 @@ There are a number of fairly major features in the pipeline, with no particular 
 - [X] Standardise Bridge mode for repeaters
 - [ ] Repeater/Bridge: Standardise the Transport Codes for zoning/filtering
 - [X] Core + Repeater: enhanced zero-hop neighbour discovery
-- [ ] Core: round-trip manual path support
-- [ ] Companion + Apps: support for multiple sub-meshes (and 'off-grid' client repeat mode)
+- [X] Core + Full Companion: round-trip trace and manual path support
+- [X] Companion: opt-in off-grid client repeat mode
+- [ ] Companion + Apps: support for multiple sub-meshes
 - [ ] Core + Apps: support for LZW message compression
-- [ ] Core: dynamic CR (Coding Rate) for weak vs strong hops
+- [X] Core: adaptive CR (Coding Rate) for direct retries using recently heard SNR
 - [ ] Core: new framework for hosting multiple virtual nodes on one physical device
 - [ ] V2 protocol spec: discussion and consensus around V2 packet protocol, including path hashes, new encryption specs, etc
 
 ## [TELEPHONE] Get Support
 
-- Report bugs and request features on the [GitHub Issues](https://github.com/ripplebiz/MeshCore/issues) page.
+- Report bugs and request features on the [GitHub Issues](https://github.com/meshcore-dev/MeshCore/issues) page.
 - Find additional guides and components on [my site](https://buymeacoffee.com/ripplebiz).
 - Join [MeshCore Discord](https://meshcore.gg) to chat with the developers and get help from the community.

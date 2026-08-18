@@ -141,6 +141,7 @@ class TargetInfo:
     platform: str
     nrf_sd: bool
     hw_id: str | None
+    bootloader_version: str | None
     bootloader_abi: int | None
     bootloader_codecs: int | None
     status: str
@@ -637,21 +638,25 @@ def compatible_mota(info: MotaInfo, target: TargetInfo) -> tuple[bool, str]:
         if info.codec_id != expected_codec:
             return False, f"codec {info.codec_id}, need {expected_codec} for {target.platform}"
     if target.platform == "nrf52":
+        version = target.bootloader_version or "unknown version"
         if (
             target.bootloader_abi is not None
             and target.bootloader_abi < MOTA_FORMAT_VERSION
         ):
             return False, (
-                f"bootloader ABI {target.bootloader_abi} cannot apply mOTA format "
-                f"{MOTA_FORMAT_VERSION}"
+                f"bootloader {version} ABI {target.bootloader_abi} cannot "
+                f"apply mOTA format {MOTA_FORMAT_VERSION}; install an "
+                "exact-board OTAFIX bootloader with current mOTA support"
             )
         if (
             target.bootloader_codecs is not None
             and not target.bootloader_codecs & (1 << info.codec_id)
         ):
             return False, (
-                f"bootloader codec mask 0x{target.bootloader_codecs:X} does not "
-                f"support codec {info.codec_id}"
+                f"bootloader {version} codec mask "
+                f"0x{target.bootloader_codecs:X} does not support codec "
+                f"{info.codec_id}; install an exact-board OTAFIX bootloader "
+                "with the required codec support"
             )
     return True, ""
 
@@ -1008,6 +1013,12 @@ def reply_matches_command(command_text: str, reply: str) -> bool:
         )
     if command == "ota stats":
         return text.startswith("OTA | fw ") or is_unknown or needs_temp
+    if command == "get bootloader.ver":
+        return (
+            bool(re.fullmatch(r">\s*\S+", text))
+            or is_unknown
+            or (is_error and "unsupported" in lowered)
+        )
     if command == "ota ls":
         return (
             text.startswith("Updates ")
@@ -1018,14 +1029,21 @@ def reply_matches_command(command_text: str, reply: str) -> bool:
         )
     if command.startswith("ota pull "):
         return (
-            lowered.startswith(("ok pulling ", "usage: ota pull", "choose a destination"))
+            lowered.startswith((
+                "ok pulling ", "ok resuming ", "usage: ota pull",
+                "choose a destination",
+            ))
             or is_unknown
             or needs_temp
             or (
                 is_error
                 and any(
                     word in lowered
-                    for word in ("update", "destination", "pull", "fetch", "busy", "folder")
+                    for word in (
+                        "update", "destination", "pull", "fetch", "busy",
+                        "folder", "slot", "codec", "bootloader", "apply",
+                        "rescue", "endf", "storage",
+                    )
                 )
             )
         )
@@ -1058,6 +1076,25 @@ def reply_matches_command(command_text: str, reply: str) -> bool:
 def extract_reply_version(reply: str) -> int | None:
     match = re.search(r"\b[vV]?(\d+\.\d+\.\d+(?:\.\d+)?)\b", reply)
     return parse_version(match.group(1)) if match else None
+
+
+def parse_bootloader_version_reply(
+    reply: str,
+) -> tuple[str | None, str | None]:
+    """Return platform/version, or no platform for legacy firmware."""
+    text = reply.strip()
+    version_match = re.fullmatch(r">\s*(\S+)", text)
+    if version_match:
+        version = version_match.group(1)
+        return "nrf52", None if version.lower() == "unknown" else version
+    if re.fullmatch(r"err(?:or)?:\s*unsupported", text, re.IGNORECASE):
+        return "esp32", None
+    if text.lower().startswith(("unknown command", "command not found")):
+        return None, None
+    raise OtaError(
+        "could not interpret destination `get bootloader.ver` reply: "
+        f"{reply}"
+    )
 
 
 class PersistentMeshcliSession:
@@ -1522,33 +1559,59 @@ def query_target(
     if not match:
         raise OtaError("could not read destination target ID from `ota status`")
     target_id = int(match.group(1), 16)
+    bootloader_reply = controller.remote_command(
+        args.target, "get bootloader.ver"
+    )
+    reported_platform, bootloader_version = parse_bootloader_version_reply(
+        bootloader_reply
+    )
     self_status = controller.remote_command(args.target, "ota self")
     hash_match = re.search(r"base_hash=([0-9A-Fa-f]{16})", self_status)
     if not hash_match:
         raise OtaError("could not read destination base hash from `ota self`")
     base_hash = bytes.fromhex(hash_match.group(1))
     combined = f"{status} {self_status}"
-    platform = "nrf52" if ("bootloader:" in combined or "| bl:" in combined) else "esp32"
-    nrf_sd = "SD apply OK" in combined or bool(re.search(r"\bbl:SD\b", combined))
+    if reported_platform is None:
+        platform = (
+            "nrf52"
+            if "bootloader:" in combined or "| bl:" in combined
+            else "esp32"
+        )
+        print(
+            "[warn] destination firmware does not implement "
+            "`get bootloader.ver`; using legacy `ota self` platform markers"
+        )
+    else:
+        platform = reported_platform
+    nrf_sd = "SD apply OK" in combined or bool(
+        re.search(r"\bbl:SD\b", combined)
+    )
     if platform == "nrf52" and (
         "NO mota-apply" in combined
         or "NO SD mota-apply" in combined
         or bool(re.search(r"\bbl:NONE\b", combined))
     ):
+        version = bootloader_version or "unknown version"
         raise OtaError(
-            "destination nRF52 bootloader cannot apply this mOTA; install the exact-board OTAFIX bootloader first"
+            f"destination nRF52 bootloader {version} cannot apply this mOTA; "
+            "install the exact-board OTAFIX bootloader first"
         )
     hw_match = re.search(r"\bhw=([^ |]+)", status)
     hw_id = hw_match.group(1) if hw_match and hw_match.group(1) != "?" else None
     bootloader_abi = None
     bootloader_codecs = None
-    caps_match = re.search(r"\babi=(\d+)\s+codecs=0x([0-9A-Fa-f]+)", combined)
+    caps_match = re.search(
+        r"\babi=(\d+)\s+codecs=0x([0-9A-Fa-f]+)", combined
+    )
     if caps_match:
         bootloader_abi = int(caps_match.group(1))
         bootloader_codecs = int(caps_match.group(2), 16)
     elif platform == "nrf52":
+        version = bootloader_version or "unknown version"
         raise OtaError(
-            "could not read the nRF52 bootloader ABI and codec mask from `ota self`"
+            f"destination nRF52 bootloader {version} does not report a "
+            "compatible mOTA ABI and codec mask in `ota self`; install the "
+            "exact-board OTAFIX bootloader first"
         )
     current_version = None
     current_version_source = None
@@ -1572,9 +1635,19 @@ def query_target(
         current_version = format_version(version_value)
         current_version_source = "ver"
     return TargetInfo(
-        args.target, target_id, base_hash, platform, nrf_sd, hw_id,
-        bootloader_abi, bootloader_codecs, status, self_status, current_version,
-        current_version_source,
+        name=args.target,
+        target_id=target_id,
+        base_hash=base_hash,
+        platform=platform,
+        nrf_sd=nrf_sd,
+        hw_id=hw_id,
+        bootloader_version=bootloader_version,
+        bootloader_abi=bootloader_abi,
+        bootloader_codecs=bootloader_codecs,
+        status=status,
+        self_status=self_status,
+        current_version=current_version,
+        current_version_source=current_version_source,
     )
 
 
@@ -1873,6 +1946,14 @@ def confirm_update(
     print("\nValidated update plan:")
     print(f"  destination : {target.name} ({target.target_id:08X}, {target.platform})")
     print(f"  running base: {target.base_hash.hex().upper()}")
+    if target.platform == "nrf52":
+        version = target.bootloader_version or "unknown"
+        print(
+            f"  bootloader  : {version} (ABI {target.bootloader_abi}, "
+            f"codecs 0x{target.bootloader_codecs:X}; ready)"
+        )
+    else:
+        print("  bootloader  : not required")
     print(f"  update      : {package.version} {package.kind} hw={package.hw_id or '?'}")
     print(f"  mOTA id     : {package.manifest_id}")
     print(f"  TempRadio   : {args.temp_radio}")
@@ -2074,7 +2155,7 @@ def find_and_start_pull(
                     )
                 raise exc
 
-            if pull_reply.startswith("OK pulling"):
+            if pull_reply.startswith(("OK pulling", "OK resuming")):
                 reply_id = download_manifest_id(pull_reply.replace("mid=", "id="))
                 if reply_id != package.manifest_id:
                     raise OtaError(
@@ -2926,9 +3007,17 @@ def offline_target(args: argparse.Namespace) -> TargetInfo:
         if args.target_base_hash else b"\0" * 8
     )
     return TargetInfo(
-        args.target, int(target_id_text, 16), base_hash,
-        args.platform, args.nrf_sd, args.target_hw, None, None,
-        "offline", "offline",
+        name=args.target,
+        target_id=int(target_id_text, 16),
+        base_hash=base_hash,
+        platform=args.platform,
+        nrf_sd=args.nrf_sd,
+        hw_id=args.target_hw,
+        bootloader_version=None,
+        bootloader_abi=None,
+        bootloader_codecs=None,
+        status="offline",
+        self_status="offline",
     )
 
 

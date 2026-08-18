@@ -279,6 +279,7 @@ static bool isUsbTerminalDataConnected() {
 }
 
 static void enterUsbTerminalMode() {
+  the_mesh.cancelSerialResponseStream();
   usb_serial_interface.setPassthroughMode(true);
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
@@ -318,6 +319,7 @@ static void leaveUsbMotaMode(bool acknowledge) {
 }
 
 static void enterUsbMotaMode() {
+  the_mesh.cancelSerialResponseStream();
   usb_serial_interface.setPassthroughMode(true);
   usb_mota_mode = true;
   usb_mota_line_len = 0;
@@ -962,7 +964,8 @@ void setup() {
   // activity: a real client has to send us frames.
   usb_serial_interface.setConnectedCheck([]() {
     uint32_t last = usb_serial_interface.getLastFrameMillis();
-    return (bool)Serial && last != 0 && (millis() - last) < USB_CLIENT_IDLE_TIMEOUT;
+    return (bool)Serial && usb_serial_interface.hasReceivedFrame()
+        && (millis() - last) < USB_CLIENT_IDLE_TIMEOUT;
   });
 #elif (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
     || defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
@@ -1058,10 +1061,11 @@ void loop() {
 #endif
 
   // USB power alone (for example, a wall charger) must not disable power
-  // saving. Stay awake only while a computer has an active USB data session.
+  // saving. Stay awake only while an enumerated USB host is attached.
   bool can_sleep = the_mesh.getNodePrefs()->powersaving_enabled
       && !the_mesh.hasPendingWork();
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) \
+    || (defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE))
   can_sleep = can_sleep && !board.isUsbHostConnected();
 #endif
   if (can_sleep) {

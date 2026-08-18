@@ -1,5 +1,12 @@
 # MQTT Bridge Cross-Core Ownership Model
 
+> **Historical design record, status reconciled 2026-08-18.** The ownership
+> analysis was written during Phases 4-5. File/line references describe that
+> snapshot and must be re-located before editing current code. Cooperative
+> shutdown and the OTA barrier are implemented and hardware-characterized;
+> immutable status publication and replacement of the remaining volatile
+> NTP/reconfigure handshakes are still deferred.
+
 This document is the Phase 4 deliverable from `STABILITY_TESTABILITY_HANDOFF.md`:
 it records **one owner for each mutable runtime domain**, maps every place a
 non-owner reads owned state across cores today, and states the target primitive
@@ -11,8 +18,9 @@ landed (Phase 4). **Phase 5 (branch `phase5/cooperative-mqtt-shutdown`) has now
 implemented the cooperative shutdown and the OTA barrier -- hazard Section 4 below.**
 Still **deferred** (carried to Phase 5b / Phase 6): publishing a plain-data
 snapshot and repointing the Section 1/Section 2 consumers, and replacing the Section 3 `volatile`
-handshakes with a command channel. This document is the plan; Section 1-Section 3 still
-describe current behavior, while Section 4 is now resolved (see its note). Line
+handshakes with a command channel. This document is a design record; Sections
+1-3 describe hazards that still exist conceptually, while Section 4 is resolved.
+Line
 references are against the tree at the time of writing and should be re-verified
 before editing.
 
@@ -44,7 +52,7 @@ The rule that follows: **loop/WebConfig/CLI/AlertReporter code must not directly
 inspect mutable MQTT slot objects or client counters.** The MQTT task must
 publish a plain-data snapshot they can read instead.
 
-## Current cross-core hazards (to resolve in Phase 5)
+## Remaining cross-core hazards after the minimal Phase 5 change
 
 All of the following run on **Core 1** and read state mutated by **Core 0**
 without a lock or a published snapshot.
@@ -122,12 +130,14 @@ had no double-call guard, and lifecycle state was a single `_initialized` bool.
   bare bool.
 - The OTA barrier gates `simple_repeater`'s deferred flash on a clean stop.
 
-Not hardware-validated yet (Phase 7); `MQTT_STOP_TIMEOUT_MS` is a Phase-0
-placeholder. Note the residual Section 1/Section 2 instance-pointer reads remain deferred, so
-consumers can still (as before) touch a torn-down bridge -- that is unchanged by
-Phase 5 and tracked above.
+The shutdown path and timeout were subsequently hardware-characterized. The
+flat 8-second placeholder was replaced by a per-stop budget of 5 seconds plus
+8 seconds per enabled slot. A two-WSS-slot stop that previously timed out
+acknowledged cleanly in about 11.7 seconds within its 21-second budget. The
+residual Section 1/Section 2 instance-pointer reads remain deferred, so those
+consumers can still touch live or torn-down bridge state as tracked above.
 
-## Target primitives (Phase 5)
+## Remaining target primitives
 
 - **Task notifications or a command queue** for one-way lifecycle / reconfigure
   / NTP requests -- replacing every `volatile` flag in Section 3.
@@ -142,10 +152,10 @@ Phase 5 and tracked above.
 
 ## Lifecycle contract (the test seam)
 
-`src/helpers/MQTTLifecycle.h` encodes the cooperative lifecycle Phase 5 must
-implement, as a pure state machine plus a narrow injected `Ops` seam
+`src/helpers/MQTTLifecycle.h` encodes the cooperative lifecycle implemented by
+Phase 5 as a pure state machine plus a narrow injected `Ops` seam
 (clock / task control / resource owner / OTA barrier). The invariants proven by
-`test/test_mqtt_lifecycle/` -- and that Phase 5's production wiring must preserve:
+`test/test_mqtt_lifecycle/` and preserved by the production wiring are:
 
 - `Stopped -> Starting -> Running -> StopRequested -> Stopping -> Stopped`.
 - Idempotent start and stop; safe restart only from `Stopped` (`mayRestart`).
@@ -161,25 +171,21 @@ implement, as a pure state machine plus a narrow injected `Ops` seam
   acknowledgment; a timed-out stop leaves flashing blocked so OTA aborts rather
   than writing under uncertain ownership.
 
-### Phase 0 / hardware-pending items
+### Hardware characterization result
 
-Per the "derive from code + flag" discipline, these are **not** encoded as
-constants and must be characterized on hardware before Phase 5 ships:
+WSS teardown was measured as roughly 5-6 seconds per slot and is sequential.
+Production now sets the coordinator timeout to `5 s + 8 s * enabled_slots`.
+Representative non-PSRAM and PSRAM start/stop matrices found no downward heap
+or largest-block trend; multi-day soak, task-stack high-water, and exhaustive
+callback ordering remain outside that run.
 
-- The concrete stop timeout (injected as `Coordinator`'s `stop_timeout_ms`;
-  must be measured against mbedTLS teardown over `wss` with a down broker).
-- Exact callback timing/ordering under a real TLS disconnect.
-- Heap / largest-block / task-stack high-water and task/client counts across
-  start/stop/restart (Phase 7 gates).
-
-## Deferred to Phase 5 (not done here)
+## Implementation status after Phase 5
 
 - Publishing the plain-data snapshot and repointing the Section 1/Section 2 consumers at it.
 - Replacing the Section 3 `volatile` handshakes with a command queue / task
   notifications.
-- The cooperative shutdown state machine in `MQTTBridge` (`end()` rewrite, the
-  `begin()` double-call guard) and the OTA teardown barrier.
+- **Completed:** the cooperative shutdown state machine in `MQTTBridge`, the
+  `begin()` double-call guard, slot-scaled timeout, and OTA teardown barrier.
 
-`MQTTBridge.cpp` was intentionally left untouched in Phase 4 to keep the
-merge-sensitive file (~3.7k lines) free of churn until the Phase 5 change lands
-as a single reviewable unit.
+Historical note: `MQTTBridge.cpp` was intentionally untouched during Phase 4;
+Phase 5 later made the planned lifecycle changes as one reviewable unit.

@@ -25,6 +25,11 @@ public:
   // Returns true once for each pending Bluetooth pairing prompt. Non-BLE
   // transports keep the default implementation so UI code can poll safely.
   virtual bool takePairingRequest() { return false; }
+  // Multi-transport implementations can pin a sequence of response frames to
+  // the interface which supplied the current command. Single transports have
+  // nothing to route, so their default implementations are no-ops.
+  virtual void lockReplyRoute() {}
+  virtual void unlockReplyRoute() {}
   virtual size_t writeFrame(const uint8_t src[], size_t len) = 0;
   virtual size_t checkRecvFrame(uint8_t dest[]) = 0;
 };

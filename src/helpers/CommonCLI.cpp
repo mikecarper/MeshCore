@@ -3689,6 +3689,13 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "OK - %s,%lu,%lu", enable ? "on" : "off",
               (unsigned long)rx_us, (unsigned long)sleep_us);
     }
+  } else if (strcmp(config, "powersaving on") == 0
+             || strcmp(config, "powersaving off") == 0) {
+    const bool enabled = strcmp(&config[12], "on") == 0;
+    _prefs->powersaving_enabled = enabled ? 1 : 0;
+    _sensors->setPowerSavingEnabled(enabled);
+    savePrefs();
+    sprintf(reply, "OK - powersaving %s", enabled ? "on" : "off");
   } else if (memcmp(config, "radio ", 6) == 0) {
     strcpy(tmp, &config[6]);
     const char *parts[4];

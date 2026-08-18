@@ -2,20 +2,16 @@
 
 Inside each [MeshCore Packet](./packet_format.md) is a payload, identified by the payload type in the packet header. The types of payloads are:
 
-* Node advertisement.
-* Acknowledgment.
-* Returned path.
-* Request (destination/source hashes + MAC).
-* Response to REQ or ANON_REQ.
-* Plain text message.
-* Anonymous request.
-* Group text message (unverified).
-* Group datagram (unverified).
-* Multi-part packet
-* Control data packet
-* Custom packet (raw bytes, custom encryption).
+* Request, response, and plain text (`0x00`-`0x02`).
+* Acknowledgment and node advertisement (`0x03`-`0x04`).
+* Group text and group datagram (`0x05`-`0x06`).
+* Anonymous request and returned path (`0x07`-`0x08`).
+* Trace, multipart, control, and OTA (`0x09`-`0x0C`).
+* Custom raw data (`0x0F`).
 
-This document defines the structure of each of these payload types.
+This document describes the shared payload envelopes implemented by the core.
+Application-specific request, response, control, and custom bodies can add their
+own formats.
 
 NOTE: all 16 and 32-bit integer fields are Little Endian.
 
@@ -91,9 +87,9 @@ Returned path messages provide a description of the route a packet took from the
 
 | Field       | Size (bytes) | Description                                                                                                          |
 |-------------|--------------|----------------------------------------------------------------------------------------------------------------------|
-| path length | 1            | length of next field                                                                                                 |
-| path        | see above    | a list of node hashes (one byte each)                                                                                |
-| extra type  | 1            | extra, bundled payload type, eg., acknowledgement or response. Same values as in [Packet Format](./packet_format.md) |
+| path descriptor | 1        | low 6 bits are the hash count; high 2 bits encode hash size minus one                                                |
+| path        | count × size | encoded node-hash prefixes, each 1-3 bytes; the four-byte code is reserved                                           |
+| extra type  | 1            | low nibble is the bundled payload type, such as acknowledgment or response; high nibble is reserved                 |
 | extra       | rest of data | extra, bundled payload content, follows same format as main content defined by this document                         |
 
 ### Request
@@ -295,6 +291,45 @@ The data contained in the ciphertext uses the format below:
 | snr          | 1               | signed, SNR*4                              |
 | tag          | 4               | reflected back from DISCOVER_REQ           |
 | pubkey       | 8 or 32         | node's ID (or prefix)                      |
+
+
+## Trace
+
+Trace packets use direct routing. Their normal direct-path header is empty;
+instead, the intended route follows a fixed nine-byte trace header in the
+payload. Each forwarding node appends its received SNR multiplied by four to
+the packet's route-accumulator field.
+
+| Field       | Size (bytes) | Description |
+|-------------|--------------|-------------|
+| tag         | 4            | Sender-selected trace identifier. |
+| auth code   | 4            | Application-defined authentication/correlation value. |
+| flags       | 1            | Low two bits encode the route hash size. Current senders use the legacy `1 << value` interpretation (1, 2, 4, or 8 bytes); receivers also accept the packed 1-4-byte interpretation where it is unambiguous. |
+| route       | rest         | Concatenated node-hash prefixes for the requested direct route. |
+
+At the destination, the application receives the tag, auth code, flags,
+accumulated SNR bytes, and original route bytes. Trace therefore differs from a
+normal direct packet whose path is carried entirely in the packet route field.
+
+## Multipart
+
+The first payload byte identifies the inner payload and how many packets remain:
+
+| Field | Size (bytes) | Description |
+|---|---|---|
+| remaining + type | 1 | Upper nibble is the remaining-packet count; lower nibble is the inner payload type. |
+| inner data | rest | Data for the inner payload type. |
+
+The core currently creates and consumes multipart acknowledgments. For that
+form, the low nibble is `0x03` and the next four bytes are the acknowledgment
+CRC. Other multipart inner types are reserved for application or future use.
+
+## OTA
+
+An OTA payload contains one OTA protocol message and is normally sent by flood.
+Its message types, integrity fields, and transfer state are defined in the
+[OTA-over-LoRa protocol](ota_protocol.md). Builds without OTA support can still
+relay an opaque OTA packet when their routing policy permits it.
 
 
 ## Custom packet

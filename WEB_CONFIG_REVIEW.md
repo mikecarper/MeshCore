@@ -1,5 +1,13 @@
 # WebConfig Branch Review
 
+> **Historical review (2026-07-18).** This file preserves the findings against
+> the commits named below; its line numbers and present-tense statements are not
+> a current audit of the 2026-08-18 tree. Consult [docs/WiFi.md](docs/WiFi.md),
+> [MQTT_IMPLEMENTATION.md](MQTT_IMPLEMENTATION.md), and
+> [test/README.md](test/README.md) for current operation and test coverage.
+> Findings are left in their original form unless a resolution is explicitly
+> recorded.
+
 ## Scope
 
 This review covers the fork-owned WebConfig and Heltec Tracker additions on the `webconfig` branch, principally commits `d7a7e1b6`, `dfee21a0`, and `639c07a4`, plus the fork-owned MQTT/CLI paths they invoke. Issues inherited unchanged from `meshcore-dev/MeshCore` are intentionally excluded.
@@ -10,7 +18,7 @@ No implementation changes are included in this document.
 
 The portal builds successfully and has a sound high-level design: HTTP handlers avoid directly running CLI/radio operations, configuration writes are marshalled to the loop task, secrets are represented by placeholders, and the UI is self-contained for offline provisioning.
 
-Before deployment, the most important work is:
+At review time, the most important work was:
 
 1. Secure setup/forced-AP reachability.
 2. Correlate each save with its own result.
@@ -389,7 +397,7 @@ The v1.1 environment reuses the V2 board implementation, whose manufacturer name
 
 Return `Heltec Tracker V1.1` when `HELTEC_TRACKER_V1_1` is defined, and retain the V2 value otherwise. Add a build-time or host-side assertion for both target identities.
 
-### 20. WebConfig operation and security behavior are undocumented
+### 20. WebConfig operation and security behavior are undocumented -- resolved
 
 **Severity:** Documentation gap
 
@@ -398,22 +406,13 @@ Return `Heltec Tracker V1.1` when `HELTEC_TRACKER_V1_1` is defined, and retain t
 - Commands added in `src/helpers/CommonCLI_Observer.cpp:982-994`
 - `MQTT_IMPLEMENTATION.md`
 
-**Problem:**
+**Resolution:**
 
-The build targets are documented, but operators cannot discover `start webconfig`, `start webconfig ap`, `stop webconfig`, first-boot AP behavior, authentication, timeout, or the security implications of setup mode.
-
-**Suggested fix:**
-
-Add an operator section to `MQTT_IMPLEMENTATION.md` covering:
-
-- first-boot setup behavior;
-- AP name and setup credential;
-- LAN versus AP modes;
-- exact CLI commands;
-- authentication requirements;
-- idle and absolute timeout behavior;
-- how Wi-Fi changes are applied;
-- how to recover through serial if provisioning fails.
+Current operator documentation covers first-boot setup, LAN and forced-AP
+modes, `start webconfig`, `start webconfig ap`, `stop webconfig`, authentication,
+timeouts, credential handling, and recovery. See
+[WiFi and MQTT by Firmware Type](docs/WiFi.md#mqtt-observer-setup) and
+[MQTT Implementation](MQTT_IMPLEMENTATION.md#browser-setup-recommended).
 
 ### 21. Repeater and room-server integration is duplicated
 
@@ -467,7 +466,11 @@ Remove it from production environments or create explicit debug variants. Confir
 
 ## Test Recommendations
 
-No WebConfig-specific automated tests were found. Add focused tests for:
+No WebConfig-specific automated tests were present at review time. The current
+tree has host coverage for WebConfig keys and the wired batch state machine in
+`test_webconfig_keys` and `test_webconfig_batch`; see [test/README.md](test/README.md).
+The following list is retained as the original recommendation, including
+integration and hardware scenarios not implied by those host suites:
 
 1. Save request/result correlation, including stale and concurrent batches.
 2. Partial command failures and reboot gating.

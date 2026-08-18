@@ -85,12 +85,22 @@ def target(
     base_hash: bytes = b"\0" * 8,
     nrf_sd: bool = False,
     boot_codecs: int | None = None,
+    boot_version: str | None = None,
     current_version: str | None = None,
 ) -> ota.TargetInfo:
     return ota.TargetInfo(
-        "remote", TARGET, base_hash, platform, nrf_sd, "TestBoard",
-        2 if platform == "nrf52" else None, boot_codecs,
-        "status", "self", current_version,
+        name="remote",
+        target_id=TARGET,
+        base_hash=base_hash,
+        platform=platform,
+        nrf_sd=nrf_sd,
+        hw_id="TestBoard",
+        bootloader_version=boot_version,
+        bootloader_abi=2 if platform == "nrf52" else None,
+        bootloader_codecs=boot_codecs,
+        status="status",
+        self_status="self",
+        current_version=current_version,
     )
 
 
@@ -360,6 +370,7 @@ class CompatibilityTests(unittest.TestCase):
         good, reason = ota.compatible_mota(delta, nrf)
         self.assertFalse(good)
         self.assertIn("codec mask", reason)
+        self.assertIn("exact-board OTAFIX", reason)
 
     def test_sd_nrf52_accepts_full_when_bootloader_does(self) -> None:
         full = ota.parse_mota(mota_blob(self.new_image))
@@ -483,6 +494,18 @@ class DownloadSessionTests(unittest.TestCase):
             ["ota status", "ota cancel", "ota ls", f"ota pull {self.package.manifest_id} flash"],
         )
 
+    def test_pull_accepts_store_resume_confirmation(self) -> None:
+        controller = self.Controller([
+            "OTA | no download",
+            "Updates 1/1",
+            f"OK resuming mid={self.package.manifest_id} -> flash (primary traffic)",
+        ])
+        ota.find_and_start_pull(controller, self.args(), self.package)
+        self.assertEqual(
+            controller.commands,
+            ["ota status", "ota ls", f"ota pull {self.package.manifest_id} flash"],
+        )
+
     def test_monitor_rejects_ready_session_for_another_package(self) -> None:
         controller = self.Controller([
             "OTA | download: ready to install 9/9 id=DEADBEEF 2s"
@@ -579,6 +602,7 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.replies = iter([
                     "OTA | no download | target:1234ABCD hw=TestBoard",
+                    "Error: unsupported",
                     "self body=1 image=2 base_hash=0011223344556677",
                     "Unknown command",
                     "v1.16.9 (Build: test)",
@@ -590,8 +614,105 @@ class ReliabilityTests(unittest.TestCase):
         result = ota.query_target(
             Controller(), argparse.Namespace(target="remote")
         )
+        self.assertEqual(result.platform, "esp32")
+        self.assertIsNone(result.bootloader_version)
         self.assertEqual(result.current_version, "v1.16.9")
         self.assertEqual(result.current_version_source, "ver")
+
+    def test_bootloader_reply_match_rejects_unrelated_messages(self) -> None:
+        self.assertTrue(
+            ota.reply_matches_command(
+                "get bootloader.ver", "> 0.9.2-OTAFIX2.4"
+            )
+        )
+        self.assertTrue(
+            ota.reply_matches_command(
+                "get bootloader.ver", "Error: unsupported"
+            )
+        )
+        self.assertFalse(
+            ota.reply_matches_command(
+                "get bootloader.ver", "OTA | no download | target:1234ABCD"
+            )
+        )
+        self.assertTrue(
+            ota.reply_matches_command(
+                "ota pull 1234ABCD flash",
+                "OK resuming mid=1234ABCD -> flash (primary traffic)",
+            )
+        )
+
+    def test_target_uses_bootloader_version_to_identify_nrf52(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=RAK_3401",
+                    "> 0.9.2-OTAFIX2.4",
+                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "bootloader: apply OK (abi=2 codecs=0x4)",
+                    "OTA | fw v1.17.0 id=00112233",
+                ])
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                return next(self.replies)
+
+        controller = Controller()
+        result = ota.query_target(
+            controller, argparse.Namespace(target="remote")
+        )
+        self.assertEqual(result.platform, "nrf52")
+        self.assertEqual(result.bootloader_version, "0.9.2-OTAFIX2.4")
+        self.assertEqual(result.bootloader_abi, 2)
+        self.assertEqual(result.bootloader_codecs, 0x4)
+        self.assertEqual(
+            controller.commands,
+            ["ota status", "get bootloader.ver", "ota self", "ota stats"],
+        )
+
+    def test_stock_nrf52_bootloader_reports_required_action(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=RAK_3401",
+                    "> 0.9.2",
+                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "bootloader: NO mota-apply support (delta install will refuse)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        with self.assertRaisesRegex(
+            ota.OtaError, "bootloader 0.9.2.*exact-board OTAFIX"
+        ):
+            ota.query_target(Controller(), argparse.Namespace(target="remote"))
+
+    def test_legacy_firmware_falls_back_to_ota_self_platform_marker(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=RAK_3401",
+                    "Unknown command",
+                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "bootloader: apply OK (abi=2 codecs=0x4)",
+                    "OTA | fw v1.17.0 id=00112233",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = ota.query_target(
+                Controller(), argparse.Namespace(target="remote")
+            )
+        self.assertEqual(result.platform, "nrf52")
+        self.assertIsNone(result.bootloader_version)
+        self.assertIn("legacy `ota self` platform markers", output.getvalue())
 
     def test_unattended_prompt_waits_ten_seconds_and_continues(self) -> None:
         output = io.StringIO()

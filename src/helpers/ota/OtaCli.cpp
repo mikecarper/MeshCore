@@ -1,6 +1,6 @@
 #include "OtaCli.h"
 #include "OtaContext.h"
-#include "FolderMotaStore.h"   // `ota pull <#> folder` destination (set_mid on the connected folder store)
+#include "FolderMotaStore.h"   // `ota pull <id> folder` destination (set_mid on the connected folder store)
 #include "OtaVerify.h"
 #include "OtaSelf.h"
 #include "OtaTargets.h"   // ota_target_env_name(): human-readable name for a target_id (no string on the wire)
@@ -83,6 +83,21 @@ static const char* state_short(OtaManager::FetchState s) {
   }
 }
 
+static const char* fetch_error_word(OtaManager::FetchError error) {
+  switch (error) {
+    case OtaManager::FETCH_ERROR_MANIFEST:         return "invalid manifest";
+    case OtaManager::FETCH_ERROR_HASH_ALGO:        return "unsupported hash";
+    case OtaManager::FETCH_ERROR_CODEC:            return "unsupported codec";
+    case OtaManager::FETCH_ERROR_GEOMETRY:         return "invalid geometry";
+    case OtaManager::FETCH_ERROR_TOO_LARGE:        return "image too large";
+    case OtaManager::FETCH_ERROR_STORAGE:          return "storage error";
+    case OtaManager::FETCH_ERROR_INTEGRITY:        return "integrity check";
+    case OtaManager::FETCH_ERROR_MANIFEST_TIMEOUT: return "manifest timeout";
+    case OtaManager::FETCH_ERROR_LEAVES_TIMEOUT:   return "leaves timeout";
+    default:                                       return "none";
+  }
+}
+
 // Render the packed fw_version as "v1.2.3" (or "v1.2.3.4" when a prerelease byte is set).
 static void ver_str(char* out, size_t cap, uint32_t v) {
   FwVersion fw = FwVersion::unpack(v);
@@ -129,16 +144,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   if (is_cmd(a, "help|?|h", &rest)) {
 #if defined(OTA_SEEDER_ONLY)
     snprintf(reply, 160,
-      "OTA seeder: status | stats | ls=find images | get <#> folder=capture | cancel | "
+      "OTA seeder: status | stats | ls=find images | get <id> folder=capture | cancel | "
       "announce | folder | config. LoRa install is disabled.");
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get | install | rescue install <hash16> | cancel | announce | "
-      "self | folder | config | key");
+      "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
+      "cancel | announce | self | folder | config | key");
 #else
     snprintf(reply, 160,
-      "OTA: status | stats=admin ids/hashes | ls=find updates | get <#>=download | install | cancel | "
-      "announce | self | folder | cache | config | key. Use `ota ls [page]`.");
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | folder | "
+      "cache | config | key. `ota ls [page]`; folder [validate].");
 #endif
 
   // ---- inventory dashboard: running fw (self), the one fetch session, serving state ----
@@ -162,7 +177,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       unsigned have = (unsigned)c.manager.blocksHave(), tot = (unsigned)c.manager.blocksTotal();
       unsigned pct = tot ? (unsigned)((uint64_t)have * 100 / tot) : 0;
       unsigned age = c.session_started_ms ? (unsigned)((millis() - c.session_started_ms) / 1000) : 0;
-      snprintf(dl, sizeof dl, "download: %s %u/%u (%u%%) id=%s %us", state_word(fs), have, tot, pct, midhx, age);
+      if (fs == OtaManager::FAILED)
+        snprintf(dl, sizeof dl, "download: failed (%s) %u/%u id=%s",
+                 fetch_error_word(c.manager.fetchError()), have, tot, midhx);
+      else
+        snprintf(dl, sizeof dl, "download: %s %u/%u (%u%%) id=%s %us",
+                 state_word(fs), have, tot, pct, midhx, age);
     }
     const char* hw = (c.hw_id[0]) ? c.hw_id : "?";
     const char* tenv = ota_target_env_name(c.manager.target());   // env name, or "?" if not in the table
@@ -211,7 +231,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       unsigned have = (unsigned)c.manager.blocksHave(), tot = (unsigned)c.manager.blocksTotal();
       unsigned pct = tot ? (unsigned)((uint64_t)have * 100 / tot) : 0;
       unsigned age = c.session_started_ms ? (unsigned)((millis() - c.session_started_ms) / 1000) : 0;
-      snprintf(fbuf, sizeof fbuf, "fetch %s %u/%u %u%% id=%s %us", state_short(fs), have, tot, pct, fmid, age);
+      if (fs == OtaManager::FAILED)
+        snprintf(fbuf, sizeof fbuf, "fetch failed:%s %u/%u id=%s",
+                 fetch_error_word(c.manager.fetchError()), have, tot, fmid);
+      else
+        snprintf(fbuf, sizeof fbuf, "fetch %s %u/%u %u%% id=%s %us",
+                 state_short(fs), have, tot, pct, fmid, age);
     }
     uint8_t af = c.manager.autofetch();
     snprintf(reply, 160, "OTA | fw %s id=%s body=%s %ub %uK | serv %u dg=%s | %s | af=%s hops=%u",
@@ -236,11 +261,18 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       snprintf(reply, CAP, "ERR update page %u out of range (1-%u)", (unsigned)page, (unsigned)pages);
       return true;
     }
-    int n = snprintf(reply, CAP, "Updates %u/%u (%u src) - `ota get <#>`:",
+    int n = snprintf(reply, CAP, "Updates %u/%u (%u src; refreshing):",
                      (unsigned)page, (unsigned)pages, (unsigned)c.manager.sourceCount());
     OtaManager::FetchState fs = c.manager.fetchState();
     const uint8_t* cur = (fs != OtaManager::IDLE) ? c.manager.fetchManifestId() : nullptr;
     uint32_t myt = c.manager.target();   // effective target (EndF identity if present, else build flag)
+#if defined(NRF52_PLATFORM)
+    const OtaBlCaps& list_bl = c.bootloaderCaps();
+#endif
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+    SelfFwInfo list_self;
+    bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
+#endif
     uint32_t now = millis(); int shown = 0;
     uint16_t first = (uint16_t)(page - 1) * PAGE_SIZE;
     uint16_t last = first + PAGE_SIZE; if (last > count) last = count;
@@ -258,18 +290,32 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       }
       uint32_t age = (now - h->last_ms) / 1000; if (age > 99999) age = 99999;
       char ver[20]; ver_str(ver, sizeof ver, h->fw_version);
-      // What is this update for? "yours" if same target (hw+role) as us; else the target's env name when we
-      // know it (named locally from its 4-byte target_id - no string travels on the wire); else the raw
-      // target_id hex (an env this build's OtaTargets.h table doesn't know) or '?' for an unset target.
+      // Target equality alone is not an install-safety claim. Surface local codec/bootloader limitations,
+      // and flag the explicit rescue path when this internal-flash nRF52 has no valid running EndF.
       char hwbuf[16];
       const char* fit;
       const char* env = ota_target_env_name(h->target_id);
-      if (myt && h->target_id == myt) fit = "yours";
-      else if (env)                   fit = env;
-      else if (h->target_id == 0)     fit = "?";
+      if (myt && h->target_id == myt) {
+        bool installable = c.manager.codecOk(h->codec);
+#if defined(NRF52_PLATFORM)
+        installable = installable && list_bl.present && list_bl.apply_abi >= MOTA_FORMAT_VER
+                   && h->codec < 16 && (list_bl.codec_mask & (1u << h->codec));
+#if defined(OTA_SD_STORE)
+        installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_SD);
+#endif
+#endif
+        if (!installable) fit = "unsupported";
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+        else if (!list_has_endf) fit = "rescue";
+#endif
+        else fit = "same target";
+      } else if (env)               fit = env;
+      else if (h->target_id == 0)   fit = "?";
       else { snprintf(hwbuf, sizeof hwbuf, "hw %08X", (unsigned)h->target_id); fit = hwbuf; }
-      n += snprintf(reply + n, CAP - n, "\n %u) %s %s [%s] %un %us%s", (unsigned)(i + 1), ver,
-                    codec_kind(h->codec), fit, (unsigned)h->n_seeders, (unsigned)age, tag);
+      char midhx[9]; mesh::Utils::toHex(midhx, h->mid, 4);
+      n += snprintf(reply + n, CAP - n, "\n %u) %s %s %s [%s] %un %us%s",
+                    (unsigned)(i + 1), midhx, ver, codec_kind(h->codec), fit,
+                    (unsigned)h->n_seeders, (unsigned)age, tag);
       shown++;
     }
     if (shown == 0) strcpy(reply, "No updates seen yet - re-run `ota ls` in a few seconds (just asked around).");
@@ -283,19 +329,29 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     while (p[i] && p[i] != ' ' && i < (int)sizeof(selstr) - 1) { selstr[i] = p[i]; i++; }
     selstr[i] = 0;
     const char* dst = p + i; while (*dst == ' ') dst++;
-    if (selstr[0] == 0) { strcpy(reply, "usage: ota pull <#> <flash|folder>   (see `ota ls`)"); return true; }
+    if (selstr[0] == 0) { strcpy(reply, "usage: ota pull <id> flash [rescue] | folder [validate]   (see `ota ls`)"); return true; }
     // resolve the catalogue row (index or explicit manifest_id)
     const OtaManager::CatRow* sel = nullptr; uint8_t mid[4];
-    bool isnum = (selstr[0] == '#');
-    if (!isnum) { isnum = true; for (const char* x = selstr; *x; x++) if (*x < '0' || *x > '9') { isnum = false; break; } }
-    if (isnum) {
-      int idx = atoi(selstr[0] == '#' ? selstr + 1 : selstr);
-      if (idx >= 1 && idx <= c.manager.catalogCount()) sel = c.manager.catalogRow((uint8_t)(idx - 1));
-    } else if (mesh::Utils::fromHex(mid, 4, selstr)) {
+    // An eight-digit all-numeric manifest ID is still an ID, not a huge list index. Bare short decimal
+    // values retain the legacy index form; `#N` is the unambiguous explicit index spelling.
+    size_t selector_len = strlen(selstr);
+    bool explicit_index = selstr[0] == '#';
+    const char* index_text = explicit_index ? selstr + 1 : selstr;
+    bool decimal = *index_text != 0;
+    uint16_t index = 0;
+    for (const char* x = index_text; *x && decimal; x++) {
+      if (*x < '0' || *x > '9') decimal = false;
+      else if (index > 255 / 10 || (index == 255 / 10 && (uint8_t)(*x - '0') > 255 % 10)) decimal = false;
+      else index = (uint16_t)(index * 10 + (uint8_t)(*x - '0'));
+    }
+    bool use_index = explicit_index || (selector_len != 8 && decimal);
+    if (use_index && decimal) {
+      if (index >= 1 && index <= c.manager.catalogCount()) sel = c.manager.catalogRow((uint8_t)(index - 1));
+    } else if (!explicit_index && selector_len == 8 && mesh::Utils::fromHex(mid, 4, selstr)) {
       for (uint8_t k = 0; k < c.manager.catalogCount(); k++)
         if (memcmp(c.manager.catalogRow(k)->mid, mid, 4) == 0) { sel = c.manager.catalogRow(k); break; }
     }
-    if (!sel) { strcpy(reply, "ERR no such update (see the numbers in `ota ls`)"); return true; }
+    if (!sel) { strcpy(reply, "ERR no such update (copy its eight-digit ID from `ota ls`)"); return true; }
     // destination is MANDATORY: with none given, show the choices (flash always; folder iff a link is up).
     if (*dst == 0) {
 #if defined(OTA_SEEDER_ONLY)
@@ -315,40 +371,112 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       return true;
     }
     if (c.apply_pending) { strcpy(reply, "ERR busy applying"); return true; }
-    // optional 3rd token: `folder validate` -> leaf-diff warm-start against a seed motatool staged (capture only)
-    bool validate = false;
-    { const char* q = dst; while (*q && *q != ' ') q++; while (*q == ' ') q++;
-      if (strncmp(q, "validate", 8) == 0) validate = true; }
-    uint8_t selmid[4]; uint32_t seltgt = sel->target_id; memcpy(selmid, sel->mid, 4);   // sel may move on reset
-    OtaStore* store; const char* dname;
-    if (strncmp(dst, "flash", 5) == 0) {
+    // Parse exact destination/options. Prefix matches used to accept typos such as "flashgarbage" and an
+    // ignored third token, which is especially unsafe for the explicit no-EndF rescue acknowledgement.
+    char destination[8] = {0}, option[10] = {0}, extra[2] = {0};
+    int parts = sscanf(dst, "%7s %9s %1s", destination, option, extra);
+    if (parts < 1 || parts > 2) {
+      strcpy(reply, "ERR usage: ota pull <id> flash [rescue] | folder [validate]");
+      return true;
+    }
+    bool to_flash = strcmp(destination, "flash") == 0;
+    bool to_folder = strcmp(destination, "folder") == 0;
+    bool validate = to_folder && parts == 2 && strcmp(option, "validate") == 0;
+    bool rescue = to_flash && parts == 2 && strcmp(option, "rescue") == 0;
+    if ((!to_flash && !to_folder) || (parts == 2 && !validate && !rescue)) {
+      strcpy(reply, "ERR usage: ota pull <id> flash [rescue] | folder [validate]");
+      return true;
+    }
+
+    uint8_t selmid[4]; uint32_t seltgt = sel->target_id; uint8_t selcodec = sel->codec;
+    memcpy(selmid, sel->mid, 4);                         // sel may move when catalog traffic arrives
+
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    c.stopSdCacheFetch();                                // explicit operator work owns the receive slot
+#endif
+    OtaManager::FetchState current = c.manager.fetchState();
+    if (current != OtaManager::IDLE && current != OtaManager::FAILED) {
+      snprintf(reply, 160, "ERR OTA slot is %s; use `ota cancel` before replacing it", state_word(current));
+      return true;
+    }
+
+    OtaStore* store = nullptr; const char* dname = nullptr;
+    if (to_flash) {
 #if defined(OTA_SEEDER_ONLY)
       strcpy(reply, "ERR seeder-only build cannot stage or install firmware; use `folder`");
       return true;
 #else
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
-      c.stopSdCacheFetch();                         // manual install download takes priority over archiving
-#endif
-      store = &c.fetch_store; c.fetch_store.clear(); dname = "flash"; validate = false;   // seed lives in the folder
-#if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
-      c.manager.set_accept_full(false);                 // nRF52 flash can install only in-place deltas
-#endif
-#endif
-    } else if (strncmp(dst, "folder", 6) == 0) {
-      if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
-      c.stopSdCacheFetch();                         // an explicit host capture also takes priority
-#endif
-      c.folder_dest->set_mid(selmid); store = c.folder_dest; dname = validate ? "folder+validate" : "folder";
+      if (!c.manager.codecOk(selcodec)) {
+        snprintf(reply, 160,
+                 "ERR %s codec %u cannot be installed by this build; use `ota pull %s folder` to capture it",
+                 codec_kind(selcodec), (unsigned)selcodec, selstr);
+        return true;
+      }
 #if defined(NRF52_PLATFORM)
-      c.manager.set_accept_full(true);                  // capture can store a full image; it is not applied
+      const OtaBlCaps& bl = c.bootloaderCaps();
+      if (!bl.present) {
+        strcpy(reply, "ERR bootloader has no mOTA apply support; update it over USB first");
+        return true;
+      }
+      if (bl.apply_abi < MOTA_FORMAT_VER || selcodec >= 16 || !(bl.codec_mask & (1u << selcodec))) {
+        snprintf(reply, 160, "ERR bootloader cannot apply mOTA ABI %u codec %u (has abi=%u codecs=0x%x)",
+                 MOTA_FORMAT_VER, (unsigned)selcodec, bl.apply_abi, bl.codec_mask);
+        return true;
+      }
+#if defined(OTA_SD_STORE)
+      if (!(bl.storage_flags & OTA_BL_STORAGE_SD)) {
+        strcpy(reply, "ERR bootloader cannot apply an update staged on SD; update it over USB first");
+        return true;
+      }
 #endif
-    } else { strcpy(reply, "ERR destination must be `flash` or `folder`"); return true; }
+#endif
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+      SelfFwInfo self;
+      bool has_endf = ota_self_firmware(self) && self.valid;
+      if (!has_endf && !rescue) {
+        snprintf(reply, 160,
+                 "ERR no EndF; retry `ota pull %s flash rescue`, then use `ota rescue install <hash16>`",
+                 selstr);
+        return true;
+      }
+      if (!has_endf && seltgt != c.manager.target()) {
+        strcpy(reply, "ERR rescue requires an update for this exact target");
+        return true;
+      }
+      if (has_endf && rescue) {
+        strcpy(reply, "ERR rescue is only for a running firmware with no valid EndF; use `flash`");
+        return true;
+      }
+#else
+      if (rescue) {
+        strcpy(reply, "ERR rescue is available only on internal-flash nRF52 builds");
+        return true;
+      }
+#endif
+      store = &c.fetch_store; dname = rescue ? "flash+rescue" : "flash";
+#endif
+    } else if (to_folder) {
+      if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
+      c.folder_dest->set_mid(selmid); store = c.folder_dest; dname = validate ? "folder+validate" : "folder";
+    }
     c.manager.reset_session();
+    c.fetch_to_folder = to_folder;
     c.manager.set_fetch_store(store);                        // stage this pull to the chosen destination
-    c.manager.pull(selmid, seltgt, validate);                // sets want + begins the manifest fetch now
+    OtaManager::PullResult result = to_folder
+        ? c.manager.pull_archive(selmid, seltgt, validate)
+        : c.manager.pull(selmid, seltgt, false);
     char midhx[9]; mesh::Utils::toHex(midhx, selmid, 4);
-    snprintf(reply, 160, "OK pulling mid=%s -> %s (primary traffic)", midhx, dname);
+    if (result != OtaManager::PULL_STARTED && result != OtaManager::PULL_RESUMED) {
+      c.manager.reset_session();
+      c.fetch_to_folder = false;
+      c.manager.set_fetch_store(&c.fetch_store);
+      const char* why = result == OtaManager::PULL_NO_STORE ? "no destination store"
+                      : result == OtaManager::PULL_BUSY ? "receive slot busy" : "invalid manifest id";
+      snprintf(reply, 160, "ERR pull did not start: %s", why);
+      return true;
+    }
+    snprintf(reply, 160, "OK %s mid=%s -> %s (primary traffic)",
+             result == OtaManager::PULL_RESUMED ? "resuming" : "pulling", midhx, dname);
 
   // ---- discard the current session (e.g. a stalled old fetch) to free the slot ----
   } else if (is_cmd(a, "drop|cancel|stop", &rest)) {
@@ -359,6 +487,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     c.stopSdCacheFetch();
 #endif
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
+    c.fetch_to_folder = false;
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
 #if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
     c.manager.set_accept_full(false);
@@ -405,6 +534,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // the exact 8-byte base hash carried by the already-fetched package. The bootloader independently
     // hashes the running app and refuses a mismatch before writing any application flash.
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+    if (c.fetch_to_folder) {
+      strcpy(reply, "ERR the complete update was captured to a folder, not staged for install; use `ota cancel`");
+      return true;
+    }
     const char* hash_text = nullptr;
     uint8_t operator_base_hash[8];
     if (!is_cmd(rest, "install", &hash_text) ||
@@ -439,6 +572,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       return true;
     }
 #endif
+    if (c.fetch_to_folder) {
+      strcpy(reply, "ERR the complete update was captured to a folder, not staged for install; use `ota cancel`");
+      return true;
+    }
     if (c.manager.fetchState() != OtaManager::COMPLETE || c.fetch_store.staged_size() == 0) {
       sprintf(reply, "ERR no complete update fetched (fetch=%c %u/%u)",
               fstate_char(c.manager.fetchState()), (unsigned)c.manager.blocksHave(),
@@ -455,7 +592,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   //      node hosts MANY images (any architecture) it doesn't hold in flash. Trustless (fetchers verify). --
   } else if (is_cmd(a, "folder|fold", &rest)) {
     const char* p = rest;
-    if (strncmp(p, "on", 2) == 0) {
+    if (strcmp(p, "on") == 0) {
 #if defined(OTA_FOLDER_SERIAL)
 #if !defined(OTA_SEEDER_ONLY)
       if (!c.serving) c.serving = ota_serve_self(c, 0);   // keep serving our own fw alongside the folder
@@ -465,22 +602,29 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #else
       strcpy(reply, "ERR not built with OTA_FOLDER_SERIAL (set the seeder UART in platformio.ini)");
 #endif
-    } else if (strncmp(p, "off", 3) == 0) {
+    } else if (strcmp(p, "off") == 0) {
       c.detach_folder(); c.manager.announce();
 #if defined(OTA_SEEDER_ONLY)
       strcpy(reply, "OK folder detached (serving nothing)");
 #else
       strcpy(reply, "OK folder detached (still serving own fw)");
 #endif
-    } else {                                              // status + list served entries (* = our own fw)
-      int n = snprintf(reply, 159, "folder=%s serving=%u:", c.folder_active ? "on" : "off",
-                       (unsigned)c.manager.servedCount());
+    } else if (*p == 0) {                                 // status + list served entries (* = our own fw)
+      uint16_t offered = 0, advertised = 0;
+      bool have_stats = c.folderSourceStats(offered, advertised);
+      int n = have_stats
+          ? snprintf(reply, 159, "folder=%s host=%u/%u serving=%u:", c.folder_active ? "on" : "off",
+                     (unsigned)advertised, (unsigned)offered, (unsigned)c.manager.servedCount())
+          : snprintf(reply, 159, "folder=%s serving=%u:", c.folder_active ? "on" : "off",
+                     (unsigned)c.manager.servedCount());
       for (uint8_t i = 0; i < c.manager.servedCount() && n < 148; i++) {
         const OtaManager::ServeEntry* e = c.manager.servedEntry(i);
         if (!e) break;
         char midhx[9]; mesh::Utils::toHex(midhx, e->mid, 4);
         n += snprintf(reply + n, 159 - n, " %s%s/%08X", e->is_self ? "*" : "", midhx, (unsigned)e->target_id);
       }
+    } else {
+      strcpy(reply, "ERR usage: ota folder [on|off]");
     }
 
   // ---- SD OTA archive: default-on capture of every advertised mOTA, retained and served after reboot. ----
@@ -674,6 +818,10 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     strcpy(reply, "OK announced");
 
   } else if (strncmp(d, "verify", 6) == 0) {
+    if (c.fetch_to_folder && c.manager.fetchState() == OtaManager::COMPLETE) {
+      strcpy(reply, "ERR completed fetch is in the host folder, not local verification storage");
+      return true;
+    }
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     if (c.manager.fetchState() == OtaManager::COMPLETE) {
       VerifyResult r = ota_verify(static_cast<const OtaStore&>(c.fetch_store), c.allow);
@@ -729,7 +877,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
 #endif
     c.manager.clear_primary();
     c.serve_expected = 0; c.serving = false; c.releaseServeBuffer();
-    c.fetch_store.clear(); c.manager.reset_session();
+    c.fetch_store.clear(); c.manager.reset_session(); c.fetch_to_folder = false;
     strcpy(reply, "OK cleared");
 
   } else {

@@ -44,9 +44,14 @@ uint8_t* OtaManager::ensureScratch() {
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
   _fstate = IDLE; _have = 0; _fbc = 0;
+  _fetch_error = FETCH_ERROR_NONE;
+  _archive_fetch = false; _validate = false;
+  clearFetchIntent();
   _resume_verify_idx = 0; _resume_invalidated = false;
   _resume_merkle.reset();
   _n_serve = 0; _n_src_obj = 0; _view0.valid = false; _srcv.valid = false;
+  memset(_src_offered, 0, sizeof(_src_offered));
+  memset(_src_advertised, 0, sizeof(_src_advertised));
   _n_src = 0; _n_cat = 0;
   clearPendingEgress();
 }
@@ -67,7 +72,7 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
   _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 blocks (RAM .mota is small)
   _view0.valid = true;
   clearPendingEgress();
-  registerSelfEntry();
+  if (_n_src_obj) refresh_sources(); else registerSelfEntry();
   return true;
 }
 
@@ -84,7 +89,7 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
   _view0.scratch = proof_scratch; _view0.scratch_sz = proof_scratch_sz;   // sized for our (large) image
   _view0.valid = true;
   clearPendingEgress();
-  registerSelfEntry();
+  if (_n_src_obj) refresh_sources(); else registerSelfEntry();
   return true;
 }
 
@@ -112,7 +117,10 @@ bool OtaManager::add_source(MotaSource* src) {
     if (_src_list[i] == src) { refresh_sources(); return true; }
   }
   if (_n_src_obj >= OTA_MAX_SOURCE_OBJ) return false;
-  _src_list[_n_src_obj++] = src;
+  _src_list[_n_src_obj] = src;
+  _src_offered[_n_src_obj] = 0;
+  _src_advertised[_n_src_obj] = 0;
+  _n_src_obj++;
   refresh_sources();
   return true;
 }
@@ -121,8 +129,15 @@ bool OtaManager::remove_source(MotaSource* src) {
   if (!src) return false;
   for (uint8_t i = 0; i < _n_src_obj; i++) {
     if (_src_list[i] != src) continue;
-    for (uint8_t j = i + 1; j < _n_src_obj; j++) _src_list[j - 1] = _src_list[j];
-    _src_list[--_n_src_obj] = nullptr;
+    for (uint8_t j = i + 1; j < _n_src_obj; j++) {
+      _src_list[j - 1] = _src_list[j];
+      _src_offered[j - 1] = _src_offered[j];
+      _src_advertised[j - 1] = _src_advertised[j];
+    }
+    _n_src_obj--;
+    _src_list[_n_src_obj] = nullptr;
+    _src_offered[_n_src_obj] = 0;
+    _src_advertised[_n_src_obj] = 0;
     refresh_sources();
     return true;
   }
@@ -134,10 +149,14 @@ void OtaManager::refresh_sources() {
   _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
   for (uint8_t s = 0; s < _n_src_obj; s++) {
+    _src_offered[s] = 0;
+    _src_advertised[s] = 0;
     MotaSource* src = _src_list[s];
     if (!src) continue;
     uint8_t cnt = src->count();
-    for (uint8_t i = 0; i < cnt && _n_serve < OTA_MAX_SERVE; i++) {
+    _src_offered[s] = cnt;
+    for (uint8_t i = 0; i < cnt; i++) {
+      if (_n_serve >= OTA_MAX_SERVE) break;
       MotaDesc d;
       if (!src->describe(i, d)) continue;
       if (d.block_count == 0 || (uint64_t)d.block_count * 4 > OTA_PROOFGEN_SCRATCH) continue;
@@ -161,14 +180,31 @@ void OtaManager::refresh_sources() {
       e.target_id = d.target_id; e.fw_version = d.fw_version;
       e.codec_id = d.codec_id; e.flags = d.flags; e.have_count = d.block_count;   // a folder mota is fully held
       e.is_self = false; e.src = src; e.src_idx = i; e.desc = d;
+      _src_advertised[s]++;
     }
   }
   _srcv.valid = false;                        // a loaded source view may now be stale; reloads on demand
 }
 
+bool OtaManager::sourceStats(const MotaSource* src, uint16_t& offered, uint16_t& advertised) const {
+  offered = 0;
+  advertised = 0;
+  if (!src) return false;
+  for (uint8_t i = 0; i < _n_src_obj; i++) {
+    if (_src_list[i] != src) continue;
+    offered = _src_offered[i];
+    advertised = _src_advertised[i];
+    return true;
+  }
+  return false;
+}
+
 void OtaManager::clear_sources() {
   clearPendingEgress();
   _n_src_obj = 0; _srcv.valid = false;
+  memset(_src_list, 0, sizeof(_src_list));
+  memset(_src_offered, 0, sizeof(_src_offered));
+  memset(_src_advertised, 0, sizeof(_src_advertised));
   _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
 }
@@ -176,12 +212,8 @@ void OtaManager::clear_sources() {
 void OtaManager::clear_primary() {
   clearPendingEgress();
   _view0.valid = false;
-  if (_n_serve > 0 && _serve[0].is_self) {
-    for (uint8_t i = 1; i < _n_serve; i++) {
-      _serve[i - 1] = _serve[i];
-    }
-    _n_serve--;
-  }
+  if (_n_src_obj) refresh_sources();
+  else _n_serve = 0;
 }
 
 int OtaManager::serveEntryIndex(const uint8_t* mid) const {
@@ -531,6 +563,40 @@ void OtaManager::serviceEgress() {
 
 // ---------------- fetch ----------------
 
+// A source's set digest is the lifetime of its catalog rows. When that digest changes (or the source table
+// evicts the source), remove only that seeder's association from every row and recompute aggregate progress.
+// Rows with no remaining source disappear, so numeric/MID selection cannot target firmware nobody offers.
+void OtaManager::invalidateCatalogSeeder(const uint8_t* seeder) {
+  if (!seeder) return;
+  CatRow* catalog = catalogData();
+  for (uint16_t i = 0; i < _n_cat; ) {
+    CatRow& row = catalog[i];
+    int found = -1;
+    for (uint8_t k = 0; k < row.n_seeders; k++) {
+      if (memcmp(row.seeders[k], seeder, 4) == 0) { found = k; break; }
+    }
+    if (found < 0) { i++; continue; }
+    for (uint8_t k = (uint8_t)found + 1; k < row.n_seeders; k++) {
+      memcpy(row.seeders[k - 1], row.seeders[k], 4);
+      row.seeder_have[k - 1] = row.seeder_have[k];
+      row.seeder_last_ms[k - 1] = row.seeder_last_ms[k];
+    }
+    row.n_seeders--;
+    if (row.n_seeders == 0) {
+      for (uint16_t j = i + 1; j < _n_cat; j++) catalog[j - 1] = catalog[j];
+      _n_cat--;
+      continue;
+    }
+    row.have_max = 0;
+    row.last_ms = 0;
+    for (uint8_t k = 0; k < row.n_seeders; k++) {
+      if (row.seeder_have[k] > row.have_max) row.have_max = row.seeder_have[k];
+      if (row.seeder_last_ms[k] > row.last_ms) row.last_ms = row.seeder_last_ms[k];
+    }
+    i++;
+  }
+}
+
 // A tiny per-node BEACON: record the source; ask it for its catalog (OTA_QUERY) only when we're
 // interested AND its set-digest is one we haven't catalogued yet (so a stable mesh is query-free).
 void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
@@ -538,7 +604,16 @@ void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
   if (!decode_adv(m, n, a)) return;
   bool have_sid = (_seeder_id[0] | _seeder_id[1] | _seeder_id[2] | _seeder_id[3]) != 0;
   if (have_sid && memcmp(a.seeder_id, _seeder_id, 4) == 0) return;   // our own beacon, re-flooded
-  if (a.n_motas == 0) return;                                        // source offers nothing
+  if (a.n_motas == 0) {                                             // source explicitly withdrew its set
+    invalidateCatalogSeeder(a.seeder_id);
+    for (uint8_t i = 0; i < _n_src; i++) {
+      if (memcmp(_sources[i].seeder, a.seeder_id, 4) != 0) continue;
+      for (uint8_t j = i + 1; j < _n_src; j++) _sources[j - 1] = _sources[j];
+      _n_src--;
+      break;
+    }
+    return;
+  }
 
   int slot = -1, lru = 0;                                            // find/insert the source (LRU evict)
   for (int i = 0; i < _n_src; i++) {
@@ -546,9 +621,20 @@ void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
     if (_sources[i].last_ms < _sources[lru].last_ms) lru = i;
   }
   bool fresh = (slot < 0);
-  if (fresh) { slot = (_n_src < OTA_MAX_SOURCES) ? _n_src++ : lru; _sources[slot] = Source{}; }
+  if (fresh) {
+    // Passive HAVE traffic can leave rows for a source before its beacon is retained. Start its advertised
+    // digest with a clean association, and purge the evicted source when the fixed source table is full.
+    invalidateCatalogSeeder(a.seeder_id);
+    if (_n_src < OTA_MAX_SOURCES) slot = _n_src++;
+    else {
+      invalidateCatalogSeeder(_sources[lru].seeder);
+      slot = lru;
+    }
+    _sources[slot] = Source{};
+  }
   Source& s = _sources[slot];
   bool changed = fresh || memcmp(s.digest, a.set_digest, 4) != 0;
+  if (changed && !fresh) invalidateCatalogSeeder(s.seeder);
   memcpy(s.seeder, a.seeder_id, 4); memcpy(s.digest, a.set_digest, 4);
   s.n_motas = a.n_motas; s.last_ms = _now_ms;
   if (changed) {
@@ -627,6 +713,13 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
   if (hv.frag_total == 0 || hv.frag_total > OTA_HAVE_MAX_FRAGMENTS || hv.frag_idx >= hv.frag_total) return;
   bool have_sid = (_seeder_id[0] | _seeder_id[1] | _seeder_id[2] | _seeder_id[3]) != 0;
   if (have_sid && memcmp(hv.seeder_id, _seeder_id, 4) == 0) return;   // our own catalog
+  // Once a newer beacon changed this source's digest, delayed HAVE fragments from its old set must not
+  // resurrect rows we just invalidated. Unknown sources remain cacheable because HAVE is broadcast/passive.
+  for (uint8_t i = 0; i < _n_src; i++) {
+    if (memcmp(_sources[i].seeder, hv.seeder_id, 4) != 0) continue;
+    if (memcmp(_sources[i].digest, hv.set_digest, 4) != 0) return;
+    break;
+  }
   // PASSIVE: every node caches rows it overhears. A source is catalogued only after EVERY advertised
   // fragment arrived; otherwise a timed recovery QUERY asks for just the missing bitmap.
   for (uint8_t i = 0; i < _n_src; i++) {
@@ -667,17 +760,30 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
       catalog[slot] = CatRow{};
       memcpy(catalog[slot].mid, mid, 4);
       memcpy(catalog[slot].seeders[0], hv.seeder_id, 4);
+      catalog[slot].seeder_have[0] = (uint16_t)have_count;
+      catalog[slot].seeder_last_ms[0] = _now_ms;
       catalog[slot].n_seeders = 1;
     } else {
       CatRow& cc = catalog[slot];                                    // count DISTINCT sources (no double-count)
-      bool known = false;
+      int known = -1;
       for (uint8_t k = 0; k < cc.n_seeders; k++)
-        if (memcmp(cc.seeders[k], hv.seeder_id, 4) == 0) { known = true; break; }
-      if (!known && cc.n_seeders < OTA_CAT_SEEDERS) memcpy(cc.seeders[cc.n_seeders++], hv.seeder_id, 4);
+        if (memcmp(cc.seeders[k], hv.seeder_id, 4) == 0) { known = k; break; }
+      if (known < 0 && cc.n_seeders < OTA_CAT_SEEDERS) {
+        known = cc.n_seeders++;
+        memcpy(cc.seeders[known], hv.seeder_id, 4);
+      }
+      if (known >= 0) {
+        cc.seeder_have[known] = (uint16_t)have_count;
+        cc.seeder_last_ms[known] = _now_ms;
+      }
     }
     CatRow& c = catalog[slot];
-    c.target_id = target; c.fw_version = fwver; c.codec = codec; c.flags = flags; c.last_ms = _now_ms;
-    if (have_count > c.have_max) c.have_max = have_count;             // best-known progress among sources
+    c.target_id = target; c.fw_version = fwver; c.codec = codec; c.flags = flags;
+    c.have_max = 0; c.last_ms = 0;
+    for (uint8_t k = 0; k < c.n_seeders; k++) {
+      if (c.seeder_have[k] > c.have_max) c.have_max = c.seeder_have[k];
+      if (c.seeder_last_ms[k] > c.last_ms) c.last_ms = c.seeder_last_ms[k];
+    }
     if (wantRow(mid, target, codec, flags)) startFetch(mid, target);
   }
 }
@@ -833,17 +939,79 @@ bool OtaManager::blockInPipeline(uint32_t block) const {
   return findReassemblySlot(block) >= 0;
 }
 
+bool OtaManager::fetchActive() const {
+  return _fstate == FETCHING || _fstate == WANT_MANIFEST || _fstate == WANT_LEAVES
+      || _fstate == VERIFYING_STAGED || _fstate == PAUSED;
+}
+
+void OtaManager::clearFetchIntent() {
+  _desired_target = 0;
+  _have_desired_mid = false;
+  memset(_desired_mid, 0, sizeof(_desired_mid));
+}
+
+void OtaManager::failFetch(FetchError error) {
+  _fetch_error = error;
+  _fstate = FAILED;
+  clearReassembly();
+  freeLeaves();
+  _validate = false;
+  _archive_fetch = false;
+  clearFetchIntent();
+}
+
+void OtaManager::completeFetch() {
+  _fetch_error = FETCH_ERROR_NONE;
+  _fstate = COMPLETE;
+  _validate = false;
+  _archive_fetch = false;
+  clearFetchIntent();
+}
+
+OtaManager::PullResult OtaManager::pull(const uint8_t* mid, uint32_t target, bool validate) {
+  if (!mid) return PULL_BAD_MID;
+  if (!_fetch) return PULL_NO_STORE;
+  if (fetchActive()) return PULL_BUSY;
+  _archive_fetch = false;
+  _desired_target = target;
+  memcpy(_desired_mid, mid, sizeof(_desired_mid));
+  _have_desired_mid = true;
+  reDiscover();
+  PullResult result = startFetch(mid, target, validate);
+  if (result != PULL_STARTED && result != PULL_RESUMED) clearFetchIntent();
+  return result;
+}
+
+OtaManager::PullResult OtaManager::pull_archive(const uint8_t* mid, uint32_t target, bool validate) {
+  if (!mid) return PULL_BAD_MID;
+  if (!_fetch) return PULL_NO_STORE;
+  if (fetchActive()) return PULL_BUSY;
+  _archive_fetch = true;
+  _desired_target = target;
+  memcpy(_desired_mid, mid, sizeof(_desired_mid));
+  _have_desired_mid = true;
+  reDiscover();
+  PullResult result = startFetch(mid, target, validate);
+  if (result != PULL_STARTED && result != PULL_RESUMED) {
+    _archive_fetch = false;
+    clearFetchIntent();
+  }
+  return result;
+}
+
 // Begin (or resume) fetching a chosen mid: try a staged-partial resume first, else request the manifest.
-void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) {
+OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) {
   (void)target;
-  if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
-      || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED
-      || _fstate == PAUSED) return;
+  if (!mid) return PULL_BAD_MID;
+  if (!_fetch) return PULL_NO_STORE;
+  if (fetchActive()) return PULL_BUSY;
+  _fetch_error = FETCH_ERROR_NONE;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
-  if (!validate && resumeStaged(mid)) return;    // (non-validate) resume a partial container left in flash
+  if (!validate && resumeStaged(mid)) return PULL_RESUMED; // adopt a partial container left in the store
   memcpy(_fid, mid, 4);
+  _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
   _observed_path_transmissions = 0;              // learn the actual source/relay path from this fetch's replies
   _fstate = WANT_MANIFEST;
   _mf_total = 0; _mf_mask = 0; _mf_len = 0; _mf_retries = 0; _loop_last_mfmask = 0;   // fresh manifest reassembly
@@ -851,6 +1019,7 @@ void OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) 
   GetManifestMsg gm; memcpy(gm.manifest_id, _fid, 4); gm.want_mask = 0xFFFF;   // first ask: send all fragments
   uint8_t b[16];
   emit(b, encode_get_manifest(b, sizeof(b), gm), false);
+  return PULL_STARTED;
 }
 
 void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
@@ -882,42 +1051,44 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
 
   const uint8_t* mf = _mf_buf;                   // fully reassembled manifest-minus-leaves
   uint32_t mfl = _mf_len;
-  if (mfl != MOTA_MFL) { _fstate = FAILED; return; }   // manifest-minus-leaves is a fixed 197 bytes
-  if (mf[2] != HASH_ALGO_SHA256) { _fstate = FAILED; return; }  // this implementation supports sha2-256 only
-  if (!_archive_fetch && !codecOk(mf[56])) { _fstate = IDLE; return; }  // incompatible install codec
+  if (mfl != MOTA_MFL) { failFetch(FETCH_ERROR_MANIFEST); return; } // fixed 197-byte manifest
+  if (mf[2] != HASH_ALGO_SHA256) { failFetch(FETCH_ERROR_HASH_ALGO); return; }
+  if (!_archive_fetch && !codecOk(mf[56])) { failFetch(FETCH_ERROR_CODEC); return; }
   uint32_t payload_size = rd_u32le(mf + 15);
   uint8_t  bsl = mf[19];
-  if (bsl >= 32) { _fstate = FAILED; return; }
+  if (bsl >= 32) { failFetch(FETCH_ERROR_GEOMETRY); return; }
   uint32_t bs = 1u << bsl;
   // a block must fit our reassembly buffer (and be non-empty) - reject an oversized block_size up front
-  if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { _fstate = FAILED; return; }
+  if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { failFetch(FETCH_ERROR_GEOMETRY); return; }
   uint32_t bc = (payload_size + bs - 1) / bs;
-  if (bc > 0xFFFFu) { _fstate = FAILED; return; }   // block_idx is uint16 on the wire - can't address more
+  if (bc > 0xFFFFu) { failFetch(FETCH_ERROR_TOO_LARGE); return; } // uint16 block index on the wire
   if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) {
-    _fstate = FAILED; return;                       // retaining an image we cannot subsequently seed is useless
+    failFetch(FETCH_ERROR_TOO_LARGE); return;       // retaining an image we cannot seed is useless
   }
   memcpy(_froot, mf + 20, 4);
 
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
   uint64_t total64 = (uint64_t)payload_off + payload_size + 5;
-  if (total64 > UINT32_MAX) { _fstate = FAILED; return; }
+  if (total64 > UINT32_MAX) { failFetch(FETCH_ERROR_TOO_LARGE); return; }
   uint32_t total = (uint32_t)total64;
 
   // Hand the store the parsed layout BEFORE begin(), so a partition-backed store (ESP32) can choose
   // placement and refuse an unfittable fetch up front: a FULL payload streams to the inactive slot,
   // a delta's whole container is staged together. (image_size at mf+11, is_full from flags at mf+1.)
   bool is_full = (mf[1] & MFLAG_FULL) != 0;
-  if (!_fetch->plan_layout(is_full, rd_u32le(mf + 11), payload_off, payload_size)) { _fstate = FAILED; return; }
-  if (!_fetch->begin(total)) { _fstate = FAILED; return; }
+  if (!_fetch->plan_layout(is_full, rd_u32le(mf + 11), payload_off, payload_size)) {
+    failFetch(FETCH_ERROR_STORAGE); return;
+  }
+  if (!_fetch->begin(total)) { failFetch(FETCH_ERROR_STORAGE); return; }
   // declare the metadata extent so a flash store can pin it (leaves are written all transfer long)
-  if (!_fetch->set_meta_size(payload_off)) { _fstate = FAILED; return; }
+  if (!_fetch->set_meta_size(payload_off)) { failFetch(FETCH_ERROR_STORAGE); return; }
   uint8_t hdr[8];
   memcpy(hdr, MOTA_MAGIC, 4);
   wr_u32le(hdr + 4, total);
   if (!_fetch->write(0, hdr, 8) ||
       !_fetch->write(8, mf, mfl) ||
-      !_fetch->write(total - 5, MOTA_TRAILER, 5)) { _fstate = FAILED; return; }
+      !_fetch->write(total - 5, MOTA_TRAILER, 5)) { failFetch(FETCH_ERROR_STORAGE); return; }
 
   _fflags = mf[1];   // manifest flags (FULL/SIGNED) of the fetch in progress (auto-install gate)
   _fpoff = payload_off; _floff = leaves_off; _fpsize = payload_size; _fbc = bc; _fbs = bs;
@@ -1004,8 +1175,9 @@ void OtaManager::diffStep() {
   OTA_DBG("OTA: leaf-diff %u/%u already valid; fetching the rest\n", (unsigned)_have, (unsigned)_fbc);
   freeLeaves();                                                            // clears _diffing + frees the buffer
   if (_have >= _fbc) {                                                      // seed covered the whole image
-    _fstate = storedLeavesRootMatches() && _fetch->finalize()
-        ? COMPLETE : FAILED;
+    if (!storedLeavesRootMatches()) failFetch(FETCH_ERROR_INTEGRITY);
+    else if (!_fetch->finalize()) failFetch(FETCH_ERROR_STORAGE);
+    else completeFetch();
     return;
   }
   _fstate = FETCHING; requestMissing();
@@ -1045,6 +1217,7 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   _ftotal = total;
   clearReassembly();
   _observed_path_transmissions = 0;
+  _fetch_error = FETCH_ERROR_NONE;
   beginStagedVerification();
   OTA_DBG("OTA: RESUME verifying %u blocks total=%u\n",
           (unsigned)bc, (unsigned)total);
@@ -1097,7 +1270,7 @@ void OtaManager::verifyStagedStep() {
     const uint32_t index = _resume_verify_idx;
     if (!_fetch->read(_floff + index * 4,
                       stored_leaf, sizeof(stored_leaf))) {
-      _fstate = FAILED;
+      failFetch(FETCH_ERROR_STORAGE);
       return;
     }
     if (memcmp(stored_leaf, missing_leaf, sizeof(stored_leaf)) == 0) {
@@ -1106,7 +1279,7 @@ void OtaManager::verifyStagedStep() {
 
     const uint32_t length = blockLen(index);
     if (!_fetch->read(_fpoff + index * _fbs, _reasm[0].buf, length)) {
-      _fstate = FAILED;
+      failFetch(FETCH_ERROR_STORAGE);
       return;
     }
     uint8_t computed_leaf[4];
@@ -1116,14 +1289,14 @@ void OtaManager::verifyStagedStep() {
       // requests this block again; a stale marker must never bless bad bytes.
       if (!_fetch->write(_floff + index * 4,
                          missing_leaf, sizeof(missing_leaf))) {
-        _fstate = FAILED;
+        failFetch(FETCH_ERROR_STORAGE);
         return;
       }
       _resume_invalidated = true;
       continue;
     }
     if (!_resume_merkle.add(computed_leaf)) {
-      _fstate = FAILED;
+      failFetch(FETCH_ERROR_INTEGRITY);
       return;
     }
     _have++;
@@ -1135,10 +1308,13 @@ void OtaManager::verifyStagedStep() {
 
   if (_have == _fbc) {
     uint8_t root[4];
-    _fstate = _resume_merkle.finish(root)
-            && memcmp(root, _froot, sizeof(root)) == 0
-            && _fetch->finalize()
-        ? COMPLETE : FAILED;
+    if (!_resume_merkle.finish(root) || memcmp(root, _froot, sizeof(root)) != 0) {
+      failFetch(FETCH_ERROR_INTEGRITY);
+    } else if (!_fetch->finalize()) {
+      failFetch(FETCH_ERROR_STORAGE);
+    } else {
+      completeFetch();
+    }
   } else {
     _fstate = FETCHING;
     requestMissing();
@@ -1201,6 +1377,7 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   uint8_t leaf[4]; merkle_leaf(leaf, slot.buf, blen);
   if (!_fetch->write(_fpoff + block * _fbs, slot.buf, blen) ||
       !_fetch->write(_floff + block * 4, leaf, 4)) {
+    _fetch_error = FETCH_ERROR_STORAGE;
     _fstate = PAUSED; clearReassembly(); return true;
   }
   _have++;
@@ -1218,8 +1395,9 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   // Every leaf must be readable and collectively match the manifest root.
   // A scratch allocation/read failure is an integrity failure, never success.
   clearReassembly();
-  _fstate = storedLeavesRootMatches() ? COMPLETE : FAILED;
-  if (_fstate == COMPLETE && !_fetch->finalize()) _fstate = FAILED;
+  if (!storedLeavesRootMatches()) failFetch(FETCH_ERROR_INTEGRITY);
+  else if (!_fetch->finalize()) failFetch(FETCH_ERROR_STORAGE);
+  else completeFetch();
   OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");
   return true;
 }
@@ -1361,7 +1539,7 @@ void OtaManager::loop() {
     // the link and burn the retry cap while fragments are still arriving (mirrors FETCHING + WANT_LEAVES).
     // Give up after a cap of stalled retries so an unreachable mid doesn't pin the single fetch slot forever.
     if (_mf_mask == _loop_last_mfmask) {
-      if (++_mf_retries > OTA_MANIFEST_MAX_RETRY) { _fstate = FAILED; return; }
+      if (++_mf_retries > OTA_MANIFEST_MAX_RETRY) { failFetch(FETCH_ERROR_MANIFEST_TIMEOUT); return; }
       GetManifestMsg gm; memcpy(gm.manifest_id, _fid, 4);
       // request only the manifest fragments still missing; 0xFFFF ("send all") until we know frag_total
       gm.want_mask = (_mf_total > 0) ? (uint16_t)(frag_full_mask(_mf_total) & ~_mf_mask) : 0xFFFF;
@@ -1378,7 +1556,7 @@ void OtaManager::loop() {
     // tick congests the link (and burns the retry cap) while fragments are still streaming in. On a stall,
     // ask for just the missing bitmap (anti-burst); give up (FAILED) after a cap of stalled retries.
     if (_lv_mask == _loop_last_lvmask) {
-      if (++_lv_retries > OTA_LEAVES_MAX_RETRY) { freeLeaves(); _fstate = FAILED; return; }
+      if (++_lv_retries > OTA_LEAVES_MAX_RETRY) { failFetch(FETCH_ERROR_LEAVES_TIMEOUT); return; }
       GetLeavesMsg gl; memcpy(gl.manifest_id, _fid, 4);
       gl.want_mask = (_lv_total > 0) ? (uint16_t)(frag_full_mask(_lv_total) & ~_lv_mask) : 0xFFFF;
       if (gl.want_mask == 0) gl.want_mask = 0xFFFF;    // safety: never send an empty request

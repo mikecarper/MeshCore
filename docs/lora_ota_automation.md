@@ -5,8 +5,8 @@ physical failure of the withdrawn 26-step migration and the corrected
 v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
 explicit lab-only gate for the corrected chain until physical testing passes.
 
-[`tools/lora_ota/lora_ota.sh`](../tools/lora_ota/lora_ota.sh) and
-[`tools/lora_ota/lora_ota.ps1`](../tools/lora_ota/lora_ota.ps1) automate a
+[`tools/lora_ota/lora_ota.sh`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.sh) and
+[`tools/lora_ota/lora_ota.ps1`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.ps1) automate a
 MeshCore LoRa firmware update from a release `.zip` or ready `.mota`. They
 identify the destination, validate the hardware and running firmware, prepare
 the right container, move the participating nodes to a temporary radio
@@ -168,13 +168,18 @@ on the normal channel. The script runs these authenticated checks itself:
 
 ```text
 ota status
+get bootloader.ver
 ota self
 ota stats
 ```
 
-For nRF52, `ota self` must report `bootloader: apply OK` or
-`bootloader: SD apply OK`. The script also checks the reported bootloader ABI
-and codec mask against the selected package.
+The script uses `get bootloader.ver` to distinguish ESP32 from nRF52 and, for
+nRF52, report the installed bootloader version. It then requires `ota self` to
+report `bootloader: apply OK` or `bootloader: SD apply OK` and checks the
+reported bootloader ABI and codec mask against the selected package. If the
+version command is unavailable on older firmware, the script warns and falls
+back to the legacy `ota self` platform marker. If an nRF52 bootloader lacks
+the required capabilities, install the exact-board OTAFIX bootloader first.
 
 The default TempRadio tuple is:
 
@@ -401,7 +406,8 @@ the destination.
 1. Validate the input paths and host tools, then prove the source is either an
    OTA-enabled raw CLI or a source-only full Companion control interface.
 2. Authenticate to the target and query its target ID, hardware, running body
-   hash, version, and nRF52 bootloader capabilities.
+   hash, firmware version, bootloader version, and nRF52 bootloader
+   capabilities.
 3. Select or build one compatible mOTA and verify all block hashes, Merkle
    root, full-image hash where applicable, identity fields, signature, codec,
    base, and the firmware's 1024-byte maximum block size.

@@ -1,194 +1,86 @@
-# MeshCore Memory Monitoring Guide
+# MeshCore memory monitoring
 
-## Quick Start
+MeshCore exposes current allocator information through the CLI. On an ESP32
+build, run `memory` over a supported local or administrator CLI transport:
 
-### 1. Find Your Device Port
+```text
+memory
+  -> Free: 102796, Min: 83544, Max: 75764, Queue: 0, IntFree: 68420, IntMax: 53248, PSRAM: 3918400/4194304
+```
+
+For a USB serial console, identify the device port and open it at the baud rate
+configured by the build (normally 115200):
+
 ```bash
-# Linux/macOS
-ls /dev/tty* | grep -E "(USB|ACM)"
-
-# Common ports:
-# /dev/ttyUSB0    - Linux USB serial
-# /dev/ttyACM0    - Linux USB CDC
-# /dev/cu.usbserial-* - macOS USB serial
-# /dev/cu.usbmodem*   - macOS USB CDC
+ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+screen /dev/ttyACM0 115200
 ```
 
-### 2. Run Monitoring
-```bash
-# Monitor for 4 hours (default)
-python3 monitor_memory.py /dev/ttyUSB0
+Then enter `memory` periodically. Exit GNU Screen with `Ctrl-A`, then `K`.
 
-# Monitor for 24 hours
-python3 monitor_memory.py /dev/ttyUSB0 24
+The repository does not ship a `monitor_memory.py` collector. For a long soak,
+use a serial terminal with timestamped logging, or have the test harness send
+`memory` at a conservative interval and retain each complete reply.
 
-# Monitor for 2 hours with 60-second intervals
-python3 monitor_memory.py /dev/ttyUSB0 2 --interval 60
-```
+## ESP32 fields
 
-## What It Monitors
+| Field | Meaning |
+|---|---|
+| `Free` | Bytes currently free in the ESP heap. |
+| `Min` | Lowest free-heap value observed since boot. This is a low-water mark and does not rise when memory is released. |
+| `Max` | Largest single allocation currently available from the ESP heap. |
+| `Queue` | Current MeshCore transmit-queue length. It is not specifically an MQTT queue. |
+| `IntFree` | Bytes currently free in internal-capability RAM. |
+| `IntMax` | Largest single allocation currently available in internal-capability RAM. |
+| `PSRAM` | Free/total external PSRAM bytes. A board or build without PSRAM normally reports `0/0`. |
 
-### Memory Metrics
-- **Free Heap**: Available memory in bytes
-- **Min Heap**: Minimum free heap since boot
-- **Max Alloc**: Largest allocatable block
-- **Queue Size**: Number of queued MQTT packets
+Non-ESP builds that expose the common CLI may return the shorter
+`Heap: free=<bytes>, used=<bytes>` form. The public build matrix only promises
+the detailed `memory` command on ESP32; see the
+[CLI availability matrix](docs/cli_command_availability.md#memory).
 
-### Calculated Metrics
-- **Heap Usage %**: Percentage of total memory used
-- **Fragmentation %**: How fragmented the heap is
+## Interpreting a soak
 
-### Automatic Alerts
-- **LOW_MEMORY**: Free heap < 50KB
-- **HIGH_FRAGMENTATION**: Fragmentation > 50%
-- **QUEUE_BUILDUP**: Queue size > 20 packets
-- **POSSIBLE_LEAK**: Memory decreasing over time
+Establish a separate idle and workload baseline for each board and firmware
+profile. Fixed thresholds such as “50 KB is always low” are misleading because
+heap size, PSRAM, enabled features, and allocation capabilities differ by build.
+Look for trends instead:
 
-## Output Files
+- `Free` repeatedly returns to roughly the same baseline after transient work.
+- `Min` can fall during a new peak workload; continued new lows under an
+  identical repeating workload deserve investigation.
+- A shrinking `Max` while `Free` remains stable can indicate fragmentation or a
+  changed allocation pattern.
+- A `Queue` that grows and does not drain points to radio backpressure or stalled
+  processing, not necessarily a leak.
+- On PSRAM builds, inspect internal RAM separately. Plenty of PSRAM cannot satisfy
+  allocations that require internal-capability memory.
 
-### Console Output
-```
-[  30.0m] Free: 102796, Min: 83544, Max: 75764, Queue: 0, Usage: 68.6%, Frag: 26.3%
-[  60.0m] Free: 101234, Min: 82345, Max: 74321, Queue: 2, Usage: 69.1%, Frag: 26.5%
-[WARN]  WARNING: HIGH_FRAGMENTATION
-```
+Sample immediately after boot, after network and MQTT startup, during the
+intended peak workload, and again after that workload becomes idle. Preserve
+the firmware version, build environment, uptime, and workload alongside the
+samples so results are comparable.
 
-### CSV Log File
-```csv
-Timestamp,Elapsed_Minutes,Free_Heap,Min_Heap,Max_Alloc,Queue_Size,Heap_Usage_Percent,Fragmentation_Percent
-2024-01-15T10:30:00,0.0,102796,83544,75764,0,68.6,26.3
-2024-01-15T11:00:00,30.0,101234,82345,74321,2,69.1,26.5
-```
+## Related diagnostics
 
-## Understanding Results
+- `stats-core` reports battery, uptime, queue length, and core debug flags over a
+  local serial session.
+- `stats-radio` and `stats-packets` help distinguish memory pressure from radio
+  or queue congestion.
+- On MQTT observer builds, `get mqtt.stats` reports bridge publish health and a
+  heap snapshot; `get mqtt.status` reports bridge state and schedules.
 
-### Healthy System
-- **Free Heap**: 150KB+ (stable)
-- **Min Heap**: 120KB+ (stable)
-- **Max Alloc**: 100KB+ (stable)
-- **Fragmentation**: < 30%
-- **Queue**: 0-10 packets
-
-### Warning Signs
-- **Free Heap**: < 100KB or decreasing
-- **Min Heap**: < 80KB or decreasing
-- **Fragmentation**: > 50%
-- **Queue**: > 20 packets consistently
-
-### Memory Leak Indicators
-- **Consistent decrease** in Free Heap over time
-- **Min Heap dropping** below previous minimums
-- **Max Alloc shrinking** (fragmentation increasing)
-- **POSSIBLE_LEAK** alert triggered
-
-## Long-Term Monitoring
-
-### 24-Hour Test
-```bash
-python3 monitor_memory.py /dev/ttyUSB0 24
-```
-- Tests for memory leaks over extended period
-- Monitors system stability under normal load
-- Identifies gradual memory degradation
-
-### 48-Hour Stress Test
-```bash
-python3 monitor_memory.py /dev/ttyUSB0 48 --interval 60
-```
-- Extended monitoring for critical deployments
-- 60-second intervals reduce log file size
-- Tests system under continuous operation
+See the [CLI command reference](docs/cli_commands.md#statistics) and
+[MQTT command availability](docs/cli_command_availability.md#mqtt-stats).
 
 ## Troubleshooting
 
-### Device Not Responding
-1. Check port is correct: `ls /dev/tty*`
-2. Ensure device is connected and powered
-3. Try different baud rate if needed
-4. Check device is in correct mode
-
-### No Data in CSV
-1. Verify device responds to `memory` command manually
-2. Check serial connection is stable
-3. Ensure device has MQTT bridge enabled
-
-### High Memory Usage
-1. Check if it's stable or increasing
-2. Look for memory leak patterns
-3. Monitor queue size for packet buildup
-4. Consider reducing debug logging
-
-## Analysis Tools
-
-### Plot Memory Usage
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Load CSV data
-df = pd.read_csv('memory_monitor_20240115_103000.csv')
-
-# Plot memory over time
-plt.figure(figsize=(12, 8))
-plt.subplot(2, 2, 1)
-plt.plot(df['Elapsed_Minutes'], df['Free_Heap'])
-plt.title('Free Heap Over Time')
-plt.ylabel('Bytes')
-
-plt.subplot(2, 2, 2)
-plt.plot(df['Elapsed_Minutes'], df['Heap_Usage_Percent'])
-plt.title('Heap Usage Percentage')
-plt.ylabel('%')
-
-plt.subplot(2, 2, 3)
-plt.plot(df['Elapsed_Minutes'], df['Fragmentation_Percent'])
-plt.title('Heap Fragmentation')
-plt.ylabel('%')
-
-plt.subplot(2, 2, 4)
-plt.plot(df['Elapsed_Minutes'], df['Queue_Size'])
-plt.title('Queue Size')
-plt.ylabel('Packets')
-
-plt.tight_layout()
-plt.savefig('memory_analysis.png')
-plt.show()
-```
-
-### Check for Trends
-```python
-# Calculate memory trend
-df['Free_Heap_Trend'] = df['Free_Heap'].rolling(window=10).mean()
-df['Trend_Slope'] = df['Free_Heap_Trend'].diff()
-
-# Identify decreasing trends
-decreasing = df[df['Trend_Slope'] < -1000]
-if not decreasing.empty:
-    print("Memory decreasing trend detected!")
-    print(decreasing[['Elapsed_Minutes', 'Free_Heap', 'Trend_Slope']])
-```
-
-## Best Practices
-
-1. **Start with 4-hour baseline** to establish normal patterns
-2. **Monitor during peak usage** times for worst-case scenarios
-3. **Run 24-hour tests** before production deployment
-4. **Check logs regularly** for warning signs
-5. **Keep historical data** for trend analysis
-6. **Test after code changes** to verify fixes
-
-## Emergency Procedures
-
-### If Memory Leak Detected
-1. **Stop monitoring** (Ctrl+C)
-2. **Check recent code changes**
-3. **Look for unfreed allocations**
-4. **Test with reduced functionality**
-5. **Deploy memory leak fix**
-
-### If System Crashes
-1. **Check last known good memory values**
-2. **Identify crash threshold**
-3. **Add more frequent monitoring**
-4. **Implement memory safeguards**
-5. **Consider hardware upgrade**
+- If the device does not answer, verify the port, build-specific baud rate, and
+  that the selected firmware exposes a CLI on that transport.
+- If `memory` returns `Unknown command`, check the build matrix. Do not infer a
+  memory failure from an unavailable command.
+- If output stops during a soak, retain the last complete sample and capture the
+  device log and reset reason. The last free-heap value alone is not a crash
+  diagnosis.
+- If only `Queue` rises, inspect radio and packet statistics before treating the
+  symptom as allocator exhaustion.

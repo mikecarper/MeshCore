@@ -8,8 +8,30 @@ existing behavior * **Internal** = refactor / under-the-hood * **Docs** = docume
 **Build** / **CI** = build system & automation. **[UP] Upstream sync** marks a merge of the
 upstream MeshCore `dev` branch, which generally pulls in a new MeshCore software version.
 
+### August 2026
+
+- **Improvement** - Added a WebConfig CLI terminal, tightened command failure/reboot handling, stopped secret reads, and enforced the setup password  <sub>2026-08-08 * `d7109c18`, `c831e599`, `8abe26ba`</sub>
+- **New** * `mqtt` - Added IdahoMesh, GoMesh, okimesh, and atvirastinklas presets; expanded the built-in preset table to 31 entries  <sub>2026-08-08 * `da37b6eb`, `3b11540e`, `73faa30c`, `dbee39b5`</sub>
+- **New** - Enabled online OTA for Station G3 observer builds  <sub>2026-08-08 * `5000391c`</sub>
+- **New** - Configurable repeater telemetry history plus the browser decoder  <sub>2026-08-05 * `3ba0fb18`, `64f99420`</sub>
+- **Improvement** * `mqtt-neighbors` - Enabled neighbor publication on opted-in non-PSRAM observers and fixed unusable heard ages  <sub>2026-08-03 * `a3a0a94d`, `5828a3c5`</sub>
+- **Fix** - Restored nRF52 builds after observer-only dependencies leaked into the common build path  <sub>2026-08-03 * `45379ad7`</sub>
+- [UP] **Upstream sync** - Promoted the observer channel onto MeshCore v1.17.0-era upstream changes  <sub>2026-08-09 * `b744b42a`</sub>
+
+### July 2026
+
+- **New** * `webconfig` - Added the ESP32 WebConfig portal, request/result correlation, batch-state tests, and administrator-password management  <sub>2026-07-21 * `a7c1cc63`, `dc44311e`, `cece565e`, `675bc6b5`</sub>
+- **Fix** * `mqtt` - Added cooperative MQTT shutdown, a clean-stop OTA barrier, and a hardware-derived slot-scaled stop timeout  <sub>2026-07-19 * `2e1a1410`, `7767760f`</sub>
+- **New** * `mqtt` - Added periodic neighbor publication, host-tested JSON construction, preferences, and WebConfig controls  <sub>2026-07-19 * `de320bc4`, `e36aee04`, `8d7a47ab`, `d6f8a871`</sub>
+- **Fix** * `mqtt` - Made preference migration power-loss recoverable, restored PSRAM buffers after restart, and added representative CI firmware guardrails  <sub>2026-07-18 * `1be09b9b`, `b5deaf93`, `7b60ee70`</sub>
+- **New** * `mqtt` - Added per-slot packet allowlists with named payload types and downgrade-safe preference handling  <sub>2026-07-28 * `e00b29b4`, `52bd2719`, `ecbb5005`</sub>
+- **New** - Added standalone WebConfig CLI controls and shared Wi-Fi OTA-seeder policy for Full ESP32 roles  <sub>2026-07-29 * `a6ace607`, `e6abf3ea`</sub>
+- **Fix** * `mqtt` - Preserved observer capture and remote administration when duty-cycle throttling fills the packet pool  <sub>2026-07-09 * `1c9c6292`, `847be34e`</sub>
+- [UP] **Upstream sync** - Synced the observer development channel with upstream dev through 2026-07-30  <sub>2026-07-30 * `612c5213`</sub>
+
 ### June 2026
 
+- **Fix** * `kiss_modem` - Prevented USB TX backpressure from stalling the modem and added its separate native CI suite  <sub>2026-06-23 * `fb2c61f8`, `39ff5b87`</sub>
 - **New** - AlertReporter integration in MyMesh for Room Server <sub>2026-06-17 * `985fda13`</sub>
 - **Improvement** - Cumulative packet statistics (`packets_sent` / `packets_received`) added to the status message  <sub>2026-06-16 * `8bf590b1`</sub>
 - **Improvement** - Packet path now published as an array of lowercase hex hop tokens  <sub>2026-06-16 * `e80a5ded`</sub>

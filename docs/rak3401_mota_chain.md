@@ -126,7 +126,10 @@ sequence has exhaustive offline validation but not yet a complete physical run.
 Restore the test RAK locally with the ZIP's
 `recovery/test-start/RAK3401-test-start-v1.16.7-c1caa5ad.uf2`. Before starting,
 require start version `1.16.7.0`, body hash `71F4026CBE4B8B74`, target
-`2FA509C1`, hardware `RAK_3401`, and OTAFIX mOTA ABI 2 with codec 2.
+`2FA509C1`, hardware `RAK_3401`, and OTAFIX mOTA ABI 2 with codec 2. The live
+runner queries `get bootloader.ver`, reports the installed version, and then
+uses `ota self` to verify those apply capabilities before changing any radio
+or watchdog setting.
 
 For the tested direct topology:
 

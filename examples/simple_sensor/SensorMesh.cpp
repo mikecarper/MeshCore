@@ -937,8 +937,15 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
   _prefs.interference_threshold = 0;  // disabled
   _prefs.radio_fem_rxgain = 1;        // LoRa FEM RX gain on by default (FEM boards)
   _prefs.cad_enabled = DEFAULT_CAD_ENABLED; // Cascade defaults CAD on; target default remains off
+  _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
+  _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
+  _prefs.rx_ps_level = DEFAULT_RXPS_LEVEL;
+  _prefs.rx_ps_preamble = DEFAULT_RXPS_PREAMBLE;
   _prefs.rx_ps_rx_us = RX_POWERSAVING_DEFAULT_RX_US;
   _prefs.rx_ps_sleep_us = RX_POWERSAVING_DEFAULT_SLEEP_US;
+  recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+                               _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+                               &_prefs.rx_ps_sleep_us);
 
   // GPS defaults
   _prefs.gps_enabled = 0;

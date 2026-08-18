@@ -1,16 +1,17 @@
 # Host unit tests
 
-Fast, hardware-free unit tests for the fork's pure logic, run on the host with
-GoogleTest via PlatformIO's `native` environment. They cover the extractable
-observer/WebConfig logic (validation, preset table, topic templates, key
-parsing) -- the parts that don't depend on the ESP32, radio, or network stack.
-Integration behavior (AsyncTCP transport, WiFi/MQTT, SoftAP) is exercised
-separately; see "Local testing without hardware" in `MQTT_IMPLEMENTATION.md`.
+Fast, hardware-free unit tests for pure and host-simulated logic, run with
+GoogleTest through PlatformIO. The `native` environment runs every suite except
+the KISS modem; `native_kiss_modem` builds that suite with its separate source
+filter. Hardware, real radio, AsyncTCP, Wi-Fi/MQTT, and SoftAP behavior still
+require integration or target testing; see "Local testing without hardware" in
+`MQTT_IMPLEMENTATION.md`.
 
 ## Running
 
 ```sh
-pio test -e native                      # all suites
+pio test -e native                      # all suites except KISS modem
+pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 ```
 
@@ -47,8 +48,28 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_identity_generation` | `src/helpers/IdentityGeneration.h` | reserved-prefix rejection; bounded retries; final provisioned attempt; fail-closed exhaustion |
 | `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h`, `src/helpers/RemoteCliTimeout.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; 300% response timeout; empty-response completion; on-air truncation and clearing |
 | `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing |
-| `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp`, `src/helpers/MultiSerialInterface.h` | independent terminal/seeder control-sequence recognition across reads and binary-frame boundaries; passthrough ownership of USB input and suppression of binary output; Bluetooth-only connection and pairing-request routing |
+| `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp`, `src/helpers/MultiSerialInterface.h` | terminal/seeder control-sequence recognition and passthrough ownership; queued/atomic USB output under backpressure and short writes; partial-frame busy state; requester-affine replies, locked contact streams, and Bluetooth-only pairing routing |
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
+| `test_atomic_file_writer` | `src/helpers/AtomicFileWriter.h` | verified temporary-file commit; short-write, readback, validation, and rename failures; preservation of the live file and stale-temp cleanup |
+| `test_cad_timing` | `src/helpers/radiolib/CadTiming.h`, `LR2021SideDetectorConfig.h`, `RadioAirtime.h` | Cascade and slow-profile CAD deadlines; invalid airtime handling; bounded LR2021 side-detector parsing and LDRO recomputation |
+| `test_companion_node_prefs` | `examples/companion_radio/NodePrefs.h` | independent device power saving, RXPS, Wi-Fi, and FEM preferences; one-time migration of the regressed power-saving default |
+| `test_config_serializer` | `src/helpers/ConfigSerializer.cpp`, Companion `NodePrefs` | escaped config save/load, whitespace and malformed input, unknown fields, and FEM preference round trips |
+| `test_deferred_cli_command` | `src/helpers/DeferredCliCommand.h` | copying authenticated command context, single-pending-command enforcement, clearing, and length rejection |
+| `test_kiss_modem` | `examples/kiss_modem/KissModem.cpp` | KISS escaping/framing and packet metadata under partial writes, host TX backpressure, queue saturation, and radio completion; run with `native_kiss_modem` |
+| `test_mesh_tables` | `src/helpers/SimpleMeshTables.h` | packet and ACK/multipart deduplication, scope-independent identity, route-prefix matching, and deterministic recent-repeater expiry/eviction |
+| `test_mqtt_lifecycle` | `src/helpers/MQTTLifecycle.h` | idempotent start/stop, initialization rollback, cooperative stop acknowledgment and timeout, callback ownership, restart, and the OTA flash barrier |
+| `test_mqtt_reply_format` | `src/helpers/MQTTReplyFormat.h` | bounded formatted appends, exact-fit and one-byte buffers, truncation, NUL termination, and invalid starting positions |
+| `test_packet_manager` | `src/Packet.cpp`, `src/Dispatcher.cpp`, `src/helpers/StaticPoolPacketManager.cpp` | truncated-packet rejection, unavailable-radio behavior, scoped RX-delay replacement, queue/CAD scheduling, and staged radio/TX recovery |
+| `test_persistent_store_format` | `src/helpers/PersistentStoreFormat.h` | contact-page headers and CRCs, dirty-page state, stable slot allocation, and bounded resumable legacy migration across power loss |
+| `test_power_management` | `src/helpers/PowerManagementUtils.h` | median filtering of a brownout outlier and valid-reading requirements for the boot lock |
+| `test_region_names` | `src/helpers/RegionNameUtils.h` | canonical public-region markers while preserving distinct private and differently named regions |
+| `test_routing_policy` | `src/helpers/RoutingPolicy.h` | scoped/unscoped flood hop limits and selection of direct, path-return, mirrored-scope, default-scope, or unscoped replies |
+| `test_rs232_uart` | `src/helpers/bridges/RS232UartUtils.h` | stopping the active UART peripheral before reassigning its pins |
+| `test_security_session_timer` | `src/helpers/nrf52/SecuritySessionTimer.h` | two-minute security-session expiry, cancellation, restart, and `millis()` rollover |
+| `test_trace_path_helpers` | `src/helpers/TracePathHelpers.h` | round-trip route construction, hash-width conversion, raw path parsing/limits, and terminal trace timeout bounds |
+| `test_user_gpio` | `src/helpers/UserGpio.cpp`, `UserGpioReplyTracker.h` | board-approved pins, get/set/reset, timed nonblocking transitions, duplicate suppression, rollover, and completion-reply routing |
+| `test_utf8_helpers` | `src/helpers/UTF8Helpers.h` | byte-limit truncation at complete code-point boundaries and rejection of malformed or truncated UTF-8 |
+| `test_wifi_ota_seeder_policy` | `src/helpers/WiFiOtaSeederPolicy.h`, `WiFiOtaSeederStatus.h` | listener state versus network availability, serial/TCP folder ownership, detach detection, and bounded status formatting |
 | `test_ota` | `src/helpers/ota/` | container and EndF integrity; protocol codecs; transfer, resume, and apply safety; adaptive 2-to-4 block-request window growth and stall contraction; active-transfer priority classification |
 | `test_trace_retry` | `src/Mesh.cpp` retry and relay policy | opaque OTA relay behavior during TempRadio; background discovery priority; immediate primary transfer relay, receive-delay bypass, fast CAD retry, and no generic flood retry; trace and non-OTA flood retry timing |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |

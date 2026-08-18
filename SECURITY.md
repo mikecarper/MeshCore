@@ -7,8 +7,11 @@ fixes to older versions.
 
 | Version | Supported |
 |---------|-----------|
-| 1.15+ | [OK] |
-| <1.15 | [X] |
+| Latest published release | [OK] |
+| Older releases | [X] |
+
+The table is intentionally release-relative rather than tied to a minor version:
+when a new release is published, the previously latest release becomes unsupported.
 
 ## Reporting a Vulnerability
 

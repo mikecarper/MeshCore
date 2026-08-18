@@ -290,6 +290,12 @@ void MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
   _serial->writeFrame(out_frame, i);
 }
 
+void MyMesh::stopContactsIterator() {
+  if (!_iter_started) return;
+  _iter_started = false;
+  if (_serial != NULL) _serial->unlockReplyRoute();
+}
+
 void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len) {
   int i = 0;
   uint8_t code = frame[i++]; // eg. CMD_ADD_UPDATE_CONTACT
@@ -2368,6 +2374,10 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
+void MyMesh::cancelSerialResponseStream() {
+  stopContactsIterator();
+}
+
 void MyMesh::handleCmdFrame(size_t len) {
   if (len == 0) {
     writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -2401,7 +2411,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     cmd_frame[len] = 0; // make app_name null terminated
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
-    _iter_started = false; // stop any left-over ContactsIterator
+    stopContactsIterator(); // stop any left-over ContactsIterator
     cancelPendingRadioParamApply();
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
@@ -2613,16 +2623,18 @@ void MyMesh::handleCmdFrame(size_t len) {
         _iter_filter_since = 0;
       }
 
+      // CONTACTS_START, every CONTACT, and END_OF_CONTACTS are one response
+      // transaction. Keep them on the transport which requested the list.
+      _serial->lockReplyRoute();
+      _iter = startContactsIterator();
+      _iter_started = true;
+      _most_recent_lastmod = 0;
+
       uint8_t reply[5];
       reply[0] = RESP_CODE_CONTACTS_START;
       uint32_t count = getNumContacts(); // total, NOT filtered count
       memcpy(&reply[1], &count, 4);
       _serial->writeFrame(reply, 5);
-
-      // start iterator
-      _iter = startContactsIterator();
-      _iter_started = true;
-      _most_recent_lastmod = 0;
     }
   } else if (cmd_frame[0] == CMD_SET_ADVERT_NAME && len >= 2) {
     int nlen = len - 1;
@@ -2970,7 +2982,7 @@ void MyMesh::handleCmdFrame(size_t len) {
           self_id = identity;
           writeOKFrame();
           // re-load contacts, to invalidate ecdh shared_secrets
-          _iter_started = false;
+          stopContactsIterator();
           resetContacts();
           _store->loadContacts(this);
           updateGpsTelemetryPolicy();
@@ -4482,6 +4494,17 @@ void MyMesh::handleTerminalCommand(char* command) {
     char reply[160];
     applyAndSavePowerSaving(command + 12, reply);
     Serial.printf("  %s\r\n", reply);
+  } else if (strcmp(command, "get radio.rxps") == 0) {
+    if (!radio_driver.supportsRxPowerSaving()) {
+      Serial.print("  ERROR: RX power saving is unsupported on this radio\r\n");
+    } else {
+      Serial.printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
+                    _prefs.rx_powersaving_enabled ? "on" : "off",
+                    (unsigned)_prefs.rx_ps_level,
+                    (unsigned)_prefs.rx_ps_preamble,
+                    (unsigned long)_prefs.rx_ps_rx_us,
+                    (unsigned long)_prefs.rx_ps_sleep_us);
+    }
   } else if (strcmp(command, "get radio.fem.rxgain") == 0) {
     if (!board.canControlLoRaFemLna()) {
       Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
@@ -4501,6 +4524,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     if (strncmp(config, "powersaving ", 12) == 0) {
       char reply[160];
       applyAndSavePowerSaving(config + 12, reply);
+      Serial.printf("  %s\r\n", reply);
+    } else if (strncmp(config, "radio.rxps ", 11) == 0) {
+      char reply[160];
+      applyAndSaveRxPowerSaving(config + 11, reply);
       Serial.printf("  %s\r\n", reply);
     } else if (strncmp(config, "af ", 3) == 0) {
       _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
@@ -4564,6 +4591,8 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("Commands:\r\n");
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     Serial.print("  powersaving [on|off]\r\n");
+    Serial.print("  get radio.rxps\r\n");
+    Serial.print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
     Serial.print("  get radio.fem.rxgain\r\n");
     Serial.print("  set radio.fem.rxgain <on|off>\r\n");
     Serial.print("  get radio.fem.txgain\r\n");
@@ -4780,7 +4809,7 @@ void MyMesh::checkCLIRescueCmd() {
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (!_serial->isConnected()) {
-    _iter_started = false;
+    stopContactsIterator();
     cancelPendingRadioParamApply();
     return;
   }
@@ -4803,7 +4832,7 @@ void MyMesh::checkSerialInterface() {
       memcpy(&out_frame[1], &_most_recent_lastmod,
              4); // include the most recent lastmod, so app can update their 'since'
       _serial->writeFrame(out_frame, 5);
-      _iter_started = false;
+      stopContactsIterator();
     }
   //} else if (!_serial->isWriteBusy()) {
   //  checkConnections();    // TODO - deprecate the 'Connections' stuff

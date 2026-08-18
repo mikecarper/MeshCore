@@ -31,7 +31,7 @@ A list of frequently-asked questions and answers for MeshCore
     - [3.9.2. Q: **What determines a packet's path hash size?**](#392-q-what-determines-a-packets-path-hash-size)
     - [3.9.3. Q: **How do I change my companion's path hash size?**](#393-q-how-do-i-change-my-companions-path-hash-size)
     - [3.9.4. Q: **What does the CLI command `path.hash.mode` do on a repeater?**](#394-q-what-does-the-cli-command-pathhashmode-do-on-a-repeater)
-    - [3.9.5. Q: **Why use 2- or 3-byte path hash for adverts?**](#395-q-why-use-2--or-3-byte-path-hash-for-adverts)
+    - [3.9.5. Q: **Why use 2- or 3-byte path hash for adverts?**](#path-hash-size-adverts)
     - [3.9.6. Q: **When can we move away from 1-byte path hash for channel and direct messages?**](#396-q-when-can-we-move-away-from-1-byte-path-hash-for-channel-and-direct-messages)
 - [4. T-Deck Related](#4-t-deck-related)
     - [4.1. Q: Is there a user guide for T-Deck, T-Pager, T-Watch, or T-Display Pro?](#41-q-is-there-a-user-guide-for-t-deck-t-pager-t-watch-or-t-display-pro)
@@ -94,7 +94,7 @@ MeshCore is free and open source:
 
 - MeshCore is the routing and firmware etc., available on GitHub under MIT license
 - There are clients made by the community, such as the web clients, these are free to use, and some are open source too
-- The cross-platform mobile app developed by [Liam Cottle](https://liamcottle.net) for Android/iOS/PC etc. is free to download and use
+- The cross-platform mobile app developed by [Liam Cottle](https://liamcottle.com/) for Android/iOS/PC etc. is free to download and use
 - The T-Deck firmware is developed by Scott at Ripple Radios, the creator of MeshCore, is also free to flash on your devices and use
 
 
@@ -124,18 +124,19 @@ For an up-to-date list of supported devices, please go to <https://flasher.meshc
 To use MeshCore without using a phone as the client interface, you can run MeshCore on a LilyGo T-Deck, T-Deck Plus, T-Pager, T-Watch, or T-Display Pro. MeshCore Ultra firmware running on these devices is a complete off-grid secure communication solution.
 
 #### 1.2.2. Firmware
-MeshCore has four firmware types that are not available on other LoRa systems. MeshCore has the following:
+MeshCore firmware is organized by role and, for companions, by host transport.
+The main roles are Companion, Repeater, Room Server, and Sensor. The tree also
+contains specialized terminal-chat and KISS-modem builds. Availability depends
+on the board; use the flasher or that board's PlatformIO environments as the
+current source of truth.
 
 #### 1.2.3. Companion Radio Firmware
-Companion radios are for connecting to the Android app or web app as a messenger client. There are two different companion radio firmware versions:
-
-1. **BLE Companion**
-   BLE Companion firmware runs on a supported LoRa device and connects to a smart device running the Android or iOS MeshCore client over BLE
-   <https://meshcore.io>
-
-2. **USB Serial Companion**
-   USB Serial Companion firmware runs on a supported LoRa device and connects to a smart device or a computer over USB Serial running the MeshCore web client
-   <https://app.meshcore.nz>
+Companion radios connect MeshCore client software to LoRa. Depending on the
+board and build profile, the companion protocol can be exposed over BLE, USB
+serial, Wi-Fi, or Ethernet. Some boards also provide a Full Companion profile
+with additional local administration features. Check the exact build name and
+transport before flashing. See <https://meshcore.io> and the web client at
+<https://app.meshcore.nz>.
 
 #### 1.2.4. Repeater
 Repeaters are used to extend the range of a MeshCore network. Repeater firmware runs on the same devices that run client firmware. A repeater's job is to forward MeshCore packets to the destination device. It does **not** forward or retransmit every packet it receives, unlike other LoRa mesh systems.
@@ -185,13 +186,15 @@ The T-Deck firmware is free to download and most features are available without 
 
 
 ### 2.3. Q: What frequencies are supported by MeshCore?
-**A:** It supports the 868MHz range in the UK/EU and the 915MHz range in New Zealand, Australia, and the USA. Countries and regions in these two frequency ranges are also supported.
+**A:** Supported frequencies depend on the radio hardware and the rules for the
+country in which it operates. Common MeshCore hardware covers portions of the
+433, 868, and 915 MHz ISM bands.
 
-Use the smartphone client or the repeater setup feature on the web flasher to set your radios' RF settings by choosing the preset for your regions.
-
-Recently, as of October 2025, many regions have moved to the "narrow" setting, aka using BW62.5 and a lower SF number (instead of the original SF11). For example, USA/Canada (Recommended) preset is 910.525MHz, SF7, BW62.5, CR5.
-
-After extensive testing, many regions have switched or about to switch over to BW62.5 and SF7, 8, or 9. Narrower bandwidth setting and lower SF setting allow MeshCore's radio signals to fit between interference in the ISM band, provide for a lower noise floor, better SNR, and faster transmissions.
+Use the current regional preset offered by the client or flasher, confirm it
+with the local MeshCore community, and comply with local frequency, bandwidth,
+duty-cycle, and power limits. Do not copy an old frequency from this FAQ.
+Narrow presets commonly use BW62.5 with a lower spreading factor; their exact
+frequency and SF are region-specific and can change as deployments coordinate.
 
 If you have consensus from your community in your region to update your region's preset recommendation, please post your update request on  the [#meshcore-app](https://discord.com/channels/1343693475589263471/1391681655911088241) channel on the [MeshCore Discord server ](https://meshcore.gg) to let Liam Cottle know.
 
@@ -284,7 +287,10 @@ Best practice is when you set up a new repeater, choose a public key that is not
 
 The `<number>` unit is in seconds and is incremented by 4. `set agc.reset.interval 4` works well to cure deafness.
 
-This is a very low-cost operation. AGC reset is done by simply setting `state = STATE_IDLE;` in function `RadioLibWrapper::resetAGC()` in `RadioLibWrappers.cpp`
+The reset is skipped while a packet is pending, being received, or being
+transmitted. When safe, `RadioLibWrapper::resetAGC()` warm-sleeps the radio,
+returns the wrapper to idle so receive mode is re-armed, reapplies the cached RX
+boost setting, and starts a fresh noise-floor calibration.
 
 
 ### 3.8. Q: How do I make my repeater an observer on the mesh?
@@ -328,6 +334,7 @@ Usage: `set path.hash.mode {0|1|2}`:
 
 It is safe to set your 1.14+ repeaters to mode 1 or 2.
 
+<a id="path-hash-size-adverts"></a>
 ### 3.9.5. Q: **Why use 2- or 3-byte path hash for adverts?**
 
 A longer path hash helps tools like the LetsMesh.net Analyzer and MeshMapper disambiguate repeaters more reliably. With only 1 byte, the chance of different repeaters having the same first byte in their public key is high, making it harder to tell them apart in mesh network analysis. Since this only affects adverts, there's no downside. 2- and 3-byte adverts don't travel as far as 1-byte adverts, but it is not important for MeshCore nodes to hear a repeater's advert that is 21 or 32 hops away.
@@ -409,16 +416,26 @@ Unlock page: <https://buymeacoffee.com/ripplebiz/e/249834>
 See here for packet-type:
 <https://github.com/meshcore-dev/MeshCore/blob/main/src/Packet.h#L19>
 
-```
-#define PAYLOAD_TYPE_REQ 0x00 // request (prefixed with dest/src hashes, MAC) (enc data: timestamp, blob)
-#define PAYLOAD_TYPE_RESPONSE 0x01 // response to REQ or ANON_REQ (prefixed with dest/src hashes, MAC) (enc data: timestamp, blob)
-#define PAYLOAD_TYPE_TXT_MSG 0x02 // a plain text message (prefixed with dest/src hashes, MAC) (enc data: timestamp, text)
-#define PAYLOAD_TYPE_ACK 0x03 // a simple ack #define PAYLOAD_TYPE_ADVERT 0x04 // a node advertising its Identity
-#define PAYLOAD_TYPE_GRP_TXT 0x05 // an (unverified) group text message (prefixed with channel hash, MAC) (enc data: timestamp, "name: msg")
-#define PAYLOAD_TYPE_GRP_DATA 0x06 // an (unverified) group datagram (prefixed with channel hash, MAC) (enc data: data_type, data_len, blob)
-#define PAYLOAD_TYPE_ANON_REQ 0x07 // generic request (prefixed with dest_hash, ephemeral pub_key, MAC) (enc data: ...)
-#define PAYLOAD_TYPE_PATH 0x08 // returned path (prefixed with dest/src hashes, MAC) (enc data: path, extra)
-```
+| Value | Payload |
+|---|---|
+| `0x00` | Request |
+| `0x01` | Response |
+| `0x02` | Plain text message |
+| `0x03` | Acknowledgment |
+| `0x04` | Node advertisement |
+| `0x05` | Group text |
+| `0x06` | Group datagram |
+| `0x07` | Anonymous request |
+| `0x08` | Returned path |
+| `0x09` | Trace |
+| `0x0A` | Multipart |
+| `0x0B` | Control/discovery data |
+| `0x0C` | OTA-over-LoRa data |
+| `0x0D`-`0x0E` | Reserved |
+| `0x0F` | Raw custom data |
+
+See [Packet Format](packet_format.md) and [Payload Format](payloads.md) for the
+maintained descriptions.
 
 [Source](https://discord.com/channels/1343693475589263471/1343693475589263474/1350611321040932966)
 
@@ -474,8 +491,11 @@ So, it's a balancing act between speed of the transmission and resistance to noi
 The Things Network is mainly focused on LoRaWAN, but the LoRa low-level stuff still checks out for any LoRa project
 
 ### 5.2. Q: Do MeshCore clients repeat?
-**A:** No, MeshCore clients do not repeat. This is the core of MeshCore's messaging-first design. This is to avoid devices flooding the airwaves and create endless collisions, so messages sent aren't received.
-In MeshCore, only repeaters and room servers with `set repeat on` repeat.
+**A:** Companion clients do not repeat by default. Supported builds can opt into
+bounded client repeating on permitted frequencies, and the emergency-channel
+path has a bounded delayed relay behavior. Dedicated repeaters remain the
+normal and recommended way to extend network coverage. Room servers can repeat
+when explicitly configured, but separating the roles is generally preferable.
 
 ### 5.3. Q: What happens when a node learns a route via a mobile repeater, and that repeater is gone?
 **A:** If you used to reach a node through a repeater and the repeater is no longer reachable, the client will send the message using the existing (but now broken) known path, the message will fail after 3 retries, and the app will reset the path and send the message as flood on the last retry by default. This can be turned off in settings. If the destination is reachable directly or through another repeater, the new path will be used going forward. Or you can set the path manually if you know a specific repeater to use to reach that destination.
@@ -525,7 +545,7 @@ Support Rastislav Vysoky (recrof)'s flasher website and the map website developm
 
 Build instructions for MeshCore:
 
-For Windows, first install WSL and Python+pip via: <https://plainenglish.io/blog/setting-up-python-on-windows-subsystem-for-linux-wsl-26510f1b2d80>
+For Windows, first install WSL and Python+pip via: <https://plainenglish.io/python/setting-up-python-on-windows-subsystem-for-linux-wsl-26510f1b2d80>
 
 (Linux, Windows+WSL) In the terminal/shell:
 ```
@@ -540,34 +560,32 @@ Then it should be the same for all platforms:
 python3 -m venv meshcore
 cd meshcore && source bin/activate
 pip install -U platformio
-git clone https://github.com/ripplebiz/MeshCore.git
+git clone https://github.com/meshcore-dev/MeshCore.git
 cd MeshCore
 ```
-open platformio.ini and in `[arduino_base]` edit the `LORA_FREQ=867.5`
-save, then run:
+Choose an exact environment listed by `pio project config` or in the target
+board's `variants/*/platformio.ini`. For example:
 ```
-pio run -e RAK_4631_Repeater
+pio run -e RAK_4631_repeater
 ```
-then you'll find `firmware.zip` in `.pio/build/RAK_4631_Repeater`
+The output is under `.pio/build/RAK_4631_repeater/`. Set the radio parameters to
+your current regional preset after flashing; if changing build defaults, keep
+that local change out of commits unless it is intended for every user.
 
 ### 5.10. Q: Are there other MeshCore related open source projects?
 
-**A:** [Liam Cottle](https://liamcottle.net)'s MeshCore web client and MeshCore JavaScript library are open source under MIT license.
+**A:** [Liam Cottle](https://liamcottle.com/)'s MeshCore web client and MeshCore JavaScript library are open source under MIT license.
 
 Web client: <https://github.com/liamcottle/meshcore-web>
-Javascript: <https://github.com/liamcottle/meshcore.js>
+JavaScript: <https://github.com/meshcore-dev/meshcore.js>
 
 ### 5.11. Q: Does MeshCore support ATAK?
-**A:** ATAK is not currently on MeshCore's roadmap.
-
-MeshCore would not be best suited to ATAK because MeshCore:
-
-- clients do not repeat and therefore you would need a network of repeaters in place
-- will not have a stable path where all clients are constantly moving between repeaters
-
-MeshCore clients would need to reset path constantly and flood traffic across the network which could lead to lots of collisions with something as chatty as ATAK.
-
-This could change in the future if MeshCore develops a client firmware that repeats.
+**A:** This repository does not ship or document an official ATAK integration.
+An external integration must account for LoRa airtime, moving endpoints, stale
+direct paths, and the collision cost of frequent flood fallback. Optional,
+bounded Companion repeating does not turn every mobile client into a dedicated
+repeater and does not remove those capacity constraints. Check current
+community projects before designing a deployment.
 
 [Source](https://discord.com/channels/826570251612323860/1330643963501351004/1354780032140054659)
 
@@ -590,47 +608,42 @@ Below are the instructions to flash firmware onto a supported LoRa device using 
 For ESP-based devices (e.g. Heltec V3) you need:
 
 1. Download the firmware file from <https://flasher.meshcore.io>.
-    - Go to the website in a browser and find the section that has the firmware you need.
-    - Click the Download button, right-click on the file you need, for example:
-        - `Heltec_V3_companion_radio_ble-v1.7.1-165fb33.bin`
-            - Non-merged bin keeps the existing Bluetooth pairing database.
-        - `Heltec_v3_companion_radio_usb-v1.7.1-165fb33-merged.bin`
-            - Merged bin overwrites everything including the bootloader and existing Bluetooth pairing database, but keeps configurations.
-    - Right-click on the file name and copy the link. Here is an example: `https://flasher.meshcore.io/releases/download/companion-v1.7.1/Heltec_v3_companion_radio_ble-v1.7.1-165fb33.bin`
-    - Run:
-        - `wget https://flasher.meshcore.io/releases/download/companion-v1.7.1/Heltec_v3_companion_radio_ble-v1.7.1-165fb33.bin` to download the firmware file for your device type or the version you need: USB, BLE, Repeater, Room Server, merged bin or non-merged bin.
-        - If the above wget command only downloads a very small file (10K bytes instead of more than 100K byte), use this command instead:
-            - `wget --user-agent="Mozilla/5.0" --content-disposition "https://flasher.meshcore.io/releases/download/companion-v1.7.1/Heltec_v3_companion_radio_usb-v1.7.1-165fb33.bin"`
+    - Select the exact board and role. Artifact names and release URLs include a
+      changing version and commit, so copy the current download URL instead of
+      using an example URL from a guide.
+    - A non-merged application image is for an already compatible bootloader
+      and partition table. A merged image also contains low-level flash data.
+      Back up settings before either operation; do not assume a merged flash
+      preserves configuration, pairing data, or a previous partition layout.
+    - To download a copied URL from the shell, use
+      `curl -L '<copied-url>' -o <firmware>.bin`.
 2. Confirm the `ttyXXXX` device path on your Raspberry Pi.
-    - Go to the `/dev` directory and run the `ls` command to find your device path.
-    - It is usually `/dev/ttyUSB0` for ESP devices.
-3. Install esptool from the shell.
-    - `pip install esptool --break-system-packages`
+    - Run `ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null` before and after connecting
+      the board. ESP devices can appear under either name.
+3. Install esptool in a virtual environment.
+    - `python3 -m venv .venv && . .venv/bin/activate`
+    - `python -m pip install --upgrade esptool`
 4. Flash the firmware.
     - For non-merged bin:
-        - `esptool.py -p /dev/ttyUSB0 --chip esp32-s3 write_flash 0x10000 <non-merged_firmware>.bin`
+        - `python -m esptool --port /dev/ttyUSB0 --chip auto write-flash 0x10000 <non-merged-firmware>.bin`
     - For merged bin:
-        - `esptool.py -p /dev/ttyUSB0 --chip esp32-s3 write_flash 0x00000 <merged_firmware>.bin`
+        - `python -m esptool --port /dev/ttyUSB0 --chip auto write-flash 0x00000 <merged-firmware>.bin`
 
 **Instructions for nRF devices:**
 
 For nRF devices (e.g. RAK, Heltec T114) you need the following:
 
 1. Download the firmware file from <https://flasher.meshcore.io>.
-    - Go to the website in a browser and find the section that has the firmware you need.
-    - You need the ZIP version for the adafruit flash tool below.
-    - Click the Download button, right-click on the ZIP file, for example:
-        - `RAK_4631_companion_radio_ble-v1.7.1-165fb33.zip`
-    - Right-click on the file name and copy the link. Here is an example: `https://flasher.meshcore.io/releases/download/companion-v1.7.1/RAK_4631_companion_radio_ble-v1.7.1-165fb33.zip`
-    - Run:
-        - `wget https://flasher.meshcore.io/releases/download/companion-v1.7.1/RAK_4631_companion_radio_ble-v1.7.1-165fb33.zip` to download the firmware file for your device type or the version you need: USB, BLE, Repeater, Room Server, ZIP file only.
+    - Select the exact board and role, and download its current ZIP package.
+      Do not rename a package from another board or reuse a static versioned URL.
 2. Confirm the `ttyXXXX` device path on your Raspberry Pi.
-    - Go to the `/dev` directory and run the `ls` command to find your device path.
-    - It is usually `/dev/ttyACM0` for nRF devices.
-3. Install adafruit-nrfutil.
-    - `pip install adafruit-nrfutil --break-system-packages`
+    - Run `ls /dev/ttyACM* /dev/ttyUSB* 2>/dev/null`; nRF bootloaders commonly
+      appear as `/dev/ttyACM0`, but the number can change.
+3. In a virtual environment, install adafruit-nrfutil:
+    - `python3 -m venv .venv && . .venv/bin/activate`
+    - `python -m pip install --upgrade adafruit-nrfutil`
 4. Flash the nRF device.
-    - `adafruit-nrfutil --verbose dfu serial --package RAK_4631_companion_radio_usb-v1.7.1-165fb33.zip -p /dev/ttyACM0 -b 115200 --singlebank --touch 1200`
+    - `adafruit-nrfutil --verbose dfu serial --package <firmware-package>.zip -p /dev/ttyACM0 -b 115200 --singlebank --touch 1200`
 
 
 To manage a repeater or room server connected to a Pi over USB serial using shell commands, you need to install `picocom`. To install `picocom`, run the following command:
@@ -663,7 +676,7 @@ Both the Windows and Mac versions of the client app are fully unlocked and are f
 
 - The Comms Channel on YouTube: <https://www.youtube.com/watch?v=guDoKGs02Us>
 - MeshCore Advantages by MCarper: <https://github.com/mikecarper/meshfirmware/blob/main/MeshCoreAdvantages.md>
-- MeshCore vs Meshtastic by austinmesh.org: <https://www.austinmesh.org/learn/meshcore-vs-meshtastic>
+- MeshCore vs Meshtastic by austinmesh.org: <https://www.austinmesh.org/about/meshcore-vs-meshtastic/>
 
 
 ---
@@ -744,7 +757,9 @@ Allow the browser user on it:
 12. If it fails, try toggling Bluetooth on your phone. If that doesn't work, try rebooting your phone. If you keep getting failures at the "Enabling Bootloader" step, try forgetting the nRF board in your iOS or Android device's Bluetooth settings and re-pair it through the DFU app.
 13. Wait for the update to complete. It can take a few minutes.
 14. It is strongly recommended that you install and use the OTAFIX bootloader at <https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX>.
-15. To update a companion node over OTA, it must be running companion firmware v1.15 or greater.
+15. A companion must be running a build that exposes `start ota`; consult the
+    current flasher release notes rather than relying on a version threshold in
+    this FAQ.
 16. Please see the MeshCore Blog for additional information on OTA firmware flashing:
     - <https://blog.meshcore.io/2026/04/06/otafix-bootloader>
     - <https://blog.meshcore.io/2026/04/02/nrf-ota-update>
@@ -760,7 +775,9 @@ After this bootloader is flashed onto the device, you can trigger an over-the-ai
 ### 7.2. Q: How to update ESP32-based devices over the air?
 **A:** For ESP32-based devices (e.g. Heltec V3):
 
-1. On <https://flasher.meshcore.io>, download the **non-merged** version of the firmware for your ESP32 device (e.g. `Heltec_v3_repeater-v1.6.2-4449fd3.bin`, no `"merged"` in the file name).
+1. On <https://flasher.meshcore.io>, download the current **non-merged**
+   application image for the exact ESP32 board and role (no `merged` in the
+   filename).
 2. From the MeshCore app, log in remotely to the repeater you want to update with admin privileges.
 3. Go to the Command Line tab, type `start ota` and hit enter.
 4. You should see `OK` to confirm the repeater device is now in OTA mode.
@@ -779,14 +796,18 @@ Refer to <https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX> for the la
 
 Currently, the following boards are supported:
 
+- Elecrow ThinkNode M1, M3, and M6
 - Heltec Automation Mesh Node T114 / HT-nRF5262
+- LilyGO T-Echo
+- Minewsemi MX25LE01
 - Nologo ProMicro NRF52840 (aka SuperMini NRF52840)
+- RAK4631
+- RAK WisMesh Tag
 - Seeed Studio SenseCAP Card Tracker T1000-E
+- Seeed Studio SenseCAP Solar Node P1
 - Seeed Studio Wio Tracker L1
 - Seeed Studio XIAO nRF52840 BLE
 - Seeed Studio XIAO nRF52840 BLE SENSE
-- RAK 4631
-- RAK WisMesh Tag (new 28/11/2025)
 
 ### 7.4. Q: Are the MeshCore logo and font available?
 **A:** Yes, it is on the MeshCore GitHub repo here: <https://github.com/meshcore-dev/MeshCore/tree/main/logo>
@@ -841,7 +862,7 @@ For companion radios, you can set these radios' transmit power in the smartphone
 
 | Device / Model                                                                     | Region / Description                | In-App Setting (dBm) | Target Radio Output    | Notes                                                                                                                                          |
 |:-----------------------------------------------------------------------------------|:------------------------------------|:---------------------|:-----------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------|
-| **Station G2** <br> [Reference](https://wiki.uniteng.com/en/meshtastic/station-g2) | US915 Max Output                    | 19 dBm               | 36.5 dBm (4.46W)       |                                                                                                                                                |
+| **Station G2** <br> [Reference](https://wiki.bqvoy.com/en/meshtastic/station-g2) | US915 Max Output                    | 19 dBm               | 36.5 dBm (4.46W)       |                                                                                                                                                |
 |                                                                                    | US915 Max at 1dB compression point  | 16 dBm               | 35 dBm (3.16W)         | 1dB compression point                                                                                                                          |
 |                                                                                    | EU868  Max at 1dB compression point | 15 dBm               | 34.5 dBm (2.82W)       | 1dB compression point                                                                                                                          |
 |                                                                                    | US915 1W Output                     | 10 dBm               | 1W                     | Refer to your local government's requirements                                                                                                  | 

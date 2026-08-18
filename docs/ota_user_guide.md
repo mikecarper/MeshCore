@@ -4,12 +4,13 @@ This guide is for **node operators**: how to update your MeshCore device's firmw
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
 
-LoRa OTA download and installation are present only in supported Keymind artifacts whose filename contains
-`-ota-`. Use an `-ota-` build on the source and receiver. Intermediate repeaters do not need OTA-enabled
-firmware: current repeater builds transport OTA floods opaquely, subject to their normal forwarding filters,
-duplicate checks, and flood limits. OTA radio traffic is accepted, generated, and relayed only while
-`tempradio` is actually running on that node. Every source, receiver, and intermediate repeater must therefore
-have an overlapping temporary-radio window.
+LoRa OTA download and installation are present only in supported Keymind destination artifacts whose filename
+contains `-ota-`; the receiver must already be running one of those install-capable builds. A source can be an
+OTA-enabled infrastructure node or a source-only Full Companion backed by `motatool`. Intermediate repeaters
+do not need OTA-enabled firmware: current repeater builds transport OTA floods opaquely, subject to their normal
+forwarding filters, duplicate checks, and flood limits. OTA radio traffic is accepted, generated, and relayed
+only while `tempradio` is actually running on that node. Every source, receiver, and intermediate repeater must
+therefore have an overlapping temporary-radio window.
 
 The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
 North American node currently configured for 909.950 MHz, run this on every participating node:
@@ -96,38 +97,46 @@ ota ls 2                 # page 2 when more than two updates are available
 ```
 
 Your node asks around and lists the firmware updates other nodes nearby are offering, in plain words -
-each with a **number**, its version, whether it's a full image or a small delta, how many nodes have it,
-and how recently it was seen. For example:
+each with a temporary **number**, a stable eight-hex **manifest ID**, its version, whether it's a full image
+or a small delta, how many nodes have it, and how recently it was seen. For example:
 
 ```
-Updates 1/1 (2 src) - `ota get <#>`:
- 1) v1.2.3 delta [yours] 3n 5s
- 2) v1.2.0 full [other hw] 1n 12s [downloading]
+Updates 1/1 (2 src; refreshing):
+ 1) 838B8169 v1.2.3 delta [same target] 3n 5s
+ 2) BF0AB0C4 v1.2.0 full [unsupported] 1n 12s
 ```
 
 Each row shows the version, full-vs-delta, **whether it fits your node**, how many nodes have it, and how
 long ago it was seen. The fit marker:
 
-- **[yours]** - built for your exact hardware **and** role; safe to install.
-- **[other hw]** - a different board or role (e.g. a companion image, or another board). Don't install it.
+- **[same target]** - the advertised target ID matches this hardware-and-role build. Download and apply
+  still enforce codec, bootloader, signed hardware tag, base hash, and integrity checks.
+- **[unsupported]** - the target may match, but this build or its bootloader cannot apply that codec. A common
+  example is the source node's self-served **full** image on a single-slot nRF52, which needs an in-place delta.
+- **[rescue]** - an installable in-place nRF52 delta for the same target, but this running firmware has no
+  valid app-side EndF. It requires the explicit rescue download and install flow below.
+- **[name]** - a different known board or role (for example `[ProMicro_companion_radio_usb]`). Don't install it.
 - **[?]** - can't tell (a build with no target id set, e.g. a bare IDE build rather than a release build).
 
 Run it again after a few seconds - discovery happens in the background, so the list fills in. Nothing is
-downloaded yet; this is just looking around. Two updates fit in each remote CLI reply; use `ota ls 2`,
-`ota ls 3`, and so on for later pages. The displayed update numbers remain global across pages.
+downloaded yet; this is just looking around. `refreshing` means the command has just sent asynchronous
+catalog queries, so run it again even when an older row is already visible. Two updates fit in each remote
+CLI reply; use `ota ls 2`, `ota ls 3`, and so on for later pages. Catalog rows can change while replies arrive,
+so use the displayed manifest ID for scripts and important operations rather than a numeric position.
 (`ota neighbors` / `ota updates` also work.)
 
 ### 3. Download an update
 
-Pick one from the list by its **number**, and say **where** to put it:
+Pick one from the list by its stable **manifest ID** (a number also works for interactive use), and say
+**where** to put it:
 
 ```
-ota pull 1 flash            # stage it in this node's flash, to install here
-ota pull 1 folder           # capture it onto a connected motatool folder as <id>.mota (don't install here)
-ota pull 1 folder validate  # same capture, warm-started from a motatool --seed build (much faster; below)
+ota pull 838B8169 flash            # stage it in this node's flash, to install here
+ota pull 838B8169 folder           # capture it onto a connected motatool folder as <id>.mota
+ota pull 838B8169 folder validate  # warm-start capture from a motatool --seed build (much faster; below)
 ```
 
-The destination is required - `ota pull 1` on its own just shows the choices. **`flash`** is always
+The destination is required - `ota pull 838B8169` on its own just shows the choices. **`flash`** is always
 available (stage here, then `ota install`). **`folder`** appears only while a `motatool serve` link is
 attached (it shows the link, e.g. `folder: tcp 192.168.4.5`); it streams the firmware straight onto the
 host folder - nothing is staged on this node. That's how you grab an **exact copy of another device's
@@ -185,17 +194,20 @@ After it reboots, run `ota status` to confirm the new version.
 
 - A download that stalls or gets interrupted just **resumes** later, or you can `ota cancel` and try again.
 - An internal-flash **nRF52** that still runs but reports `no EndF` can use the pre-provisioned rescue path
-  if its physical EndF is intact and only app-side validation is failing. Fetch the exact in-place delta,
-  obtain its 16-hex-digit `base_hash` from the package metadata, then run:
+  if its physical EndF is intact and only app-side validation is failing. Fetch the exact `[rescue]`
+  in-place delta with an explicit acknowledgement, obtain its 16-hex-digit `base_hash` from the package
+  metadata, then run:
 
   ```text
+  ota pull <mid8> flash rescue
+  # wait for ota status to say ready to install
   ota rescue install <base_hash16>
   ```
 
   This is not a force option. It refuses a normally valid EndF, a different package hash, hardware or
   target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
-  the running app and rejects a wrong base before writing the app. If the physical EndF is absent or this
-  command was not already in the running firmware, recover over USB.
+  the running app and rejects a wrong base before writing the app. If the physical EndF is absent or the
+  rescue commands were not already in the running firmware, recover over USB.
   Release chains should put this command in their first bridge and keep it in every bridge after that.
 - If an **install** fails, the node won't boot a broken image - it lands in **recovery mode**:
   - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
@@ -279,6 +291,11 @@ remote area.
    `ota get` them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
    Details: <https://github.com/vk496/motatool>.)
 
+Check the device's attach reply or run `ota folder`: `host=X/Y` means the firmware is advertising `X` of
+the `Y` valid entries reported by the host. Serve registries are deliberately RAM-bounded on smaller builds,
+and the node's own firmware also consumes a slot. If `X < Y`, split the chain across seeders/folders or use
+a higher-capacity seeder; `motatool` saying that every file is valid does not mean every file fit on-device.
+
 To stop, just stop the daemon - over WiFi the node auto-detaches when the connection closes; over USB you
 can also run `ota folder off` on the node. `ota folder` on its own lists what your node is offering.
 On a FULL repeater or room server, run `start webconfig` first if WiFi is not
@@ -304,7 +321,7 @@ that only contains what changed). You get them by:
 - **Downloading a build.** This fork publishes a rolling **`dev-latest`** release on GitHub with the
   current firmware for many boards, each accompanied by a `.full.mota` and a tiny `.delta.mota`. Grab the
   one for your board to test.
-- **Building your own** with the `mota` packaging tool - see [tools/mota/README.md](../tools/mota/README.md)
+- **Building your own** with the `mota` packaging tool - see [tools/mota/README.md](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/mota/README.md)
   (this is for people distributing updates, not everyday operators).
 
 ---
@@ -317,7 +334,7 @@ that only contains what changed). You get them by:
 | See my firmware + any download | `ota status` (or just `ota`) |
 | Admin: ids/hashes + serving + policy | `ota stats` (admin-only remotely) |
 | Find updates nearby | `ota ls` |
-| Download update #1 for installation | `ota get 1 flash` |
+| Download a listed update for installation | `ota get <mid8> flash` |
 | Cancel a download | `ota cancel` |
 | Install a finished download | `ota install` |
 | Recover app-side `no EndF` on internal nRF52 | `ota rescue install <base_hash16>` |

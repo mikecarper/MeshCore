@@ -1,5 +1,10 @@
 # Restoring accidentally-reverted upstream features
 
+> **Historical recovery record, reconciled 2026-08-18.** Phase 1 and Phase 2
+> described below have been implemented in the current tree. This file explains
+> why the restoration occurred; use the CLI and build documentation for current
+> behavior rather than treating the old “remaining” text as an active plan.
+
 ## Background
 
 On 2026-03-20, commit `22eb9b87` - *Revert "Merge remote-tracking branch 'origin/dev' into mqtt-bridge-implementation"* - reverted an entire upstream merge to escape a bad merge state, deleting 860 lines across 66 files. That was not intentional feature removal; it wholesale dropped a batch of upstream progress. When upstream was later re-merged, some collateral came back (MicroNMEA `claim()/release()`, the GAT562 board) but several upstream features were never reconciled and remained missing.
@@ -51,8 +56,10 @@ on a Heltec V4.2 (busy live mesh + off-frequency bench):**
   `stats-radio-diag` `err_flags`; the watchdog arms only after first radio activity
   (`last_active > 0`), so a radio wedged from boot is deliberately not covered.
 
-Remaining before undraft: passive soak at fleet-default `airtime_factor` (duty
-convergence, flat heap, adverts still advertised).
+At the time of that review, the remaining undraft recommendation was a passive
+soak at the fleet-default `airtime_factor` (duty convergence, flat heap, and
+continued adverts). That sentence is retained as historical validation scope,
+not as the current branch's merge state.
 
 ### Known interaction: throttling starves MQTT capture (mitigated)
 
@@ -69,26 +76,20 @@ observer's purpose. Mitigated on observer builds by `RxReservePacketManager`
 reserve (own responses/ACKs stay queueable) plus 30 s expiry of stale queued
 outbound. See MQTT_INTERNALS.md "Capture vs. duty-cycle throttling".
 
-## Phase 2 - CAD and FEM RX gain (NOT done; needs care + device testing)
+## Phase 2 - CAD and FEM RX gain (completed)
 
-Still missing at HEAD, also dropped by `22eb9b87`, still present upstream:
+The current tree contains both restored capabilities:
 
-- **`cad_enabled`** - hardware Channel Activity Detection (listen-before-talk) before TX.
-  The `Dispatcher`/`Radio` interface (`setCADEnabled`/`getCADEnabled`) is restored by
-  Phase 1, so CAD currently stays **off by default** (unchanged behavior). To make it
-  configurable again, restore:
-  - `NodePrefs.cad_enabled` field, its CLI get/set, and its persistence in
-    `CommonCLI.cpp` (`loadPrefsInt`/`savePrefs`). **Offset care:** this branch's
-    `/com_prefs` layout is carefully managed - add `cad_enabled` following the same
-    append-and-size-guard pattern used for `rx_boosted_gain`/`flood_max_*`, and add a
-    host-side round-trip test (see `scratchpad/migtest`).
-  - The `MyMesh::getCADEnabled()` override returning `_prefs.cad_enabled`.
-  - `RadioLibWrappers::setCADEnabled()` override so the hardware CAD is actually driven
-    (the fork's wrapper currently doesn't override it).
-- **`radio_fem_rxgain`** - LoRa front-end-module RX gain. Restore `NodePrefs.radio_fem_rxgain`
-  + CLI + persistence (same offset care), plus the per-board FEM wiring reverted across
-  ~20 `variants/*/target.cpp` and the `heltec_tracker_v2/LoRaFEMControl.{cpp,h}` files.
-  This is board-specific and only affects FEM-equipped hardware.
+- **`cad_enabled`** is present in common preferences, load/save paths, and the
+  `get/set cad` CLI. Repeater, room-server, sensor, and Companion integrations
+  feed it to `RadioLibWrapper::setCADEnabled()`. Target-default builds default
+  CAD off; the Cascade profile supplies `DEFAULT_CAD_ENABLED=1`.
+- **`radio_fem_rxgain`** is persisted and exposed as
+  `get/set radio.fem.rxgain`. Supported boards implement
+  `setLoRaFemLnaEnabled()`; unsupported boards reject the operation rather than
+  claiming a state change. Companion protocol v13 also exposes FEM RX-gain get
+  and set commands.
 
-Phase 2 is lower urgency than duty-cycle enforcement (CAD/FEM are capability gaps, not a
-compliance regression) and is best done as its own change with per-board hardware testing.
+See [CLI commands](docs/cli_commands.md) and the
+[command availability matrix](docs/cli_command_availability.md) for current
+syntax and build/hardware limits.
