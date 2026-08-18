@@ -81,6 +81,8 @@ protected:
   void startRecv() override;
   void rxPsWatchdogCheck();
   void requestNoiseFloorRefresh();
+  void requestRestartRecv();
+  bool isPacketPendingOrReceiving();
   void noiseFloorCalibCheck(unsigned long now);
   void endNoiseFloorCalib(unsigned long now);
   void finishReceiveProcessing();

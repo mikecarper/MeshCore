@@ -235,25 +235,16 @@ void RadioLibWrapper::doResetAGC() {
 
 void RadioLibWrapper::resetAGC() {
   // make sure we're not mid-receiving and mid-sending of packet!
-  if ((state & STATE_INT_READY) != 0 || isReceivingPacket() || (state == STATE_TX_WAIT)) return;
+  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return;
 
   doResetAGC();
   state = STATE_IDLE;   // trigger a startReceive()
   if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
 
-  // Reset noise floor sampling so it reconverges from scratch.
-  // Without this, a stuck _noise_floor of -120 makes the sampling threshold
-  // too low (-106) to accept normal samples (~-105), self-reinforcing the
-  // stuck value even after the receiver has recovered.
-  _noise_floor = 0;
-  _noise_floor_valid = false;
-  _nf_calib_active = false;
-  _nf_refresh_requested = true;
-  _nf_last_calib = 0;
-  _nf_sample_from = 0;
-  _num_floor_samples = 0;
-  _floor_sample_sum = 0;
-  _nf_calib_deadline = 0;  // starts after reset recovery reaches RX
+  // Preserve the last published value while a fresh post-reset batch is
+  // collected. Invalidating the sample gate lets the new floor converge even
+  // when the old value was stuck at its lower clamp.
+  recalibrateNoiseFloor();
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
@@ -371,6 +362,20 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
 // sleep windows and settling right after each wake), so a requested refresh
 // drops receive mode to plain continuous RX, collects a fresh sample batch,
 // and re-arms the duty cycle. Requests are rate-limited and coalesced.
+void RadioLibWrapper::requestRestartRecv() {
+  // An RX interrupt can arrive between the caller's idle check and this state
+  // transition. Preserve that flag so the completed packet is still consumed.
+  noInterrupts();
+  if ((state & ~STATE_INT_READY) != STATE_TX_WAIT) {
+    state &= STATE_INT_READY;
+  }
+  interrupts();
+}
+
+bool RadioLibWrapper::isPacketPendingOrReceiving() {
+  return (state & STATE_INT_READY) != 0 || isReceivingPacket();
+}
+
 void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
   if (_nf_calib_active) {
     if (!_rx_ps_enabled
@@ -379,11 +384,15 @@ void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
       // powersaving turned off mid-window, or the batch couldn't complete
       // (busy channel / stuck filter) - keep the previous floor
       endNoiseFloorCalib(now);
+    } else if (_rx_ps_armed && !isPacketPendingOrReceiving()) {
+      // A packet can delay the transition from RXPS to continuous RX. Retry
+      // once the radio is idle without discarding a pending interrupt.
+      requestRestartRecv();
     }
   } else if (_nf_refresh_requested && _rx_ps_enabled && _rx_ps_armed && state == STATE_RX
              && ((!_noise_floor_valid && _nf_last_calib == 0)
                  || now - _nf_last_calib >= NF_CALIB_INTERVAL_MS)
-             && !isReceivingPacket()) {
+             && !isPacketPendingOrReceiving()) {
     // never interrupt an ongoing reception to calibrate (a TX in flight is
     // already excluded by state == STATE_RX); retries next loop iteration
     _nf_calib_active = true;
@@ -391,8 +400,9 @@ void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
     _nf_sample_from = now + NF_CALIB_SETTLE_MS;
     _num_floor_samples = 0;   // start a fresh batch for this window
     _floor_sample_sum = 0;
-    state = STATE_IDLE;   // recvRaw() re-arms; startReceiveMode() sees the
-                          // active flag and starts continuous RX, not duty-cycle
+    if (!isPacketPendingOrReceiving()) {
+      requestRestartRecv();   // startReceiveMode() selects continuous RX
+    }
   }
 }
 
@@ -404,8 +414,9 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   // force a receive re-arm back into duty-cycle mode, but don't clobber a
   // completed-but-unread packet or an in-flight TX (recvRaw()/onSendFinished()
   // will re-arm right after those anyway; same guard style as setRxPowerSaving)
-  if ((state & STATE_INT_READY) == 0 && (state & ~STATE_INT_READY) != STATE_TX_WAIT) {
-    state = STATE_IDLE;
+  if ((state & ~STATE_INT_READY) != STATE_TX_WAIT
+      && !isPacketPendingOrReceiving()) {
+    requestRestartRecv();
   }
 }
 

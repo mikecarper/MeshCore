@@ -1094,6 +1094,18 @@ Companion firmware defaults this setting to `on`. Full Companion accepts the com
 
 ---
 
+#### View or set the reboot interval (Repeater and room server)
+**Usage:**
+- `get reboot.interval`
+- `set reboot.interval <hours>`
+
+**Parameters:**
+- `hours`: `0-255`; `0` disables scheduled reboots.
+
+**Default:** `0` (disabled)
+
+---
+
 #### Control an exposed GPIO
 
 **Availability:** ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.
@@ -1128,6 +1140,25 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 ---
 
 ### Routing
+
+#### View or set the direct path override for the current remote client
+**Usage:**
+- `get outpath`
+- `set outpath <hop1_hex,hop2_hex,...>`
+- `set outpath direct`
+- `set outpath clear`
+- `set outpath flood`
+
+**Parameters:**
+- `hopN_hex`: Hop hash with `2`, `4`, or `6` hexadecimal characters. Every hop must use the same width.
+
+**Notes:**
+- These commands require remote client context and update the caller's ACL entry.
+- `direct` selects a zero-hop route for a directly reachable caller.
+- `clear` forgets the override so normal path discovery can repopulate it.
+- `flood` forces replies to use flood packets until the client logs in again.
+
+---
 
 #### View or change this node's repeat flag
 **Usage:**

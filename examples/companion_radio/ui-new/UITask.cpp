@@ -114,6 +114,8 @@ class HomeScreen : public UIScreen {
   CompanionNodePrefs* _node_prefs;
   uint8_t _page;
   bool _shutdown_init;
+  uint32_t _uptime_last_millis;
+  uint64_t _uptime_millis;
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 
 
@@ -137,6 +139,31 @@ class HomeScreen : public UIScreen {
     int iconX = display.width() - iconWidth - 5; // Position the icon near the top-right corner
     int iconY = 0;
     display.setColor(UIColor::title_txt);
+
+    // Track uptime across the 32-bit millis() rollover and show the two most
+    // useful units beside the battery icon.
+    uint32_t now = millis();
+    _uptime_millis += (uint32_t)(now - _uptime_last_millis);
+    _uptime_last_millis = now;
+
+    uint64_t uptime_minutes = _uptime_millis / 60000ULL;
+    unsigned long days = (unsigned long)(uptime_minutes / 1440ULL);
+    unsigned long hours = (unsigned long)((uptime_minutes % 1440ULL) / 60ULL);
+    unsigned long minutes = (unsigned long)(uptime_minutes % 60ULL);
+    char uptime[16];
+    if (days > 0) {
+      snprintf(uptime, sizeof(uptime), "%lud %luh", days, hours);
+    } else if (hours > 0) {
+      snprintf(uptime, sizeof(uptime), "%luh %lum", hours, minutes);
+    } else {
+      snprintf(uptime, sizeof(uptime), "%lum", minutes);
+    }
+
+    display.setTextSize(1);
+    int uptimeWidth = display.getTextWidth(uptime);
+    int spaceWidth = display.getTextWidth(" ");
+    display.setCursor(iconX - uptimeWidth - spaceWidth, iconY);
+    display.print(uptime);
 
     // battery outline
     display.drawRect(iconX, iconY, iconWidth, iconHeight);
@@ -187,7 +214,8 @@ class HomeScreen : public UIScreen {
 public:
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, CompanionNodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
-       _shutdown_init(false), sensors_lpp(200) {  }
+       _shutdown_init(false), _uptime_last_millis(millis()), _uptime_millis(0),
+       sensors_lpp(200) {  }
 
   void showFirstPage() { _page = HomePage::FIRST; }
 

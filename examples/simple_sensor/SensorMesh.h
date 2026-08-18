@@ -224,6 +224,7 @@ private:
 
   #if ENV_INCLUDE_GPS == 1
   void applyGpsPrefs() {
+    sensors.setPowerSavingEnabled(_prefs.powersaving_enabled != 0);
     sensors.setSettingValue("gps", _prefs.gps_enabled?"1":"0");
   }
 #endif

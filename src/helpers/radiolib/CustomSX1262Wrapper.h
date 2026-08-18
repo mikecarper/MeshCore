@@ -99,6 +99,11 @@ public:
 
 protected:
   int startReceiveMode() override {
+    // Do not abort a frame that started while a calibration transition was
+    // being scheduled. recvRaw() will move it to continuous RX afterward.
+    if (_nf_calib_active && _rx_ps_armed && isPacketPendingOrReceiving()) {
+      return RADIOLIB_ERR_NONE;
+    }
     if (_rx_ps_armed) {
       // leaving duty-cycle mode (after RxDone or a reconfig): stop the
       // sequencer and the still-running RTC, or its pending event can
