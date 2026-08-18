@@ -54,6 +54,9 @@ runtime, so the Companion bulk-build commands omit the redundant legacy
 boost** switch. From the USB terminal, use:
 
 ```text
+get radio.rxgain
+set radio.rxgain off
+set radio.rxgain on
 get radio.fem.rxgain
 set radio.fem.rxgain off
 set radio.fem.rxgain on
@@ -62,8 +65,10 @@ set radio.fem.txgain off
 set radio.fem.txgain on
 ```
 
-The selected states are applied immediately and retained after reboot. FEM TX
-gain is reported as unsupported on boards without software-selectable PA gain.
+`radio.rxgain` controls the radio chip's boosted receive-gain mode; the FEM
+commands control the external receive and transmit paths. The selected states
+are applied immediately and retained after reboot. FEM TX gain is reported as
+unsupported on boards without software-selectable PA gain.
 
 Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
 with the **Device power saving** switch or from the USB terminal:
@@ -73,6 +78,23 @@ powersaving
 powersaving on
 powersaving off
 ```
+
+On ESP32, WiFi modem power saving is a third independent setting. Select it in
+the WebConfig **WiFi** card, or use the Full Companion USB terminal or TCP port
+5002:
+
+```text
+get wifi.powersave
+set wifi.powersave min
+set wifi.powersave max
+```
+
+The normal binary Companion connection can also read or write this setting over
+USB, BLE, or TCP port 5000 without entering terminal mode. The saved values are
+`0` for `min`, `1` for `none`, and `2` for `max`; see the
+[Companion protocol](./companion_protocol.md#commands). Full Companion rejects
+`none` because simultaneous WiFi and BLE require modem sleep. Fresh Cascade
+builds select `min`, and an existing saved selection takes precedence.
 
 On radios with RX duty-cycle support, WebConfig and the USB terminal also
 expose the persisted RXPS setting:
@@ -98,11 +120,12 @@ On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
 and enables the configured GPS duty cycle. Disabling it restores the normal CPU
 clock and keeps GPS awake. Full Companion transports remain available in both
 states; WiFi modem sleep stays enabled when BLE is present because coexistence
-requires it. While a native-USB host is enumerated, the platform sleep attempt
-is held off so USB CDC remains responsive; detaching the host releases that
-guard. CPU, radio-modem, and GPS power-saving settings remain active, and USB
-power from a charger alone does not create a Companion session. The selected
-state is retained after reboot.
+requires it. Changing device power saving does not overwrite the saved WiFi
+power-save mode. While a native-USB host is enumerated, the platform sleep
+attempt is held off so USB CDC remains responsive; detaching the host releases
+that guard. CPU, radio-modem, and GPS power-saving settings remain active, and
+USB power from a charger alone does not create a Companion session. The
+selected state is retained after reboot.
 
 On the LilyGo T-Beam 1W Full Companion, press the physical `BOOT` button once
 to turn the ESP32 WiFi radio and all WiFi services off or on. The screen confirms
@@ -139,7 +162,7 @@ itself.
 | ESP32 | TCP 5000 | Binary Companion over WiFi |
 | ESP32 | HTTP 80 | Companion WebConfig and first-boot WiFi setup |
 | ESP32 | TCP 5001 | Host `.mota` folder from `motatool serve --tcp` |
-| ESP32 | TCP 5002 | Local `ota`, `tempradio`, and `normalradio` console |
+| ESP32 | TCP 5002 | Local `ota`, `tempradio`, `normalradio`, and `wifi.powersave` console |
 | nRF52 | USB mOTA mode | Host `.mota` folder from `motatool serve --serial` |
 
 Delivery-required replies are returned only to the interface which supplied the
@@ -194,7 +217,8 @@ The terminal supports Companion chat commands, including `channels`,
 `channel <name-or-slot> <message>`, remote administration with
 `login <admin-password>` and `cmd <remote-command>`, and routed
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
-`normalradio` controls. For example:
+`normalradio` controls. ESP32 builds also provide local
+`get/set wifi.powersave`. For example:
 
 ```text
 channels

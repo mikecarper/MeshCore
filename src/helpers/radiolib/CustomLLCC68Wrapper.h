@@ -55,6 +55,7 @@ protected:
     return ((CustomLLCC68 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }
 public:
+  bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
     return ((CustomLLCC68 *)_radio)->getRxBoostedGainMode();
   }

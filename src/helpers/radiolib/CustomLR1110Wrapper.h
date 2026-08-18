@@ -134,6 +134,7 @@ protected:
     return ((CustomLR1110 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }
 public:
+  bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
     return ((CustomLR1110 *)_radio)->getRxBoostedGainMode();
   }

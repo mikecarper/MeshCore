@@ -7,6 +7,7 @@
 #include "MQTTPrefs.h"
 #include "MQTTPacketFilter.h"
 #include "MQTTPresets.h"
+#include "WiFiPowerSave.h"
 
 // Compile-time defaults for fresh /mqtt_prefs (override via platformio build_flags).
 // Example:
@@ -14,6 +15,7 @@
 //   -D MQTT_DEFAULT_IATA='"YYZ"'
 //   -D MQTT_DEFAULT_TIMEZONE='"America/Toronto"'
 //   -D MQTT_DEFAULT_TIMEZONE_OFFSET=-5
+//   -D DEFAULT_WIFI_POWER_SAVE_MODE=0  // min; 1=none, 2=max
 
 #ifndef MQTT_DEFAULT_SLOT1_PRESET
 #define MQTT_DEFAULT_SLOT1_PRESET "analyzer-us"
@@ -69,7 +71,7 @@ static inline void applyMQTTDefaults(MQTTPrefs* prefs) {
   prefs->mqtt_tx_enabled = 2;
   prefs->mqtt_rx_enabled = 1;
   prefs->mqtt_status_interval = 300000;
-  prefs->wifi_power_save = 1;
+  prefs->wifi_power_save = mesh::wifi::kDefaultPowerSave;
 
   mqttDefaultSlotPreset(prefs->mqtt_slot_preset[0], sizeof(prefs->mqtt_slot_preset[0]),
                         MQTT_DEFAULT_SLOT1_PRESET);

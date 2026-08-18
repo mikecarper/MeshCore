@@ -442,12 +442,22 @@ TEST(CLICommandUtils, ValidatesStandaloneWiFiValues) {
 }
 
 TEST(CLICommandUtils, EnforcesWiFiSleepForBluetoothCoexistence) {
-  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(0, true));
-  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(1, true));
-  EXPECT_EQ(2, mesh::wifi::effectivePowerSave(2, true));
-  EXPECT_EQ(1, mesh::wifi::effectivePowerSave(1, false));
-  EXPECT_EQ(0, mesh::wifi::effectivePowerSave(99, true));
-  EXPECT_EQ(1, mesh::wifi::effectivePowerSave(99, false));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(mesh::wifi::kPowerSaveMin, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(mesh::wifi::kPowerSaveNone, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMax,
+            mesh::wifi::effectivePowerSave(mesh::wifi::kPowerSaveMax, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveNone,
+            mesh::wifi::effectivePowerSave(mesh::wifi::kPowerSaveNone, false));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(99, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveNone,
+            mesh::wifi::effectivePowerSave(99, false));
+}
+
+TEST(CLICommandUtils, DefaultsWiFiPowerSaveToNoneWithoutProfileOverride) {
+  EXPECT_EQ(mesh::wifi::kPowerSaveNone, mesh::wifi::kDefaultPowerSave);
 }
 
 TEST(CLICommandUtils, MatchesDiscoverNeighborsWithoutPrefixCollisions) {

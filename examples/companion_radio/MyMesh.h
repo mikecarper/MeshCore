@@ -284,8 +284,15 @@ private:
   void checkSerialInterface();
   bool applyAndSaveFemRxGain(bool enabled);
   bool applyAndSaveFemTxGain(bool enabled);
+  bool applyAndSaveRxBoostedGain(bool enabled);
   bool applyAndSavePowerSaving(const char* value, char* reply);
   bool applyAndSaveRxPowerSaving(const char* value, char* reply);
+#if defined(ESP32) && defined(WIFI_SSID)
+  bool applyAndSaveWiFiPowerSaving(const char* value, char* reply,
+                                   size_t reply_size);
+  void formatWiFiPowerSaving(char* reply, size_t reply_size) const;
+  void syncWiFiPowerSaving();
+#endif
 #ifdef ENABLE_USB_INTERFACE
   ContactInfo* getTerminalRecipient();
   void printTerminalPath(const ContactInfo& recipient);

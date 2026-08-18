@@ -219,9 +219,46 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x3F` / `0x40` | `CMD_SET_DEFAULT_FLOOD_SCOPE` / `CMD_GET_DEFAULT_FLOOD_SCOPE` | Write or read the default flood scope. |
 | `0x41` | `CMD_SEND_RAW_PACKET` | Queue a fully encoded raw mesh packet. |
 | `0x42` / `0x43` | `CMD_GET_RADIO_FEM_RXGAIN` / `CMD_SET_RADIO_FEM_RXGAIN` | Read or set FEM receive gain. |
+| `0x44` / `0x45` | `CMD_GET_RADIO_RXGAIN` / `CMD_SET_RADIO_RXGAIN` | Read or set the radio chip's boosted receive-gain mode. |
+| `0x46` / `0x47` | `CMD_GET_WIFI_POWER_SAVE` / `CMD_SET_WIFI_POWER_SAVE` | Read or set ESP32 Companion WiFi modem sleep. |
 
 The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.
+
+The additive hardware-setting commands `0x42`-`0x47` do not change any existing
+version-13 frame layout. Clients should probe the command they need and treat
+`ERR_CODE_UNSUPPORTED_CMD` as feature absence.
+
+Both gain-command pairs can be used over the normal binary Companion
+connection; USB does not need to enter terminal mode. Inside the transport's
+normal Companion frame, send a GET command as its single command byte. Send a
+SET command followed by one byte (`0` for off, `1` for on). A GET reply is
+`RESP_CODE_OK` followed by the saved state; a successful SET reply is
+`RESP_CODE_OK`. Invalid states return `ERR_CODE_ILLEGAL_ARG`. A temporarily
+busy radio returns `ERR_CODE_BAD_STATE`; unsupported boosted gain returns
+`ERR_CODE_UNSUPPORTED_CMD`. The FEM pair also returns
+`ERR_CODE_UNSUPPORTED_CMD` when the board cannot control its external LNA. Raw
+text such as `set radio.rxgain off` still requires the USB terminal start token.
+
+The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
+normal binary USB, BLE, or TCP port 5000 transport. `CMD_GET_WIFI_POWER_SAVE`
+has no body and replies with `RESP_CODE_OK` followed by one mode byte.
+`CMD_SET_WIFI_POWER_SAVE` is followed by that mode byte and replies with
+`RESP_CODE_OK` after saving it:
+
+| Value | Mode |
+|---:|---|
+| `0` | `min` - minimum modem sleep |
+| `1` | `none` - no modem sleep |
+| `2` | `max` - maximum modem sleep |
+
+An out-of-range value returns `ERR_CODE_ILLEGAL_ARG`. A non-WiFi Companion
+returns `ERR_CODE_UNSUPPORTED_CMD`. Full Companion has Bluetooth enabled and
+therefore returns `ERR_CODE_BAD_STATE` for `none`, because ESP32 WiFi/Bluetooth
+coexistence requires modem sleep. A storage failure also returns
+`ERR_CODE_BAD_STATE`. If an already-saved mode cannot be applied to the active
+WiFi driver, SET still returns `RESP_CODE_OK` and the mode is applied on the
+next connection. Device `powersaving` does not overwrite this setting.
 
 ### 1. App Start
 

@@ -85,16 +85,42 @@ set af {air-time-factor}
 Sets the transmit air-time-factor. Deprecated - use `set dutycycle` instead.
 
 ```
+powersaving
+powersaving {on|off}
+set powersaving {on|off}
+```
+Shows or changes Companion device power saving. On ESP32 this controls CPU and
+GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.
+
+```
+get radio.rxps
+set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
+```
+Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
+builds select level 8 with a 16-symbol preamble.
+
+```
+get wifi.powersave
+set wifi.powersave {none|min|max}
+```
+Shows or changes the persisted WiFi modem-sleep policy on ESP32 WiFi Companion
+builds. Full Companion requires at least `min` while BLE is present and rejects
+`none`. The WebConfig WiFi card and the normal binary Companion protocol expose
+the same setting; binary clients do not need the terminal-start token.
+
+```
+get radio.rxgain
+set radio.rxgain {on|off}
 get radio.fem.rxgain
 set radio.fem.rxgain {on|off}
 get radio.fem.txgain
 set radio.fem.txgain {on|off}
 ```
-Shows or changes the external FEM receive-path LNA or transmit-path gain on
+`radio.rxgain` changes the radio chip's boosted receive-gain mode. The FEM
+settings control the external receive-path LNA or transmit-path gain on
 supported boards. Changes are applied immediately and saved across reboots;
-changing RX gain also recalibrates the radio noise floor. These settings are
-separate from the SX126x `radio.rxgain` setting. Boards without the respective
-control report it as unsupported.
+changing either receive-gain path also recalibrates the radio noise floor.
+Boards without the respective control report it as unsupported.
 
 
 ```

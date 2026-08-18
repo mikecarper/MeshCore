@@ -49,6 +49,7 @@ public:
    * Radio interface.
    */
   virtual bool setRxBoostedGainMode(bool) { return false; }
+  virtual bool supportsRxBoostedGainMode() const { return false; }
   virtual bool getRxBoostedGainMode() const { return false; }
 
   // ESP-NOW has no LoRa RX power-saving watchdog or noise-floor calibration.

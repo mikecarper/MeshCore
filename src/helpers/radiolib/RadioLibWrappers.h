@@ -210,6 +210,7 @@ public:
   float packetScore(float snr, int packet_len) override { return packetScoreInt(snr, 10, packet_len); }  // assume sf=10
 
   bool setRxBoostedGainMode(bool enabled);
+  virtual bool supportsRxBoostedGainMode() const { return false; }
   virtual bool getRxBoostedGainMode() const { return false; }
 
   virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) { return false; }

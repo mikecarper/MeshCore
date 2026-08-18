@@ -6,6 +6,11 @@
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 
+#if defined(ESP32) && defined(WIFI_SSID)
+#include "CompanionWiFi.h"
+#include <helpers/WiFiPowerSave.h>
+#endif
+
 #if defined(ESP32_PLATFORM)
 #include <helpers/ESP32TrueRandom.h>
 #endif
@@ -90,7 +95,7 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_SET_CUSTOM_VAR            41
 #define CMD_GET_ADVERT_PATH           42
 #define CMD_GET_TUNING_PARAMS         43
-// NOTE: CMD range 44..49 parked, potentially for WiFi operations
+// NOTE: decimal command IDs 44..49 (0x2C..0x31) remain parked
 #define CMD_SEND_BINARY_REQ           50
 #define CMD_FACTORY_RESET             51
 #define CMD_SEND_PATH_DISCOVERY_REQ   52
@@ -108,6 +113,10 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_SEND_RAW_PACKET           65
 #define CMD_GET_RADIO_FEM_RXGAIN      66
 #define CMD_SET_RADIO_FEM_RXGAIN      67
+#define CMD_GET_RADIO_RXGAIN          68
+#define CMD_SET_RADIO_RXGAIN          69
+#define CMD_GET_WIFI_POWER_SAVE       70
+#define CMD_SET_WIFI_POWER_SAVE       71
 
 #if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
 static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
@@ -1513,6 +1522,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   applyMQTTDefaults(&_mqtt_prefs);
   _mqtt_configured = CompanionMqttSetupPortal::loadStoredConfig(_mqtt_prefs);
   if (!_mqtt_configured) applyMQTTDefaults(&_mqtt_prefs);
+  // Companion WiFi owns the connection and its mesh-wifi NVS setting is
+  // canonical. Keep MQTT reconnects from restoring a stale MQTT-pref value.
+  _mqtt_prefs.wifi_power_save = getCompanionWiFiPowerSave();
 
   MQTTNodeInfo node_info;
   node_info.node_name = _prefs.node_name;
@@ -1710,6 +1722,21 @@ bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
                                   size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  if (strcmp(command, "get wifi.powersave") == 0) {
+    formatWiFiPowerSaving(reply, reply_size);
+    return true;
+  }
+
+  if (strcmp(command, "set wifi.powersave") == 0
+      || strncmp(command, "set wifi.powersave ", 19) == 0) {
+    const char* value = command + 18;
+    while (*value == ' ') value++;
+    applyAndSaveWiFiPowerSaving(value, reply, reply_size);
+    return true;
+  }
+#endif
 
   if (strcmp(command, "tempradio") == 0) {
     if (_temp_radio_set_at) {
@@ -1938,8 +1965,13 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.power_saving = _prefs.powersaving_enabled;
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
-      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_RX_GAIN
-      | WebConfigServer::CAP_POWER_SAVING;
+      | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_POWER_SAVING;
+#if defined(ESP32) && defined(WIFI_SSID)
+  s.capabilities |= WebConfigServer::CAP_WIFI_POWER_SAVE;
+#endif
+  if (radio_driver.supportsRxBoostedGainMode()) {
+    s.capabilities |= WebConfigServer::CAP_RX_GAIN;
+  }
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
   }
@@ -2010,6 +2042,13 @@ void MyMesh::onConfigBatchStart() {
 }
 
 void MyMesh::onConfigBatchEnd() {
+#if defined(ESP32) && defined(WIFI_SSID)
+  // The WebConfig WiFi form writes the canonical mesh-wifi namespace itself.
+  // Reload it here so the Companion runtime and MQTT reconnect policy cannot
+  // retain a stale modem-sleep mode.
+  reloadCompanionWiFiPowerSave();
+  syncWiFiPowerSaving();
+#endif
 #ifdef WITH_MQTT_BRIDGE
   if (_wc_mqtt_dirty) {
     CompanionMqttSetupPortal::saveStoredConfig(_mqtt_prefs);
@@ -2018,6 +2057,9 @@ void MyMesh::onConfigBatchEnd() {
     MQTTPrefs verified;
     _mqtt_configured = CompanionMqttSetupPortal::loadStoredConfig(verified);
     if (_mqtt_configured) _mqtt_prefs = verified;
+    // The standalone Companion setting remains canonical even if MQTT config
+    // verification reloaded an older copy of this field.
+    _mqtt_prefs.wifi_power_save = getCompanionWiFiPowerSave();
   }
 #endif
   _wc_mqtt_dirty = false;
@@ -2025,6 +2067,12 @@ void MyMesh::onConfigBatchEnd() {
 
 void MyMesh::execCommand(char* cmd, char* reply) {
   reply[0] = 0;
+#if defined(ESP32) && defined(WIFI_SSID)
+  if (cmd && strcmp(cmd, "get wifi.powersave") == 0) {
+    formatWiFiPowerSaving(reply, 160);
+    return;
+  }
+#endif
   if (!cmd || strncmp(cmd, "set ", 4) != 0) {
     strcpy(reply, "Error: unsupported command");
     return;
@@ -2113,12 +2161,18 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       strcpy(reply, "Error: must be on or off");
     } else {
       if (strcmp(key, "radio.rxgain") == 0) {
-        _prefs.rx_boosted_gain = enabled;
-        if (_radio_available) radio_driver.setRxBoostedGainMode(enabled);
+        if (!radio_driver.supportsRxBoostedGainMode()) {
+          strcpy(reply, "Error: RX boosted gain unsupported");
+          return;
+        }
+        if (!applyAndSaveRxBoostedGain(enabled)) {
+          strcpy(reply, "Error: radio busy; retry");
+          return;
+        }
       } else {
         _prefs.client_repeat = enabled;
+        savePrefs();
       }
-      savePrefs();
       strcpy(reply, "OK");
     }
     return;
@@ -2131,6 +2185,12 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     applyAndSavePowerSaving(value, reply);
     return;
   }
+#if defined(ESP32) && defined(WIFI_SSID)
+  if (strcmp(key, "wifi.powersave") == 0) {
+    applyAndSaveWiFiPowerSaving(value, reply, 160);
+    return;
+  }
+#endif
   if (strcmp(key, "radio.fem.rxgain") == 0) {
     bool enabled;
     if (!wcParseBool(value, enabled)) {
@@ -3357,6 +3417,50 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
+  } else if (cmd_frame[0] == CMD_GET_RADIO_RXGAIN) {
+    if (!radio_driver.supportsRxBoostedGainMode()) {
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+    } else {
+      out_frame[0] = RESP_CODE_OK;
+      out_frame[1] = _prefs.rx_boosted_gain ? 1 : 0;
+      _serial->writeFrame(out_frame, 2);
+    }
+  } else if (cmd_frame[0] == CMD_SET_RADIO_RXGAIN && len >= 2) {
+    uint8_t value = cmd_frame[1];
+    if (value > 1) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (!radio_driver.supportsRxBoostedGainMode()) {
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+    } else if (!applyAndSaveRxBoostedGain(value != 0)) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+    } else {
+      writeOKFrame();
+    }
+  } else if (cmd_frame[0] == CMD_GET_WIFI_POWER_SAVE) {
+#if defined(ESP32) && defined(WIFI_SSID)
+    out_frame[0] = RESP_CODE_OK;
+    out_frame[1] = getCompanionWiFiPowerSave();
+    _serial->writeFrame(out_frame, 2);
+#else
+    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+#endif
+  } else if (cmd_frame[0] == CMD_SET_WIFI_POWER_SAVE && len >= 2) {
+#if defined(ESP32) && defined(WIFI_SSID)
+    const uint8_t value = cmd_frame[1];
+    if (value > mesh::wifi::kPowerSaveMax) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      char reply[160];
+      if (applyAndSaveWiFiPowerSaving(
+              companionWiFiPowerSaveName(value), reply, sizeof(reply))) {
+        writeOKFrame();
+      } else {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+      }
+    }
+#else
+    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+#endif
   } else if (cmd_frame[0] == CMD_GET_ADVERT_PATH && len >= PUB_KEY_SIZE+2) {
     // FUTURE use:  uint8_t reserved = cmd_frame[1];
     uint8_t *pub_key = &cmd_frame[2];
@@ -3579,6 +3683,17 @@ bool MyMesh::applyAndSaveFemTxGain(bool enabled) {
   return true;
 }
 
+bool MyMesh::applyAndSaveRxBoostedGain(bool enabled) {
+  if (!radio_driver.supportsRxBoostedGainMode()
+      || (_radio_available && !radio_driver.setRxBoostedGainMode(enabled))) {
+    return false;
+  }
+
+  _prefs.rx_boosted_gain = enabled ? 1 : 0;
+  savePrefs();
+  return true;
+}
+
 bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
   bool enabled;
   if (strcmp(value, "on") == 0) {
@@ -3596,6 +3711,66 @@ bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
   snprintf(reply, 160, "OK - powersaving %s", enabled ? "on" : "off");
   return true;
 }
+
+#if defined(ESP32) && defined(WIFI_SSID)
+void MyMesh::syncWiFiPowerSaving() {
+  const uint8_t mode = getCompanionWiFiPowerSave();
+#ifdef WITH_MQTT_BRIDGE
+  _mqtt_prefs.wifi_power_save = mode;
+#endif
+#ifdef WITH_WEBCONFIG
+  if (_webconfig) _webconfig->reloadStandaloneWiFi();
+#endif
+}
+
+void MyMesh::formatWiFiPowerSaving(char* reply, size_t reply_size) const {
+  if (!reply || reply_size == 0) return;
+  snprintf(reply, reply_size, "> %s", getCompanionWiFiPowerSaveName());
+}
+
+bool MyMesh::applyAndSaveWiFiPowerSaving(const char* value, char* reply,
+                                         size_t reply_size) {
+  if (!reply || reply_size == 0) return false;
+  uint8_t mode = mesh::wifi::kDefaultPowerSave;
+  if (value && strcmp(value, "min") == 0) {
+    mode = mesh::wifi::kPowerSaveMin;
+  } else if (value && strcmp(value, "none") == 0) {
+    mode = mesh::wifi::kPowerSaveNone;
+  } else if (value && strcmp(value, "max") == 0) {
+    mode = mesh::wifi::kPowerSaveMax;
+  } else {
+    snprintf(reply, reply_size,
+             "Error: power save must be none, min, or max");
+    return false;
+  }
+
+  const CompanionWiFiPowerSaveResult result =
+      setCompanionWiFiPowerSave(mode);
+  if (result == CompanionWiFiPowerSaveResult::BluetoothConflict) {
+    snprintf(reply, reply_size,
+             "Error: power save none is unavailable while Bluetooth is active");
+    return false;
+  }
+  if (result == CompanionWiFiPowerSaveResult::InvalidMode) {
+    snprintf(reply, reply_size,
+             "Error: power save must be none, min, or max");
+    return false;
+  }
+  if (result == CompanionWiFiPowerSaveResult::StorageError) {
+    snprintf(reply, reply_size, "Error: failed to save WiFi power save");
+    return false;
+  }
+
+  syncWiFiPowerSaving();
+  if (result == CompanionWiFiPowerSaveResult::Applied) {
+    snprintf(reply, reply_size, "OK - WiFi power save set to %s", value);
+  } else {
+    snprintf(reply, reply_size,
+             "OK - saved; WiFi power save applies on next connection");
+  }
+  return true;
+}
+#endif
 
 bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   if (!radio_driver.supportsRxPowerSaving()) {
@@ -4505,6 +4680,19 @@ void MyMesh::handleTerminalCommand(char* command) {
                     (unsigned long)_prefs.rx_ps_rx_us,
                     (unsigned long)_prefs.rx_ps_sleep_us);
     }
+#if defined(ESP32) && defined(WIFI_SSID)
+  } else if (strcmp(command, "get wifi.powersave") == 0) {
+    char reply[160];
+    formatWiFiPowerSaving(reply, sizeof(reply));
+    Serial.printf("  %s\r\n", reply);
+#endif
+  } else if (strcmp(command, "get radio.rxgain") == 0) {
+    if (!radio_driver.supportsRxBoostedGainMode()) {
+      Serial.print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
+    } else {
+      Serial.printf("  radio.rxgain %s\r\n",
+                    _prefs.rx_boosted_gain ? "on" : "off");
+    }
   } else if (strcmp(command, "get radio.fem.rxgain") == 0) {
     if (!board.canControlLoRaFemLna()) {
       Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
@@ -4529,6 +4717,30 @@ void MyMesh::handleTerminalCommand(char* command) {
       char reply[160];
       applyAndSaveRxPowerSaving(config + 11, reply);
       Serial.printf("  %s\r\n", reply);
+#if defined(ESP32) && defined(WIFI_SSID)
+    } else if (strncmp(config, "wifi.powersave", 14) == 0
+               && (config[14] == 0 || config[14] == ' '
+                   || config[14] == '\t')) {
+      const char* value = config + 14;
+      while (*value == ' ' || *value == '\t') value++;
+      char reply[160];
+      applyAndSaveWiFiPowerSaving(value, reply, sizeof(reply));
+      Serial.printf("  %s\r\n", reply);
+#endif
+    } else if (strncmp(config, "radio.rxgain", 12) == 0
+               && (config[12] == 0 || config[12] == ' '
+                   || config[12] == '\t')) {
+      const char* value = config + 12;
+      while (*value == ' ' || *value == '\t') value++;
+      if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+        Serial.print("  ERROR: use set radio.rxgain <on|off>\r\n");
+      } else if (!radio_driver.supportsRxBoostedGainMode()) {
+        Serial.print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
+      } else if (!applyAndSaveRxBoostedGain(strcmp(value, "on") == 0)) {
+        Serial.print("  ERROR: radio busy; retry\r\n");
+      } else {
+        Serial.printf("  OK - radio.rxgain %s\r\n", value);
+      }
     } else if (strncmp(config, "af ", 3) == 0) {
       _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
       savePrefs();
@@ -4591,8 +4803,14 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("Commands:\r\n");
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     Serial.print("  powersaving [on|off]\r\n");
+#if defined(ESP32) && defined(WIFI_SSID)
+    Serial.print("  get wifi.powersave\r\n");
+    Serial.print("  set wifi.powersave <none|min|max>\r\n");
+#endif
     Serial.print("  get radio.rxps\r\n");
     Serial.print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
+    Serial.print("  get radio.rxgain\r\n");
+    Serial.print("  set radio.rxgain <on|off>\r\n");
     Serial.print("  get radio.fem.rxgain\r\n");
     Serial.print("  set radio.fem.rxgain <on|off>\r\n");
     Serial.print("  get radio.fem.txgain\r\n");

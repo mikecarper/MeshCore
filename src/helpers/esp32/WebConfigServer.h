@@ -28,6 +28,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <helpers/WebConfigBatch.h>
+#include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
 
 class AsyncWebServer;
@@ -229,7 +230,7 @@ private:
   uint32_t _connect_deadline = 0;
   char _wifi_ssid[32] = {0};
   char _wifi_password[64] = {0};
-  uint8_t _wifi_power_save = 1;
+  uint8_t _wifi_power_save = mesh::wifi::kDefaultPowerSave;
   bool _cli_enabled = true;
   // A `password` command has succeeded this session. Lets the CLI satisfy the
   // initial-setup invariant across separate submissions; the form batch always

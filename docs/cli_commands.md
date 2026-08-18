@@ -201,7 +201,9 @@ SSID, LAN IP, and RSSI. When the shared OTA seeder is running, the reply appends
 `OTA TCP 5001: listening` or `OTA TCP 5001: client connected`. WiFi being off
 is normal while WebConfig is inactive; run `start webconfig` when a temporary
 connection is wanted. `get wifi.powersave` reports the saved standalone setting
-as `none`, `min`, or `max`; the default is `none`.
+as `none`, `min`, or `max`. Fresh Cascade-profile builds default to `min`;
+target-default builds use `none`. A saved setting takes precedence after an
+upgrade.
 
 The WiFi `set` commands work on MQTT observers and on FULL standalone
 ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
@@ -210,6 +212,14 @@ the new credentials. `set wifi.pwd` with no value selects an open network.
 Power-save changes are applied immediately when WiFi is running and otherwise
 take effect on the next connection. `get wifi.pwd` is intentionally unavailable
 so the standalone password is never returned by the CLI.
+
+ESP32 WiFi Companion WebConfig exposes the same `wifi.powersave` values in its
+WiFi card. Full Companion also accepts `get/set wifi.powersave` from its USB
+terminal and TCP port 5002. Binary Companion clients can use command bytes
+`0x46` and `0x47` over USB, BLE, or TCP port 5000 without the terminal-start
+token. WiFi-only Companions accept all three modes; Full Companion rejects
+`none` because its simultaneous BLE transport requires modem sleep. Companion
+device `powersaving` and LoRa `radio.rxps` remain independent.
 
 The browser portal is not compiled into the two 4 MB
 `LilyGo_TLora_V2_1_1_6_*_observer_mqtt` targets because it does not fit while

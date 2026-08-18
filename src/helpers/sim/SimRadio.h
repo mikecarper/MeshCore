@@ -81,6 +81,7 @@ public:
   uint32_t getPacketsSent() const { return n_sent; }
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
   bool setRxBoostedGainMode(bool /*enabled*/) { return false; }
+  bool supportsRxBoostedGainMode() const { return false; }
   bool getRxBoostedGainMode() const { return false; }
   uint32_t getRxPsWatchdogSoftCount() const { return 0; }
   uint32_t getRxPsWatchdogHardCount() const { return 0; }

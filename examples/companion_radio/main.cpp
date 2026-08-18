@@ -52,6 +52,9 @@ MultiSerialInterface interface_manager;
     #include <helpers/esp32/SerialWifiInterface.h>
     #include <helpers/WiFiSetupPortal.h>
     #include <helpers/WiFiReconnectPolicy.h>
+    #include <helpers/WiFiPowerSave.h>
+    #include <Preferences.h>
+    #include <esp_wifi.h>
     SerialWifiInterface wifi_interface;
     #ifndef WIFI_PWD
       #define WIFI_PWD ""
@@ -186,15 +189,6 @@ static bool applyCompanionPowerSaving(bool enabled) {
                   enabled ? "enable" : "disable",
                   esp_err_to_name(bt_result));
   }
-#endif
-
-#ifdef WIFI_SSID
-#if defined(BLE_PIN_CODE)
-  // WiFi modem sleep is required for WiFi/BLE coexistence in Full Companion.
-  WiFi.setSleep(true);
-#else
-  WiFi.setSleep(enabled);
-#endif
 #endif
 
   Serial.printf("Device power saving %s: CPU %lu MHz\r\n",
@@ -473,6 +467,88 @@ void halt() {
   static bool companion_wifi_active = false;
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
+  static bool companion_wifi_power_save_loaded = false;
+  static uint8_t companion_wifi_power_save = mesh::wifi::kDefaultPowerSave;
+
+  static bool companionWiFiBluetoothActive() {
+#if defined(BLE_PIN_CODE)
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  const char* companionWiFiPowerSaveName(uint8_t mode) {
+    if (mode == mesh::wifi::kPowerSaveMin) return "min";
+    if (mode == mesh::wifi::kPowerSaveMax) return "max";
+    return "none";
+  }
+
+  static wifi_ps_type_t companionWiFiPowerSaveType(uint8_t mode) {
+    if (mode == mesh::wifi::kPowerSaveNone) return WIFI_PS_NONE;
+    if (mode == mesh::wifi::kPowerSaveMax) return WIFI_PS_MAX_MODEM;
+    return WIFI_PS_MIN_MODEM;
+  }
+
+  void reloadCompanionWiFiPowerSave() {
+    uint8_t configured = mesh::wifi::kDefaultPowerSave;
+    Preferences nvs;
+    if (nvs.begin("mesh-wifi", true)) {
+      configured = nvs.getUChar("powersave", mesh::wifi::kDefaultPowerSave);
+      nvs.end();
+    }
+    companion_wifi_power_save = mesh::wifi::effectivePowerSave(
+        configured, companionWiFiBluetoothActive());
+    companion_wifi_power_save_loaded = true;
+    applyCompanionWiFiPowerSave();
+  }
+
+  uint8_t getCompanionWiFiPowerSave() {
+    if (!companion_wifi_power_save_loaded) reloadCompanionWiFiPowerSave();
+    return companion_wifi_power_save;
+  }
+
+  const char* getCompanionWiFiPowerSaveName() {
+    return companionWiFiPowerSaveName(getCompanionWiFiPowerSave());
+  }
+
+  bool applyCompanionWiFiPowerSave() {
+    if (!companion_wifi_power_save_loaded) {
+      reloadCompanionWiFiPowerSave();
+      return true;
+    }
+    if (WiFi.getMode() == WIFI_OFF) return true;
+    return esp_wifi_set_ps(
+        companionWiFiPowerSaveType(companion_wifi_power_save)) == ESP_OK;
+  }
+
+  CompanionWiFiPowerSaveResult setCompanionWiFiPowerSave(uint8_t mode) {
+    if (mode > mesh::wifi::kPowerSaveMax) {
+      return CompanionWiFiPowerSaveResult::InvalidMode;
+    }
+    if (mesh::wifi::effectivePowerSave(mode, companionWiFiBluetoothActive())
+        != mode) {
+      return CompanionWiFiPowerSaveResult::BluetoothConflict;
+    }
+
+    Preferences nvs;
+    if (!nvs.begin("mesh-wifi", false)) {
+      return CompanionWiFiPowerSaveResult::StorageError;
+    }
+    const bool saved =
+        nvs.putUChar("powersave", mode) == sizeof(uint8_t);
+    nvs.end();
+    if (!saved) return CompanionWiFiPowerSaveResult::StorageError;
+
+    companion_wifi_power_save = mode;
+    companion_wifi_power_save_loaded = true;
+    if (WiFi.getMode() == WIFI_OFF) {
+      return CompanionWiFiPowerSaveResult::SavedForNextConnection;
+    }
+    return applyCompanionWiFiPowerSave()
+        ? CompanionWiFiPowerSaveResult::Applied
+        : CompanionWiFiPowerSaveResult::SavedForNextConnection;
+  }
 
   static void loadCompanionWiFiCredentials() {
     companion_wifi_has_credentials = WiFiSetupPortal::loadStoredCredentials(
@@ -571,8 +647,9 @@ void halt() {
 
 /* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. Connect with e.g. `nc <ip> 5002` and type
    `ota status` / `ota ls` / `ota announce` / ... - one client at a time, on a DEDICATED port separate from
-   the companion (5000) and the seeder (5001). Full companions also accept `tempradio ...` and
-   `normalradio` here so a host can run an end-to-end mOTA source without occupying the binary port. */
+   the companion (5000) and the seeder (5001). Full companions also accept `tempradio ...`,
+   `normalradio`, and WiFi power-save commands here so a host can manage the source without
+   occupying the binary port. */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaCli.h>          // mesh::ota::handle_ota_command(line, reply, board)
   #include <helpers/esp32/WiFiOtaSeeder.h>
@@ -603,6 +680,7 @@ void halt() {
                ota_console_client.print("OTA console - type `ota ...`");
 #if defined(COMPANION_RADIO_FULL)
                ota_console_client.print(" or `tempradio freq,bw,sf,cr,minutes`");
+               ota_console_client.print("; `get/set wifi.powersave`");
 #endif
                ota_console_client.print("\r\n> "); }
       return;
@@ -615,7 +693,7 @@ void halt() {
         char reply[160]; reply[0] = 0;
 #if defined(COMPANION_RADIO_FULL)
         if (!the_mesh.handleFullOtaCommand(ota_console_line, reply, sizeof(reply)))
-          strcpy(reply, "supported: ota ... | tempradio ... | normalradio");
+          strcpy(reply, "supported: ota ... | tempradio ... | normalradio | get/set wifi.powersave");
 #else
         if (!mesh::ota::handle_ota_command(ota_console_line, reply, board))
           strcpy(reply, "only `ota ...` commands are supported on this console");
@@ -663,11 +741,7 @@ void halt() {
     }
 #endif
 
-#if defined(BLE_PIN_CODE)
-    WiFi.setSleep(true);
-#else
-    WiFi.setSleep(false);
-#endif
+    applyCompanionWiFiPowerSave();
     wifi_interface.begin(TCP_PORT);
     wifi_interface.enable();
 #ifdef ENABLE_OTA
@@ -952,7 +1026,8 @@ void setup() {
 #endif
   // keep frames intact and pace the contact stream when the host is slow
   usb_serial_interface.enableFlowControl(true);
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   // a 256 byte TX buffer overflows during a contact sync, and write() blocks
   // up to tx_timeout_ms per call against a stalled host (same reasoning as
   // the kiss_modem tuning)

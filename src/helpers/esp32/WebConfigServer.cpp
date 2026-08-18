@@ -205,7 +205,8 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
   if (obs) {
     strncpy(_wifi_ssid, obs->wifi_ssid, sizeof(_wifi_ssid) - 1);
     strncpy(_wifi_password, obs->wifi_password, sizeof(_wifi_password) - 1);
-    _wifi_power_save = obs->wifi_power_save <= 2 ? obs->wifi_power_save : 1;
+    _wifi_power_save = obs->wifi_power_save <= mesh::wifi::kPowerSaveMax
+        ? obs->wifi_power_save : mesh::wifi::kDefaultPowerSave;
     // Companion builds keep their canonical connection credentials in the
     // shared mesh-wifi namespace. A fresh MQTT configuration can therefore
     // have an empty MQTTPrefs WiFi field even while the companion is already
@@ -270,7 +271,8 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
   if (!nvs.begin("mesh-wifi", true)) return false;
   String stored_ssid = nvs.getString("ssid", "");
   String stored_password = nvs.getString("password", "");
-  uint8_t stored_ps = nvs.getUChar("powersave", 1);
+  uint8_t stored_ps = nvs.getUChar(
+      "powersave", mesh::wifi::kDefaultPowerSave);
   nvs.end();
   if (stored_ssid.length() >= ssid_len
       || stored_password.length() >= password_len) {
@@ -288,7 +290,8 @@ bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
                                          uint8_t power_save) {
   power_save = effectiveWiFiPowerSave(power_save);
   if (!ssid || !ssid[0] || strlen(ssid) >= 32
-      || (password && strlen(password) >= 64) || power_save > 2) {
+      || (password && strlen(password) >= 64)
+      || power_save > mesh::wifi::kPowerSaveMax) {
     return false;
   }
   Preferences nvs;
@@ -347,7 +350,7 @@ bool WebConfigServer::setStandaloneWiFiPassword(const char* value, char* reply,
 bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
                                                   size_t reply_len) {
   if (!reply || reply_len == 0) return false;
-  uint8_t power_save = 1;
+  uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   if (!mesh::cli::parseStandaloneWiFiPowerSave(value, power_save)) {
     snprintf(reply, reply_len, "Error: power save must be none, min, or max");
     return false;
@@ -374,9 +377,9 @@ bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
   esp_err_t apply_result = ESP_OK;
   if (WiFi.getMode() != WIFI_OFF) {
     const wifi_ps_type_t ps_mode =
-        power_save == 1 ? WIFI_PS_NONE
-                        : power_save == 2 ? WIFI_PS_MAX_MODEM
-                                          : WIFI_PS_MIN_MODEM;
+        power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+        : power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM
+                                                   : WIFI_PS_MIN_MODEM;
     apply_result = esp_wifi_set_ps(ps_mode);
   }
   if (apply_result == ESP_OK) {
@@ -419,7 +422,7 @@ bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
 
   char ssid[32] = "";
   char password[64] = "";
-  uint8_t power_save = 1;
+  uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   bool configured = loadStandaloneWiFi(
       ssid, sizeof(ssid), password, sizeof(password), &power_save);
   if (_active && _active->_wifi_ssid[0]) {
@@ -435,7 +438,7 @@ bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
 bool WebConfigServer::formatWiFiPowerSave(char* reply, size_t reply_len) {
   if (!reply || reply_len == 0) return false;
 
-  uint8_t power_save = 1;
+  uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   if (_active) {
     power_save = _active->_wifi_power_save;
   } else {
@@ -446,9 +449,9 @@ bool WebConfigServer::formatWiFiPowerSave(char* reply, size_t reply_len) {
   }
 
   const char* name = "none";
-  if (power_save == 0) {
+  if (power_save == mesh::wifi::kPowerSaveMin) {
     name = "min";
-  } else if (power_save == 2) {
+  } else if (power_save == mesh::wifi::kPowerSaveMax) {
     name = "max";
   }
   snprintf(reply, reply_len, "> %s", name);
@@ -477,7 +480,7 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
 
   char ssid[32] = "";
   char password[64] = "";
-  uint8_t power_save = 1;
+  uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   bool configured = loadStandaloneWiFi(
       ssid, sizeof(ssid), password, sizeof(password), &power_save);
   WebConfigServer* active = _active;
@@ -678,9 +681,10 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   _wifi_reconnect_tracker.noteDisconnected(millis());
   WiFi.begin(_wifi_ssid, _wifi_password);
   _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
-  wifi_ps_type_t ps_mode = _wifi_power_save == 1 ? WIFI_PS_NONE
-                            : _wifi_power_save == 2 ? WIFI_PS_MAX_MODEM
-                            : WIFI_PS_MIN_MODEM;
+  wifi_ps_type_t ps_mode =
+      _wifi_power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+      : _wifi_power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM
+                                                       : WIFI_PS_MIN_MODEM;
   esp_wifi_set_ps(ps_mode);
   _mode = MODE_CONNECTING;
   _connect_deadline = millis() + 15000;

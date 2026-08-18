@@ -332,7 +332,9 @@ You can flash the merged firmware using either the web flasher or the command li
 - `WITH_SNMP=1` - Enable SNMP agent (optional, see [MQTT_SNMP.md](MQTT_SNMP.md))
 - `MQTT_DEBUG=1` - Enable debug logging (optional)
 - `MQTT_WIFI_TX_POWER` - WiFi TX power level (default: `WIFI_POWER_11dBm`)
-- ~~`MQTT_WIFI_POWER_SAVE_DEFAULT`~~ - Removed; all builds now default to `none` (no power save)
+- `DEFAULT_WIFI_POWER_SAVE_MODE` - Fresh-install WiFi modem-sleep default:
+  `0` = `min`, `1` = `none`, `2` = `max`. The Cascade profile sets `0`;
+  target-default builds use `1`.
 
 #### Compile-time fresh-install defaults (`src/helpers/MQTTDefaults.h`)
 
@@ -344,6 +346,7 @@ Optional PlatformIO `build_flags` override defaults written when `/mqtt_prefs` i
 | `MQTT_DEFAULT_IATA` | (empty) | e.g. `'"YYZ"'` |
 | `MQTT_DEFAULT_TIMEZONE` | (empty) | e.g. `'"America/Toronto"'` |
 | `MQTT_DEFAULT_TIMEZONE_OFFSET` | `0` | Fallback hours when TZ string is empty |
+| `DEFAULT_WIFI_POWER_SAVE_MODE` | `1` (`none`); Cascade profile: `0` (`min`) | Fresh MQTT and standalone WebConfig WiFi setting; saved settings take precedence |
 
 Example community build:
 
@@ -377,7 +380,8 @@ The MQTT bridge comes with the following defaults for fresh installs (unless ove
 - **Per-slot packet filters**: `all` (every payload type is uploaded)
 - **WiFi SSID**: (blank - must be configured)
 - **WiFi Password**: (blank - optional for open networks)
-- **WiFi Power Save**: `none` (no power save)
+- **WiFi Power Save**: `min` for Cascade-profile builds; otherwise `none`
+  (a saved setting takes precedence)
 - **Timezone**: (blank - uses UTC until configured, unless `MQTT_DEFAULT_TIMEZONE` is set at build time)
 - **Timezone Offset**: 0 (fallback, no offset, unless `MQTT_DEFAULT_TIMEZONE_OFFSET` is set)
 - **Repeat (forwarding)**: On (set `repeat off` for receive-only observers)
@@ -612,6 +616,12 @@ These settings apply across all MQTT slots:
   - `none` - No power saving (best performance, highest power consumption)
   - `min` - Minimum power saving (balanced performance and power)
   - `max` - Maximum power saving (lowest power consumption, may affect performance)
+
+On an ESP32 MQTT Companion, the Companion-owned `mesh-wifi` setting is the
+canonical WiFi power-save value. It is exposed in Companion WebConfig and the
+binary Companion protocol. Full Companion also exposes it on the USB terminal
+and TCP port 5002, but rejects `none` because its BLE transport requires modem
+sleep. Changing Companion device `powersaving` does not overwrite this value.
 
 ### Timezone Commands
 

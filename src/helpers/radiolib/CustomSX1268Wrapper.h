@@ -57,6 +57,7 @@ protected:
     return ((CustomSX1268 *)_radio)->setRxBoostedGainMode(en) == RADIOLIB_ERR_NONE;
   }
 public:
+  bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
     return ((CustomSX1268 *)_radio)->getRxBoostedGainMode();
   }

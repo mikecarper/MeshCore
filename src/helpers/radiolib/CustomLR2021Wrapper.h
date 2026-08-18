@@ -178,6 +178,7 @@ public:
 
   void doResetAGC() override { }
 
+  bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
     return ((CustomLR2021 *)_radio)->getRxBoostedGainMode();
   }
