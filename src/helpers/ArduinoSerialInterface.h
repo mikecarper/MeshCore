@@ -4,18 +4,26 @@
 #include <Arduino.h>
 
 class ArduinoSerialInterface : public BaseSerialInterface {
+public:
+  // reports whether a client currently has this stream open (see setConnectedCheck)
+  typedef bool (*ConnectedCheck)();
+
+private:
   bool _isEnabled;
   bool _passthroughMode;
   bool _controlSequenceReceived;
   bool _secondaryControlSequenceReceived;
+  bool _flow_ctl;
   uint8_t _state;
   size_t _controlSequencePos;
   size_t _secondaryControlSequencePos;
   uint16_t _frame_len;
   uint16_t rx_len;
+  uint32_t _last_frame_ms;
   Stream* _serial;
   const char* _controlSequence;
   const char* _secondaryControlSequence;
+  ConnectedCheck _conn_check;
   uint8_t rx_buf[MAX_FRAME_SIZE];
 
   bool checkControlSequence(uint8_t c, const char* sequence,
@@ -26,9 +34,10 @@ public:
   ArduinoSerialInterface()
       : _isEnabled(false), _passthroughMode(false),
         _controlSequenceReceived(false), _secondaryControlSequenceReceived(false),
-        _state(0), _controlSequencePos(0), _secondaryControlSequencePos(0),
-        _frame_len(0), rx_len(0), _serial(nullptr),
-        _controlSequence(nullptr), _secondaryControlSequence(nullptr) {}
+        _flow_ctl(false), _state(0), _controlSequencePos(0),
+        _secondaryControlSequencePos(0), _frame_len(0), rx_len(0),
+        _last_frame_ms(0), _serial(nullptr), _controlSequence(nullptr),
+        _secondaryControlSequence(nullptr), _conn_check(nullptr) {}
 
   void begin(Stream& serial, const char* controlSequence = nullptr,
              const char* secondaryControlSequence = nullptr) {
@@ -38,6 +47,7 @@ public:
     _passthroughMode = false;
     _controlSequenceReceived = false;
     _secondaryControlSequenceReceived = false;
+    _last_frame_ms = 0;
     resetReceiveState();
   #ifdef RAK_4631
     pinMode(WB_IO2, OUTPUT);
@@ -53,6 +63,20 @@ public:
   // binary frame parser was idle.
   bool takeControlSequence();
   bool takeSecondaryControlSequence();
+
+  // Optional: let the target report the real link state, e.g. USB-CDC DTR.
+  // Without it isConnected() assumes true, as a plain UART has no way of knowing.
+  void setConnectedCheck(ConnectedCheck fn) { _conn_check = fn; }
+
+  // millis() of the last completely received frame, 0 if none since boot.
+  // Useful as an activity-based connection check where no DTR state exists.
+  uint32_t getLastFrameMillis() const { return _last_frame_ms; }
+
+  // Optional: only hand a frame to the stream when it fits into the TX buffer
+  // as a whole, and report busy while it does not, so bulk streams get paced.
+  // Only enable this for streams which really implement availableForWrite()
+  // (USB-CDC does, the Print default returns 0).
+  void enableFlowControl(bool enable) { _flow_ctl = enable; }
 
   // BaseSerialInterface methods
   void enable() override;
