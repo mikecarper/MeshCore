@@ -1690,8 +1690,10 @@
 <h1 id="meshcore-ota-mota-container-lora-protocol">MeshCore OTA - <code>.mota</code> container &amp; LoRa protocol</h1>
 <p>This is the <strong>single source of truth</strong> for MeshCore's over-the-air firmware update system ("mOTA"). It is
 written for developers who want to implement an interoperable peer (server, fetcher, relay, or host tool)
-in another codebase or project. Everything below is implemented and hardware-verified in this repository;
-where a section names a source file, that file is the authoritative reference for byte-level details.</p>
+in another codebase or project. Everything below is implemented in this repository and covered by host,
+simulation, build, or hardware tests as noted in the relevant section. Hardware qualification is target- and
+chain-specific; do not infer it from implementation alone. Where a section names a source file, that file is
+the authoritative reference for byte-level details.</p>
 <blockquote>
 <p><strong>Just want to update your node?</strong> See the plain-language <a href="../ota_user_guide/">OTA user guide</a> - this
 document is the technical/wire specification.</p>
@@ -2295,7 +2297,7 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   device's firmware into a <code>motatool serve</code> folder is slow (a full image is hundreds of blocks). Because
   builds here are non-deterministic, you cannot reproduce the exact target on the host - but a <em>similar</em>
   build (e.g. a fresh recompile) is ~99% identical. So <code>motatool serve --seed &lt;similar.mota&gt;</code> stages that
-  build's payload into the destination <code>.part</code>, and <code>ota pull &lt;#&gt; folder validate</code> makes the fetcher (1) bulk-
+  build's payload into the destination <code>.part</code>, and <code>ota pull &lt;mid8&gt; folder validate</code> makes the fetcher (1) bulk-
   fetch the target's <code>leaves[]</code> via <code>OTA_GET_LEAVES</code>/<code>OTA_LEAVES</code> (bitmap-fragmented with a <code>want_mask</code>, same
   anti-burst rule as <code>OTA_MANIFEST</code>), (2) recompute the merkle root from them and check it equals the
   manifest root (authenticate), then (3) keep every seeded block whose leaf matches and pull full <code>OTA_DATA</code>
@@ -2413,10 +2415,12 @@ transmission per hop.</p>
   board/role a target is, a node (and <code>motatool</code>) reverse-looks-it-up in <code>src/helpers/ota/OtaTargets.h</code> -
   a generated <code>target_id -&gt; env-name</code> table covering every <code>ENABLE_OTA</code> env (<code>tools/mota/gen_targets.py</code>,
   resolved from <code>pio project config</code>). So <code>ota ls</code> can render <code>[Heltec_v3_repeater]</code> for a neighbour's
-  beacon without the string being transmitted. Unknown ids show as <code>other hw</code> / <code>N/A</code>.</li>
+  beacon without the string being transmitted. Unknown IDs show as raw <code>hw XXXXXXXX</code> / <code>N/A</code> values.</li>
 <li><strong><code>fw_version</code>:</strong> packed comparable uint32 (<code>MAJOR&lt;&lt;24 | MINOR&lt;&lt;16 | PATCH&lt;&lt;8 | pre</code>); also self-described
-  in EndF. <code>ota ls</code> decodes it for display and flags each update <code>[yours]</code> / <code>[other hw]</code> / <code>[?]</code> by
-  comparing the advertised <code>target_id</code> to the node's own.</li>
+  in EndF. <code>ota ls</code> prints the stable eight-hex manifest ID and uses <code>[same target]</code>, <code>[unsupported]</code>, or
+  <code>[rescue]</code> after combining target equality with the local codec, bootloader, and EndF preflight. A known
+  different target is rendered by environment name; an unknown/unset target remains raw or <code>?</code>. Target
+  equality is routing information, not by itself an assertion that an image is safe to install.</li>
 <li><strong><code>hw_id</code>:</strong> 32-byte NUL-padded ASCII hardware tag inside the signed head. The applier refuses a <code>.mota</code>
   whose <code>hw_id</code> differs from the device's own tag (empty on either side = permissive). Brick-safety
   independent of signature.</li>
@@ -2438,7 +2442,7 @@ relays without holding them in flash. To peers it simply "has N mOTAs"; the rela
 verify everything). The serve side (<code>OtaManager</code>) keeps a lightweight registry of what it advertises and two
 resident "views": <code>view0</code> (its own firmware) and one on-demand view loaded from a source when a request
 targets an external mota. Every fetch message carries <code>manifest_id</code>, so dispatch is a registry lookup.</p>
-<p>The same host-folder link is also a <strong>pull destination</strong> (the reverse direction): <code>ota pull &lt;#&gt; folder</code>
+<p>The same host-folder link is also a <strong>pull destination</strong> (the reverse direction): <code>ota pull &lt;mid8&gt; folder</code>
 fetches a <code>.mota</code> off the mesh and streams it onto the host as <code>&lt;mid&gt;.mota</code> via the seeder STORAGE ops
 (<code>OP_STAT/BEGIN/WRITE/SREAD/FIN</code>, see <code>MotaSeederProto.h</code>), using a <code>FolderMotaStore</code> as the fetch's
 <code>OtaStore</code> instead of RAM/flash. This captures an exact copy of a device's firmware - e.g. to build a delta
@@ -2496,6 +2500,10 @@ causes a TCP client to be rejected instead of silently replacing it. Verified on
 relays a host folder to a
 Heltec V3 over one USB cable, and a host feeds a Heltec V3 over WiFi (<code>:5001</code>) while the companion serves a
 phone on <code>:5000</code> - every block merkle-checked.</p>
+<p>The attach reply and bare <code>ota folder</code> report <code>host=advertised/offered</code>. The registry is RAM-bounded
+(<code>OTA_MAX_SERVE</code>, with the node's own firmware consuming one slot), so a host may correctly index more valid
+files than this particular firmware can advertise. Omitted entries are now reported instead of silently
+disappearing. Operators should split a large chain or use a higher-capacity/SD seeder when the two counts differ.</p>
 <p><strong>Transport-agnostic by design.</strong> The request/response <em>semantics</em> (<code>COUNT</code> / <code>DESCRIBE(idx)</code> /
 <code>READ(idx, off, len)</code> over a folder catalog) are independent of the link. The 2-byte magic + XOR checksum +
 resync framing above exists for the shared USB-UART (an unframed byte stream); it is harmless over a
@@ -2516,7 +2524,8 @@ the recommended user-facing forms. Output is plain-language (a user-facing guide
 <pre><code>ota help | ? | h                   list the commands
 ota status | st  (or bare `ota`)   plain-language: running fw, the one fetch session (state/%/id), serving, keys
 ota ls | neighbors | nbrs | updates | n [page]   paged updates (queries sources; rows arrive async via OTA_HAVE)
-ota get | pull | download &lt;#|mid8&gt; fetch a chosen mOTA (manual; works regardless of autofetch)
+ota get | pull | download &lt;mid8|#index&gt; flash [rescue] | folder [validate]
+                                      fetch by stable mid8 (preferred) or current page index
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
 ota rescue install &lt;base_hash16&gt;  internal-flash nRF52 only: recover from failed app-side EndF validation
 ota cancel | drop | stop           drop the current fetch session (frees the slot)
@@ -2528,6 +2537,7 @@ ota key | keys [add|rm &lt;hex&gt;]      trusted signer allowlist ; bare = list
 ota dev ...                        bring-up helpers (stage/recv/serve/verify)
 </code></pre>
 <hr />
+<p><a id="12-apply-bootloader-contract"></a></p>
 <h2 id="12-apply-bootloader-contract">12. Apply &amp; bootloader contract</h2>
 <ul>
 <li><strong>ESP32 (A/B):</strong> applied in-firmware via the detools decoder into the inactive OTA slot
@@ -2551,7 +2561,9 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   it still requires USB recovery if that app does not already contain this command.
   A chain intended to cross historical firmware must introduce this command in its first bridge and retain
   it in every later bridge. Manual pulls still use the build-provided target ID when app-side EndF parsing
-  fails, so a rescue-capable bridge can fetch its exact successor before invoking the guarded command.</li>
+  fails, so a rescue-capable bridge can fetch its exact successor before invoking the guarded command. Such
+  a node must acknowledge the condition up front with <code>ota pull &lt;mid8&gt; flash rescue</code>; an ordinary flash pull
+  refuses before altering staged data. Firmware that predates both rescue commands still requires USB recovery.</li>
 <li><strong>MeshTower V2 SD nRF52:</strong> the application stores a contiguous <code>/meshcore-ota.mota</code> on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,

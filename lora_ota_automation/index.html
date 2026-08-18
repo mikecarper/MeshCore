@@ -1368,8 +1368,8 @@
 physical failure of the withdrawn 26-step migration and the corrected
 v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
 explicit lab-only gate for the corrected chain until physical testing passes.</p>
-<p><a href="../tools/lora_ota/lora_ota.sh"><code>tools/lora_ota/lora_ota.sh</code></a> and
-<a href="../tools/lora_ota/lora_ota.ps1"><code>tools/lora_ota/lora_ota.ps1</code></a> automate a
+<p><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.sh"><code>tools/lora_ota/lora_ota.sh</code></a> and
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.ps1"><code>tools/lora_ota/lora_ota.ps1</code></a> automate a
 MeshCore LoRa firmware update from a release <code>.zip</code> or ready <code>.mota</code>. They
 identify the destination, validate the hardware and running firmware, prepare
 the right container, move the participating nodes to a temporary radio
@@ -1512,12 +1512,17 @@ was explicitly configured otherwise.</p>
 <p>The destination must be in the controller's contacts and remotely reachable
 on the normal channel. The script runs these authenticated checks itself:</p>
 <pre><code class="language-text">ota status
+get bootloader.ver
 ota self
 ota stats
 </code></pre>
-<p>For nRF52, <code>ota self</code> must report <code>bootloader: apply OK</code> or
-<code>bootloader: SD apply OK</code>. The script also checks the reported bootloader ABI
-and codec mask against the selected package.</p>
+<p>The script uses <code>get bootloader.ver</code> to distinguish ESP32 from nRF52 and, for
+nRF52, report the installed bootloader version. It then requires <code>ota self</code> to
+report <code>bootloader: apply OK</code> or <code>bootloader: SD apply OK</code> and checks the
+reported bootloader ABI and codec mask against the selected package. If the
+version command is unavailable on older firmware, the script warns and falls
+back to the legacy <code>ota self</code> platform marker. If an nRF52 bootloader lacks
+the required capabilities, install the exact-board OTAFIX bootloader first.</p>
 <p>The default TempRadio tuple is:</p>
 <pre><code class="language-text">909.950,250,5,5,120
 </code></pre>
@@ -1688,7 +1693,8 @@ the destination.</p>
 <li>Validate the input paths and host tools, then prove the source is either an
    OTA-enabled raw CLI or a source-only full Companion control interface.</li>
 <li>Authenticate to the target and query its target ID, hardware, running body
-   hash, version, and nRF52 bootloader capabilities.</li>
+   hash, firmware version, bootloader version, and nRF52 bootloader
+   capabilities.</li>
 <li>Select or build one compatible mOTA and verify all block hashes, Merkle
    root, full-image hash where applicable, identity fields, signature, codec,
    base, and the firmware's 1024-byte maximum block size.</li>

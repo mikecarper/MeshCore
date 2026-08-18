@@ -603,10 +603,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#discover-neighbor-scopes-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#discover-neighbor-scopes-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Discover neighbor scopes (MQTT observer, PSRAM only)
+        Discover neighbor scopes (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -1129,6 +1129,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-set-the-reboot-interval-repeater-and-room-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or set the reboot interval (Repeater and room server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#control-an-exposed-gpio" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1155,6 +1166,17 @@
   
     <nav class="md-nav" aria-label="Routing">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-set-the-direct-path-override-for-the-current-remote-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or set the direct path override for the current remote client
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-repeat-flag" class="md-nav__link">
@@ -2046,10 +2068,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change periodic neighbors publishing (MQTT observer, PSRAM only)
+        View or change periodic neighbors publishing (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -2057,10 +2079,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change the neighbors publish interval (MQTT observer, PSRAM only)
+        View or change the neighbors publish interval (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -3076,10 +3098,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#discover-neighbor-scopes-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#discover-neighbor-scopes-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Discover neighbor scopes (MQTT observer, PSRAM only)
+        Discover neighbor scopes (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -3602,6 +3624,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-set-the-reboot-interval-repeater-and-room-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or set the reboot interval (Repeater and room server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#control-an-exposed-gpio" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3628,6 +3661,17 @@
   
     <nav class="md-nav" aria-label="Routing">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-set-the-direct-path-override-for-the-current-remote-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or set the direct path override for the current remote client
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-repeat-flag" class="md-nav__link">
@@ -4519,10 +4563,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change periodic neighbors publishing (MQTT observer, PSRAM only)
+        View or change periodic neighbors publishing (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -4530,10 +4574,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only" class="md-nav__link">
+  <a href="#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or change the neighbors publish interval (MQTT observer, PSRAM only)
+        View or change the neighbors publish interval (MQTT observer, neighbors feature)
       
     </span>
   </a>
@@ -4917,7 +4961,7 @@ remain available.</p>
 MQTT, standard, logging, OTA, FULL, and FULL logging artifacts. It does not
 require MQTT or PSRAM.</p>
 <hr />
-<h3 id="discover-neighbor-scopes-mqtt-observer-psram-only">Discover neighbor scopes (MQTT observer, PSRAM only)</h3>
+<h3 id="discover-neighbor-scopes-mqtt-observer-neighbors-feature">Discover neighbor scopes (MQTT observer, neighbors feature)</h3>
 <p>Refreshes the zero-hop neighbor table, then queries each neighbor for its region
 scopes and publishes the assembled table to the MQTT <code>neighbors</code> topic once.</p>
 <p><strong>Usage:</strong>
@@ -4931,15 +4975,18 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <h3 id="clear-stats">Clear Stats</h3>
 <p><strong>Usage:</strong> <code>clear stats</code></p>
 <hr />
+<p><a id="stats-core"></a></p>
 <h3 id="system-stats-battery-uptime-queue-length-and-debug-flags">System Stats - Battery, Uptime, Queue Length and Debug Flags</h3>
 <p><strong>Usage:</strong> 
 - <code>stats-core</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
 <hr />
+<p><a id="stats-radio"></a></p>
 <h3 id="radio-stats-noise-floor-last-rssisnr-airtime-receive-errors">Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors</h3>
 <p><strong>Usage:</strong> <code>stats-radio</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
 <hr />
+<p><a id="stats-packets"></a></p>
 <h3 id="packet-stats-packet-counters-received-sent">Packet stats - Packet counters: Received, Sent</h3>
 <p><strong>Usage:</strong> <code>stats-packets</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
@@ -5322,6 +5369,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - Its default <code>off</code> state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to <code>on</code> reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - <code>radio.rxps.rfrx_disabled</code> is supported only on SX1262 targets with a host-controlled RX enable pin.
 - <code>on</code> and <code>conservative</code> select level <code>1</code> with a 16-symbol preamble; <code>balanced</code> selects level <code>5</code> with a 16-symbol preamble.
+- Fresh Cascade-profile builds start with RXPS on at level <code>8</code> and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom <code>&lt;rx_us&gt; &lt;sleep_us&gt;</code> timings remain fixed.
 - The selected mode is applied immediately, persisted, and restored after reboot.</p>
 <hr />
@@ -5654,13 +5702,23 @@ get clock.sync.status
 <p><strong>Usage:</strong>
 - <code>powersaving</code>
 - <code>powersaving on</code>
-- <code>powersaving off</code></p>
+- <code>powersaving off</code>
+- <code>set powersaving on</code>
+- <code>set powersaving off</code></p>
 <p><strong>Parameters:</strong> 
 - <code>on</code>: enable power saving
 - <code>off</code>: disable power saving</p>
-<p><strong>Default:</strong> <code>off</code> for infrastructure roles; <code>on</code> for Companion firmware</p>
+<p><strong>Default:</strong> <code>on</code> for fresh Cascade-profile builds and Companion firmware; <code>off</code> for other infrastructure profiles</p>
 <p><strong>Note:</strong> Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
-<p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>).</p>
+<p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure WebConfig uses the <code>set powersaving</code> form; enabling it can put the node to sleep and make WiFi temporarily unavailable.</p>
+<hr />
+<h4 id="view-or-set-the-reboot-interval-repeater-and-room-server">View or set the reboot interval (Repeater and room server)</h4>
+<p><strong>Usage:</strong>
+- <code>get reboot.interval</code>
+- <code>set reboot.interval &lt;hours&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>hours</code>: <code>0-255</code>; <code>0</code> disables scheduled reboots.</p>
+<p><strong>Default:</strong> <code>0</code> (disabled)</p>
 <hr />
 <h4 id="control-an-exposed-gpio">Control an exposed GPIO</h4>
 <p><strong>Availability:</strong> ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.</p>
@@ -5688,6 +5746,21 @@ get clock.sync.status
 <p><strong>Electrical warning:</strong> GPIOs use 3.3 V logic and have limited drive current. Do not power a relay, motor, solenoid, or other load directly from a GPIO. Use a suitable transistor, MOSFET, optocoupler, or driver with the required protection components.</p>
 <hr />
 <h3 id="routing">Routing</h3>
+<h4 id="view-or-set-the-direct-path-override-for-the-current-remote-client">View or set the direct path override for the current remote client</h4>
+<p><strong>Usage:</strong>
+- <code>get outpath</code>
+- <code>set outpath &lt;hop1_hex,hop2_hex,...&gt;</code>
+- <code>set outpath direct</code>
+- <code>set outpath clear</code>
+- <code>set outpath flood</code></p>
+<p><strong>Parameters:</strong>
+- <code>hopN_hex</code>: Hop hash with <code>2</code>, <code>4</code>, or <code>6</code> hexadecimal characters. Every hop must use the same width.</p>
+<p><strong>Notes:</strong>
+- These commands require remote client context and update the caller's ACL entry.
+- <code>direct</code> selects a zero-hop route for a directly reachable caller.
+- <code>clear</code> forgets the override so normal path discovery can repopulate it.
+- <code>flood</code> forces replies to use flood packets until the client logs in again.</p>
+<hr />
 <h4 id="view-or-change-this-nodes-repeat-flag">View or change this node's repeat flag</h4>
 <p><strong>Usage:</strong>
 - <code>get repeat</code>
@@ -7208,7 +7281,7 @@ sleep, this command schedules a sync and wakes it; after <code>gps off</code>, i
 <p><strong>Note:</strong> <code>mqtt.rx</code> and <code>mqtt.tx</code> take effect immediately - no restart required. Both can be enabled simultaneously.</p>
 </blockquote>
 <hr />
-<h4 id="view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only">View or change periodic neighbors publishing (MQTT observer, PSRAM only)</h4>
+<h4 id="view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature">View or change periodic neighbors publishing (MQTT observer, neighbors feature)</h4>
 <p><strong>Usage:</strong>
 - <code>get mqtt.neighbors</code>
 - <code>set mqtt.neighbors &lt;on|off&gt;</code></p>
@@ -7228,7 +7301,7 @@ While enabled, <code>get mqtt.status</code> gains a trailing <code>nbr: &lt;next
 (time to next publish, and how the last publish went).</p>
 </blockquote>
 <hr />
-<h4 id="view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only">View or change the neighbors publish interval (MQTT observer, PSRAM only)</h4>
+<h4 id="view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature">View or change the neighbors publish interval (MQTT observer, neighbors feature)</h4>
 <p><strong>Usage:</strong>
 - <code>get mqtt.neighbors.interval</code>
 - <code>set mqtt.neighbors.interval &lt;hours&gt;</code></p>
@@ -7236,7 +7309,9 @@ While enabled, <code>get mqtt.status</code> gains a trailing <code>nbr: &lt;next
 - <code>hours</code>: how often to publish the neighbor table (12-336, default 24)</p>
 <p><strong>Default:</strong> <code>24</code> (hours)</p>
 <blockquote>
-<p><strong>Note:</strong> Out-of-range values are rejected (not clamped). Requires a PSRAM board.</p>
+<p><strong>Note:</strong> Out-of-range values are rejected (not clamped). Requires a build
+with <code>WITH_MQTT_NEIGHBORS</code>; PSRAM boards enable it automatically and selected
+non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
 </blockquote>
 <hr />
 <h4 id="view-or-change-the-ntp-server-mqtt-observer-only">View or change the NTP server (MQTT observer only)</h4>

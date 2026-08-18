@@ -1450,7 +1450,6 @@ own interface, so those build roles are not represented here.</p>
 <li><strong>Feature</strong> - available only when the target compiles the feature or hardware
   named in Scope.</li>
 <li><strong>Serial</strong> - available only from the local serial console.</li>
-<li><strong>PSRAM</strong> - available only on an MQTT target with PSRAM neighbor support.</li>
 <li><strong>Manifest</strong> - available only when the MQTT target defines
   <code>OTA_MANIFEST_BASE</code>.</li>
 <li><strong>Limited</strong> - the family exists, but the limitation in Scope applies.</li>
@@ -1617,8 +1616,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Neighbors</td>
-<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-psram-only"><code>discover.scopes</code></a></td>
-<td>MQTT observer with PSRAM</td>
+<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-neighbors-feature"><code>discover.scopes</code></a></td>
+<td>MQTT observer with compiled neighbor support</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -1633,7 +1632,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#system-stats---battery-uptime-queue-length-and-debug-flags"><code>stats-core</code></a></td>
+<td><a href="../cli_commands/#stats-core"><code>stats-core</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -1641,7 +1640,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors"><code>stats-radio</code></a></td>
+<td><a href="../cli_commands/#stats-radio"><code>stats-radio</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -1657,7 +1656,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#packet-stats---packet-counters-received-sent"><code>stats-packets</code></a></td>
+<td><a href="../cli_commands/#stats-packets"><code>stats-packets</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -2393,7 +2392,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>WiFi</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
 <td>ESP32 WiFi</td>
 <td>No</td>
 <td>No</td>
@@ -2457,7 +2456,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>LoRa OTA</td>
-<td><a href="../ota_protocol/#12-apply--bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
+<td><a href="../ota_protocol/#12-apply-bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
 <td>Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation</td>
 <td>No</td>
 <td>No</td>
@@ -2521,7 +2520,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2529,7 +2528,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2537,7 +2536,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2553,7 +2552,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2569,7 +2568,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2585,8 +2584,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only"><code>get/set mqtt.neighbors.interval</code></a></td>
-<td>MQTT observer with PSRAM</td>
+<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature"><code>get/set mqtt.neighbors.interval</code></a></td>
+<td>MQTT observer with compiled neighbor support</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -2609,7 +2608,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2617,7 +2616,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
 <td>Legacy MQTT aliases</td>
 <td>No</td>
 <td>No</td>
@@ -2625,7 +2624,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
 <td>MQTT observer; <code>get</code> is local serial only</td>
 <td>No</td>
 <td>No</td>
@@ -2641,7 +2640,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>SNMP</td>
-<td><a href="../MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
 <td>MQTT target compiled with SNMP</td>
 <td>No</td>
 <td>No</td>
@@ -2649,7 +2648,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Alerts</td>
-<td><a href="../ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -2657,7 +2656,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Alerts</td>
-<td><a href="../ALERTS.md#cli"><code>alert test [message]</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli"><code>alert test [message]</code></a></td>
 <td>MQTT observer with configured alert channel</td>
 <td>No</td>
 <td>No</td>
@@ -2924,14 +2923,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Neighbors</td>
-<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-psram-only"><code>discover.scopes</code></a></td>
-<td>MQTT observer with PSRAM</td>
+<td><a href="../cli_commands/#discover-neighbor-scopes-mqtt-observer-neighbors-feature"><code>discover.scopes</code></a></td>
+<td>MQTT observer with compiled neighbor support</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
+<td>Feature</td>
 <td>No</td>
-<td>No</td>
-<td>PSRAM</td>
+<td>Feature</td>
 <td>No</td>
 </tr>
 <tr>
@@ -2948,7 +2947,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#system-stats---battery-uptime-queue-length-and-debug-flags"><code>stats-core</code></a></td>
+<td><a href="../cli_commands/#stats-core"><code>stats-core</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -2960,7 +2959,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#radio-stats---noise-floor-last-rssisnr-airtime-receive-errors"><code>stats-radio</code></a></td>
+<td><a href="../cli_commands/#stats-radio"><code>stats-radio</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -2984,7 +2983,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Statistics</td>
-<td><a href="../cli_commands/#packet-stats---packet-counters-received-sent"><code>stats-packets</code></a></td>
+<td><a href="../cli_commands/#stats-packets"><code>stats-packets</code></a></td>
 <td>Local serial</td>
 <td>Serial</td>
 <td>Serial</td>
@@ -4088,7 +4087,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>WiFi</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands"><code>get/set wifi.ssid</code>; <code>set wifi.pwd</code>; <code>get wifi.status</code>; <code>get/set wifi.powersave</code></a></td>
 <td>MQTT WiFi, or standalone FULL WebConfig; standalone has no <code>get wifi.pwd</code></td>
 <td>No</td>
 <td>No</td>
@@ -4184,7 +4183,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>LoRa OTA</td>
-<td><a href="../ota_protocol/#12-apply--bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
+<td><a href="../ota_protocol/#12-apply-bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
 <td>Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation</td>
 <td>No</td>
 <td>No</td>
@@ -4280,7 +4279,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.preset</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4292,7 +4291,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.server</code>; <code>get/set mqttN.port</code>; <code>get/set mqttN.username</code>; <code>get/set mqttN.password</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4304,7 +4303,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-slot-commands"><code>get/set mqttN.token</code>; <code>get/set mqttN.topic</code>; <code>get/set mqttN.audience</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4328,7 +4327,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.origin</code>; <code>get/set mqtt.iata</code>; <code>get mqtt.presets</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4352,7 +4351,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.status</code>; <code>get/set mqtt.packets</code>; <code>get/set mqtt.raw</code>; <code>get/set mqtt.interval</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4376,14 +4375,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-psram-only"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-psram-only"><code>get/set mqtt.neighbors.interval</code></a></td>
-<td>MQTT observer with PSRAM</td>
+<td><a href="../cli_commands/#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature"><code>get/set mqtt.neighbors</code></a>; <a href="../cli_commands/#view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature"><code>get/set mqtt.neighbors.interval</code></a></td>
+<td>MQTT observer with compiled neighbor support</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
-<td>PSRAM</td>
+<td>Feature</td>
 <td>No</td>
-<td>PSRAM</td>
+<td>Feature</td>
 <td>No</td>
 </tr>
 <tr>
@@ -4412,7 +4411,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#timezone-commands"><code>get/set timezone</code>; <code>get/set timezone.offset</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4424,7 +4423,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#migration-from-old-configuration"><code>get/set mqtt.analyzer.us</code>; <code>get/set mqtt.analyzer.eu</code></a></td>
 <td>Legacy MQTT aliases</td>
 <td>No</td>
 <td>No</td>
@@ -4436,7 +4435,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>MQTT</td>
-<td><a href="../MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
 <td>MQTT observer; <code>get</code> is local serial only</td>
 <td>No</td>
 <td>No</td>
@@ -4460,7 +4459,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>SNMP</td>
-<td><a href="../MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
 <td>MQTT target compiled with SNMP</td>
 <td>No</td>
 <td>No</td>
@@ -4472,7 +4471,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Alerts</td>
-<td><a href="../ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli"><code>get/set alert</code>; <code>get/set alert.psk</code>; <code>get/set alert.hashtag</code>; <code>get/set alert.region</code>; <code>get/set alert.wifi</code>; <code>get/set alert.mqtt</code>; <code>get/set alert.interval</code></a></td>
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
@@ -4484,7 +4483,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Alerts</td>
-<td><a href="../ALERTS.md#cli"><code>alert test [message]</code></a></td>
+<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/ALERTS.md#cli"><code>alert test [message]</code></a></td>
 <td>MQTT observer with configured alert channel</td>
 <td>No</td>
 <td>No</td>

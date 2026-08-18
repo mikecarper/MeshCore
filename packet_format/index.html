@@ -1252,7 +1252,8 @@
 <li>Bit 7 indicates the bit furthest to the left: <code>X0000000</code></li>
 </ul>
 <h2 id="version-1-packet-format">Version 1 Packet Format</h2>
-<p>This is the protocol level packet structure used in MeshCore firmware v1.12.0</p>
+<p>This is the current version-1 MeshCore wire packet structure. Older firmware may
+support only a subset of the path encodings and payload types described here.</p>
 <pre><code>[header][transport_codes(optional)][path_length][path][payload]
 </code></pre>
 <ul>
@@ -1278,7 +1279,7 @@
 <li><code>0x09</code>/<code>0b1001</code> - <code>PAYLOAD_TYPE_TRACE</code> - Trace a path, collecting SNR for each hop</li>
 <li><code>0x0A</code>/<code>0b1010</code> - <code>PAYLOAD_TYPE_MULTIPART</code> - Packet is part of a sequence of packets</li>
 <li><code>0x0B</code>/<code>0b1011</code> - <code>PAYLOAD_TYPE_CONTROL</code> - Control packet data (unencrypted)</li>
-<li><code>0x0C</code>/<code>0b1100</code> - reserved</li>
+<li><code>0x0C</code>/<code>0b1100</code> - <code>PAYLOAD_TYPE_OTA</code> - OTA-over-LoRa firmware distribution</li>
 <li><code>0x0D</code>/<code>0b1101</code> - reserved</li>
 <li><code>0x0E</code>/<code>0b1110</code> - reserved</li>
 <li><code>0x0F</code>/<code>0b1111</code> - <code>PAYLOAD_TYPE_RAW_CUSTOM</code> - Custom packet (raw bytes, custom encryption)</li>
@@ -1562,8 +1563,8 @@
 </tr>
 <tr>
 <td><code>0x0C</code></td>
-<td>reserved</td>
-<td>reserved</td>
+<td><code>PAYLOAD_TYPE_OTA</code></td>
+<td>OTA-over-LoRa firmware distribution</td>
 </tr>
 <tr>
 <td><code>0x0D</code></td>

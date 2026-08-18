@@ -1354,6 +1354,17 @@ with the <strong>Device power saving</strong> switch or from the USB terminal:</
 powersaving on
 powersaving off
 </code></pre>
+<p>On radios with RX duty-cycle support, WebConfig and the USB terminal also
+expose the persisted RXPS setting:</p>
+<pre><code class="language-text">get radio.rxps
+set radio.rxps off
+set radio.rxps on
+set radio.rxps level 8 preamble 16
+set radio.rxps 65625 60000
+</code></pre>
+<p>Fresh Cascade-profile Full Companion builds start with RXPS on at level 8 and
+a 16-symbol preamble. Changing it takes effect immediately and remains selected
+after reboot.</p>
 <p>Companion firmware defaults device power saving to on. Version 1.17.1.2 also
 turns it on once when upgrading an older Companion preference file, including
 one written by the short-lived default-off regression. After that one-time
@@ -1362,7 +1373,11 @@ migration, an explicit <code>powersaving off</code> selection remains persistent
 and enables the configured GPS duty cycle. Disabling it restores the normal CPU
 clock and keeps GPS awake. Full Companion transports remain available in both
 states; WiFi modem sleep stays enabled when BLE is present because coexistence
-requires it. The selected state is retained after reboot.</p>
+requires it. While a native-USB host is enumerated, the platform sleep attempt
+is held off so USB CDC remains responsive; detaching the host releases that
+guard. CPU, radio-modem, and GPS power-saving settings remain active, and USB
+power from a charger alone does not create a Companion session. The selected
+state is retained after reboot.</p>
 <p>On the LilyGo T-Beam 1W Full Companion, press the physical <code>BOOT</code> button once
 to turn the ESP32 WiFi radio and all WiFi services off or on. The screen confirms
 <code>WiFi: OFF</code> or <code>WiFi: ON</code>, and the selected state is retained after reboot. When
@@ -1432,9 +1447,18 @@ itself.</p>
 </tr>
 </tbody>
 </table>
-<p>Binary Companion replies are broadcast through the multi-interface manager,
-so use one active Companion application at a time. On nRF52, BLE remains
-available while USB is in terminal or mOTA mode.</p>
+<p>Delivery-required replies are returned only to the interface which supplied the
+latest command. A contact-list stream keeps that route locked from
+<code>CONTACTS_START</code> through <code>END_OF_CONTACTS</code>; commands waiting on another
+interface are read after the stream finishes. Best-effort asynchronous
+observations such as adverts remain broadcast so passive clients can refresh
+their views. Companion session state is device-wide, so use one active
+Companion application at a time. On nRF52, BLE remains available while USB is
+in terminal or mOTA mode.</p>
+<p>USB Binary output is queued as complete length-prefixed frames. Temporary CDC
+or UART backpressure pauses the contact stream; a frame may drain through a
+smaller hardware FIFO in ordered chunks, but its remainder is retained and no
+later frame can interleave with it or cause it to be discarded.</p>
 <p>When a BLE client requests pairing, a display-equipped build wakes the screen,
 switches to the first home page, and keeps the active six-digit PIN visible
 until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,

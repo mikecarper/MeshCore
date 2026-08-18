@@ -808,10 +808,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#packet-types" class="md-nav__link">
+  <a href="#response-types" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Packet Types
+        Response types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asynchronous-push-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asynchronous push types
       
     </span>
   </a>
@@ -2001,10 +2012,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#packet-types" class="md-nav__link">
+  <a href="#response-types" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Packet Types
+        Response types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asynchronous-push-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asynchronous push types
       
     </span>
   </a>
@@ -2209,14 +2231,23 @@
 
 <h1 id="companion-protocol">Companion Protocol</h1>
 <ul>
-<li><strong>Last Updated</strong>: 2026-03-08</li>
-<li><strong>Protocol Version</strong>: Companion Firmware v1.12.0+</li>
+<li><strong>Last Updated</strong>: 2026-08-18</li>
+<li><strong>Protocol Version</strong>: 13 (<code>FIRMWARE_VER_CODE</code>)</li>
 </ul>
 <blockquote>
-<p>NOTE: This document is still in development. Some information may be inaccurate.</p>
+<p>The command and response catalogs track
+<code>examples/companion_radio/MyMesh.cpp</code>. Applications should negotiate the
+protocol and validate lengths because older firmware exposes a subset.</p>
 </blockquote>
-<p>This document provides a comprehensive guide for communicating with MeshCore devices over Bluetooth Low Energy (BLE).</p>
-<p>It is platform-agnostic and can be used for Android, iOS, Python, JavaScript, or any other platform that supports BLE.</p>
+<p>This document is a practical guide to MeshCore's binary companion protocol.
+The same protocol frames can be carried by the enabled BLE, USB serial, Wi-Fi,
+or Ethernet companion interface; connection details differ by build.</p>
+<p>On builds exposing more than one transport, delivery-required replies follow
+the interface which supplied the command. The multi-frame contact-list response
+holds that route until <code>END_OF_CONTACTS</code>; best-effort asynchronous observations
+may still be broadcast to enabled clients. Treat the device as one Companion
+session rather than as independent per-transport sessions.</p>
+<p>The examples focus on BLE, but the packet formats are transport-independent.</p>
 <h2 id="official-libraries">Official Libraries</h2>
 <p>Please see the following repos for existing MeshCore Companion Protocol libraries.</p>
 <ul>
@@ -2378,6 +2409,241 @@
 <p>The first byte indicates the packet type (see <a href="#response-parsing">Response Parsing</a>).</p>
 <hr />
 <h2 id="commands">Commands</h2>
+<p>The first byte selects the command. This is the current protocol-v13 command
+catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</code> is unused.</p>
+<table>
+<thead>
+<tr>
+<th>Byte</th>
+<th>Firmware name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x01</code></td>
+<td><code>CMD_APP_START</code></td>
+<td>Start an app session and request self information.</td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>CMD_SEND_TXT_MSG</code></td>
+<td>Send text to a contact.</td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td><code>CMD_SEND_CHANNEL_TXT_MSG</code></td>
+<td>Send channel text.</td>
+</tr>
+<tr>
+<td><code>0x04</code></td>
+<td><code>CMD_GET_CONTACTS</code></td>
+<td>Enumerate contacts, optionally modified since a timestamp.</td>
+</tr>
+<tr>
+<td><code>0x05</code> / <code>0x06</code></td>
+<td><code>CMD_GET_DEVICE_TIME</code> / <code>CMD_SET_DEVICE_TIME</code></td>
+<td>Read or set the device clock.</td>
+</tr>
+<tr>
+<td><code>0x07</code> / <code>0x08</code></td>
+<td><code>CMD_SEND_SELF_ADVERT</code> / <code>CMD_SET_ADVERT_NAME</code></td>
+<td>Advertise self or change the advertised name.</td>
+</tr>
+<tr>
+<td><code>0x09</code></td>
+<td><code>CMD_ADD_UPDATE_CONTACT</code></td>
+<td>Add or update a contact.</td>
+</tr>
+<tr>
+<td><code>0x0A</code></td>
+<td><code>CMD_SYNC_NEXT_MESSAGE</code></td>
+<td>Dequeue the next pending message.</td>
+</tr>
+<tr>
+<td><code>0x0B</code> / <code>0x0C</code></td>
+<td><code>CMD_SET_RADIO_PARAMS</code> / <code>CMD_SET_RADIO_TX_POWER</code></td>
+<td>Set radio parameters or transmit power.</td>
+</tr>
+<tr>
+<td><code>0x0D</code></td>
+<td><code>CMD_RESET_PATH</code></td>
+<td>Reset a contact's learned path.</td>
+</tr>
+<tr>
+<td><code>0x0E</code></td>
+<td><code>CMD_SET_ADVERT_LATLON</code></td>
+<td>Set advertised coordinates.</td>
+</tr>
+<tr>
+<td><code>0x0F</code></td>
+<td><code>CMD_REMOVE_CONTACT</code></td>
+<td>Remove a contact.</td>
+</tr>
+<tr>
+<td><code>0x10</code> / <code>0x11</code> / <code>0x12</code></td>
+<td><code>CMD_SHARE_CONTACT</code> / <code>CMD_EXPORT_CONTACT</code> / <code>CMD_IMPORT_CONTACT</code></td>
+<td>Share, export, or import contact data.</td>
+</tr>
+<tr>
+<td><code>0x13</code></td>
+<td><code>CMD_REBOOT</code></td>
+<td>Reboot after the required confirmation body.</td>
+</tr>
+<tr>
+<td><code>0x14</code></td>
+<td><code>CMD_GET_BATT_AND_STORAGE</code></td>
+<td>Read battery and storage usage.</td>
+</tr>
+<tr>
+<td><code>0x15</code></td>
+<td><code>CMD_SET_TUNING_PARAMS</code></td>
+<td>Set tuning parameters.</td>
+</tr>
+<tr>
+<td><code>0x16</code></td>
+<td><code>CMD_DEVICE_QUERY</code></td>
+<td>Negotiate protocol support and read device information.</td>
+</tr>
+<tr>
+<td><code>0x17</code> / <code>0x18</code></td>
+<td><code>CMD_EXPORT_PRIVATE_KEY</code> / <code>CMD_IMPORT_PRIVATE_KEY</code></td>
+<td>Export or import identity key material when enabled.</td>
+</tr>
+<tr>
+<td><code>0x19</code></td>
+<td><code>CMD_SEND_RAW_DATA</code></td>
+<td>Send an application raw-data packet.</td>
+</tr>
+<tr>
+<td><code>0x1A</code>-<code>0x1D</code></td>
+<td><code>CMD_SEND_LOGIN</code> through <code>CMD_LOGOUT</code></td>
+<td>Manage a server connection.</td>
+</tr>
+<tr>
+<td><code>0x1E</code></td>
+<td><code>CMD_GET_CONTACT_BY_KEY</code></td>
+<td>Look up a contact by public-key prefix.</td>
+</tr>
+<tr>
+<td><code>0x1F</code> / <code>0x20</code></td>
+<td><code>CMD_GET_CHANNEL</code> / <code>CMD_SET_CHANNEL</code></td>
+<td>Read or write a channel slot.</td>
+</tr>
+<tr>
+<td><code>0x21</code>-<code>0x23</code></td>
+<td><code>CMD_SIGN_START</code> through <code>CMD_SIGN_FINISH</code></td>
+<td>Stream data for identity signing.</td>
+</tr>
+<tr>
+<td><code>0x24</code></td>
+<td><code>CMD_SEND_TRACE_PATH</code></td>
+<td>Trace a direct route.</td>
+</tr>
+<tr>
+<td><code>0x25</code></td>
+<td><code>CMD_SET_DEVICE_PIN</code></td>
+<td>Set or clear the device PIN.</td>
+</tr>
+<tr>
+<td><code>0x26</code></td>
+<td><code>CMD_SET_OTHER_PARAMS</code></td>
+<td>Set telemetry, location, ACK, and related preferences.</td>
+</tr>
+<tr>
+<td><code>0x27</code></td>
+<td><code>CMD_SEND_TELEMETRY_REQ</code></td>
+<td>Send the legacy telemetry request.</td>
+</tr>
+<tr>
+<td><code>0x28</code> / <code>0x29</code></td>
+<td><code>CMD_GET_CUSTOM_VARS</code> / <code>CMD_SET_CUSTOM_VAR</code></td>
+<td>Read or set custom variables.</td>
+</tr>
+<tr>
+<td><code>0x2A</code></td>
+<td><code>CMD_GET_ADVERT_PATH</code></td>
+<td>Read a cached advertisement path.</td>
+</tr>
+<tr>
+<td><code>0x2B</code></td>
+<td><code>CMD_GET_TUNING_PARAMS</code></td>
+<td>Read tuning parameters.</td>
+</tr>
+<tr>
+<td><code>0x32</code></td>
+<td><code>CMD_SEND_BINARY_REQ</code></td>
+<td>Send an application binary request.</td>
+</tr>
+<tr>
+<td><code>0x33</code></td>
+<td><code>CMD_FACTORY_RESET</code></td>
+<td>Factory-reset after the required confirmation body.</td>
+</tr>
+<tr>
+<td><code>0x34</code></td>
+<td><code>CMD_SEND_PATH_DISCOVERY_REQ</code></td>
+<td>Request path discovery.</td>
+</tr>
+<tr>
+<td><code>0x36</code></td>
+<td><code>CMD_SET_FLOOD_SCOPE_KEY</code></td>
+<td>Select scoped or unscoped flood behavior.</td>
+</tr>
+<tr>
+<td><code>0x37</code></td>
+<td><code>CMD_SEND_CONTROL_DATA</code></td>
+<td>Send zero-hop control data.</td>
+</tr>
+<tr>
+<td><code>0x38</code></td>
+<td><code>CMD_GET_STATS</code></td>
+<td>Read core, radio, or packet statistics.</td>
+</tr>
+<tr>
+<td><code>0x39</code></td>
+<td><code>CMD_SEND_ANON_REQ</code></td>
+<td>Send an anonymous request.</td>
+</tr>
+<tr>
+<td><code>0x3A</code> / <code>0x3B</code></td>
+<td><code>CMD_SET_AUTOADD_CONFIG</code> / <code>CMD_GET_AUTOADD_CONFIG</code></td>
+<td>Write or read automatic-contact policy.</td>
+</tr>
+<tr>
+<td><code>0x3C</code></td>
+<td><code>CMD_GET_ALLOWED_REPEAT_FREQ</code></td>
+<td>Read allowed client-repeat frequency ranges.</td>
+</tr>
+<tr>
+<td><code>0x3D</code></td>
+<td><code>CMD_SET_PATH_HASH_MODE</code></td>
+<td>Set path-hash width mode.</td>
+</tr>
+<tr>
+<td><code>0x3E</code></td>
+<td><code>CMD_SEND_CHANNEL_DATA</code></td>
+<td>Send a channel binary datagram.</td>
+</tr>
+<tr>
+<td><code>0x3F</code> / <code>0x40</code></td>
+<td><code>CMD_SET_DEFAULT_FLOOD_SCOPE</code> / <code>CMD_GET_DEFAULT_FLOOD_SCOPE</code></td>
+<td>Write or read the default flood scope.</td>
+</tr>
+<tr>
+<td><code>0x41</code></td>
+<td><code>CMD_SEND_RAW_PACKET</code></td>
+<td>Queue a fully encoded raw mesh packet.</td>
+</tr>
+<tr>
+<td><code>0x42</code> / <code>0x43</code></td>
+<td><code>CMD_GET_RADIO_FEM_RXGAIN</code> / <code>CMD_SET_RADIO_FEM_RXGAIN</code></td>
+<td>Read or set FEM receive gain.</td>
+</tr>
+</tbody>
+</table>
+<p>The sections below detail the most common frames. Refer to the source named
+above for command bodies that are not expanded here.</p>
 <h3 id="1-app-start">1. App Start</h3>
 <p><strong>Purpose</strong>: Initialize communication with the device. Must be sent first after connection.</p>
 <p><strong>Command Format</strong>:</p>
@@ -2394,10 +2660,10 @@ Bytes 8+: Application name (UTF-8, optional)
 <p><strong>Purpose</strong>: Query device information.</p>
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0: 0x16
-Byte 1: 0x03
+Byte 1: Highest companion protocol version understood by the app
 </code></pre>
 <p><strong>Example</strong> (hex):</p>
-<pre><code>16 03
+<pre><code>16 0D
 </code></pre>
 <p><strong>Response</strong>: <code>PACKET_DEVICE_INFO</code> (0x0D) with device information</p>
 <hr />
@@ -2405,7 +2671,7 @@ Byte 1: 0x03
 <p><strong>Purpose</strong>: Retrieve information about a specific channel.</p>
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0: 0x1F
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 </code></pre>
 <p><strong>Example</strong> (get channel 1):</p>
 <pre><code>1F 01
@@ -2416,22 +2682,25 @@ Byte 1: Channel Index (0-7)
 <p><strong>Purpose</strong>: Create or update a channel on the device.</p>
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0: 0x20
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 Bytes 2-33: Channel Name (32 bytes, UTF-8, null-padded)
 Bytes 34-49: Secret (16 bytes)
 </code></pre>
 <p><strong>Total Length</strong>: 50 bytes</p>
-<p><strong>Channel Index</strong>:
-- Index 0: Reserved for public channels (no secret)
-- Indices 1-7: Available for private channels</p>
+<p><strong>Channel index</strong>:
+- Slot count is build-specific. Read <code>max_channels</code> from byte 3 of
+  <code>PACKET_DEVICE_INFO</code>; current profiles commonly expose 1, 8, or 40 slots.
+- No slot number has an intrinsic public/private meaning.</p>
 <p><strong>Channel Name</strong>:
 - UTF-8 encoded
 - Maximum 32 bytes
 - Padded with null bytes (0x00) if shorter</p>
 <p><strong>Secret Field</strong> (16 bytes):
-- For <strong>private channels</strong>: 16-byte secret
-- For <strong>public channels</strong>: All zeros (0x00)</p>
-<p><strong>Example</strong> (create channel "YourChannelName" at index 1 with secret):</p>
+- Supply the exact 16-byte channel key. A private channel normally uses a
+  cryptographically random key; known public and hashtag channels use their
+  defined or derived key.
+- An all-zero key is not the public-channel key.</p>
+<p><strong>Example</strong> (create channel "SMS" at index 1 with secret):</p>
 <pre><code>20 01 53 4D 53 00 00 ... (name padded to 32 bytes)
     [16 bytes of secret]
 </code></pre>
@@ -2443,7 +2712,7 @@ Bytes 34-49: Secret (16 bytes)
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0: 0x03
 Byte 1: 0x00
-Byte 2: Channel Index (0-7)
+Byte 2: Channel index (0 through max_channels - 1)
 Bytes 3-6: Timestamp (32-bit little-endian Unix timestamp, seconds)
 Bytes 7+: Message Text (UTF-8, variable length)
 </code></pre>
@@ -2457,21 +2726,26 @@ Bytes 7+: Message Text (UTF-8, variable length)
 <p><strong>Purpose</strong>: Send a binary datagram to a channel. Unlike channel text messages, datagrams carry no built-in sender identity and no timestamp - applications needing either must encode them inside the binary payload.</p>
 <p><strong>Command Format</strong>:</p>
 <pre><code>Byte 0:                         0x3E
-Byte 1:                         Channel Index (0-7)
-Byte 2:                         Path Length (0xFF = flood, otherwise actual path length)
-Bytes 3 .. 2+path_len:          Path (omitted when path_len == 0xFF)
+Byte 1:                         Channel index (0 through max_channels - 1)
+Byte 2:                         Encoded path descriptor (0xFF = flood)
+Bytes 3+:                       Encoded path bytes (omitted for 0xFF)
 Next 2 bytes (little-endian):   Data Type (`data_type`, uint16)
 Remaining bytes:                Binary payload (variable length)
 </code></pre>
+<p>For a direct send, the descriptor's low six bits are the hash count and its
+high two bits are the hash size minus one. Current mesh packets accept one-,
+two-, or three-byte hashes; the four-byte code is reserved. The following path
+therefore occupies <code>hash_count * hash_size</code> bytes; the descriptor itself is not
+a raw byte count.</p>
 <p><strong>Example</strong> (flood, <code>DATA_TYPE_DEV</code>, payload <code>A1 B2 C3</code>, channel 1):</p>
 <pre><code>3E 01 FF FF FF A1 B2 C3
 </code></pre>
 <p><strong>Data Type / Transport Mapping</strong>:
 - <code>0x0000</code> (<code>DATA_TYPE_RESERVED</code>) is invalid and rejected with <code>PACKET_ERROR</code>.
 - <code>0xFFFF</code> (<code>DATA_TYPE_DEV</code>) is the developer namespace for experimenting and developing apps.
-- Values <code>0x0001</code>-<code>0xFFFE</code> are available for registered application/community namespaces. See the <a href="#registered-data_type-values">Registered data_type values</a> table below.</p>
+- Registered application/community namespaces occupy <code>0x0100</code>-<code>0xFEFF</code>; the remaining nonzero ranges are reserved for internal or development use. See the <a href="#registered-data_type-values">Registered data_type values</a> table below.</p>
 <p><strong>Limits</strong>:
-- Maximum payload length is <code>MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 163</code> bytes.
+- Maximum payload length is <code>MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 167</code> bytes.
 - Larger payloads are rejected with <code>PACKET_ERROR</code> (<code>ERR_CODE_ILLEGAL_ARG</code>).</p>
 <p><strong>Response</strong>: <code>PACKET_OK</code> (0x00) on success, or <code>PACKET_ERROR</code> (0x01) with one of:
 - <code>ERR_CODE_NOT_FOUND</code> (2) - unknown <code>channel_idx</code>
@@ -2524,7 +2798,7 @@ Remaining bytes:                Binary payload (variable length)
 <pre><code>Byte 0:                 0x1B (packet type)
 Byte 1:                 SNR (signed int8, scaled x4 - divide by 4.0 to recover dB)
 Bytes 2-3:              Reserved (clients MUST ignore)
-Byte 4:                 Channel Index (0-7)
+Byte 4:                 Channel index (0 through max_channels - 1)
 Byte 5:                 Path Length (actual path length when flooded, otherwise 0xFF for direct)
 Bytes 6-7:              Data Type (uint16 little-endian)
 Byte 8:                 Data Length
@@ -2631,7 +2905,8 @@ Bytes 9 .. 8+data_len:  Payload
 <h3 id="channel-lifecycle">Channel Lifecycle</h3>
 <ol>
 <li><strong>Set Channel</strong>:<ul>
-<li>Fetch all channel slots, and find one with empty name and all-zero secret</li>
+<li>Read <code>max_channels</code> from device info, fetch those slots, and choose an
+  unused slot (normally an empty name and zeroed key)</li>
 <li>Generate or provide a 16-byte secret</li>
 <li>Send <code>CMD_SET_CHANNEL</code> with name and a 16-byte secret</li>
 </ul>
@@ -2729,7 +3004,7 @@ Bytes 20+: Message Text (UTF-8)
 <h3 id="channel-message-format">Channel Message Format</h3>
 <p><strong>Standard Format</strong> (<code>PACKET_CHANNEL_MSG_RECV</code>, 0x08):</p>
 <pre><code>Byte 0: 0x08 (packet type)
-Byte 1: Channel Index (0-7)
+Byte 1: Channel index (0 through max_channels - 1)
 Byte 2: Path Length
 Byte 3: Text Type
 Bytes 4-7: Timestamp (32-bit little-endian)
@@ -2739,7 +3014,7 @@ Bytes 8+: Message Text (UTF-8)
 <pre><code>Byte 0: 0x11 (packet type)
 Byte 1: SNR (signed byte, multiplied by 4)
 Bytes 2-3: Reserved
-Byte 4: Channel Index (0-7)
+Byte 4: Channel index (0 through max_channels - 1)
 Byte 5: Path Length
 Byte 6: Text Type
 Bytes 7-10: Timestamp (32-bit little-endian)
@@ -2772,8 +3047,11 @@ Bytes 11+: Message Text (UTF-8)
 <h3 id="sending-messages">Sending Messages</h3>
 <p>Use the <code>SEND_CHANNEL_MESSAGE</code> command (see <a href="#commands">Commands</a>).</p>
 <p><strong>Important</strong>: 
-- Messages are limited to 133 characters per MeshCore specification
-- Long messages should be split into chunks
+- The shared text envelope permits up to 160 UTF-8 bytes. For channel text,
+  firmware prepends <code>&lt;sender name&gt;:</code> inside that envelope, so the available
+  message body is <code>160 - prefix_bytes</code> and varies with the configured name.
+- Count encoded UTF-8 bytes, not Unicode characters. Split a longer message at
+  valid UTF-8 boundaries.
 - Include a chunk indicator (e.g., "[1/3] message text")</p>
 <hr />
 <h2 id="response-parsing">Response Parsing</h2>
@@ -2784,120 +3062,237 @@ Bytes 11+: Message Text (UTF-8)
 <li><code>PUSH_CODE_*</code> - asynchronous notifications not tied to a specific command (e.g. <code>PUSH_CODE_MSG_WAITING</code> = <code>PACKET_MESSAGES_WAITING</code> = 0x83).</li>
 </ul>
 <p>Byte values are authoritative; names are aliases. When reading firmware source, <code>RESP_CODE_X</code> / <code>PUSH_CODE_X</code> correspond to this doc's <code>PACKET_X</code> of the same numeric value.</p>
-<h3 id="packet-types">Packet Types</h3>
+<h3 id="response-types">Response types</h3>
 <table>
 <thead>
 <tr>
 <th>Value</th>
-<th>Name</th>
+<th>Firmware name</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>0x00</td>
-<td>PACKET_OK</td>
-<td>Command succeeded</td>
+<td><code>0x00</code></td>
+<td><code>RESP_CODE_OK</code></td>
+<td>Command succeeded.</td>
 </tr>
 <tr>
-<td>0x01</td>
-<td>PACKET_ERROR</td>
-<td>Command failed</td>
+<td><code>0x01</code></td>
+<td><code>RESP_CODE_ERR</code></td>
+<td>Command failed; byte 1 is the error code.</td>
 </tr>
 <tr>
-<td>0x02</td>
-<td>PACKET_CONTACT_START</td>
-<td>Start of contact list</td>
+<td><code>0x02</code></td>
+<td><code>RESP_CODE_CONTACTS_START</code></td>
+<td>Contact enumeration started.</td>
 </tr>
 <tr>
-<td>0x03</td>
-<td>PACKET_CONTACT</td>
-<td>Contact information</td>
+<td><code>0x03</code></td>
+<td><code>RESP_CODE_CONTACT</code></td>
+<td>One contact record.</td>
 </tr>
 <tr>
-<td>0x04</td>
-<td>PACKET_CONTACT_END</td>
-<td>End of contact list</td>
+<td><code>0x04</code></td>
+<td><code>RESP_CODE_END_OF_CONTACTS</code></td>
+<td>Contact enumeration ended.</td>
 </tr>
 <tr>
-<td>0x05</td>
-<td>PACKET_SELF_INFO</td>
-<td>Device self-information</td>
+<td><code>0x05</code></td>
+<td><code>RESP_CODE_SELF_INFO</code></td>
+<td>Device self-information.</td>
 </tr>
 <tr>
-<td>0x06</td>
-<td>PACKET_MSG_SENT</td>
-<td>Message sent confirmation</td>
+<td><code>0x06</code></td>
+<td><code>RESP_CODE_SENT</code></td>
+<td>Send accepted, with route/tag/timeout data.</td>
 </tr>
 <tr>
-<td>0x07</td>
-<td>PACKET_CONTACT_MSG_RECV</td>
-<td>Contact message (standard)</td>
+<td><code>0x07</code> / <code>0x08</code></td>
+<td><code>RESP_CODE_CONTACT_MSG_RECV</code> / <code>RESP_CODE_CHANNEL_MSG_RECV</code></td>
+<td>Queued legacy-format message.</td>
 </tr>
 <tr>
-<td>0x08</td>
-<td>PACKET_CHANNEL_MSG_RECV</td>
-<td>Channel message (standard)</td>
+<td><code>0x09</code></td>
+<td><code>RESP_CODE_CURR_TIME</code></td>
+<td>Current device time.</td>
 </tr>
 <tr>
-<td>0x09</td>
-<td>PACKET_CURRENT_TIME</td>
-<td>Current time response</td>
+<td><code>0x0A</code></td>
+<td><code>RESP_CODE_NO_MORE_MESSAGES</code></td>
+<td>Offline queue is empty.</td>
 </tr>
 <tr>
-<td>0x0A</td>
-<td>PACKET_NO_MORE_MSGS</td>
-<td>No more messages available</td>
+<td><code>0x0B</code></td>
+<td><code>RESP_CODE_EXPORT_CONTACT</code></td>
+<td>Exported contact bytes.</td>
 </tr>
 <tr>
-<td>0x0C</td>
-<td>PACKET_BATTERY</td>
-<td>Battery level</td>
+<td><code>0x0C</code></td>
+<td><code>RESP_CODE_BATT_AND_STORAGE</code></td>
+<td>Battery and storage values.</td>
 </tr>
 <tr>
-<td>0x0D</td>
-<td>PACKET_DEVICE_INFO</td>
-<td>Device information</td>
+<td><code>0x0D</code></td>
+<td><code>RESP_CODE_DEVICE_INFO</code></td>
+<td>Protocol and build information.</td>
 </tr>
 <tr>
-<td>0x10</td>
-<td>PACKET_CONTACT_MSG_RECV_V3</td>
-<td>Contact message (V3 with SNR)</td>
+<td><code>0x0E</code></td>
+<td><code>RESP_CODE_PRIVATE_KEY</code></td>
+<td>Exported identity key, when enabled.</td>
 </tr>
 <tr>
-<td>0x11</td>
-<td>PACKET_CHANNEL_MSG_RECV_V3</td>
-<td>Channel message (V3 with SNR)</td>
+<td><code>0x0F</code></td>
+<td><code>RESP_CODE_DISABLED</code></td>
+<td>Requested sensitive feature is disabled.</td>
 </tr>
 <tr>
-<td>0x12</td>
-<td>PACKET_CHANNEL_INFO</td>
-<td>Channel information</td>
+<td><code>0x10</code> / <code>0x11</code></td>
+<td><code>RESP_CODE_CONTACT_MSG_RECV_V3</code> / <code>RESP_CODE_CHANNEL_MSG_RECV_V3</code></td>
+<td>Queued message with SNR fields.</td>
 </tr>
 <tr>
-<td>0x1B</td>
-<td>PACKET_CHANNEL_DATA_RECV</td>
-<td>Channel data datagram</td>
+<td><code>0x12</code></td>
+<td><code>RESP_CODE_CHANNEL_INFO</code></td>
+<td>Channel slot information.</td>
 </tr>
 <tr>
-<td>0x80</td>
-<td>PACKET_ADVERTISEMENT</td>
-<td>Advertisement packet</td>
+<td><code>0x13</code> / <code>0x14</code></td>
+<td><code>RESP_CODE_SIGN_START</code> / <code>RESP_CODE_SIGNATURE</code></td>
+<td>Signing capacity or completed signature.</td>
 </tr>
 <tr>
-<td>0x82</td>
-<td>PACKET_ACK</td>
-<td>Acknowledgment</td>
+<td><code>0x15</code></td>
+<td><code>RESP_CODE_CUSTOM_VARS</code></td>
+<td>Custom-variable data.</td>
 </tr>
 <tr>
-<td>0x83</td>
-<td>PACKET_MESSAGES_WAITING</td>
-<td>Messages waiting notification</td>
+<td><code>0x16</code></td>
+<td><code>RESP_CODE_ADVERT_PATH</code></td>
+<td>Cached advertisement path.</td>
 </tr>
 <tr>
-<td>0x88</td>
-<td>PACKET_LOG_DATA</td>
-<td>RF log data (can be ignored)</td>
+<td><code>0x17</code></td>
+<td><code>RESP_CODE_TUNING_PARAMS</code></td>
+<td>Tuning parameters.</td>
+</tr>
+<tr>
+<td><code>0x18</code></td>
+<td><code>RESP_CODE_STATS</code></td>
+<td>Requested statistics subtype.</td>
+</tr>
+<tr>
+<td><code>0x19</code></td>
+<td><code>RESP_CODE_AUTOADD_CONFIG</code></td>
+<td>Automatic-contact policy.</td>
+</tr>
+<tr>
+<td><code>0x1A</code></td>
+<td><code>RESP_ALLOWED_REPEAT_FREQ</code></td>
+<td>Allowed repeat-frequency ranges.</td>
+</tr>
+<tr>
+<td><code>0x1B</code></td>
+<td><code>RESP_CODE_CHANNEL_DATA_RECV</code></td>
+<td>Queued channel datagram.</td>
+</tr>
+<tr>
+<td><code>0x1C</code></td>
+<td><code>RESP_CODE_DEFAULT_FLOOD_SCOPE</code></td>
+<td>Default flood-scope data.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="asynchronous-push-types">Asynchronous push types</h3>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Firmware name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x80</code></td>
+<td><code>PUSH_CODE_ADVERT</code></td>
+<td>Advertisement received.</td>
+</tr>
+<tr>
+<td><code>0x81</code></td>
+<td><code>PUSH_CODE_PATH_UPDATED</code></td>
+<td>A contact path changed.</td>
+</tr>
+<tr>
+<td><code>0x82</code></td>
+<td><code>PUSH_CODE_SEND_CONFIRMED</code></td>
+<td>A sent message was acknowledged.</td>
+</tr>
+<tr>
+<td><code>0x83</code></td>
+<td><code>PUSH_CODE_MSG_WAITING</code></td>
+<td>One or more offline frames are waiting.</td>
+</tr>
+<tr>
+<td><code>0x84</code></td>
+<td><code>PUSH_CODE_RAW_DATA</code></td>
+<td>Raw application data received.</td>
+</tr>
+<tr>
+<td><code>0x85</code> / <code>0x86</code></td>
+<td><code>PUSH_CODE_LOGIN_SUCCESS</code> / <code>PUSH_CODE_LOGIN_FAIL</code></td>
+<td>Server login result.</td>
+</tr>
+<tr>
+<td><code>0x87</code></td>
+<td><code>PUSH_CODE_STATUS_RESPONSE</code></td>
+<td>Server status response.</td>
+</tr>
+<tr>
+<td><code>0x88</code></td>
+<td><code>PUSH_CODE_LOG_RX_DATA</code></td>
+<td>Radio receive log data.</td>
+</tr>
+<tr>
+<td><code>0x89</code></td>
+<td><code>PUSH_CODE_TRACE_DATA</code></td>
+<td>Completed trace data.</td>
+</tr>
+<tr>
+<td><code>0x8A</code></td>
+<td><code>PUSH_CODE_NEW_ADVERT</code></td>
+<td>Newly stored contact advertisement.</td>
+</tr>
+<tr>
+<td><code>0x8B</code></td>
+<td><code>PUSH_CODE_TELEMETRY_RESPONSE</code></td>
+<td>Telemetry response.</td>
+</tr>
+<tr>
+<td><code>0x8C</code></td>
+<td><code>PUSH_CODE_BINARY_RESPONSE</code></td>
+<td>Binary request response.</td>
+</tr>
+<tr>
+<td><code>0x8D</code></td>
+<td><code>PUSH_CODE_PATH_DISCOVERY_RESPONSE</code></td>
+<td>Path-discovery response.</td>
+</tr>
+<tr>
+<td><code>0x8E</code></td>
+<td><code>PUSH_CODE_CONTROL_DATA</code></td>
+<td>Control/discovery data.</td>
+</tr>
+<tr>
+<td><code>0x8F</code></td>
+<td><code>PUSH_CODE_CONTACT_DELETED</code></td>
+<td>Oldest contact was deleted while making room.</td>
+</tr>
+<tr>
+<td><code>0x90</code></td>
+<td><code>PUSH_CODE_CONTACTS_FULL</code></td>
+<td>Contact storage is full.</td>
 </tr>
 </tbody>
 </table>
@@ -2947,6 +3342,11 @@ Byte 81: Path hash mode (firmware v10+)
         info['fw_build'] = data[8:20].decode('utf-8').rstrip('\x00').strip()
         info['model'] = data[20:60].decode('utf-8').rstrip('\x00').strip()
         info['ver'] = data[60:80].decode('utf-8').rstrip('\x00').strip()
+
+    if fw_ver &gt;= 9 and len(data) &gt;= 81:
+        info['client_repeat'] = data[80] != 0
+    if fw_ver &gt;= 10 and len(data) &gt;= 82:
+        info['path_hash_mode'] = data[81]
 
     return info
 </code></pre>
@@ -3037,9 +3437,10 @@ Byte 1: Route Flag (0 = direct, 1 = flood)
 Bytes 2-5: Tag / Expected ACK (4 bytes, little-endian)
 Bytes 6-9: Suggested Timeout (32-bit little-endian, milliseconds)
 </code></pre>
-<p><strong>PACKET_ACK</strong> (0x82):</p>
+<p><strong>PACKET_SEND_CONFIRMED</strong> (0x82):</p>
 <pre><code>Byte 0: 0x82
-Bytes 1-6: ACK Code (6 bytes, hex)
+Bytes 1-4: ACK code (32-bit little-endian)
+Bytes 5-8: Round-trip time (32-bit little-endian, milliseconds)
 </code></pre>
 <h3 id="error-codes">Error Codes</h3>
 <p><code>PACKET_ERROR</code> (0x01) carries a single-byte error code in byte 1. Values match the <code>ERR_CODE_*</code> constants defined in <code>examples/companion_radio/MyMesh.cpp</code>:</p>
@@ -3097,7 +3498,8 @@ Bytes 1-6: ACK Code (6 bytes, hex)
 <li><strong>Command-Response Pattern</strong>:</li>
 <li>Send command via RX characteristic</li>
 <li>Wait for response via TX characteristic (notification)</li>
-<li>Match response to command using sequence numbers or command type</li>
+<li>Match the response by the expected response type; frames do not carry a
+     general command sequence number</li>
 <li>Handle timeout (typically 5 seconds)</li>
 <li>
 <p>Use command queue to prevent concurrent commands</p>
@@ -3171,7 +3573,7 @@ secret_hex = secret_16_bytes.hex()
 
 # 2. Build SET_CHANNEL command
 channel_name = &quot;YourChannelName&quot;
-channel_index = 1  # Use 1-7 for private channels
+channel_index = choose_unused_slot(max_channels)
 command = build_set_channel(channel_index, channel_name, secret_16_bytes)
 
 # 3. Send command

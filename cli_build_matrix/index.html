@@ -1311,8 +1311,10 @@ controls, stored-log management, and external-sensor administration. Use the
 matching FULL ESP32 build when those commands are required.</p>
 <p>Some observer commands have their own hardware limit:</p>
 <ul>
-<li>MQTT neighbor-table publishing requires PSRAM. <code>discover.scopes</code> also
-  requires PSRAM and the FULL MQTT parser; the portable MQTT profile omits it.</li>
+<li>MQTT neighbor-table publishing and <code>discover.scopes</code> require the compiled
+  <code>WITH_MQTT_NEIGHBORS</code> feature. PSRAM boards enable it automatically; selected
+  non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>. The commands
+  can therefore be present in either portable or FULL MQTT profiles.</li>
 <li><code>discover.neighbors</code> does <strong>not</strong> require MQTT or PSRAM.</li>
 <li>full NTP connectivity diagnostics are omitted from the portable profile.</li>
 </ul>
@@ -1339,8 +1341,8 @@ does not exist on that target:</p>
   room-server builds support the corresponding WiFi setters and status
   commands.</li>
 <li>MQTT commands require an MQTT observer target.</li>
-<li><code>discover.scopes</code> requires a FULL MQTT build, MQTT neighbor support, and
-  PSRAM.</li>
+<li><code>discover.scopes</code> requires an MQTT observer with compiled neighbor support;
+  it does not independently require PSRAM or the FULL parser.</li>
 <li>GPS and external-sensor commands require their drivers and pins.</li>
 <li>Ethernet and bridge commands require the corresponding transport.</li>
 <li>LoRa OTA commands require an artifact with OTA enabled.</li>

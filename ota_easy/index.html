@@ -1614,9 +1614,11 @@ Follow the release's board-specific installation and erase instructions. If it d
 destination's exact board, this LoRa install path is not yet available for that board; never substitute a
 similar board's bootloader.</p>
 <p>Before preparing or downloading a LoRa update, run this on the destination:</p>
-<pre><code class="language-text">ota self
+<pre><code class="language-text">get bootloader.ver
+ota self
 </code></pre>
-<p>Continue only if the reply includes:</p>
+<p>The first command identifies the installed nRF52 bootloader. Continue only if
+the <code>ota self</code> reply includes:</p>
 <pre><code class="language-text">bootloader: apply OK
 </code></pre>
 <p>The reply also contains the running firmware's <code>base_hash</code>. Save it for the package check below. A stock,
@@ -1686,11 +1688,15 @@ window is active. KISS modem serial ports cannot be used here.</p>
 <pre><code class="language-text">ota status
 ota ls
 </code></pre>
-<p>Discovery is asynchronous. Wait a few seconds and run <code>ota ls</code> again if the list is initially empty. Select
-the entry marked <code>[yours]</code>: it should say <code>full</code> for the ESP32 path or <code>delta</code> for the nRF52 path. If it is
-entry 1, run:</p>
-<pre><code class="language-text">ota pull 1 flash
+<p>Discovery is asynchronous. <code>ota ls</code> says <code>refreshing</code>; wait a few seconds and run it again even if it first
+shows an older row. Select <code>[same target]</code>: it should say <code>full</code> for the ESP32 path or <code>delta</code> for the nRF52
+path. Do not select <code>[unsupported]</code> (for example, a source's self-served full image on a single-slot nRF52).
+Use the row's stable eight-hex manifest ID rather than its changing list position:</p>
+<pre><code class="language-text">ota pull 838B8169 flash
 </code></pre>
+<p>If an internal-flash nRF52 reports <code>no EndF</code>, only a row marked <code>[rescue]</code> is eligible. Current rescue-capable
+firmware requires <code>ota pull &lt;mid8&gt; flash rescue</code>, followed after completion by
+<code>ota rescue install &lt;base_hash16&gt;</code>. Older running firmware without those commands must be recovered over USB.</p>
 <p>Monitor the transfer:</p>
 <pre><code class="language-text">ota status
 </code></pre>
@@ -1721,9 +1727,10 @@ application can be restored.</p>
 <li><strong>The CLI says LoRa OTA is not included:</strong> that firmware does not contain the LoRa OTA feature.
   If it is the source or destination, install a supported <code>-ota-</code> build over WiFi or USB first. An intermediate
   repeater does not need the OTA CLI and can relay opaquely while its matching <code>tempradio</code> window is active.</li>
-<li><strong>The update is marked <code>[other hw]</code>:</strong> it is for a different board or firmware role. Do not install it.</li>
-<li><strong>An nRF52 node does not list a full update:</strong> this is intentional for internal-flash targets. The
-  MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.</li>
+<li><strong>The update shows another environment or a raw <code>[hw XXXXXXXX]</code>:</strong> it is for a different board or firmware
+  role. Do not install it.</li>
+<li><strong>An internal-flash nRF52 marks a full update <code>[unsupported]</code>:</strong> it can install only an in-place delta.
+  The MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.</li>
 <li><strong>nRF52 reports no bootloader apply support:</strong> install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.</li>
 <li><strong>nRF52 reports a base mismatch:</strong> the file passed to <code>--base</code> is not the exact application running on

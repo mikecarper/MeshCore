@@ -1194,6 +1194,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multipart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTA
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-packet" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1684,6 +1717,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multipart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ota" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTA
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-packet" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1722,20 +1788,16 @@
 <h1 id="payload-format">Payload Format</h1>
 <p>Inside each <a href="../packet_format/">MeshCore Packet</a> is a payload, identified by the payload type in the packet header. The types of payloads are:</p>
 <ul>
-<li>Node advertisement.</li>
-<li>Acknowledgment.</li>
-<li>Returned path.</li>
-<li>Request (destination/source hashes + MAC).</li>
-<li>Response to REQ or ANON_REQ.</li>
-<li>Plain text message.</li>
-<li>Anonymous request.</li>
-<li>Group text message (unverified).</li>
-<li>Group datagram (unverified).</li>
-<li>Multi-part packet</li>
-<li>Control data packet</li>
-<li>Custom packet (raw bytes, custom encryption).</li>
+<li>Request, response, and plain text (<code>0x00</code>-<code>0x02</code>).</li>
+<li>Acknowledgment and node advertisement (<code>0x03</code>-<code>0x04</code>).</li>
+<li>Group text and group datagram (<code>0x05</code>-<code>0x06</code>).</li>
+<li>Anonymous request and returned path (<code>0x07</code>-<code>0x08</code>).</li>
+<li>Trace, multipart, control, and OTA (<code>0x09</code>-<code>0x0C</code>).</li>
+<li>Custom raw data (<code>0x0F</code>).</li>
 </ul>
-<p>This document defines the structure of each of these payload types.</p>
+<p>This document describes the shared payload envelopes implemented by the core.
+Application-specific request, response, control, and custom bodies can add their
+own formats.</p>
 <p>NOTE: all 16 and 32-bit integer fields are Little Endian.</p>
 <h2 id="important-concepts">Important concepts:</h2>
 <ul>
@@ -1938,19 +2000,19 @@ silent.</p>
 </thead>
 <tbody>
 <tr>
-<td>path length</td>
+<td>path descriptor</td>
 <td>1</td>
-<td>length of next field</td>
+<td>low 6 bits are the hash count; high 2 bits encode hash size minus one</td>
 </tr>
 <tr>
 <td>path</td>
-<td>see above</td>
-<td>a list of node hashes (one byte each)</td>
+<td>count × size</td>
+<td>encoded node-hash prefixes, each 1-3 bytes; the four-byte code is reserved</td>
 </tr>
 <tr>
 <td>extra type</td>
 <td>1</td>
-<td>extra, bundled payload type, eg., acknowledgement or response. Same values as in <a href="../packet_format/">Packet Format</a></td>
+<td>low nibble is the bundled payload type, such as acknowledgment or response; high nibble is reserved</td>
 </tr>
 <tr>
 <td>extra</td>
@@ -2462,6 +2524,76 @@ signature, so any channel-key holder can choose any sender name.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="trace">Trace</h2>
+<p>Trace packets use direct routing. Their normal direct-path header is empty;
+instead, the intended route follows a fixed nine-byte trace header in the
+payload. Each forwarding node appends its received SNR multiplied by four to
+the packet's route-accumulator field.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Size (bytes)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag</td>
+<td>4</td>
+<td>Sender-selected trace identifier.</td>
+</tr>
+<tr>
+<td>auth code</td>
+<td>4</td>
+<td>Application-defined authentication/correlation value.</td>
+</tr>
+<tr>
+<td>flags</td>
+<td>1</td>
+<td>Low two bits encode the route hash size. Current senders use the legacy <code>1 &lt;&lt; value</code> interpretation (1, 2, 4, or 8 bytes); receivers also accept the packed 1-4-byte interpretation where it is unambiguous.</td>
+</tr>
+<tr>
+<td>route</td>
+<td>rest</td>
+<td>Concatenated node-hash prefixes for the requested direct route.</td>
+</tr>
+</tbody>
+</table>
+<p>At the destination, the application receives the tag, auth code, flags,
+accumulated SNR bytes, and original route bytes. Trace therefore differs from a
+normal direct packet whose path is carried entirely in the packet route field.</p>
+<h2 id="multipart">Multipart</h2>
+<p>The first payload byte identifies the inner payload and how many packets remain:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Size (bytes)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>remaining + type</td>
+<td>1</td>
+<td>Upper nibble is the remaining-packet count; lower nibble is the inner payload type.</td>
+</tr>
+<tr>
+<td>inner data</td>
+<td>rest</td>
+<td>Data for the inner payload type.</td>
+</tr>
+</tbody>
+</table>
+<p>The core currently creates and consumes multipart acknowledgments. For that
+form, the low nibble is <code>0x03</code> and the next four bytes are the acknowledgment
+CRC. Other multipart inner types are reserved for application or future use.</p>
+<h2 id="ota">OTA</h2>
+<p>An OTA payload contains one OTA protocol message and is normally sent by flood.
+Its message types, integrity fields, and transfer state are defined in the
+<a href="../ota_protocol/">OTA-over-LoRa protocol</a>. Builds without OTA support can still
+relay an opaque OTA packet when their routing policy permits it.</p>
 <h2 id="custom-packet">Custom packet</h2>
 <p>Custom packets have no defined format.</p>
 
