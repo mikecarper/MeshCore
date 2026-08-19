@@ -29,18 +29,29 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+void ThinkNodeM1SensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextSleep();
+}
+
 void ThinkNodeM1SensorManager::start_gps() {
-  if (!gps_active) {
-    gps_active = true;
-    _location->begin();
-  }
+  if (gps_active) return;
+  gps_active = true;
+  _location->begin();
+  armGpsPowerSavingCycle();
 }
 
 void ThinkNodeM1SensorManager::stop_gps() {
-  if (gps_active) {
-    gps_active = false;
-    _location->stop();
+  if (!gps_active) return;
+  gps_active = false;
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextWake();
   }
+  _location->stop();
 }
 
 bool ThinkNodeM1SensorManager::begin() {
@@ -55,7 +66,7 @@ bool ThinkNodeM1SensorManager::begin() {
 
   // Check initial switch state to determine if GPS should be active
   if (last_gps_switch_state == HIGH) {  // Switch is HIGH when ON
-    setGpsTelemetryUserEnabled(true);
+    setSettingValue("gps", "1");
   }
 
   return true;
@@ -82,14 +93,27 @@ void ThinkNodeM1SensorManager::loop() {
       
       if (current_switch_state == HIGH) {  // Switch is ON
         MESH_DEBUG_PRINTLN("GPS switch ON");
-        setGpsTelemetryUserEnabled(true);
+        setSettingValue("gps", "1");
       } else {  // Switch is OFF
         MESH_DEBUG_PRINTLN("GPS switch OFF");
-        setGpsTelemetryUserEnabled(false);
+        setSettingValue("gps", "0");
       }
     }
     
     last_switch_check = now;
+  }
+
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_location->waitingTimeSync())) {
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      start_gps();
+    }
   }
 
   if (!gps_active) {
@@ -106,7 +130,7 @@ void ThinkNodeM1SensorManager::loop() {
       processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
     }
-    next_gps_update = now + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -127,8 +151,30 @@ const char* ThinkNodeM1SensorManager::getSettingValue(int i) const {
 
 bool ThinkNodeM1SensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
+}
+
+void ThinkNodeM1SensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) armGpsPowerSavingCycle();
+    else start_gps();
+  } else if (!gps_active) {
+    start_gps();
+  }
 }

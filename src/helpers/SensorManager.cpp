@@ -49,14 +49,10 @@ void SensorManager::updateGpsTelemetryCache(float lat, float lon, float altitude
 }
 
 void SensorManager::maybeStopGpsForTelemetry(unsigned long now) {
-#if defined(PERSISTANT_GPS) || defined(FORCE_GPS_ALIVE)
-  (void)now;
-#else
   if (telemetryGpsActive() && !gps_user_enabled && !gps_acquiring && !gpsTelemetryHoldActive(now)) {
     telemetryGpsStop();
     gps_next_cache_update_at = now + GPS_TELEMETRY_CACHE_INTERVAL_SEC * 1000UL;
   }
-#endif
 }
 
 void SensorManager::beginGpsTelemetryAcquisition(unsigned long now) {

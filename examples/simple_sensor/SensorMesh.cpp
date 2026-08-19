@@ -818,8 +818,10 @@ void SensorMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
 bool SensorMesh::handleIncomingMsg(ClientInfo& from, uint32_t timestamp, uint8_t* data, uint8_t flags, size_t len) {
   MESH_DEBUG_PRINT("handleIncomingMsg: unhandled msg from ");
   #ifdef MESH_DEBUG
-  mesh::Utils::printHex(Serial, from.id.pub_key, PUB_KEY_SIZE);
-  Serial.printf(": %s\n", data);
+  if (mesh::isUsbLoggingEnabled()) {
+    mesh::Utils::printHex(Serial, from.id.pub_key, PUB_KEY_SIZE);
+    Serial.printf(": %s\n", data);
+  }
   #endif
   return false;
 }
@@ -1285,4 +1287,80 @@ void SensorMesh::loop() {
     acl.save(_fs);
     dirty_contacts_expiry = 0;
   }
+}
+
+bool SensorMesh::isMillisTimerDue(unsigned long timestamp) const {
+  return timestamp && millisHasNowPassed(timestamp);
+}
+
+uint32_t SensorMesh::limitSleepToMillisTimer(unsigned long timestamp,
+                                              uint32_t sleep_secs) const {
+  if (!timestamp || sleep_secs == 0) return sleep_secs;
+
+  unsigned long now = millis();
+  if ((long)(now - timestamp) >= 0) return 0;
+
+  uint32_t remaining_secs = (timestamp - now + 999UL) / 1000UL;
+  return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
+}
+
+bool SensorMesh::hasPendingWork() const {
+  if (_cli.hasActiveUserGpioTimer()) return true;
+  if (radio_driver.isWatchdogObserving()) return true;
+  if (radio_driver.isCalibratingNoiseFloor()) return true;
+  if (hasQueuedWorkDue() || hasRetryWorkDue()) return true;
+  if (isMillisTimerDue(next_flood_advert)
+      || isMillisTimerDue(next_local_advert)
+      || isMillisTimerDue(dirty_contacts_expiry)) return true;
+  if (num_alert_tasks > 0
+      && isMillisTimerDue(alert_tasks[0]->send_expiry)) return true;
+
+  const bool radio_apply_backoff = radio_apply_retry_at
+      && !millisHasNowPassed(radio_apply_retry_at);
+  if (!radio_apply_backoff
+      && (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)
+          || (saved_radio_apply_pending && !temp_radio_applied))) return true;
+
+  uint32_t now_secs = getRTCClock()->getCurrentTime();
+  return now_secs >= last_read_time + SENSOR_READ_INTERVAL_SECS;
+}
+
+uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
+  if (max_secs == 0 || hasPendingWork()) return 0;
+
+  uint32_t sleep_secs = max_secs;
+  uint32_t wake_delay_ms;
+  if (getNextQueueWakeDelay(wake_delay_ms)) {
+    uint32_t wake_delay_secs = (wake_delay_ms + 999UL) / 1000UL;
+    if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+  }
+  if (getNextRetryWakeDelay(wake_delay_ms)) {
+    uint32_t wake_delay_secs = (wake_delay_ms + 999UL) / 1000UL;
+    if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+  }
+
+  sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
+  if (num_alert_tasks > 0) {
+    sleep_secs = limitSleepToMillisTimer(alert_tasks[0]->send_expiry,
+                                         sleep_secs);
+  }
+
+  const bool radio_apply_backoff = radio_apply_retry_at
+      && !millisHasNowPassed(radio_apply_retry_at);
+  if (radio_apply_backoff) {
+    sleep_secs = limitSleepToMillisTimer(radio_apply_retry_at, sleep_secs);
+  } else {
+    sleep_secs = limitSleepToMillisTimer(set_radio_at, sleep_secs);
+    sleep_secs = limitSleepToMillisTimer(revert_radio_at, sleep_secs);
+  }
+
+  uint32_t now_secs = getRTCClock()->getCurrentTime();
+  uint32_t sensor_due = last_read_time + SENSOR_READ_INTERVAL_SECS;
+  if (now_secs < sensor_due) {
+    uint32_t sensor_delay = sensor_due - now_secs;
+    if (sensor_delay < sleep_secs) sleep_secs = sensor_delay;
+  }
+  return sleep_secs;
 }

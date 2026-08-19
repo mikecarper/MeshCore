@@ -523,7 +523,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     else
       snprintf(reply + n, 160 - n, " | bootloader: NO SD mota-apply support (install will refuse)");
 #else
-    if (bl.present) snprintf(reply + n, 160 - n, " | bootloader: apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
+    if (bl.present) {
+      const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling(bl);
+      snprintf(reply + n, 160 - n,
+               " | bootloader: apply OK (abi=%u codecs=0x%x stage=%05X)",
+               bl.apply_abi, bl.codec_mask, (unsigned)stage_ceiling);
+    }
     else            snprintf(reply + n, 160 - n, " | bootloader: NO mota-apply support (delta install will refuse)");
 #endif
 #endif

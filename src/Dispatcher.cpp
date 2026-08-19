@@ -220,6 +220,7 @@ uint32_t Dispatcher::getCADFailMaxDuration() const {
 
 #if MESH_PACKET_LOGGING
 void Dispatcher::logPacketStart(const char* direction, const Packet* packet, int len) {
+  if (!isUsbLoggingEnabled()) return;
 #if defined(MESH_COMPACT_PACKET_LOGGING)
   (void)packet;
   Serial.printf("%s %d\n", direction, len);
@@ -232,6 +233,7 @@ void Dispatcher::logPacketStart(const char* direction, const Packet* packet, int
 }
 
 void Dispatcher::logPacketEnd(const Packet* packet) {
+  if (!isUsbLoggingEnabled()) return;
 #if defined(MESH_COMPACT_PACKET_LOGGING)
   (void)packet;
 #else
@@ -598,17 +600,19 @@ void Dispatcher::checkRecv() {
   }
   if (pkt) {
     #if MESH_PACKET_LOGGING
-    logPacketStart("RX", pkt, pkt->getRawLength());
+    if (isUsbLoggingEnabled()) {
+      logPacketStart("RX", pkt, pkt->getRawLength());
 #if !defined(MESH_COMPACT_PACKET_LOGGING)
-    Serial.printf(" SNR=%d RSSI=%d score=%d time=%d", (int)pkt->getSNR(),
-                  (int)rssi, (int)(score * 1000), air_time);
+      Serial.printf(" SNR=%d RSSI=%d score=%d time=%d", (int)pkt->getSNR(),
+                    (int)rssi, (int)(score * 1000), air_time);
 
-    static uint8_t packet_hash[MAX_HASH_SIZE];
-    pkt->calculatePacketHash(packet_hash);
-    Serial.print(" hash=");
-    mesh::Utils::printHex(Serial, packet_hash, MAX_HASH_SIZE);
-    logPacketEnd(pkt);
+      static uint8_t packet_hash[MAX_HASH_SIZE];
+      pkt->calculatePacketHash(packet_hash);
+      Serial.print(" hash=");
+      mesh::Utils::printHex(Serial, packet_hash, MAX_HASH_SIZE);
+      logPacketEnd(pkt);
 #endif
+    }
     #endif
     logRx(pkt, pkt->getRawLength(), score);   // hook for custom logging
 

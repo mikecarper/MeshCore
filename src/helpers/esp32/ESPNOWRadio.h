@@ -64,8 +64,8 @@ public:
 
 #if ESPNOW_DEBUG_LOGGING && ARDUINO
   #include <Arduino.h>
-  #define ESPNOW_DEBUG_PRINT(F, ...) Serial.printf("ESP-Now: " F, ##__VA_ARGS__)
-  #define ESPNOW_DEBUG_PRINTLN(F, ...) Serial.printf("ESP-Now: " F "\n", ##__VA_ARGS__)
+  #define ESPNOW_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("ESP-Now: " F, ##__VA_ARGS__); } } while(0)
+  #define ESPNOW_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("ESP-Now: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define ESPNOW_DEBUG_PRINT(...) {}
   #define ESPNOW_DEBUG_PRINTLN(...) {}

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <CayenneLPP.h>
+#include "GpsPowerPolicy.h"
 #include "sensors/LocationProvider.h"
+#include <string.h>
 #include <Wire.h>
 
 #define TELEM_PERM_BASE         0x01   // 'base' permission includes battery
@@ -32,6 +34,7 @@ class SensorManager {
   unsigned long gps_hold_until = 0;
   unsigned long gps_acquire_started_at = 0;
   unsigned long gps_stable_started_at = 0;
+  uint32_t gps_update_interval_sec = 0;
 
   bool gpsTelemetryHoldActive(unsigned long now) const;
   bool gpsTelemetryCacheFresh(unsigned long now) const;
@@ -50,6 +53,15 @@ protected:
   void loopGpsTelemetry(unsigned long now);
   void setGpsTelemetryUserEnabled(bool enabled);
   bool isGpsTelemetryUserEnabled() const { return gps_user_enabled; }
+  bool gpsTelemetryReceiverRequired(unsigned long now) const {
+    return gps_acquiring || gpsTelemetryHoldActive(now);
+  }
+  bool setGpsUpdateIntervalValue(const char* value) {
+    return mesh::gps::parseUpdateInterval(value, gps_update_interval_sec);
+  }
+  uint32_t getGpsUpdateIntervalMillis() const {
+    return mesh::gps::updateIntervalMillis(gps_update_interval_sec);
+  }
 #endif
 
 public:
@@ -66,7 +78,17 @@ public:
   virtual int getNumSettings() const { return 0; }
   virtual const char* getSettingName(int i) const { return NULL; }
   virtual const char* getSettingValue(int i) const { return NULL; }
-  virtual bool setSettingValue(const char* name, const char* value) { return false; }
+  virtual bool setSettingValue(const char* name, const char* value) {
+#if ENV_INCLUDE_GPS
+    if (strcmp(name, "gps_interval") == 0) {
+      return setGpsUpdateIntervalValue(value);
+    }
+#else
+    (void)name;
+    (void)value;
+#endif
+    return false;
+  }
   virtual LocationProvider* getLocationProvider() { return NULL; }
   virtual void setPowerSavingEnabled(bool enabled) { powersaving_enabled = enabled; }
 

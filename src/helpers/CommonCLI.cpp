@@ -2250,238 +2250,6 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.
     if (handleObserverCommand(sender_timestamp, command, reply)) return;
-#if defined(PORTABLE_ESP32_RADIO_CLI)
-    // Portable WiFi-heavy images keep the commands needed to commission,
-    // update, and diagnose the node. Their feature-complete FULL siblings keep
-    // the complete administration, logging, and external-sensor command tree.
-    if (strcmp(command, "poweroff") == 0 || strcmp(command, "shutdown") == 0) {
-      _board->powerOff();  // doesn't return
-    } else if (strcmp(command, "reboot") == 0) {
-      _board->reboot();  // doesn't return
-    } else if (strcmp(command, "advert.zerohop") == 0) {
-      _callbacks->sendSelfAdvertisement(1500, false);
-      strcpy(reply, "OK - zerohop advert sent");
-    } else if (strcmp(command, "advert") == 0) {
-      _callbacks->sendSelfAdvertisement(1500, true);
-      strcpy(reply, "OK - Advert sent");
-    } else if (strcmp(command, "clock sync") == 0) {
-      uint32_t curr = getRTCClock()->getCurrentTime();
-      if (sender_timestamp > curr) {
-        getRTCClock()->setCurrentTime(sender_timestamp + 1);
-        _callbacks->onManualClockSet();
-        uint32_t now = getRTCClock()->getCurrentTime();
-        DateTime dt = DateTime(now);
-        sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC",
-                dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
-      } else {
-        strcpy(reply, "ERR: clock cannot go backwards");
-      }
-#ifdef ESP_PLATFORM
-    } else if (strcmp(command, "memory") == 0) {
-      sprintf(reply, "Free: %d, Min: %d, Max: %d, Queue: %d, IntFree: %d, IntMax: %d, PSRAM: %d/%d",
-              ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(),
-              _callbacks->getQueueSize(),
-              (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-              (int)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-              (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-              (int)heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
-#endif
-    } else if (memcmp(command, "start ota", 9) == 0
-               && (command[9] == 0 || command[9] == ' ')) {
-      const bool force_ap = command[9] == ' ' && strcmp(&command[10], "ap") == 0;
-      if (command[9] == ' ' && !force_ap) {
-        strcpy(reply, "ERR: usage start ota [ap]");
-      } else if (!_board->startOTAUpdate(_prefs->node_name, reply, force_ap)) {
-        strcpy(reply, "Error");
-      }
-#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
-      else {
-        _callbacks->setBridgeState(false);
-      }
-#endif
-    } else if (strcmp(command, "stop ota") == 0) {
-      if (!_board->stopOTAUpdate(reply)) {
-        strcpy(reply, "Error");
-      }
-#if defined(WITH_MQTT_BRIDGE) && defined(LIGHTWEIGHT_WIFI_OTA)
-      else if (_prefs->bridge_enabled) {
-        _callbacks->setBridgeState(true);
-      }
-#endif
-    } else if (strcmp(command, "clock") == 0) {
-      uint32_t now = getRTCClock()->getCurrentTime();
-      DateTime dt = DateTime(now);
-      sprintf(reply, "%02d:%02d - %d/%d/%d UTC",
-              dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
-    } else if (memcmp(command, "time ", 5) == 0) {
-      uint32_t secs = _atoi(&command[5]);
-      uint32_t curr = getRTCClock()->getCurrentTime();
-      if (secs > curr) {
-        getRTCClock()->setCurrentTime(secs);
-        _callbacks->onManualClockSet();
-        uint32_t now = getRTCClock()->getCurrentTime();
-        DateTime dt = DateTime(now);
-        sprintf(reply, "OK - clock set: %02d:%02d - %d/%d/%d UTC",
-                dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
-      } else {
-        strcpy(reply, "(ERR: clock cannot go backwards)");
-      }
-    } else if (strcmp(command, "neighbors") == 0) {
-      _callbacks->formatNeighborsReply(reply);
-    } else if (memcmp(command, "password ", 9) == 0 && command[9] != 0) {
-      StrHelper::strncpy(_prefs->password, &command[9], sizeof(_prefs->password));
-      savePrefs();
-      sprintf(reply, "password now: %s", _prefs->password);
-    } else if (memcmp(command, "get ", 4) == 0) {
-      handleGetCmd(sender_timestamp, command, reply);
-    } else if (memcmp(command, "set ", 4) == 0) {
-      handleSetCmd(sender_timestamp, command, reply);
-    } else if (sender_timestamp == 0 && strcmp(command, "erase") == 0) {
-      bool success = _callbacks->formatFileSystem();
-      sprintf(reply, "File system erase: %s", success ? "OK" : "Err");
-    } else if (strcmp(command, "ver") == 0) {
-      sprintf(reply, "%s (Build: %s)",
-              _callbacks->getFirmwareVer(), _callbacks->getBuildDate());
-    } else if (strcmp(command, "board") == 0) {
-      sprintf(reply, "%s", _board->getManufacturerName());
-    } else if (memcmp(command, "region", 6) == 0
-               && (command[6] == 0 || command[6] == ' ')) {
-      handleRegionCmd(command, reply);
-#if ENV_INCLUDE_GPS == 1
-    } else if (strcmp(command, "gps on") == 0) {
-      if (_sensors->setSettingValue("gps", "1")) {
-        _prefs->gps_enabled = 1;
-        savePrefs();
-        strcpy(reply, _prefs->powersaving_enabled ? "on (powersaving)" : "ok");
-      } else {
-        strcpy(reply, "gps toggle not found");
-      }
-    } else if (strcmp(command, "gps off") == 0) {
-      if (_sensors->setSettingValue("gps", "0")) {
-        _prefs->gps_enabled = 0;
-        savePrefs();
-        strcpy(reply, "ok");
-      } else {
-        strcpy(reply, "gps toggle not found");
-      }
-    } else if (strcmp(command, "gps sync") == 0) {
-      LocationProvider* location = _sensors->getLocationProvider();
-      if (!_prefs->gps_enabled) {
-        strcpy(reply, "gps is off");
-      } else if (location != NULL) {
-        location->syncTime();
-        strcpy(reply, "scheduled");
-      } else {
-        strcpy(reply, "gps provider not found");
-      }
-    } else if (strcmp(command, "gps setloc") == 0) {
-      _prefs->node_lat = _sensors->node_lat;
-      _prefs->node_lon = _sensors->node_lon;
-      savePrefs();
-      strcpy(reply, "ok");
-    } else if (memcmp(command, "gps advert", 10) == 0
-               && (command[10] == 0 || command[10] == ' ')) {
-      if (command[10] == 0) {
-        switch (_prefs->advert_loc_policy) {
-          case ADVERT_LOC_NONE: strcpy(reply, "> none"); break;
-          case ADVERT_LOC_PREFS: strcpy(reply, "> prefs"); break;
-          case ADVERT_LOC_SHARE: strcpy(reply, "> share"); break;
-          default: strcpy(reply, "error");
-        }
-      } else if (strcmp(&command[11], "none") == 0) {
-        _prefs->advert_loc_policy = ADVERT_LOC_NONE;
-        savePrefs();
-        strcpy(reply, "ok");
-      } else if (strcmp(&command[11], "share") == 0) {
-        _prefs->advert_loc_policy = ADVERT_LOC_SHARE;
-        savePrefs();
-        strcpy(reply, "ok");
-      } else if (strcmp(&command[11], "prefs") == 0) {
-        _prefs->advert_loc_policy = ADVERT_LOC_PREFS;
-        savePrefs();
-        strcpy(reply, "ok");
-      } else {
-        strcpy(reply, "error");
-      }
-    } else if (strcmp(command, "gps") == 0) {
-      LocationProvider* location = _sensors->getLocationProvider();
-      if (location == NULL) {
-        strcpy(reply, "Can't find GPS");
-      } else {
-        bool enabled = location->isEnabled();
-        bool fix = location->isValid();
-        int sats = location->satellitesCount();
-        const char* gps_setting = _sensors->getSettingByKey("gps");
-        bool active = gps_setting != NULL && strcmp(gps_setting, "1") == 0;
-        if (_prefs->powersaving_enabled && location->getGPSPowerSaving()) {
-          unsigned long now = millis();
-          unsigned long next_off = location->getNextGPSOff();
-          unsigned long deadline =
-              next_off != 0 ? next_off : location->getNextGPSOn();
-          long remaining_ms = deadline == 0 ? 0 : (long)(deadline - now);
-          unsigned long mins =
-              remaining_ms > 0 ? (unsigned long)remaining_ms / 60000UL : 0;
-          if (next_off != 0) {
-            snprintf(reply, 160,
-                     "on (powersaving, sleep in %luh %lum), %s, %s, %d sats",
-                     mins / 60UL, mins % 60UL,
-                     active ? "active" : "deactivated",
-                     fix ? "fix" : "no fix", sats);
-          } else {
-            snprintf(reply, 160, "off (powersaving, wake in %luh %lum)",
-                     mins / 60UL, mins % 60UL);
-          }
-          unsigned long last_sync = location->getLastValidTimeSync();
-          size_t used = strlen(reply);
-          if (last_sync == 0) {
-            snprintf(reply + used, 160 - used, ", last sync: none");
-          } else {
-            DateTime dt = DateTime(last_sync);
-            snprintf(reply + used, 160 - used,
-                     ", last sync: %02d:%02d - %d/%d/%d UTC",
-                     dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
-          }
-        } else if (enabled) {
-          sprintf(reply, "on, %s, %s, %d sats",
-                  active ? "active" : "deactivated",
-                  fix ? "fix" : "no fix", sats);
-        } else {
-          strcpy(reply, "off");
-        }
-      }
-#endif
-    } else if (strcmp(command, "sensor") == 0) {
-#if defined(ENV_PIN_SDA) && defined(ENV_PIN_SCL)
-      sprintf(reply, "I2C Wire1: SDA=%s,SCL=%s\r\n",
-              STR(ENV_PIN_SDA), STR(ENV_PIN_SCL));
-#elif defined(PIN_BOARD_SDA) && defined(PIN_BOARD_SCL)
-      sprintf(reply, "I2C Wire: SDA=%s, SCL=%s\r\n",
-              STR(PIN_BOARD_SDA), STR(PIN_BOARD_SCL));
-#elif defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
-      sprintf(reply, "I2C Wire: SDA=%s, SCL=%s\r\n",
-              STR(PIN_WIRE_SDA), STR(PIN_WIRE_SCL));
-#else
-      sprintf(reply, "I2C GPIOs not defined\r\n");
-#endif
-#if defined(PIN_GPS_RX) && defined(PIN_GPS_TX)
-      sprintf(reply + strlen(reply), "GPS Serial: RX=%s, TX=%s",
-              STR(PIN_GPS_RX), STR(PIN_GPS_TX));
-  #if defined(ENV_INCLUDE_GPS) && ENV_INCLUDE_GPS > 0
-      sprintf(reply + strlen(reply), ". Configured");
-  #else
-      sprintf(reply + strlen(reply), ". Not configured");
-  #endif
-#else
-      sprintf(reply + strlen(reply), "GPS Serial not defined");
-#endif
-    } else if (strcmp(command, "powerlog") == 0) {
-      sprintf(reply, "Last reset reason: %s",
-              _board->getResetReasonString(_board->getResetReason()));
-    } else {
-      strcpy(reply, "Unknown command");
-    }
-    return;
-#else
     if (memcmp(command, "poweroff", 8) == 0 || memcmp(command, "shutdown", 8) == 0) {
       _board->powerOff();  // doesn't return
     } else if (memcmp(command, "reboot", 6) == 0) {
@@ -2687,7 +2455,27 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
       const char *key = (num > 0) ? parts[0] : "";
       const char *value = (num > 1) ? parts[1] : "null";
-      if (_sensors->setSettingValue(key, value)) {
+      uint32_t gps_interval = 0;
+      const bool is_gps_interval = strcmp(key, "gps_interval") == 0;
+      const bool is_gps_toggle = strcmp(key, "gps") == 0;
+      const bool valid_gps_interval = !is_gps_interval
+          || (parseUint32Strict(value, gps_interval)
+              && gps_interval <= mesh::gps::MAX_UPDATE_INTERVAL_SEC);
+      const bool valid_gps_toggle = !is_gps_toggle
+          || strcmp(value, "0") == 0 || strcmp(value, "1") == 0;
+
+      if (!valid_gps_interval) {
+        strcpy(reply, "gps_interval must be 0..86400 seconds");
+      } else if (!valid_gps_toggle) {
+        strcpy(reply, "gps must be 0 or 1");
+      } else if (_sensors->setSettingValue(key, value)) {
+        if (is_gps_interval) {
+          _prefs->gps_interval = gps_interval;
+          savePrefs();
+        } else if (is_gps_toggle) {
+          _prefs->gps_enabled = strcmp(value, "1") == 0 ? 1 : 0;
+          savePrefs();
+        }
         strcpy(reply, "ok");
       } else {
         strcpy(reply, "can't find custom var");
@@ -2921,7 +2709,6 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else {
       strcpy(reply, "Unknown command");
     }
-#endif
 }
 
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
@@ -3093,6 +2880,22 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if MESH_USB_LOGGING_AVAILABLE
+  if (strncmp(config, "usb.logging", 11) == 0
+      && (config[11] == 0 || config[11] == ' ' || config[11] == '\t')) {
+    const char* value = &config[11];
+    while (*value == ' ' || *value == '\t') value++;
+    if (strcmp(value, "on") == 0 || strcmp(value, "off") == 0) {
+      const bool enabled = strcmp(value, "on") == 0;
+      mesh::setUsbLoggingEnabled(enabled);
+      snprintf(reply, 160, "OK - USB logging %s until reboot",
+               enabled ? "on" : "off");
+    } else {
+      strcpy(reply, "Error: usage set usb.logging on|off");
+    }
+    return;
+  }
+#endif
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   if (isGpioConfig(config)) {
     const UserGpio::SetResult result = _user_gpio.handleSet(
@@ -3169,215 +2972,6 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
 #endif
-#if defined(PORTABLE_ESP32_RADIO_CLI)
-  // Portable WiFi-heavy images keep the controls needed to configure and
-  // diagnose their radio. The full parser remains available in the FULL image.
-  if (memcmp(config, "int.thresh ", 11) == 0) {
-    _prefs->interference_threshold = atoi(&config[11]);
-    savePrefs();
-    strcpy(reply, "OK");
-  } else if (memcmp(config, "cad ", 4) == 0) {
-    const char* value = &config[4];
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: use set cad on|off");
-    } else {
-      _prefs->cad_enabled = strcmp(value, "on") == 0;
-      savePrefs();
-      strcpy(reply, "OK");
-    }
-  } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
-    _prefs->agc_reset_interval = atoi(&config[19]) / 4;
-    savePrefs();
-    sprintf(reply, "OK - interval rounded to %d",
-            ((uint32_t)_prefs->agc_reset_interval) * 4);
-  } else if (memcmp(config, "repeat ", 7) == 0) {
-    const char* value = &config[7];
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error, must be on or off");
-    } else {
-      _prefs->disable_fwd = strcmp(value, "off") == 0;
-      savePrefs();
-      _callbacks->onRetryConfigChanged();
-      strcpy(reply, _prefs->disable_fwd
-          ? "OK - repeat is now OFF" : "OK - repeat is now ON");
-    }
-  } else if (memcmp(config, "radio.rxgain ", 13) == 0) {
-    const char* value = &config[13];
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: use set radio.rxgain on|off");
-    } else {
-      bool enabled = strcmp(value, "on") == 0;
-      if (_callbacks->setRxBoostedGain(enabled)) {
-        _prefs->rx_boosted_gain = enabled;
-        savePrefs();
-        strcpy(reply, "OK");
-      } else {
-        strcpy(reply, "Error: unsupported");
-      }
-    }
-  } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0) {
-    const char* value = &config[17];
-    if (!_board->canControlLoRaFemLna()) {
-      strcpy(reply, "Error: unsupported");
-    } else if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: state must be on or off");
-    } else {
-      bool enabled = strcmp(value, "on") == 0;
-      bool changed = _board->isLoRaFemLnaEnabled() != enabled;
-      if (_board->setLoRaFemLnaEnabled(enabled)) {
-        if (changed) _callbacks->recalibrateNoiseFloor();
-        _prefs->radio_fem_rxgain = enabled ? 1 : 0;
-        savePrefs();
-        strcpy(reply, enabled
-            ? "OK - LoRa FEM RX gain on" : "OK - LoRa FEM RX gain off");
-      } else {
-        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
-      }
-    }
-  } else if (memcmp(config, "radio.fem.txgain ", 17) == 0) {
-    const char* value = &config[17];
-    if (!_board->canControlLoRaFemPaGain()) {
-      strcpy(reply, "Error: unsupported");
-    } else if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: state must be on or off");
-    } else {
-      const bool enabled = strcmp(value, "on") == 0;
-      if (_board->setLoRaFemPaGainEnabled(enabled)) {
-        _prefs->radio_fem_txgain = enabled ? 1 : 0;
-        savePrefs();
-        strcpy(reply, enabled
-            ? "OK - LoRa FEM TX gain on" : "OK - LoRa FEM TX gain off");
-      } else {
-        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
-      }
-    }
-  } else if (memcmp(config, "radio ", 6) == 0) {
-    strcpy(tmp, &config[6]);
-    const char* parts[4];
-    int num = mesh::Utils::parseTextParts(tmp, parts, 4);
-    float freq = 0.0f;
-    float bw = 0.0f;
-    uint8_t sf = 0;
-    uint8_t cr = 0;
-    if (num == 4
-        && mesh::cli::parseDecimalStrict(parts[0], freq)
-        && mesh::cli::parseDecimalStrict(parts[1], bw)
-        && parseUint8Strict(parts[2], 5, 12, sf)
-        && parseUint8Strict(parts[3], 5, 8, cr)
-        && freq >= 150.0f && freq <= 2500.0f
-        && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
-        && isValidLoRaBandwidth(bw)) {
-      _prefs->sf = sf;
-      _prefs->cr = cr;
-      _prefs->freq = freq;
-      _prefs->bw = bw;
-      bool rxps_retuned = recalculateRxPowerSavingFromLevel(_prefs);
-      _callbacks->savePrefs();
-      strcpy(reply, rxps_retuned
-          ? "OK - reboot to apply (rxps retuned)" : "OK - reboot to apply");
-    } else {
-      strcpy(reply, "Error, invalid radio params");
-    }
-  } else if (memcmp(config, "tx ", 3) == 0) {
-    _prefs->tx_power_dbm = atoi(&config[3]);
-    savePrefs();
-    _callbacks->setTxPower(_prefs->tx_power_dbm);
-    strcpy(reply, "OK");
-  } else if (sender_timestamp == 0 && memcmp(config, "freq ", 5) == 0) {
-    float freq = 0.0f;
-    if (mesh::cli::parseDecimalStrict(&config[5], freq)
-        && freq >= 150.0f && freq <= 2500.0f) {
-      _prefs->freq = freq;
-      savePrefs();
-      strcpy(reply, "OK - reboot to apply");
-    } else {
-      strcpy(reply, "Error, invalid frequency");
-    }
-#ifdef WITH_BRIDGE
-  } else if (memcmp(config, "rxdelay ", 8) == 0) {
-    float delay = 0.0f;
-    if (mesh::cli::parseDecimalStrict(&config[8], delay)
-        && delay >= 0.0f && delay <= 20.0f) {
-      _prefs->rx_delay_base = delay;
-      savePrefs();
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Error, must be 0-20");
-    }
-  } else if (memcmp(config, "txdelay ", 8) == 0) {
-    float factor = 0.0f;
-    if (mesh::cli::parseDecimalStrict(&config[8], factor)
-        && factor >= 0.0f && factor <= 2.0f) {
-      _prefs->tx_delay_factor = factor;
-      savePrefs();
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Error, must be 0-2");
-    }
-  } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
-    const char* value = &config[15];
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: use set bridge.enabled on|off");
-    } else {
-      _prefs->bridge_enabled = strcmp(value, "on") == 0;
-      _callbacks->setBridgeState(_prefs->bridge_enabled);
-      savePrefs();
-      strcpy(reply, "OK");
-    }
-  } else if (memcmp(config, "bridge.delay ", 13) == 0) {
-    int delay = _atoi(&config[13]);
-    if (delay >= 0 && delay <= 10000) {
-      _prefs->bridge_delay = (uint16_t)delay;
-      savePrefs();
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Error: delay must be between 0-10000 ms");
-    }
-  } else if (memcmp(config, "bridge.source ", 14) == 0) {
-    const char* value = &config[14];
-    if (strcmp(value, "rx") != 0 && strcmp(value, "tx") != 0) {
-      strcpy(reply, "Error: use set bridge.source rx|tx");
-    } else {
-      _prefs->bridge_pkt_src = strcmp(value, "rx") == 0;
-#ifdef WITH_MQTT_BRIDGE
-      _mqtt_prefs.mqtt_rx_enabled = _prefs->bridge_pkt_src;
-      _mqtt_prefs.mqtt_tx_enabled = !_prefs->bridge_pkt_src;
-      savePrefs(PrefsSaveRouting::Scope::Both);
-#else
-      savePrefs();
-#endif
-      strcpy(reply, "OK");
-    }
-#endif
-#ifdef WITH_ESPNOW_BRIDGE
-  } else if (memcmp(config, "bridge.channel ", 15) == 0) {
-    int channel = atoi(&config[15]);
-    if (channel >= 1 && channel <= 14) {
-      _prefs->bridge_channel = (uint8_t)channel;
-      _callbacks->restartBridge();
-      savePrefs();
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Error: channel must be between 1-14");
-    }
-  } else if (memcmp(config, "bridge.secret ", 14) == 0) {
-    const char* secret = &config[14];
-    if (secret[0] == 0 || strlen(secret) >= sizeof(_prefs->bridge_secret)) {
-      sprintf(reply, "Error: secret must be 1-%u characters",
-              (unsigned)(sizeof(_prefs->bridge_secret) - 1));
-    } else {
-      StrHelper::strncpy(_prefs->bridge_secret, secret,
-                         sizeof(_prefs->bridge_secret));
-      _callbacks->restartBridge();
-      savePrefs();
-      strcpy(reply, "OK");
-    }
-#endif
-  } else {
-    sprintf(reply, "Unsupported in this firmware: %s", config);
-  }
-  return;
-#else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
     strcpy(reply, "Error, unsupported on this role");
     return;
@@ -4254,11 +3848,17 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else {
     sprintf(reply, "unknown config: %s", config);
   }
-#endif
 }
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if MESH_USB_LOGGING_AVAILABLE
+  if (strcmp(config, "usb.logging") == 0) {
+    snprintf(reply, 160, "> %s",
+             mesh::isUsbLoggingEnabled() ? "on" : "off");
+    return;
+  }
+#endif
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   if (isGpioConfig(config)) {
     _user_gpio.handleGet(config + 4, reply, 160);
@@ -4319,79 +3919,6 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
 #endif
-#if defined(PORTABLE_ESP32_RADIO_CLI)
-  if (strcmp(config, "int.thresh") == 0) {
-    sprintf(reply, "> %d", (uint32_t)_prefs->interference_threshold);
-  } else if (strcmp(config, "cad") == 0) {
-    sprintf(reply, "> %s. # channel busy: %u",
-            _prefs->cad_enabled ? "on" : "off", _board->n_cad_busy);
-  } else if (strcmp(config, "agc.reset.interval") == 0) {
-    sprintf(reply, "> %d", ((uint32_t)_prefs->agc_reset_interval) * 4);
-  } else if (strcmp(config, "repeat") == 0) {
-    sprintf(reply, "> %s", _prefs->disable_fwd ? "off" : "on");
-  } else if (strcmp(config, "radio.rxgain") == 0) {
-    sprintf(reply, "> %s", _prefs->rx_boosted_gain ? "on" : "off");
-  } else if (strcmp(config, "radio.fem.rxgain") == 0) {
-    if (!_board->canControlLoRaFemLna()) {
-      strcpy(reply, "Error: unsupported");
-    } else {
-      sprintf(reply, "> %s",
-              _board->isLoRaFemLnaEnabled() ? "on" : "off");
-    }
-  } else if (strcmp(config, "radio.fem.txgain") == 0) {
-    if (!_board->canControlLoRaFemPaGain()) {
-      strcpy(reply, "Error: unsupported");
-    } else {
-      sprintf(reply, "> %s",
-              _board->isLoRaFemPaGainEnabled() ? "on" : "off");
-    }
-  } else if (strcmp(config, "radio") == 0) {
-    char freq[16], bw[16];
-    strcpy(freq, StrHelper::ftoa(_prefs->freq));
-    strcpy(bw, StrHelper::ftoa3(_prefs->bw));
-    sprintf(reply, "> %s,%s,%d,%d",
-            freq, bw, (uint32_t)_prefs->sf, (uint32_t)_prefs->cr);
-  } else if (strcmp(config, "tx") == 0) {
-    sprintf(reply, "> %d", (int32_t)_prefs->tx_power_dbm);
-  } else if (strcmp(config, "freq") == 0) {
-    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->freq));
-  } else if (strcmp(config, "role") == 0) {
-    sprintf(reply, "> %s", _callbacks->getRole());
-#ifdef WITH_BRIDGE
-  } else if (strcmp(config, "rxdelay") == 0) {
-    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->rx_delay_base));
-  } else if (strcmp(config, "txdelay") == 0) {
-    sprintf(reply, "> %s", StrHelper::ftoa(_prefs->tx_delay_factor));
-  } else if (strcmp(config, "bridge.enabled") == 0) {
-    sprintf(reply, "> %s", _prefs->bridge_enabled ? "on" : "off");
-  } else if (strcmp(config, "bridge.delay") == 0) {
-    sprintf(reply, "> %d", (uint32_t)_prefs->bridge_delay);
-  } else if (strcmp(config, "bridge.source") == 0) {
-    sprintf(reply, "> %s", _prefs->bridge_pkt_src ? "logRx" : "logTx");
-  } else if (strcmp(config, "bridge.type") == 0) {
-    sprintf(reply, "> %s",
-#ifdef WITH_RS232_BRIDGE
-            "rs232"
-#elif WITH_ESPNOW_BRIDGE
-            "espnow"
-#elif WITH_MQTT_BRIDGE
-            "mqtt"
-#else
-            "none"
-#endif
-    );
-#endif
-#ifdef WITH_ESPNOW_BRIDGE
-  } else if (strcmp(config, "bridge.channel") == 0) {
-    sprintf(reply, "> %d", (uint32_t)_prefs->bridge_channel);
-  } else if (strcmp(config, "bridge.secret") == 0) {
-    sprintf(reply, "> %s", _prefs->bridge_secret);
-#endif
-  } else {
-    sprintf(reply, "Unsupported in this firmware: %s", config);
-  }
-  return;
-#else
   if (isAdvancedRetryConfig(config) && !_callbacks->supportsAdvancedRetryConfig()) {
     strcpy(reply, "Error, unsupported on this role");
     return;
@@ -4686,7 +4213,6 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else {
     mesh::cli::formatUnknownSetting(reply, 160, config);
   }
-#endif
 }
 
 void CommonCLI::handleDelCmd(char* command, char* reply) {

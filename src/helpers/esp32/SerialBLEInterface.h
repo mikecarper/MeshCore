@@ -2,6 +2,7 @@
 
 #include "../BaseSerialInterface.h"
 #include "../BleTxStallWatchdog.h"
+#include "../UsbLogging.h"
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -114,8 +115,8 @@ public:
 
 #if BLE_DEBUG_LOGGING && ARDUINO
   #include <Arduino.h>
-  #define BLE_DEBUG_PRINT(F, ...) Serial.printf("BLE: " F, ##__VA_ARGS__)
-  #define BLE_DEBUG_PRINTLN(F, ...) Serial.printf("BLE: " F "\n", ##__VA_ARGS__)
+  #define BLE_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("BLE: " F, ##__VA_ARGS__); } } while(0)
+  #define BLE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("BLE: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define BLE_DEBUG_PRINT(...) {}
   #define BLE_DEBUG_PRINTLN(...) {}

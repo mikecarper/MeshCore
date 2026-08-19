@@ -46,7 +46,7 @@ Both paths require:
 - An OTA-enabled build whose artifact filename contains `-ota-` on the destination. The `-ota-` stamp confirms
   that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do **not** need an
   OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
-  Portable logging, portable MQTT, and untagged builds cannot install LoRa OTA; FULL logging OTA builds can.
+  Standard logging and untagged builds cannot install LoRa OTA; FULL MQTT and FULL logging OTA builds can.
 - An OTA-enabled MeshCore source connected to the computer by USB serial, or
   an ESP32 WiFi companion/FULL source connected over WiFi as described below.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
@@ -60,8 +60,8 @@ overlapping window.
 repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
 OTA relay, but it cannot download or install an update for itself. The `-ota-` sibling omits optional external
 I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
-display, buttons, battery monitoring, and integrated GPS. ESP32 `-ota-` siblings also retain the compact
-browser WiFi uploader (`start ota`) and use a 254-entry neighbor table. RP2040 and STM32 repeaters do not
+display, buttons, battery monitoring, and integrated GPS. ESP32 `-ota-` siblings also retain the lightweight
+browser WiFi uploader (`start ota`), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32 repeaters do not
 currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
 during TempRadio.
 
@@ -73,6 +73,8 @@ remain enabled.
 ESP32 `*-full-ota-*` artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
 install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
+ESP32 MQTT observers and ESP-NOW bridges are always emitted as FULL artifacts; compact-CLI variants are no
+longer built.
 The `*-full-ota-*` profile uses MQTT with logging off. Use a `*-full-logging-ota-*` artifact when USB debug
 and packet logging are needed instead; that diagnostic profile explicitly disables MQTT and can produce
 substantial serial output.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "../UsbLogging.h"
 #include <WiFi.h>
 
 class SerialWifiInterface : public BaseSerialInterface {
@@ -66,8 +67,8 @@ public:
 
 #if WIFI_DEBUG_LOGGING && ARDUINO
   #include <Arduino.h>
-  #define WIFI_DEBUG_PRINT(F, ...) Serial.printf("WiFi: " F, ##__VA_ARGS__)
-  #define WIFI_DEBUG_PRINTLN(F, ...) Serial.printf("WiFi: " F "\n", ##__VA_ARGS__)
+  #define WIFI_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("WiFi: " F, ##__VA_ARGS__); } } while(0)
+  #define WIFI_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("WiFi: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define WIFI_DEBUG_PRINT(...) {}
   #define WIFI_DEBUG_PRINTLN(...) {}

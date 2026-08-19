@@ -36,24 +36,37 @@ mesh::LocalIdentity radio_new_identity() {
 }
 
 
+void MASensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextSleep();
+}
+
 void MASensorManager::start_gps() {
-  if(!gps_active) {
-    MESH_DEBUG_PRINTLN("starting GPS");
-    gps_active = true;
-  }
+  if (gps_active) return;
+  MESH_DEBUG_PRINTLN("starting GPS");
+  _location->begin();
+  _location->reset();
+  gps_active = true;
+  armGpsPowerSavingCycle();
 }
 
 void MASensorManager::stop_gps() {
-  if(gps_active) {
-    MESH_DEBUG_PRINTLN("stopping GPS");
-    gps_active = false;
+  if (!gps_active) return;
+  MESH_DEBUG_PRINTLN("stopping GPS");
+  gps_active = false;
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextWake();
   }
+  _location->stop();
 }
 
 bool MASensorManager::begin() {
   Serial1.setPins(PIN_GPS_RX, PIN_GPS_TX);
   Serial1.begin(9600);
-  delay(500);
   return true;
 }
 
@@ -66,6 +79,20 @@ void MASensorManager::loop() {
   static unsigned long next_gps_update = 0;
   unsigned long now = millis();
   loopGpsTelemetry(now);
+
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_location->waitingTimeSync())) {
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      start_gps();
+    }
+  }
+
   if (gps_active) _location->loop();
   if ((long)(now - next_gps_update) >= 0 && gps_active) {
     if(_location->isValid()) {
@@ -75,7 +102,7 @@ void MASensorManager::loop() {
       processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
     }
-    next_gps_update = now + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -92,8 +119,30 @@ const char* MASensorManager::getSettingValue(int i) const {
 }
 bool MASensorManager::setSettingValue(const char* name, const char* value) {
   if(strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
+}
+
+void MASensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) armGpsPowerSavingCycle();
+    else start_gps();
+  } else if (!gps_active) {
+    start_gps();
+  }
 }

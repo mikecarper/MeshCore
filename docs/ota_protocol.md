@@ -108,16 +108,17 @@ EndF trailer (fixed 56 bytes):
 
 The "reconstructed image" referenced by the manifest is the full `BODY || EndF` (what gets flashed).
 
-### ESP32 portable app-slot profile
+### ESP32 application-slot profiles
 
 ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
 LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
 their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
 companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
 OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits `-full-ota-` and
-`-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. Except for
-the ESP32-C6 case below, every other ESP32 artifact, including room,
-sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
+`-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. MQTT
+observers and ESP-NOW bridges always use FULL builds because fitting them into the legacy slot would require
+removing CLI and role features. Except for those FULL roles and the ESP32-C6 case below, non-companion ESP32
+artifacts, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
 `0x150000` (`0x140000`, 1,310,720 bytes), including the 56-byte `EndF` trailer. The build checks both that
 limit and the target's actual app partition. The ESP32-C6 `no_external_sensors` OTA siblings are the narrow
 exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
@@ -134,29 +135,23 @@ keeps the runtime software Ed25519 fallback from being expanded into tens of kil
 arithmetic while retaining CC310 hardware crypto, hardware RNG mixing, telemetry history, and board-native
 features.
 
-Two WiFi-heavy non-companion profiles need additional reductions to remain portable. MQTT observer builds
-keep MQTT/TLS, onboard GPS, and their WiFi pull-updater, but omit WebConfig, SNMP, debug logging, display
-support, and optional external sensor drivers. Their compact CLI keeps observer controls plus the radio,
-TX power, CAD, interference-threshold, AGC, repeat, and retained bridge controls. It uses UTC or fixed UTC/GMT
-offsets instead of the full named-timezone table. Built-in TLS presets keep their pinned CA roots; the 66 KB
-general CA bundle for custom TLS brokers is omitted, so portable observers use a built-in preset or a custom
-non-TLS broker. Size-constrained classic ESP32 observers without PSRAM may use Espressif's compact printf
-implementation from chip ROM while retaining the normal ESP-IDF C library and ABI. Generic ESP-IDF/mbedTLS
-error text keeps error codes and MQTT status available. Classic T-Beam observers retain AXP192/AXP2101 radio
-and GPS rail setup plus battery-voltage
-readings, but omit unrelated PMU policy. ESP-NOW bridge builds keep the ESP-NOW bridge, onboard GPS, and the
-same radio-capable compact CLI, but omit display support and optional external sensors. These reductions do
-not apply to companion builds. Ordinary repeater builds remain sensor-enabled; only explicitly named
-`*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution.
+WiFi-heavy non-companion roles are not reduced to fit the legacy application slot. `build.sh` automatically
+promotes every ESP32 MQTT observer and ESP-NOW bridge to the expanded FULL partition profile. These artifacts
+retain the complete role CLI, WebConfig where supported, display and optional sensor support, full timezone
+and TLS behavior, and the board's normal power-management implementation. The compact CLI is not compiled
+into any build. Ordinary repeater builds remain sensor-enabled; only explicitly named
+`*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution, and those siblings retain the
+complete CLI.
 
 MQTT observer radio and bridge preferences use verified temporary files plus a recoverable backup. A reset
 during a settings save restores the last committed common preference image or publishes the completed new
 image; it does not leave a partially written `/com_prefs` file to fail on the next boot. A truncated legacy
 image is rejected before any partial radio or string fields are applied, then rewritten from safe defaults.
 
-Option 3 in `build.sh` also emits `*-full-ota-*` and `*-full-logging-ota-*` ESP32 artifacts for
-non-companion roles where the portable profile removes a compiled feature and for the constrained companion
-fallbacks described above. Menu option 8, or `build-full-esp32-firmwares`, builds the logging-off FULL
+Option 3 in `build.sh` emits `*-full-ota-*` and `*-full-logging-ota-*` ESP32 artifacts for
+FULL-capable non-companion roles and for the constrained companion fallbacks described above. MQTT observers
+and ESP-NOW bridges are emitted only with expanded FULL partitions. Menu option 8, or
+`build-full-esp32-firmwares`, builds the logging-off FULL
 artifacts from matching MQTT targets. Menu option 9, or `build-full-esp32-logging-firmwares`, builds the
 FULL logging artifacts from matching non-MQTT targets.
 FULL builds restore WebConfig, display support, optional external sensors, and the full role CLI and feature
@@ -745,6 +740,21 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   2. re-checks `TRAILER`, `image_hash`, `approval == "APRV"`, and that the delta's `base_hash` equals the
      running firmware's `EndF.body_hash` (recomputed by scanning for `EndF` - never trust `bank_0_size`),
   3. applies the in-place codec over the app region and boots only if the result hashes to `image_hash`.
+- **nRF52 internal staging ceiling:** the application derives the ceiling from facts available in every
+  build, not a board-name list. A companion that actually links the internal ExtraFS datastore stays below
+  `0xD4000`; a default linker region, QSPI secondary storage, or a role that does not mount ExtraFS can
+  reclaim the unused 100 KiB through `0xED000`. The application uses the larger window only when the
+  installed bootloader advertises the GPREGRET2 ceiling-handoff capability. The bootloader treats every
+  unknown/legacy handoff value as
+  `0xD4000`, and accepts a container only at the bottom-aligned position for the selected ceiling.
+- **nRF52 dynamic apply window:** the post-build hook records the resolved app base, linked app end,
+  storage flags, and desired staging ceiling immediately before `EndF`. `motatool` reads that authenticated
+  firmware record and chooses `memory_size` from the actual patch size and bottom-aligned stage address;
+  firmware without the record retains the conservative `0x98000` default. Before writing `APRV`, the app
+  verifies the detools header fits below the staged container, and the bootloader independently repeats
+  the geometry check before its first application write. Expanded auto-sized packages require a bootloader
+  with the ceiling-handoff capability; use `--inplace-memory 0x98000` when intentionally targeting an older
+  bootloader and the images still fit that window.
 - **nRF52 EndF rescue:** `ota rescue install <base_hash16>` is a pre-provisioned recovery path for an
   internal-flash nRF52 application that still runs but cannot validate its own EndF identity. It refuses
   when normal EndF validation succeeds, requires the operator hash to exactly equal the staged delta's

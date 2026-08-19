@@ -6,6 +6,13 @@
 #include <helpers/AtomicFileWriter.h>
 #endif
 
+// Linked presence of this symbol is the authoritative signal that this firmware actually mounts the
+// internal 0xD4000 ExtraFS. OTA layout code references it weakly, so non-companion roles can reclaim the
+// reserved range even though nrf52_base defines EXTRAFS globally.
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+extern "C" __attribute__((used)) const uint8_t g_meshcore_internal_extrafs = 1u;
+#endif
+
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
 #else

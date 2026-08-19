@@ -416,6 +416,23 @@ void ota_reboot_to_apply() { esp_restart(); }  // boots the slot armed by ota_ap
 
 #elif defined(NRF52_PLATFORM)  // single-slot: verify + mark APPROVED + hand off to the bootloader
 
+struct InplacePatchDims {
+  uint32_t memory = 0;
+  uint32_t segment = 0;
+  uint32_t shift = 0;
+  uint32_t from = 0;
+  uint32_t to = 0;
+};
+
+static bool parse_inplace_patch_dims(const uint8_t* payload, uint32_t payload_len,
+                                     InplacePatchDims& d) {
+  if (!payload || payload_len < 2 || ((payload[0] >> 4) & 0x07u) != 1u) return false;
+  ByteReader r(payload, payload_len);
+  r.u8(); // patch type/compression header
+  return r.detools_size(d.memory) && r.detools_size(d.segment) && r.detools_size(d.shift) &&
+         r.detools_size(d.from) && r.detools_size(d.to) && r.ok;
+}
+
 // ESP32 A/B-only entry points are unsupported on nRF52.
 bool ota_apply_slot_info(uint32_t*, uint32_t*) { return false; }
 bool ota_apply_set_manifest(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st) { st = ApplyState(); return false; }
@@ -424,12 +441,20 @@ bool ota_apply_commit() { return false; }
 bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "use ota_apply_mota_nrf52"); return false; }
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
+  uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
+#if defined(OTA_FLASH_STORE)
+  if (ota_nrf52_effective_stage_ceiling() == MOTA_NRF52_STAGE_CEILING_EXPANDED)
+    stage_handoff = GPREGRET2_OTA_STAGE_EXPANDED;
+#endif
   uint8_t sd_en = 0;
   sd_softdevice_is_enabled(&sd_en);
   if (sd_en) {                                 // POWER is SD-restricted while the SoftDevice runs
+    sd_power_gpregret_clr(1, 0xFFFFFFFF);
+    sd_power_gpregret_set(1, stage_handoff);
     sd_power_gpregret_clr(0, 0xFFFFFFFF);
     sd_power_gpregret_set(0, GPREGRET_OTA_APPLY);
   } else {
+    NRF_POWER->GPREGRET2 = stage_handoff;
     NRF_POWER->GPREGRET = GPREGRET_OTA_APPLY;
   }
   NVIC_SystemReset();                          // does not return
@@ -508,6 +533,31 @@ static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
   if (vr.is_signed) {
     if (!vr.sig_ok)  { strcpy(msg, "bad signature"); return false; }
     if (!vr.trusted) { strcpy(msg, "untrusted signer (pubkey not in allowlist)"); return false; }
+  }
+
+  // 4) detools geometry. memory_size is selected by motatool for this exact staged address; reject a
+  // mismatched/legacy package before writing APRV so the bootloader never starts a doomed in-place apply.
+  {
+    InplacePatchDims d;
+    if (!parse_inplace_patch_dims(m.payload, m.payload_size, d)) {
+      strcpy(msg, "bad in-place patch header"); return false;
+    }
+    if (d.memory == 0 || d.segment != MOTA_NRF52_FLASH_PAGE || d.shift > d.memory ||
+        d.shift % d.segment != 0 || d.from > d.memory - d.shift || d.to > d.memory ||
+        d.to != m.image_size || (self_valid && d.from != fi.image_len)) {
+      strcpy(msg, "invalid in-place patch geometry"); return false;
+    }
+#if defined(OTA_FLASH_STORE)
+    const uint32_t app_base = mota_nrf52_app_base();
+    const uint32_t mota_start = (uint32_t)(uintptr_t)buf;
+    const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
+    if (mota_start < app_base || mota_start >= stage_ceiling ||
+        d.memory > mota_start - app_base) {
+      snprintf(msg, 159, "patch memory 0x%x exceeds staging at 0x%x",
+               (unsigned)d.memory, (unsigned)mota_start);
+      return false;
+    }
+#endif
   }
 
   // mark the staged manifest APPROVED in flash (buf is the memory-mapped staging region, so

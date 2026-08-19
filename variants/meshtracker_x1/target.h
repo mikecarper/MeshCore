@@ -19,9 +19,14 @@ class MeshTrackerX1SensorManager: public SensorManager {
   Adafruit_SPA06_003 spa06;
   LocationProvider * _nmea;
 
+  void armGpsPowerSavingCycle();
   void start_gps();
   void sleep_gps();
   void stop_gps();
+  bool telemetryGpsDetected() const override { return true; }
+  bool telemetryGpsActive() const override { return gps_active; }
+  void telemetryGpsStart() override { start_gps(); }
+  void telemetryGpsStop() override { sleep_gps(); }
 public:
   MeshTrackerX1SensorManager(LocationProvider &nmea): _nmea(&nmea) { }
   bool begin() override;
@@ -31,7 +36,8 @@ public:
   const char* getSettingName(int i) const override;
   const char* getSettingValue(int i) const override;
   bool setSettingValue(const char* name, const char* value) override;
-  LocationProvider* getLocationProvider() { return _nmea; }
+  void setPowerSavingEnabled(bool enabled) override;
+  LocationProvider* getLocationProvider() override { return _nmea; }
 };
 
 #ifdef DISPLAY_CLASS

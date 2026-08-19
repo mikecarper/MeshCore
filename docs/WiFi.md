@@ -167,9 +167,9 @@ stop webconfig
 set bridge.enabled on
 ```
 
-Some size-constrained, portable MQTT observer artifacts omit WebConfig so they
-fit the legacy ESP32 application slot. They retain the serial/remote CLI and a
-small WiFi updater. Configure those builds with the CLI.
+Current MQTT observer artifacts use the expanded FULL partition profile so
+WebConfig and the complete role CLI are retained. Install the matching merged
+image over USB once when moving a device from the legacy partition layout.
 
 ## WiFi companion setup
 
@@ -374,11 +374,11 @@ role.
 
 | Build profile | WiFi/MQTT behavior |
 |---|---|
-| Standard | Uses the selected target's role. Ordinary portable ESP32 repeater/room-server artifacts omit WebConfig to fit the legacy app slot. Explicit MQTT and WiFi-companion targets still use WiFi. |
-| Logging | Enables USB/debug packet logging and disables the MQTT bridge. Logging output is not an MQTT uplink. |
-| MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. |
+| Standard | Uses the selected target's role. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile. |
+| Logging | Enables USB/debug packet logging and disables the MQTT bridge. `get/set usb.logging` can silence or restore the live output until reboot. Logging output is not an MQTT uplink. |
+| MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. Non-companion ESP32 MQTT observers always use FULL expanded partitions. |
 | FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
-| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. |
+| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, session-only `get/set usb.logging` control, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. |
 | LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
 
 All repeater profiles use the full 254-entry neighbor table, including standard,
@@ -388,7 +388,7 @@ persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.
 
 The interactive Option 1 **FULL everything** choice selects the FULL logging
 profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
-profile and Profile 4 of the five-profile matrix use the matching MQTT target
+profile and Profile 3 of the four-profile matrix use the matching MQTT target
 instead. Both FULL profiles include LoRa OTA, WebConfig where supported, up to
 254 neighbors, and expanded dual-OTA partitions. Target-specific internal-DRAM
 limits still apply.
@@ -432,8 +432,8 @@ their role-specific interfaces described above; they do not expose the full
 infrastructure WiFi CLI family.
 MQTT commands such as `get mqtt.status` and `set mqtt1.preset ...` still require
 an MQTT observer target. Unknown settings return `Error: unknown setting:
-<name>`. Older portable builds can instead report `Unsupported in this
-firmware` when a command was intentionally cut for space.
+<name>`. Older firmware that used the discontinued compact CLI can instead
+report `Unsupported in this firmware` when a command was cut for space.
 
 Check the complete firmware filename and role. In particular:
 
@@ -467,7 +467,7 @@ Common causes are:
 - all MQTT slots disabled;
 - too many TLS/WSS slots for the available internal memory;
 - WiFi power saving being too aggressive;
-- the wrong firmware role or a portable build without the full WebConfig CLI.
+- the wrong firmware role or an older compact-CLI build without WebConfig.
 
 For a WiFi companion, find its station IP in the router, connect the client to
 TCP port 5000, and use the setup AP if it cannot join the saved network. MQTT

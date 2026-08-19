@@ -93,6 +93,14 @@ Shows or changes Companion device power saving. On ESP32 this controls CPU and
 GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.
 
 ```
+get usb.logging
+set usb.logging {on|off}
+```
+Shows or changes live USB debug and packet output in a Companion logging
+artifact. The setting lasts until reboot; logging starts on again at the next
+boot. Companion protocol frames and terminal replies remain enabled.
+
+```
 get radio.rxps
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
 ```

@@ -66,6 +66,24 @@ def _board_maximum_size(build_env):
         return None
 
 
+def _source_filter_text():
+    """Resolved source-filter text for detecting code that is actually part of this environment."""
+    srcf = ""
+    for getter in (lambda: env.GetProjectOption("build_src_filter", ""),  # noqa: F821
+                   lambda: env.GetProjectOption("src_filter", ""),        # noqa: F821
+                   lambda: env.get("SRC_FILTER", "")):                    # noqa: F821
+        try:
+            value = getter()
+            srcf += " " + (" ".join(map(str, value)) if isinstance(value, (list, tuple)) else str(value))
+        except Exception:
+            pass
+    return srcf
+
+
+def _builds_companion_radio() -> bool:
+    return "examples/companion_radio" in _source_filter_text().replace("\\", "/")
+
+
 def _version_from_headers():
     """FIRMWARE_VERSION is a header ``#define`` in the example (upstream MeshCore convention), not a -D, so
     _cppdef() can't see it and the EndF version would otherwise default to 0. Read it from the source WITHOUT
@@ -90,15 +108,7 @@ def _version_from_headers():
         return vals
 
     # 1) restrict to the example(s) this env compiles (build_src_filter -> examples/<name>)
-    srcf = ""
-    for getter in (lambda: env.GetProjectOption("build_src_filter", ""),   # noqa: F821
-                   lambda: env.GetProjectOption("src_filter", ""),         # noqa: F821
-                   lambda: env.get("SRC_FILTER", "")):                     # noqa: F821
-        try:
-            v = getter()
-            srcf += " " + (" ".join(map(str, v)) if isinstance(v, (list, tuple)) else str(v))
-        except Exception:
-            pass
+    srcf = _source_filter_text()
     ex_dirs = set(re.findall(r"examples[/\\]([A-Za-z0-9_]+)", srcf))
     hdrs = []
     for d in ex_dirs:
@@ -155,33 +165,48 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     if not segs:
         print("EndF: empty .hex, skipping"); return
     app_start, app_end = segs[0]                  # first (lowest) segment = the application image
-    body = bytes(ih.tobinarray(start=app_start, size=app_end - app_start))
+    raw_body = bytes(ih.tobinarray(start=app_start, size=app_end - app_start))
+    if ml.has_endf(raw_body):
+        print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
+
+    app_region_size = _board_maximum_size(env)
+    if app_region_size is None:
+        raise RuntimeError("nRF52 linked application region is unavailable")
+    linked_app_end = app_start + app_region_size
+    internal_extrafs = (_cppdef("EXTRAFS") is not None and _cppdef("QSPIFLASH") is None
+                        and _builds_companion_radio())
+    sd_backed = _cppdef("OTA_SD_STORE") is not None
+    stage_ceiling = (ml.NRF52_APP_END if sd_backed else
+                     ml.nrf52_stage_ceiling_for_layout(linked_app_end, internal_extrafs))
+    layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
+                    (ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS if internal_extrafs else 0))
+    layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
+    body = ml.ensure_nrf52_layout(raw_body, layout)
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
-    sd_backed = _cppdef("OTA_SD_STORE") is not None
     seeder_only = _cppdef("OTA_SEEDER_ONLY") is not None
     if seeder_only:
         # A source-only full Companion never stages or applies an update to
         # itself, so it does not need to fit in OTAFIX's in-place workspace.
         # It must still fit the board/env's resolved flash application region.
-        image_limit = _board_maximum_size(env)
-        if image_limit is None:
-            raise RuntimeError("nRF52 seeder-only application limit is unavailable")
+        image_limit = app_region_size
         limit_name = "application"
     else:
-        image_limit = ml.NRF52_SD_APP_MEMORY if sd_backed else ml.NRF52_INPLACE_MEMORY
-        limit_name = "SD application" if sd_backed else "in-place"
+        # Dynamic in-place patches carry their own memory_size and are checked against the staged
+        # container before approval. The firmware itself only needs to remain inside both its linked
+        # application region and the selected filesystem-safe ceiling.
+        image_limit = min(linked_app_end, stage_ceiling) - app_start
+        limit_name = "nRF52 OTA application"
     if image_limit is not None and len(out) > image_limit:
         raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; {limit_name} limit is "
                            f"{image_limit} bytes")
-    if len(out) == len(body):
-        print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
-    trailer = out[len(body):]                      # the EndF trailer (56 bytes with identity)
-    for i, b in enumerate(trailer):
+    suffix = out[len(raw_body):]                   # layout record + EndF identity trailer
+    for i, b in enumerate(suffix):
         ih[app_end + i] = b                        # write it right after the app's last byte
     ih.write_hex_file(path)
     print(f"EndF: appended to {os.path.basename(path)} at 0x{app_end:X} "
           f"(app=0x{app_start:X}.. body_len={len(body)} body_hash={h8.hex()} "
+          f"stage=0x{stage_ceiling:X} "
           f"target={ident.target_id:#010x} hw='{ident.hw_id}' fw={ident.fw_version:#010x})")
 
 

@@ -483,6 +483,23 @@ Use the separately named `-ota-` artifact when LoRa OTA is required. A
 logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
 disabled.
 
+### Control live USB logging
+
+**Usage:**
+
+```text
+get usb.logging
+set usb.logging on
+set usb.logging off
+```
+
+These commands are compiled into logging artifacts and control their live USB
+debug and packet output. The switch is session-only: every reboot starts a
+logging artifact with USB logging on. Turning it off does not disable CLI
+replies, Companion protocol frames, or essential non-debug serial messages.
+It also does not change the node-storage capture controlled by `log start` and
+`log stop`.
+
 ### Begin capture of rx log to node storage
 **Usage:** `log start`
 

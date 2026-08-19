@@ -66,6 +66,7 @@ public:
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() { return &_prefs; }
+  uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
@@ -213,6 +214,10 @@ private:
   uint8_t radio_apply_failures;
 
   bool applySavedRadioParams();
+  bool isMillisTimerDue(unsigned long timestamp) const;
+  uint32_t limitSleepToMillisTimer(unsigned long timestamp,
+                                   uint32_t sleep_secs) const;
+  bool hasPendingWork() const;
 
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
   uint8_t handleRequest(uint8_t perms, uint32_t sender_timestamp, uint8_t req_type, uint8_t* payload, size_t payload_len);
@@ -226,6 +231,9 @@ private:
   void applyGpsPrefs() {
     sensors.setPowerSavingEnabled(_prefs.powersaving_enabled != 0);
     sensors.setSettingValue("gps", _prefs.gps_enabled?"1":"0");
+    char interval_str[12];
+    sprintf(interval_str, "%u", _prefs.gps_interval);
+    sensors.setSettingValue("gps_interval", interval_str);
   }
 #endif
 };

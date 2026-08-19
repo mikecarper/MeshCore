@@ -32,8 +32,8 @@ python3 mesh-america/update-provider-release.py \
 
 The updater preserves the catalog's curated device names, role choices, and
 hardware guidance; validates every referenced artifact; routes URLs to the
-correct GitHub release page; and replaces legacy FULL MQTT choices with the
-matching portable MQTT observer builds.
+correct GitHub release page; and replaces legacy portable MQTT choices with the
+matching expanded-partition FULL MQTT observer builds.
 
 The logging catalog likewise keeps unaffected roles on v1.17.1.1 while its
 Companion, Full Companion, and expanded Companion logging profiles track the

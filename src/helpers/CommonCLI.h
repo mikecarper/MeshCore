@@ -148,7 +148,7 @@ public:
   uint8_t reboot_interval = 0; // hours, 0-255 (default 0=disable)
   // Gps settings
   uint8_t gps_enabled = 0;
-  uint32_t gps_interval = 0; // in seconds
+  uint32_t gps_interval = 0; // seconds; 0 uses the 1-second default
   uint8_t advert_loc_policy = 0;
   uint32_t discovery_mod_timestamp = 0;
   float adc_multiplier = 0;

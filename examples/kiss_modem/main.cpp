@@ -154,6 +154,9 @@ void loop() {
   board.feedWatchdog();
 #endif
   modem->loop();
+  // GPS acquisition, cache refresh, and delayed shutdown are driven by the
+  // sensor manager loop even though KISS itself is normally host powered.
+  sensors.loop();
 
   if (!modem->isActuallyTransmitting() && !modem->isHostOutputBackedUp()) {
     if (!modem->isTxBusy()) {

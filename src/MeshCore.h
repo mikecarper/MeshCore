@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include "helpers/UsbLogging.h"
 
 #define MAX_HASH_SIZE        8
 #define PUB_KEY_SIZE        32
@@ -24,23 +25,23 @@
 
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define MESH_DEBUG_PRINT(F, ...) do { if (Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
-  #define MESH_DEBUG_PRINTLN(F, ...) do { if (Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define MESH_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
+  #define MESH_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define MESH_DEBUG_PRINT(...) {}
   #define MESH_DEBUG_PRINTLN(...) {}
 #endif
 
 #if BRIDGE_DEBUG && ARDUINO
-#define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (Serial.availableForWrite() > 0) { Serial.printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
+#define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
 #else
 #define BRIDGE_DEBUG_PRINTLN(...) {}
 #endif
 
 #if POWERSAVING_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define POWERSAVING_DEBUG_PRINT(F, ...) Serial.printf("POWERSAVING: " F, ##__VA_ARGS__)
-  #define POWERSAVING_DEBUG_PRINTLN(F, ...) Serial.printf("POWERSAVING: " F "\n", ##__VA_ARGS__)
+  #define POWERSAVING_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("POWERSAVING: " F, ##__VA_ARGS__); } } while(0)
+  #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("POWERSAVING: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define POWERSAVING_DEBUG_PRINT(...) {}
   #define POWERSAVING_DEBUG_PRINTLN(...) {}
@@ -71,7 +72,15 @@ public:
   // Default no-op: boards that don't care need not implement anything.
   virtual void onBootComplete() { /* no op */ }
   virtual uint32_t getIRQGpio() { return -1; } // not supported. Returns DIO1 (SX1262) and DIO0 (SX127x)
-  virtual void sleep(uint32_t secs)  { /* no op */ }
+  virtual void sleep(uint32_t secs)  {
+    (void)secs;
+#if defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
+    // These platforms have no shared deep-sleep board implementation. WFI is
+    // still a real CPU idle state and preserves all configured interrupt wake
+    // sources, including the radio and USB.
+    __asm volatile("wfi");
+#endif
+  }
   virtual uint32_t getGpio() { return 0; }
   virtual void setGpio(uint32_t values) {}
   // Returns true only for physical MCU GPIOs that are safe for the user to

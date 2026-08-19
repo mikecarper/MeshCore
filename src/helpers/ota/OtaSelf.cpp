@@ -68,14 +68,15 @@ bool ota_self_firmware(SelfFwInfo& out) {
 // firmware's own trailer), ignoring any staged `.mota` (which carries its own embedded EndF) higher up.
 bool ota_self_firmware(SelfFwInfo& out) {
   const uint32_t app_base = mota_nrf52_app_base();
-  if (!mota_nrf52_layout_valid(app_base)) { out = SelfFwInfo(); return false; }
-  const uint8_t* region = (const uint8_t*)(uintptr_t)app_base;
-  uint32_t region_len =
+  const uint32_t stage_ceiling =
 #if defined(OTA_SD_STORE)
-      MOTA_NRF52_APP_END - app_base;
+      MOTA_NRF52_APP_END;
 #else
-      MOTA_NRF52_FS_START - app_base;
+      mota_nrf52_layout_stage_ceiling();
 #endif
+  if (!mota_nrf52_layout_valid(app_base, stage_ceiling)) { out = SelfFwInfo(); return false; }
+  const uint8_t* region = (const uint8_t*)(uintptr_t)app_base;
+  const uint32_t region_len = stage_ceiling - app_base;
   return find_self_firmware(region, region_len, out, /*verify_body=*/true);
 }
 #else
@@ -97,7 +98,9 @@ bool ota_self_read(uint32_t off, uint8_t* buf, uint32_t len) {
 #if defined(OTA_SD_STORE)
   if (app_base >= MOTA_NRF52_APP_END || (uint64_t)app_base + off + len > MOTA_NRF52_APP_END) return false;
 #else
-  if (!mota_nrf52_layout_valid(app_base) || (uint64_t)app_base + off + len > MOTA_NRF52_FS_START) return false;
+  const uint32_t stage_ceiling = mota_nrf52_layout_stage_ceiling();
+  if (!mota_nrf52_layout_valid(app_base, stage_ceiling) ||
+      (uint64_t)app_base + off + len > stage_ceiling) return false;
 #endif
   memcpy(buf, (const uint8_t*)(uintptr_t)(app_base + off), len);
   return true;

@@ -218,7 +218,9 @@ The terminal supports Companion chat commands, including `channels`,
 `login <admin-password>` and `cmd <remote-command>`, and routed
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
 `normalradio` controls. ESP32 builds also provide local
-`get/set wifi.powersave`. For example:
+`get/set wifi.powersave`. Logging artifacts additionally provide session-only
+`get/set usb.logging`; turning it off suppresses live USB diagnostics without
+disabling Companion frames or terminal replies. For example:
 
 ```text
 channels

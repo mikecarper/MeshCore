@@ -331,6 +331,9 @@ protected:
   void applyGpsPrefs() {
     sensors.setPowerSavingEnabled(_prefs.powersaving_enabled != 0);
     sensors.setSettingValue("gps", _prefs.gps_enabled?"1":"0");
+    char interval_str[12];
+    sprintf(interval_str, "%u", _prefs.gps_interval);
+    sensors.setSettingValue("gps_interval", interval_str);
   }
 #endif
 

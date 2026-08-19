@@ -25,43 +25,41 @@ bool radio_init() {
   return radio.std_init(&SPI);
 }
 
+void NanoG2UltraSensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_location->getGPSPowerSaving()) return;
+  _location->syncTime();
+  _location->setNextGPSOn(0);
+  _location->setNextSleep();
+}
+
 void NanoG2UltraSensorManager::start_gps() {
+  if (gps_active) return;
   MESH_DEBUG_PRINTLN("Starting GPS");
-  if (!gps_active) {
-    digitalWrite(PIN_GPS_STANDBY, HIGH); // Wake GPS from standby
-    Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
-    Serial1.begin(9600);
-    MESH_DEBUG_PRINTLN("Waiting for gps to power up");
-    delay(1000);
-    gps_active = true;
-  }
+  digitalWrite(PIN_GPS_STANDBY, HIGH); // Wake GPS from standby
   _location->begin();
+  gps_active = true;
+  armGpsPowerSavingCycle();
 }
 
 void NanoG2UltraSensorManager::stop_gps() {
+  if (!gps_active) return;
   MESH_DEBUG_PRINTLN("Stopping GPS");
-  if (gps_active) {
-    digitalWrite(PIN_GPS_STANDBY, LOW); // sleep GPS
-    gps_active = false;
+  gps_active = false;
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    _location->stopTimeSync();
+    _location->setNextGPSOff(0);
+    _location->setNextWake();
   }
   _location->stop();
+  digitalWrite(PIN_GPS_STANDBY, LOW); // sleep GPS
 }
 
 bool NanoG2UltraSensorManager::begin() {
-  digitalWrite(PIN_GPS_STANDBY, HIGH); // Wake GPS from standby
+  pinMode(PIN_GPS_STANDBY, OUTPUT);
+  digitalWrite(PIN_GPS_STANDBY, LOW); // Known onboard GPS starts asleep
   Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
   Serial1.begin(9600);
-  MESH_DEBUG_PRINTLN("Checking GPS switch state");
-  delay(1000);
-
-  // Check initial switch state to determine if GPS should be active
-  if (Serial1.available() > 0) {
-    MESH_DEBUG_PRINTLN("GPS was on at boot, GPS enabled");
-    start_gps();
-  } else {
-    MESH_DEBUG_PRINTLN("GPS was not on at boot, GPS disabled");
-  }
-
+  gps_active = false;
   return true;
 }
 
@@ -74,6 +72,19 @@ void NanoG2UltraSensorManager::loop() {
   static unsigned long next_gps_update = 0;
   unsigned long now = millis();
   loopGpsTelemetry(now);
+
+  if (powersaving_enabled && _location->getGPSPowerSaving()) {
+    unsigned long next_off = _location->getNextGPSOff();
+    unsigned long next_on = _location->getNextGPSOn();
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_location->waitingTimeSync())) {
+      stop_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _location->waitingTimeSync())) {
+      start_gps();
+    }
+  }
 
   if (!gps_active) {
     return; // GPS is not active, skip further processing
@@ -92,7 +103,7 @@ void NanoG2UltraSensorManager::loop() {
       MESH_DEBUG_PRINTLN("INVALID location, waiting for fix");
     }
     MESH_DEBUG_PRINTLN("GPS satellites: %d", _location->satellitesCount());
-    next_gps_update = now + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -113,10 +124,32 @@ const char *NanoG2UltraSensorManager::getSettingValue(int i) const {
 
 bool NanoG2UltraSensorManager::setSettingValue(const char *name, const char *value) {
   if (strcmp(name, "gps") == 0) {
-    setGpsTelemetryUserEnabled(strcmp(value, "0") != 0);
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _location->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
+    }
     return true;
   }
-  return false; // not supported
+  return SensorManager::setSettingValue(name, value);
+}
+
+void NanoG2UltraSensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _location->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) armGpsPowerSavingCycle();
+    else start_gps();
+  } else if (!gps_active) {
+    start_gps();
+  }
 }
 
 mesh::LocalIdentity radio_new_identity() {

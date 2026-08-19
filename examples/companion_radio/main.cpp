@@ -5,6 +5,13 @@
 
 #ifdef ESP32_PLATFORM
 #include "esp_bt.h"
+#include "esp_pm.h"
+#include "esp_sleep.h"
+#if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
+#define COMPANION_IDF_PM_AVAILABLE 1
+#else
+#define COMPANION_IDF_PM_AVAILABLE 0
+#endif
 #if defined(COMPANION_RADIO_FULL)
 #include <esp_heap_caps.h>
 #endif
@@ -174,12 +181,39 @@ static uint32_t companionNominalCpuMhz() {
 
 static bool applyCompanionPowerSaving(bool enabled) {
   const uint32_t nominal_mhz = companionNominalCpuMhz();
-  const uint32_t target_mhz = enabled && nominal_mhz > 80 ? 80 : nominal_mhz;
-  if (!setCpuFrequencyMhz(target_mhz)) {
-    Serial.printf("Device power saving failed: CPU %lu MHz is unsupported\r\n",
-                  (unsigned long)target_mhz);
+  const uint32_t max_mhz = enabled && nominal_mhz > 80 ? 80 : nominal_mhz;
+
+#if COMPANION_IDF_PM_AVAILABLE
+  const uint32_t min_mhz = enabled && max_mhz > 40 ? 40 : max_mhz;
+#if CONFIG_IDF_TARGET_ESP32C3
+  esp_pm_config_esp32c3_t pm_config;
+#elif CONFIG_IDF_TARGET_ESP32S3
+  esp_pm_config_esp32s3_t pm_config;
+#elif CONFIG_IDF_TARGET_ESP32
+  esp_pm_config_esp32_t pm_config;
+#else
+  esp_pm_config_t pm_config;
+#endif
+  pm_config.max_freq_mhz = max_mhz;
+  pm_config.min_freq_mhz = min_mhz;
+  pm_config.light_sleep_enable = enabled;
+
+  esp_err_t pm_result = esp_pm_configure(&pm_config);
+  if (pm_result != ESP_OK) {
+    Serial.printf("Device power saving failed: %s\r\n",
+                  esp_err_to_name(pm_result));
     return false;
   }
+#else
+  // Arduino's prebuilt ESP-IDF normally has CONFIG_PM_ENABLE disabled, in
+  // which case esp_pm_configure() is a stub returning ESP_ERR_NOT_SUPPORTED.
+  // Keep frequency throttling functional instead of retrying that stub.
+  if (!setCpuFrequencyMhz(max_mhz)) {
+    Serial.printf("Device power saving failed: CPU %lu MHz is unsupported\r\n",
+                  (unsigned long)max_mhz);
+    return false;
+  }
+#endif
 
 #if defined(BLE_PIN_CODE) && !CONFIG_IDF_TARGET_ESP32C6
   esp_err_t bt_result = enabled ? esp_bt_sleep_enable()
@@ -191,8 +225,14 @@ static bool applyCompanionPowerSaving(bool enabled) {
   }
 #endif
 
+#if COMPANION_IDF_PM_AVAILABLE
+  Serial.printf("Device power saving %s: CPU %lu-%lu MHz, automatic light sleep %s\r\n",
+                enabled ? "on" : "off", (unsigned long)min_mhz,
+                (unsigned long)max_mhz, enabled ? "on" : "off");
+#else
   Serial.printf("Device power saving %s: CPU %lu MHz\r\n",
-                enabled ? "on" : "off", (unsigned long)target_mhz);
+                enabled ? "on" : "off", (unsigned long)max_mhz);
+#endif
   return true;
 }
 
@@ -1147,7 +1187,29 @@ void loop() {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)
-    vTaskDelay(pdMS_TO_TICKS(10));  // attempt to sleep
+#if COMPANION_IDF_PM_AVAILABLE
+    // Yield long enough for ESP-IDF automatic light sleep to enter when no
+    // driver holds a power-management lock.
+    vTaskDelay(pdMS_TO_TICKS(10));
+#elif defined(ENABLE_USB_INTERFACE) \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+    && !defined(BLE_PIN_CODE) && !defined(WIFI_SSID) \
+    && !defined(ETHERNET_ENABLED) && !defined(SERIAL_RX)
+    // The stock Arduino core has no automatic light sleep. A short timer
+    // slice gives native-USB-only battery builds real light sleep without
+    // delaying radio, GPS, button, or newly attached USB work by more than the
+    // normal 10 ms loop cadence. can_sleep already proved no USB host is up.
+    if (esp_sleep_enable_timer_wakeup(10000ULL) != ESP_OK
+        || esp_light_sleep_start() != ESP_OK) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+#else
+    // Connected transports need their own modem sleep and must retain the
+    // normal FreeRTOS idle behavior.
+    vTaskDelay(pdMS_TO_TICKS(10));
+#endif
+#elif defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
+    board.sleep(0); // event-driven idle; interrupts wake the main loop
 #endif
   }
 

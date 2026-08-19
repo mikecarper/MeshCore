@@ -83,7 +83,7 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares in standard, logging, MQTT, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures.
+  build-firmwares-logging-matrix: Build all firmwares in standard, logging, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL.
   build-companion-firmwares-logging-matrix: Build every Companion target (including Full Companion and legacy FEM variants) in each applicable standard, logging, MQTT, and expanded FULL profile.
   build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with up to 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
@@ -117,7 +117,7 @@ $ bash build.sh
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
 
-Build all firmwares in standard, USB logging, MQTT observer, feature-complete ESP32, and feature-complete ESP32 logging profiles:
+Build all firmwares in standard, USB logging, feature-complete ESP32 MQTT, and feature-complete ESP32 logging profiles:
 $ bash build.sh build-firmwares-logging-matrix
 
 Build only feature-complete ESP32 firmware:
@@ -2111,6 +2111,18 @@ supports_esp32_full_build() {
     && ! is_lora_ota_only_target "$env_name"
 }
 
+requires_esp32_full_cli_profile() {
+  local env_name=$1
+
+  # MQTT observers and ESP-NOW bridges previously depended on a reduced CLI to
+  # fit the legacy application slot. Always build those roles with the expanded
+  # FULL partition profile so no administration commands are removed.
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] \
+    && ! is_esp32_companion_build "$env_name" \
+    && { is_mqtt_bridge_target "$env_name" \
+         || [[ "${env_name,,}" == *bridge_espnow* ]]; }
+}
+
 apply_esp32_lora_ota_size_profile() {
   local env_name=$1
 
@@ -2120,35 +2132,19 @@ apply_esp32_lora_ota_size_profile() {
 
   # All non-companion ESP32 artifacts must remain installable into the legacy
   # 0x10000..0x150000 app slot. The WebConfig portal is deliberately omitted.
-  # WiFi/MQTT observers and lean LoRa-OTA repeaters retain the compact browser
-  # updater; other radio-only roles avoid linking WiFi solely for that updater.
+  # Lean LoRa-OTA repeaters retain the compact browser updater; other radio-only
+  # roles avoid linking WiFi solely for that updater. MQTT observers and ESP-NOW
+  # bridges are always promoted to the expanded FULL profile so they retain the
+  # complete CLI and feature set.
   # Companions retain their target defaults because they are installed over USB.
   # Keep ENV_INCLUDE_GPS for boards with onboard GPS; their target sensor
   # managers require that support.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWEBCONFIG_DISABLED=1"
-  if is_mqtt_bridge_target "$env_name"; then
-    # Keep the standard ESP-IDF libc. Use its ABI with the chip-ROM formatter,
-    # and retain a compact CLI for radio and active-bridge settings.
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLIGHTWEIGHT_WIFI_OTA=1 -DPORTABLE_MQTT_OBSERVER=1 -DPORTABLE_ESP32_RADIO_CLI=1 -UDISPLAY_CLASS"
-    if [ "$FIRMWARE_FILENAME_INFIX" != "logging" ] \
-        && [ "${MESHDEBUG_OVERRIDE,,}" != "on" ] \
-        && [ "${PACKET_LOGGING_OVERRIDE,,}" != "on" ]; then
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DPORTABLE_ESP32_ROM_NANO_FORMAT=1"
-    fi
-    append_platformio_build_unflags "-DWITH_SNMP=1 -DMQTT_DEBUG=1 -DMQTT_MEMORY_DEBUG=1 -DDISPLAY_CLASS=SSD1306Display -DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
-  elif [[ "${env_name,,}" == *bridge_espnow* ]]; then
-    append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -ULIGHTWEIGHT_WIFI_OTA -DDISABLE_WIFI_OTA=1 -DPORTABLE_ESP32_RADIO_CLI=1 -UDISPLAY_CLASS"
-    if [ "$FIRMWARE_FILENAME_INFIX" != "logging" ] \
-        && [ "${MESHDEBUG_OVERRIDE,,}" != "on" ] \
-        && [ "${PACKET_LOGGING_OVERRIDE,,}" != "on" ]; then
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DPORTABLE_ESP32_ROM_NANO_FORMAT=1"
-    fi
-    append_platformio_build_unflags "-DDISPLAY_CLASS=SSD1306Display -DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
-  elif is_lora_ota_only_target "$env_name"; then
+  if is_lora_ota_only_target "$env_name"; then
     # The no-external-sensors image is also the self-updatable field image. Keep
     # manual browser OTA available on every ESP32 family through the compact
-    # uploader, and use the full one-byte neighbor-index range.
+    # uploader, the complete role CLI, and the full one-byte neighbor-index
+    # range.
     append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS}"
   else
@@ -2167,7 +2163,7 @@ apply_esp32_full_size_profile() {
   fi
 
   # The FULL artifact uses expanded dual-OTA slots, so restore features that
-  # target or portable profiles disabled only to save application space.
+  # target or legacy-slot profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1 -DMESHCORE_ESP32_FULL_PROFILE=1"
 
@@ -2215,12 +2211,15 @@ apply_repeater_neighbor_capacity() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 }
 
-apply_nrf52_lora_ota_size_profile() {
+apply_nrf52_size_profile() {
   local env_name=$1
 
-  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ] \
-      || ! is_lora_ota_build "$env_name" \
-      || ! is_lora_ota_only_target "$env_name"; then
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ]; then
+    return 0
+  fi
+  if ! is_nrf52_companion_radio_full_target "$env_name" \
+      && { ! is_lora_ota_build "$env_name" \
+           || ! is_lora_ota_only_target "$env_name"; }; then
     return 0
   fi
 
@@ -2228,7 +2227,8 @@ apply_nrf52_lora_ota_size_profile() {
   # runtime software Ed25519 fallback is linked alongside CC310, that setting
   # fully expands repeated Curve25519 arithmetic and wastes tens of kilobytes.
   # Keep hardware crypto, RNG mixing, the software fallback, and board features;
-  # only select the size optimizer for the constrained self-updatable image.
+  # select the size optimizer for both constrained self-updating images and
+  # Full Companion source images, especially their diagnostic profile.
   append_platformio_build_unflags "-Ofast"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Os"
 }
@@ -2501,7 +2501,7 @@ collect_esp32_artifacts() {
   # Emit the partition-table signature for OTA partition-compatibility checks.
   # Standard builds keep the env-name key used by the slim-manifest generator;
   # FULL builds use a suffix so their expanded table does not overwrite the
-  # portable signature. The firmware computes the same signature at runtime.
+  # legacy-slot signature. The firmware computes the same signature at runtime.
   # Best-effort: local builds without the script's deps just skip it.
   if [ -f "${build_output_dir}/partitions.bin" ]; then
     if [ "$ESP32_FULL_BUILD" = "1" ]; then
@@ -2669,12 +2669,31 @@ build_firmware() {
   local build_status
   local -a pio_run_args=()
 
+  # Bash functions use dynamic scoping. These locals let one target be promoted
+  # to FULL without changing the profile selected for later targets in the same
+  # batch.
+  local inherited_esp32_full_build=$ESP32_FULL_BUILD
+  local inherited_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local ESP32_FULL_BUILD=$inherited_esp32_full_build
+  local FIRMWARE_FILENAME_INFIX=$inherited_firmware_filename_infix
+
   env_platform=$(get_platform_for_env "$env_name")
   if ! is_supported_platform "$env_platform"; then
     echo "Unsupported or unknown platform for env: $env_name"
     return 1
   fi
   pio_env_name=$(get_pio_build_env "$env_name")
+
+  if [ "$ESP32_FULL_BUILD" != "1" ] \
+      && requires_esp32_full_cli_profile "$env_name"; then
+    ESP32_FULL_BUILD=1
+    if [ "$FIRMWARE_FILENAME_INFIX" = "logging" ]; then
+      FIRMWARE_FILENAME_INFIX="full-logging"
+    else
+      FIRMWARE_FILENAME_INFIX="full"
+    fi
+    echo "Promoting ${env_name} to FULL so the complete CLI is retained."
+  fi
 
   commit_hash=$(git rev-parse --short HEAD)
   firmware_build_date=$(date -u '+%d-%b-%Y')
@@ -2761,7 +2780,7 @@ build_firmware() {
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
-  apply_nrf52_lora_ota_size_profile "$env_name"
+  apply_nrf52_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
@@ -3440,8 +3459,8 @@ run_logging_matrix_build_targets() {
   local target
   local standard_targets=()
   local logging_targets=()
+  local filtered_logging_targets=()
   local constrained_logging_targets=()
-  local mqtt_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
@@ -3451,6 +3470,7 @@ run_logging_matrix_build_targets() {
   local original_profile_build_workers=$PROFILE_BUILD_WORKERS
   local bluetooth_skip_count=0
   local lora_ota_only_skip_count=0
+  local full_cli_logging_skip_count=0
   local logging_target_count=0
   local build_status=0
   local pass_status=0
@@ -3464,14 +3484,13 @@ run_logging_matrix_build_targets() {
   echo "Option 3 parallelism: ${PROFILE_BUILD_WORKERS} target build(s), ${OPTION3_PIO_JOBS} PlatformIO job(s) per target."
 
   for target in "${targets[@]}"; do
-    if is_mqtt_bridge_target "$target"; then
-      mqtt_targets+=("$target")
-    else
+    if ! is_mqtt_bridge_target "$target"; then
       standard_targets+=("$target")
     fi
   done
 
-  echo "Profile 1/5: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  echo "Profile 1/4: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  echo "ESP32 ESP-NOW bridge targets in this pass are automatically promoted to FULL so they retain the complete CLI."
   ESP32_FULL_BUILD=0
   MESHDEBUG_OVERRIDE="off"
   PACKET_LOGGING_OVERRIDE="off"
@@ -3503,6 +3522,19 @@ run_logging_matrix_build_targets() {
     echo "Skipping ${lora_ota_only_skip_count} LoRa-OTA-only target(s) for logging-on pass because logging disables LoRa OTA."
   fi
 
+  filtered_logging_targets=()
+  for target in "${logging_targets[@]}"; do
+    if requires_esp32_full_cli_profile "$target"; then
+      full_cli_logging_skip_count=$((full_cli_logging_skip_count + 1))
+    else
+      filtered_logging_targets+=("$target")
+    fi
+  done
+  logging_targets=("${filtered_logging_targets[@]}")
+  if [ "$full_cli_logging_skip_count" -gt 0 ]; then
+    echo "Deferring ${full_cli_logging_skip_count} ESP32 target(s) to the FULL logging pass so the complete CLI is retained."
+  fi
+
   for target in "${logging_targets[@]}"; do
     if is_logging_size_constrained_target "$target"; then
       constrained_logging_targets+=("$target")
@@ -3512,7 +3544,7 @@ run_logging_matrix_build_targets() {
   logging_target_count=$((${#logging_targets[@]} + ${#constrained_logging_targets[@]}))
 
   if [ "$logging_target_count" -gt 0 ]; then
-    echo "Profile 2/5: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
+    echo "Profile 2/4: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
     echo "Logging-on artifacts use filename form: name-logging-version"
   else
     echo "No non-Bluetooth targets remain for logging-on pass."
@@ -3541,27 +3573,12 @@ run_logging_matrix_build_targets() {
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
-  if [ ${#mqtt_targets[@]} -gt 0 ]; then
-    echo "Profile 3/5: building ${#mqtt_targets[@]} MQTT bridge target(s) for direct radio-to-MQTT forwarding over WiFi, with logging off."
-    MESHDEBUG_OVERRIDE="off"
-    PACKET_LOGGING_OVERRIDE="off"
-    MQTT_BRIDGE_OVERRIDE="on"
-    MQTT_DEBUG_OVERRIDE="off"
-    FIRMWARE_FILENAME_INFIX=""
-    run_logged_build_targets "${mqtt_targets[@]}"
-    pass_status=$?
-    if [ "$pass_status" -eq 130 ]; then return 130; fi
-    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
-  else
-    echo "No MQTT bridge targets are configured; skipping profile 3/5."
-  fi
-
-  run_full_esp32_profile "Profile 4/5" "off" "${targets[@]}"
+  run_full_esp32_profile "Profile 3/4" "off" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-  run_full_esp32_profile "Profile 5/5" "on" "${targets[@]}"
+  run_full_esp32_profile "Profile 4/4" "on" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
@@ -3689,7 +3706,7 @@ main() {
       echo "Skipping separate debug and MQTT prompts; FULL everything enables logging and explicitly disables MQTT."
     elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
-        echo "Skipping debug and MQTT prompts; this action builds all five profiles automatically."
+        echo "Skipping debug and MQTT prompts; this action builds all four profiles automatically."
       elif is_full_esp32_logging_command "${SELECTED_COMMAND_ARGS[0]}"; then
         echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 logging profile with MQTT disabled."
       else

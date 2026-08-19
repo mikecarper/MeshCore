@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "../UsbLogging.h"
 
 #ifndef ETHERNET_TCP_PORT
   #define ETHERNET_TCP_PORT 5000
@@ -69,9 +70,9 @@ class SerialEthernetInterface : public BaseSerialInterface {
 
 #if ETHERNET_DEBUG_LOGGING && ARDUINO
   #include <Arduino.h>
-  #define ETHERNET_DEBUG_PRINT(F, ...) Serial.printf("ETH: " F, ##__VA_ARGS__)
-  #define ETHERNET_DEBUG_PRINTLN(F, ...) Serial.printf("ETH: " F "\n", ##__VA_ARGS__)
-  #define ETHERNET_DEBUG_PRINT_IP(name, ip) Serial.printf("ETH: " name ": %u.%u.%u.%u" "\n", ip[0], ip[1], ip[2], ip[3])
+  #define ETHERNET_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("ETH: " F, ##__VA_ARGS__); } } while(0)
+  #define ETHERNET_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("ETH: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define ETHERNET_DEBUG_PRINT_IP(name, ip) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("ETH: " name ": %u.%u.%u.%u" "\n", ip[0], ip[1], ip[2], ip[3]); } } while(0)
 #else
   #define ETHERNET_DEBUG_PRINT(...) {}
   #define ETHERNET_DEBUG_PRINTLN(...) {}

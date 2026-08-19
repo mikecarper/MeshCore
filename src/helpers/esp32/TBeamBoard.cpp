@@ -55,8 +55,9 @@ void TBeamBoard::scanDevices(TwoWire *w)
     uint8_t err, addr;
     int nDevices = 0;
     uint32_t start = 0;
+    const bool usb_logging = mesh::isUsbLoggingEnabled();
 
-    Serial.println("Scanning I2C for Devices");
+    if (usb_logging) Serial.println("Scanning I2C for Devices");
     for (addr = 1; addr < 127; addr++) {
         start = millis();
         w->beginTransmission(addr); delay(2);
@@ -66,45 +67,49 @@ void TBeamBoard::scanDevices(TwoWire *w)
             switch (addr) {
             case 0x77:
             case 0x76:
-                Serial.println("\tFound BME280 Sensor");
+                if (usb_logging) Serial.println("\tFound BME280 Sensor");
                 deviceOnline |= BME280_ONLINE;
                 break;
             case 0x34:
-                Serial.println("\tFound AXP192/AXP2101 PMU");
+                if (usb_logging) Serial.println("\tFound AXP192/AXP2101 PMU");
                 deviceOnline |= POWERMANAGE_ONLINE;
                 break;
             case 0x3C:
-                Serial.println("\tFound SSD1306/SH1106 display");
+                if (usb_logging) Serial.println("\tFound SSD1306/SH1106 display");
                 deviceOnline |= DISPLAY_ONLINE;
                 break;
             case 0x51:
-                Serial.println("\tFound PCF8563 RTC");
+                if (usb_logging) Serial.println("\tFound PCF8563 RTC");
                 deviceOnline |= PCF8563_ONLINE;
                 break;
             case 0x1C:
-                Serial.println("\tFound QMC6310 MAG Sensor");
+                if (usb_logging) Serial.println("\tFound QMC6310 MAG Sensor");
                 deviceOnline |= QMC6310_ONLINE;
                 break;
             default:
-                Serial.print("\tI2C device found at address 0x");
-                if (addr < 16) {
-                    Serial.print("0");
+                if (usb_logging) {
+                    Serial.print("\tI2C device found at address 0x");
+                    if (addr < 16) {
+                        Serial.print("0");
+                    }
+                    Serial.print(addr, HEX);
+                    Serial.println(" !");
                 }
-                Serial.print(addr, HEX);
-                Serial.println(" !");
                 break;
             }
 
         } else if (err == 4) {
-            Serial.print("Unknow error at address 0x");
-            if (addr < 16) {
-                Serial.print("0");
+            if (usb_logging) {
+                Serial.print("Unknow error at address 0x");
+                if (addr < 16) {
+                    Serial.print("0");
+                }
+                Serial.println(addr, HEX);
             }
-            Serial.println(addr, HEX);
         }
     }
-    if (nDevices == 0)
-        Serial.println("No I2C devices found\n");
+    if (!usb_logging) return;
+    if (nDevices == 0) Serial.println("No I2C devices found\n");
 
     Serial.println("Scan for devices is complete.");
     Serial.println("\n");
@@ -115,6 +120,7 @@ void TBeamBoard::scanDevices(TwoWire *w)
 }
 void TBeamBoard::printPMU()
 {
+    if (!mesh::isUsbLoggingEnabled()) return;
     Serial.print("isCharging:"); Serial.println(PMU->isCharging() ? "YES" : "NO");
     Serial.print("isDischarge:"); Serial.println(PMU->isDischarge() ? "YES" : "NO");
     Serial.print("isVbusIn:"); Serial.println(PMU->isVbusIn() ? "YES" : "NO");

@@ -780,6 +780,20 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
   #if ENV_INCLUDE_GPS
   if (gps_detected && strcmp(name, "gps") == 0) {
     bool enabled = strcmp(value, "0") != 0;
+#if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
+    // RAK3401 must keep 3V3_S on for its radio FEM. RAK12501/L76K has no
+    // separately wired standby control, so claiming it is off would only stop
+    // parsing while the receiver continued drawing full power.
+    if (!enabled && serialGPSFlag) {
+      setGpsTelemetryUserEnabled(true);
+      return false;
+    }
+    if (enabled && serialGPSFlag) {
+      _location->setGPSPowerSaving(false);
+      setGpsTelemetryUserEnabled(true);
+      return true;
+    }
+#endif
     bool was_active = gps_active;
     _location->setGPSPowerSaving(enabled && powersaving_enabled);
     setGpsTelemetryUserEnabled(enabled);
@@ -788,13 +802,8 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
     }
     return true;
   }
-  if (strcmp(name, "gps_interval") == 0) {
-    uint32_t interval_seconds = atoi(value);
-    gps_update_interval_sec = interval_seconds > 0 ? interval_seconds : 1;
-    return true;
-  }
   #endif
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
 }
 
 void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
@@ -804,6 +813,13 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
   #if ENV_INCLUDE_GPS
   if (!gps_detected) return;
   bool gps_user_enabled = isGpsTelemetryUserEnabled();
+#if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
+  if (serialGPSFlag) {
+    _location->setGPSPowerSaving(false);
+    if (!gps_active) start_gps();
+    return;
+  }
+#endif
   _location->setGPSPowerSaving(enabled && gps_user_enabled);
   if (!gps_user_enabled) return;
 
@@ -886,8 +902,16 @@ void EnvironmentSensorManager::rakGPSInit() {
     return;
   }
 
-#ifndef FORCE_GPS_ALIVE // for use with repeaters, until GPS toggle is implimented
-  // Now that GPS is found and set up, set to sleep for initial state
+#ifdef FORCE_GPS_ALIVE
+  if (i2cGPSFlag) {
+    // The u-blox receiver can sleep while the shared rail remains available.
+    stop_gps();
+  } else if (serialGPSFlag) {
+    // The UART L76K cannot be isolated from the RAK3401 radio power rail.
+    setGpsTelemetryUserEnabled(true);
+  }
+#else
+  // Now that GPS is found and set up, set it to sleep for the initial state.
   stop_gps();
 #endif
 }
@@ -986,8 +1010,10 @@ void EnvironmentSensorManager::stop_gps() {
 
 #ifdef RAK_WISBLOCK_GPS
 #ifdef FORCE_GPS_ALIVE
-  // Keep the shared rail alive. The UART L76K cannot be put to sleep here.
-  if (i2cGPSFlag) ublox_GNSS.powerSaveMode(false);
+  // Keep the shared rail alive for the RAK3401 radio FEM. The I2C u-blox can
+  // still enter its internal power-save mode. UART L76K builds reject GPS off
+  // above because that module has no independent standby connection.
+  if (i2cGPSFlag) ublox_GNSS.powerSaveMode(true);
 #else
   pinMode(gpsResetPin, OUTPUT);
   digitalWrite(gpsResetPin, LOW); // WB_IO2
@@ -1013,8 +1039,9 @@ void EnvironmentSensorManager::loop() {
   if (powersaving_enabled && gps_detected && _location->getGPSPowerSaving()) {
     unsigned long next_off = _location->getNextGPSOff();
     unsigned long next_on = _location->getNextGPSOn();
-    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
-                       || !_location->waitingTimeSync())) {
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_location->waitingTimeSync())) {
       POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
       stop_gps();
     } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
@@ -1055,7 +1082,7 @@ void EnvironmentSensorManager::loop() {
     #endif
 
     }
-    next_gps_update = now + (gps_update_interval_sec * 1000);
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
   #endif
   #if ENV_INCLUDE_BME680_BSEC

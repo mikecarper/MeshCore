@@ -137,9 +137,19 @@ def resolve_release_identity(
     if alias is not None and alias in release_files:
         return alias, False
 
-    # The previous catalog used expanded-partition FULL MQTT images. The new
-    # standard matrix emits a portable MQTT observer under the same target name
-    # without the build-only "-full-ota" filename marker.
+    # Accept catalogs produced while portable MQTT observers were still
+    # emitted, and migrate them to the expanded-partition FULL artifact.
+    if "observer_mqtt" in old_identity.lower():
+        full_identity = f"{old_identity}-full-ota"
+        if full_identity in release_files:
+            return full_identity, True
+    if "bridge_espnow" in old_identity.lower():
+        full_identity = f"{old_identity}-full-ota"
+        if full_identity in release_files:
+            return full_identity, False
+
+    # Retain compatibility with the short-lived reverse migration used by
+    # older release directories.
     full_suffix = "-full-ota"
     if old_identity.endswith(full_suffix):
         portable_identity = old_identity[: -len(full_suffix)]
@@ -172,6 +182,7 @@ def release_tag_for_identity(identity: str, args: argparse.Namespace) -> str:
     lowered = identity.lower()
     if (
         "companion_radio_full" in lowered
+        or "-full-ota" in lowered
         or "lora_ota" in lowered
         or "observer_mqtt" in lowered
     ):
@@ -240,6 +251,8 @@ def replace_release_version(notes: str, display_version: str) -> str:
 def partition_warning(identities: list[str]) -> str | None:
     if not any(
         identity.lower() in LEGACY_PORTABLE_CEILING_EXCEPTIONS
+        or "-full-ota" in identity.lower()
+        or "-full-logging-ota" in identity.lower()
         for identity in identities
     ):
         return None
@@ -297,15 +310,15 @@ def observer_notes(
         ),
         role_paragraph,
         (
-            "PROFILE - Portable MQTT observer: forwards mesh observations to an "
-            "on-device Wi-Fi MQTT bridge, keeps USB debug/packet logging off, and "
-            "uses bridge NTP instead of mesh clock consensus. LoRa self-update is "
-            "off in this compact profile."
+            "PROFILE - FULL MQTT observer: uses expanded partitions, forwards mesh observations to an "
+            "on-device Wi-Fi MQTT bridge, keeps USB debug/packet logging off, "
+            "uses bridge NTP instead of mesh clock consensus, and retains the "
+            "complete role CLI. LoRa self-update is enabled."
         ),
         (
-            "INSTALL - First-time setup uses Full install (the merged bootloader + "
-            "firmware image). Routine upgrades use Update (the app-only image) only "
-            "when the existing app partition is compatible."
+            "INSTALL - Flash Full install (the merged bootloader + firmware image) "
+            "over USB once to install the expanded partition table. Routine upgrades "
+            "can then use Update (the app-only image) while that layout remains installed."
         ),
     ]
     warning = partition_warning(identities)
@@ -320,7 +333,7 @@ def observer_notes(
             "Board selection note:"
         ):
             paragraphs.append(paragraph)
-    paragraphs.append("SELECTION - Portable MQTT observer.")
+    paragraphs.append("SELECTION - FULL MQTT observer.")
     return "\n\n".join(paragraphs)
 
 
@@ -341,8 +354,9 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
             "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
             "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
-            "Companion builds, compact LoRa-OTA builds, and portable MQTT observer "
-            "builds with USB debug/packet logging off. On nRF52, Full Companion "
+            "Companion builds, lean LoRa-OTA builds, and expanded-partition FULL "
+            "MQTT observer and ESP-NOW bridge builds. MQTT observers keep USB "
+            "debug/packet logging off. On nRF52, Full Companion "
             "replaces separate BLE and USB choices; on ESP32, Full Companion is "
             "offered next to the BLE/USB variants. Open Release notes for role, "
             "hardware, installation, and partition requirements."
@@ -406,7 +420,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     resolved_identities,
                     old_notes,
                 )
-                firmware["subTitle"] = "Portable MQTT observer"
+                firmware["subTitle"] = "FULL MQTT observer"
                 observer_entries += 1
             else:
                 version_key = replacement_version_key(old_keys[0], args.artifact_version)

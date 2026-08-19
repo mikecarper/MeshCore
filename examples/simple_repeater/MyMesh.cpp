@@ -1016,11 +1016,13 @@ const char *MyMesh::getLogDateTime() {
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #if MESH_PACKET_LOGGING && !defined(MESH_COMPACT_PACKET_LOGGING)
-  // Logging builds prefer backpressure over silently losing a packet record.
-  Serial.print(getLogDateTime());
-  Serial.print(" RAW: ");
-  mesh::Utils::printHex(Serial, raw, len);
-  Serial.println();
+  if (mesh::isUsbLoggingEnabled()) {
+    // Logging builds prefer backpressure over silently losing a packet record.
+    Serial.print(getLogDateTime());
+    Serial.print(" RAW: ");
+    mesh::Utils::printHex(Serial, raw, len);
+    Serial.println();
+  }
 #endif
 
 #ifdef WITH_MQTT_BRIDGE
@@ -9510,9 +9512,8 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
 
 #else
 
-// Portable MQTT observers use their bridge's NTP source. Flash-constrained
-// repeaters can also omit mesh consensus while retaining manual clock setting
-// and scheduled radio changes.
+// Builds without mesh consensus retain manual clock setting and scheduled
+// radio changes. MQTT observers use their bridge's NTP source.
 static const char* clockSyncMeshSuppressionName(uint8_t source) {
   (void)source;
   return "unavailable";
@@ -10408,9 +10409,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #endif
 
 #if defined(PORTABLE_MQTT_OBSERVER)
-  // Neighbor refresh is a core repeater operation, not an MQTT feature. Keep
-  // it ahead of the portable observer's reduced CommonCLI handoff so every
-  // repeater build exposes the same command.
+  // Legacy PORTABLE_MQTT_OBSERVER builds kept neighbor refresh ahead of their
+  // reduced role handoff. Current build.sh profiles never define this macro.
   if (discover_neighbors_match != mesh::cli::NoArgCommandMatch::NoMatch) {
     if (discover_neighbors_match ==
         mesh::cli::NoArgCommandMatch::HasArguments) {
@@ -10422,9 +10422,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     return;
   }
 
-  // Reply-path overrides are core remote-client routing controls. Keep them
-  // available before the portable observer hands the remaining commands to
-  // its reduced CommonCLI parser.
+  // Legacy PORTABLE_MQTT_OBSERVER builds kept reply-path overrides ahead of
+  // their reduced role handoff. Current build.sh profiles use FULL instead.
   if (classifyClientPathCommand(command) != CLIENT_PATH_NONE) {
     if (sender && !sender->isAdmin()) {
       bool allowed = (sender->isRegionMgr() || sender->isFilterMgr())
@@ -10438,9 +10437,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     return;
   }
 
-  // The portable observer exposes its MQTT/WiFi/update controls through
-  // CommonCLI. Omit the repeater's large remote-administration command tree;
-  // its mesh behavior remains fixed by the selected build profile.
+  // Compatibility path for manually defined legacy portable builds. Current
+  // release builds use FULL and do not enter this branch.
   _cli.handleCommand(sender_timestamp, command, reply);
   return;
 #endif

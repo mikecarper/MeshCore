@@ -25,7 +25,15 @@ mesh::LocalIdentity radio_new_identity() {
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
 
+void MeshTrackerX1SensorManager::armGpsPowerSavingCycle() {
+  if (!powersaving_enabled || !_nmea->getGPSPowerSaving()) return;
+  _nmea->syncTime();
+  _nmea->setNextGPSOn(0);
+  _nmea->setNextSleep();
+}
+
 void MeshTrackerX1SensorManager::start_gps() {
+  if (gps_active) return;
   gps_active = true;
   // this init sequence comes from seeed examples and deals with all gps pins
   pinMode(GPS_EN, OUTPUT);
@@ -44,10 +52,19 @@ void MeshTrackerX1SensorManager::start_gps() {
   digitalWrite(GPS_SLEEP_INT, HIGH);
   pinMode(GPS_RTC_INT, OUTPUT);
   digitalWrite(GPS_RTC_INT, LOW);
+  _nmea->begin();
+  armGpsPowerSavingCycle();
 }
 
 void MeshTrackerX1SensorManager::sleep_gps() {
+  if (!gps_active) return;
   gps_active = false;
+  if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
+    _nmea->stopTimeSync();
+    _nmea->setNextGPSOff(0);
+    _nmea->setNextWake();
+  }
+  _nmea->stop();
   digitalWrite(GPS_VRTC_EN, HIGH);   // keep RTC alive for faster fix on wake
   digitalWrite(GPS_EN, LOW);
   digitalWrite(GPS_RESET, LOW);
@@ -57,6 +74,7 @@ void MeshTrackerX1SensorManager::sleep_gps() {
 
 void MeshTrackerX1SensorManager::stop_gps() {
   gps_active = false;
+  _nmea->stop();
   digitalWrite(GPS_VRTC_EN, LOW);
   digitalWrite(GPS_EN, LOW);
   digitalWrite(GPS_RESET, LOW);
@@ -67,6 +85,12 @@ void MeshTrackerX1SensorManager::stop_gps() {
 bool MeshTrackerX1SensorManager::begin() {
   // init GPS
   Serial1.begin(GPS_BAUD_RATE);
+  pinMode(GPS_VRTC_EN, OUTPUT);
+  pinMode(GPS_EN, OUTPUT);
+  pinMode(GPS_RESET, OUTPUT);
+  pinMode(GPS_SLEEP_INT, OUTPUT);
+  pinMode(GPS_RTC_INT, OUTPUT);
+  stop_gps();
 
   // init SPA06-003 barometer
   baro_ok = spa06.begin(SPA06_003_DEFAULT_ADDR, &Wire) || spa06.begin(0x76, &Wire);
@@ -82,9 +106,7 @@ bool MeshTrackerX1SensorManager::begin() {
 }
 
 bool MeshTrackerX1SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
-  if (requester_permissions & TELEM_PERM_LOCATION) {   // does requester have permission?
-    telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude);
-  }
+  queryGpsTelemetry(requester_permissions, telemetry);
   if (requester_permissions & TELEM_PERM_ENVIRONMENT && baro_ok) {
     telemetry.addTemperature(TELEM_CHANNEL_SELF, spa06.readTemperature());
     telemetry.addBarometricPressure(TELEM_CHANNEL_SELF, spa06.readPressure());
@@ -93,18 +115,33 @@ bool MeshTrackerX1SensorManager::querySensors(uint8_t requester_permissions, Cay
 }
 
 void MeshTrackerX1SensorManager::loop() {
-  static long next_gps_update = 0;
+  static unsigned long next_gps_update = 0;
+  unsigned long now = millis();
+  loopGpsTelemetry(now);
 
+  if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
+    unsigned long next_off = _nmea->getNextGPSOff();
+    unsigned long next_on = _nmea->getNextGPSOn();
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_nmea->waitingTimeSync())) {
+      sleep_gps();
+    } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
+                               || _nmea->waitingTimeSync())) {
+      start_gps();
+    }
+  }
 
-  _nmea->loop();
+  if (gps_active) _nmea->loop();
 
-  if (millis() > next_gps_update) {
+  if ((long)(now - next_gps_update) >= 0) {
     if (gps_active && _nmea->isValid()) {
       node_lat = ((double)_nmea->getLatitude())/1000000.;
       node_lon = ((double)_nmea->getLongitude())/1000000.;
       node_altitude = ((double)_nmea->getAltitude()) / 1000.0;
+      processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
     }
-    next_gps_update = millis() + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -115,18 +152,36 @@ const char* MeshTrackerX1SensorManager::getSettingName(int i) const {
 }
 const char* MeshTrackerX1SensorManager::getSettingValue(int i) const {
   if (i == 0) {
-    return gps_active ? "1" : "0";
+    return isGpsTelemetryUserEnabled() ? "1" : "0";
   }
   return NULL;
 }
 bool MeshTrackerX1SensorManager::setSettingValue(const char* name, const char* value) {
   if (strcmp(name, "gps") == 0) {
-    if (strcmp(value, "0") == 0) {
-      sleep_gps(); // sleep for faster fix !
-    } else {
-      start_gps();
+    bool enabled = strcmp(value, "0") != 0;
+    bool was_active = gps_active;
+    _nmea->setGPSPowerSaving(enabled && powersaving_enabled);
+    setGpsTelemetryUserEnabled(enabled);
+    if (enabled && powersaving_enabled && was_active) {
+      armGpsPowerSavingCycle();
     }
     return true;
   }
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
+}
+
+void MeshTrackerX1SensorManager::setPowerSavingEnabled(bool enabled) {
+  if (powersaving_enabled == enabled) return;
+  powersaving_enabled = enabled;
+
+  bool gps_user_enabled = isGpsTelemetryUserEnabled();
+  _nmea->setGPSPowerSaving(enabled && gps_user_enabled);
+  if (!gps_user_enabled) return;
+
+  if (enabled) {
+    if (gps_active) armGpsPowerSavingCycle();
+    else start_gps();
+  } else if (!gps_active) {
+    start_gps();
+  }
 }

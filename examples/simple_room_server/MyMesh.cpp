@@ -264,11 +264,13 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #if MESH_PACKET_LOGGING
-  // Logging builds prefer backpressure over silently losing a packet record.
-  Serial.print(getLogDateTime());
-  Serial.print(" RAW: ");
-  mesh::Utils::printHex(Serial, raw, len);
-  Serial.println();
+  if (mesh::isUsbLoggingEnabled()) {
+    // Logging builds prefer backpressure over silently losing a packet record.
+    Serial.print(getLogDateTime());
+    Serial.print(" RAW: ");
+    mesh::Utils::printHex(Serial, raw, len);
+    Serial.println();
+  }
 #endif
 
 #ifdef WITH_MQTT_BRIDGE

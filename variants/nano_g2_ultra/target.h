@@ -18,6 +18,7 @@ class NanoG2UltraSensorManager : public SensorManager {
   bool gps_active = false;
   LocationProvider *_location;
 
+  void armGpsPowerSavingCycle();
   void start_gps();
   void stop_gps();
   bool telemetryGpsDetected() const override { return true; }
@@ -34,6 +35,8 @@ public:
   const char *getSettingName(int i) const override;
   const char *getSettingValue(int i) const override;
   bool setSettingValue(const char *name, const char *value) override;
+  void setPowerSavingEnabled(bool enabled) override;
+  LocationProvider* getLocationProvider() override { return _location; }
 };
 
 extern NanoG2Ultra board;

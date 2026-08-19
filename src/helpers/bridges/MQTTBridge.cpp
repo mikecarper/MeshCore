@@ -209,6 +209,7 @@ static unsigned long s_wifi_disconnect_time = 0;
 // #region agent log
 static void agentLogHeap(const char* location, const char* message, const char* hypothesisId,
                          size_t free_h, size_t max_alloc, unsigned long internal_free, unsigned long spiram_free) {
+  if (!mesh::isUsbLoggingEnabled()) return;
   char buf[320];
   snprintf(buf, sizeof(buf),
           "{\"sessionId\":\"debug-session\",\"location\":\"%s\",\"message\":\"%s\",\"hypothesisId\":\"%s\","

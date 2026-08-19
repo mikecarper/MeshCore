@@ -1354,7 +1354,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.tx_power_dbm = LORA_TX_POWER;
   _prefs.buzzer_quiet = DEFAULT_BUZZER_QUIET ? 1 : 0;
   _prefs.gps_enabled = 0;       // GPS disabled by default
-  _prefs.gps_interval = 0;      // No automatic GPS updates by default
+  _prefs.gps_interval = 0;      // Use the default 1-second fix-processing interval
   _prefs.autoadd_config = DEFAULT_AUTOADD_CONFIG;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
   _prefs.radio_fem_txgain = 0;
@@ -4665,6 +4665,11 @@ void MyMesh::handleTerminalCommand(char* command) {
              || strcmp(command, "get powersaving") == 0) {
     Serial.printf("  powersaving %s\r\n",
                   _prefs.powersaving_enabled ? "on" : "off");
+#if MESH_USB_LOGGING_AVAILABLE
+  } else if (strcmp(command, "get usb.logging") == 0) {
+    Serial.printf("  usb.logging %s\r\n",
+                  mesh::isUsbLoggingEnabled() ? "on" : "off");
+#endif
   } else if (strncmp(command, "powersaving ", 12) == 0) {
     char reply[160];
     applyAndSavePowerSaving(command + 12, reply);
@@ -4709,6 +4714,22 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
   } else if (strncmp(command, "set ", 4) == 0) {
     const char* config = command + 4;
+#if MESH_USB_LOGGING_AVAILABLE
+    if (strncmp(config, "usb.logging", 11) == 0
+        && (config[11] == 0 || config[11] == ' '
+            || config[11] == '\t')) {
+      const char* value = config + 11;
+      while (*value == ' ' || *value == '\t') value++;
+      if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+        Serial.print("  ERROR: use set usb.logging <on|off>\r\n");
+      } else {
+        const bool enabled = strcmp(value, "on") == 0;
+        mesh::setUsbLoggingEnabled(enabled);
+        Serial.printf("  OK - USB logging %s until reboot\r\n",
+                      enabled ? "on" : "off");
+      }
+    } else
+#endif
     if (strncmp(config, "powersaving ", 12) == 0) {
       char reply[160];
       applyAndSavePowerSaving(config + 12, reply);
@@ -4803,6 +4824,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     Serial.print("Commands:\r\n");
     Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     Serial.print("  powersaving [on|off]\r\n");
+#if MESH_USB_LOGGING_AVAILABLE
+    Serial.print("  get usb.logging\r\n");
+    Serial.print("  set usb.logging <on|off>\r\n");
+#endif
 #if defined(ESP32) && defined(WIFI_SSID)
     Serial.print("  get wifi.powersave\r\n");
     Serial.print("  set wifi.powersave <none|min|max>\r\n");

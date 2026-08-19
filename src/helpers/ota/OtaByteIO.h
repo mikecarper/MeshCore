@@ -52,6 +52,26 @@ struct ByteReader {
     const uint8_t* r = p + n; n += k; return r;
   }
   void skip(uint32_t k) { if (!fits(k)) { ok = false; return; } n += k; }
+
+  // Positive detools header size (signed varint encoding, but flash geometry never accepts negatives).
+  bool detools_size(uint32_t& out) {
+    if (!fits(1)) { ok = false; return false; }
+    uint8_t byte = p[n++];
+    if (byte & 0x40u) { ok = false; return false; }
+    uint32_t value = byte & 0x3Fu;
+    uint32_t shift = 6;
+    while (byte & 0x80u) {
+      if (!fits(1)) { ok = false; return false; }
+      byte = p[n++];
+      const uint32_t bits = byte & 0x7Fu;
+      if (shift >= 32 || bits > (UINT32_MAX >> shift)) { ok = false; return false; }
+      value |= bits << shift;
+      shift += 7;
+    }
+    if (value > 0x7FFFFFFFu) { ok = false; return false; }
+    out = value;
+    return true;
+  }
 };
 
 } // namespace ota

@@ -5,10 +5,10 @@
 #include "OtaStore.h"
 #include "OtaFlashLayout_nrf52.h"
 
-// Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` in the free flash
-// below the primary LittleFS (FS_START), bottom-aligned so its trailer ends at FS_START and the
-// bootloader can scan for it. Survives reboot - the whole point - so the bootloader can apply the
-// staged delta on the next boot.
+// Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` below the selected
+// filesystem-safe ceiling, bottom-aligned so the bootloader can find it. Internal ExtraFS roles stop
+// at 0xD4000; QSPI/no-ExtraFS roles can use the otherwise-free range through 0xED000. Survives reboot -
+// the whole point - so the bootloader can apply the staged delta on the next boot.
 //
 // RAM is bounded to O(one flash page), NEVER O(mota): a 100 KB+ delta must not live in RAM.
 //   - On nRF52 the flash *erase* unit is one 4 KB page and the only SoftDevice-safe writer
@@ -36,6 +36,7 @@ class OtaStoreFlashNrf52 : public OtaStore {
   static const uint32_t PG = MOTA_NRF52_FLASH_PAGE;   // 4096
 
   uint32_t _write_start = 0;        // flash address of container offset 0 (page-aligned)
+  uint32_t _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
   uint32_t _total = 0;              // staged container size (0 = none)
   bool     _flushed = false;        // finalize() committed everything to flash
   bool     _io_ok = true;           // cleared on a failed/out-of-bounds flash write or readback mismatch
@@ -58,9 +59,12 @@ public:
   bool begin(uint32_t total_size) override;
   bool write(uint32_t offset, const uint8_t* data, uint32_t len) override;
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;
-  uint32_t capacity() const override { return mota_nrf52_stage_capacity(mota_nrf52_app_base()); }
+  uint32_t capacity() const override;
   uint32_t staged_size() const override { return _total; }
-  void clear() override { _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true; }
+  void clear() override {
+    _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
+    _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true;
+  }
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes <= PG; }  // leaves must fit page 0
   bool finalize() override;
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume

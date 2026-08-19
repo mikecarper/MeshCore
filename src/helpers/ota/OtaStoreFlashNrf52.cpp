@@ -3,6 +3,7 @@
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
 
 #include "OtaSelf.h"
+#include "OtaBlInfo.h"
 #include "OtaDebug.h"
 #include "OtaByteIO.h"           // align_down / rd_u32le (flash-page geometry + header read)
 #include <string.h>
@@ -11,10 +12,19 @@
 namespace mesh {
 namespace ota {
 
+// A valid EndF gives the exact live-image extent. Rescue/bring-up builds without one retain the old
+// 608 KiB protection floor so staging cannot begin in the middle of a normally sized application.
+static bool protected_app_end(uint32_t app_base, uint32_t stage_ceiling, uint32_t& app_end) {
+  if (!mota_nrf52_layout_valid(app_base, stage_ceiling)) return false;
+  app_end = app_base + MOTA_NRF52_FALLBACK_INPLACE_MEMORY;
+  SelfFwInfo fi;
+  if (ota_self_firmware(fi) && fi.valid) app_end = app_base + fi.image_len;
+  return app_end >= app_base && app_end <= stage_ceiling;
+}
+
 // Write one whole 4 KB page from `buf` to flash (erase + program, ~85 ms). `buf` is PG bytes, 0xFF-padded
-// past the container, so the program is clean. The last container page ends exactly at FS_START (both
-// FS_START and _write_start are page-aligned and the container ends <= FS_START), so a full-page write
-// never reaches into ExtraFS.
+// past the container, so the program is clean. The selected ceiling and _write_start are page-aligned,
+// and the container ends below the ceiling, so a full-page write never reaches protected storage.
 static bool flash_matches(uint32_t addr, const uint8_t* expected, uint32_t n) {
   const volatile uint8_t* actual = (const volatile uint8_t*)(uintptr_t)addr;
   for (uint32_t i = 0; i < n; i++) if (actual[i] != expected[i]) return false;
@@ -22,8 +32,8 @@ static bool flash_matches(uint32_t addr, const uint8_t* expected, uint32_t n) {
 }
 
 bool OtaStoreFlashNrf52::flush_page(uint32_t page_idx, const uint8_t* buf) {
-  if (!_io_ok || _write_start > MOTA_NRF52_FS_START - PG ||
-      page_idx > (MOTA_NRF52_FS_START - PG - _write_start) / PG) {
+  if (!_io_ok || _write_start > _stage_ceiling - PG ||
+      page_idx > (_stage_ceiling - PG - _write_start) / PG) {
     _io_ok = false;
     return false;
   }
@@ -33,6 +43,14 @@ bool OtaStoreFlashNrf52::flush_page(uint32_t page_idx, const uint8_t* buf) {
   flash_nrf5x_flush();
   if (!flash_matches(addr, buf, PG)) { _io_ok = false; return false; }
   return true;
+}
+
+uint32_t OtaStoreFlashNrf52::capacity() const {
+  const uint32_t app_base = mota_nrf52_app_base();
+  const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
+  uint32_t app_end;
+  return protected_app_end(app_base, stage_ceiling, app_end)
+      ? mota_nrf52_stage_capacity(app_base, app_end, stage_ceiling) : 0;
 }
 
 bool OtaStoreFlashNrf52::flush_pay() {
@@ -74,28 +92,25 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
 
   // never collide with the running application image (its extent comes from its EndF trailer)
   const uint32_t app_base = mota_nrf52_app_base();
-  if (!mota_nrf52_layout_valid(app_base)) return false;
-  uint32_t app_end = app_base;
-  SelfFwInfo fi;
-  if (ota_self_firmware(fi) && fi.valid) {
-    if ((uint64_t)app_base + fi.image_len > MOTA_NRF52_FS_START) return false;
-    app_end = app_base + fi.image_len;
-  }
+  const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
+  uint32_t app_end;
+  if (!protected_app_end(app_base, stage_ceiling, app_end)) return false;
 
-  // Bottom-align below FS_START and reject unless it sits above the running image AND the full detools
-  // workspace (the FS/prefs-safe bounds check; pure + unit-tested in the native OTA suite).
+  // Bottom-align below the selected ceiling and reject unless it sits above the running image. The
+  // approval path later verifies the patch's detools workspace ends at/below this exact start.
   uint32_t start;
-  if (!mota_nrf52_stage_plan(total_size, app_base, app_end, start)) return false;
+  if (!mota_nrf52_stage_plan(total_size, app_base, app_end, stage_ceiling, start)) return false;
 
   _write_start = start;
+  _stage_ceiling = stage_ceiling;
   _total = total_size;
   memset(_meta_page, 0xFF, PG);     // assemble page 0 in RAM; 0xFF = erased sentinel (unfilled leaf slots)
   memset(_trailer, 0xFF, sizeof(_trailer));
   _pay_idx = 0;
   _flushed = false;
   _io_ok = true;
-  OTA_DBG("OTA flash: begin total=%u start=%08x app_end=%08x\n",
-          (unsigned)total_size, (unsigned)start, (unsigned)app_end);
+  OTA_DBG("OTA flash: begin total=%u start=%08x app_end=%08x ceiling=%08x\n",
+          (unsigned)total_size, (unsigned)start, (unsigned)app_end, (unsigned)stage_ceiling);
   return true;                      // no pre-erase: each page is erased by its own (single) flush
 }
 
@@ -156,33 +171,31 @@ void OtaStoreFlashNrf52::checkpoint() {
 }
 
 // Re-attach to a container already staged in flash (after a reboot), without erasing. The container is
-// bottom-aligned (begin: start = (FS_START - total) & ~(PG-1)) and flash is memory-mapped, so scan page
-// starts from just below FS_START down to the app end for MOTA_MAGIC with a self-consistent total; adopt
+// bottom-aligned (begin: start = (ceiling - total) & ~(PG-1)) and flash is memory-mapped, so scan page
+// starts from just below that ceiling down to the app end for MOTA_MAGIC with a self-consistent total; adopt
 // the first match (highest address = most recent for the common single-container case). The manager then
 // parses the loaded manifest and validates geometry/root, so a stale leftover is rejected there.
 bool OtaStoreFlashNrf52::reopen() {
   const uint32_t app_base = mota_nrf52_app_base();
-  if (!mota_nrf52_layout_valid(app_base)) return false;
-  uint32_t app_end = app_base;
-  SelfFwInfo fi;
-  if (ota_self_firmware(fi) && fi.valid) {
-    if ((uint64_t)app_base + fi.image_len > MOTA_NRF52_FS_START) return false;
-    app_end = app_base + fi.image_len;
-  }
-  for (uint32_t start = align_down(MOTA_NRF52_FS_START - PG, PG); start >= app_end; start -= PG) {
+  const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
+  uint32_t app_end;
+  if (!protected_app_end(app_base, stage_ceiling, app_end)) return false;
+  for (uint32_t start = align_down(stage_ceiling - PG, PG); start >= app_end; start -= PG) {
     const uint8_t* p = (const uint8_t*)(uintptr_t)start;
     if (memcmp(p, MOTA_MAGIC, 4) != 0) continue;
     uint32_t total = rd_u32le(p + 4);
     uint32_t want;   // must be valid + placed exactly where begin() would have staged it (same bounds fn)
-    if (!mota_nrf52_stage_plan(total, app_base, app_end, want) || want != start) continue;
+    if (!mota_nrf52_stage_plan(total, app_base, app_end, stage_ceiling, want) || want != start) continue;
     _write_start = start;
+    _stage_ceiling = stage_ceiling;
     _total = total;
     memcpy(_meta_page, p, PG);                  // load page 0 (header+manifest+leaves) into RAM to continue
     memcpy(_trailer, p + (total - 5), 5);        // recover the trailer tail (flushed at last finalize, if any)
     _pay_idx = 0;
     _flushed = false;
     _io_ok = true;
-    OTA_DBG("OTA flash: reopen total=%u start=%08x\n", (unsigned)total, (unsigned)start);
+    OTA_DBG("OTA flash: reopen total=%u start=%08x ceiling=%08x\n",
+            (unsigned)total, (unsigned)start, (unsigned)stage_ceiling);
     return true;
   }
   return false;

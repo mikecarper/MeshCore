@@ -85,6 +85,7 @@ def release_tag(identity: str, args: argparse.Namespace) -> str:
         return args.logging_utility_tag if is_logging_utility(identity) else args.logging_main_tag
     if (
         "companion_radio_full" in lowered
+        or "-full-ota" in lowered
         or "lora_ota" in lowered
         or "observer_mqtt" in lowered
     ):
@@ -117,7 +118,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
             "BW62.5 / CR5 preset. This catalog contains packet-logging builds with "
             "USB debug enabled except on seven flash-constrained STM32 targets, "
-            "selected non-logging utility and portable MQTT observer builds, "
+            "selected non-logging utility and FULL MQTT observer builds, "
             "and expanded-partition FULL USB-logging LoRa-OTA builds. Host software "
             "can consume the USB serial log and publish it separately. Open Release "
             "notes for role, hardware, installation, and partition requirements."
@@ -143,7 +144,20 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             old_keys = list(firmware["version"])
             old_version = next(iter(firmware["version"].values()))
             old_notes = old_version["notes"]
-            identities = common.ordered_catalog_identities(firmware)
+            old_identities = common.ordered_catalog_identities(firmware)
+            identities: list[str] = []
+            observer_entry = False
+            for old_identity in old_identities:
+                identity, converted_observer = common.resolve_release_identity(
+                    old_identity, release_files
+                )
+                if identity not in identities:
+                    identities.append(identity)
+                observer_entry = (
+                    observer_entry
+                    or converted_observer
+                    or "observer_mqtt" in identity.lower()
+                )
             paths: list[Path] = []
             for identity in identities:
                 if identity not in release_files:
@@ -187,7 +201,13 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 )
 
             version_key = common.replacement_version_key(old_keys[0], args.artifact_version)
-            notes = common.replace_release_version(old_notes, display_version)
+            if observer_entry:
+                notes = common.observer_notes(
+                    firmware["role"], display_version, identities, old_notes
+                )
+                firmware["subTitle"] = "FULL MQTT observer"
+            else:
+                notes = common.replace_release_version(old_notes, display_version)
             if "USA/Canada 910.525 MHz" not in notes:
                 notes = notes.replace(
                     "with Halo/Keymind retry tuning and Cascade defaults.",

@@ -54,9 +54,24 @@ APPROVAL_YES = b"APRV"               # 41 50 52 56 = approved
 
 DEFAULT_BLOCK_SIZE = 1024
 
-# nRF52840 OTAFIX's detools in-place workspace. A firmware image (including EndF) must fit here, and
-# the staged .mota must begin above it. Keep in sync with OtaFlashLayout_nrf52.h / the OTAFIX bootloader.
+# Conservative fallback for firmware built before the layout record below existed. Keep in sync with
+# OtaFlashLayout_nrf52.h and motatool's format.rs.
 NRF52_INPLACE_MEMORY = 0x00098000
+
+NRF52_APP_BASE_S140_V6 = 0x00026000
+NRF52_APP_BASE_S140_V7 = 0x00027000
+NRF52_EXTRAFS_START = 0x000D4000
+NRF52_APP_END = 0x000ED000
+NRF52_FLASH_PAGE = 4096
+
+# A validated nRF52 firmware carries this record immediately before EndF. It lets an offline packager
+# derive the actual app base and staging ceiling from the built artifact, without a board-name allowlist.
+# magic(8) | version(1) | flags(1) | record_len(2) | app_base(4) | linked_app_end(4) | stage_ceiling(4)
+NRF52_LAYOUT_MAGIC = b"mOTALay1"
+NRF52_LAYOUT_VERSION = 1
+NRF52_LAYOUT_LEN = 24
+NRF52_LAYOUT_FLAG_SD = 0x01
+NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS = 0x02
 
 # MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
 # complete S140 v6 application region up to InternalFS instead of leaving room for internal staging.
@@ -152,6 +167,76 @@ class FwIdent:
     fw_version: int = 0      # packed MAJOR<<24 | MINOR<<16 | PATCH<<8 | pre
     target_id: int = 0       # sha2-256:4(pio_env) as uint32 LE - hw + role + partition (fetch routing)
     hw_id: str = ""          # readable hardware tag (brick-safety), e.g. "RAK4631"
+
+
+@dataclass(frozen=True)
+class Nrf52Layout:
+    """Resolved flash geometry embedded immediately before an nRF52 firmware's EndF trailer."""
+    app_base: int
+    linked_app_end: int
+    stage_ceiling: int
+    flags: int = 0
+
+    @property
+    def sd_backed(self) -> bool:
+        return bool(self.flags & NRF52_LAYOUT_FLAG_SD)
+
+
+def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: bool) -> int:
+    """Select a safe staging ceiling from linker geometry and actual secondary-storage type."""
+    if uses_internal_extrafs:
+        return NRF52_EXTRAFS_START
+    if linked_app_end in (NRF52_EXTRAFS_START, NRF52_APP_END):
+        return NRF52_APP_END
+    return NRF52_EXTRAFS_START
+
+
+def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
+    if layout.app_base not in (NRF52_APP_BASE_S140_V6, NRF52_APP_BASE_S140_V7):
+        raise ValueError(f"unsupported nRF52 app base 0x{layout.app_base:X}")
+    if layout.linked_app_end not in (NRF52_EXTRAFS_START, NRF52_APP_END):
+        raise ValueError(f"unsupported nRF52 linked app end 0x{layout.linked_app_end:X}")
+    if layout.stage_ceiling not in (NRF52_EXTRAFS_START, NRF52_APP_END):
+        raise ValueError(f"unsupported nRF52 staging ceiling 0x{layout.stage_ceiling:X}")
+    if not (layout.app_base < layout.linked_app_end <= NRF52_APP_END):
+        raise ValueError("invalid nRF52 app region")
+    if layout.flags & ~(NRF52_LAYOUT_FLAG_SD | NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS):
+        raise ValueError(f"unsupported nRF52 layout flags 0x{layout.flags:X}")
+    expected_ceiling = (NRF52_APP_END if layout.sd_backed else
+                        nrf52_stage_ceiling_for_layout(
+                            layout.linked_app_end,
+                            bool(layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS)))
+    if layout.stage_ceiling != expected_ceiling:
+        raise ValueError(f"nRF52 staging ceiling 0x{layout.stage_ceiling:X} is inconsistent with layout flags")
+    return struct.pack("<8sBBHIII", NRF52_LAYOUT_MAGIC, NRF52_LAYOUT_VERSION, layout.flags,
+                       NRF52_LAYOUT_LEN, layout.app_base, layout.linked_app_end,
+                       layout.stage_ceiling)
+
+
+def ensure_nrf52_layout(body: bytes, layout: Nrf52Layout) -> bytes:
+    """Append or replace the fixed layout record on an EndF-free firmware body."""
+    record = build_nrf52_layout(layout)
+    if len(body) >= NRF52_LAYOUT_LEN and body[-NRF52_LAYOUT_LEN:-NRF52_LAYOUT_LEN + 8] == NRF52_LAYOUT_MAGIC:
+        body = body[:-NRF52_LAYOUT_LEN]
+    return body + record
+
+
+def parse_nrf52_layout(image: bytes) -> Optional[Nrf52Layout]:
+    """Read a validated layout record from an EndF-trailed firmware; old firmware returns None."""
+    if not has_endf(image) or len(image) < ENDF_LEN + NRF52_LAYOUT_LEN:
+        return None
+    record = image[-ENDF_LEN - NRF52_LAYOUT_LEN:-ENDF_LEN]
+    try:
+        magic, version, flags, record_len, app_base, linked_end, ceiling = struct.unpack(
+            "<8sBBHIII", record)
+        if magic != NRF52_LAYOUT_MAGIC or version != NRF52_LAYOUT_VERSION or record_len != NRF52_LAYOUT_LEN:
+            return None
+        layout = Nrf52Layout(app_base, linked_end, ceiling, flags)
+        if build_nrf52_layout(layout) != record:
+            return None
+        return layout
+    except (ValueError, struct.error):
+        return None
 
 
 def build_endf(body: bytes, ident: Optional["FwIdent"] = None) -> bytes:

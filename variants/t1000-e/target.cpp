@@ -158,6 +158,14 @@ void T1000SensorManager::stop_gps() {
 bool T1000SensorManager::begin() {
   // init GPS
   Serial1.begin(115200);
+  pinMode(GPS_VRTC_EN, OUTPUT);
+  pinMode(GPS_EN, OUTPUT);
+  pinMode(GPS_RESET, OUTPUT);
+  pinMode(GPS_SLEEP_INT, OUTPUT);
+  pinMode(GPS_RTC_INT, OUTPUT);
+  pinMode(GPS_RESETB, OUTPUT);
+  gps_active = true;
+  stop_gps();
   return true;
 }
 
@@ -179,8 +187,9 @@ void T1000SensorManager::loop() {
   if (powersaving_enabled && _nmea->getGPSPowerSaving()) {
     unsigned long next_off = _nmea->getNextGPSOff();
     unsigned long next_on = _nmea->getNextGPSOn();
-    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
-                       || !_nmea->waitingTimeSync())) {
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_nmea->waitingTimeSync())) {
       POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
       stop_gps();
     } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
@@ -200,7 +209,7 @@ void T1000SensorManager::loop() {
       processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       //Serial.printf("lat %f lon %f\r\n", _lat, _lon);
     }
-    next_gps_update = now + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -226,7 +235,7 @@ bool T1000SensorManager::setSettingValue(const char* name, const char* value) {
     }
     return true;
   }
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
 }
 
 void T1000SensorManager::setPowerSavingEnabled(bool enabled) {

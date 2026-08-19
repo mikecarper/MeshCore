@@ -105,6 +105,38 @@ def test_endf_identity():
     assert len(z) == len(body) + ml.ENDF_LEN and ml.parse_endf_ident(z) == ml.FwIdent(0, 0, "")
 
 
+def test_nrf52_layout_record_roundtrip_and_policy():
+    assert (ml.nrf52_stage_ceiling_for_layout(ml.NRF52_APP_END, True)
+            == ml.NRF52_EXTRAFS_START)
+    assert ml.nrf52_stage_ceiling_for_layout(ml.NRF52_APP_END, False) == ml.NRF52_APP_END
+    assert (ml.nrf52_stage_ceiling_for_layout(ml.NRF52_EXTRAFS_START, True)
+            == ml.NRF52_EXTRAFS_START)
+    assert (ml.nrf52_stage_ceiling_for_layout(ml.NRF52_EXTRAFS_START, False)
+            == ml.NRF52_APP_END)
+    assert ml.nrf52_stage_ceiling_for_layout(0xE0000, False) == ml.NRF52_EXTRAFS_START
+
+    layout = ml.Nrf52Layout(ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
+                            ml.NRF52_APP_END, 0)
+    body = ml.ensure_nrf52_layout(_fw(4, 2048), layout)
+    image, _ = ml.ensure_endf(body, ml.FwIdent(hw_id="Xiao_nrf52"))
+    assert ml.parse_nrf52_layout(image) == layout
+    # Re-running the record step replaces the tail instead of duplicating it.
+    assert ml.ensure_nrf52_layout(body, layout) == body
+    assert ml.parse_nrf52_layout(ml.ensure_endf(_fw(5, 2048))[0]) is None
+    internal = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
+        ml.NRF52_EXTRAFS_START, ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS)
+    internal_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(6, 2048), internal))
+    assert ml.parse_nrf52_layout(internal_image) == internal
+    try:
+        ml.build_nrf52_layout(ml.Nrf52Layout(
+            ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
+            ml.NRF52_EXTRAFS_START, 0))
+        assert False, "inconsistent layout record accepted"
+    except ValueError:
+        pass
+
+
 # --- merkle ----------------------------------------------------------------
 
 def test_merkle_single_block():

@@ -56,6 +56,7 @@ void halt() {
 }
 
 static char command[160];
+static const unsigned long POWERSAVING_FIRST_SLEEP_SECS = 120;
 
 void setup() {
   Serial.begin(115200);
@@ -179,4 +180,21 @@ void loop() {
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif
+
+  if (the_mesh.getNodePrefs()->powersaving_enabled
+      && !board.isUsbDataConnected()) {
+    uint32_t sleep_secs = the_mesh.getPowerSaveSleepSeconds(30);
+#ifdef HAS_EXTERNAL_WATCHDOG
+    if (sleep_secs > 0) external_watchdog.feed();
+#endif
+#if defined(NRF52_PLATFORM)
+    if (sleep_secs > 0) board.sleep(0);
+#else
+    if (sleep_secs > 0
+        && the_mesh.millisHasNowPassed(
+            POWERSAVING_FIRST_SLEEP_SECS * 1000UL)) {
+      board.sleep(sleep_secs);
+    }
+#endif
+  }
 }

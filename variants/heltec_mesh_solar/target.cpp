@@ -56,16 +56,12 @@ void SolarSensorManager::stop_gps() {
 
 bool SolarSensorManager::begin() {
   Serial1.begin(9600);
-
-  // We'll consider GPS detected if we see any data on Serial1
-  gps_detected = (Serial1.available() > 0);
-
-  if (gps_detected) {
-    MESH_DEBUG_PRINTLN("GPS detected");
-  } else {
-    MESH_DEBUG_PRINTLN("No GPS detected");
-  }
-
+  // GPS is onboard. An immediate UART availability check races its first NMEA
+  // sentence and permanently hid the GPS setting on most cold boots.
+  gps_detected = true;
+  gps_active = false;
+  _location->stop();
+  MESH_DEBUG_PRINTLN("Onboard GPS available");
   return true;
 }
 
@@ -82,8 +78,9 @@ void SolarSensorManager::loop() {
   if (powersaving_enabled && gps_detected && _location->getGPSPowerSaving()) {
     unsigned long next_off = _location->getNextGPSOff();
     unsigned long next_on = _location->getNextGPSOn();
-    if (gps_active && ((next_off != 0 && (long)(now - next_off) >= 0)
-                       || !_location->waitingTimeSync())) {
+    if (gps_active && !gpsTelemetryReceiverRequired(now)
+        && ((next_off != 0 && (long)(now - next_off) >= 0)
+            || !_location->waitingTimeSync())) {
       POWERSAVING_DEBUG_PRINTLN("GPS entering sleep");
       stop_gps();
     } else if (!gps_active && ((next_on != 0 && (long)(now - next_on) >= 0)
@@ -103,7 +100,7 @@ void SolarSensorManager::loop() {
       processGpsTelemetryFix(node_lat, node_lon, node_altitude, now);
       MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
     }
-    next_gps_update = now + 1000;
+    next_gps_update = now + getGpsUpdateIntervalMillis();
   }
 }
 
@@ -133,7 +130,7 @@ bool SolarSensorManager::setSettingValue(const char* name, const char* value) {
     }
     return true;
   }
-  return false;  // not supported
+  return SensorManager::setSettingValue(name, value);
 }
 
 void SolarSensorManager::setPowerSavingEnabled(bool enabled) {
