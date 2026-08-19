@@ -1075,7 +1075,7 @@
   <span class="md-ellipsis">
     
   
-    RAK3401 1W repeater LoRa update chain
+    RAK3401 1W repeater compact LoRa update chain
   
 
     
@@ -1365,9 +1365,9 @@
 
 <h1 id="scripted-lora-ota-from-start-to-finish">Scripted LoRa OTA from start to finish</h1>
 <p>The dedicated <a href="../rak3401_mota_chain/">RAK3401 chain report</a> records the
-physical failure of the withdrawn 26-step migration and the corrected
-v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
-explicit lab-only gate for the corrected chain until physical testing passes.</p>
+physical failures of withdrawn migrations and the physically qualified compact
+nine-step replacement. Its runner blocks the withdrawn chains and pins every
+accepted bridge image by SHA-256.</p>
 <p><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.sh"><code>tools/lora_ota/lora_ota.sh</code></a> and
 <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.ps1"><code>tools/lora_ota/lora_ota.ps1</code></a> automate a
 MeshCore LoRa firmware update from a release <code>.zip</code> or ready <code>.mota</code>. They
@@ -1408,7 +1408,9 @@ rejects an attempt to use the same port for both.</p>
 the mOTA data framing. On an nRF52 full Companion, the script uses that mode
 briefly for <code>ota status</code> and TempRadio commands. It then closes the CLI and
 starts <code>motatool</code>, whose existing <code>ota folder on</code> preamble switches the same
-USB port into exclusive mOTA mode. BLE remains available during that mode.</p>
+USB port into exclusive mOTA mode. On an ESP32 Full Companion with serial
+folder support, <code>motatool --companion-terminal</code> keeps the ASCII session open
+while the same link carries framed folder requests. BLE remains available.</p>
 <h2 id="destination-requirements">Destination requirements</h2>
 <table>
 <thead>
@@ -1674,6 +1676,10 @@ well as individual ZIP members, are rejected above 64 MiB before being loaded.</
   before every <code>ota install</code> transmission and refuses installation unless the
   destination reports <code>&gt; off</code>. Use it for nRF52 chains whose bootloader cannot
   service an application watchdog inherited across reset.</li>
+<li>Managed <code>--relay</code> nodes have their original <code>rxdelay</code> and <code>txdelay</code> captured
+  in the work directory. During transfer the runner verifies <code>rxdelay 0</code> and
+  an airtime-scaled <code>txdelay 0.3</code> (override with <code>--relay-txdelay</code>), then
+  restores both values before the relay leaves TempRadio.</li>
 <li><code>--work-dir PATH</code> chooses a new, non-existent work directory.</li>
 <li><code>--meshcli PATH</code> and <code>--motatool PATH</code> select binaries not on <code>PATH</code>.</li>
 </ul>

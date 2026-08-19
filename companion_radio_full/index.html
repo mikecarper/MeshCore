@@ -1026,7 +1026,7 @@
   <span class="md-ellipsis">
     
   
-    RAK3401 1W repeater LoRa update chain
+    RAK3401 1W repeater compact LoRa update chain
   
 
     
@@ -1562,6 +1562,13 @@ three-byte traces are not supported.</p>
 </code></pre>
 <p>Closing the USB data connection also resets the port to Binary mode. A
 different baud rate, including 57600, does not select ASCII mode.</p>
+<p>On an ESP32 Full Companion built with <code>OTA_FOLDER_SERIAL</code>, <code>motatool</code> can keep
+that terminal session open as an mOTA folder source when WiFi is unavailable:</p>
+<pre><code class="language-sh">motatool serve --serial /dev/ttyACM0 --companion-terminal --dir ./motas -v
+</code></pre>
+<p>The explicit flag is required because an ESP32 Companion starts the same USB
+port in binary Companion mode. TCP port 5001 remains the preferred unattended
+source transport.</p>
 <h2 id="nrf52-usb-mota-mode">nRF52 USB mOTA mode</h2>
 <p>The nRF52 full target has a third, exclusive USB mode for the host folder.
 Unmodified <code>motatool serve --serial</code> already sends <code>ota folder on</code> when it
