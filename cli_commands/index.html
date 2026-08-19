@@ -5332,14 +5332,19 @@ It also does not change the node-storage capture controlled by <code>log start</
 <hr />
 <h4 id="change-the-radio-parameters-for-a-set-duration">Change the radio parameters for a set duration</h4>
 <p><strong>Usage:</strong> 
-- <code>tempradio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;timeout_mins&gt;</code></p>
+- <code>tempradio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;timeout_mins&gt;</code>
+- <code>normalradio</code></p>
 <p><strong>Parameters:</strong>
 - <code>freq</code>: Frequency in MHz (150-2500)
 - <code>bw</code>: Bandwidth in kHz (same allowed values as <code>set radio</code>)
 - <code>sf</code>: Spreading factor (5-12)
 - <code>cr</code>: Coding rate (5-8)
 - <code>timeout_mins</code>: Duration in minutes (must be &gt; 0)</p>
-<p><strong>Note:</strong> This is not saved to preferences and will clear on reboot</p>
+<p><strong>Notes:</strong>
+- <code>tempradio</code> is not saved to preferences and clears on reboot.
+- <code>normalradio</code> cancels pending and active temporary-radio windows, then
+  restores the saved radio tuple after its CLI reply has drained on the
+  current channel. Permanent <code>radioat</code> entries are not removed.</p>
 <hr />
 <h4 id="schedule-radio-parameter-changes">Schedule radio parameter changes</h4>
 <p><strong>Usage:</strong>

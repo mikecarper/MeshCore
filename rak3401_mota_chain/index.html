@@ -1526,11 +1526,16 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
   --target-key 63d8df63 \
   --temp-radio 909.950,500,5,5,120 \
   --ota-hops 0 \
+  --legacy-full-airtime \
   --motatool /path/to/motatool \
   --yes
 </code></pre>
 <p>Keep the work directory. Rerunning the same command resumes only when the live
-EndF body hash matches an exact chain node. Never manually skip a package.</p>
+EndF body hash matches an exact chain node. Never manually skip a package.
+<code>--legacy-full-airtime</code> temporarily sets the destination airtime factor to
+zero and restores it at the endpoint. Use that option only where the selected
+frequency and local duty-cycle rules permit a full transmit budget; omit it
+otherwise.</p>
 <h2 id="manual-operation">Manual operation</h2>
 <p>The pinned runner is the safer method. If it cannot be used, follow every
 check below and keep a written copy of each original setting. Do not skip a
@@ -1553,6 +1558,7 @@ get system.watchdog
 get radio.rxps
 powersaving
 get rxdelay
+get af
 ota config
 </code></pre>
 <p>The starting <code>ota self</code> hash must be <code>71F4026CBE4B8B74</code>, the target must be
@@ -1571,6 +1577,11 @@ set rxdelay 0
 ota config hops 0
 tempradio 909.950,500,5,5,120
 </code></pre>
+<p>Where local duty-cycle rules permit it, <code>set af 0</code> can also remove the legacy
+firmware's saved airtime wait during this bounded maintenance window. Record
+<code>get af</code> first and restore that exact value after the final step. Current
+firmware grants the bounded TempRadio transfer budget without overwriting the
+saved airtime factor.</p>
 <p><code>powersaving off</code> is an isolation guardrail, not the fix for the observed
 failure. The actual source failure was an oversized USB CDC reply; current
 firmware splits those reads. Some historical bridge builds may report RXPS as
@@ -1707,11 +1718,23 @@ window. The source's manifest-fragment gap independently follows active packet
 airtime and duty spacing, clamped to 100-1000 ms. These two delays solve
 different problems.</p>
 <p>After step 9 is proven, restore each saved destination and relay value exactly,
-then restore normal radio operation. Re-enable the RAK system watchdog last:</p>
+including <code>rxdelay</code>, RXPS, CPU power saving, <code>af</code>, <code>ota config hops</code>, and relay
+timing. Current full-parser repeater firmware accepts <code>normalradio</code> and restores
+the saved tuple after replying on the temporary channel:</p>
 <pre><code class="language-text">normalradio
-set system.watchdog on
+</code></pre>
+<p>The historical endpoint in this pinned bundle predates that command. If it
+replies <code>Unknown command</code>, shorten its lease to one minute with the same tuple:</p>
+<pre><code class="language-text">tempradio 909.950,500,5,5,1
+</code></pre>
+<p>Wait for the lease to expire, return the controller and ordinary source to
+their saved normal channels, and then re-enable the RAK system watchdog:</p>
+<pre><code class="language-text">set system.watchdog on
 get system.watchdog
 </code></pre>
+<p>A Full Companion source is the exception: its local TCP console supports
+<code>normalradio</code> and the automated runner uses it before restoring the shared
+Binary API radio tuple.</p>
 <p>Final success requires version <code>v1.17.1.02-halo-keymind-cascade-dev-e742333a</code>,
 body hash <code>4BB1526BF647547D</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, and
 <code>get system.watchdog</code> reporting <code>&gt; on</code>. If a relay cannot be restored before
@@ -1745,11 +1768,13 @@ mismatch, wrong target/hardware, or invalid payload. A failure before step 1
 completes still requires local USB recovery because the deployed start image
 predates the rescue command.</p>
 <p>Before the first mutation, the runner saves the destination's RXPS periods,
-CPU power-saving state, and RX flood delay in the persistent work directory.
-It verifies <code>radio.rxps off</code>, <code>powersaving off</code>, and <code>rxdelay 0</code> after every
-bridge reboot, then restores the original values only after the exact endpoint
-is proven. An interrupted run deliberately leaves those transfer guardrails
-active; rerunning with the same work directory resumes and restores them.
+CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
+the persistent work directory. It verifies <code>radio.rxps off</code>, <code>powersaving off</code>,
+and <code>rxdelay 0</code> after every bridge reboot, plus <code>af 0</code> when
+<code>--legacy-full-airtime</code> was explicitly selected. It restores every original
+value only after the exact endpoint is proven. An interrupted run deliberately
+leaves those transfer guardrails active; rerun the same command with the same
+work directory to resume and restore them.
 CPU power saving was not the cause of the observed folder-source failure: that
 was a USB CDC receive-ring overrun fixed by bounded serial reads. The runtime
 settings remain conservative isolation and fast-link reliability guardrails.</p>

@@ -1518,8 +1518,9 @@ it stages the complete container off-chip; see <a href="../ota_meshtower_v2_sdca
 <p>The fourth value is the transmit coding rate. This guide uses CR5, but the participating nodes' coding rates
 do not need to match.</p>
 <p><code>tempradio</code> is not saved and the node returns to its normal radio settings when the window ends or the node
-reboots. This frequency is intended for North American configurations. Confirm that it is permitted in your
-location and change it when necessary.</p>
+reboots. Current full-parser firmware also accepts <code>normalradio</code>, which cancels the temporary window and
+restores the saved tuple after replying on the current channel. This frequency is intended for North American
+configurations. Confirm that it is permitted in your location and change it when necessary.</p>
 <h2 id="before-you-start">Before you start</h2>
 <p>Both paths require:</p>
 <ul>
