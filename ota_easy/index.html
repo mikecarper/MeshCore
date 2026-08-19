@@ -1669,7 +1669,15 @@ builds; do not override them for this normal nRF52 flow. Do not continue if veri
 check fails.</p>
 <h2 id="transfer-and-install-either-package">Transfer and install either package</h2>
 <h3 id="1-start-the-temporary-ota-channel">1. Start the temporary OTA channel</h3>
-<p>On the source node, destination node, and every intermediate repeater, run:</p>
+<p>First save the current <code>ota config</code> output. For a direct source-to-destination link, set both OTA-enabled
+endpoints to direct-only mode before starting the transfer:</p>
+<pre><code class="language-text">ota config hops 0
+</code></pre>
+<p>Do not use <code>hops 1</code> as extra margin on a direct link. It tells a receiving repeater to retransmit each direct
+DATA/PROOF packet; that unnecessary half-duplex transmission can make it miss the source's next fragment,
+especially with older single-block receivers. Use <code>hops 1</code> only when one real intermediate relay is required,
+<code>hops 2</code> for two, and so on. This setting is saved, so restore the original value after the maintenance window.</p>
+<p>On the source node, destination node, and every intermediate repeater, then run:</p>
 <pre><code class="language-text">tempradio 909.950,250,5,5,120
 </code></pre>
 <p>All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
@@ -1702,6 +1710,14 @@ firmware requires <code>ota pull &lt;mid8&gt; flash rescue</code>, followed afte
 <p>Monitor the transfer:</p>
 <pre><code class="language-text">ota status
 </code></pre>
+<p>For a powered bench update where restart-resume is not needed, <code>ota config checkpoint 0</code> on the destination
+removes periodic progress writes. It is a smaller optimization than selecting the correct hop count and it
+trades away persisted mid-download resume; restore the previous checkpoint cadence afterward.</p>
+<p>Current repeater firmware automatically uses the full transmit budget during a bounded TempRadio window.
+Older receivers do not: if <code>get af</code> reports a nonzero value on such a node, record it, use <code>set af 0</code> for the
+maintenance window, and restore it afterward. This affects how promptly the legacy receiver can send its next
+block/proof request; it does not increase LoRa transmit power. Use a full duty budget only where the selected
+frequency and local rules permit it.</p>
 <p>The update is ready when the status says <code>ready to install</code>. Discovery is background traffic, while an
 active OTA download is primary mesh traffic. At the temporary-radio settings in this guide, allow roughly
 <strong>one hour</strong> for a typical ESP32 full image over a quiet, direct link. That is a planning estimate, not an
@@ -1738,7 +1754,8 @@ application can be restored.</p>
 <li><strong>nRF52 reports a base mismatch:</strong> the file passed to <code>--base</code> is not the exact application running on
   the destination. Rebuild the delta from the correct saved <code>firmware.hex</code>.</li>
 <li><strong>The download stalls:</strong> check the source, destination, and intermediate repeaters. Restart matching,
-  overlapping temporary-radio windows if one expired.</li>
+  overlapping temporary-radio windows if one expired. On a direct link, also require <code>ota config hops 0</code>;
+  a larger reach makes a repeater destination unnecessarily echo source packets.</li>
 <li><strong>The serial port is busy:</strong> close the serial terminal before starting <code>motatool serve</code>.</li>
 <li><strong>The destination rejects the package:</strong> verify the source files, their <code>EndF</code> trailers, the package's
   target/hardware identity, and the result of <code>motatool verify</code>.</li>

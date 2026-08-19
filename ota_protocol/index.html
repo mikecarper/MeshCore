@@ -2330,10 +2330,14 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   reassembly bitmap (&lt;=16 fragments/block; 1 KB blocks = 7). <code>OTA_PROOF</code> is a single packet and needs no mask.</li>
 <li><strong>Data and proof remain separate packets, without a normal extra round trip.</strong> A server retains requested
   blocks in a bounded descriptor queue, admits at most one response per main-loop pass, and sends one
-  <code>OTA_PROOF</code> after each block's requested fragments. The receiver uses an airtime/path-aware proof grace
-  (never less than 500 ms) and defers <code>OTA_REQ_PROOF</code> while any flight slot still expects DATA. Thus a missing
-  early proof cannot make the receiver transmit into the rest of a legitimate half-duplex response train.
-  After the complete-flight deadline, only one slot's missing fragments/proof is requested at a time.</li>
+  <code>OTA_PROOF</code> after each block's requested fragments. Before admitting that proactive proof, the source leaves
+  an airtime/duty-aware 100-3000 ms RX turnaround gap. It accounts for one active transmission plus the two
+  paced-response queue credits. A legacy receiver uses the gap to send its immediate
+  <code>OTA_REQ_PROOF</code>; receiving that explicit request bypasses the remaining gap, avoiding a proof/request
+  collision and an otherwise multi-second legacy retry. A newer receiver uses an airtime/path-aware proof
+  grace (never less than 500 ms) and defers <code>OTA_REQ_PROOF</code> while any flight slot still expects DATA. Thus a
+  missing early proof cannot make the receiver transmit into the rest of a legitimate half-duplex response
+  train. After the complete-flight deadline, only one slot's missing fragments/proof is requested at a time.</li>
 </ul>
 <h3 id="85-sizing-against-max_packet_payload-184">8.5 Sizing against <code>MAX_PACKET_PAYLOAD = 184</code></h3>
 <table>
@@ -2383,8 +2387,10 @@ to its persistent archive, it registers that complete file as a MotaSource and a
 This keeps each active transfer as one transmitter and one receiver while still allowing active temporary-radio
 repeaters between them and persistent archive nodes to improve future availability.</p>
 <p>TempRadio is treated as a private maintenance network. Active transfer packets use priority 0, bypass the
-public-flood receive holdoff, retain the relay role's airtime-scaled transmit collision window, and do not
-schedule generic flood retries. The bounded serving
+public-flood receive holdoff, use the full transmit budget without overwriting the saved normal-radio airtime
+factor, retain the relay role's airtime-scaled transmit collision window, and do not schedule generic flood
+retries. Deployed firmware predating that TempRadio budget override can be accelerated manually with a saved
+<code>get af</code> / temporary <code>set af 0</code> / restore sequence. The bounded serving
 queue admits at most two DATA/PROOF packets ahead of the radio while preserving at least four free packet-pool
 entries. CAD remains enabled to arbitrate the half-duplex channel, but its busy retry is scaled to one-quarter
 of a packet airtime and clamped to 5-50 ms instead of the ordinary 120-360 ms cadence. Discovery traffic keeps
@@ -2489,9 +2495,12 @@ the <code>MotaSource</code> random-access contract.</p>
 a time. Their source-side gap follows the active maximum packet airtime and
 dispatcher duty spacing, clamped to 100-1000 ms. The 100 ms floor protects
 fast radios' TX-to-RX turnaround; the cap keeps the receiver's one-second
-manifest progress/retry observation responsive. Relay collision delay is a
-separate setting: active OTA floods honor the relay role's configured
-<code>txdelay</code>, and the deployment runner temporarily uses <code>0.3</code> on managed relays.</p>
+manifest progress/retry observation responsive. The source uses the same
+radio-aware 100-3000 ms drain/turnaround gap before an unsolicited block proof,
+but immediately serves a
+legacy receiver's explicit <code>OTA_REQ_PROOF</code>. Relay collision delay is a separate
+setting: active OTA floods honor the relay role's configured <code>txdelay</code>, and the
+deployment runner temporarily uses <code>0.3</code> on managed relays.</p>
 <p><strong>What to plug into <code>--serial</code>.</strong> Use the USB serial console of an OTA-enabled MeshCore node built with
 <code>OTA_FOLDER_SERIAL</code>. The node must have a working LoRa radio plus an
 <code>ota folder on</code> command; that command confirms it can host and advertise the folder. A <strong>KISS modem will not
