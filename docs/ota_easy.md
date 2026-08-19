@@ -36,8 +36,9 @@ The fourth value is the transmit coding rate. This guide uses CR5, but the parti
 do not need to match.
 
 `tempradio` is not saved and the node returns to its normal radio settings when the window ends or the node
-reboots. This frequency is intended for North American configurations. Confirm that it is permitted in your
-location and change it when necessary.
+reboots. Current full-parser firmware also accepts `normalradio`, which cancels the temporary window and
+restores the saved tuple after replying on the current channel. This frequency is intended for North American
+configurations. Confirm that it is permitted in your location and change it when necessary.
 
 ## Before you start
 

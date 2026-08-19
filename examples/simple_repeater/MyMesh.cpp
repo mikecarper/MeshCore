@@ -4239,6 +4239,21 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   refreshScheduledRadioState();
 }
 
+bool MyMesh::scheduleNormalRadio() {
+  // Cancel every pending/active temporary entry, but leave permanent radioat
+  // changes intact. The saved apply waits for the CLI reply to leave the
+  // outbound queue before changing modulation parameters.
+  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+    if (!scheduled_radio_settings[i].temporary) continue;
+    scheduled_radio_settings[i].active = false;
+    scheduled_radio_settings[i].started = false;
+  }
+  temp_radio_handoff_pending = false;
+  refreshScheduledRadioState();
+  queueSavedRadioApply();
+  return true;
+}
+
 bool MyMesh::formatFileSystem() {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return InternalFS.format();

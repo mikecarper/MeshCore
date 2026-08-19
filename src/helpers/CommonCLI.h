@@ -442,6 +442,9 @@ public:
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
+  // Cancel pending/active temporary-radio windows and restore the saved tuple
+  // after the command reply has drained on the current channel.
+  virtual bool scheduleNormalRadio() { return false; }
 #if defined(ENABLE_OTA)
   virtual bool isTempRadioActive() const { return false; }
 #endif

@@ -2369,6 +2369,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         strcpy(reply, "ERR: bad pubkey");
       }
+    } else if (strcmp(command, "normalradio") == 0) {
+      if (_callbacks->scheduleNormalRadio()) {
+        strcpy(reply, "OK - normal radio restore scheduled");
+      } else {
+        strcpy(reply, "Error: unsupported");
+      }
     } else if (memcmp(command, "tempradio ", 10) == 0) {
       strcpy(tmp, &command[10]);
       const char *parts[5];

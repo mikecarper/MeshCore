@@ -93,6 +93,7 @@ public:
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override { }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
+  bool scheduleNormalRadio() override;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   uint32_t getUserGpioRequestSource() const override {
     return _gpio_reply_tracker.requestSource();

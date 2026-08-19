@@ -576,6 +576,7 @@ It also does not change the node-storage capture controlled by `log start` and
 #### Change the radio parameters for a set duration
 **Usage:** 
 - `tempradio <freq>,<bw>,<sf>,<cr>,<timeout_mins>`
+- `normalradio`
 
 **Parameters:**
 - `freq`: Frequency in MHz (150-2500)
@@ -584,7 +585,11 @@ It also does not change the node-storage capture controlled by `log start` and
 - `cr`: Coding rate (5-8)
 - `timeout_mins`: Duration in minutes (must be > 0)
 
-**Note:** This is not saved to preferences and will clear on reboot
+**Notes:**
+- `tempradio` is not saved to preferences and clears on reboot.
+- `normalradio` cancels pending and active temporary-radio windows, then
+  restores the saved radio tuple after its CLI reply has drained on the
+  current channel. Permanent `radioat` entries are not removed.
 
 ---
 

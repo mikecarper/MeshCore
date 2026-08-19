@@ -287,9 +287,15 @@ different problems.
 
 After step 9 is proven, restore each saved destination and relay value exactly,
 including `rxdelay`, RXPS, CPU power saving, `af`, `ota config hops`, and relay
-timing. Ordinary repeater firmware does not implement `normalradio`. While the
-node is still reachable on the temporary channel, shorten its lease to one
-minute with the same tuple:
+timing. Current full-parser repeater firmware accepts `normalradio` and restores
+the saved tuple after replying on the temporary channel:
+
+```text
+normalradio
+```
+
+The historical endpoint in this pinned bundle predates that command. If it
+replies `Unknown command`, shorten its lease to one minute with the same tuple:
 
 ```text
 tempradio 909.950,500,5,5,1

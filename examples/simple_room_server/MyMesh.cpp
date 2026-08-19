@@ -1443,6 +1443,16 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   revert_radio_at = futureMillis(2000 + timeout_mins * 60 * 1000); // schedule when to revert radio params
 }
 
+bool MyMesh::scheduleNormalRadio() {
+  // A one-tick deadline cancels a not-yet-applied window or restores an active
+  // one as soon as the command reply has drained from the outbound queue.
+  set_radio_at = 0;
+  revert_radio_at = futureMillis(1);
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
+  return true;
+}
+
 bool MyMesh::formatFileSystem() {
 #if defined(NRF52_PLATFORM)
   return InternalFS.format();

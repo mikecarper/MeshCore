@@ -71,7 +71,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Logging | [`get/set usb.logging`](cli_commands.md#control-live-usb-logging) | Logging artifacts; session-only live USB output gate | No | Yes | No |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes |
-| Radio | [`tempradio ...`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
+| Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
 | Radio | [`get/set/del radioat`; `get/set/del tempradioat`](cli_commands.md#schedule-radio-parameter-changes) | Full parser | Yes | Yes | Yes |
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | `set` is local serial only | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature |
@@ -229,7 +229,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Logging | [`get/set usb.logging`](cli_commands.md#control-live-usb-logging) | Logging artifacts; session-only live USB output gate | No | Yes | No | No | Yes |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes | Yes | Yes |
-| Radio | [`tempradio ...`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes | Yes | Yes |
+| Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get/set/del radioat`; `get/set/del tempradioat`](cli_commands.md#schedule-radio-parameter-changes) | Full parser | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | `set` is local serial only | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature | Feature | Feature |

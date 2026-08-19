@@ -1062,6 +1062,16 @@ void SensorMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t 
   revert_radio_at = futureMillis(2000 + timeout_mins*60*1000);   // schedule when to revert radio params
 }
 
+bool SensorMesh::scheduleNormalRadio() {
+  // Keep the reply on the current tuple, then let the existing safe restore
+  // path wait for an idle outbound queue before touching the radio.
+  set_radio_at = 0;
+  revert_radio_at = futureMillis(1);
+  radio_apply_retry_at = 0;
+  radio_apply_failures = 0;
+  return true;
+}
+
 void SensorMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
   mesh::Packet* pkt = createSelfAdvert();
   if (pkt) {
