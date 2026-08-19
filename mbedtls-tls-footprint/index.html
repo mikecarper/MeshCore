@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_meshtower_v2_sdcard/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/mbedtls-tls-footprint/">
       
       
-        <link rel="prev" href="../ota_easy/">
+        <link rel="prev" href="../lora_ota_automation/">
       
       
-        <link rel="next" href="../ota_protocol/">
+        <link rel="next" href="../nrf52_power_management/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>MeshTower V2 microSD LoRa OTA - MeshCore Docs</title>
+        <title>Shrinking the per-connection TLS footprint on non-PSRAM observers - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#meshtower-v2-microsd-lora-ota" class="md-skip">
+        <a href="#shrinking-the-per-connection-tls-footprint-on-non-psram-observers" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MeshTower V2 microSD LoRa OTA
+              Shrinking the per-connection TLS footprint on non-PSRAM observers
             
           </span>
         </div>
@@ -632,10 +632,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../mbedtls-tls-footprint/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shrinking the per-connection TLS footprint on non-PSRAM observers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -651,6 +678,159 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-firmware-could-already-do-and-its-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the firmware could already do, and its limit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The changes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The changes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-inbound-stays-at-16-kib" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why inbound stays at 16 KiB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#risk-on-the-peer-certificate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risk on the peer certificate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build procedure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Build procedure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do-not-use-esp32-arduino-lib-builder-for-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not use esp32-arduino-lib-builder for this
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebuild-only-the-mbedtls-archives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rebuild only the mbedTLS archives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-it-in-with-l-never-platform_packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wire it in with -L, never platform_packages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-verify-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to verify it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prior-art-in-this-investigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prior art in this investigation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -740,37 +920,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    MeshTower V2 microSD LoRa OTA
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -786,98 +939,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Card requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capacity and update types
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SD card CLI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persistent OTA archive and seeder
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Preload many mOTAs from a computer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Serve the preloaded archive over TempRadio
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1152,10 +1213,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
+  <a href="#why" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Card requirements
+        Why
       
     </span>
   </a>
@@ -1163,10 +1224,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
+  <a href="#what-the-firmware-could-already-do-and-its-limit" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Capacity and update types
+        What the firmware could already do, and its limit
       
     </span>
   </a>
@@ -1174,33 +1235,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
+  <a href="#the-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SD card CLI
+        The changes
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persistent OTA archive and seeder
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
+    <nav class="md-nav" aria-label="The changes">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
+  <a href="#why-inbound-stays-at-16-kib" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Preload many mOTAs from a computer
+        Why inbound stays at 16 KiB
       
     </span>
   </a>
@@ -1208,10 +1258,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
+  <a href="#risk-on-the-peer-certificate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Serve the preloaded archive over TempRadio
+        Risk on the peer certificate
       
     </span>
   </a>
@@ -1220,6 +1270,78 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build procedure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Build procedure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do-not-use-esp32-arduino-lib-builder-for-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not use esp32-arduino-lib-builder for this
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rebuild-only-the-mbedtls-archives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rebuild only the mbedTLS archives
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-it-in-with-l-never-platform_packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wire it in with -L, never platform_packages
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-verify-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to verify it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prior-art-in-this-investigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prior art in this investigation
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1240,7 +1362,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_meshtower_v2_sdcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/mbedtls-tls-footprint.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1248,270 +1370,186 @@
   
 
 
-<h1 id="meshtower-v2-microsd-lora-ota">MeshTower V2 microSD LoRa OTA</h1>
-<p>The <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> target uses the MeshTower V2 onboard
-microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
-both full <code>.mota</code> images and in-place delta <code>.mota</code> images. After verification,
-the matching SD-aware OTAFIX bootloader reads the staged file from the card and
-programs the nRF52840 application region.</p>
-<p>The pin assignment follows the
-<a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf">Heltec MeshTower V2 partial reference circuit</a>:</p>
+<h1 id="shrinking-the-per-connection-tls-footprint-on-non-psram-observers">Shrinking the per-connection TLS footprint on non-PSRAM observers</h1>
+<h2 id="why">Why</h2>
+<p>On a non-PSRAM Heltec V3 running two WSS/JWT broker slots, the largest allocatable block in
+internal DRAM walks down in ~16 KiB steps at every TLS reconnect while total free heap stays
+flat. Measured on hardware over 50 reconnect cycles: 62,452 -&gt; 16,372 bytes, permanently.</p>
+<p>The step size is not a coincidence. <code>framework-arduinoespressif32 3.20017</code> (Arduino 2.0.17,
+IDF 4.4) builds mbedTLS with the <strong>symmetric</strong> buffer configuration:</p>
+<pre><code>CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN 16384      # sizes BOTH the in and out record buffers
+CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE 1
+# CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN       -- not defined
+# CONFIG_MBEDTLS_DYNAMIC_BUFFER               -- not defined
+# CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH   -- not defined
+</code></pre>
+<p>Read from <code>packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_qspi/include/sdkconfig.h</code>.
+Note the separate <code>framework-arduinoespressif32-libs</code> package in <code>~/.platformio</code> belongs to
+the esp32c6 env (pioarduino, IDF 5.3) and is <strong>not</strong> what this env links against -- though it
+happens to carry identical mbedTLS values.</p>
+<p>So each broker slot costs <strong>2 x 16 KiB = 32 KiB</strong> of contiguous internal DRAM in record
+buffers alone, and two slots cost 64 KiB on a board with roughly 80 KiB free. Every reconnect
+frees and re-allocates those buffers, and anything that lands in the vacated hole in between
+prevents them from going back, which is the ratchet.</p>
+<p>Confirmed by two independent observations: losing a whole TLS session returned exactly 16,384
+bytes of contiguity on one device and exactly 32,768 on another, and per-connection teardown
+frees ~41.6-44.7 KB total.</p>
+<h2 id="what-the-firmware-could-already-do-and-its-limit">What the firmware could already do, and its limit</h2>
+<p><code>softDisconnect()</code> (branch <code>perf/mqtt-renewal-no-stop</code>, commit <code>6c51e468</code>) stops the JWT
+renewal bounce from destroying and recreating the esp-mqtt task, keeping its 6 KiB stack out
+of the hole. Measured: the staircase arrests after 2 steps at 36,852 through cycle 16, where
+the baseline took 4 steps and settled at 16,372 by cycle 11 -- about 20 KB better.</p>
+<p>That is as far as the application layer reaches. MQTT 3.1.1 has no re-authentication packet,
+so presenting a fresh JWT <em>requires</em> a transport reconnect; mbedTLS's internal allocation
+order during the handshake is not controllable from the application. The remaining cost is
+the record buffers themselves.</p>
+<h2 id="the-changes">The changes</h2>
+<p>All three are compile-time in mbedTLS, and the Arduino framework ships precompiled <code>.a</code>
+archives (<code>tools/sdk/esp32s3/lib/libmbedtls.a</code>), so a project-level <code>-D</code> cannot change them.
+A custom framework build is required.</p>
 <table>
 <thead>
 <tr>
-<th>Signal</th>
-<th style="text-align: right;">nRF52840 pin</th>
-<th style="text-align: right;">Arduino pin number</th>
+<th>Setting</th>
+<th>From</th>
+<th>To</th>
+<th>Saving per connection</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>SD CS</td>
-<td style="text-align: right;">P1.00</td>
-<td style="text-align: right;">32</td>
+<td><code>CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN</code></td>
+<td>unset</td>
+<td><code>y</code></td>
+<td>enables the two below</td>
 </tr>
 <tr>
-<td>SD MOSI</td>
-<td style="text-align: right;">P1.01</td>
-<td style="text-align: right;">33</td>
+<td><code>CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN</code></td>
+<td>16384 (implied)</td>
+<td>16384</td>
+<td>none -- keep it</td>
 </tr>
 <tr>
-<td>SD SCK</td>
-<td style="text-align: right;">P0.06</td>
-<td style="text-align: right;">6</td>
+<td><code>CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN</code></td>
+<td>16384 (implied)</td>
+<td>4096</td>
+<td><strong>~12 KiB</strong></td>
 </tr>
 <tr>
-<td>SD MISO</td>
-<td style="text-align: right;">P0.26</td>
-<td style="text-align: right;">26</td>
+<td><code>CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE</code></td>
+<td><code>1</code></td>
+<td><code>n</code></td>
+<td>~4 KiB</td>
 </tr>
 </tbody>
 </table>
-<p>The SD socket uses its own SPI peripheral, so card traffic does not change the
-LoRa radio pinout.</p>
-<h2 id="card-requirements">Card requirements</h2>
-<p>Use a FAT16, FAT32, or exFAT card with an MBR partition table whose first
-partition starts after sector 1. This is the normal layout produced by most SD
-formatters. GPT and unpartitioned "super-floppy" layouts are rejected.</p>
-<p>MeshCore creates <code>/meshcore-ota.mota</code> as a contiguous file. Sector 1, which is
-outside the partition, holds a checksummed bootloader handoff record. The
-firmware validates this gap before writing it; an incompatible card layout
-fails safely without modifying sector 1.</p>
-<h2 id="capacity-and-update-types">Capacity and update types</h2>
-<p>The card removes the internal-flash staging limit. The <code>.mota</code> container may be
-much larger than the old internal staging gap, and either a full image or an
-in-place delta may be downloaded. The installed firmware itself must still fit
-the nRF52840 application region below InternalFS (ending at <code>0xED000</code>); SD
-storage does not increase the MCU's executable flash.</p>
-<p>For this S140 v6 target, the maximum application image including its <code>EndF</code>
-trailer is <code>0xC7000</code> bytes (815,104 bytes). To package a full self-update:</p>
-<pre><code class="language-bash">motatool build --fw ./Heltec_tower_v2_sdcard-new.hex --out-dir ./motas
-motatool verify ./motas/*.mota
-</code></pre>
-<p>A delta uses the exact installed image as its base. The normal <code>0x98000</code>
-workspace remains compatible. If either image is larger than that legacy
-limit, build the patch with the SD target's larger workspace:</p>
-<pre><code class="language-bash">motatool build \
-  --base ./Heltec_tower_v2_sdcard-running.hex \
-  --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --patch-type in-place \
-  --inplace-memory 0xC7000 \
-  --out-dir ./motas
-motatool verify ./motas/*.mota
-</code></pre>
-<p>The download is resumable because the partial <code>.mota</code> stays on the card.
-Once it reaches <code>ready</code>, <code>ota install</code> performs the final verification,
-publishes the bootloader handoff, and reboots. Keep the card inserted through
-the reboot and installation.</p>
-<p>The SD-aware bootloader is mandatory. <code>ota install</code> refuses to reboot if the
-bootloader capability marker does not advertise SD staging and the selected
-codec. Existing <code>Heltec_tower_v2_repeater</code> firmware continues to use the
-internal-flash delta path and is unchanged.</p>
-<h2 id="sd-card-cli">SD card CLI</h2>
-<p>The SD-backed target provides these CLI commands:</p>
-<pre><code class="language-text">set sdcard format [--force]
-set sdcard erase [--force]
-get sdcard
-get sdcard *
-get sdcard format
-get sdcard erase
-get sdcard free
-get sdcard ls
-get sdcard ls 2
-get sdcard dir 3
-</code></pre>
-<p><code>format</code> creates a new FAT16, FAT32, or exFAT filesystem according to card
-size. <code>erase</code> first uses the card's raw media erase command and then formats it,
-so a successful erase finishes with a usable filesystem. Both operations
-destroy all data on the card and cancel any staged OTA download.</p>
-<p>The firmware records successful format and erase completion times in RAM.
-Repeating the same operation within five minutes is rejected unless <code>--force</code>
-is present. Format and erase have independent cooldowns. Because erase also
-formats the card, a successful erase updates both timestamps. The timestamps
-reset when the device reboots. The <code>get sdcard</code> age queries report how long ago
-each operation completed. <code>get sdcard free</code> reports used and free filesystem
-space in human-readable binary units.</p>
-<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, four
-files per page. A bare command shows page 1; append a positive page number to
-move through the remaining results. Each row includes the path and a compact
-file size. The header reports the selected page, total pages, and total files.</p>
-<h2 id="persistent-ota-archive-and-seeder">Persistent OTA archive and seeder</h2>
-<p>On the SD-backed target, automatic OTA archiving is on by default. While the
-temporary OTA radio is active, the node requests full catalogs from seeders and
-saves every complete mOTA it discovers, including firmware for other hardware
-targets and codecs that this node cannot install. Archive downloads use the
-same per-block Merkle proof checks as an install download, but archived images
-are never selected for local installation.</p>
-<p>Completed containers are stored as <code>/mota/&lt;manifest-id&gt;.mota</code>. An interrupted
-download remains <code>/mota/&lt;manifest-id&gt;.part</code> and resumes when that mOTA is seen
-again. Completed files survive reboot, are enumerated on the first archive
-access or TempRadio window, and are advertised and served directly from SD.
-The SD target supports the protocol maximum served set: its own running
-firmware plus up to 254 archived mOTAs.</p>
-<p>Automatic capture preserves an 8 MiB free-space reserve for manual
-<code>/meshcore-ota.mota</code> installation staging. It stops starting new archive files
-when the next file would cross that reserve. Archive allocation first tries the
-fast contiguous path and then falls back to an ordinary fragmented FAT file;
-only the bootloader staging file requires contiguous sectors.</p>
-<h3 id="preload-many-motas-from-a-computer">Preload many mOTAs from a computer</h3>
-<p>You can populate the archive much faster on a computer than over LoRa. Use only
-complete, verified <code>.mota</code> containers. Do not copy firmware <code>.bin</code>, <code>.hex</code>,
-<code>.zip</code>, or <code>.part</code> files into the archive.</p>
-<p>Install the standalone <a href="https://github.com/vk496/motatool"><code>motatool</code></a> first if
-it is not already available:</p>
-<pre><code class="language-bash">git clone https://github.com/vk496/motatool.git
-cargo install --path ./motatool
-</code></pre>
-<p>The on-card filename is part of the archive index and has a strict format:</p>
-<pre><code class="language-text">/mota/&lt;merkle_root&gt;.mota
-</code></pre>
-<p><code>&lt;merkle_root&gt;</code> is the eight-hex-digit value printed by <code>motatool inspect</code>. It
-is also the mOTA's four-byte manifest ID. The extension must be lowercase, the
-file must be directly inside <code>/mota</code>, and descriptive release filenames are
-not indexed. For example, if inspection reports:</p>
-<pre><code class="language-text">merkle_root    : ABCD1234
-</code></pre>
-<p>copy that container to:</p>
-<pre><code class="language-text">/mota/abcd1234.mota
-</code></pre>
-<p>If two containers have the same Merkle root, they have the same protocol ID
-and cannot both be present. Keep only the intended one. The current SD seeder
-can index up to 254 archived files. A served file must use a logical block size
-of at most 1024 bytes and contain at most 2048 blocks; check <code>block_size</code> and
-<code>block_count</code> in <code>motatool inspect</code> when importing unusually large images.
-Files outside that serve geometry are not counted or advertised. If a malformed
-<code>/mota/&lt;id&gt;.mota</code> conflicts with a newly discovered valid image, the repeater
-preserves the malformed file as <code>&lt;id&gt;.bad</code> through <code>&lt;id&gt;.bad9</code> and downloads a
-clean replacement instead of treating path existence as a valid cache hit.</p>
-<p>To prepare and load the card:</p>
+<p>Roughly 16 KiB per connection, 32 KiB across two slots.</p>
+<h3 id="why-inbound-stays-at-16-kib">Why inbound stays at 16 KiB</h3>
+<p>A peer may legitimately send a 16 KiB TLS record. Lowering the inbound limit only works if
+both brokers negotiate the max-fragment-length extension or provably never send larger, and
+getting it wrong produces invalid-record and handshake failures rather than a clean error.
+Outbound is ours to choose: this firmware's MQTT and WebSocket frames are far below 4 KiB
+(<code>MAX_TRANS_UNIT</code>-bounded packets plus small JSON), so 4 KiB is comfortable.</p>
+<h3 id="risk-on-the-peer-certificate">Risk on the peer certificate</h3>
+<p>Dropping <code>KEEP_PEER_CERTIFICATE</code> means <code>mbedtls_ssl_get_peer_cert()</code> returns NULL after the
+handshake. Chain validation still happens -- only retention of the parsed leaf changes. This
+firmware verifies against a CA (<code>GTS_ROOT_R4</code> / the bundle) and never inspects the peer
+certificate or a fingerprint, so it should be safe. It does change <code>mbedtls_ssl_session</code>
+layout, which is exactly why the whole framework must be rebuilt together rather than
+swapping a single archive in.</p>
+<h2 id="build-procedure">Build procedure</h2>
+<h3 id="do-not-use-esp32-arduino-lib-builder-for-this">Do not use esp32-arduino-lib-builder for this</h3>
+<p><code>release/v4.4</code> is the branch matching Arduino 2.0.x, but its <code>update-components.sh</code> clones
+every dependency at <strong>master</strong>, so it no longer resolves. Five successive failures, each a
+different repo: the arduino branch name it passes to <code>-A</code> does not exist; <code>jq</code> is absent
+from the IDF image and its absence makes <code>build.sh</code>'s target loop a <strong>silent no-op that
+still exits 0</strong>; <code>esp_littlefs</code> and <code>esp32-camera</code> master require IDF &gt;=5.0/&gt;=5.1;
+<code>esp32-camera</code> later needs an <code>esp_jpeg</code> version the 4.4 registry cannot satisfy; and
+tinyusb's source layout no longer matches <code>arduino_tinyusb/CMakeLists.txt</code>. Pinning each
+one in turn just surfaces the next.</p>
+<h3 id="rebuild-only-the-mbedtls-archives">Rebuild only the mbedTLS archives</h3>
+<p>More rigorous anyway, because it reuses the shipped <code>sdkconfig</code> verbatim -- so the archives
+differ from stock <em>only</em> by the intended change, with no arduino-version or
+<code>DYNAMIC_BUFFER</code> drift.</p>
+<p>This is ABI-safe for the content-length change specifically: <code>ssl.h</code> declares <code>in_buf</code> and
+<code>out_buf</code> as <code>unsigned char *</code>, allocated in <code>ssl_setup()</code>, and no public struct embeds a
+CONTENT_LEN-sized array. The other precompiled archives (esp-tls, esp_http_client,
+esp-mqtt) therefore remain compatible. <strong>It is not safe for
+<code>CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE</code></strong>, which changes <code>mbedtls_ssl_session</code> layout --
+that one needs everything rebuilt together, so it is excluded here.</p>
 <ol>
-<li>Format it as described under <a href="#card-requirements">Card requirements</a>. The
-   easiest way to guarantee the expected layout is to insert it in the
-   repeater, run <code>set sdcard format</code>, power the repeater off, and then move the
-   card to the computer. Formatting destroys the existing card contents.</li>
-<li>Mount the card on the computer and create a directory named <code>mota</code> at the
-   filesystem root. Do not use a nested directory such as <code>/firmware/mota</code>.</li>
-<li>Run <code>motatool verify FILE.mota</code> for every source file. Do not copy a file
-   that reports <code>FAIL</code>.</li>
-<li>Run <code>motatool inspect FILE.mota</code>, read its <code>merkle_root</code>, and copy the file
-   to <code>/mota/&lt;lowercase-merkle-root&gt;.mota</code> on the card.</li>
-<li>Flush pending writes, safely eject the card, power the repeater off, insert
-   the card, and boot
-   <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>.</li>
+<li>Minimal IDF project whose only component requirement is <code>mbedtls</code>.</li>
+<li><code>sdkconfig.defaults</code> = the shipped
+   <code>packages/framework-arduinoespressif32/tools/sdk/esp32s3/sdkconfig</code>, with
+   <code>CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384</code> replaced by the three asymmetric lines.
+   Verify the diff is exactly 5 lines before building.</li>
+<li><code>docker run --rm -v $PWD:/project -w /project espressif/idf:v4.4.7 idf.py -DIDF_TARGET=esp32s3 build</code></li>
+<li>Confirm <code>build/config/sdkconfig.h</code> carries <code>OUT_CONTENT_LEN 4096</code>.</li>
+<li>Stage the four archives under the framework's names -- note the rename:</li>
 </ol>
-<p>On Linux or macOS, this Bash example verifies and imports every <code>.mota</code> from
-<code>./motas</code>. Replace the example mount path before running it:</p>
-<pre><code class="language-bash">card_mount=/media/YOU/MESHCORE
-mkdir -p &quot;$card_mount/mota&quot;
-
-shopt -s nullglob
-for image in ./motas/*.mota; do
-  motatool verify &quot;$image&quot; || exit 1
-  mid=$(motatool inspect &quot;$image&quot; |
-    awk '$1 == &quot;merkle_root&quot; { print tolower($3) }')
-  if [[ ! $mid =~ ^[0-9a-f]{8}$ ]]; then
-    echo &quot;Could not read the Merkle root from: $image&quot; &gt;&amp;2
-    exit 1
-  fi
-
-  destination=&quot;$card_mount/mota/$mid.mota&quot;
-  if [[ -e $destination ]]; then
-    cmp -s &quot;$image&quot; &quot;$destination&quot; || {
-      echo &quot;Different containers have the same ID: $mid&quot; &gt;&amp;2
-      exit 1
-    }
-  else
-    cp &quot;$image&quot; &quot;$destination&quot;
-  fi
-done
-sync
+<table>
+<thead>
+<tr>
+<th>built</th>
+<th>framework name</th>
+<th style="text-align: right;">stock size</th>
+<th style="text-align: right;">rebuilt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>esp-idf/mbedtls/libmbedtls.a</code></td>
+<td><code>libmbedtls.a</code></td>
+<td style="text-align: right;">113,914</td>
+<td style="text-align: right;">113,338</td>
+</tr>
+<tr>
+<td><code>esp-idf/mbedtls/mbedtls/library/libmbedtls.a</code></td>
+<td><strong><code>libmbedtls_2.a</code></strong></td>
+<td style="text-align: right;">1,252,150</td>
+<td style="text-align: right;">1,245,718</td>
+</tr>
+<tr>
+<td><code>.../libmbedcrypto.a</code></td>
+<td><code>libmbedcrypto.a</code></td>
+<td style="text-align: right;">4,302,698</td>
+<td style="text-align: right;">4,259,458</td>
+</tr>
+<tr>
+<td><code>.../libmbedx509.a</code></td>
+<td><code>libmbedx509.a</code></td>
+<td style="text-align: right;">676,590</td>
+<td style="text-align: right;">673,318</td>
+</tr>
+</tbody>
+</table>
+<p>All within ~1% of stock, which is a good check that only the config differs.</p>
+<h3 id="wire-it-in-with-l-never-platform_packages">Wire it in with -L, never platform_packages</h3>
+<pre><code>PLATFORMIO_BUILD_FLAGS=&quot;-L/path/to/staged/archives&quot; pio run -e Heltec_v3_repeater_observer_mqtt
 </code></pre>
-<p>On Windows, create <code>E:\mota</code>, inspect each source with <code>motatool inspect</code>, and
-rename it to the reported lowercase root in the same way. Safely eject the
-drive after all copies finish.</p>
-<p>After boot, scan the archive and confirm the card contents from the repeater
-console:</p>
-<pre><code class="language-text">get sdcard ls
-get sdcard ls 2
-ota cache
-ota folder
-</code></pre>
-<p><code>ota cache</code> should report the imported count. <code>ota folder</code> reports the current
-served count; once OTA serving starts in TempRadio, that set also includes the
-repeater's running firmware. If the files appear in <code>get sdcard ls</code> but not in
-the served count, check their exact names, run <code>motatool verify</code> again, and
-inspect their block geometry. It is fine to run <code>ota cache off</code> for a curated,
-read-mostly archive: that disables capture of new mOTAs but continues serving
-every valid file already on the card.</p>
-<h3 id="serve-the-preloaded-archive-over-tempradio">Serve the preloaded archive over TempRadio</h3>
-<p>LoRa OTA traffic exists only during an active temporary-radio window. The SD
-repeater, each receiving node, and every intermediate repeater in the path need
-overlapping windows on the same temporary channel. Use a frequency permitted
-for the node's configured region. This North American example uses the
-recommended fast OTA settings and a 120-minute window:</p>
-<pre><code class="language-text">tempradio 909.950,250,5,5,120
-</code></pre>
-<p>Start the farthest receiving node first, then intermediate repeaters, and the
-SD source last so their windows overlap for as long as possible. Before or
-during the source window, <code>ota cache</code> makes the source scan and attach the SD
-archive. Entry into TempRadio automatically triggers an OTA advertisement
-burst; <code>ota announce</code> can send another advertisement immediately.</p>
-<p>On a receiving OTA-capable node, allow a few seconds for catalog exchange,
-then run:</p>
-<pre><code class="language-text">ota ls
-ota ls 2
-ota get &lt;mid8&gt; flash
-ota status
-</code></pre>
-<p>Use <code>ota ls 2</code>, <code>ota ls 3</code>, and so on when the source advertises more than the
-two rows that fit in one remote CLI reply. Each row includes a stable
-eight-hex-digit manifest ID. Use that ID instead of a list number, because
-asynchronous catalog refreshes can reorder rows between the list and pull
-commands. A receiver retains the complete protocol catalog and verifies every
-transferred block. It still applies its normal target, hardware, codec,
-signature, and installation checks. The SD
-repeater may advertise images for many hardware families; it never installs
-those archive files merely because it serves them.</p>
-<p>When a temporary window expires or a node reboots, it returns to its saved
-radio settings and OTA transfer stops. The archive remains on the card. Start
-another set of overlapping <code>tempradio</code> windows to resume an interrupted
-download, or use synchronized <code>tempradioat</code> entries for a scheduled window.</p>
-<p>Archive capture is lower priority than operator work. An explicit <code>ota pull</code>
-to install storage or a host folder immediately takes the single receive slot;
-the archive partial is checkpointed and resumes later. Existing cached files
-can still answer peer requests while another archive file is downloading.</p>
-<p>Use these commands to inspect or control automatic capture:</p>
-<pre><code class="language-text">ota cache
-ota cache on
-ota cache off
-ota config cache on
-ota config cache off
-</code></pre>
-<p>The on/off choice is saved on the SD card. Turning capture off stops new
-downloads but keeps serving files already cached. Formatting or erasing the
-card removes both the archive and its off marker, so a newly formatted card
-returns to the default-on setting. <code>ota config sdseed on|off</code> is also accepted
-as an alias.</p>
+<p>Verify with <code>grep -oE "[^ ]*libmbed[a-z0-9_]*\.a" .pio/build/&lt;env&gt;/firmware.map | sort -u</code> --
+every path must be the staged directory.</p>
+<p><strong>Do not</strong> point <code>platform_packages</code> at a <code>file://</code> copy of the framework. PlatformIO
+installs it <em>over</em> the shared <code>~/.platformio/packages/framework-arduinoespressif32</code>,
+silently changing mbedTLS for every other ESP32 env and project on the machine. It does this
+even when the copy's <code>package.json</code> version differs -- verified twice here, and both times the
+fix was <code>rm -rf</code> the package and <code>pio pkg install</code> to re-download stock. A prepended library
+search path keeps the change scoped to one env, because the linker takes each archive member
+from the first archive that satisfies an undefined symbol.</p>
+<h2 id="how-to-verify-it-worked">How to verify it worked</h2>
+<ol>
+<li><code>strings</code>/<code>grep</code> the new <code>sdkconfig.h</code> for the four settings.</li>
+<li>Build and check the RAM figure; static usage should be unchanged (these are heap buffers).</li>
+<li>On hardware, <code>get mqtt.stats</code> at boot with two slots connected: the largest free block
+   should start roughly 24-32 KiB higher than the current 62-67 KiB.</li>
+<li>Soak across reconnect cycles and compare the floor against the two recorded runs:
+   baseline settled 16,372 (cycle 11); <code>softDisconnect</code> holds 36,852 (cycle 16).</li>
+</ol>
+<h2 id="prior-art-in-this-investigation">Prior art in this investigation</h2>
+<p><code>.scratch/mqtt-non-psram-heap-staircase-analysis-2026-08-05.md</code> (untracked -- <code>.scratch/</code> is
+globally gitignored) holds the full allocation inventory. <code>~/mqtt-soak/STATE.md</code> holds the
+soak evidence, including two retracted hypotheses worth not repeating: the perf commits were
+not the cause, and waev does not cap connections per IP.</p>
 
 
 
