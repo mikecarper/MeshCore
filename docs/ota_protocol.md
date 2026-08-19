@@ -519,10 +519,14 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   reassembly bitmap (<=16 fragments/block; 1 KB blocks = 7). `OTA_PROOF` is a single packet and needs no mask.
 - **Data and proof remain separate packets, without a normal extra round trip.** A server retains requested
   blocks in a bounded descriptor queue, admits at most one response per main-loop pass, and sends one
-  `OTA_PROOF` after each block's requested fragments. The receiver uses an airtime/path-aware proof grace
-  (never less than 500 ms) and defers `OTA_REQ_PROOF` while any flight slot still expects DATA. Thus a missing
-  early proof cannot make the receiver transmit into the rest of a legitimate half-duplex response train.
-  After the complete-flight deadline, only one slot's missing fragments/proof is requested at a time.
+  `OTA_PROOF` after each block's requested fragments. Before admitting that proactive proof, the source leaves
+  an airtime/duty-aware 100-3000 ms RX turnaround gap. It accounts for one active transmission plus the two
+  paced-response queue credits. A legacy receiver uses the gap to send its immediate
+  `OTA_REQ_PROOF`; receiving that explicit request bypasses the remaining gap, avoiding a proof/request
+  collision and an otherwise multi-second legacy retry. A newer receiver uses an airtime/path-aware proof
+  grace (never less than 500 ms) and defers `OTA_REQ_PROOF` while any flight slot still expects DATA. Thus a
+  missing early proof cannot make the receiver transmit into the rest of a legitimate half-duplex response
+  train. After the complete-flight deadline, only one slot's missing fragments/proof is requested at a time.
 
 ### 8.5 Sizing against `MAX_PACKET_PAYLOAD = 184`
 
@@ -674,9 +678,12 @@ Manifest fragments are retained as bounded response jobs and admitted one at
 a time. Their source-side gap follows the active maximum packet airtime and
 dispatcher duty spacing, clamped to 100-1000 ms. The 100 ms floor protects
 fast radios' TX-to-RX turnaround; the cap keeps the receiver's one-second
-manifest progress/retry observation responsive. Relay collision delay is a
-separate setting: active OTA floods honor the relay role's configured
-`txdelay`, and the deployment runner temporarily uses `0.3` on managed relays.
+manifest progress/retry observation responsive. The source uses the same
+radio-aware 100-3000 ms drain/turnaround gap before an unsolicited block proof,
+but immediately serves a
+legacy receiver's explicit `OTA_REQ_PROOF`. Relay collision delay is a separate
+setting: active OTA floods honor the relay role's configured `txdelay`, and the
+deployment runner temporarily uses `0.3` on managed relays.
 
 **What to plug into `--serial`.** Use the USB serial console of an OTA-enabled MeshCore node built with
 `OTA_FOLDER_SERIAL`. The node must have a working LoRa radio plus an

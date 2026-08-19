@@ -907,6 +907,9 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
     EXPECT_EQ(data.frag_off, i * OTA_FRAG_DATA);
   }
   EXPECT_EQ(server.pendingServeJobs(), 1u);                // proof is retained behind DATA
+  server.serviceEgress();                                  // reserve RX turnaround for legacy REQ_PROOF
+  ASSERT_EQ(sent.items.size(), fragment_count);
+  server.set_clock(OTA_MANIFEST_EGRESS_MIN_GAP_MS);
   server.serviceEgress();
   ASSERT_EQ(sent.items.size(), fragment_count + 1);
   ProofMsg proof;
@@ -914,6 +917,48 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
                            (uint16_t)sent.items.back().size(), proof));
   EXPECT_EQ(proof.block_idx, 0);
   EXPECT_EQ(server.pendingServeJobs(), 0u);
+}
+
+TEST(OtaTransfer, LegacyProofRequestBypassesProactiveProofTurnaround) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  server.set_link_timing(80, 2000);                         // 3 admitted packet intervals = 480 ms
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+
+  ReqMsg request;
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.block_idx = 0;
+  request.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t wire_len = encode_req(wire, sizeof(wire), request);
+  ASSERT_GT(wire_len, 0);
+  ASSERT_TRUE(server.on_message(wire, wire_len));
+
+  const uint32_t fragment_count =
+      (manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  for (uint32_t i = 0; i < fragment_count; i++) server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), fragment_count);
+
+  server.set_clock(479);
+  server.serviceEgress();                                  // no unsolicited proof before turnaround
+  ASSERT_EQ(sent.items.size(), fragment_count);
+
+  ReqProofMsg proof_request;
+  memcpy(proof_request.manifest_id, manifest.merkle_root, 4);
+  proof_request.block_idx = 0;
+  wire_len = encode_req_proof(wire, sizeof(wire), proof_request);
+  ASSERT_GT(wire_len, 0);
+  ASSERT_TRUE(server.on_message(wire, wire_len));
+  server.serviceEgress();                                  // explicit legacy request is served immediately
+  ASSERT_EQ(sent.items.size(), fragment_count + 1);
+  ProofMsg proof;
+  ASSERT_TRUE(decode_proof(sent.items.back().data(),
+                           (uint16_t)sent.items.back().size(), proof));
+  EXPECT_EQ(proof.block_idx, 0);
 }
 
 TEST(OtaTransfer, ServerPacesManifestFragmentsAndConsumesResolvedRequest) {
@@ -994,10 +1039,14 @@ TEST(OtaTransfer, ServerQueuesEveryBlockInOneRequestFlight) {
   server.on_message(wire, wire_len);
   EXPECT_EQ(server.pendingServeJobs(), 3u);
 
-  // The bounded sender remains paced and drains the jobs in request order, including each proactive proof.
-  const uint32_t packets_per_full_block =
-      (manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA + 1;
-  for (uint32_t i = 0; i < packets_per_full_block; i++) server.serviceEgress();
+  // The bounded sender remains paced and drains the jobs in request order, including each proactive proof
+  // after the legacy-receiver turnaround gap.
+  const uint32_t data_packets_per_full_block =
+      (manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  for (uint32_t i = 0; i < data_packets_per_full_block; i++) server.serviceEgress();
+  server.set_clock(OTA_MANIFEST_EGRESS_MIN_GAP_MS);
+  server.serviceEgress();
+  const uint32_t packets_per_full_block = data_packets_per_full_block + 1;
   ASSERT_EQ(sent.items.size(), packets_per_full_block);
   ProofMsg proof;
   ASSERT_TRUE(decode_proof(sent.items.back().data(),

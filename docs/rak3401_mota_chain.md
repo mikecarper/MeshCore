@@ -118,7 +118,7 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
   --source-shares-controller \
   --target-key 63d8df63 \
   --temp-radio 909.950,500,5,5,120 \
-  --ota-hops 1 \
+  --ota-hops 0 \
   --motatool /path/to/motatool \
   --yes
 ```
@@ -179,7 +179,7 @@ after every bridge reboot:
 powersaving off
 set radio.rxps off
 set rxdelay 0
-ota config hops 1
+ota config hops 0
 tempradio 909.950,500,5,5,120
 ```
 
@@ -187,7 +187,10 @@ tempradio 909.950,500,5,5,120
 failure. The actual source failure was an oversized USB CDC reply; current
 firmware splits those reads. Some historical bridge builds may report RXPS as
 unsupported while already operating continuously. Verify the reported state
-and do not substitute a normal reboot for the one-time watchdog reset.
+and do not substitute a normal reboot for the one-time watchdog reset. Direct
+tests use `hops 0`: `hops 1` makes the target echo each source response despite
+there being no intermediate relay, increasing half-duplex loss and legacy
+three-second retries.
 
 Put the source on the identical TempRadio tuple. If it is a binary-mode Full
 Companion, the current `motatool` can switch modes for the serving session:

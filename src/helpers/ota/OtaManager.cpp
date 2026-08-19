@@ -419,6 +419,7 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
     ServeJob& job = _serve_jobs[i];
     if (job.block != block || memcmp(job.mid, mid, 4) != 0) continue;
     job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
+    if (want_mask == 0) job.proof_requested = true;
     return true;
   }
   if (_n_serve_jobs >= OTA_SERVE_QUEUE) return false;
@@ -427,6 +428,8 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   job.block = block;
   job.pending_mask = want_mask;
   job.emitted_mask = 0;
+  job.proof_ready_at = 0;
+  job.proof_requested = want_mask == 0;
   return true;
 }
 
@@ -452,6 +455,18 @@ uint32_t OtaManager::manifestEgressGapMs() const {
   gap = (gap + 999u) / 1000u;
   if (gap < OTA_MANIFEST_EGRESS_MIN_GAP_MS) gap = OTA_MANIFEST_EGRESS_MIN_GAP_MS;
   if (gap > OTA_MANIFEST_EGRESS_MAX_GAP_MS) gap = OTA_MANIFEST_EGRESS_MAX_GAP_MS;
+  return (uint32_t)gap;
+}
+
+uint32_t OtaManager::proofEgressGapMs() const {
+  if (_radio_packet_airtime_ms == 0) return OTA_PROOF_EGRESS_MIN_GAP_MS;
+  // The adapter may have one response transmitting and two more admitted. Start this timer when the final
+  // DATA is accepted, so cover all three packet-service intervals before opening the legacy-request turn.
+  uint64_t gap = (uint64_t)_radio_packet_airtime_ms * _tx_spacing_permille
+      * OTA_PROOF_EGRESS_DRAIN_PACKETS;
+  gap = (gap + 999u) / 1000u;
+  if (gap < OTA_PROOF_EGRESS_MIN_GAP_MS) gap = OTA_PROOF_EGRESS_MIN_GAP_MS;
+  if (gap > OTA_PROOF_EGRESS_MAX_GAP_MS) gap = OTA_PROOF_EGRESS_MAX_GAP_MS;
   return (uint32_t)gap;
 }
 
@@ -635,9 +650,22 @@ void OtaManager::serviceEgress() {
       const uint16_t bit = (uint16_t)(1u << fragment);
       job.pending_mask &= (uint16_t)~bit;
       job.emitted_mask |= bit;
+      if (job.pending_mask == 0) {
+        // Legacy receivers transmit REQ_PROOF as soon as the last DATA fragment arrives. Do not admit our
+        // proactive proof into the radio queue at the same instant: the two half-duplex transmissions would
+        // collide and force the receiver onto its multi-second retry tick. Include every response that the
+        // adapter can already have admitted ahead of this proof, then retain a bounded fast-link floor.
+        job.proof_ready_at = _now_ms + proofEgressGapMs();
+      }
     }
     return;
   }
+
+  // An explicit legacy REQ_PROOF proves that the source has returned to RX and bypasses the proactive delay.
+  // A newer receiver sends no request unless the proof was lost, so its normal proactive path waits for the
+  // radio-aware gap and remains compatible with the existing proof-grace deadline.
+  if (!job.proof_requested && job.proof_ready_at != 0
+      && (int32_t)(_now_ms - job.proof_ready_at) < 0) return;
 
   uint8_t proof[32 * 4];
   uint8_t np = merkle_gen_proof(v->m.leaves, v->m.block_count, job.block, v->scratch, proof);

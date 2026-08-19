@@ -240,7 +240,19 @@ check fails.
 
 ### 1. Start the temporary OTA channel
 
-On the source node, destination node, and every intermediate repeater, run:
+First save the current `ota config` output. For a direct source-to-destination link, set both OTA-enabled
+endpoints to direct-only mode before starting the transfer:
+
+```text
+ota config hops 0
+```
+
+Do not use `hops 1` as extra margin on a direct link. It tells a receiving repeater to retransmit each direct
+DATA/PROOF packet; that unnecessary half-duplex transmission can make it miss the source's next fragment,
+especially with older single-block receivers. Use `hops 1` only when one real intermediate relay is required,
+`hops 2` for two, and so on. This setting is saved, so restore the original value after the maintenance window.
+
+On the source node, destination node, and every intermediate repeater, then run:
 
 ```text
 tempradio 909.950,250,5,5,120
@@ -295,6 +307,10 @@ Monitor the transfer:
 ota status
 ```
 
+For a powered bench update where restart-resume is not needed, `ota config checkpoint 0` on the destination
+removes periodic progress writes. It is a smaller optimization than selecting the correct hop count and it
+trades away persisted mid-download resume; restore the previous checkpoint cadence afterward.
+
 The update is ready when the status says `ready to install`. Discovery is background traffic, while an
 active OTA download is primary mesh traffic. At the temporary-radio settings in this guide, allow roughly
 **one hour** for a typical ESP32 full image over a quiet, direct link. That is a planning estimate, not an
@@ -340,7 +356,8 @@ ota status
 - **nRF52 reports a base mismatch:** the file passed to `--base` is not the exact application running on
   the destination. Rebuild the delta from the correct saved `firmware.hex`.
 - **The download stalls:** check the source, destination, and intermediate repeaters. Restart matching,
-  overlapping temporary-radio windows if one expired.
+  overlapping temporary-radio windows if one expired. On a direct link, also require `ota config hops 0`;
+  a larger reach makes a repeater destination unnecessarily echo source packets.
 - **The serial port is busy:** close the serial terminal before starting `motatool serve`.
 - **The destination rejects the package:** verify the source files, their `EndF` trailers, the package's
   target/hardware identity, and the result of `motatool verify`.

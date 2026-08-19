@@ -16,8 +16,9 @@
 // driven by a host simulation; a thin Mesh adapter wires it to PAYLOAD_TYPE_OTA on device.
 //
 // Transfer keeps 1 KB logical blocks. A server paces each block's self-describing DATA fragments through a
-// bounded response queue and follows them with the Merkle PROOF. A newer fetcher waits briefly for that
-// proactive proof; the existing REQ_PROOF message remains as a loss/legacy-server fallback.
+// bounded response queue and follows them with the Merkle PROOF. A short radio-aware turnaround gap lets a
+// legacy fetcher send its immediate REQ_PROOF without colliding with that proactive proof; newer fetchers wait
+// briefly for the proactive proof and retain REQ_PROOF as a loss/legacy-server fallback.
 
 namespace mesh {
 namespace ota {
@@ -67,6 +68,15 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #endif
 #ifndef OTA_MANIFEST_EGRESS_MAX_GAP_MS
 #define OTA_MANIFEST_EGRESS_MAX_GAP_MS 1000 // do not outrun the receiver's one-second retry observation
+#endif
+#ifndef OTA_PROOF_EGRESS_DRAIN_PACKETS
+#define OTA_PROOF_EGRESS_DRAIN_PACKETS 3     // one active TX plus the two paced-response queue credits
+#endif
+#ifndef OTA_PROOF_EGRESS_MIN_GAP_MS
+#define OTA_PROOF_EGRESS_MIN_GAP_MS 100      // fast-link legacy request turnaround floor
+#endif
+#ifndef OTA_PROOF_EGRESS_MAX_GAP_MS
+#define OTA_PROOF_EGRESS_MAX_GAP_MS 3000     // bounded by the legacy receiver's normal retry cadence
 #endif
 // Leaf-diff warm-start (motatool folder-capture only): bulk-fetch the target's leaves[], diff a seed build
 // locally, pull DATA only for mismatches. OTA_LEAVES is bitmap-fragmented like OTA_MANIFEST so a want_mask
@@ -493,6 +503,7 @@ private:
   bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask);
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
   uint32_t manifestEgressGapMs() const;
+  uint32_t proofEgressGapMs() const;
   bool serviceManifestEgress();
   void popManifestJob();
   bool loadActiveServeBlock();
@@ -555,6 +566,8 @@ private:
     uint16_t block = 0;
     uint16_t pending_mask = 0;
     uint16_t emitted_mask = 0;
+    uint32_t proof_ready_at = 0;
+    bool proof_requested = false;
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
