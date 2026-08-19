@@ -703,6 +703,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#control-live-usb-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control live USB logging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#begin-capture-of-rx-log-to-node-storage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3198,6 +3209,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#control-live-usb-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control live USB logging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#begin-capture-of-rx-log-to-node-storage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5251,6 +5273,18 @@ Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. 
 <code>-full-logging-ota-</code> artifact is intentionally the exception: it combines
 logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
 disabled.</p>
+<h3 id="control-live-usb-logging">Control live USB logging</h3>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-text">get usb.logging
+set usb.logging on
+set usb.logging off
+</code></pre>
+<p>These commands are compiled into logging artifacts and control their live USB
+debug and packet output. The switch is session-only: every reboot starts a
+logging artifact with USB logging on. Turning it off does not disable CLI
+replies, Companion protocol frames, or essential non-debug serial messages.
+It also does not change the node-storage capture controlled by <code>log start</code> and
+<code>log stop</code>.</p>
 <h3 id="begin-capture-of-rx-log-to-node-storage">Begin capture of rx log to node storage</h3>
 <p><strong>Usage:</strong> <code>log start</code></p>
 <hr />

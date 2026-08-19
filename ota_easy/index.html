@@ -1526,7 +1526,7 @@ location and change it when necessary.</p>
 <li>An OTA-enabled build whose artifact filename contains <code>-ota-</code> on the destination. The <code>-ota-</code> stamp confirms
   that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do <strong>not</strong> need an
   OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
-  Portable logging, portable MQTT, and untagged builds cannot install LoRa OTA; FULL logging OTA builds can.</li>
+  Standard logging and untagged builds cannot install LoRa OTA; FULL MQTT and FULL logging OTA builds can.</li>
 <li>An OTA-enabled MeshCore source connected to the computer by USB serial, or
   an ESP32 WiFi companion/FULL source connected over WiFi as described below.</li>
 <li>Overlapping <code>tempradio</code> windows on the source, destination, and every repeater needed between them.</li>
@@ -1539,8 +1539,8 @@ overlapping window.</p>
 repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
 OTA relay, but it cannot download or install an update for itself. The <code>-ota-</code> sibling omits optional external
 I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
-display, buttons, battery monitoring, and integrated GPS. ESP32 <code>-ota-</code> siblings also retain the compact
-browser WiFi uploader (<code>start ota</code>) and use a 254-entry neighbor table. RP2040 and STM32 repeaters do not
+display, buttons, battery monitoring, and integrated GPS. ESP32 <code>-ota-</code> siblings also retain the lightweight
+browser WiFi uploader (<code>start ota</code>), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32 repeaters do not
 currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
 during TempRadio.</p>
 <p>nRF52 <code>-ota-</code> siblings are compiled with size optimization instead of the Adafruit platform's default
@@ -1550,6 +1550,8 @@ remain enabled.</p>
 <p>ESP32 <code>*-full-ota-*</code> artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
 install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
+ESP32 MQTT observers and ESP-NOW bridges are always emitted as FULL artifacts; compact-CLI variants are no
+longer built.
 The <code>*-full-ota-*</code> profile uses MQTT with logging off. Use a <code>*-full-logging-ota-*</code> artifact when USB debug
 and packet logging are needed instead; that diagnostic profile explicitly disables MQTT and can produce
 substantial serial output.</p>

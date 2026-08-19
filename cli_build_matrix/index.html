@@ -366,10 +366,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#portable-mqtt-observer-retained-surface" class="md-nav__link">
+  <a href="#complete-cli-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Portable MQTT observer retained surface
+        Complete CLI policy
       
     </span>
   </a>
@@ -1130,10 +1130,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#portable-mqtt-observer-retained-surface" class="md-nav__link">
+  <a href="#complete-cli-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Portable MQTT observer retained surface
+        Complete CLI policy
       
     </span>
   </a>
@@ -1191,7 +1191,7 @@
 <p>MeshCore command availability is determined in three layers:</p>
 <ol>
 <li><strong>Role</strong> - repeater, room server, sensor, companion, bridge, or KISS modem.</li>
-<li><strong>Build profile</strong> - standard, portable, logging, OTA, or FULL.</li>
+<li><strong>Build profile</strong> - standard, logging, OTA, or FULL.</li>
 <li><strong>Compiled hardware features</strong> - WiFi, MQTT, GPS, external sensors, PSRAM,
    Ethernet, and similar optional support.</li>
 </ol>
@@ -1255,27 +1255,23 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Standard logging</td>
-<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds the compiled logging behavior.</td>
+<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile, adds the compiled logging behavior, and provides session-only <code>get/set usb.logging</code> control.</td>
 </tr>
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
-<td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader and use a 254-entry neighbor table. A portable OTA artifact can still have the other portable restrictions described below.</td>
+<td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table.</td>
 </tr>
 <tr>
-<td>Portable MQTT observer</td>
-<td>Keeps MQTT/WiFi commissioning, bridge control, radio essentials, update commands, basic identity/status commands, <code>neighbors</code>, <code>discover.neighbors</code>, <code>outpath</code>, and <code>altpath</code>. The large repeater administration tree is omitted to fit the legacy ESP32 application slot.</td>
-</tr>
-<tr>
-<td>Portable ESP-NOW bridge</td>
-<td>Keeps the repeater's role-specific handlers and a reduced common configuration surface containing radio and bridge essentials, including <code>rxdelay</code>, <code>txdelay</code>, <code>outpath</code>, and <code>altpath</code>.</td>
+<td>ESP32 MQTT observer or ESP-NOW bridge</td>
+<td>Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot.</td>
 </tr>
 <tr>
 <td>FULL ESP32</td>
-<td>Uses the matching MQTT target with logging off, removes size-based CLI cuts, and restores the complete command surface supported by that role and hardware.</td>
+<td>Uses the matching MQTT target with logging off and keeps the complete command surface supported by that role and hardware.</td>
 </tr>
 <tr>
 <td>FULL ESP32 logging</td>
-<td>Uses the matching non-MQTT target with debug and packet logging enabled and the complete command surface supported by that role and hardware.</td>
+<td>Uses the matching non-MQTT target with debug and packet logging enabled, session-only <code>get/set usb.logging</code> control, and the complete command surface supported by that role and hardware.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
@@ -1285,43 +1281,21 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </table>
 <p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features. Do not infer
 that a command is missing merely because <code>logging</code> appears in the filename.</p>
-<h2 id="portable-mqtt-observer-retained-surface">Portable MQTT observer retained surface</h2>
-<p>The portable MQTT observer keeps these command groups:</p>
-<ul>
-<li>lifecycle and identity: <code>reboot</code>, <code>poweroff</code>, <code>shutdown</code>, <code>ver</code>, <code>board</code>,
-  <code>password</code>, and <code>erase</code> on the local console;</li>
-<li>radio operation: <code>advert</code>, <code>advert.zerohop</code>, <code>clock</code>, <code>clock sync</code>, <code>time</code>,
-  <code>memory</code>, <code>neighbors</code>, <code>discover.neighbors</code>, and the remote-client routing
-  controls <code>outpath</code> and <code>altpath</code>;</li>
-<li>browser/update control when compiled: <code>start ota</code>, <code>stop ota</code>, <code>ota check</code>,
-  and <code>ota update</code>;</li>
-<li>radio essentials through <code>get</code>/<code>set</code>: radio parameters, TX power, CAD,
-  interference threshold, AGC reset interval, RX gain, <code>rxdelay</code>, <code>txdelay</code>,
-  repeat state, and applicable FEM controls;</li>
-<li>MQTT, WiFi, NTP, bridge, and alert commands implemented by the observer
-  feature set;</li>
-<li>region and onboard-GPS commands that fit and are compiled into the selected
-  target.</li>
-</ul>
-<p>Everything in the repeater-only administration tree that is not listed above is
-intentionally cut from this portable profile. The main omissions include ACL
-editing, flood filter/moderation/scope administration, advanced mesh-clock
-controls, recent-repeater/path administration, battery-alert/RX-watchdog
-controls, stored-log management, and external-sensor administration. Use the
-matching FULL ESP32 build when those commands are required.</p>
-<p>Some observer commands have their own hardware limit:</p>
-<ul>
-<li>MQTT neighbor-table publishing and <code>discover.scopes</code> require the compiled
-  <code>WITH_MQTT_NEIGHBORS</code> feature. PSRAM boards enable it automatically; selected
-  non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>. The commands
-  can therefore be present in either portable or FULL MQTT profiles.</li>
-<li><code>discover.neighbors</code> does <strong>not</strong> require MQTT or PSRAM.</li>
-<li>full NTP connectivity diagnostics are omitted from the portable profile.</li>
-</ul>
+<h2 id="complete-cli-policy">Complete CLI policy</h2>
+<p>The compact ESP32 CLI has been removed. MQTT observers and ESP-NOW bridges are
+automatically promoted to FULL builds with expanded partitions rather than
+dropping administration commands. This keeps <code>tempradio</code>, LoRa OTA, power
+saving, RXPS, logging, statistics, sensor, ACL, routing, and advanced radio
+commands whenever the role and compiled hardware support them.</p>
+<p>Some commands still have hardware or feature limits. MQTT neighbor-table
+publishing and <code>discover.scopes</code> require the compiled <code>WITH_MQTT_NEIGHBORS</code>
+feature. PSRAM boards enable it automatically, and selected non-PSRAM variants
+opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>. <code>discover.neighbors</code> does not
+require MQTT or PSRAM.</p>
 <h2 id="discovery-invariant">Discovery invariant</h2>
 <p><code>discover.neighbors</code> sends the zero-hop node-discovery request used to refresh
 the repeater neighbor table. It is available in every repeater build profile,
-including portable MQTT, standard, logging, OTA, FULL, and FULL logging builds.</p>
+including standard, logging, OTA, FULL, and FULL logging builds.</p>
 <p>The exact command is:</p>
 <pre><code class="language-text">discover.neighbors
 </code></pre>

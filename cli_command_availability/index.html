@@ -1435,11 +1435,8 @@ own interface, so those build roles are not represented here.</p>
   remove commands by itself.</li>
 <li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. Its
   optional external-sensor drivers are removed, but onboard GPS is retained.</li>
-<li><strong>MQTT portable</strong> - the size-reduced ESP32 MQTT observer for the legacy
-  application slot.</li>
-<li><strong>ESP-NOW portable</strong> - the size-reduced ESP32 ESP-NOW repeater bridge.</li>
-<li><strong>FULL MQTT</strong> - the expanded-partition ESP32 MQTT artifact with LoRa OTA and
-  the complete parser.</li>
+<li><strong>FULL</strong> - the expanded-partition ESP32 artifact with LoRa OTA and the
+  complete parser. MQTT observers and ESP-NOW bridges always use this profile.</li>
 <li><strong>FULL logging</strong> - the expanded-partition ESP32 non-MQTT artifact with
   logging, LoRa OTA, and the complete parser.</li>
 </ul>
@@ -1685,6 +1682,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code></a></td>
+<td>Logging artifacts; session-only live USB output gate</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
 </tr>
 <tr>
 <td>Radio</td>
@@ -2698,9 +2703,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <th>Standard</th>
 <th>Logging</th>
 <th>LoRa OTA</th>
-<th>MQTT portable</th>
-<th>ESP-NOW portable</th>
-<th>FULL MQTT</th>
+<th>FULL</th>
 <th>FULL logging</th>
 </tr>
 </thead>
@@ -2709,8 +2712,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Operational</td>
 <td><a href="../cli_commands/#reboot-the-node"><code>reboot</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2726,15 +2727,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#enter-the-uf2-bootloader-nrf52-only"><code>uf2reset</code></a></td>
 <td>nRF52 only</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -2748,8 +2745,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -2757,8 +2752,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Operational</td>
 <td><a href="../cli_commands/#sync-the-clock-with-the-remote-device"><code>clock sync</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2774,15 +2767,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#set-the-time-to-a-specific-timestamp"><code>time &lt;epoch_seconds&gt;</code></a></td>
 <td>Clock only moves forward</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2798,15 +2787,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#send-a-zero-hop-advert"><code>advert.zerohop</code></a></td>
 <td>Advert-capable role</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2822,15 +2807,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
 </tr>
 <tr>
 <td>Information</td>
 <td><a href="../cli_commands/#get-the-version"><code>ver</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2846,15 +2827,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Diagnostics</td>
 <td><a href="#memory"><code>memory</code></a></td>
 <td>ESP32 heap and PSRAM summary</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2870,15 +2847,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Diagnostics</td>
 <td><a href="#powerlog"><code>powerlog</code></a></td>
 <td>Reset-reason summary</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2894,8 +2867,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Neighbors</td>
@@ -2904,8 +2875,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -2913,8 +2882,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Neighbors</td>
 <td><a href="../cli_commands/#discover-zero-hop-neighbors"><code>discover.neighbors</code></a></td>
 <td>Repeater; some MQTT room servers</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2930,8 +2897,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Feature</td>
 <td>No</td>
-<td>Feature</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Statistics</td>
@@ -2940,8 +2905,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -2952,8 +2915,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>No</td>
 <td>Serial</td>
 <td>Serial</td>
 </tr>
@@ -2964,8 +2925,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>No</td>
 <td>Serial</td>
 <td>Serial</td>
 </tr>
@@ -2976,8 +2935,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>No</td>
 <td>Serial</td>
 <td>Serial</td>
 </tr>
@@ -2988,8 +2945,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>No</td>
 <td>Serial</td>
 <td>Serial</td>
 </tr>
@@ -2997,8 +2952,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Statistics</td>
 <td><a href="../cli_commands/#read-repeater-telemetry-history"><code>get telemetry.temp/volt</code>; optional GPS history; <code>get/set telemetry.tx</code></a></td>
 <td>Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3012,8 +2965,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3024,17 +2975,23 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>No</td>
 <td>Serial</td>
 <td>Serial</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code></a></td>
+<td>Logging artifacts; session-only live USB output gate</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
 </tr>
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-radio-parameters"><code>get radio</code>; <code>set radio ...</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3050,8 +3007,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Radio</td>
@@ -3060,8 +3015,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3072,8 +3025,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3081,8 +3032,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
 <td><code>set</code> is local serial only</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3098,15 +3047,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Feature</td>
-<td>Feature</td>
 </tr>
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards"><code>get/set radio.fem.rxgain</code></a></td>
 <td>Controllable LoRa FEM</td>
-<td>Feature</td>
-<td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -3122,8 +3067,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Feature</td>
-<td>Feature</td>
 </tr>
 <tr>
 <td>Radio</td>
@@ -3132,8 +3075,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -3144,8 +3085,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3156,8 +3095,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3168,8 +3105,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3180,8 +3115,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3189,8 +3122,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>System</td>
 <td><a href="../cli_commands/#change-this-nodes-admin-password"><code>password &lt;new_password&gt;</code></a></td>
 <td>Administrator</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3204,8 +3135,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3216,8 +3145,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3228,8 +3155,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -3239,8 +3164,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3252,8 +3175,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3264,8 +3185,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3275,8 +3194,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3290,8 +3207,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>No</td>
 </tr>
 <tr>
 <td>System</td>
@@ -3300,8 +3215,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3309,8 +3222,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>System</td>
 <td><a href="../cli_commands/#view-this-nodes-configured-role"><code>get role</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3324,8 +3235,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -3336,8 +3245,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3347,8 +3254,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater, sensor, and room server; <code>clock.sync.internet</code> needs MQTT repeater</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3362,8 +3267,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Routing</td>
@@ -3372,8 +3275,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3384,8 +3285,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3393,8 +3292,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Routing</td>
 <td><a href="../cli_commands/#view-or-change-the-retransmit-delay-factor-for-flood-traffic"><code>get/set txdelay</code></a></td>
 <td>All text CLI roles, including bridges</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3408,8 +3305,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3417,8 +3312,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Routing</td>
 <td><a href="../cli_commands/#experimental-view-or-change-the-processing-delay-for-received-traffic"><code>get/set rxdelay</code></a></td>
 <td>All text CLI roles, including bridges</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3432,8 +3325,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3444,8 +3335,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3453,8 +3342,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Routing</td>
 <td><a href="../cli_commands/#view-or-change-the-local-interference-threshold"><code>get/set int.thresh</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3470,15 +3357,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Feature</td>
-<td>Feature</td>
 </tr>
 <tr>
 <td>Routing</td>
 <td><a href="../cli_commands/#view-or-change-the-agc-reset-interval"><code>get/set agc.reset.interval</code></a></td>
 <td>All text CLI roles</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3494,8 +3377,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Routing</td>
@@ -3504,8 +3385,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3516,8 +3395,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3528,8 +3405,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3540,8 +3415,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3552,8 +3425,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3564,8 +3435,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3576,8 +3445,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3587,8 +3454,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater role handler</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3600,8 +3465,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3611,8 +3474,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater role handler; <code>flood.rule</code>/<code>flood.filter</code> also on FULL ESP32 room server (no blacklist)</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3624,8 +3485,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3633,8 +3492,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Routing</td>
 <td><a href="../halo_keymind_settings/#direct-path-overrides"><code>get/set outpath</code></a></td>
 <td>Repeater remote-client context</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3650,8 +3507,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>ACL</td>
@@ -3659,8 +3514,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Repeater, room server, or sensor</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3672,8 +3525,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
-<td>No</td>
-<td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
 </tr>
@@ -3684,8 +3535,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>No</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3693,8 +3542,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Regions</td>
 <td><a href="../cli_commands/#bulk-load-region-lists"><code>region load</code></a>; <a href="../cli_commands/#save-any-changes-to-regions-made-since-reboot"><code>region save</code></a></td>
 <td>Role with region storage</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3710,15 +3557,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Regions</td>
 <td><a href="../cli_commands/#show-information-for-a-region"><code>region get</code></a>; <a href="../cli_commands/#view-all-regions"><code>region list</code></a>; <a href="../cli_commands/#dump-all-defined-regions-and-flood-permissions"><code>region</code></a></td>
 <td>Role with region storage</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3734,15 +3577,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 </tr>
 <tr>
 <td>Regions</td>
 <td><a href="../cli_commands/#create-a-new-region"><code>region put</code></a>; <a href="../cli_commands/#define-region-hierarchy-single-line"><code>region def</code></a>; <a href="../cli_commands/#remove-a-region"><code>region remove</code></a></td>
 <td>Role with region storage</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3756,8 +3595,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3768,8 +3605,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3780,8 +3615,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3792,8 +3625,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3804,8 +3635,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -3816,8 +3645,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3828,20 +3655,16 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
 <tr>
 <td>Retry</td>
 <td><a href="../cli_commands/#view-seed-or-clear-the-recent-repeater-table"><code>get/set/clear recent.repeater</code>; <code>get recent.repeaters</code></a></td>
-<td>Repeater; portable ESP-NOW retains reads only</td>
+<td>Repeater</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
-<td>No</td>
-<td>Limited</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -3849,8 +3672,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>GPS</td>
 <td><a href="../cli_commands/#view-or-change-gps-state"><code>gps</code>; <code>gps on/off</code></a></td>
 <td>Compiled onboard GPS</td>
-<td>Feature</td>
-<td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -3866,15 +3687,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Feature</td>
-<td>Feature</td>
 </tr>
 <tr>
 <td>GPS</td>
 <td><a href="../cli_commands/#set-this-nodes-location-based-on-the-gps-coordinates"><code>gps setloc</code></a></td>
 <td>Compiled onboard GPS</td>
-<td>Feature</td>
-<td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -3890,8 +3707,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Feature</td>
-<td>Feature</td>
 </tr>
 <tr>
 <td>Sensors</td>
@@ -3900,32 +3715,26 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-the-list-of-sensors-on-this-node"><code>sensor list [start]</code></a></td>
-<td>Compiled sensor manager; portable profiles omit external sensors</td>
+<td>Compiled sensor manager; <code>no_external_sensors</code> omits optional drivers</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-or-change-the-value-of-a-sensor"><code>sensor get</code>; <code>sensor set</code></a></td>
-<td>Compiled sensor setting; portable profiles omit external sensors</td>
+<td>Compiled sensor setting; <code>no_external_sensors</code> omits optional drivers</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -3935,8 +3744,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Simple sensor role with board GPIO support</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
@@ -3949,8 +3756,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Feature</td>
 </tr>
 <tr>
@@ -3960,8 +3765,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Feature</td>
 </tr>
@@ -3973,8 +3776,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Feature</td>
 </tr>
 <tr>
@@ -3984,8 +3785,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>Yes</td>
-<td>Yes</td>
 <td>Yes</td>
 <td>Feature</td>
 </tr>
@@ -3997,8 +3796,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>Feature</td>
 <td>No</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 </tr>
 <tr>
@@ -4008,9 +3805,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
-<td>No</td>
+<td>Feature</td>
 <td>Feature</td>
 </tr>
 <tr>
@@ -4020,17 +3815,13 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
-<td>No</td>
+<td>Feature</td>
 <td>Feature</td>
 </tr>
 <tr>
 <td>Board</td>
 <td><a href="../cli_commands/#view-the-bootloader-version-nrf52-only"><code>get bootloader.ver</code></a></td>
 <td>nRF52 only</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -4046,8 +3837,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Ethernet</td>
@@ -4055,8 +3844,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Ethernet target</td>
 <td>Feature</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
@@ -4068,8 +3855,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>Yes</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -4077,8 +3862,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>WebConfig</td>
 <td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>start webconfig [ap]</code>; <code>stop webconfig</code>; <code>get/set webui</code></a></td>
 <td>Compiled WebConfig</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -4093,16 +3876,12 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>Yes</td>
 <td>Feature</td>
 </tr>
 <tr>
 <td>WiFi</td>
 <td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>get/set wifi.cli</code></a></td>
 <td>Compiled WebConfig</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -4116,8 +3895,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4128,8 +3905,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4140,8 +3915,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4152,8 +3925,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4164,8 +3935,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4176,8 +3945,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4190,8 +3957,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Feature</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>No</td>
 </tr>
 <tr>
 <td>LoRa OTA</td>
@@ -4200,8 +3965,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4212,8 +3975,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4224,8 +3985,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4236,8 +3995,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
-<td>No</td>
-<td>No</td>
 <td>Feature</td>
 <td>Feature</td>
 </tr>
@@ -4248,8 +4005,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4260,8 +4015,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4272,8 +4025,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>No</td>
 <td>Yes</td>
-<td>No</td>
-<td>No</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
@@ -4283,8 +4034,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4298,8 +4047,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4307,8 +4054,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4322,8 +4067,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4331,8 +4074,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4346,8 +4087,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4355,8 +4094,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4370,8 +4107,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4379,8 +4114,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer with compiled neighbor support</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Feature</td>
 <td>No</td>
 <td>Feature</td>
 <td>No</td>
@@ -4394,15 +4127,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
 <td><a href="../cli_commands/#diagnose-ntp-server-connectivity-mqtt-observer-only"><code>get mqtt.ntp.diag</code></a></td>
-<td>Full MQTT observer; intentionally cut from portable</td>
-<td>No</td>
-<td>No</td>
+<td>MQTT observer</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -4418,8 +4147,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4427,8 +4154,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Legacy MQTT aliases</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4442,8 +4167,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -4454,15 +4177,11 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>SNMP</td>
 <td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_SNMP.md#cli-commands"><code>get/set snmp</code>; <code>get/set snmp.community</code></a></td>
 <td>MQTT target compiled with SNMP</td>
-<td>No</td>
-<td>No</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -4478,8 +4197,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
-<td>Yes</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Alerts</td>
@@ -4487,8 +4204,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT observer with configured alert channel</td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Yes</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -4502,8 +4217,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Feature</td>
 <td>No</td>
-<td>Feature</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Manifest OTA</td>
@@ -4514,8 +4227,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>No</td>
 <td>Manifest</td>
 <td>No</td>
-<td>Manifest</td>
-<td>No</td>
 </tr>
 <tr>
 <td>Manifest OTA</td>
@@ -4523,8 +4234,6 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>MQTT target with <code>OTA_MANIFEST_BASE</code></td>
 <td>No</td>
 <td>No</td>
-<td>No</td>
-<td>Manifest</td>
 <td>No</td>
 <td>Manifest</td>
 <td>No</td>

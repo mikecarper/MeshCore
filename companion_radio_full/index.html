@@ -1507,7 +1507,9 @@ is active; do not enter the start token again after it appears.</p>
 <code>login &lt;admin-password&gt;</code> and <code>cmd &lt;remote-command&gt;</code>, and routed
 <code>trace [recipient-name-or-prefix]</code>, plus local <code>ota</code>, <code>tempradio</code>, and
 <code>normalradio</code> controls. ESP32 builds also provide local
-<code>get/set wifi.powersave</code>. For example:</p>
+<code>get/set wifi.powersave</code>. Logging artifacts additionally provide session-only
+<code>get/set usb.logging</code>; turning it off suppresses live USB diagnostics without
+disabling Companion frames or terminal replies. For example:</p>
 <pre><code class="language-text">channels
 channel #rgdata Hello from Eugene 👋
 show
