@@ -185,6 +185,13 @@ static bool applyCompanionPowerSaving(bool enabled) {
 
 #if COMPANION_IDF_PM_AVAILABLE
   const uint32_t min_mhz = enabled && max_mhz > 40 ? 40 : max_mhz;
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // Automatic light sleep interrupts native USB CDC on ESP32 companions.
+  // Frequency scaling remains active when device power saving is enabled.
+  const bool automatic_light_sleep = false;
+#else
+  const bool automatic_light_sleep = enabled;
+#endif
 #if CONFIG_IDF_TARGET_ESP32C3
   esp_pm_config_esp32c3_t pm_config;
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -196,7 +203,7 @@ static bool applyCompanionPowerSaving(bool enabled) {
 #endif
   pm_config.max_freq_mhz = max_mhz;
   pm_config.min_freq_mhz = min_mhz;
-  pm_config.light_sleep_enable = enabled;
+  pm_config.light_sleep_enable = automatic_light_sleep;
 
   esp_err_t pm_result = esp_pm_configure(&pm_config);
   if (pm_result != ESP_OK) {
@@ -228,7 +235,8 @@ static bool applyCompanionPowerSaving(bool enabled) {
 #if COMPANION_IDF_PM_AVAILABLE
   Serial.printf("Device power saving %s: CPU %lu-%lu MHz, automatic light sleep %s\r\n",
                 enabled ? "on" : "off", (unsigned long)min_mhz,
-                (unsigned long)max_mhz, enabled ? "on" : "off");
+                (unsigned long)max_mhz,
+                automatic_light_sleep ? "on" : "off");
 #else
   Serial.printf("Device power saving %s: CPU %lu MHz\r\n",
                 enabled ? "on" : "off", (unsigned long)max_mhz);
