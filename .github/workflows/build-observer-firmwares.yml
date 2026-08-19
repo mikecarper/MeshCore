@@ -41,7 +41,7 @@ concurrency:
 env:
   # Version embedded in firmware filenames; must match the version key in the
   # flasher's config.json. Bump here when the observer version changes.
-  FIRMWARE_VERSION: v1.17.0
+  FIRMWARE_VERSION: v1.17.1
   # Rolling release tag that hosts the latest observer binaries.
   RELEASE_TAG: observer-mqtt-latest
   # Download host serving RELEASE_TAG's assets (cloudflare-worker in the flasher

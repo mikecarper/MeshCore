@@ -3120,7 +3120,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
   _prefs.radio_fem_rxgain = 1;      // LoRa FEM RX gain on by default (FEM boards)
-  _prefs.radio_fem_txgain = 0;
+  _prefs.radio_fem_txgain = 0;      // LoRa FEM TX gain off by default (FEM boards)
 
   pending_discover_tag = 0;
   pending_discover_until = 0;

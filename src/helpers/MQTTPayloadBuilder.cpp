@@ -167,6 +167,7 @@ int MQTTPayloadBuilder::buildPacketMessage(
 }
 
 int MQTTPayloadBuilder::buildRawMessage(
+  JsonDocument& doc,
   const char* origin,
   const char* origin_id,
   const char* timestamp,
@@ -174,7 +175,7 @@ int MQTTPayloadBuilder::buildRawMessage(
   char* buffer,
   size_t buffer_size
 ) {
-  JsonDocument doc;
+  doc.clear();
   JsonObject root = doc.to<JsonObject>();
 
   root["origin"] = origin;

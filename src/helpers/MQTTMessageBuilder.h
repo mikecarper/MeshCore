@@ -5,6 +5,7 @@
 #include "MeshCore.h"
 #include <ArduinoJson.h>
 #include "MQTTPayloadBuilder.h"
+#include "MQTTWireScratch.h"
 #include <Mesh.h>
 #include <Timezone.h>
 
@@ -23,6 +24,15 @@
  */
 class MQTTMessageBuilder {
 public:
+  // Wire-format scratch sizing and validation live in the pure, host-tested
+  // MQTTWireScratch; these are the firmware-facing aliases.
+  static const size_t WIRE_SCRATCH_SIZE = MQTTWireScratch::kWireBytes;
+  static const size_t WIRE_HEX_SCRATCH_SIZE = MQTTWireScratch::kWireHexChars;
+
+  static bool canSerializePacket(const mesh::Packet* packet, size_t dest_size) {
+    return packet != nullptr && MQTTWireScratch::canSerialize(*packet, dest_size);
+  }
+
   /**
    * Format the MQTT JSON `timestamp` field (same rule for status, packet, raw).
    * Always UTC with an explicit "+00:00" offset, ISO-8601
@@ -148,6 +158,7 @@ public:
    * @return Length of JSON string, or 0 on error
    */
   static int buildRawMessage(
+    JsonDocument& doc,
     const char* origin,
     const char* origin_id,
     const char* timestamp,
@@ -234,6 +245,7 @@ public:
    * @return Length of JSON string, or 0 on error
    */
   static int buildRawJSON(
+    JsonDocument& doc,
     mesh::Packet* packet,
     const char* origin,
     const char* origin_id,
