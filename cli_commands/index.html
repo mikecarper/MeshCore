@@ -5295,6 +5295,10 @@ temporarily stops reading, packet processing waits for USB transmit space
 instead of silently omitting the record. A disconnected host cannot retain an
 unbounded capture, so logging deployments should keep the reader attached and
 draining the serial port.</p>
+<p>Every valid received frame also emits the decoded RX summary, including signal,
+timing, hash, type, route, and payload information. Frames that cannot be
+decoded still emit their <code>RAW:</code> line. Transmitted packets emit the decoded TX
+summary.</p>
 <p>Ordinary <code>-logging-</code> artifacts keep packet logging separate from LoRa OTA.
 Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
 <code>-full-logging-ota-</code> artifact is intentionally the exception: it combines
