@@ -477,6 +477,11 @@ instead of silently omitting the record. A disconnected host cannot retain an
 unbounded capture, so logging deployments should keep the reader attached and
 draining the serial port.
 
+Every valid received frame also emits the decoded RX summary, including signal,
+timing, hash, type, route, and payload information. Frames that cannot be
+decoded still emit their `RAW:` line. Transmitted packets emit the decoded TX
+summary.
+
 Ordinary `-logging-` artifacts keep packet logging separate from LoRa OTA.
 Use the separately named `-ota-` artifact when LoRa OTA is required. A
 `-full-logging-ota-` artifact is intentionally the exception: it combines

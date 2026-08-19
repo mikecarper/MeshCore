@@ -1015,7 +1015,7 @@ const char *MyMesh::getLogDateTime() {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-#if MESH_PACKET_LOGGING && !defined(MESH_COMPACT_PACKET_LOGGING)
+#if MESH_PACKET_LOGGING
   if (mesh::isUsbLoggingEnabled()) {
     // Logging builds prefer backpressure over silently losing a packet record.
     Serial.print(getLogDateTime());
