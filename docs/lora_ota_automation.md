@@ -1,9 +1,9 @@
 # Scripted LoRa OTA from start to finish
 
 The dedicated [RAK3401 chain report](rak3401_mota_chain.md) records the
-physical failure of the withdrawn 26-step migration and the corrected
-v1.17.01 test candidate. Its runner blocks the withdrawn chain and requires an
-explicit lab-only gate for the corrected chain until physical testing passes.
+physical failures of withdrawn migrations and the physically qualified compact
+nine-step replacement. Its runner blocks the withdrawn chains and pins every
+accepted bridge image by SHA-256.
 
 [`tools/lora_ota/lora_ota.sh`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.sh) and
 [`tools/lora_ota/lora_ota.ps1`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/lora_ota.ps1) automate a
@@ -51,7 +51,9 @@ The USB ASCII switch (`+++MESHCORE-TERM-START`) is the local control path, not
 the mOTA data framing. On an nRF52 full Companion, the script uses that mode
 briefly for `ota status` and TempRadio commands. It then closes the CLI and
 starts `motatool`, whose existing `ota folder on` preamble switches the same
-USB port into exclusive mOTA mode. BLE remains available during that mode.
+USB port into exclusive mOTA mode. On an ESP32 Full Companion with serial
+folder support, `motatool --companion-terminal` keeps the ASCII session open
+while the same link carries framed folder requests. BLE remains available.
 
 ## Destination requirements
 
@@ -383,6 +385,10 @@ Useful controls:
   before every `ota install` transmission and refuses installation unless the
   destination reports `> off`. Use it for nRF52 chains whose bootloader cannot
   service an application watchdog inherited across reset.
+- Managed `--relay` nodes have their original `rxdelay` and `txdelay` captured
+  in the work directory. During transfer the runner verifies `rxdelay 0` and
+  an airtime-scaled `txdelay 0.3` (override with `--relay-txdelay`), then
+  restores both values before the relay leaves TempRadio.
 - `--work-dir PATH` chooses a new, non-existent work directory.
 - `--meshcli PATH` and `--motatool PATH` select binaries not on `PATH`.
 

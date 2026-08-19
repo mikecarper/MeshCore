@@ -520,7 +520,12 @@ void Mesh::decayOtaRelayBackoff() {
 
 uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
   if (packet == NULL) return 0;
-  if (isPrimaryOtaTraffic(packet->payload, packet->payload_len)) return 0;
+  // Active transfer packets use the role's configured flood collision window.
+  // Deployment tooling can temporarily select txdelay 0.3 on managed relays;
+  // the value is airtime-scaled by the role and therefore follows SF/BW.
+  if (isPrimaryOtaTraffic(packet->payload, packet->payload_len)) {
+    return getRetransmitDelay(packet);
+  }
   decayOtaRelayBackoff();
   uint32_t airtime = _radio->getEstAirtimeFor(packet->getRawLength());
   if (airtime == 0) return 0;

@@ -35,6 +35,7 @@ COMMON_PATCH = SCRIPT_DIR / "rak3401_terminal_ota_backport.patch"
 LEGACY_MESH_PATCH = SCRIPT_DIR / "rak3401_terminal_ota_mesh_legacy.patch"
 GUARDED_MESH_PATCH = SCRIPT_DIR / "rak3401_terminal_ota_mesh_guarded.patch"
 VERSION_PATCH = SCRIPT_DIR / "rak3401_four_component_endf_backport.patch"
+WORKSPACE_PATCH = SCRIPT_DIR / "rak3401_dynamic_workspace_backport.patch"
 SELECTIVE_OS_HOOK = SCRIPT_DIR / "rak3401_selective_os.py"
 
 
@@ -184,6 +185,7 @@ def apply_backport(source: Path, commit: str) -> None:
     required = (
         COMMON_PATCH,
         LEGACY_MESH_PATCH if commit in LEGACY_MESH_COMMITS else GUARDED_MESH_PATCH,
+        WORKSPACE_PATCH,
     )
     for patch in required:
         run(["git", "apply", "--check", str(patch)], f"check {patch.name}", source)
@@ -213,7 +215,10 @@ def main() -> int:
     parser.add_argument("--keep-worktree", action="store_true")
     args = parser.parse_args()
 
-    for patch in (COMMON_PATCH, LEGACY_MESH_PATCH, GUARDED_MESH_PATCH, VERSION_PATCH):
+    for patch in (
+        COMMON_PATCH, LEGACY_MESH_PATCH, GUARDED_MESH_PATCH, VERSION_PATCH,
+        WORKSPACE_PATCH,
+    ):
         if not patch.is_file():
             raise BuildError(f"missing backport patch: {patch}")
     if not SELECTIVE_OS_HOOK.is_file():
@@ -243,7 +248,9 @@ def main() -> int:
                         [
                             "git", "restore", "--source=HEAD", "--staged", "--worktree", "--",
                             "src/Mesh.cpp", "src/helpers/ota/OtaManager.cpp",
-                            "src/helpers/ota/OtaManager.h", "tools/mota/pio_endf.py",
+                            "src/helpers/ota/OtaManager.h",
+                            "src/helpers/ota/OtaFlashLayout_nrf52.h",
+                            "tools/mota/pio_endf.py",
                         ],
                         "restore prior backport",
                         source,
@@ -353,6 +360,8 @@ def main() -> int:
             "guarded_mesh_patch_sha256": sha256_file(GUARDED_MESH_PATCH),
             "version_patch": VERSION_PATCH.name,
             "version_patch_sha256": sha256_file(VERSION_PATCH),
+            "workspace_patch": WORKSPACE_PATCH.name,
+            "workspace_patch_sha256": sha256_file(WORKSPACE_PATCH),
             "selective_os_hook": SELECTIVE_OS_HOOK.name,
             "selective_os_hook_sha256": sha256_file(SELECTIVE_OS_HOOK),
             "targets": records,

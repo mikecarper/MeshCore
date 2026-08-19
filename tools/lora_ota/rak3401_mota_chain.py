@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import getpass
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -28,21 +29,34 @@ except ImportError:
     import lora_ota as ota
 
 
-RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.01-c96bdd6e"
+RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.02-e742333a"
 RELEASE_URL = f"https://github.com/mikecarper/MeshCore/releases/tag/{RELEASE_TAG}"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-8c5262c6.zip"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip"
 ASSET_URL = (
     f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
     f"{ASSET_NAME}"
 )
-ASSET_SHA256 = "b2781e02460b200a7c37bfae352bad81618716e550d1d042dca8aa29bfc73c29"
-CHECKSUM_LIST_SHA256 = "1f7add658ae5771451cd66a0e5c58a5e461983c1b36029ef480093ae5d5f1020"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-8c5262c6"
+ASSET_SHA256 = "9f80eef191b88833bf4d2e4fea559cf5233ca53f9266ba310d447f37fa445f3a"
+CHECKSUM_LIST_SHA256 = "73d96e23237896a3e342fe736be12d94087a813bf09ad609fb55330bbe586055"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a"
+
+# The accelerated 30-step release is the pinned reconstruction input for the
+# compact chain. Keep it available for offline provenance, but do not start a
+# new live run with it now that the legacy-ceiling route is nine packages.
+SUPERSEDED_30_ASSET_SHA256 = (
+    "b2781e02460b200a7c37bfae352bad81618716e550d1d042dca8aa29bfc73c29"
+)
+SUPERSEDED_30_CHECKSUM_LIST_SHA256 = (
+    "1f7add658ae5771451cd66a0e5c58a5e461983c1b36029ef480093ae5d5f1020"
+)
+SUPERSEDED_30_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.01-8c5262c6"
+)
 
 # This exact 29-step release completed its full direct physical-board test. It
 # is now superseded because its historical targets echo terminal OTA bulk
 # packets back into mesh dispatch. Keep it available for offline provenance,
-# but require the rebuilt 30-step chain for any new live run.
+# but require the compact 9-step chain for any new live run.
 SUPERSEDED_29_ASSET_SHA256 = (
     "eac67a0be12690b7e22c4d1f6a15bfdeb5bd627c4850b246b1be4220e5607b34"
 )
@@ -107,12 +121,14 @@ DEFAULT_TARGET_KEY = (
 )
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
-EXPECTED_STEP_COUNT = 30
+EXPECTED_STEP_COUNT = 9
 EXPECTED_START_VERSION = "1.16.7.0"
-EXPECTED_FINAL_VERSION = "1.17.1.0"
+EXPECTED_FINAL_VERSION = "1.17.1.02"
+SUPERSEDED_FINAL_VERSION = "1.17.1.0"
 MIN_MESHCLI_VERSION = (1, 6, 0)
 WATCHDOG_RESET_WAIT_SECONDS = 90
 WATCHDOG_STABILITY_WAIT_SECONDS = 90
+TRANSFER_SETTINGS_FILE = "target-transfer-settings.json"
 
 # Physical RAK3401 testing proved two retired packages unsafe. The original
 # v1.17.02 chain failed at step 6. Its software-SHA replacement then passed
@@ -120,9 +136,9 @@ WATCHDOG_STABILITY_WAIT_SECONDS = 90
 # that retained 386ae4a5 bridge still used unchecked CC310 SHA. Keep both
 # bundles useful for offline diagnosis, but fail closed before a live
 # connection. A prior exact 29-step replacement passed its complete direct
-# physical-board run on 14-Aug-2026. The pinned 30-step release is rebuilt and
-# exhaustively verified offline, but still requires an explicit candidate
-# acknowledgement until that exact byte sequence completes a physical run.
+# physical-board run on 14-Aug-2026. The compact 9-step release is exhaustively
+# verified offline against the deployed bootloader and completed its exact
+# nine-package physical RAK3401 run on 19-Aug-2026.
 KNOWN_UNSAFE_STEP = 6
 KNOWN_UNSAFE_VERSION = "1.16.8.7"
 KNOWN_UNSAFE_IMAGE_SHA256 = (
@@ -169,6 +185,21 @@ SUPERSEDED_29_ANCHORS = (
     (25, "af25fcc8cf0932d6962958402ab1f8e718720ae34fff26383f45bc85cf277eef"),
     (26, "c9a4887774d4ca8d20f3cec8611ba7ce28611dfedd9bbed624e9578f83a2c85c"),
     (29, "5c8d94bb23e87c23b0374ffb5a46e0c1205d6eebcb9d8bae3be6fda2613f9f79"),
+)
+
+# Exact anchors for the compact nine-package release. The first target and
+# package are byte-identical to the physically passed baseline; every later
+# target is pinned here in addition to the outer and inner bundle checksums.
+COMPACT_RELEASE_ANCHORS = (
+    (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
+    (2, "7031e4d7f883c5d6ba6637eab730d143bd7d0f3c755f09a6c52190f762d23e45"),
+    (3, "2a434bc74d4c5c282cf5709dff18c5cceb1d7d69321a2692944df0d8c14d43d1"),
+    (4, "0a514424c121febb90c7951859f0f5ccf30ffc5392c3bc3185bc7141bde651ff"),
+    (5, "871039ef453faf98b694b14c666773c8c6d5ae159fc7a4573f57feb66bdb60be"),
+    (6, "644a8c562080838acac32f47871774f04820511e5595c64d674210aebed6b419"),
+    (7, "b81d219393897fb1453594d9ea6983b2695c1b2396b768836af7da58b8576e83"),
+    (8, "05ac521daf941b14426360e7ff81b0329f4788b84fe7db9d55f7da58ee336597"),
+    (9, "2784e4b645bc3dc198de0b8b18d3d7369cd02eca61cd71c46a51b61854da5345"),
 )
 
 # Exact anchors for every image in the accelerated 30-step release. The outer
@@ -234,22 +265,20 @@ SUPERSEDED_27_MESSAGE = (
     "live installation of the superseded 27-step candidate is disabled: its "
     "physical test was stopped after step 2 so the adaptive primary requester "
     "could be moved into every historical bridge. Use --verify-only for that "
-    "bundle and use the pinned 30-step release."
+    "bundle and use the pinned compact release."
 )
 SUPERSEDED_29_MESSAGE = (
     "live installation of the superseded 29-step release is disabled: that "
     "exact chain passed its direct physical run, but its historical targets "
     "do not consume terminal OTA bulk packets before mesh dispatch. Use "
-    "--verify-only for provenance and deploy the accelerated 30-step release."
+    "--verify-only for provenance and deploy the compact release."
 )
-CANDIDATE_ACK_MESSAGE = (
-    "live installation of the accelerated 30-step release requires "
-    "--accept-test-candidate: all 30 transitions passed independent offline "
-    "reconstruction and bootloader simulation, but this exact byte sequence "
-    "has not yet completed a full physical-chain run"
+SUPERSEDED_30_MESSAGE = (
+    "live installation of the superseded 30-step release is disabled: its "
+    "images remain the pinned reconstruction input for the compact chain, "
+    "which reaches the requested endpoint in nine packages without changing "
+    "the deployed bootloader. Use --verify-only for the older bundle."
 )
-
-
 class KnownUnsafeReleaseError(ota.OtaError):
     """The pinned artifacts are intact but their live transition is unsafe."""
 
@@ -259,15 +288,24 @@ def require_live_release_safe(
     steps: list[ChainStep],
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in PINNED_RELEASE_ANCHORS:
+        for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise KnownUnsafeReleaseError(
-                    "live installation is disabled: the 30-step release has "
+                    "live installation is disabled: the compact release has "
                     f"an unrecognized step-{number} image"
                 )
-        if not getattr(args, "accept_test_candidate", False):
-            raise KnownUnsafeReleaseError(CANDIDATE_ACK_MESSAGE)
         return
+
+    if len(steps) == 30:
+        if all(
+            steps[number - 1].target_sha256 == expected_sha256
+            for number, expected_sha256 in PINNED_RELEASE_ANCHORS
+        ):
+            raise KnownUnsafeReleaseError(SUPERSEDED_30_MESSAGE)
+        raise KnownUnsafeReleaseError(
+            "live installation is disabled: this is an unrecognized variant "
+            "of the superseded 30-step release"
+        )
 
     if len(steps) == 29:
         if all(
@@ -339,6 +377,15 @@ class ChainStep:
     package: ota.MotaInfo
 
 
+@dataclass(frozen=True)
+class TargetTransferSettings:
+    rxps_enabled: bool
+    rxps_rx_us: int
+    rxps_sleep_us: int
+    powersaving_enabled: bool
+    rxdelay: str
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -402,6 +449,7 @@ def download_release_asset(destination: Path) -> None:
 def extract_bundle(archive_path: Path, destination: Path) -> Path:
     root_names = (
         BUNDLE_ROOT_NAME,
+        SUPERSEDED_30_ROOT_NAME,
         SUPERSEDED_29_ROOT_NAME,
         KNOWN_FAILED_V11701_ROOT_NAME,
         KNOWN_UNSAFE_ROOT_NAME,
@@ -455,6 +503,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
         nested_roots = [
             supplied / name for name in (
                 BUNDLE_ROOT_NAME,
+                SUPERSEDED_30_ROOT_NAME,
                 SUPERSEDED_29_ROOT_NAME,
                 KNOWN_FAILED_V11701_ROOT_NAME,
                 KNOWN_UNSAFE_ROOT_NAME,
@@ -471,6 +520,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     actual = sha256_file(supplied)
     if actual not in {
         ASSET_SHA256,
+        SUPERSEDED_30_ASSET_SHA256,
         SUPERSEDED_29_ASSET_SHA256,
         SUPERSEDED_27_ASSET_SHA256,
         KNOWN_FAILED_V11701_ASSET_SHA256,
@@ -490,6 +540,7 @@ def verify_checksum_list(bundle_root: Path) -> None:
     checksum_digest = sha256_file(checksum_path)
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        SUPERSEDED_30_CHECKSUM_LIST_SHA256,
         SUPERSEDED_29_CHECKSUM_LIST_SHA256,
         SUPERSEDED_27_CHECKSUM_LIST_SHA256,
         KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256,
@@ -547,10 +598,10 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             rows = list(csv.DictReader(source))
     except OSError as exc:
         raise ota.OtaError(f"cannot read {chain_path}: {exc}") from exc
-    if len(rows) not in (26, 27, 29, EXPECTED_STEP_COUNT):
+    if len(rows) not in (EXPECTED_STEP_COUNT, 26, 27, 29, 30):
         raise ota.OtaError(
-            f"chain contains {len(rows)} steps, expected 26, 27, 29, or "
-            f"{EXPECTED_STEP_COUNT}"
+            f"chain contains {len(rows)} steps, expected {EXPECTED_STEP_COUNT}, "
+            "26, 27, 29, or 30"
         )
 
     steps: list[ChainStep] = []
@@ -601,19 +652,26 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
     if len(steps) == EXPECTED_STEP_COUNT:
+        for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
+            if steps[number - 1].target_sha256 != expected_sha256:
+                raise ota.OtaError(
+                    f"compact release step {number} does not match its audited image pin"
+                )
+        expected_final_version = EXPECTED_FINAL_VERSION
+    elif len(steps) == 30:
         for number, expected_sha256 in PINNED_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise ota.OtaError(
-                    f"pinned release step {number} does not match its audited image pin"
+                    f"superseded 30-step release step {number} does not match its image pin"
                 )
-        expected_final_version = EXPECTED_FINAL_VERSION
+        expected_final_version = SUPERSEDED_FINAL_VERSION
     elif len(steps) == 29:
         for number, expected_sha256 in SUPERSEDED_29_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise ota.OtaError(
                     f"superseded step {number} does not match its audited image pin"
                 )
-        expected_final_version = EXPECTED_FINAL_VERSION
+        expected_final_version = SUPERSEDED_FINAL_VERSION
     else:
         step6 = steps[KNOWN_UNSAFE_STEP - 1]
         recognized_step6_hashes = {
@@ -650,7 +708,7 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
         expected_final_version = (
             "1.17.2.0"
             if step6.target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256
-            else EXPECTED_FINAL_VERSION
+            else SUPERSEDED_FINAL_VERSION
         )
     if steps[-1].to_version != expected_final_version:
         raise ota.OtaError(
@@ -837,6 +895,177 @@ def require_watchdog_state(
     return reply
 
 
+def read_target_transfer_settings(
+    controller: ota.Controller,
+    target_name: str,
+) -> TargetTransferSettings:
+    rxps_reply = controller.remote_command(target_name, "get radio.rxps")
+    rxps_match = re.fullmatch(
+        r"\s*>\s*(on|off),(\d+),(\d+)\s*",
+        rxps_reply,
+        re.IGNORECASE,
+    )
+    if rxps_match is None:
+        raise ota.OtaError(f"could not read destination RXPS state: {rxps_reply}")
+
+    powersaving_reply = controller.remote_command(target_name, "powersaving")
+    powersaving_match = re.fullmatch(
+        r"\s*>?\s*(on|off)\s*",
+        powersaving_reply,
+        re.IGNORECASE,
+    )
+    if powersaving_match is None:
+        raise ota.OtaError(
+            f"could not read destination CPU power-saving state: {powersaving_reply}"
+        )
+
+    rxdelay_reply = controller.remote_command(target_name, "get rxdelay")
+    rxdelay_match = re.fullmatch(
+        r"\s*>\s*([0-9]+(?:\.[0-9]+)?)\s*",
+        rxdelay_reply,
+    )
+    if rxdelay_match is None:
+        raise ota.OtaError(f"could not read destination RX delay: {rxdelay_reply}")
+
+    return TargetTransferSettings(
+        rxps_enabled=rxps_match.group(1).lower() == "on",
+        rxps_rx_us=int(rxps_match.group(2)),
+        rxps_sleep_us=int(rxps_match.group(3)),
+        powersaving_enabled=powersaving_match.group(1).lower() == "on",
+        rxdelay=rxdelay_match.group(1),
+    )
+
+
+def load_or_capture_transfer_settings(
+    controller: ota.Controller,
+    target_name: str,
+    target_key: str,
+    work_dir: Path,
+) -> TargetTransferSettings:
+    path = work_dir / TRANSFER_SETTINGS_FILE
+    if path.exists():
+        try:
+            saved = json.loads(path.read_text(encoding="ascii"))
+            if saved["target_key"].lower() != target_key.lower():
+                raise ota.OtaError(
+                    f"{path} belongs to a different destination public key"
+                )
+            if not isinstance(saved["rxps_enabled"], bool) or not isinstance(
+                saved["powersaving_enabled"], bool
+            ):
+                raise TypeError("saved power states must be JSON booleans")
+            settings = TargetTransferSettings(
+                rxps_enabled=saved["rxps_enabled"],
+                rxps_rx_us=int(saved["rxps_rx_us"]),
+                rxps_sleep_us=int(saved["rxps_sleep_us"]),
+                powersaving_enabled=saved["powersaving_enabled"],
+                rxdelay=str(saved["rxdelay"]),
+            )
+            float(settings.rxdelay)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ota.OtaError(f"invalid saved transfer settings in {path}") from exc
+        print(f"[guardrail] loaded original destination settings from {path}")
+        return settings
+
+    settings = read_target_transfer_settings(controller, target_name)
+    payload = {
+        "target_key": target_key.lower(),
+        "rxps_enabled": settings.rxps_enabled,
+        "rxps_rx_us": settings.rxps_rx_us,
+        "rxps_sleep_us": settings.rxps_sleep_us,
+        "powersaving_enabled": settings.powersaving_enabled,
+        "rxdelay": settings.rxdelay,
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="ascii")
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+    print(f"[guardrail] saved original destination settings to {path}")
+    return settings
+
+
+def enforce_transfer_guardrails(
+    controller: ota.Controller,
+    target_name: str,
+) -> None:
+    current = read_target_transfer_settings(controller, target_name)
+    if current.powersaving_enabled:
+        reply = controller.remote_command(target_name, "powersaving off")
+        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+            raise ota.OtaError(f"target did not disable CPU power saving: {reply}")
+    if current.rxps_enabled:
+        reply = controller.remote_command(target_name, "set radio.rxps off")
+        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+            raise ota.OtaError(f"target did not disable RXPS: {reply}")
+    if abs(float(current.rxdelay)) > 0.0001:
+        reply = controller.remote_command(target_name, "set rxdelay 0")
+        if not reply.upper().startswith("OK"):
+            raise ota.OtaError(f"target did not disable RX flood delay: {reply}")
+
+    verified = read_target_transfer_settings(controller, target_name)
+    if (
+        verified.powersaving_enabled
+        or verified.rxps_enabled
+        or abs(float(verified.rxdelay)) > 0.0001
+    ):
+        raise ota.OtaError(
+            "destination transfer guardrails did not read back as "
+            "powersaving=off, RXPS=off, rxdelay=0"
+        )
+    print("[guardrail] destination verified: RXPS off, rxdelay 0, CPU power saving off")
+
+
+def restore_transfer_settings(
+    controller: ota.Controller,
+    target_name: str,
+    saved: TargetTransferSettings,
+) -> None:
+    current = read_target_transfer_settings(controller, target_name)
+    if abs(float(current.rxdelay) - float(saved.rxdelay)) > 0.0001:
+        reply = controller.remote_command(target_name, f"set rxdelay {saved.rxdelay}")
+        if not reply.upper().startswith("OK"):
+            raise ota.OtaError(f"target did not restore RX flood delay: {reply}")
+
+    if saved.rxps_enabled:
+        if (
+            not current.rxps_enabled
+            or current.rxps_rx_us != saved.rxps_rx_us
+            or current.rxps_sleep_us != saved.rxps_sleep_us
+        ):
+            reply = controller.remote_command(
+                target_name,
+                f"set radio.rxps {saved.rxps_rx_us} {saved.rxps_sleep_us}",
+            )
+            if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+                raise ota.OtaError(f"target did not restore RXPS: {reply}")
+    elif current.rxps_enabled:
+        reply = controller.remote_command(target_name, "set radio.rxps off")
+        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+            raise ota.OtaError(f"target did not restore RXPS-off state: {reply}")
+
+    verified = read_target_transfer_settings(controller, target_name)
+    if (
+        verified.rxps_enabled != saved.rxps_enabled
+        or abs(float(verified.rxdelay) - float(saved.rxdelay)) > 0.0001
+        or (
+            saved.rxps_enabled
+            and (
+                verified.rxps_rx_us != saved.rxps_rx_us
+                or verified.rxps_sleep_us != saved.rxps_sleep_us
+            )
+        )
+    ):
+        raise ota.OtaError("destination radio transfer settings did not restore exactly")
+
+    if saved.powersaving_enabled:
+        reply = controller.remote_command(target_name, "powersaving on")
+        if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+            raise ota.OtaError(f"target did not restore CPU power saving: {reply}")
+    elif verified.powersaving_enabled:
+        raise ota.OtaError("destination CPU power saving unexpectedly remained enabled")
+    print("[guardrail] original destination transfer settings restored")
+
+
 def read_ota_hops(controller: ota.Controller, target_name: str) -> int:
     reply = controller.remote_command(target_name, "ota config")
     match = re.search(r"\bhops=(\d+)\b", reply)
@@ -1021,6 +1250,7 @@ def run_step(
         *connection_arguments(args),
         "--controller-baud", str(args.controller_baud),
         "--source-baud", str(args.source_baud),
+        "--relay-txdelay", str(args.relay_txdelay),
         "--temp-radio", args.temp_radio,
         "--meshcli", args.meshcli,
         "--motatool", args.motatool,
@@ -1055,8 +1285,8 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download, verify, resume, and install the exact accelerated "
-            "30-step RAK3401 mOTA chain from c1caa5ad to 8c5262c6."
+            "Download, verify, resume, and install the exact compact 9-step "
+            "RAK3401 mOTA chain from c1caa5ad to e742333a."
         )
     )
     parser.add_argument(
@@ -1074,11 +1304,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--accept-test-candidate",
         action="store_true",
-        help=(
-            "acknowledge that the exact accelerated 30-step byte sequence is "
-            "offline-validated but awaits its complete physical-chain run; this "
-            "never overrides a failed or superseded bundle"
-        ),
+        help=argparse.SUPPRESS,
     )
 
     controller = parser.add_mutually_exclusive_group()
@@ -1099,6 +1325,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="NAME[=PASSWORD]",
         help="intermediate relay, farthest-to-nearest; repeat for each relay",
+    )
+    parser.add_argument(
+        "--relay-txdelay",
+        type=float,
+        default=ota.DEFAULT_RELAY_TX_DELAY,
+        help="temporary flood txdelay for managed intermediate relays",
     )
     parser.add_argument("--temp-radio", default="909.950,250,5,5,120")
     parser.add_argument(
@@ -1179,6 +1411,8 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     ):
         if getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
+    if not math.isfinite(args.relay_txdelay) or not 0.0 <= args.relay_txdelay <= 2.0:
+        parser.error("--relay-txdelay must be between 0 and 2")
     if not 0 <= args.ota_hops <= 8:
         parser.error("--ota-hops must be from 0 through 8")
     try:
@@ -1195,6 +1429,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         + args.transfer_timeout_minutes * 60
         + ota.adaptive_poll_ceiling(args.poll_seconds)
         + args.reply_timeout * (4 + len(args.relay))
+        + len(args.relay) * ota.RELAY_TIMING_COMMANDS_PER_RELAY * args.reply_timeout
     )
     if not args.verify_only and temp_values[4] * 60 <= required_seconds:
         parser.error(
@@ -1229,7 +1464,13 @@ def confirm_chain(
         )
     print(f"  TempRadio   : {args.temp_radio}")
     print(f"  relays      : {len(args.relay)}")
+    if args.relay:
+        print(
+            f"  relay timing: rxdelay 0, txdelay "
+            f"{ota.format_decimal(args.relay_txdelay)} (saved/restored)"
+        )
     print(f"  OTA reach   : enforce {args.ota_hops} hops before every step")
+    print("  guardrails  : save, disable RXPS/rxdelay/CPU sleep, restore at endpoint")
     print("  watchdog    : disable, prove stable, gate every install, then re-enable")
     if args.preflight_only:
         print("Live preflight passed; no radio or watchdog settings were changed.")
@@ -1257,7 +1498,16 @@ def main(argv: list[str] | None = None) -> int:
         verify_motatool(args, steps)
         if args.verify_only:
             print(f"Verified release bundle: {bundle_root}")
-            if len(steps) == 29:
+            if len(steps) == EXPECTED_STEP_COUNT:
+                print(
+                    "Compact release verified: all 9 transitions passed its exact "
+                    "physical RAK3401 run, zero-filled and erased-workspace "
+                    "reconstruction, independent motatool verification, and "
+                    "deployed/current bootloader simulation."
+                )
+            elif len(steps) == 30:
+                print(f"WARNING: {SUPERSEDED_30_MESSAGE}", file=sys.stderr)
+            elif len(steps) == 29:
                 print(f"WARNING: {SUPERSEDED_29_MESSAGE}", file=sys.stderr)
             elif steps[KNOWN_UNSAFE_STEP - 1].target_sha256 == KNOWN_UNSAFE_IMAGE_SHA256:
                 print(f"WARNING: {KNOWN_UNSAFE_RELEASE_MESSAGE}", file=sys.stderr)
@@ -1279,12 +1529,6 @@ def main(argv: list[str] | None = None) -> int:
                 and steps[-1].target_sha256 == SUPERSEDED_27_FINAL_IMAGE_SHA256
             ):
                 print(f"WARNING: {SUPERSEDED_27_MESSAGE}", file=sys.stderr)
-            else:
-                print(
-                    "Accelerated release verified offline: all 30 transitions "
-                    "passed zero-filled and erased-workspace reconstruction, "
-                    "independent motatool verification, and bootloader simulation."
-                )
             return 0
 
         # This must precede meshcli, password handling, source preflight, and
@@ -1314,6 +1558,14 @@ def main(argv: list[str] | None = None) -> int:
 
         if first_index == len(steps):
             enforce_ota_hops(controller, target_name, args.ota_hops)
+            transfer_path = work_dir / TRANSFER_SETTINGS_FILE
+            if transfer_path.exists():
+                transfer_settings = load_or_capture_transfer_settings(
+                    controller, target_name, full_key, work_dir
+                )
+                restore_transfer_settings(
+                    controller, target_name, transfer_settings
+                )
             if not args.keep_watchdog_off:
                 enabled = controller.remote_command(target_name, "set system.watchdog on")
                 if not enabled.lower().startswith("ok - system watchdog enabled"):
@@ -1322,7 +1574,11 @@ def main(argv: list[str] | None = None) -> int:
             print("RAK3401 already matches the verified final endpoint.")
             return 0
 
+        transfer_settings = load_or_capture_transfer_settings(
+            controller, target_name, full_key, work_dir
+        )
         prepare_watchdog(controller, target_name)
+        enforce_transfer_guardrails(controller, target_name)
         enforce_ota_hops(controller, target_name, args.ota_hops)
         for index in range(first_index, len(steps)):
             step = steps[index]
@@ -1339,6 +1595,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"live target is at chain index {current_index}, expected {index}"
                 )
             require_watchdog_state(controller, target_name, "off")
+            enforce_transfer_guardrails(controller, target_name)
             enforce_ota_hops(controller, target_name, args.ota_hops)
             print(
                 f"\n[chain] step {step.number:02d}/{len(steps)}: "
@@ -1385,6 +1642,7 @@ def main(argv: list[str] | None = None) -> int:
         final_target = query_live_target(controller, args, target_name)
         if find_resume_index(final_target, steps, final_body_hash) != len(steps):
             raise ota.OtaError("final target identity did not match the release endpoint")
+        restore_transfer_settings(controller, target_name, transfer_settings)
         if not args.keep_watchdog_off:
             enabled = controller.remote_command(target_name, "set system.watchdog on")
             if not enabled.lower().startswith("ok - system watchdog enabled"):
@@ -1403,15 +1661,16 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print(
             "\nInterrupted. Any partial mOTA remains resumable. The target watchdog "
-            "may intentionally remain off until the chain completes.",
+            "and transfer guardrails may intentionally remain off until the chain completes.",
             file=sys.stderr,
         )
         return 130
     except (ota.OtaError, OSError, zipfile.BadZipFile) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         print(
-            "The target watchdog may intentionally remain off. Rerun the same command "
-            "to resume from the live version; do not skip a chain step.",
+            "The target watchdog and transfer guardrails may intentionally remain off. "
+            "Rerun the same command and work directory to resume and restore the saved "
+            "settings; do not skip a chain step.",
             file=sys.stderr,
         )
         return 2

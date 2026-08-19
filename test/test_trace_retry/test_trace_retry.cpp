@@ -271,7 +271,7 @@ TEST(RepeaterTransport, OtaDiscoveryRelayKeepsCollisionJitter) {
   EXPECT_EQ(node.otaRelayDelay(&packet), 5u);  // 0.5 * 10 ms
 }
 
-TEST(RepeaterTransport, OtaTransferRelayIsImmediateEvenUnderRequestPressure) {
+TEST(RepeaterTransport, OtaTransferRelayKeepsConfiguredCollisionJitter) {
   TraceTestClock clock;
   TraceTestRTC rtc;
   TraceTestRNG rng;
@@ -291,18 +291,19 @@ TEST(RepeaterTransport, OtaTransferRelayIsImmediateEvenUnderRequestPressure) {
 
   mesh::Packet request = make_request();
   node.receivePacket(&request);                  // first request establishes the key
-  EXPECT_EQ(node.otaRelayDelay(&request), 0u);
+  rng.value = 3;
+  EXPECT_EQ(node.otaRelayDelay(&request), 15u);
   for (uint32_t retry = 1; retry <= 3; retry++) {
     clock.now = retry * 3000;
     request = make_request();                    // a fresh origin copy has the same zero-hop request key
     node.receivePacket(&request);                // frequent repeats raise one level each
   }
-  rng.value = 20;
-  EXPECT_EQ(node.otaRelayDelay(&request), 0u);   // private transfer never inherits flood backoff
+  rng.value = 3;
+  EXPECT_EQ(node.otaRelayDelay(&request), 15u);  // request pressure does not widen primary traffic
 
   clock.now = 100000;
-  rng.value = 2;
-  EXPECT_EQ(node.otaRelayDelay(&request), 0u);
+  rng.value = 1;
+  EXPECT_EQ(node.otaRelayDelay(&request), 5u);
 }
 
 TEST(RepeaterTransport, TempRadioOtaBypassesReceiveHoldoffAndUsesFastCadRetry) {

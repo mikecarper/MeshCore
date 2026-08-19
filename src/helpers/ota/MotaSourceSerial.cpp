@@ -90,12 +90,20 @@ bool SerialMotaSource::describe(uint8_t idx, MotaDesc& out) {
 }
 
 bool SerialMotaSource::read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
-  if (len > 0xFFFF) return false;                  // single transaction caps at 64 KB (a block is <=1 KB)
-  uint8_t args[7];
-  args[0] = idx;
-  wr_u32le(args + 1, off);
-  args[5] = (uint8_t)(len & 0xFF); args[6] = (uint8_t)(len >> 8);
-  return txn(MS_OP_READ, args, 7, buf, len);
+  if (!buf && len != 0) return false;
+  if (len > UINT32_MAX - off) return false;
+  uint32_t done = 0;
+  while (done < len) {
+    uint16_t chunk = (uint16_t)(len - done > MOTA_SEEDER_READ_MAX
+        ? MOTA_SEEDER_READ_MAX : len - done);
+    uint8_t args[7];
+    args[0] = idx;
+    wr_u32le(args + 1, off + done);
+    args[5] = (uint8_t)(chunk & 0xFF); args[6] = (uint8_t)(chunk >> 8);
+    if (!txn(MS_OP_READ, args, 7, buf + done, chunk)) return false;
+    done += chunk;
+  }
+  return true;
 }
 
 } // namespace ota

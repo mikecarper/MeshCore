@@ -59,6 +59,15 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #ifndef OTA_MANIFEST_MAX_RETRY
 #define OTA_MANIFEST_MAX_RETRY 20   // give up (FAILED) after this many GET_MANIFEST retries - frees the slot
 #endif
+#ifndef OTA_MANIFEST_SERVE_QUEUE
+#define OTA_MANIFEST_SERVE_QUEUE 4  // bounded manifest response descriptors (fragments are emitted one at a time)
+#endif
+#ifndef OTA_MANIFEST_EGRESS_MIN_GAP_MS
+#define OTA_MANIFEST_EGRESS_MIN_GAP_MS 100  // minimum fast-link TX-to-RX turnaround allowance
+#endif
+#ifndef OTA_MANIFEST_EGRESS_MAX_GAP_MS
+#define OTA_MANIFEST_EGRESS_MAX_GAP_MS 1000 // do not outrun the receiver's one-second retry observation
+#endif
 // Leaf-diff warm-start (motatool folder-capture only): bulk-fetch the target's leaves[], diff a seed build
 // locally, pull DATA only for mismatches. OTA_LEAVES is bitmap-fragmented like OTA_MANIFEST so a want_mask
 // retry never re-bursts (anti-deadlock). The mask is a fixed uint16, so leaves are capped at MAXFRAG frags.
@@ -386,6 +395,7 @@ public:
   void serviceEgress();
   void clearPendingEgress();
   uint8_t pendingServeJobs() const { return _n_serve_jobs; }
+  uint8_t pendingManifestJobs() const { return _n_manifest_jobs; }
 
   // Drop the current fetch session back to IDLE so a fresh `ota pull` / advert starts a new one.
   void reset_session() {
@@ -446,7 +456,7 @@ private:
   void handleAdv(const uint8_t* m, uint16_t n);     // beacon -> sources table (+ query if interested)
   void handleQuery(const uint8_t* m, uint16_t n);   // serve: reply OTA_HAVE catalog
   void handleHave(const uint8_t* m, uint16_t n);    // peer: catalog rows (+ startFetch if a row matches)
-  void handleGetManifest(const uint8_t* m, uint16_t n);
+  bool handleGetManifest(const uint8_t* m, uint16_t n);
   void handleManifest(const uint8_t* m, uint16_t n);
   void handleGetLeaves(const uint8_t* m, uint16_t n);    // serve: send the requested leaf fragments
   void handleLeaves(const uint8_t* m, uint16_t n);       // fetcher (validate): reassemble the target leaves
@@ -481,6 +491,10 @@ private:
   void registerSelfEntry();                               // (re)build entry[0] from view0
   static bool srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len);  // source payload reader
   bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask);
+  bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
+  uint32_t manifestEgressGapMs() const;
+  bool serviceManifestEgress();
+  void popManifestJob();
   bool loadActiveServeBlock();
   void popServeJob();
   void sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
@@ -544,6 +558,14 @@ private:
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
+  struct ManifestServeJob {
+    uint8_t mid[4];
+    uint16_t pending_mask;
+    uint16_t emitted_mask;
+    uint32_t ready_at;
+  };
+  ManifestServeJob _manifest_jobs[OTA_MANIFEST_SERVE_QUEUE];
+  uint8_t    _n_manifest_jobs = 0;
   uint8_t    _serve_block[OTA_MAX_BLOCK];
   uint16_t   _serve_block_len = 0;
   bool       _serve_block_loaded = false;

@@ -362,28 +362,24 @@ void OtaManager::handleQuery(const uint8_t* m, uint16_t n) {
   }
 }
 
-void OtaManager::handleGetManifest(const uint8_t* m, uint16_t n) {
+bool OtaManager::handleGetManifest(const uint8_t* m, uint16_t n) {
   GetManifestMsg gm;
-  if (!decode_get_manifest(m, n, gm)) return;
+  if (!decode_get_manifest(m, n, gm)) return false;
   ServeView* v = resolve(gm.manifest_id);
-  if (!v) return;
-  // A signed v2 manifest (with hw_id[32]) exceeds one LoRa packet, so send it as fragments. Each carries
-  // up to OTA_MF_FRAG manifest bytes; the client reassembles by frag_idx. Only the fragments requested in
-  // want_mask are sent (0xFFFF = all), so a retry re-sends just the holes, not the whole manifest.
-  uint32_t mfl = v->mfl;
-  const uint8_t* src = v->m.manifest_start;
-  uint8_t ftotal = (uint8_t)((mfl + OTA_MF_FRAG - 1) / OTA_MF_FRAG); if (ftotal == 0) ftotal = 1;
-  for (uint8_t fi = 0; fi < ftotal; fi++) {
-    if (!(gm.want_mask & (1u << fi))) continue;      // fetcher didn't ask for this manifest fragment
-    uint32_t off = (uint32_t)fi * OTA_MF_FRAG;
-    uint32_t fl = mfl - off; if (fl > OTA_MF_FRAG) fl = OTA_MF_FRAG;
-    ManifestMsg mm;
-    memcpy(mm.manifest_id, v->m.merkle_root, 4);
-    mm.frag_idx = fi; mm.frag_total = ftotal;
-    mm.bytes = src + off; mm.len = (uint16_t)fl;
-    uint8_t b[MAX_PACKET_PAYLOAD];
-    emit(b, encode_manifest(b, sizeof(b), mm), false);
+  if (!v) return false;
+  OTA_DBG("OTA: GET_MANIFEST want=%04x pending=%u\n",
+          (unsigned)gm.want_mask, (unsigned)_n_manifest_jobs);
+  // Retain the request and let serviceEgress admit its fragments one at a time. In particular, a deployed
+  // receiver with the legacy 32-second SF5 flood delay must receive both fragments from the first request;
+  // serializing fragment 1 behind the receiver's next GET would exhaust its manifest retry window.
+  const bool queued = queueManifestJob(v->m.merkle_root, gm.want_mask);
+  if (!queued) {
+    OTA_DBG("OTA: GET_MANIFEST response queue full\n");
   }
+  // A node that successfully queued the requested MID is the terminal source. Do not also re-flood the
+  // request; that echo competes with the manifest on the same temporary-radio channel. If the bounded queue
+  // is full, return false so another source or a later retry can service it.
+  return queued;
 }
 
 // Serve the target's merkle leaves[] in fragments (for a motatool folder-capture warm-start). Only the
@@ -434,10 +430,99 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   return true;
 }
 
+bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask) {
+  for (uint8_t i = 0; i < _n_manifest_jobs; i++) {
+    ManifestServeJob& job = _manifest_jobs[i];
+    if (memcmp(job.mid, mid, 4) != 0) continue;
+    job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
+    return true;
+  }
+  if (_n_manifest_jobs >= OTA_MANIFEST_SERVE_QUEUE) return false;
+  ManifestServeJob& job = _manifest_jobs[_n_manifest_jobs++];
+  memcpy(job.mid, mid, 4);
+  job.pending_mask = want_mask;
+  job.emitted_mask = 0;
+  job.ready_at = _now_ms + manifestEgressGapMs();
+  return true;
+}
+
+uint32_t OtaManager::manifestEgressGapMs() const {
+  if (_radio_packet_airtime_ms == 0) return OTA_MANIFEST_EGRESS_MIN_GAP_MS;
+  uint64_t gap = (uint64_t)_radio_packet_airtime_ms * _tx_spacing_permille;
+  gap = (gap + 999u) / 1000u;
+  if (gap < OTA_MANIFEST_EGRESS_MIN_GAP_MS) gap = OTA_MANIFEST_EGRESS_MIN_GAP_MS;
+  if (gap > OTA_MANIFEST_EGRESS_MAX_GAP_MS) gap = OTA_MANIFEST_EGRESS_MAX_GAP_MS;
+  return (uint32_t)gap;
+}
+
 void OtaManager::clearPendingEgress() {
+  _n_manifest_jobs = 0;
   _n_serve_jobs = 0;
   _serve_block_len = 0;
   _serve_block_loaded = false;
+}
+
+void OtaManager::popManifestJob() {
+  if (_n_manifest_jobs == 0) return;
+  for (uint8_t i = 1; i < _n_manifest_jobs; i++) _manifest_jobs[i - 1] = _manifest_jobs[i];
+  _n_manifest_jobs--;
+}
+
+bool OtaManager::serviceManifestEgress() {
+  if (_n_manifest_jobs == 0) return false;
+  ManifestServeJob& job = _manifest_jobs[0];
+  if ((int32_t)(_now_ms - job.ready_at) < 0) {
+    return true;
+  }
+  ServeView* v = resolve(job.mid);
+  if (!v) {
+    popManifestJob();
+    return true;
+  }
+
+  const uint32_t mfl = v->mfl;
+  uint8_t ftotal = (uint8_t)((mfl + OTA_MF_FRAG - 1) / OTA_MF_FRAG);
+  if (ftotal == 0) ftotal = 1;
+  const uint16_t valid_mask = frag_full_mask(ftotal);
+  job.pending_mask &= valid_mask;
+  if (job.pending_mask == 0) {
+    popManifestJob();
+    return true;
+  }
+
+  uint8_t fragment = 0;
+  while (fragment < 16 && !(job.pending_mask & (1u << fragment))) fragment++;
+  if (fragment >= ftotal) {
+    popManifestJob();
+    return true;
+  }
+
+  const uint32_t off = (uint32_t)fragment * OTA_MF_FRAG;
+  uint32_t len = mfl - off;
+  if (len > OTA_MF_FRAG) len = OTA_MF_FRAG;
+  ManifestMsg message;
+  memcpy(message.manifest_id, v->m.merkle_root, 4);
+  message.frag_idx = fragment;
+  message.frag_total = ftotal;
+  message.bytes = v->m.manifest_start + off;
+  message.len = (uint16_t)len;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t wire_len = encode_manifest(wire, sizeof(wire), message);
+  if (emit(wire, wire_len, false)) {
+    OTA_DBG("OTA: MANIFEST tx frag=%u/%u len=%u\n",
+            (unsigned)fragment, (unsigned)ftotal, (unsigned)len);
+    const uint16_t bit = (uint16_t)(1u << fragment);
+    job.pending_mask &= (uint16_t)~bit;
+    job.emitted_mask |= bit;
+    if (job.pending_mask == 0) {
+      popManifestJob();
+    } else {
+      // Follow the active packet airtime and dispatcher duty spacing while
+      // retaining a floor for fast radios' TX-to-RX turnaround.
+      job.ready_at = _now_ms + manifestEgressGapMs();
+    }
+  }
+  return true;
 }
 
 void OtaManager::popServeJob() {
@@ -497,6 +582,10 @@ bool OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
 }
 
 void OtaManager::serviceEgress() {
+  // Metadata comes first so an older receiver gets every manifest fragment before its retry horizon. The
+  // send callback supplies radio-queue backpressure, and a rejected fragment remains in this descriptor.
+  if (serviceManifestEgress()) return;
+
   // A proactive proof normally follows the final DATA fragment. If it was lost, or the source is older and
   // never sent one, issue the legacy proof request after a short grace. Stay RX-silent while another slot
   // still expects DATA, and restart the grace on every new packet, so this fallback cannot collide with a
@@ -1586,7 +1675,7 @@ bool OtaManager::on_message(const uint8_t* msg, uint16_t len) {
     case OTA_ADV:          handleAdv(msg, len); return false;
     case OTA_QUERY:        handleQuery(msg, len); return false;
     case OTA_HAVE:         handleHave(msg, len); return false;
-    case OTA_GET_MANIFEST: handleGetManifest(msg, len); return false;
+    case OTA_GET_MANIFEST: return handleGetManifest(msg, len);
     case OTA_MANIFEST:     handleManifest(msg, len); return false;
     case OTA_GET_LEAVES:   handleGetLeaves(msg, len); return false;
     case OTA_LEAVES:       handleLeaves(msg, len); return false;

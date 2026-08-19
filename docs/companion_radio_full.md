@@ -289,6 +289,17 @@ Return to Binary mode with:
 Closing the USB data connection also resets the port to Binary mode. A
 different baud rate, including 57600, does not select ASCII mode.
 
+On an ESP32 Full Companion built with `OTA_FOLDER_SERIAL`, `motatool` can keep
+that terminal session open as an mOTA folder source when WiFi is unavailable:
+
+```sh
+motatool serve --serial /dev/ttyACM0 --companion-terminal --dir ./motas -v
+```
+
+The explicit flag is required because an ESP32 Companion starts the same USB
+port in binary Companion mode. TCP port 5001 remains the preferred unattended
+source transport.
+
 ## nRF52 USB mOTA mode
 
 The nRF52 full target has a third, exclusive USB mode for the host folder.

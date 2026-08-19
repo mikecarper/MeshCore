@@ -8,6 +8,8 @@
 #include "helpers/ota/BlockBitmap.h"
 #include "helpers/ota/Multihash.h"
 #include "helpers/ota/FirmwareInfo.h"
+#include "helpers/ota/MotaSeederProto.h"
+#include "helpers/ota/MotaSourceSerial.h"
 #include "helpers/ota/SignerAllowlist.h"
 #include "helpers/ota/OtaStore.h"
 #include "helpers/ota/OtaProtocol.h"
@@ -20,6 +22,80 @@ extern "C" {
 }
 
 using namespace mesh::ota;
+
+class FakeMotaSeederStream : public Stream {
+public:
+  using Stream::write;
+
+  size_t write(const uint8_t* request, size_t len) override {
+    request_valid = len == 11 && request[0] == MOTA_SEEDER_REQ_MAGIC0
+        && request[1] == MOTA_SEEDER_REQ_MAGIC1 && request[2] == MS_OP_READ;
+    if (!request_valid) return len;
+
+    uint8_t checksum = request[2];
+    for (size_t i = 3; i + 1 < len; i++) checksum ^= request[i];
+    request_valid = checksum == request[len - 1];
+    const uint32_t offset = rd_u32le(request + 4);
+    const uint16_t read_len = rd_u16le(request + 8);
+    offsets.push_back(offset);
+    lengths.push_back(read_len);
+
+    response.clear();
+    response_pos = 0;
+    response.push_back(MOTA_SEEDER_RSP_MAGIC0);
+    response.push_back(MOTA_SEEDER_RSP_MAGIC1);
+    response.push_back(MS_OP_READ);
+    response.push_back(MS_STATUS_OK);
+    uint8_t response_checksum = MOTA_SEEDER_RSP_MAGIC0 ^ MOTA_SEEDER_RSP_MAGIC1
+        ^ MS_OP_READ ^ MS_STATUS_OK;
+    for (uint16_t i = 0; i < read_len; i++) {
+      const uint8_t value = (uint8_t)(offset + i);
+      response.push_back(value);
+      response_checksum ^= value;
+    }
+    response.push_back(response_checksum);
+    return len;
+  }
+
+  int read() override {
+    return response_pos < response.size() ? response[response_pos++] : -1;
+  }
+
+  std::vector<uint32_t> offsets;
+  std::vector<uint16_t> lengths;
+  bool request_valid = true;
+
+private:
+  std::vector<uint8_t> response;
+  size_t response_pos = 0;
+};
+
+TEST(MotaSourceSerial, SplitsOneKilobyteReadsBelowCdcReceiveRing) {
+  FakeMotaSeederStream stream;
+  SerialMotaSource source(stream);
+  std::array<uint8_t, 1024> data{};
+
+  ASSERT_TRUE(source.read(0, 0x1000, data.data(), data.size()));
+  EXPECT_TRUE(stream.request_valid);
+  EXPECT_EQ(stream.offsets,
+            (std::vector<uint32_t>{0x1000, 0x10C0, 0x1180, 0x1240, 0x1300, 0x13C0}));
+  EXPECT_EQ(stream.lengths,
+            (std::vector<uint16_t>{192, 192, 192, 192, 192, 64}));
+  for (size_t i = 0; i < data.size(); i++) {
+    EXPECT_EQ(data[i], (uint8_t)(0x1000 + i));
+  }
+}
+
+TEST(MotaSourceSerial, AcceptsEmptyReadAndRejectsInvalidRange) {
+  FakeMotaSeederStream stream;
+  SerialMotaSource source(stream);
+  uint8_t byte = 0;
+
+  EXPECT_TRUE(source.read(0, 123, nullptr, 0));
+  EXPECT_FALSE(source.read(0, 123, nullptr, 1));
+  EXPECT_FALSE(source.read(0, UINT32_MAX, &byte, 2));
+  EXPECT_TRUE(stream.offsets.empty());
+}
 
 // Build a flashed-image layout (body || fixed 56-byte EndF) the way the host packager / build hook do:
 // marker(4) body_len(4) body_hash8(8) fw_version(4) target_id(4) hw_id(32). Identity is always present
@@ -838,6 +914,61 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
                            (uint16_t)sent.items.back().size(), proof));
   EXPECT_EQ(proof.block_idx, 0);
   EXPECT_EQ(server.pendingServeJobs(), 0u);
+}
+
+TEST(OtaTransfer, ServerPacesManifestFragmentsAndConsumesResolvedRequest) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  server.set_link_timing(80, 2000);  // 160 ms at the active airtime/duty spacing
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+
+  GetManifestMsg request;
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t wire_len = encode_get_manifest(wire, sizeof(wire), request);
+  ASSERT_GT(wire_len, 0);
+
+  EXPECT_TRUE(server.on_message(wire, wire_len));
+  EXPECT_TRUE(sent.items.empty());
+  EXPECT_EQ(server.pendingManifestJobs(), 1u);
+
+  const uint32_t manifest_gap = 160;
+  server.set_clock(manifest_gap - 1);
+  server.serviceEgress();
+  EXPECT_TRUE(sent.items.empty());
+
+  server.set_clock(manifest_gap);
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 1u);
+  ManifestMsg fragment;
+  ASSERT_TRUE(decode_manifest(sent.items[0].data(),
+                              (uint16_t)sent.items[0].size(), fragment));
+  EXPECT_EQ(fragment.frag_idx, 0u);
+  EXPECT_EQ(fragment.frag_total, 2u);
+
+  server.set_clock(2 * manifest_gap - 1);
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 1u);
+
+  server.set_clock(2 * manifest_gap);
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 2u);
+  ASSERT_TRUE(decode_manifest(sent.items[1].data(),
+                              (uint16_t)sent.items[1].size(), fragment));
+  EXPECT_EQ(fragment.frag_idx, 1u);
+  EXPECT_EQ(server.pendingManifestJobs(), 0u);
+
+  sent.items.clear();
+  request.manifest_id[0] ^= 0xFF;
+  wire_len = encode_get_manifest(wire, sizeof(wire), request);
+  ASSERT_GT(wire_len, 0);
+  EXPECT_FALSE(server.on_message(wire, wire_len));
+  EXPECT_TRUE(sent.items.empty());
 }
 
 TEST(OtaTransfer, ServerQueuesEveryBlockInOneRequestFlight) {

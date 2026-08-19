@@ -2388,10 +2388,10 @@ apply_companion_radio_full_profile() {
     return 0
   fi
 
-  # ESP32 inherits the WiFi companion recipe and uses its dedicated TCP folder
-  # seeder instead of multiplexing mOTA data onto USB.
-  append_platformio_build_unflags "-DOTA_FOLDER_SERIAL"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UOTA_FOLDER_SERIAL -DWIFI_OTA_SEEDER=1"
+  # ESP32 keeps both source transports. TCP remains the normal unattended
+  # path; a host may explicitly hold the native USB port in Companion terminal
+  # mode when WiFi is unavailable and serve the same folder protocol there.
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1"
 
   # BLE + WiFi exhaust internal DRAM on these high-capacity ESP32 recipes. Use
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi

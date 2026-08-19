@@ -552,7 +552,8 @@ This keeps each active transfer as one transmitter and one receiver while still 
 repeaters between them and persistent archive nodes to improve future availability.
 
 TempRadio is treated as a private maintenance network. Active transfer packets use priority 0, bypass the
-public-flood receive holdoff and relay jitter, and do not schedule generic flood retries. The bounded serving
+public-flood receive holdoff, retain the relay role's airtime-scaled transmit collision window, and do not
+schedule generic flood retries. The bounded serving
 queue admits at most two DATA/PROOF packets ahead of the radio while preserving at least four free packet-pool
 entries. CAD remains enabled to arbitrate the half-duplex channel, but its busy retry is scaled to one-quarter
 of a packet airtime and clamped to 5-50 ms instead of the ordinary 120-360 ms cadence. Discovery traffic keeps
@@ -661,6 +662,21 @@ MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
                       block_size_log2(1) reserved(3)
 status: 0 = OK, non-zero = error (out of range / past EOF).
 ```
+
+`SerialMotaSource` splits logical reads into replies of at most 192 payload
+bytes. A manifest's leaf table can exceed 256 bytes and payload blocks are
+normally 1 KiB; requesting either in one transaction can overrun common USB
+CDC/UART receive rings even though the host successfully wrote the complete
+reply. Chunking is internal to the transport and does not change `OP_READ` or
+the `MotaSource` random-access contract.
+
+Manifest fragments are retained as bounded response jobs and admitted one at
+a time. Their source-side gap follows the active maximum packet airtime and
+dispatcher duty spacing, clamped to 100-1000 ms. The 100 ms floor protects
+fast radios' TX-to-RX turnaround; the cap keeps the receiver's one-second
+manifest progress/retry observation responsive. Relay collision delay is a
+separate setting: active OTA floods honor the relay role's configured
+`txdelay`, and the deployment runner temporarily uses `0.3` on managed relays.
 
 **What to plug into `--serial`.** Use the USB serial console of an OTA-enabled MeshCore node built with
 `OTA_FOLDER_SERIAL`. The node must have a working LoRa radio plus an

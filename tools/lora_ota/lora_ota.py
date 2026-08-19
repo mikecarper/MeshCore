@@ -70,6 +70,9 @@ COMPANION_TERMINAL_STOP = "+++MESHCORE-TERM-STOP"
 # Firmware may hold the apply reboot for up to 15 seconds while its reply
 # drains. Do not interpret "still ready" as a failed install before that cap.
 INSTALL_RECONCILE_WAIT_SECONDS = 20
+DEFAULT_RELAY_TX_DELAY = 0.3
+RELAY_TIMING_COMMANDS_PER_RELAY = 12
+RELAY_TIMING_RECOVERY_FILE = "relay-timing-settings.json"
 
 T = TypeVar("T")
 
@@ -172,6 +175,14 @@ class RadioSettings:
             and self.coding_rate == other.coding_rate
             and self.repeat == other.repeat
         )
+
+
+@dataclass(frozen=True)
+class RelayTimingSettings:
+    name: str
+    password: str
+    rxdelay: float
+    txdelay: float
 
 
 def prompt_after_transmission_failure(
@@ -1838,6 +1849,8 @@ class SeederProcess:
                 "--serial", args.source_serial,
                 "--baud", str(args.source_baud),
             ])
+            if getattr(args, "source_companion_terminal", False):
+                command.append("--companion-terminal")
         else:
             command.extend(["--tcp", args.source_tcp])
         self.command = command
@@ -1938,6 +1951,130 @@ def parse_relay(value: str, default_password: str) -> tuple[str, str]:
     return value, default_password
 
 
+def parse_delay_reply(reply: str, label: str) -> float:
+    match = re.fullmatch(r"\s*>\s*([0-9]+(?:\.[0-9]+)?)\s*", reply)
+    if match is None:
+        raise OtaError(f"could not read {label}: {reply}")
+    return float(match.group(1))
+
+
+def read_relay_timing(
+    controller: Controller,
+    relay_name: str,
+    relay_password: str,
+) -> RelayTimingSettings:
+    rxdelay = parse_delay_reply(
+        controller.remote_command(
+            relay_name, "get rxdelay", password=relay_password
+        ),
+        f"{relay_name} rxdelay",
+    )
+    txdelay = parse_delay_reply(
+        controller.remote_command(
+            relay_name, "get txdelay", password=relay_password
+        ),
+        f"{relay_name} txdelay",
+    )
+    return RelayTimingSettings(
+        name=relay_name,
+        password=relay_password,
+        rxdelay=rxdelay,
+        txdelay=txdelay,
+    )
+
+
+def write_relay_timing_recovery(
+    work_dir: Path,
+    settings: list[RelayTimingSettings],
+) -> Path:
+    path = work_dir / RELAY_TIMING_RECOVERY_FILE
+    payload = [
+        {
+            "name": item.name,
+            "rxdelay": item.rxdelay,
+            "txdelay": item.txdelay,
+        }
+        for item in settings
+    ]
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="ascii",
+    )
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+    return path
+
+
+def enforce_relay_timing(
+    controller: Controller,
+    saved: RelayTimingSettings,
+    txdelay: float,
+) -> None:
+    if abs(saved.rxdelay) > 0.0001:
+        reply = controller.remote_command(
+            saved.name, "set rxdelay 0", password=saved.password
+        )
+        if not reply.upper().startswith("OK"):
+            raise OtaError(f"{saved.name} did not disable rxdelay: {reply}")
+    if abs(saved.txdelay - txdelay) > 0.0001:
+        reply = controller.remote_command(
+            saved.name,
+            f"set txdelay {format_decimal(txdelay)}",
+            password=saved.password,
+        )
+        if not reply.upper().startswith("OK"):
+            raise OtaError(f"{saved.name} did not accept OTA txdelay: {reply}")
+
+    verified = read_relay_timing(controller, saved.name, saved.password)
+    if abs(verified.rxdelay) > 0.0001 or abs(verified.txdelay - txdelay) > 0.0001:
+        raise OtaError(
+            f"{saved.name} transfer timing did not read back as "
+            f"rxdelay=0, txdelay={format_decimal(txdelay)}"
+        )
+    print(
+        f"[relays] {saved.name} verified at rxdelay 0, "
+        f"txdelay {format_decimal(txdelay)}"
+    )
+
+
+def restore_relay_timings(
+    controller: Controller,
+    settings: list[RelayTimingSettings],
+) -> None:
+    errors: list[str] = []
+    for saved in reversed(settings):
+        try:
+            current = read_relay_timing(controller, saved.name, saved.password)
+            if abs(current.rxdelay - saved.rxdelay) > 0.0001:
+                reply = controller.remote_command(
+                    saved.name,
+                    f"set rxdelay {format_decimal(saved.rxdelay)}",
+                    password=saved.password,
+                )
+                if not reply.upper().startswith("OK"):
+                    raise OtaError(f"did not restore rxdelay: {reply}")
+            if abs(current.txdelay - saved.txdelay) > 0.0001:
+                reply = controller.remote_command(
+                    saved.name,
+                    f"set txdelay {format_decimal(saved.txdelay)}",
+                    password=saved.password,
+                )
+                if not reply.upper().startswith("OK"):
+                    raise OtaError(f"did not restore txdelay: {reply}")
+            verified = read_relay_timing(controller, saved.name, saved.password)
+            if (
+                abs(verified.rxdelay - saved.rxdelay) > 0.0001
+                or abs(verified.txdelay - saved.txdelay) > 0.0001
+            ):
+                raise OtaError("relay timing did not restore exactly")
+            print(f"[relays] {saved.name} original rxdelay/txdelay restored")
+        except (OtaError, OSError) as exc:
+            errors.append(f"{saved.name}: {exc}")
+    if errors:
+        raise OtaError("could not restore relay timings: " + "; ".join(errors))
+
+
 def confirm_update(
     args: argparse.Namespace,
     target: TargetInfo,
@@ -1957,6 +2094,11 @@ def confirm_update(
     print(f"  update      : {package.version} {package.kind} hw={package.hw_id or '?'}")
     print(f"  mOTA id     : {package.manifest_id}")
     print(f"  TempRadio   : {args.temp_radio}")
+    if args.relay:
+        print(
+            f"  relay timing: rxdelay 0, "
+            f"txdelay {format_decimal(args.relay_txdelay)} (saved/restored)"
+        )
     print(f"  action      : {'stage only' if args.no_install else 'install and reboot'}")
     current_version = (
         parse_version(target.current_version) if target.current_version else None
@@ -2739,6 +2881,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional relay, ordered farthest-to-nearest; repeat as needed",
     )
     parser.add_argument(
+        "--relay-txdelay",
+        type=float,
+        default=DEFAULT_RELAY_TX_DELAY,
+        help=(
+            "temporary flood txdelay for managed relays; rxdelay is also "
+            "temporarily set to 0 and both original values are restored"
+        ),
+    )
+    parser.add_argument(
         "--temp-radio", default="909.950,250,5,5,120",
         help="frequency,bw,sf,cr,minutes",
     )
@@ -2849,6 +3000,8 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         args.temp_values = parse_temp_radio(args.temp_radio)
     except argparse.ArgumentTypeError as exc:
         parser.error(f"--temp-radio: {exc}")
+    if not math.isfinite(args.relay_txdelay) or not 0.0 <= args.relay_txdelay <= 2.0:
+        parser.error("--relay-txdelay must be between 0 and 2")
     clear_manifest = args.clear_completed_manifest
     clear_body_hash = args.clear_completed_on_body_hash
     if bool(clear_manifest) != bool(clear_body_hash):
@@ -2944,6 +3097,11 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             0 if args.source_already_temp or args.source_shares_controller else 30
         )
         final_reply_count = 1 if args.no_install else 4 + len(args.relay)
+        relay_timing_seconds = (
+            len(args.relay)
+            * RELAY_TIMING_COMMANDS_PER_RELAY
+            * args.reply_timeout
+        )
         required_temp_seconds = (
             remote_setup_seconds
             + source_setup_seconds
@@ -2953,6 +3111,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             + args.transfer_timeout_minutes * 60
             + adaptive_poll_ceiling(args.poll_seconds)
             + args.reply_timeout * final_reply_count
+            + relay_timing_seconds
         )
         temp_seconds = args.temp_values[4] * 60
         if required_temp_seconds >= temp_seconds:
@@ -3039,6 +3198,7 @@ def main(
     source_temp_owned = False
     target_temp_owned = False
     armed_relay_values: list[tuple[str, str]] = []
+    relay_timing_settings: list[RelayTimingSettings] = []
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
     try:
         preflight_inputs(args)
@@ -3128,6 +3288,19 @@ def main(
             source_temp_owned = True
         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
 
+        for relay_name, relay_password in args.relay_values:
+            saved_timing = read_relay_timing(
+                controller, relay_name, relay_password
+            )
+            relay_timing_settings.append(saved_timing)
+            recovery_path = write_relay_timing_recovery(
+                work_dir, relay_timing_settings
+            )
+            print(f"[relays] timing recovery settings: {recovery_path}")
+            enforce_relay_timing(
+                controller, saved_timing, args.relay_txdelay
+            )
+
         seeder = SeederProcess(args, package_path.parent, work_dir)
         seeder_attempted = True
         seeder.start()
@@ -3136,6 +3309,8 @@ def main(
 
         if args.no_install:
             print(f"{args.target} is ready to install; leaving the verified update staged.")
+            restore_relay_timings(controller, relay_timing_settings)
+            relay_timing_settings.clear()
             if args.leave_controller_radio:
                 print(
                     "[cleanup] preserving TempRadio windows because "
@@ -3168,6 +3343,8 @@ def main(
         # Once the target has accepted (or may have accepted) installation,
         # the relays are no longer needed on TempRadio. Give each a short,
         # bounded window, then verify through the restored normal route.
+        restore_relay_timings(controller, relay_timing_settings)
+        relay_timing_settings.clear()
         shorten_relay_temp_windows(controller, args)
         armed_relay_values.clear()
 
@@ -3221,10 +3398,13 @@ def main(
             # this is harmless on TCP and explicitly cleans the serial case.
             if seeder_attempted and args.source_serial:
                 source_cli_command(args, "ota folder off", check=False)
-            needs_remote_cleanup = target_temp_owned or bool(armed_relay_values)
+            needs_remote_cleanup = (
+                target_temp_owned
+                or bool(armed_relay_values)
+                or bool(relay_timing_settings)
+            )
             if (
                 needs_remote_cleanup
-                and not args.leave_controller_radio
                 and controller is not None
                 and original_radio is not None
                 and temp_radio is not None
@@ -3239,12 +3419,23 @@ def main(
                         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
                     except (OtaError, OSError) as exc:
                         print(
-                            "WARNING: could not reach TempRadio to shorten remote "
-                            f"leases; their configured windows remain bounded: {exc}",
+                            "WARNING: could not reach TempRadio to restore relay "
+                            "timing or shorten remote leases; TempRadio windows "
+                            f"remain bounded: {exc}",
                             file=sys.stderr,
                         )
                 if controller_changed:
-                    if target_temp_owned:
+                    if relay_timing_settings:
+                        try:
+                            restore_relay_timings(controller, relay_timing_settings)
+                            relay_timing_settings.clear()
+                        except (OtaError, OSError) as exc:
+                            print(
+                                "CRITICAL: could not restore every relay's "
+                                f"rxdelay/txdelay; use {RELAY_TIMING_RECOVERY_FILE}: {exc}",
+                                file=sys.stderr,
+                            )
+                    if target_temp_owned and not args.leave_controller_radio:
                         try:
                             shorten_target_temp_window(controller, args)
                             target_temp_owned = False
@@ -3254,7 +3445,7 @@ def main(
                                 f"TempRadio lease: {exc}",
                                 file=sys.stderr,
                             )
-                    if armed_relay_values:
+                    if armed_relay_values and not args.leave_controller_radio:
                         try:
                             shorten_relay_temp_windows(
                                 controller, args, armed_relay_values

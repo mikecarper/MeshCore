@@ -227,8 +227,8 @@ protected:
   virtual uint32_t getRetransmitDelay(const Packet* packet);
 
   /**
-   * \returns  TempRadio OTA relay delay. Primary transfer packets forward immediately on the private
-   *           network; discovery retains collision jitter.
+   * \returns  TempRadio OTA relay delay. Primary transfer packets use the role's configured flood delay;
+   *           discovery uses its adaptive request-pressure window.
    */
   virtual uint32_t getOtaRetransmitDelay(const Packet* packet);
 

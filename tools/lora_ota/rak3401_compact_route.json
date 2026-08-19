@@ -1,0 +1,125 @@
+{
+  "app_base": "0x26000",
+  "endpoint_name": "halo-keymind-cascade-dev",
+  "endpoint_source_commit": "e742333a0ee393b0d55d2414f25b28f2f67e1ea1",
+  "endpoint_version": "1.17.1.02",
+  "schema": 1,
+  "search": {
+    "dynamic_workspace_candidates_on_shortest_dag": 2296,
+    "fixed_source_0_reachable_nodes": [
+      1
+    ],
+    "fixed_source_1_reachable_nodes": [
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "objective": "minimum packages, then minimum total container bytes",
+    "page_size": 4096,
+    "selected_total_bytes": 1002164,
+    "shorter_path_edges_unlocked": 0,
+    "shorter_path_pairs": 272,
+    "shorter_path_workspace_candidates": 9430,
+    "shortest_dag_edges": 61,
+    "shortest_package_count": 9,
+    "shortest_route_count": 840,
+    "workspace_max": "0xAD000",
+    "workspace_minimum": "page_align(max(base_size + 8192, target_size))"
+  },
+  "shortest_package_count": 9,
+  "stage_ceiling": "0xD4000",
+  "steps": [
+    {
+      "expected_container_size": 89844,
+      "expected_staging_margin": 0,
+      "expected_target_sha256": "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530",
+      "expected_target_version": "1.16.7.9",
+      "inplace_memory": "0x98000",
+      "reuse_baseline_package": true,
+      "source_node": 0,
+      "target_node": 1
+    },
+    {
+      "expected_container_size": 46363,
+      "expected_staging_margin": 40960,
+      "expected_target_sha256": "7031e4d7f883c5d6ba6637eab730d143bd7d0f3c755f09a6c52190f762d23e45",
+      "expected_target_version": "1.16.7.10",
+      "inplace_memory": "0x98000",
+      "reuse_baseline_package": false,
+      "source_node": 1,
+      "target_node": 2
+    },
+    {
+      "expected_container_size": 106030,
+      "expected_staging_margin": 12288,
+      "expected_target_sha256": "2a434bc74d4c5c282cf5709dff18c5cceb1d7d69321a2692944df0d8c14d43d1",
+      "expected_target_version": "1.16.8.7",
+      "inplace_memory": "0x91000",
+      "reuse_baseline_package": false,
+      "source_node": 2,
+      "target_node": 7
+    },
+    {
+      "expected_container_size": 149927,
+      "expected_staging_margin": 0,
+      "expected_target_sha256": "0a514424c121febb90c7951859f0f5ccf30ffc5392c3bc3185bc7141bde651ff",
+      "expected_target_version": "1.16.9.105",
+      "inplace_memory": "0x89000",
+      "reuse_baseline_package": false,
+      "source_node": 7,
+      "target_node": 13
+    },
+    {
+      "expected_container_size": 111307,
+      "expected_staging_margin": 16384,
+      "expected_target_sha256": "871039ef453faf98b694b14c666773c8c6d5ae159fc7a4573f57feb66bdb60be",
+      "expected_target_version": "1.16.9.110",
+      "inplace_memory": "0x8E000",
+      "reuse_baseline_package": false,
+      "source_node": 13,
+      "target_node": 16
+    },
+    {
+      "expected_container_size": 70679,
+      "expected_staging_margin": 61440,
+      "expected_target_sha256": "644a8c562080838acac32f47871774f04820511e5595c64d674210aebed6b419",
+      "expected_target_version": "1.16.9.111",
+      "inplace_memory": "0x8D000",
+      "reuse_baseline_package": false,
+      "source_node": 16,
+      "target_node": 17
+    },
+    {
+      "expected_container_size": 143441,
+      "expected_staging_margin": 4096,
+      "expected_target_sha256": "b81d219393897fb1453594d9ea6983b2695c1b2396b768836af7da58b8576e83",
+      "expected_target_version": "1.16.9.116",
+      "inplace_memory": "0x89000",
+      "reuse_baseline_package": false,
+      "source_node": 17,
+      "target_node": 22
+    },
+    {
+      "expected_container_size": 98188,
+      "expected_staging_margin": 86016,
+      "expected_target_sha256": "05ac521daf941b14426360e7ff81b0329f4788b84fe7db9d55f7da58ee336597",
+      "expected_target_version": "1.16.9.118",
+      "inplace_memory": "0x81000",
+      "reuse_baseline_package": false,
+      "source_node": 22,
+      "target_node": 24
+    },
+    {
+      "expected_container_size": 186385,
+      "expected_staging_margin": 12288,
+      "expected_target_sha256": "2784e4b645bc3dc198de0b8b18d3d7369cd02eca61cd71c46a51b61854da5345",
+      "expected_target_version": "1.17.1.02",
+      "inplace_memory": "0x7D000",
+      "reuse_baseline_package": false,
+      "source_node": 24,
+      "target_node": 30
+    }
+  ]
+}

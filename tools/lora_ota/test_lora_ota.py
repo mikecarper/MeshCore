@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import struct
@@ -336,6 +337,24 @@ class SourceCliTests(unittest.TestCase):
             "+++MESHCORE-TERM-STOP",
         )
         self.assertIn("OK - temp params", output)
+
+    def test_serial_companion_seeder_enters_terminal_mode(self) -> None:
+        args = argparse.Namespace(
+            motatool="motatool",
+            source_serial="/dev/source",
+            source_tcp=None,
+            source_baud=115200,
+            source_companion_terminal=True,
+        )
+        seeder = ota.SeederProcess(args, Path("/served"), Path("/work"))
+        self.assertEqual(
+            seeder.command,
+            [
+                "motatool", "serve", "--dir", "/served", "-v",
+                "--serial", "/dev/source", "--baud", "115200",
+                "--companion-terminal",
+            ],
+        )
 
 
 class CompatibilityTests(unittest.TestCase):
@@ -1434,6 +1453,79 @@ class ReliabilityTests(unittest.TestCase):
             ],
         )
 
+    def test_managed_relay_timing_is_saved_guarded_and_restored(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.rxdelay = 2.0
+                self.txdelay = 0.5
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                if command == "get rxdelay":
+                    return f"> {self.rxdelay}"
+                if command == "get txdelay":
+                    return f"> {self.txdelay}"
+                if command.startswith("set rxdelay "):
+                    self.rxdelay = float(command.split()[-1])
+                    return "OK"
+                if command.startswith("set txdelay "):
+                    self.txdelay = float(command.split()[-1])
+                    return "OK"
+                raise AssertionError(command)
+
+        controller = Controller()
+        saved = ota.read_relay_timing(controller, "relay", "secret")
+        ota.enforce_relay_timing(controller, saved, 0.3)
+        self.assertEqual(controller.rxdelay, 0.0)
+        self.assertEqual(controller.txdelay, 0.3)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = ota.write_relay_timing_recovery(Path(directory), [saved])
+            payload = json.loads(path.read_text(encoding="ascii"))
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(
+            payload,
+            [{"name": "relay", "rxdelay": 2.0, "txdelay": 0.5}],
+        )
+
+        ota.restore_relay_timings(controller, [saved])
+        self.assertEqual(controller.rxdelay, 2.0)
+        self.assertEqual(controller.txdelay, 0.5)
+
+    def test_unreachable_relay_does_not_block_other_relay_restoration(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.rxdelay = 0.0
+                self.txdelay = 0.3
+
+            def remote_command(
+                self, target: str, command: str, **_kwargs: object
+            ) -> str:
+                if target == "offline":
+                    raise ota.OtaError("unreachable")
+                if command == "get rxdelay":
+                    return f"> {self.rxdelay}"
+                if command == "get txdelay":
+                    return f"> {self.txdelay}"
+                if command.startswith("set rxdelay "):
+                    self.rxdelay = float(command.split()[-1])
+                    return "OK"
+                if command.startswith("set txdelay "):
+                    self.txdelay = float(command.split()[-1])
+                    return "OK"
+                raise AssertionError(command)
+
+        controller = Controller()
+        settings = [
+            ota.RelayTimingSettings("online", "secret", 2.0, 0.5),
+            ota.RelayTimingSettings("offline", "secret", 1.0, 0.4),
+        ]
+        with self.assertRaisesRegex(ota.OtaError, "offline: unreachable"):
+            ota.restore_relay_timings(controller, settings)
+        self.assertEqual(controller.rxdelay, 2.0)
+        self.assertEqual(controller.txdelay, 0.5)
+
     def test_source_cleanup_only_changes_a_script_owned_window(self) -> None:
         args = argparse.Namespace(
             source_already_temp=False,
@@ -1470,6 +1562,104 @@ class ReliabilityTests(unittest.TestCase):
             self.assertTrue(ota.shorten_source_temp_window(args))
         source_command.assert_called_once_with(args, "normalradio", check=True)
         sleep.assert_called_once_with(ota.TEMP_RADIO_SWITCH_DELAY_SECONDS)
+
+
+class Rak3401TransferGuardrailTests(unittest.TestCase):
+    class Controller:
+        def __init__(self) -> None:
+            self.rxps_enabled = True
+            self.rxps_rx_us = 65625
+            self.rxps_sleep_us = 60000
+            self.powersaving_enabled = True
+            self.rxdelay = "2.0"
+            self.commands: list[str] = []
+
+        def remote_command(self, _target: str, command: str) -> str:
+            self.commands.append(command)
+            if command == "get radio.rxps":
+                state = "on" if self.rxps_enabled else "off"
+                return f"> {state},{self.rxps_rx_us},{self.rxps_sleep_us}"
+            if command == "set radio.rxps off":
+                self.rxps_enabled = False
+                return f"OK - off,{self.rxps_rx_us},{self.rxps_sleep_us}"
+            if command.startswith("set radio.rxps "):
+                _set, _key, rx_us, sleep_us = command.split()
+                self.rxps_enabled = True
+                self.rxps_rx_us = int(rx_us)
+                self.rxps_sleep_us = int(sleep_us)
+                return f"OK - on,{rx_us},{sleep_us}"
+            if command == "powersaving":
+                return "on" if self.powersaving_enabled else "off"
+            if command == "powersaving off":
+                self.powersaving_enabled = False
+                return "off"
+            if command == "powersaving on":
+                self.powersaving_enabled = True
+                return "on - Immediate effect"
+            if command == "get rxdelay":
+                return f"> {self.rxdelay}"
+            if command.startswith("set rxdelay "):
+                self.rxdelay = command.split(maxsplit=2)[2]
+                return "OK"
+            raise AssertionError(command)
+
+    def test_guardrails_disable_and_restore_all_original_settings(self) -> None:
+        controller = self.Controller()
+        saved = rak_chain.read_target_transfer_settings(controller, "remote")
+
+        rak_chain.enforce_transfer_guardrails(controller, "remote")
+        self.assertFalse(controller.rxps_enabled)
+        self.assertFalse(controller.powersaving_enabled)
+        self.assertEqual(controller.rxdelay, "0")
+
+        rak_chain.restore_transfer_settings(controller, "remote", saved)
+        self.assertTrue(controller.rxps_enabled)
+        self.assertEqual(controller.rxps_rx_us, 65625)
+        self.assertEqual(controller.rxps_sleep_us, 60000)
+        self.assertTrue(controller.powersaving_enabled)
+        self.assertEqual(controller.rxdelay, "2.0")
+        self.assertEqual(controller.commands[-1], "powersaving on")
+
+    def test_original_settings_are_persisted_for_resume(self) -> None:
+        controller = self.Controller()
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            saved = rak_chain.load_or_capture_transfer_settings(
+                controller, "remote", "AA" * 32, work_dir
+            )
+            command_count = len(controller.commands)
+            controller.rxdelay = "0"
+            loaded = rak_chain.load_or_capture_transfer_settings(
+                controller, "remote", "AA" * 32, work_dir
+            )
+            mode = (work_dir / rak_chain.TRANSFER_SETTINGS_FILE).stat().st_mode
+
+        self.assertEqual(loaded, saved)
+        self.assertEqual(len(controller.commands), command_count)
+        self.assertEqual(mode & 0o777, 0o600)
+
+    def test_saved_settings_reject_string_booleans(self) -> None:
+        controller = self.Controller()
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            path = work_dir / rak_chain.TRANSFER_SETTINGS_FILE
+            path.write_text(
+                json.dumps(
+                    {
+                        "target_key": "aa" * 32,
+                        "rxps_enabled": "false",
+                        "rxps_rx_us": 65625,
+                        "rxps_sleep_us": 60000,
+                        "powersaving_enabled": False,
+                        "rxdelay": "2.0",
+                    }
+                ),
+                encoding="ascii",
+            )
+            with self.assertRaisesRegex(ota.OtaError, "invalid saved transfer settings"):
+                rak_chain.load_or_capture_transfer_settings(
+                    controller, "remote", "AA" * 32, work_dir
+                )
 
 
 class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
@@ -1618,29 +1808,34 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=True), steps
             )
 
-    def test_accelerated_30_step_release_requires_candidate_ack(self) -> None:
-        steps = [mock.Mock(target_sha256="") for _ in range(30)]
-        for number, image_sha256 in rak_chain.PINNED_RELEASE_ANCHORS:
+    def test_physically_passed_compact_9_step_release_needs_no_lab_ack(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(9)]
+        for number, image_sha256 in rak_chain.COMPACT_RELEASE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
-        with self.assertRaisesRegex(
-            rak_chain.KnownUnsafeReleaseError,
-            "requires --accept-test-candidate",
-        ):
-            rak_chain.require_live_release_safe(
-                argparse.Namespace(accept_test_candidate=False), steps
-            )
         rak_chain.require_live_release_safe(
-            argparse.Namespace(accept_test_candidate=True), steps
+            argparse.Namespace(accept_test_candidate=False), steps
         )
 
-    def test_accelerated_30_step_release_rejects_changed_anchor(self) -> None:
+    def test_compact_9_step_release_rejects_changed_anchor(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(9)]
+        for number, image_sha256 in rak_chain.COMPACT_RELEASE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        steps[5].target_sha256 = "00" * 32
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "unrecognized step-6 image",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_superseded_30_step_release_is_blocked(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(30)]
         for number, image_sha256 in rak_chain.PINNED_RELEASE_ANCHORS:
             steps[number - 1].target_sha256 = image_sha256
-        steps[10].target_sha256 = "00" * 32
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
-            "unrecognized step-11 image",
+            "superseded 30-step release",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=True), steps

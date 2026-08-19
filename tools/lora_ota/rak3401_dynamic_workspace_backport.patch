@@ -1,0 +1,34 @@
+diff --git a/src/helpers/ota/OtaFlashLayout_nrf52.h b/src/helpers/ota/OtaFlashLayout_nrf52.h
+--- a/src/helpers/ota/OtaFlashLayout_nrf52.h
++++ b/src/helpers/ota/OtaFlashLayout_nrf52.h
+@@ -63,4 +63,3 @@
+ inline uint32_t mota_nrf52_stage_capacity(uint32_t app_base) {
+-  return mota_nrf52_layout_valid(app_base)
+-      ? MOTA_NRF52_FS_START - (app_base + MOTA_NRF52_INPLACE_MEMORY) : 0;
++  return mota_nrf52_layout_valid(app_base) ? MOTA_NRF52_FS_START - app_base : 0;
+ }
+@@ -70,18 +69,17 @@ inline uint32_t mota_nrf52_stage_capacity(uint32_t app_base) {
+-// ENTIRELY above both the running image and the in-place decoder workspace, and below the filesystem
+-// region (ExtraFS/InternalFS - where user prefs live, assumed immutable). Reserving the full workspace
+-// here prevents accepting a large container that the bootloader would later reject as overlapping it.
++// ENTIRELY above the running image and below ExtraFS/InternalFS, where user preferences live.
++// The exact package carries its own page-aligned detools memory size; the deployed OTAFIX bootloader
++// independently bounds that workspace below the package, so the receiver can use the real EndF extent.
+ // Returns false (and leaves out_start untouched) if it does not fit. This is the SINGLE place the FS
+ // ceiling + app-collision bounds are enforced; begin()/reopen() both go through it. Pure - no flash I/O -
+ // so it is unit-tested natively in test/test_ota/test_ota_flashplan.cpp.
+ inline bool mota_nrf52_stage_plan(uint32_t total_size, uint32_t app_base, uint32_t app_end,
+                                   uint32_t& out_start) {
+   if (!mota_nrf52_layout_valid(app_base) || app_end < app_base ||
+-      app_end > app_base + MOTA_NRF52_INPLACE_MEMORY) return false;
+-  const uint32_t workspace_end = app_base + MOTA_NRF52_INPLACE_MEMORY;
+-  const uint32_t capacity = MOTA_NRF52_FS_START - workspace_end;
++      app_end > MOTA_NRF52_FS_START) return false;
++  const uint32_t capacity = MOTA_NRF52_FS_START - app_base;
+   if (total_size < 13 || total_size > capacity) return false;   // 13 = header(8)+trailer(5); must fit below FS
+   uint32_t start = (MOTA_NRF52_FS_START - total_size) & ~(MOTA_NRF52_FLASH_PAGE - 1);   // bottom-align down
+-  if (start < app_end || start < workspace_end) return false;   // would overlap app / decoder workspace
++  if (start < app_end) return false;                            // would overlap the running application
+   out_start = start;
+   return true;
+ }

@@ -57,6 +57,9 @@ static const uint8_t  MS_STATUS_OK   = 0x00;
 static const uint8_t  MS_STATUS_ERR  = 0x01;
 
 static const uint16_t MOTA_DESC_WIRE = 38;   // existing reserved bytes carry block geometry; wire size is unchanged
+// Keep host-to-device replies below common 256-byte USB CDC/UART receive rings. Manifest leaves can exceed
+// that ring, and payload reads are normally 1 KB; splitting them here prevents silent overrun/checksum loss.
+static const uint16_t MOTA_SEEDER_READ_MAX = 192;
 static const uint16_t MOTA_SEEDER_WRITE_MAX = 512;  // max data bytes per OP_WRITE/OP_SREAD (bounds frames)
 
 } // namespace ota
