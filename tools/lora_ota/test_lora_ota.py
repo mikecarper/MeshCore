@@ -163,6 +163,11 @@ class FormatTests(unittest.TestCase):
         chain = rak_chain.build_parser().parse_args([])
         self.assertEqual(generic.temp_radio, "909.950,250,5,5,120")
         self.assertEqual(chain.temp_radio, "909.950,250,5,5,120")
+        self.assertFalse(chain.legacy_full_airtime)
+
+    def test_rak_chain_full_airtime_is_explicit(self) -> None:
+        args = rak_chain.build_parser().parse_args(["--legacy-full-airtime"])
+        self.assertTrue(args.legacy_full_airtime)
 
     def test_offline_sd_nrf52_does_not_require_a_base_hash(self) -> None:
         parser = ota.build_parser()
@@ -1572,6 +1577,8 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
             self.rxps_sleep_us = 60000
             self.powersaving_enabled = True
             self.rxdelay = "2.0"
+            self.airtime_factor = "1.0"
+            self.ota_hops = 3
             self.commands: list[str] = []
 
         def remote_command(self, _target: str, command: str) -> str:
@@ -1601,16 +1608,31 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
             if command.startswith("set rxdelay "):
                 self.rxdelay = command.split(maxsplit=2)[2]
                 return "OK"
+            if command == "get af":
+                return f"> {self.airtime_factor}"
+            if command.startswith("set af "):
+                self.airtime_factor = command.split(maxsplit=2)[2]
+                return "OK"
+            if command == "ota config":
+                return f"ota config: checkpoint=4 advert=1440min hops={self.ota_hops}"
+            if command.startswith("ota config hops "):
+                self.ota_hops = int(command.rsplit(maxsplit=1)[1])
+                return f"OK OTA reach = {self.ota_hops} hops (saved)"
             raise AssertionError(command)
 
     def test_guardrails_disable_and_restore_all_original_settings(self) -> None:
         controller = self.Controller()
         saved = rak_chain.read_target_transfer_settings(controller, "remote")
 
-        rak_chain.enforce_transfer_guardrails(controller, "remote")
+        rak_chain.enforce_transfer_guardrails(
+            controller, "remote", legacy_full_airtime=True
+        )
+        rak_chain.enforce_ota_hops(controller, "remote", 0)
         self.assertFalse(controller.rxps_enabled)
         self.assertFalse(controller.powersaving_enabled)
         self.assertEqual(controller.rxdelay, "0")
+        self.assertEqual(controller.airtime_factor, "0")
+        self.assertEqual(controller.ota_hops, 0)
 
         rak_chain.restore_transfer_settings(controller, "remote", saved)
         self.assertTrue(controller.rxps_enabled)
@@ -1618,7 +1640,17 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
         self.assertEqual(controller.rxps_sleep_us, 60000)
         self.assertTrue(controller.powersaving_enabled)
         self.assertEqual(controller.rxdelay, "2.0")
+        self.assertEqual(controller.airtime_factor, "1.0")
+        self.assertEqual(controller.ota_hops, 3)
         self.assertEqual(controller.commands[-1], "powersaving on")
+
+    def test_guardrails_preserve_airtime_without_opt_in(self) -> None:
+        controller = self.Controller()
+
+        rak_chain.enforce_transfer_guardrails(controller, "remote")
+
+        self.assertEqual(controller.airtime_factor, "1.0")
+        self.assertNotIn("set af 0", controller.commands)
 
     def test_original_settings_are_persisted_for_resume(self) -> None:
         controller = self.Controller()
@@ -1629,12 +1661,16 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
             )
             command_count = len(controller.commands)
             controller.rxdelay = "0"
+            controller.airtime_factor = "0"
+            controller.ota_hops = 0
             loaded = rak_chain.load_or_capture_transfer_settings(
                 controller, "remote", "AA" * 32, work_dir
             )
             mode = (work_dir / rak_chain.TRANSFER_SETTINGS_FILE).stat().st_mode
 
         self.assertEqual(loaded, saved)
+        self.assertEqual(loaded.airtime_factor, "1.0")
+        self.assertEqual(loaded.ota_hops, 3)
         self.assertEqual(len(controller.commands), command_count)
         self.assertEqual(mode & 0o777, 0o600)
 
@@ -1652,11 +1688,38 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
                         "rxps_sleep_us": 60000,
                         "powersaving_enabled": False,
                         "rxdelay": "2.0",
+                        "airtime_factor": "1.0",
+                        "ota_hops": 3,
                     }
                 ),
                 encoding="ascii",
             )
             with self.assertRaisesRegex(ota.OtaError, "invalid saved transfer settings"):
+                rak_chain.load_or_capture_transfer_settings(
+                    controller, "remote", "AA" * 32, work_dir
+                )
+
+    def test_saved_settings_without_restore_fields_are_rejected(self) -> None:
+        controller = self.Controller()
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            path = work_dir / rak_chain.TRANSFER_SETTINGS_FILE
+            path.write_text(
+                json.dumps(
+                    {
+                        "target_key": "aa" * 32,
+                        "rxps_enabled": False,
+                        "rxps_rx_us": 65625,
+                        "rxps_sleep_us": 60000,
+                        "powersaving_enabled": False,
+                        "rxdelay": "2.0",
+                    }
+                ),
+                encoding="ascii",
+            )
+            with self.assertRaisesRegex(
+                ota.OtaError, "invalid saved transfer settings"
+            ):
                 rak_chain.load_or_capture_transfer_settings(
                     controller, "remote", "AA" * 32, work_dir
                 )

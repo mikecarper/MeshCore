@@ -384,6 +384,8 @@ class TargetTransferSettings:
     rxps_sleep_us: int
     powersaving_enabled: bool
     rxdelay: str
+    airtime_factor: str
+    ota_hops: int
 
 
 def sha256_file(path: Path) -> str:
@@ -927,12 +929,29 @@ def read_target_transfer_settings(
     if rxdelay_match is None:
         raise ota.OtaError(f"could not read destination RX delay: {rxdelay_reply}")
 
+    airtime_reply = controller.remote_command(target_name, "get af")
+    airtime_match = re.fullmatch(
+        r"\s*>\s*([0-9]+(?:\.[0-9]+)?)\s*",
+        airtime_reply,
+    )
+    if airtime_match is None:
+        raise ota.OtaError(
+            f"could not read destination airtime factor: {airtime_reply}"
+        )
+    airtime_factor = float(airtime_match.group(1))
+    if not math.isfinite(airtime_factor) or airtime_factor < 0.0:
+        raise ota.OtaError(
+            f"destination returned an invalid airtime factor: {airtime_reply}"
+        )
+
     return TargetTransferSettings(
         rxps_enabled=rxps_match.group(1).lower() == "on",
         rxps_rx_us=int(rxps_match.group(2)),
         rxps_sleep_us=int(rxps_match.group(3)),
         powersaving_enabled=powersaving_match.group(1).lower() == "on",
         rxdelay=rxdelay_match.group(1),
+        airtime_factor=airtime_match.group(1),
+        ota_hops=read_ota_hops(controller, target_name),
     )
 
 
@@ -954,14 +973,25 @@ def load_or_capture_transfer_settings(
                 saved["powersaving_enabled"], bool
             ):
                 raise TypeError("saved power states must be JSON booleans")
+            if isinstance(saved["ota_hops"], bool) or not isinstance(
+                saved["ota_hops"], int
+            ):
+                raise TypeError("saved OTA hop reach must be a JSON integer")
             settings = TargetTransferSettings(
                 rxps_enabled=saved["rxps_enabled"],
                 rxps_rx_us=int(saved["rxps_rx_us"]),
                 rxps_sleep_us=int(saved["rxps_sleep_us"]),
                 powersaving_enabled=saved["powersaving_enabled"],
                 rxdelay=str(saved["rxdelay"]),
+                airtime_factor=str(saved["airtime_factor"]),
+                ota_hops=saved["ota_hops"],
             )
             float(settings.rxdelay)
+            airtime_factor = float(settings.airtime_factor)
+            if not math.isfinite(airtime_factor) or airtime_factor < 0.0:
+                raise ValueError("saved airtime factor is invalid")
+            if not 0 <= settings.ota_hops <= 8:
+                raise ValueError("saved OTA hop reach is invalid")
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ota.OtaError(f"invalid saved transfer settings in {path}") from exc
         print(f"[guardrail] loaded original destination settings from {path}")
@@ -975,6 +1005,8 @@ def load_or_capture_transfer_settings(
         "rxps_sleep_us": settings.rxps_sleep_us,
         "powersaving_enabled": settings.powersaving_enabled,
         "rxdelay": settings.rxdelay,
+        "airtime_factor": settings.airtime_factor,
+        "ota_hops": settings.ota_hops,
     }
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="ascii")
@@ -987,6 +1019,8 @@ def load_or_capture_transfer_settings(
 def enforce_transfer_guardrails(
     controller: ota.Controller,
     target_name: str,
+    *,
+    legacy_full_airtime: bool = False,
 ) -> None:
     current = read_target_transfer_settings(controller, target_name)
     if current.powersaving_enabled:
@@ -1001,18 +1035,30 @@ def enforce_transfer_guardrails(
         reply = controller.remote_command(target_name, "set rxdelay 0")
         if not reply.upper().startswith("OK"):
             raise ota.OtaError(f"target did not disable RX flood delay: {reply}")
+    if legacy_full_airtime and abs(float(current.airtime_factor)) > 0.0001:
+        reply = controller.remote_command(target_name, "set af 0")
+        if not reply.upper().startswith("OK"):
+            raise ota.OtaError(f"target did not enable full legacy airtime: {reply}")
 
     verified = read_target_transfer_settings(controller, target_name)
     if (
         verified.powersaving_enabled
         or verified.rxps_enabled
         or abs(float(verified.rxdelay)) > 0.0001
+        or (
+            legacy_full_airtime
+            and abs(float(verified.airtime_factor)) > 0.0001
+        )
     ):
         raise ota.OtaError(
             "destination transfer guardrails did not read back as "
             "powersaving=off, RXPS=off, rxdelay=0"
+            + (", af=0" if legacy_full_airtime else "")
         )
-    print("[guardrail] destination verified: RXPS off, rxdelay 0, CPU power saving off")
+    detail = "RXPS off, rxdelay 0, CPU power saving off"
+    if legacy_full_airtime:
+        detail += ", legacy airtime factor 0"
+    print(f"[guardrail] destination verified: {detail}")
 
 
 def restore_transfer_settings(
@@ -1043,10 +1089,28 @@ def restore_transfer_settings(
         if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
             raise ota.OtaError(f"target did not restore RXPS-off state: {reply}")
 
+    if abs(float(current.airtime_factor) - float(saved.airtime_factor)) > 0.0001:
+        reply = controller.remote_command(
+            target_name, f"set af {saved.airtime_factor}"
+        )
+        if not reply.upper().startswith("OK"):
+            raise ota.OtaError(f"target did not restore airtime factor: {reply}")
+
+    if current.ota_hops != saved.ota_hops:
+        reply = controller.remote_command(
+            target_name, f"ota config hops {saved.ota_hops}"
+        )
+        if not reply.startswith(f"OK OTA reach = {saved.ota_hops} hop"):
+            raise ota.OtaError(f"target did not restore OTA hop policy: {reply}")
+
     verified = read_target_transfer_settings(controller, target_name)
     if (
         verified.rxps_enabled != saved.rxps_enabled
         or abs(float(verified.rxdelay) - float(saved.rxdelay)) > 0.0001
+        or abs(
+            float(verified.airtime_factor) - float(saved.airtime_factor)
+        ) > 0.0001
+        or verified.ota_hops != saved.ota_hops
         or (
             saved.rxps_enabled
             and (
@@ -1339,6 +1403,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="destination OTA receive/relay reach to enforce before every step",
     )
+    parser.add_argument(
+        "--legacy-full-airtime",
+        action="store_true",
+        help=(
+            "temporarily set destination af=0 for legacy TempRadio firmware; "
+            "use only where the selected frequency and local rules allow it"
+        ),
+    )
     parser.add_argument("--controller-baud", type=int, default=115200)
     parser.add_argument("--source-baud", type=int, default=115200)
     parser.add_argument("--meshcli", default="meshcli")
@@ -1469,8 +1541,19 @@ def confirm_chain(
             f"  relay timing: rxdelay 0, txdelay "
             f"{ota.format_decimal(args.relay_txdelay)} (saved/restored)"
         )
-    print(f"  OTA reach   : enforce {args.ota_hops} hops before every step")
-    print("  guardrails  : save, disable RXPS/rxdelay/CPU sleep, restore at endpoint")
+    print(
+        f"  OTA reach   : enforce {args.ota_hops} hops before every step, "
+        "then restore"
+    )
+    print(
+        "  guardrails  : save, disable RXPS/rxdelay/CPU sleep, restore all "
+        "settings at endpoint"
+    )
+    if args.legacy_full_airtime:
+        print(
+            "  full airtime: temporarily set af=0; operator accepts local "
+            "duty-cycle responsibility"
+        )
     print("  watchdog    : disable, prove stable, gate every install, then re-enable")
     if args.preflight_only:
         print("Live preflight passed; no radio or watchdog settings were changed.")
@@ -1557,7 +1640,6 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if first_index == len(steps):
-            enforce_ota_hops(controller, target_name, args.ota_hops)
             transfer_path = work_dir / TRANSFER_SETTINGS_FILE
             if transfer_path.exists():
                 transfer_settings = load_or_capture_transfer_settings(
@@ -1578,7 +1660,11 @@ def main(argv: list[str] | None = None) -> int:
             controller, target_name, full_key, work_dir
         )
         prepare_watchdog(controller, target_name)
-        enforce_transfer_guardrails(controller, target_name)
+        enforce_transfer_guardrails(
+            controller,
+            target_name,
+            legacy_full_airtime=args.legacy_full_airtime,
+        )
         enforce_ota_hops(controller, target_name, args.ota_hops)
         for index in range(first_index, len(steps)):
             step = steps[index]
@@ -1595,7 +1681,11 @@ def main(argv: list[str] | None = None) -> int:
                     f"live target is at chain index {current_index}, expected {index}"
                 )
             require_watchdog_state(controller, target_name, "off")
-            enforce_transfer_guardrails(controller, target_name)
+            enforce_transfer_guardrails(
+                controller,
+                target_name,
+                legacy_full_airtime=args.legacy_full_airtime,
+            )
             enforce_ota_hops(controller, target_name, args.ota_hops)
             print(
                 f"\n[chain] step {step.number:02d}/{len(steps)}: "
@@ -1670,7 +1760,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "The target watchdog and transfer guardrails may intentionally remain off. "
             "Rerun the same command and work directory to resume and restore the saved "
-            "settings; do not skip a chain step.",
+            "settings, including OTA reach and airtime factor; do not skip a chain step.",
             file=sys.stderr,
         )
         return 2

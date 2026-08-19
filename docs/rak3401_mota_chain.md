@@ -119,12 +119,17 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
   --target-key 63d8df63 \
   --temp-radio 909.950,500,5,5,120 \
   --ota-hops 0 \
+  --legacy-full-airtime \
   --motatool /path/to/motatool \
   --yes
 ```
 
 Keep the work directory. Rerunning the same command resumes only when the live
 EndF body hash matches an exact chain node. Never manually skip a package.
+`--legacy-full-airtime` temporarily sets the destination airtime factor to
+zero and restores it at the endpoint. Use that option only where the selected
+frequency and local duty-cycle rules permit a full transmit budget; omit it
+otherwise.
 
 ## Manual operation
 
@@ -157,6 +162,7 @@ get system.watchdog
 get radio.rxps
 powersaving
 get rxdelay
+get af
 ota config
 ```
 
@@ -182,6 +188,12 @@ set rxdelay 0
 ota config hops 0
 tempradio 909.950,500,5,5,120
 ```
+
+Where local duty-cycle rules permit it, `set af 0` can also remove the legacy
+firmware's saved airtime wait during this bounded maintenance window. Record
+`get af` first and restore that exact value after the final step. Current
+firmware grants the bounded TempRadio transfer budget without overwriting the
+saved airtime factor.
 
 `powersaving off` is an isolation guardrail, not the fix for the observed
 failure. The actual source failure was an oversized USB CDC reply; current
@@ -274,13 +286,26 @@ airtime and duty spacing, clamped to 100-1000 ms. These two delays solve
 different problems.
 
 After step 9 is proven, restore each saved destination and relay value exactly,
-then restore normal radio operation. Re-enable the RAK system watchdog last:
+including `rxdelay`, RXPS, CPU power saving, `af`, `ota config hops`, and relay
+timing. Ordinary repeater firmware does not implement `normalradio`. While the
+node is still reachable on the temporary channel, shorten its lease to one
+minute with the same tuple:
 
 ```text
-normalradio
+tempradio 909.950,500,5,5,1
+```
+
+Wait for the lease to expire, return the controller and ordinary source to
+their saved normal channels, and then re-enable the RAK system watchdog:
+
+```text
 set system.watchdog on
 get system.watchdog
 ```
+
+A Full Companion source is the exception: its local TCP console supports
+`normalradio` and the automated runner uses it before restoring the shared
+Binary API radio tuple.
 
 Final success requires version `v1.17.1.02-halo-keymind-cascade-dev-e742333a`,
 body hash `4BB1526BF647547D`, target `2FA509C1`, hardware `RAK_3401`, and
@@ -323,11 +348,13 @@ completes still requires local USB recovery because the deployed start image
 predates the rescue command.
 
 Before the first mutation, the runner saves the destination's RXPS periods,
-CPU power-saving state, and RX flood delay in the persistent work directory.
-It verifies `radio.rxps off`, `powersaving off`, and `rxdelay 0` after every
-bridge reboot, then restores the original values only after the exact endpoint
-is proven. An interrupted run deliberately leaves those transfer guardrails
-active; rerunning with the same work directory resumes and restores them.
+CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
+the persistent work directory. It verifies `radio.rxps off`, `powersaving off`,
+and `rxdelay 0` after every bridge reboot, plus `af 0` when
+`--legacy-full-airtime` was explicitly selected. It restores every original
+value only after the exact endpoint is proven. An interrupted run deliberately
+leaves those transfer guardrails active; rerun the same command with the same
+work directory to resume and restore them.
 CPU power saving was not the cause of the observed folder-source failure: that
 was a USB CDC receive-ring overrun fixed by bounded serial reads. The runtime
 settings remain conservative isolation and fast-link reliability guardrails.

@@ -378,7 +378,10 @@ ZIP and a persistent work directory. The runner enforces exact target, start
 body hash, package order, watchdog state, post-boot identity, and normal-radio
 restoration.
 
-Direct bench: `--temp-radio 909.950,500,5,5,120 --ota-hops 0`.
+Direct bench: use `--temp-radio 909.950,500,5,5,120 --ota-hops 0`. Add
+`--legacy-full-airtime` only where the frequency and local duty-cycle rules
+permit it; omit it otherwise. The runner saves and restores the original
+airtime factor and OTA hop reach.
 
 Live private network with two intermediate relays: use
 `--temp-radio 909.950,250,5,5,120 --ota-hops 3`, plus two `--relay` arguments
