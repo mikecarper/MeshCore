@@ -556,8 +556,10 @@ This keeps each active transfer as one transmitter and one receiver while still 
 repeaters between them and persistent archive nodes to improve future availability.
 
 TempRadio is treated as a private maintenance network. Active transfer packets use priority 0, bypass the
-public-flood receive holdoff, retain the relay role's airtime-scaled transmit collision window, and do not
-schedule generic flood retries. The bounded serving
+public-flood receive holdoff, use the full transmit budget without overwriting the saved normal-radio airtime
+factor, retain the relay role's airtime-scaled transmit collision window, and do not schedule generic flood
+retries. Deployed firmware predating that TempRadio budget override can be accelerated manually with a saved
+`get af` / temporary `set af 0` / restore sequence. The bounded serving
 queue admits at most two DATA/PROOF packets ahead of the radio while preserving at least four free packet-pool
 entries. CAD remains enabled to arbitrate the half-duplex channel, but its busy retry is scaled to one-quarter
 of a packet airtime and clamped to 5-50 ms instead of the ordinary 120-360 ms cadence. Discovery traffic keeps

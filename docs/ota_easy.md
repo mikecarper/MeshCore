@@ -311,6 +311,12 @@ For a powered bench update where restart-resume is not needed, `ota config check
 removes periodic progress writes. It is a smaller optimization than selecting the correct hop count and it
 trades away persisted mid-download resume; restore the previous checkpoint cadence afterward.
 
+Current repeater firmware automatically uses the full transmit budget during a bounded TempRadio window.
+Older receivers do not: if `get af` reports a nonzero value on such a node, record it, use `set af 0` for the
+maintenance window, and restore it afterward. This affects how promptly the legacy receiver can send its next
+block/proof request; it does not increase LoRa transmit power. Use a full duty budget only where the selected
+frequency and local rules permit it.
+
 The update is ready when the status says `ready to install`. Discovery is background traffic, while an
 active OTA download is primary mesh traffic. At the temporary-radio settings in this guide, allow roughly
 **one hour** for a typical ESP32 full image over a quiet, direct link. That is a planning estimate, not an
