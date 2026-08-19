@@ -102,7 +102,7 @@ Options:
   --firmware-version <version>: Firmware version to embed.
   --radio-preset <number>: Use the numbered radio choice from the interactive menu (1 keeps target defaults).
   --profile <default|cascade>: Select the firmware settings profile.
-  --skip-kiss|--include-kiss: Exclude or include KISS modem targets in bulk builds.
+  --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
 
 Examples:
@@ -1613,15 +1613,16 @@ prompt_for_kiss_modem_build_policy() {
   esac
 
   if ! [ -t 0 ]; then
-    echo "Including ${kiss_count} KISS modem target(s)."
+    filter_out_kiss_modem_targets
+    echo "Skipped ${kiss_count} KISS modem target(s) by default; use --include-kiss to build them."
     return 0
   fi
 
   while true; do
-    read -r -p "KISS modem targets found: ${kiss_count}. Build or skip them? [build/skip] (default: build): " choice
+    read -r -p "KISS modem targets found: ${kiss_count}. Build or skip them? [build/skip] (default: skip): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
-      choice="build"
+      choice="skip"
     fi
 
     case "$choice" in
