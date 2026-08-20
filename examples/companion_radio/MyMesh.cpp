@@ -6,6 +6,10 @@
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
+
 #if defined(ESP32) && defined(WIFI_SSID)
 #include "CompanionWiFi.h"
 #include <helpers/WiFiPowerSave.h>
@@ -331,42 +335,90 @@ void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, co
 }
 
 bool MyMesh::Frame::isChannelMsg() const {
-  return buf[0] == RESP_CODE_CHANNEL_MSG_RECV || buf[0] == RESP_CODE_CHANNEL_MSG_RECV_V3 ||
-         buf[0] == RESP_CODE_CHANNEL_DATA_RECV;
+  return len > 0 && (buf[0] == RESP_CODE_CHANNEL_MSG_RECV || buf[0] == RESP_CODE_CHANNEL_MSG_RECV_V3 ||
+                     buf[0] == RESP_CODE_CHANNEL_DATA_RECV);
+}
+
+int MyMesh::getOfflineQueueCapacity() const {
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  return offline_queue_capacity;
+#else
+  return OFFLINE_QUEUE_SIZE;
+#endif
+}
+
+MyMesh::Frame& MyMesh::offlineQueueFrameAt(int logical_index) {
+  return offline_queue[(offline_queue_head + logical_index) % getOfflineQueueCapacity()];
+}
+
+void MyMesh::initializeOfflineQueue() {
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  if (offline_queue != offline_queue_fallback || OFFLINE_QUEUE_SIZE <= offline_queue_capacity) return;
+
+  int requested_capacity = OFFLINE_QUEUE_SIZE;
+  while (requested_capacity > offline_queue_capacity) {
+    void* storage = heap_caps_malloc(sizeof(Frame) * requested_capacity,
+                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (storage) {
+      offline_queue = static_cast<Frame*>(storage);
+      offline_queue_capacity = requested_capacity;
+      return;
+    }
+
+    if (requested_capacity > 256) {
+      requested_capacity = 256;
+    } else if (requested_capacity > 128) {
+      requested_capacity = 128;
+    } else {
+      requested_capacity = offline_queue_capacity;
+    }
+  }
+#endif
 }
 
 void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
-  if (offline_queue_len >= OFFLINE_QUEUE_SIZE) {
+  const int capacity = getOfflineQueueCapacity();
+  if (!frame || len <= 0 || len > MAX_FRAME_SIZE || capacity <= 0) {
+    MESH_DEBUG_PRINTLN("WARN: invalid offline queue frame length: %d", len);
+    return;
+  }
+
+  if (offline_queue_len >= capacity) {
     MESH_DEBUG_PRINTLN("WARN: offline_queue is full!");
     int pos = 0;
     while (pos < offline_queue_len) {
-      if (offline_queue[pos].isChannelMsg()) {
+      if (offlineQueueFrameAt(pos).isChannelMsg()) {
         for (int i = pos; i < offline_queue_len - 1; i++) { // delete oldest channel msg from queue
-          offline_queue[i] = offline_queue[i + 1];
+          offlineQueueFrameAt(i) = offlineQueueFrameAt(i + 1);
         }
         MESH_DEBUG_PRINTLN("INFO: removed oldest channel message from queue.");
-        offline_queue[offline_queue_len - 1].len = len;
-        memcpy(offline_queue[offline_queue_len - 1].buf, frame, len);
+        Frame& tail = offlineQueueFrameAt(offline_queue_len - 1);
+        tail.len = len;
+        memcpy(tail.buf, frame, len);
         return;
       }
       pos++;
     }
     MESH_DEBUG_PRINTLN("INFO: no channel messages to remove from queue.");
   } else {
-    offline_queue[offline_queue_len].len = len;
-    memcpy(offline_queue[offline_queue_len].buf, frame, len);
+    Frame& tail = offlineQueueFrameAt(offline_queue_len);
+    tail.len = len;
+    memcpy(tail.buf, frame, len);
     offline_queue_len++;
   }
 }
 
 int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
   if (offline_queue_len > 0) {         // check offline queue
-    size_t len = offline_queue[0].len; // take from top of queue
-    memcpy(frame, offline_queue[0].buf, len);
+    Frame& head = offlineQueueFrameAt(0);
+    size_t len = head.len; // take from top of queue
+    memcpy(frame, head.buf, len);
 
     offline_queue_len--;
-    for (int i = 0; i < offline_queue_len; i++) { // delete top item from queue
-      offline_queue[i] = offline_queue[i + 1];
+    if (offline_queue_len == 0) {
+      offline_queue_head = 0;
+    } else {
+      offline_queue_head = (offline_queue_head + 1) % getOfflineQueueCapacity();
     }
     return len;
   }
@@ -1330,6 +1382,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _temp_radio_applied = false;
 #endif
   offline_queue_len = 0;
+  offline_queue_head = 0;
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  offline_queue = offline_queue_fallback;
+  offline_queue_capacity = OFFLINE_QUEUE_PSRAM_FALLBACK_SIZE;
+#endif
   app_target_ver = 0;
   clearPendingReqs();
   memset(expected_ack_table, 0, sizeof(expected_ack_table));
@@ -1393,6 +1450,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 void MyMesh::begin(bool has_display, bool radio_available) {
   _radio_available = radio_available;
   setRadioAvailable(radio_available);
+  initializeOfflineQueue();
   BaseChatMesh::begin();
 
   const bool is_new_install = !_store->loadMainIdentity(self_id)

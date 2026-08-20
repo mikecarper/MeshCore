@@ -112,7 +112,7 @@ The "reconstructed image" referenced by the manifest is the full `BODY || EndF` 
 
 ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
 LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
-their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
+their target partition table rather than using the FULL profile. A small set of high-capacity, non-PSRAM classic ESP32
 companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
 OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits `-full-ota-` and
 `-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. MQTT

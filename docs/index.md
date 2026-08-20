@@ -14,6 +14,7 @@ Below are a few quick start guides.
 - [MeshTower V2 microSD self-updates](./ota_meshtower_v2_sdcard.md)
 - [GPS Tracking](./gps_tracking.md)
 - [Companion Protocol](./companion_protocol.md)
+- [Companion Offline Message Queue](./companion_offline_queue.md)
 - [Full Companion: ESP32 and nRF52](./companion_radio_full.md)
 - [Packet Format](./packet_format.md)
 - [QR Codes](./qr_codes.md)

@@ -1972,12 +1972,12 @@ is_nrf52_companion_radio_full_target() {
 }
 
 requires_esp32_companion_full_ota_fallback() {
-  # Some ESP32 companions cannot hold their configured high-capacity contact,
+  # Some non-PSRAM ESP32 companions cannot hold their configured high-capacity contact,
   # channel, and offline-queue tables together with BLE, WiFi, and LoRa OTA in
   # internal DRAM. Keep their ordinary high-capacity image unchanged and emit
-  # a separately named FULL OTA image with the companion default capacities.
+  # a separately named FULL OTA image with measured-safe capacities.
   case "${1,,}" in
-    heltec_v2_companion_radio_wifi|lilygo_tbeam_1w_companion_radio_wifi|lilygo_tlora_v2_1_1_6_companion_radio_wifi|meshadventurer_sx1262_companion_radio_usb|meshadventurer_sx1268_companion_radio_usb) return 0 ;;
+    heltec_v2_companion_radio_wifi|lilygo_tlora_v2_1_1_6_companion_radio_wifi|meshadventurer_sx1262_companion_radio_usb|meshadventurer_sx1268_companion_radio_usb) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -2188,7 +2188,7 @@ apply_esp32_full_size_profile() {
   fi
 
   if requires_esp32_companion_full_ota_fallback "$env_name"; then
-    append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
+    append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
   fi
 }
@@ -2398,7 +2398,7 @@ apply_companion_radio_full_profile() {
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi
   # companion builds.
   if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
-    append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
+    append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
   fi
 

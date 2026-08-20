@@ -135,7 +135,10 @@ Companion radios connect MeshCore client software to LoRa. Depending on the
 board and build profile, the companion protocol can be exposed over BLE, USB
 serial, Wi-Fi, or Ethernet. Some boards also provide a Full Companion profile
 with additional local administration features. Check the exact build name and
-transport before flashing. See <https://meshcore.io> and the web client at
+transport before flashing. Pending messages are held in a volatile shared queue;
+capacity depends on the platform and memory profile. See the
+[Companion offline message queue](./companion_offline_queue.md) for the exact
+defaults and limitations. See <https://meshcore.io> and the web client at
 <https://app.meshcore.nz>.
 
 #### 1.2.4. Repeater

@@ -886,10 +886,11 @@ void halt() {
 #if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
   static void logFullCompanionMemory(const char* stage) {
     Serial.printf(
-        "Full Companion memory %s: heap=%u largest_internal=%u psram_free=%u/%u\r\n",
+        "Full Companion memory %s: heap=%u largest_internal=%u psram_free=%u/%u offline_queue=%d\r\n",
         stage, (unsigned)ESP.getFreeHeap(),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-        (unsigned)ESP.getFreePsram(), (unsigned)ESP.getPsramSize());
+        (unsigned)ESP.getFreePsram(), (unsigned)ESP.getPsramSize(),
+        the_mesh.getOfflineQueueCapacity());
   }
 #endif
 

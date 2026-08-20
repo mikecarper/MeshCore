@@ -73,8 +73,17 @@
 #endif
 
 #ifndef OFFLINE_QUEUE_SIZE
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+#define OFFLINE_QUEUE_SIZE 512
+#elif defined(COMPANION_RADIO_FULL) || defined(ESP32_PLATFORM) \
+    || defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
+#define OFFLINE_QUEUE_SIZE 256
+#else
 #define OFFLINE_QUEUE_SIZE 16
 #endif
+#endif
+
+static_assert(OFFLINE_QUEUE_SIZE > 0, "OFFLINE_QUEUE_SIZE must be positive");
 
 #ifndef ROOM_MESSAGE_TIMESTAMP_CACHE_SIZE
 #define ROOM_MESSAGE_TIMESTAMP_CACHE_SIZE 16
@@ -121,6 +130,7 @@ public:
   const char *getNodeName();
   CompanionNodePrefs *getNodePrefs();
   uint32_t getBLEPin();
+  int getOfflineQueueCapacity() const;
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   void serviceMQTT(const char* wifi_ssid, const char* wifi_password);
@@ -423,8 +433,21 @@ private:
 
     bool isChannelMsg() const;
   };
+  Frame& offlineQueueFrameAt(int logical_index);
+  void initializeOfflineQueue();
   int offline_queue_len;
+  int offline_queue_head;
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  enum {
+    OFFLINE_QUEUE_PSRAM_FALLBACK_SIZE =
+        OFFLINE_QUEUE_SIZE < 16 ? OFFLINE_QUEUE_SIZE : 16
+  };
+  Frame* offline_queue;
+  Frame offline_queue_fallback[OFFLINE_QUEUE_PSRAM_FALLBACK_SIZE];
+  int offline_queue_capacity;
+#else
   Frame offline_queue[OFFLINE_QUEUE_SIZE];
+#endif
 
   struct AckTableEntry {
     unsigned long msg_sent;

@@ -146,6 +146,16 @@ layout. Other boards with 8 MB or more retain dual application partitions.
 Heltec V2 and TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline
 queue in this combined profile because of internal DRAM limits.
 
+Full Companions normally retain 256 pending Companion message frames. ESP32
+boards with configured PSRAM retain 512 and allocate that queue from PSRAM
+before WiFi and BLE start. If PSRAM is unavailable at runtime, allocation falls
+back through 256 and 128 frames, then to a 16-frame internal buffer. The Full
+Companion startup memory line reports the capacity actually allocated as
+`offline_queue=<frames>`. The queue is volatile and shared by all channels and
+direct messages; it is not flash-backed history. See
+[Companion offline message queue](./companion_offline_queue.md) for all platform
+defaults and full-queue behavior.
+
 The nRF52 target inherits the board's ordinary USB Companion installation
 format and adds BLE plus the serial mOTA source. It does not enable an SD cache
 or any other board-specific storage behavior; host files are streamed as they

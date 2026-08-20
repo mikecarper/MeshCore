@@ -89,7 +89,7 @@ FULL ESP32 roles include the required transport. A
 serves host images but cannot stage or install one for itself. ESP32 full
 combines USB, BLE, and WiFi; nRF52 full combines USB and BLE because nRF52840
 has no WiFi.
-A small set of high-capacity classic ESP32 companions
+A small set of high-capacity, non-PSRAM classic ESP32 companions
 keep their normal image and provide a separate `-full-ota-` image with 100 contacts, 8 group channels, and
 a 16-frame offline queue. Install that variant's merged image over USB once before using it. Connect the
 source by USB serial or, when supported, by WiFi. For an ordinary raw-text USB
