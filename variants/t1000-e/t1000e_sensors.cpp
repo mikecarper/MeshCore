@@ -8,7 +8,7 @@
 #define NTC_REF_VCC   3300   // mV, max voltage of 3V3 sensor rail
 #define LIGHT_REF_VCC 2400   //
 
-static unsigned int ntc_res2[136] = {
+static const unsigned int ntc_res2[136] = {
   113347, 107565, 102116, 96978, 92132, 87559, 83242, 79166, 75316, 71677, 68237, 64991, 61919, 59011,
   56258,  53650,  51178,  48835, 46613, 44506, 42506, 40600, 38791, 37073, 35442, 33892, 32420, 31020,
   29689,  28423,  27219,  26076, 24988, 23951, 22963, 22021, 21123, 20267, 19450, 18670, 17926, 17214,
@@ -21,7 +21,7 @@ static unsigned int ntc_res2[136] = {
   1081,   1053,   1026,   999,   974,   949,   925,   902,   880,   858,
 };
 
-static char ntc_temp2[136] = {
+static const int8_t ntc_temp2[136] = {
   -30, -29, -28, -27, -26, -25, -24, -23, -22, -21, -20, -19, -18, -17, -16, -15, -14, -13, -12, -11,
   -10, -9,  -8,  -7,  -6,  -5,  -4,  -3,  -2,  -1,  0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
   10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,
@@ -32,22 +32,31 @@ static char ntc_temp2[136] = {
 };
 
 static float get_heater_temperature(unsigned int vcc_volt, unsigned int ntc_volt) {
-  int i = 0;
-  float Vout = 0, Rt = 0, temp = 0;
-  Vout = ntc_volt;
+  const size_t table_size = sizeof(ntc_res2) / sizeof(ntc_res2[0]);
 
-  Rt = (HEATER_NTC_RP * vcc_volt) / Vout - HEATER_NTC_RP;
+  // Zero output represents an open/high-resistance thermistor. A reading at
+  // or above the measured rail represents the low-resistance end. Clamp both
+  // cases to the calibrated table instead of dividing by zero or indexing
+  // outside it.
+  if (ntc_volt == 0) return ntc_temp2[0];
+  if (vcc_volt == 0 || ntc_volt >= vcc_volt) return ntc_temp2[table_size - 1];
 
-  for (i = 0; i < 136; i++) {
-    if (Rt >= ntc_res2[i]) {
-      break;
+  const float resistance =
+      HEATER_NTC_RP * (static_cast<float>(vcc_volt) / static_cast<float>(ntc_volt) - 1.0f);
+  if (resistance >= ntc_res2[0]) return ntc_temp2[0];
+  if (resistance <= ntc_res2[table_size - 1]) return ntc_temp2[table_size - 1];
+
+  for (size_t i = 1; i < table_size; i++) {
+    if (resistance >= ntc_res2[i]) {
+      const float fraction =
+          (ntc_res2[i - 1] - resistance) / static_cast<float>(ntc_res2[i - 1] - ntc_res2[i]);
+      const float temperature =
+          ntc_temp2[i - 1] + fraction * static_cast<float>(ntc_temp2[i] - ntc_temp2[i - 1]);
+      return roundf(temperature * 10.0f) / 10.0f;
     }
   }
 
-  temp = ntc_temp2[i - 1] + 1 * (ntc_res2[i - 1] - Rt) / (float)(ntc_res2[i - 1] - ntc_res2[i]);
-
-  temp = (temp * 100 + 5) / 100;
-  return temp;
+  return ntc_temp2[table_size - 1];
 }
 
 static int get_light_lv(unsigned int light_volt) {
