@@ -365,6 +365,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../companion_protocol/" class="md-nav__link">
         
   
@@ -3137,7 +3164,10 @@ current source of truth.</p>
 board and build profile, the companion protocol can be exposed over BLE, USB
 serial, Wi-Fi, or Ethernet. Some boards also provide a Full Companion profile
 with additional local administration features. Check the exact build name and
-transport before flashing. See <a href="https://meshcore.io">https://meshcore.io</a> and the web client at
+transport before flashing. Pending messages are held in a volatile shared queue;
+capacity depends on the platform and memory profile. See the
+<a href="../companion_offline_queue/">Companion offline message queue</a> for the exact
+defaults and limitations. See <a href="https://meshcore.io">https://meshcore.io</a> and the web client at
 <a href="https://app.meshcore.nz">https://app.meshcore.nz</a>.</p>
 <h4 id="124-repeater">1.2.4. Repeater</h4>
 <p>Repeaters are used to extend the range of a MeshCore network. Repeater firmware runs on the same devices that run client firmware. A repeater's job is to forward MeshCore packets to the destination device. It does <strong>not</strong> forward or retransmit every packet it receives, unlike other LoRa mesh systems.</p>

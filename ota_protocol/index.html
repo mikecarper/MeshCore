@@ -365,6 +365,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../companion_protocol/" class="md-nav__link">
         
   
@@ -1926,7 +1953,7 @@ EndF trailer (fixed 56 bytes):
 <h3 id="esp32-application-slot-profiles">ESP32 application-slot profiles</h3>
 <p>ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
 LoRa OTA and carry <code>-ota-</code> in their filenames so they can seed a host folder over serial or TCP; they keep
-their target partition table rather than using the FULL profile. A small set of high-capacity classic ESP32
+their target partition table rather than using the FULL profile. A small set of high-capacity, non-PSRAM classic ESP32
 companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
 OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits <code>-full-ota-</code> and
 <code>-full-logging-ota-</code> variants with 100 contacts, 8 group channels, and a 16-frame offline queue. MQTT

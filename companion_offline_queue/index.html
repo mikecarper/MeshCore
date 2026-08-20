@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/docs/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_offline_queue/">
       
       
-        <link rel="prev" href="../companion_radio_full/">
+        <link rel="prev" href="../cli_commands/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../companion_protocol/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Local Documentation - MeshCore Docs</title>
+        <title>Companion Offline Message Queue - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#local-documentation" class="md-skip">
+        <a href="#companion-offline-message-queue" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Local Documentation
+              Companion Offline Message Queue
             
           </span>
         </div>
@@ -362,10 +362,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../companion_offline_queue/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -381,6 +408,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#default-capacities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default capacities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-queue-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full queue behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -443,37 +512,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Local Documentation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -489,37 +531,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building and viewing Docs
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1118,10 +1129,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
+  <a href="#default-capacities" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building and viewing Docs
+        Default capacities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-queue-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full queue behavior
       
     </span>
   </a>
@@ -1145,7 +1167,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/docs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_offline_queue.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1153,16 +1175,76 @@
   
 
 
-<h1 id="local-documentation">Local Documentation</h1>
-<p>This document explains how to build and view the MeshCore documentation locally.</p>
-<h2 id="building-and-viewing-docs">Building and viewing Docs</h2>
-<pre><code>pip install mkdocs
-pip install mkdocs-material
-</code></pre>
-<ul>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
-</ul>
+<h1 id="companion-offline-message-queue">Companion Offline Message Queue</h1>
+<p>Companion firmware keeps received channel data, channel messages, and direct
+messages in one pending queue until a Companion client requests them with the
+sync-next-message command. This is volatile RAM, not message history in flash.
+A reboot clears it.</p>
+<h2 id="default-capacities">Default capacities</h2>
+<table>
+<thead>
+<tr>
+<th>Platform or memory profile</th>
+<th style="text-align: right;">Pending frames</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32 with configured PSRAM</td>
+<td style="text-align: right;">512</td>
+</tr>
+<tr>
+<td>ESP32 without PSRAM</td>
+<td style="text-align: right;">256</td>
+</tr>
+<tr>
+<td>nRF52840</td>
+<td style="text-align: right;">256</td>
+</tr>
+<tr>
+<td>RP2040</td>
+<td style="text-align: right;">256</td>
+</tr>
+<tr>
+<td>STM32</td>
+<td style="text-align: right;">16</td>
+</tr>
+<tr>
+<td>Known constrained classic ESP32 target override</td>
+<td style="text-align: right;">128</td>
+</tr>
+<tr>
+<td>Constrained Full ESP32 fallback</td>
+<td style="text-align: right;">16</td>
+</tr>
+</tbody>
+</table>
+<p>An explicit target <code>OFFLINE_QUEUE_SIZE</code> overrides the platform default. The
+Heltec V2 and TLora V2 Full Companion profiles, for example, use 16 frames so
+their combined WiFi, BLE, and LoRa mOTA image retains enough internal DRAM.
+Standard, logging, MQTT, and Cascade build overlays retain the selected target
+capacity; they do not silently shrink the queue.</p>
+<p>Each queue slot currently costs 177 bytes. A 256-frame queue reserves 45,312
+bytes, while a 512-frame queue reserves 90,624 bytes. There is no 256-frame
+protocol limit: the queue length and indexes can represent 512 or more. The
+practical limit is available RAM and the heap and stack headroom required by
+the transports and display.</p>
+<p>On ESP32 boards marked with <code>BOARD_HAS_PSRAM</code>, the queue is allocated from
+PSRAM before WiFi and BLE start. A failed 512-frame allocation retries at 256,
+then 128, and finally uses a 16-frame internal fallback. Full Companion prints
+the capacity actually allocated in its startup memory line as
+<code>offline_queue=&lt;frames&gt;</code>.</p>
+<h2 id="full-queue-behavior">Full queue behavior</h2>
+<p>The capacity is shared across Public, other channels, channel data, and direct
+messages. It is not a per-channel count. When the queue is full, firmware
+replaces the oldest queued channel frame so newer traffic can still arrive. If
+the full queue contains only direct messages, a new frame is dropped rather
+than deleting a direct message.</p>
+<p>Queue order is preserved. Removal uses a ring index, so delivering one pending
+message no longer copies every remaining frame; only the less-common removal
+of an old channel frame from a full queue may shift entries.</p>
+<p>Capacity is selected when firmware is compiled. There is no CLI or Companion
+protocol setting to resize it at runtime.</p>
 
 
 
