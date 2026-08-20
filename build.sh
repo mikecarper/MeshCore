@@ -2115,9 +2115,9 @@ supports_esp32_full_build() {
 requires_esp32_full_cli_profile() {
   local env_name=$1
 
-  # MQTT observers and ESP-NOW bridges previously depended on a reduced CLI to
-  # fit the legacy application slot. Always build those roles with the expanded
-  # FULL partition profile so no administration commands are removed.
+  # MQTT observers and ESP-NOW bridges do not fit their legacy application
+  # slots with the complete CLI. Always build those roles with the expanded
+  # FULL partition profile so no commands are removed.
   [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] \
     && ! is_esp32_companion_build "$env_name" \
     && { is_mqtt_bridge_target "$env_name" \
@@ -2145,14 +2145,45 @@ apply_esp32_lora_ota_size_profile() {
     # The no-external-sensors image is also the self-updatable field image. Keep
     # manual browser OTA available on every ESP32 family through the compact
     # uploader, the complete role CLI, and the full one-byte neighbor-index
-    # range.
-    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS}"
+    # range. MeshCore and this source-built dependency set do not use C++
+    # exceptions, so omit their otherwise forced runtime tables instead of
+    # dropping WiFi OTA, LoRa OTA, USB seeding, or CLI commands.
+    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8 -fexceptions"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS} -fno-exceptions"
   else
     append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -ULIGHTWEIGHT_WIFI_OTA -DDISABLE_WIFI_OTA=1"
   fi
 
+}
+
+apply_esp32_constrained_companion_size_profile() {
+  local env_name=$1
+
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "ESP32_PLATFORM" ]; then
+    return 0
+  fi
+
+  # These 1.25 MiB companion images had only 22-66 KiB of measured app-slot
+  # headroom. MeshCore and their source-built dependencies do not use C++
+  # exceptions, so omit the exception runtime instead of reducing contacts,
+  # queues, BLE, WiFi, GPS, display support, or CLI commands. Keep this scoped
+  # to measured constrained targets; expanded FULL builds do not need it.
+  case "${env_name,,}" in
+    station_g2_companion_radio_ble \
+      |thinknode_m2_companion_radio_ble \
+      |thinknode_m2_companion_radio_wifi \
+      |lilygo_t3s3_sx1262_companion_radio_ble \
+      |lilygo_t3s3_sx1262_companion_radio_ble_ps \
+      |lilygo_t3s3_sx1276_companion_radio_ble \
+      |nibble_zero_connect_companion_radio_ble_ \
+      |nibble_zero_connect_companion_radio_wifi_ \
+      |nibble_screen_connect_companion_radio_ble_ \
+      |nibble_screen_connect_companion_radio_wifi_)
+      append_platformio_build_unflags "-fexceptions"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -fno-exceptions"
+      ;;
+  esac
 }
 
 apply_esp32_full_size_profile() {
@@ -2779,6 +2810,7 @@ build_firmware() {
   apply_companion_radio_full_profile "$env_name" "$pio_env_name"
   apply_nrf52_lora_ota_build_recipe "$env_name" "$pio_env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
+  apply_esp32_constrained_companion_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
   apply_nrf52_size_profile "$env_name"
