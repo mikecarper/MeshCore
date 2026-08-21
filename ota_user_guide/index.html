@@ -1750,8 +1750,11 @@ falls back to flash. To <strong>stop</strong> a download you no longer want:</p>
 </code></pre>
 <p>The node verifies the firmware one last time, and if everything checks out it installs it and <strong>reboots
 into the new version</strong>. If the check fails, it tells you why and does <strong>not</strong> install. Unsigned images
-install only through this explicit command. A signed image whose signer is not in the device allowlist is
-rejected; trusted signed images can auto-install only when that policy is enabled.</p>
+normally install only through this explicit command. The MeshTower V2 SD target is stricter and requires an
+allowlisted signature even for a manual application install, because it authorizes removable-media bytes for
+the bootloader. A signed image whose signer is not in the device allowlist is rejected; trusted signed images
+can auto-install only when that policy is enabled and the signed version is strictly newer than the running
+hash-valid EndF version. Manual <code>ota install</code> remains the deliberate equal-version/rollback override.</p>
 <p>After it reboots, run <code>ota status</code> to confirm the new version.</p>
 <h3 id="updating-an-nrf52-bootloader-advanced-explicit-only">Updating an nRF52 bootloader (advanced, explicit only)</h3>
 <p>This is available on specially marked no-external-flash nRF52840 lean
@@ -1776,10 +1779,13 @@ ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
 Ordinary <code>ota install</code> deliberately refuses this package. The privileged
 command requires an exact 40 KiB candidate payload in the fixed 41,330-byte
 container, a valid exact embedded identity/CRC and vector table, continued
-boot-update support, and a valid signature from a key already in <code>ota key</code>'s
-trusted allowlist. It preserves the running application while OTAFIX replaces
-itself; <code>blup:C8</code> in post-reboot <code>ota status</code> means success. Any node lacking
-this command or those capabilities must update its bootloader locally instead.</p>
+boot-update support, required <code>BLM2</code>/<code>SOFT</code> continuity metadata at canonical
+raw-image offset <code>0x9FB4</code>, a boot version
+that exactly matches the package and is newer than installed BLM2, and a valid
+signature from a key already in <code>ota key</code>'s trusted allowlist. It preserves the
+running application while OTAFIX replaces itself; <code>blup:C8</code> in post-reboot
+<code>ota status</code> means success. Remote rollback is refused. Any node lacking this
+command or those capabilities must update its bootloader locally instead.</p>
 <p>On an internal-flash target, the package shares the ordinary store below
 <code>0xED000</code> and bottom-aligns at <code>0xE2000</code>; there is no separate reserved scratch
 bank. A valid live <code>EndF</code> must prove the current image ends at or below that
@@ -1789,9 +1795,14 @@ On the MeshTower V2 SD target, the application linker remains at <code>0xED000</
 bootloader replacement needs temporary scratch beginning at <code>0xE0000</code>. A
 hash-valid live <code>EndF</code> must therefore prove the complete current image ends by
 <code>0xE0000</code>. A CRC-bound boot-settings bank must cover that complete image while
-also ending by <code>0xE0000</code>. MeshCore binds approval to the exact authenticated
-signed image hash in an internal token before handing the removable SD card to
-OTAFIX, so a later card change fails instead of authorizing different bytes.
+also ending by <code>0xE0000</code>. MeshCore binds both application and bootloader SD
+approval to purpose, exact raw geometry, and a normalized SHA-256 in a
+reset-retained <code>MOTASDA2</code> record. Boot updates also bind the exact authenticated
+signed image hash in the E0000 token. OTAFIX consumes the retained record before
+media access, so a later card change or power cycle fails instead of authorizing
+different bytes. MeshCore never claims or writes raw sector 1. Both application
+and bootloader OTA wait until a matching BLM2 bootloader has been provisioned
+locally; preview.12 requires USB/BLE DFU or SWD first.
 Larger applications can continue to use normal application mOTA;
 only bootloader self-update is refused.
 See <a href="../ota_nrf52_bootloader_update/">the nRF52 bootloader-update guide</a> for the
@@ -1830,7 +1841,7 @@ automation (e.g. for a remote node you can't easily reach), you can opt in. Thes
 ota config autofetch signed     # auto-download only signed updates
 ota config autofetch off        # back to manual (default)
 
-ota config autoinstall trusted  # auto-INSTALL a downloaded update IF it's signed by a key you trust
+ota config autoinstall trusted  # auto-INSTALL only a trusted signed version newer than the running EndF
 ota config autoinstall off      # never auto-install (default)
 
 ota config advert 1440          # re-advertise every N minutes while temp radio is running
@@ -1841,8 +1852,17 @@ ota config hops 0               # only exchange OTA with directly-connected node
 
 ota config                      # show the current settings
 </code></pre>
+<p>These policies also govern automatic adoption of an interrupted staged download after reboot. <code>off</code> leaves
+it untouched, <code>signed</code> requires the stored manifest's signed flag, and automatic resume requires the stored
+target to match this node and its version to be newer than the running valid EndF. Reissuing an explicit
+<code>ota pull &lt;MID8&gt;</code> remains the deliberate override for an older or unsigned partial.
+For bring-up/debugging, <code>ota dev resume &lt;MID8&gt;</code> performs the same explicit MID-bound re-adoption without
+starting a new network fetch. After reboot it requires the MID; bare <code>ota dev resume</code> is accepted only while
+an active/requested session MID still exists, and malformed or missing identifiers are rejected.</p>
 <p>Recommended for most people: leave both <strong>off</strong> and update by hand. Use <code>autoinstall trusted</code> only once
-you've added the signer's key (next section) and you trust them to push updates unattended.</p>
+you've added the signer's key (next section) and you trust them to push updates unattended. Automatic
+admission and final apply both reject zero, equal, or older signed versions; a dishonest catalog version
+cannot bypass the manifest check. Use manual <code>ota pull</code> plus <code>ota install</code> for an intentional rollback.</p>
 <p>The MeshTower V2 SD OTA target has a separate, default-on <strong>archive</strong> policy. It saves all mOTAs it sees
 to the SD card so the repeater can seed them later; this does not install them and does not change the
 install-oriented <code>autofetch</code> default above. Use <code>ota cache</code> for status and <code>ota cache off</code> or
@@ -1858,9 +1878,10 @@ for the required <code>/mota/&lt;manifest-id&gt;.mota</code> filenames and the c
 ota key list                    # show trusted signers
 ota key rm &lt;public-key-hex&gt;     # stop trusting one
 </code></pre>
-<p>Only updates signed by a trusted key are eligible for auto-install. Manual <code>ota install</code> permits an unsigned
-package after all integrity, hardware, base, and bootloader checks pass. A signed package whose signer is not
-in the device allowlist is rejected rather than silently treated as unsigned.</p>
+<p>Only strictly newer updates signed by a trusted key are eligible for auto-install. Manual <code>ota install</code>
+permits an unsigned package after all integrity, hardware, base, and bootloader checks pass, except on the
+MeshTower V2 removable-SD path where all application installs must be signed and allowlisted. A signed
+package whose signer is not in the device allowlist is rejected rather than silently treated as unsigned.</p>
 <hr />
 <h2 id="sharing-updates-with-others-advanced">Sharing updates with others (advanced)</h2>
 <h3 id="relay-a-folder-of-firmware-from-a-computer">Relay a folder of firmware from a computer</h3>
