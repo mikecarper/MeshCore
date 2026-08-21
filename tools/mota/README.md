@@ -31,8 +31,8 @@ Uses the repo's Python venv (`meshcore/`). Dependencies: `detools` (delta), `cry
 ## Tests
 
 ```bash
-./meshcore/bin/python tools/mota/test_mota.py      # EndF, merkle+proofs, full/delta, signing,
-                                                   # tamper detection, approval enforcement
+./meshcore/bin/python tools/mota/test_mota.py      # EndF, merkle+proofs, v2 apps/v3 XIAO bootloader,
+                                                   # signing, tamper detection, approval enforcement
 ./meshcore/bin/python tools/mota/gen_vectors.py    # regenerate the native-test cross-check vectors
 ./meshcore/bin/python tools/mota/gen_targets.py    # regenerate src/helpers/ota/OtaTargets.h (needs `pio`)
 ```
@@ -51,3 +51,20 @@ firmware and matches a delta's `base_hash` against its own `EndF`. Wiring (handl
 `target_id` = `sha2-256:4(pio_env_name)`, `hw_id` = explicit `-D MOTA_HW_ID` or a role-stripped hardware
 family derived from the environment name, and `fw_version` = parsed from `FIRMWARE_VERSION`. A node (and
 `motatool`, reading the firmware's `EndF`) therefore auto-discovers identity without relying on filenames.
+
+## Privileged XIAO bootloader reference builder
+
+Ordinary calls to `build_manifest()` continue to emit v2 application packages.
+Passing `bootloader=True` is a deliberately narrow reference-only path: it
+requires a nonzero version, a signed exact 40 KiB XIAO OTAFIX region, 1024-byte
+blocks, full codec, zero base hash, a sane vector table, exact `XIAO_DFU`
+embedded manifest/CRC/board identity, and an ABI-3 marker retaining QSPI plus
+boot-update capabilities. It derives the signed `XIAO_BL_28860044` or
+`XIAO_BL_28860045` hardware ID from the embedded board ID. Parsing and
+`verify()` repeat those gates; magic literals that are not complete valid
+structures are skipped.
+
+This library does not authorize a device update. A capable node will only arm
+such a v3 package through the exact manual confirmation described in
+[`docs/ota_nrf52_qspi.md`](../../docs/ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora).
+The ordinary `tools/lora_ota` runner rejects bootloader packages.

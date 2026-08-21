@@ -333,6 +333,10 @@ Discovery is asynchronous. `ota ls` says `refreshing`; wait a few seconds and ru
 shows an older row. Select `[same target]`: it can say `full` for ESP32 and external SD/QSPI nRF52 targets,
 or `delta` for any supported nRF52 target. Do not select `[unsupported]` (for example, a source's self-served
 full image on an internal-staging nRF52).
+Rows labelled `bootloader` are also outside this ordinary application flow:
+they are never automatic and `ota install` refuses them. Only an already-capable
+XIAO QSPI repeater can use the separate
+[explicit bootloader workflow](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora).
 Use the row's stable eight-hex manifest ID rather than its changing list position:
 
 ```text

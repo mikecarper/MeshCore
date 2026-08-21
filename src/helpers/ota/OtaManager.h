@@ -359,6 +359,8 @@ public:
   // in-place `.mota` can target both ESP32 and nRF52). 0xFF = unset.
   void set_apply_codec2(uint8_t c) { _apply_codec2 = c; }
   void set_accept_full(bool on) { _accept_full = on; }
+  void set_accept_bootloader(bool on) { _accept_bootloader = on; }
+  bool accepts_bootloader() const { return _accept_bootloader; }
   bool codecOk(uint8_t c) const {
     return (c == CODEC_FULL && _accept_full) || c == _apply_codec || c == _apply_codec2;
   }
@@ -391,6 +393,7 @@ public:
   void set_max_hops(uint8_t h) { _max_hops = h; }
   uint8_t max_hops() const { return _max_hops; }
   bool fetched_is_signed() const { return (_fflags & MFLAG_SIGNED) != 0; }  // flags of the fetched manifest
+  bool fetched_is_bootloader() const { return (_fflags & MFLAG_BOOTLOADER) != 0; }
 
   // This node's id (pubkey[0:4]), stamped into adverts we send so receivers can count distinct seeders.
   void set_seeder_id(const uint8_t* id4) { if (id4) for (int i = 0; i < 4; i++) _seeder_id[i] = id4[i]; }
@@ -601,6 +604,7 @@ private:
   uint8_t    _apply_codec = CODEC_DETOOLS_SEQUENTIAL;  // platform's delta codec (OtaContext sets it)
   uint8_t    _apply_codec2 = 0xFF;                     // optional 2nd accepted delta codec (ESP32: in-place)
   bool       _accept_full = true;                       // false on nRF52 flash (single-slot cannot apply full)
+  bool       _accept_bootloader = false;                 // explicit/manual only; never an auto-fetch signal
   bool       _archive_fetch = false;                    // capture-only pull: accept any target/codec
   bool       _archive_interest = false;                 // query full catalogs for the persistent archive
   uint8_t    _seeder_id[4] = {0,0,0,0};        // our node id (pubkey[0:4]) for advert seeder counting

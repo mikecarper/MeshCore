@@ -17,8 +17,16 @@ bool MotaManifest::is_approved() const {
 // always covers manifest[0, MOTA_SIGNED_LEN). Returns false on any over-read or bad format_ver.
 static bool parse_manifest_fields(ByteReader& r, MotaManifest& out) {
   out.format_ver = r.u8();
-  if (out.format_ver != MOTA_FORMAT_VER) return false;
   out.flags          = r.u8();
+  // v2 is application-only and v3 is bootloader-only. Requiring exact flags on v3 prevents a
+  // malformed or downgraded package from entering either apply path.
+  if (out.format_ver == MOTA_APP_FORMAT_VER) {
+    if (out.flags & MFLAG_BOOTLOADER || out.flags & ~MFLAG_KNOWN) return false;
+  } else if (out.format_ver == MOTA_BOOT_FORMAT_VER) {
+    if (out.flags != (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER)) return false;
+  } else {
+    return false;
+  }
   out.hash_algo      = r.u8();
   out.target_id      = r.u32();
   out.fw_version     = r.u32();
@@ -37,6 +45,13 @@ static bool parse_manifest_fields(ByteReader& r, MotaManifest& out) {
   if (!r.ok) return false;
   if (out.block_size_log2 == 0 || out.block_size_log2 > 24 || out.payload_size == 0) return false;
   out.block_count = (out.payload_size + out.block_size() - 1) / out.block_size();
+  if (out.is_bootloader()) {
+    static const uint8_t zero_base[8] = {0};
+    if (out.fw_version == 0 || out.codec_id != CODEC_FULL || out.image_size != 0xA000u ||
+        out.payload_size != 0xA000u || out.block_size_log2 != 10 ||
+        out.block_count != 40 || memcmp(out.base_hash, zero_base, sizeof(zero_base)) != 0)
+      return false;
+  }
   // block_idx is uint16 on the wire; capping here also keeps block_count*4 (leaves length) from overflowing.
   return out.block_count != 0 && out.block_count <= 0xFFFFu;
 }

@@ -335,7 +335,8 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
         oc.apply_hard = futureMillis(15000);
       } else if (millisHasNowPassed(oc.apply_at) &&
                  (_mgr->getOutboundTotal() == 0 || millisHasNowPassed(oc.apply_hard))) {
-        ota::ota_reboot_to_apply();          // does not return
+        if (oc.bootloader_apply_pending) ota::ota_reboot_to_bootloader_update();
+        else                             ota::ota_reboot_to_apply();
       }
     }
   }
@@ -410,7 +411,8 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
       _ota_autoinstall_tried = false;
     } else if (!_ota_autoinstall_tried && !oc.apply_pending
                && oc.autoinstall == ota::OtaContext::AUTOINSTALL_TRUSTED
-               && oc.manager.fetched_is_signed()) {
+               && oc.manager.fetched_is_signed()
+               && !oc.manager.fetched_is_bootloader()) {
       _ota_autoinstall_tried = true;
       char msg[100];
       oc.apply_fetched(msg);   // arms + sets apply_pending only if signed & allowlisted; refused otherwise

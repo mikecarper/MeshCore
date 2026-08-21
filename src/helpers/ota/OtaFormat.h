@@ -20,7 +20,12 @@ static const uint8_t  ENDF_MAGIC[4]    = { 'E', 'n', 'd', 'F' };   // 45 6E 64 4
 static const uint32_t ENDF_LEN         = 56;
 
 // ---- manifest -------------------------------------------------------------
-static const uint8_t  MOTA_FORMAT_VER  = 2;      // fixed-layout manifest (see offsets below)
+// Application packages remain v2. Bootloader packages deliberately use v3 even though the byte
+// layout is unchanged: every pre-bootloader-update parser rejects v3 before it can mistake the raw
+// bootloader region for a full application image.
+static const uint8_t  MOTA_FORMAT_VER       = 2; // application package (compatibility name)
+static const uint8_t  MOTA_APP_FORMAT_VER   = 2;
+static const uint8_t  MOTA_BOOT_FORMAT_VER  = 3;
 static const uint8_t  HASH_ALGO_SHA256 = 0x12;   // multihash code
 
 // Fixed manifest layout (manifest-minus-leaves) - every field is present at a constant offset, so the
@@ -42,6 +47,8 @@ static const uint8_t  MOTA_HW_ID_LEN   = 32;
 
 static const uint8_t  MFLAG_FULL       = 0x01;   // 0 = delta/partial, 1 = full image
 static const uint8_t  MFLAG_SIGNED     = 0x02;
+static const uint8_t  MFLAG_BOOTLOADER = 0x04;   // v3 only; exact flags must be FULL|SIGNED|BOOTLOADER
+static const uint8_t  MFLAG_KNOWN      = MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER;
 
 static const uint8_t  CODEC_FULL                 = 0;
 static const uint8_t  CODEC_DETOOLS_SEQUENTIAL   = 1;

@@ -27,6 +27,11 @@ inline uint32_t mota_nrf52_app_base() {
 inline uint32_t mota_nrf52_app_base() { return MOTA_NRF52_APP_BASE_S140_V6; }
 #endif
 static const uint32_t MOTA_NRF52_EXTRAFS_START = 0x000D4000u;
+// Bootloader-update-capable XIAO builds deliberately end the linked application here. The following
+// 40 KiB is reserved as internal scratch while OTAFIX copies a verified QSPI image into its own
+// 0xF4000..0xFE000 region. Ordinary nRF52 builds continue to use the 0xED000 application ceiling.
+static const uint32_t MOTA_NRF52_BOOT_SCRATCH_START = 0x000E0000u;
+static const uint32_t MOTA_NRF52_BOOT_SCRATCH_END   = 0x000EA000u;
 static const uint32_t MOTA_NRF52_APP_END        = 0x000ED000u;
 static const uint32_t MOTA_NRF52_STAGE_CEILING_LEGACY   = MOTA_NRF52_EXTRAFS_START;
 static const uint32_t MOTA_NRF52_STAGE_CEILING_EXPANDED = MOTA_NRF52_APP_END;
@@ -35,6 +40,7 @@ static const uint32_t MOTA_NRF52_STAGE_CEILING_EXPANDED = MOTA_NRF52_APP_END;
 static const uint32_t MOTA_NRF52_FS_START   = MOTA_NRF52_EXTRAFS_START;
 static const uint32_t MOTA_NRF52_FLASH_PAGE = 4096u;
 static const uint8_t  GPREGRET_OTA_APPLY    = 0x6Au;        // distinct from DFU magics 0x57/0x4E/0xA8
+static const uint8_t  GPREGRET_OTA_BOOTLOADER_UPDATE = 0x6Bu;
 static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
 static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
@@ -44,11 +50,19 @@ static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
 // staged-container start; the app and bootloader both validate that per-patch value before writing.
 static const uint32_t MOTA_NRF52_FALLBACK_INPLACE_MEMORY = 0x00098000u;  // 608 KB
 
-// Bootloader flash region (nRF52840: 39 KB ending just below the CF2/MBR-params pages). The app scans
+// Bootloader flash region (nRF52840: 40 KiB ending just below the CF2/MBR-params pages). The app scans
 // this for the bootloader capability marker (OtaBlInfo.h) to know whether THIS device's bootloader can
 // actually apply a .mota before staging+approving+rebooting.
 static const uint32_t MOTA_NRF52_BL_START = 0x000F4000u;
 static const uint32_t MOTA_NRF52_BL_END   = 0x000FE000u;
+
+inline uint32_t mota_nrf52_application_ceiling() {
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+  return MOTA_NRF52_BOOT_SCRATCH_START;
+#else
+  return MOTA_NRF52_APP_END;
+#endif
+}
 
 // Compile-time layout-ordering invariants. If a constant above is edited inconsistently these fail the
 // BUILD rather than silently letting a stage/apply corrupt the filesystem (user prefs) or the app.
@@ -60,6 +74,10 @@ static_assert((MOTA_NRF52_STAGE_CEILING_EXPANDED % MOTA_NRF52_FLASH_PAGE) == 0,
               "expanded staging ceiling must be page-aligned");
 static_assert(MOTA_NRF52_STAGE_CEILING_LEGACY < MOTA_NRF52_STAGE_CEILING_EXPANDED,
               "legacy staging ceiling must precede expanded ceiling");
+static_assert(MOTA_NRF52_BOOT_SCRATCH_END - MOTA_NRF52_BOOT_SCRATCH_START == 0xA000u,
+              "bootloader scratch must be exactly one padded bootloader region");
+static_assert(MOTA_NRF52_BOOT_SCRATCH_END <= MOTA_NRF52_APP_END,
+              "bootloader scratch must remain below InternalFS");
 static_assert(MOTA_NRF52_STAGE_CEILING_EXPANDED < MOTA_NRF52_BL_START,
               "staging and filesystems must end below the bootloader");
 static_assert(MOTA_NRF52_BL_START < MOTA_NRF52_BL_END,    "bootloader region must be non-empty");
@@ -74,7 +92,9 @@ static_assert(MOTA_NRF52_APP_BASE_S140_V7 + MOTA_NRF52_FALLBACK_INPLACE_MEMORY <
 inline uint32_t mota_nrf52_stage_ceiling_for_layout(uint32_t linked_app_end,
                                                      bool uses_internal_extrafs) {
   if (uses_internal_extrafs) return MOTA_NRF52_STAGE_CEILING_LEGACY;
-  if (linked_app_end == MOTA_NRF52_APP_END || linked_app_end == MOTA_NRF52_EXTRAFS_START)
+  if (linked_app_end == MOTA_NRF52_APP_END ||
+      linked_app_end == MOTA_NRF52_BOOT_SCRATCH_START ||
+      linked_app_end == MOTA_NRF52_EXTRAFS_START)
     return MOTA_NRF52_STAGE_CEILING_EXPANDED;
   return MOTA_NRF52_STAGE_CEILING_LEGACY;
 }

@@ -187,7 +187,14 @@ struct OtaContext {
       if (total >= 13 && fetch_store.read(0, hdr, 8) && memcmp(hdr, MOTA_MAGIC, 4) == 0) {
         uint32_t mr = total - 8; if (mr > sizeof(mb)) mr = sizeof(mb);
         MotaManifest mm;
-        if (fetch_store.read(8, mb, mr) && mota_parse_manifest(mb, mr, mm) && !hwMatches(mm.hw_id)) {
+        if (!fetch_store.read(8, mb, mr) || !mota_parse_manifest(mb, mr, mm)) {
+          strncpy(msg, "refused: invalid staged manifest", 96); msg[95] = 0; return false;
+        }
+        if (mm.is_bootloader()) {
+          strncpy(msg, "refused: use ota bootloader install <MID8> <HASH16>", 96);
+          msg[95] = 0; return false;
+        }
+        if (!hwMatches(mm.hw_id)) {
           char want[33] = {0}; memcpy(want, mm.hw_id, 32);
           snprintf(msg, 96, "refused: .mota hw_id '%.32s' != this device '%s' (incompatible hardware)", want, hw_id);
           return false;
@@ -209,8 +216,33 @@ struct OtaContext {
 #else
     ok = ota_apply_detools_mota(fetch_store.data(), fetch_store.staged_size(), allow, apply_st, msg);
 #endif
-    if (ok) apply_pending = true;
+    if (ok) { bootloader_apply_pending = false; apply_pending = true; }
     return ok;
+#endif
+  }
+
+  bool apply_fetched_bootloader(const uint8_t operator_mid[4],
+                                const uint8_t operator_hash8[8], char* msg) {
+#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && \
+    defined(OTA_QSPI_BOOTLOADER_UPDATE) && !defined(OTA_SEEDER_ONLY)
+    if (fetch_to_folder) {
+      strncpy(msg, "refused: bootloader package is not in local QSPI storage", 96);
+      msg[95] = 0; return false;
+    }
+    if (manager.fetchState() != OtaManager::COMPLETE || fetch_store.staged_size() == 0) {
+      strncpy(msg, "refused: no complete bootloader package fetched", 96);
+      msg[95] = 0; return false;
+    }
+    const OtaBootloaderIdentity& installed = bootloaderIdentity();
+    bool ok = ota_prepare_bootloader_update_nrf52(
+        fetch_store, allow, installed, manager.fetchManifestId(), operator_mid,
+        operator_hash8, apply_st, msg);
+    if (ok) { bootloader_apply_pending = true; apply_pending = true; }
+    return ok;
+#else
+    (void)operator_mid; (void)operator_hash8;
+    strncpy(msg, "refused: this build cannot update its bootloader over LoRa", 96);
+    msg[95] = 0; return false;
 #endif
   }
 
@@ -219,6 +251,7 @@ struct OtaContext {
   // operator learns the apply started). The mesh loop then calls ota_reboot_to_apply() once that reply
   // has actually been transmitted. apply_at/apply_hard are mesh-clock deadlines the loop fills in.
   bool     apply_pending = false;
+  bool     bootloader_apply_pending = false;
   uint32_t apply_at = 0;         // earliest reboot time (lets the reply get queued + start sending)
   uint32_t apply_hard = 0;       // hard cap, in case the TX queue never idles on a busy node
 
@@ -229,6 +262,15 @@ struct OtaContext {
   const OtaBlCaps& bootloaderCaps() {
     if (!_bl_caps_read) { _bl_caps = ota_bootloader_caps(); _bl_caps_read = true; }
     return _bl_caps;
+  }
+  OtaBootloaderIdentity _bl_identity;
+  bool _bl_identity_read = false;
+  const OtaBootloaderIdentity& bootloaderIdentity() {
+    if (!_bl_identity_read) {
+      ota_installed_bootloader_identity(_bl_identity);
+      _bl_identity_read = true;
+    }
+    return _bl_identity;
   }
 
   // --- discovery: the "what mOTAs are available around me" view ----------------------------------
@@ -460,6 +502,11 @@ struct OtaContext {
     manager.set_accept_full(true);
     manager.set_apply_codec(CODEC_DETOOLS_SEQUENTIAL);   // preferred (streams straight to the slot)
     manager.set_apply_codec2(CODEC_DETOOLS_INPLACE);     // also accepted -> a single in-place .mota fits both
+#endif
+#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && defined(OTA_QSPI_BOOTLOADER_UPDATE)
+    manager.set_accept_bootloader(true);
+#else
+    manager.set_accept_bootloader(false);
 #endif
     manager.set_fetch_store(&fetch_store);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)

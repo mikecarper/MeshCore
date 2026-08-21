@@ -70,7 +70,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_user_gpio` | `src/helpers/UserGpio.cpp`, `UserGpioReplyTracker.h` | board-approved pins, get/set/reset, timed nonblocking transitions, duplicate suppression, rollover, and completion-reply routing |
 | `test_utf8_helpers` | `src/helpers/UTF8Helpers.h` | byte-limit truncation at complete code-point boundaries and rejection of malformed or truncated UTF-8 |
 | `test_wifi_ota_seeder_policy` | `src/helpers/WiFiOtaSeederPolicy.h`, `WiFiOtaSeederStatus.h` | listener state versus network availability, serial/TCP folder ownership, detach detection, and bounded status formatting |
-| `test_ota` | `src/helpers/ota/` | container and EndF integrity; protocol codecs; transfer, resume, and apply safety; adaptive 2-to-4 block-request window growth and stall contraction; active-transfer priority classification |
+| `test_ota` | `src/helpers/ota/` | v2 application/v3 bootloader parser separation; XIAO identity, vector, capability, explicit-confirmation and no-autofetch gates; container and EndF integrity; protocol codecs; transfer, resume, and layered apply safety; adaptive 2-to-4 block-request window growth and stall contraction; active-transfer priority classification |
 | `test_trace_retry` | `src/Mesh.cpp` retry and relay policy | opaque OTA relay behavior during TempRadio; background discovery priority; immediate primary transfer relay, receive-delay bypass, fast CAD retry, and no generic flood retry; trace and non-OTA flood retry timing |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |
 

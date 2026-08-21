@@ -13,8 +13,13 @@ the right container, move the participating nodes to a temporary radio
 channel, serve and monitor the download, request installation, restore the
 controller, and check the rebooted node.
 
-The script cannot install the destination's first OTA-capable firmware or its
-nRF52 bootloader. Do those one-time jobs over USB before using LoRa OTA.
+The script cannot install the destination's first OTA-capable firmware. It is
+also deliberately application-only: it rejects both v3 bootloader containers
+and a v2 container carrying the bootloader flag, and it never sends the
+privileged install command. Do the first nRF52 bootloader installation over USB;
+an already-capable XIAO QSPI repeater may later use the separate, manual
+[`ota bootloader install`](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora)
+workflow.
 
 ## Required topology
 
@@ -425,9 +430,10 @@ the destination.
 2. Authenticate to the target and query its target ID, hardware, running body
    hash, firmware version, bootloader version, and nRF52 bootloader
    capabilities.
-3. Select or build one compatible mOTA and verify all block hashes, Merkle
-   root, full-image hash where applicable, identity fields, signature, codec,
-   base, and the firmware's 1024-byte maximum block size.
+3. Select or build one compatible **v2 application** mOTA and verify all block
+   hashes, Merkle root, full-image hash where applicable, identity fields,
+   signature, codec, base, and the firmware's 1024-byte maximum block size.
+   Version-3 bootloader packages are refused before any target state changes.
 4. Save the controller's normal radio tuple and show the confirmation prompt.
 5. Start TempRadio on the target, then far-to-near relays, then the source;
    finally switch the controller to the same tuple and read it back. The runner

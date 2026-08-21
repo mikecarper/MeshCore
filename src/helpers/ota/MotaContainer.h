@@ -40,6 +40,7 @@ struct MotaManifest {
 
   bool is_full()   const { return flags & MFLAG_FULL; }
   bool is_signed() const { return flags & MFLAG_SIGNED; }
+  bool is_bootloader() const { return flags & MFLAG_BOOTLOADER; }
   uint32_t block_size() const { return 1u << block_size_log2; }
   bool is_approved() const;
 };

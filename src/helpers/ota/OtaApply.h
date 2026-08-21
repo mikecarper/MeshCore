@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "SignerAllowlist.h"
+#include "OtaBootloaderUpdate.h"
 
 // P6 apply (full-image, ESP32 A/B). The new image is delivered into the inactive OTA slot; the device
 // then verifies that slot against the signed manifest's image_hash (+ Ed25519/allowlist), and commits
@@ -90,6 +91,15 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store,
 class OtaStoreQspiNrf52;
 bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg);
+#endif
 #endif
 
 // Commit the (already approved/armed) update and reboot into it - does NOT return. Call this only after
@@ -98,10 +108,17 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store,
 // the GPREGRET apply magic + reset (the bootloader does the in-place decode + verify). ESP32: reboot
 // into the slot already armed by ota_apply_detools_mota.
 void ota_reboot_to_apply();
+void ota_reboot_to_bootloader_update();
+bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out);
 
 inline uint8_t ota_nrf52_boot_result_or_zero(uint8_t value) {
   return ((value >= 0x90u && value <= 0x9Fu) ||
-          (value >= 0xB0u && value <= 0xBCu)) ? value : 0u;
+          (value >= 0xB0u && value <= 0xBCu) ||
+          (value >= 0xC0u && value <= 0xCFu)) ? value : 0u;
+}
+
+inline bool ota_nrf52_boot_update_result(uint8_t value) {
+  return value >= 0xC0u && value <= 0xCFu;
 }
 
 // DIAGNOSTIC (nRF52): the bootloader stashes its last in-place-apply bail/progress code in GPREGRET2 (see

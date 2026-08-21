@@ -166,6 +166,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build; internal-store nRF52 installs in-place deltas, while matched SD/QSPI nRF52 also accepts full images | No | No | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible bootloader and completed update | No | No | Yes |
 | LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature |
+| LoRa OTA | [`ota bootloader`; `ota bootloader install <MID8> <HASH16>`](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora) | Boot-update-capable XIAO-module QSPI repeater with ABI-3 exact-board OTAFIX | No | No | Feature |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes |
@@ -325,6 +326,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible completed update | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature | No | No |
+| LoRa OTA | [`ota bootloader`; `ota bootloader install <MID8> <HASH16>`](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora) | nRF52 XIAO QSPI only | No | No | No | No | No |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes | Yes | Yes |

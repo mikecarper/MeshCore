@@ -52,7 +52,7 @@ bool ota_apply_set_manifest(const uint8_t* mf, uint32_t len, const SignerAllowli
   ota_apply_slot_info(&st.slot_addr, &st.slot_size);
   MotaManifest m;
   if (!mota_parse_manifest(mf, len, m)) return false;
-  if (!m.is_full()) return false;            // A/B apply takes a full image (delta would need decode)
+  if (m.is_bootloader() || !m.is_full()) return false; // boot packages never enter an application slot
   st.image_size = m.image_size;
   memcpy(st.image_hash, m.image_hash, 32);
   st.manifest_ok = true;
@@ -293,6 +293,7 @@ bool ota_apply_detools_mota(OtaStoreFlashEsp32& store, const SignerAllowlist& al
   MotaManifest m;
   if (mflen < 57 || !store.read(8, mfbuf, mflen) || !mota_parse_manifest(mfbuf, mflen, m)) {
     strcpy(msg, "manifest parse failed"); return false; }
+  if (m.is_bootloader()) { strcpy(msg, "bootloader package requires explicit bootloader install"); return false; }
   st.image_size = m.image_size; memcpy(st.image_hash, m.image_hash, 32); st.manifest_ok = true;
   if (m.image_size == 0 || m.image_size > slot->size) { strcpy(msg, "image > slot"); return false; }
 
@@ -367,6 +368,7 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len, const SignerAllowl
   st = ApplyState();
   MotaManifest m;
   if (!mota_parse(buf, len, m)) { strcpy(msg, "no valid .mota (parse failed)"); return false; }
+  if (m.is_bootloader()) { strcpy(msg, "bootloader package cannot enter an application slot"); return false; }
   if (m.is_full() || m.codec_id != CODEC_DETOOLS_SEQUENTIAL) { strcpy(msg, "not a detools-sequential delta"); return false; }
   st.image_size = m.image_size;
   memcpy(st.image_hash, m.image_hash, 32);
@@ -416,6 +418,10 @@ bool ota_rescue_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, con
 }
 
 void ota_reboot_to_apply() { esp_restart(); }  // boots the slot armed by ota_apply_detools_mota; no return
+void ota_reboot_to_bootloader_update() {}
+bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out) {
+  out = OtaBootloaderIdentity(); return false;
+}
 
 #elif defined(NRF52_PLATFORM)  // single-slot: verify + mark APPROVED + hand off to the bootloader
 
@@ -473,7 +479,27 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
   NVIC_SystemReset();                          // does not return
 }
 
+void ota_reboot_to_bootloader_update() {
+  uint8_t sd_en = 0;
+  sd_softdevice_is_enabled(&sd_en);
+  if (sd_en) {
+    sd_power_gpregret_clr(1, 0xFFFFFFFF);
+    sd_power_gpregret_set(1, GPREGRET2_OTA_STAGE_QSPI);
+    sd_power_gpregret_clr(0, 0xFFFFFFFF);
+    sd_power_gpregret_set(0, GPREGRET_OTA_BOOTLOADER_UPDATE);
+  } else {
+    NRF_POWER->GPREGRET2 = GPREGRET2_OTA_STAGE_QSPI;
+    NRF_POWER->GPREGRET = GPREGRET_OTA_BOOTLOADER_UPDATE;
+  }
+  NVIC_SystemReset();
+}
+
 uint8_t ota_bootloader_last_rc() { return g_bootloader_last_rc; }
+
+bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out) {
+  return ota_bootloader_identity_from_image(
+      (const uint8_t*)(uintptr_t)OTA_BOOT_IMAGE_START, OTA_BOOT_IMAGE_SIZE, out);
+}
 
 static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
                                       const SignerAllowlist& allow,
@@ -483,6 +509,7 @@ static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
   st = ApplyState();
   MotaManifest m;
   if (!mota_parse(buf, len, m)) { strcpy(msg, "parse failed"); return false; }
+  if (m.is_bootloader()) { strcpy(msg, "use explicit ota bootloader install"); return false; }
   if (m.is_full() || m.codec_id != CODEC_DETOOLS_INPLACE) { strcpy(msg, "not an in-place delta"); return false; }
   st.image_size = m.image_size;
   memcpy(st.image_hash, m.image_hash, 32);
@@ -618,6 +645,10 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
     snprintf(msg, NRF52_APPLY_MSG_CAP, "%s manifest parse failed", storage_name);
     return false;
   }
+  if (m.is_bootloader()) {
+    strcpy(msg, "use explicit ota bootloader install");
+    return false;
+  }
   const bool full = m.is_full() && m.codec_id == CODEC_FULL &&
                     m.payload_size == m.image_size;
   const bool delta = !m.is_full() && m.codec_id == CODEC_DETOOLS_INPLACE;
@@ -627,8 +658,9 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
     return false;
   }
   const uint32_t app_base = mota_nrf52_app_base();
-  if (m.image_size == 0 || app_base >= MOTA_NRF52_APP_END ||
-      m.image_size > MOTA_NRF52_APP_END - app_base) {
+  const uint32_t app_ceiling = mota_nrf52_application_ceiling();
+  if (m.image_size == 0 || app_base >= app_ceiling ||
+      m.image_size > app_ceiling - app_base) {
     strcpy(msg, "image exceeds nRF52 application region");
     return false;
   }
@@ -687,7 +719,7 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
     }
     if (!mota_nrf52_external_patch_geometry_valid(
             d.memory, d.segment, d.shift, d.from, d.to,
-            MOTA_NRF52_APP_END - app_base, fi.image_len, m.image_size)) {
+            app_ceiling - app_base, fi.image_len, m.image_size)) {
       strcpy(msg, "invalid in-place patch geometry");
       return false;
     }
@@ -717,6 +749,148 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
                           ApplyState& st, char* msg) {
   return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", st, msg);
 }
+
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+static bool qspi_bootloader_crc_ok(OtaStoreQspiNrf52& store, uint32_t payload_off,
+                                   const OtaBootloaderIdentity& identity) {
+  uint8_t buf[512];
+  uint32_t crc = UINT32_MAX;
+  for (uint32_t off = 0; off < OTA_BOOT_IMAGE_SIZE; off += sizeof(buf)) {
+    uint32_t len = OTA_BOOT_IMAGE_SIZE - off;
+    if (len > sizeof(buf)) len = sizeof(buf);
+    if (!store.read(payload_off + off, buf, len)) return false;
+    for (uint32_t i = 0; i < len; i++) {
+      const uint32_t pos = off + i;
+      const uint8_t value = pos >= identity.manifest_offset + 40u &&
+                            pos < identity.manifest_offset + 44u ? 0 : buf[i];
+      crc = ota_boot_crc32_update(crc, value);
+    }
+  }
+  return ~crc == identity.crc32;
+}
+
+static bool qspi_bootloader_image_metadata(OtaStoreQspiNrf52& store, uint32_t payload_off,
+                                            const OtaBootloaderIdentity& installed,
+                                            OtaBootloaderIdentity& candidate,
+                                            OtaBootloaderCapsMarker& caps) {
+  // Keep enough overlap to catch a 44-byte manifest or 16-byte capability marker split across a
+  // window. Every aligned manifest candidate is considered; a magic string in a literal pool is not
+  // a terminal failure.
+  static const uint32_t STEP = 512;
+  uint8_t buf[STEP + OTA_BOOT_MANIFEST_SIZE - 1];
+  uint8_t valid_identities = 0;
+  for (uint32_t base = 0; base < OTA_BOOT_IMAGE_SIZE; base += STEP) {
+    uint32_t len = OTA_BOOT_IMAGE_SIZE - base;
+    if (len > sizeof(buf)) len = sizeof(buf);
+    if (!store.read(payload_off + base, buf, len)) return false;
+    const uint32_t starts = (OTA_BOOT_IMAGE_SIZE - base < STEP)
+        ? OTA_BOOT_IMAGE_SIZE - base : STEP;
+    for (uint32_t local = 0; local < starts; local++) {
+      const uint32_t absolute = base + local;
+      if (!caps.present && (absolute & 3u) == 0 && local + 16u <= len) {
+        OtaBootloaderCapsMarker parsed;
+        if (ota_bootloader_caps_marker_parse(buf + local, parsed) &&
+            parsed.apply_abi >= MOTA_BOOT_FORMAT_VER &&
+            (parsed.codec_mask & (1u << CODEC_FULL)) != 0 &&
+            (parsed.storage_flags & (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) ==
+                (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) {
+          caps = parsed;
+        }
+      }
+      if ((absolute & 3u) != 0 || local + OTA_BOOT_MANIFEST_SIZE > len) continue;
+      OtaBootloaderIdentity parsed;
+      if (!ota_bootloader_manifest_parse(buf + local, absolute, parsed) ||
+          parsed.board_id != installed.board_id ||
+          memcmp(parsed.device_name, installed.device_name, OTA_BOOT_DEVICE_NAME_SIZE) != 0) continue;
+      if (qspi_bootloader_crc_ok(store, payload_off, parsed)) {
+        parsed.crc_ok = true;
+        if (!ota_bootloader_identity_add_unique(parsed, candidate, valid_identities)) return false;
+      }
+    }
+  }
+  return valid_identities == 1u && candidate.present && candidate.crc_ok && caps.present;
+}
+
+bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg) {
+  static const size_t CAP = 96;
+  st = ApplyState();
+  const uint32_t total = store.staged_size();
+  uint8_t hdr[8], manifest[MOTA_MFL];
+  if (total < 8u + MOTA_MFL + 5u || !store.read(0, hdr, sizeof(hdr)) ||
+      memcmp(hdr, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0 || rd_u32le(hdr + 4) != total ||
+      !store.read(8, manifest, sizeof(manifest))) {
+    strcpy(msg, "QSPI bootloader container parse failed"); return false;
+  }
+  MotaManifest m;
+  if (!mota_parse_manifest(manifest, sizeof(manifest), m)) {
+    strcpy(msg, "not a valid v3 bootloader package"); return false;
+  }
+  switch (ota_bootloader_confirmation_gate(m, installed, actual_mid, operator_mid,
+                                            operator_hash8)) {
+    case OTA_BOOT_CONFIRM_OK: break;
+    case OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE: strcpy(msg, "not a bootloader package"); return false;
+    case OTA_BOOT_CONFIRM_GEOMETRY: strcpy(msg, "bootloader package geometry mismatch"); return false;
+    case OTA_BOOT_CONFIRM_LOCAL_IDENTITY: strcpy(msg, "installed bootloader identity is invalid"); return false;
+    case OTA_BOOT_CONFIRM_TARGET: strcpy(msg, "bootloader board ID mismatch"); return false;
+    case OTA_BOOT_CONFIRM_HW_ID: strcpy(msg, "bootloader signed hw_id mismatch"); return false;
+    case OTA_BOOT_CONFIRM_MID: strcpy(msg, "bootloader MID confirmation mismatch"); return false;
+    case OTA_BOOT_CONFIRM_IMAGE_HASH: strcpy(msg, "bootloader image-hash confirmation mismatch"); return false;
+  }
+
+  const OtaBlCaps current_caps = ota_bootloader_caps();
+  if (!current_caps.present || current_caps.apply_abi < MOTA_BOOT_FORMAT_VER ||
+      (current_caps.codec_mask & (1u << CODEC_FULL)) == 0 ||
+      (current_caps.storage_flags & (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) !=
+          (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) {
+    strcpy(msg, "installed bootloader cannot safely self-update from QSPI"); return false;
+  }
+
+  const uint64_t payload_off64 = 8u + MOTA_MFL + (uint64_t)m.block_count * 4u;
+  if (payload_off64 > UINT32_MAX || payload_off64 + OTA_BOOT_IMAGE_SIZE + 5u != total) {
+    strcpy(msg, "bootloader container layout mismatch"); return false;
+  }
+  const uint32_t payload_off = (uint32_t)payload_off64;
+
+  VerifyResult vr = ota_verify(static_cast<const OtaStore&>(store), allow);
+  st.manifest_ok = vr.parsed;
+  st.sig_ok = vr.sig_ok;
+  st.trusted = vr.trusted;
+  st.image_size = m.image_size;
+  memcpy(st.image_hash, m.image_hash, sizeof(st.image_hash));
+  if (!vr.auto_appliable()) {
+    if (!vr.root_ok || !vr.payload_ok || !vr.image_ok)
+      strcpy(msg, "bootloader payload hash mismatch");
+    else if (!vr.sig_ok)
+      strcpy(msg, "bootloader package signature invalid");
+    else
+      strcpy(msg, "bootloader signer is not in the trusted allowlist");
+    return false;
+  }
+
+  uint8_t vectors[8];
+  if (!store.read(payload_off, vectors, sizeof(vectors)) || !ota_bootloader_vector_sane(vectors)) {
+    strcpy(msg, "bootloader vector table is invalid"); return false;
+  }
+  OtaBootloaderIdentity candidate;
+  OtaBootloaderCapsMarker candidate_caps;
+  if (!qspi_bootloader_image_metadata(store, payload_off, installed, candidate, candidate_caps) ||
+      !ota_bootloader_identity_matches(installed, candidate)) {
+    strcpy(msg, "candidate bootloader identity/capability/CRC mismatch"); return false;
+  }
+  st.slot_ok = true;
+  if (!store.approve_for_bootloader()) {
+    snprintf(msg, CAP, "QSPI bootloader handoff failed: %s", store.last_error()); return false;
+  }
+  strcpy(msg, "trusted bootloader verified and armed; rebooting after this reply");
+  return true;
+}
+#endif
 #endif
 
 #else  // native / other platforms
@@ -732,6 +906,10 @@ bool ota_rescue_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, con
   st = ApplyState(); strcpy(msg, "unsupported"); return false;
 }
 void ota_reboot_to_apply() {}
+void ota_reboot_to_bootloader_update() {}
+bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out) {
+  out = OtaBootloaderIdentity(); return false;
+}
 uint8_t ota_bootloader_last_rc() { return 0; }
 
 #endif

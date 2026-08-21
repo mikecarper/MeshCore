@@ -137,6 +137,17 @@ class FormatTests(unittest.TestCase):
         with self.assertRaisesRegex(ota.OtaError, "block hashes"):
             ota.parse_mota(bytes(blob))
 
+    def test_bootloader_packages_are_explicitly_refused(self) -> None:
+        blob = bytearray(mota_blob(firmware(b"B" * 5000, VERSION_NEW)))
+        blob[8] = ota.MOTA_BOOT_FORMAT_VERSION
+        blob[9] |= ota.MOTA_FLAG_SIGNED | ota.MOTA_FLAG_BOOTLOADER
+        with self.assertRaisesRegex(ota.OtaError, "bootloader mOTA packages"):
+            ota.parse_mota(bytes(blob))
+
+        blob[8] = ota.MOTA_FORMAT_VERSION
+        with self.assertRaisesRegex(ota.OtaError, "invalid flags in v2"):
+            ota.parse_mota(bytes(blob))
+
     def test_block_larger_than_firmware_buffer_is_rejected(self) -> None:
         image = firmware(b"C" * 5000, VERSION_NEW)
         with self.assertRaisesRegex(ota.OtaError, "at most 1024 bytes"):

@@ -69,8 +69,10 @@ TEST(OtaFlashPlan, SelectsCeilingFromLinkedLayoutAndStorage) {
   // Standard or ExtraFS linker without an internal secondary filesystem reclaims the unused 100 KiB.
   EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(EXPANDED, false), EXPANDED);
   EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(LEGACY, false), EXPANDED);
+  // The explicit XIAO boot-update linker leaves 40 KiB scratch at 0xE0000 and still stages externally.
+  EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(MOTA_NRF52_BOOT_SCRATCH_START, false), EXPANDED);
   // An unrecognized linker region is never permission to erase a larger window.
-  EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(0xE0000u, false), LEGACY);
+  EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(0xE1000u, false), LEGACY);
 }
 
 TEST(OtaFlashPlan, ValidatesExternalInplacePatchGeometryBeforeHandoff) {

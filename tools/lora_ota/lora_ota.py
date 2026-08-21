@@ -43,8 +43,12 @@ import zipfile
 MOTA_MAGIC = b"mOTA"
 MOTA_TRAILER = b"vk496"
 MOTA_FORMAT_VERSION = 2
+MOTA_BOOT_FORMAT_VERSION = 3
 MOTA_FIXED_MANIFEST_SIZE = 197
 MOTA_FLAG_FULL = 0x01
+MOTA_FLAG_SIGNED = 0x02
+MOTA_FLAG_BOOTLOADER = 0x04
+MOTA_KNOWN_FLAGS = MOTA_FLAG_FULL | MOTA_FLAG_SIGNED | MOTA_FLAG_BOOTLOADER
 MOTA_CODEC_FULL = 0
 MOTA_CODEC_SEQUENTIAL = 1
 MOTA_CODEC_IN_PLACE = 2
@@ -462,12 +466,19 @@ def parse_mota(blob: bytes, path: Path | None = None) -> MotaInfo:
         raise OtaError(
             f"mOTA size field is {declared_size}, but the file is {len(blob)} bytes"
         )
+    flags = blob[9]
+    if blob[8] == MOTA_BOOT_FORMAT_VERSION and flags & MOTA_FLAG_BOOTLOADER:
+        raise OtaError(
+            "bootloader mOTA packages require the device's explicit `ota bootloader install` "
+            "workflow; this application-update runner deliberately refuses them"
+        )
     if blob[8] != MOTA_FORMAT_VERSION:
         raise OtaError(f"unsupported mOTA format version {blob[8]}")
+    if flags & MOTA_FLAG_BOOTLOADER or flags & ~MOTA_KNOWN_FLAGS:
+        raise OtaError("invalid flags in v2 application mOTA")
     if blob[10] != 0x12:
         raise OtaError(f"unsupported mOTA hash algorithm 0x{blob[10]:02x}")
 
-    flags = blob[9]
     target_id, fw_version, image_size, payload_size = struct.unpack_from("<IIII", blob, 11)
     block_size_log2 = blob[27]
     if block_size_log2 == 0 or block_size_log2 > 10:

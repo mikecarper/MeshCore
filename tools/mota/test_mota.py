@@ -121,7 +121,8 @@ def test_nrf52_layout_record_roundtrip_and_policy():
             == ml.NRF52_EXTRAFS_START)
     assert (ml.nrf52_stage_ceiling_for_layout(ml.NRF52_EXTRAFS_START, False)
             == ml.NRF52_APP_END)
-    assert ml.nrf52_stage_ceiling_for_layout(0xE0000, False) == ml.NRF52_EXTRAFS_START
+    assert (ml.nrf52_stage_ceiling_for_layout(ml.NRF52_BOOT_SCRATCH_START, False)
+            == ml.NRF52_APP_END)
 
     layout = ml.Nrf52Layout(ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
                             ml.NRF52_APP_END, 0)
@@ -142,6 +143,13 @@ def test_nrf52_layout_record_roundtrip_and_policy():
     qspi_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(7, 2048), qspi))
     assert ml.parse_nrf52_layout(qspi_image) == qspi
     assert qspi.qspi_backed and qspi.external_backed and not qspi.sd_backed
+    boot_qspi = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V7, ml.NRF52_BOOT_SCRATCH_START,
+        ml.NRF52_APP_END,
+        ml.NRF52_LAYOUT_FLAG_QSPI | ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
+    boot_qspi_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(8, 2048), boot_qspi))
+    assert ml.parse_nrf52_layout(boot_qspi_image) == boot_qspi
+    assert boot_qspi.bootloader_scratch
     try:
         ml.build_nrf52_layout(ml.Nrf52Layout(
             ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
@@ -160,6 +168,196 @@ def test_nrf52_layout_record_roundtrip_and_policy():
             assert False, "conflicting nRF52 layout flags accepted"
         except ValueError:
             pass
+
+
+def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
+    import zlib
+    image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
+    struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
+    struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
+                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
+                     ml.XIAO_BOOT_STORAGE_QSPI | ml.XIAO_BOOT_STORAGE_UPDATE)
+    name = ml.XIAO_BOOT_DEVICE_NAME
+    struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
+                     ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
+                     ml.XIAO_BOOT_IMAGE_START, ml.XIAO_BOOT_IMAGE_SIZE, board_id, name, 0)
+    crc = zlib.crc32(image) & 0xFFFFFFFF
+    struct.pack_into("<I", image, 0x100 + 40, crc)
+    return bytes(image)
+
+
+def _xiao_manifest_crc(image, offset):
+    import zlib
+    trial = bytearray(image)
+    trial[offset + 40:offset + 44] = b"\0" * 4
+    return zlib.crc32(trial) & 0xFFFFFFFF
+
+
+def _set_two_valid_xiao_manifest_crcs(image, first, second):
+    """Solve the two coupled whole-image CRC fields over GF(2)."""
+    first_crc, second_crc = first + 40, second + 40
+    image[first_crc:first_crc + 4] = b"\0" * 4
+    image[second_crc:second_crc + 4] = b"\0" * 4
+
+    def residual(value):
+        trial = bytearray(image)
+        struct.pack_into("<I", trial, first_crc, value & 0xFFFFFFFF)
+        struct.pack_into("<I", trial, second_crc, value >> 32)
+        first_error = struct.unpack_from("<I", trial, first_crc)[0] ^ _xiao_manifest_crc(trial, first)
+        second_error = struct.unpack_from("<I", trial, second_crc)[0] ^ _xiao_manifest_crc(trial, second)
+        return first_error | (second_error << 32)
+
+    affine = residual(0)
+    columns = [residual(1 << bit) ^ affine for bit in range(64)]
+    rows = []
+    for output_bit in range(64):
+        row = sum(1 << input_bit for input_bit, column in enumerate(columns)
+                  if (column >> output_bit) & 1)
+        rows.append(row | (((affine >> output_bit) & 1) << 64))
+
+    pivot_columns = []
+    pivot_row = 0
+    for column in range(64):
+        found = next((row for row in range(pivot_row, 64)
+                      if (rows[row] >> column) & 1), None)
+        if found is None:
+            continue
+        rows[pivot_row], rows[found] = rows[found], rows[pivot_row]
+        for row in range(64):
+            if row != pivot_row and (rows[row] >> column) & 1:
+                rows[row] ^= rows[pivot_row]
+        pivot_columns.append(column)
+        pivot_row += 1
+
+    assert all((row & ((1 << 64) - 1)) or not ((row >> 64) & 1) for row in rows)
+    solution = 0
+    for row, column in enumerate(pivot_columns):
+        if (rows[row] >> 64) & 1:
+            solution |= 1 << column
+    assert residual(solution) == 0
+    struct.pack_into("<I", image, first_crc, solution & 0xFFFFFFFF)
+    struct.pack_into("<I", image, second_crc, solution >> 32)
+
+
+def test_xiao_bootloader_identity_skips_bad_decoy_and_rejects_two_valid_manifests():
+    real_offset, decoy_offset, second_offset = 0x100, 0x20, 0x200
+    image = bytearray(_xiao_bootloader_image())
+    image[decoy_offset:decoy_offset + ml.XIAO_BOOT_MANIFEST_SIZE] = \
+        image[real_offset:real_offset + ml.XIAO_BOOT_MANIFEST_SIZE]
+    struct.pack_into("<I", image, decoy_offset + 40, 0xA5A5A5A5)
+    struct.pack_into("<I", image, real_offset + 40, _xiao_manifest_crc(image, real_offset))
+    assert _xiao_manifest_crc(image, decoy_offset) != 0xA5A5A5A5
+    identity = ml.parse_xiao_bootloader_identity(bytes(image))
+    assert identity is not None and identity.manifest_offset == real_offset
+
+    duplicate = bytearray(_xiao_bootloader_image())
+    duplicate[second_offset:second_offset + ml.XIAO_BOOT_MANIFEST_SIZE] = \
+        duplicate[real_offset:real_offset + ml.XIAO_BOOT_MANIFEST_SIZE]
+    _set_two_valid_xiao_manifest_crcs(duplicate, real_offset, second_offset)
+    assert struct.unpack_from("<I", duplicate, real_offset + 40)[0] == \
+        _xiao_manifest_crc(duplicate, real_offset)
+    assert struct.unpack_from("<I", duplicate, second_offset + 40)[0] == \
+        _xiao_manifest_crc(duplicate, second_offset)
+    assert ml.parse_xiao_bootloader_identity(bytes(duplicate)) is None
+    try:
+        ml.validate_xiao_bootloader_image(bytes(duplicate))
+        assert False, "two CRC-valid embedded identities accepted"
+    except ValueError:
+        pass
+
+
+def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
+    def caps(*, offset=0, abi=ml.BOOT_FORMAT_VER,
+             codecs=1 << ml.CODEC_FULL,
+             storage=ml.XIAO_BOOT_STORAGE_QSPI | ml.XIAO_BOOT_STORAGE_UPDATE,
+             reserved=b"\0\0\0"):
+        image = bytearray(b"\xff" * 64)
+        struct.pack_into("<8sHHB3s", image, offset, ml.XIAO_BOOT_CAPS_MAGIC,
+                         abi, codecs, storage, reserved)
+        return bytes(image)
+
+    assert ml.xiao_bootloader_caps_ok(caps())
+    assert not ml.xiao_bootloader_caps_ok(caps(offset=1))
+    assert not ml.xiao_bootloader_caps_ok(caps(abi=0xFFFF))
+    assert not ml.xiao_bootloader_caps_ok(caps(codecs=0))
+    assert not ml.xiao_bootloader_caps_ok(caps(storage=0x1C))
+    assert not ml.xiao_bootloader_caps_ok(caps(reserved=b"\0\x01\0"))
+
+
+def test_bootloader_v3_build_parse_and_strict_contract():
+    priv = Ed25519PrivateKey.generate()
+    image = _xiao_bootloader_image()
+    identity = ml.validate_xiao_bootloader_image(image, ml.XIAO_BOOT_BOARD_ID_BASE)
+    assert identity.board_id == ml.XIAO_BOOT_BOARD_ID_BASE
+    m = ml.build_manifest(
+        target_id=identity.board_id, fw_version=ml.pack_version("1.0.0"),
+        image_size=len(image), payload=image, block_size=1024,
+        image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
+        sign_priv=priv, bootloader=True)
+    blob = ml.build_container(m, image)
+    parsed = ml.parse_container(blob)
+    assert parsed.manifest.format_ver == ml.BOOT_FORMAT_VER
+    assert parsed.manifest.flags == ml.FLAG_FULL | ml.FLAG_SIGNED | ml.FLAG_BOOTLOADER
+    assert parsed.manifest.hw_id == ml.hw_id_bytes("XIAO_BL_28860044")
+    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+
+    invalid_payload = bytearray(parsed.payload)
+    invalid_payload[4] &= 0xFE
+    parsed.payload = bytes(invalid_payload)
+    assert any(problem.startswith("bootloader image contract:")
+               for problem in ml.verify(parsed))
+
+    bad = bytearray(blob)
+    bad[8] = ml.APP_FORMAT_VER
+    try:
+        ml.parse_container(bytes(bad))
+        assert False, "v2 bootloader flag accepted"
+    except ValueError:
+        pass
+    bad = bytearray(blob)
+    bad[9] &= ~ml.FLAG_BOOTLOADER
+    try:
+        ml.parse_container(bytes(bad))
+        assert False, "v3 non-bootloader flags accepted"
+    except ValueError:
+        pass
+
+
+def test_bootloader_builder_rejects_wrong_identity_geometry_and_continuity():
+    priv = Ed25519PrivateKey.generate()
+    image = _xiao_bootloader_image()
+    kwargs = dict(target_id=ml.XIAO_BOOT_BOARD_ID_BASE, fw_version=1,
+                  image_size=len(image), payload=image, block_size=1024,
+                  image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL,
+                  is_full=True, sign_priv=priv, bootloader=True)
+    for change in (
+        {"sign_priv": None},
+        {"block_size": 512},
+        {"fw_version": 0},
+        {"target_id": ml.XIAO_BOOT_BOARD_ID_SENSE},
+        {"hw_id": "wrong"},
+    ):
+        try:
+            ml.build_manifest(**(kwargs | change))
+            assert False, f"invalid bootloader build accepted: {change}"
+        except ValueError:
+            pass
+    damaged = bytearray(image); damaged[0x200] ^= 1
+    try:
+        ml.validate_xiao_bootloader_image(bytes(damaged))
+        assert False, "bad embedded CRC accepted"
+    except ValueError:
+        pass
+    import zlib
+    wrong_name = bytearray(image)
+    wrong_name[0x100 + 24:0x100 + 40] = b"FRIENDLY NAME".ljust(16, b"\0")
+    wrong_name[0x100 + 40:0x100 + 44] = b"\0" * 4
+    struct.pack_into("<I", wrong_name, 0x100 + 40, zlib.crc32(wrong_name) & 0xFFFFFFFF)
+    try:
+        ml.validate_xiao_bootloader_image(bytes(wrong_name))
+        assert False, "noncanonical embedded device name accepted"
+    except ValueError:
+        pass
 
 
 # --- merkle ----------------------------------------------------------------

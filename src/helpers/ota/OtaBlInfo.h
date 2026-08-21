@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -31,23 +32,63 @@ struct OtaBlCaps {
 static const uint8_t OTA_BL_STORAGE_SD            = 0x01;
 static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
 static const uint8_t OTA_BL_STORAGE_QSPI          = 0x04;
+static const uint8_t OTA_BL_STORAGE_BOOT_UPDATE    = 0x08;
+
+// Prefer a continuity-capable marker over a numerically newer legacy-looking candidate. Bootloader
+// images contain the marker magic in code/literal data as well as in the real structure, so the scan
+// must not let a later plausible literal shadow the privileged marker merely because its following
+// bytes decode as a larger ABI.
+inline bool ota_bl_caps_prefer(const OtaBlCaps& current, uint16_t candidate_abi,
+                               uint8_t candidate_storage, bool require_boot_update) {
+  if (!current.present) return true;
+  if (require_boot_update) {
+    const bool candidate_boot = (candidate_storage & OTA_BL_STORAGE_BOOT_UPDATE) != 0;
+    const bool current_boot = (current.storage_flags & OTA_BL_STORAGE_BOOT_UPDATE) != 0;
+    if (candidate_boot != current_boot) return candidate_boot;
+  }
+  return candidate_abi > current.apply_abi;
+}
+
+// Scan a region whose offset zero is word-aligned. The marker structure contains
+// uint16_t fields and OTAFIX emits it aligned(4); accepting a byte-shifted magic
+// occurrence would let instruction/literal bytes masquerade as capabilities.
+inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
+                                          bool require_boot_update) {
+  OtaBlCaps c;
+  if (!bytes) return c;
+  for (size_t off = 0; off + 16u <= len; off += 4u) {
+    const uint8_t* p = bytes + off;
+    if (p[0] != OTA_BL_MAGIC[0] || memcmp(p, OTA_BL_MAGIC, 8) != 0) continue;
+    const uint16_t abi = (uint16_t)(p[8] | ((uint16_t)p[9] << 8));
+    const uint16_t codecs = (uint16_t)(p[10] | ((uint16_t)p[11] << 8));
+    const uint8_t storage = p[12];
+    if (abi == 0 || abi == 0xFFFFu || codecs == 0 || (storage & ~0x0Fu) != 0 ||
+        p[13] != 0 || p[14] != 0 || p[15] != 0) continue;
+    if (ota_bl_caps_prefer(c, abi, storage, require_boot_update)) {
+      c.present = true;
+      c.apply_abi = abi;
+      c.codec_mask = codecs;
+      c.storage_flags = storage;
+    }
+  }
+  return c;
+}
 
 // Scan the bootloader flash region for the marker. Returns {present=false} if not found / non-nRF52.
 inline OtaBlCaps ota_bootloader_caps() {
-  OtaBlCaps c;
 #if defined(NRF52_PLATFORM)
   const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
   const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
-  for (const uint8_t* p = lo; p + 16 <= hi; p++) {
-    if (p[0] != OTA_BL_MAGIC[0] || memcmp(p, OTA_BL_MAGIC, 8) != 0) continue;
-    c.present    = true;
-    c.apply_abi  = (uint16_t)(p[8]  | ((uint16_t)p[9]  << 8));
-    c.codec_mask = (uint16_t)(p[10] | ((uint16_t)p[11] << 8));
-    c.storage_flags = p[12];
-    break;
-  }
+  return ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo),
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+                                  true
+#else
+                                  false
 #endif
-  return c;
+                                  );
+#else
+  return OtaBlCaps();
+#endif
 }
 
 // True if this device's bootloader can apply a .mota of the given format_ver + codec_id.

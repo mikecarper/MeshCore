@@ -921,6 +921,10 @@ bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uin
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED
       || _fstate == PAUSED) return false;  // busy
   if (_fstate == COMPLETE && memcmp(mid, _fid, 4) == 0) return false;             // already have it
+  if (flags & ~MFLAG_KNOWN) return false;
+  const bool bootloader = (flags & MFLAG_BOOTLOADER) != 0;
+  if (!_archive_fetch && bootloader &&
+      (!_accept_bootloader || !_have_desired_mid || codec != CODEC_FULL)) return false;
   if (!_archive_fetch && !codecOk(codec)) return false;                           // can't apply this codec
   if (_have_desired_mid)                                                          // manual pull of a specific mid
     return memcmp(mid, _desired_mid, 4) == 0 && (_desired_target == 0 || target == _desired_target);
@@ -1169,10 +1173,16 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   const uint8_t* mf = _mf_buf;                   // fully reassembled manifest-minus-leaves
   uint32_t mfl = _mf_len;
   if (mfl != MOTA_MFL) { failFetch(FETCH_ERROR_MANIFEST); return; } // fixed 197-byte manifest
-  if (mf[2] != HASH_ALGO_SHA256) { failFetch(FETCH_ERROR_HASH_ALGO); return; }
-  if (!_archive_fetch && !codecOk(mf[56])) { failFetch(FETCH_ERROR_CODEC); return; }
-  uint32_t payload_size = rd_u32le(mf + 15);
-  uint8_t  bsl = mf[19];
+  MotaManifest parsed;
+  if (!mota_parse_manifest(mf, mfl, parsed)) { failFetch(FETCH_ERROR_MANIFEST); return; }
+  if (parsed.hash_algo != HASH_ALGO_SHA256) { failFetch(FETCH_ERROR_HASH_ALGO); return; }
+  if (!_archive_fetch && parsed.is_bootloader() &&
+      (!_accept_bootloader || !_have_desired_mid)) {
+    failFetch(FETCH_ERROR_CODEC); return;            // bootloader packages are manual-pull only
+  }
+  if (!_archive_fetch && !codecOk(parsed.codec_id)) { failFetch(FETCH_ERROR_CODEC); return; }
+  uint32_t payload_size = parsed.payload_size;
+  uint8_t  bsl = parsed.block_size_log2;
   if (bsl >= 32) { failFetch(FETCH_ERROR_GEOMETRY); return; }
   uint32_t bs = 1u << bsl;
   // a block must fit our reassembly buffer (and be non-empty) - reject an oversized block_size up front
@@ -1193,8 +1203,8 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   // Hand the store the parsed layout BEFORE begin(), so a partition-backed store (ESP32) can choose
   // placement and refuse an unfittable fetch up front: a FULL payload streams to the inactive slot,
   // a delta's whole container is staged together. (image_size at mf+11, is_full from flags at mf+1.)
-  bool is_full = (mf[1] & MFLAG_FULL) != 0;
-  if (!_fetch->plan_layout(is_full, rd_u32le(mf + 11), payload_off, payload_size)) {
+  bool is_full = parsed.is_full();
+  if (!_fetch->plan_layout(is_full, parsed.image_size, payload_off, payload_size)) {
     failFetch(FETCH_ERROR_STORAGE); return;
   }
   if (!_fetch->begin(total)) { failFetch(FETCH_ERROR_STORAGE); return; }
@@ -1316,6 +1326,7 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   if (!_fetch->read(8, mbuf, mread) || !mota_parse_manifest(mbuf, mread, m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
   if (m.hash_algo != HASH_ALGO_SHA256) return false;
+  if (!_archive_fetch && m.is_bootloader() && !_accept_bootloader) return false;
   if (!_archive_fetch && !codecOk(m.codec_id)) return false;
   uint32_t mfl = (uint32_t)(m.approval - m.manifest_start) + 4;            // manifest-minus-leaves length
   uint32_t bs = m.block_size();

@@ -216,6 +216,40 @@ rejected; trusted signed images can auto-install only when that policy is enable
 
 After it reboots, run `ota status` to confirm the new version.
 
+### Updating a XIAO bootloader (advanced, explicit only)
+
+This is available only on the specially marked XIAO nRF52840/Sense QSPI
+repeater builds after a one-time exact-board ABI-3 OTAFIX installation over
+USB/BLE DFU or SWD. It is not the normal firmware update path. Check support
+first:
+
+```text
+ota bootloader
+```
+
+The reply must show a valid `XIAO_DFU` board identity plus ABI 3 and the QSPI /
+boot-update capability bits. A bootloader package appears as `bootloader` in
+`ota ls`. It is never downloaded or installed automatically, even if both OTA
+automation settings are enabled. Use its stable ID explicitly:
+
+```text
+ota pull <MID8> flash
+# wait until ota status says this bootloader download is ready
+ota bootloader
+ota bootloader install <MID8> <HASH16>
+```
+
+Copy both confirmation values exactly from the second `ota bootloader` reply.
+Ordinary `ota install` deliberately refuses this package. The privileged
+command requires an exact 40 KiB candidate for the installed XIAO board, a
+valid embedded identity/CRC and vector table, continued boot-update support,
+and a valid signature from a key already in `ota key`'s trusted allowlist. It
+preserves the running application while OTAFIX replaces itself; `blup:C8` in
+post-reboot `ota status` means success. Any node lacking this command or those
+capabilities must update its bootloader locally instead. See
+[the nRF52 QSPI guide](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora)
+for the complete safety contract.
+
 ### 5. If something goes wrong
 
 - A download that stalls or gets interrupted just **resumes** later, or you can `ota cancel` and try again.
