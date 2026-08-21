@@ -57,8 +57,10 @@ public:
   // whole container is staged together (the decoder reads the patch from it at apply). image_size is the
   // reconstructed image; [payload_off, payload_off+payload_size) is the payload region in the container.
   // Return false if it cannot fit the backing store (the transfer is then refused before any block).
-  virtual bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off, uint32_t payload_size) {
-    (void)is_full; (void)image_size; (void)payload_off; (void)payload_size; return true;
+  virtual bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
+                           uint32_t payload_size, bool is_bootloader) {
+    (void)is_full; (void)image_size; (void)payload_off; (void)payload_size;
+    (void)is_bootloader; return true;
   }
 };
 

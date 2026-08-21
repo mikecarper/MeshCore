@@ -334,18 +334,22 @@ shows an older row. Select `[same target]`: it can say `full` for ESP32 and exte
 or `delta` for any supported nRF52 target. Do not select `[unsupported]` (for example, a source's self-served
 full image on an internal-staging nRF52).
 Rows labelled `bootloader` are also outside this ordinary application flow:
-they are never automatic and `ota install` refuses them. Only an already-capable
-XIAO QSPI repeater can use the separate
-[explicit bootloader workflow](ota_nrf52_qspi.md#explicit-xiao-bootloader-updates-over-lora).
+they are never automatic and `ota install` refuses them. Only an
+already-capable, allowlisted internal-flash or XIAO-QSPI nRF52 target can use
+the separate [explicit bootloader workflow](ota_nrf52_bootloader_update.md).
 Use the row's stable eight-hex manifest ID rather than its changing list position:
 
 ```text
 ota pull 838B8169 flash
 ```
 
-If an internal-flash nRF52 reports `no EndF`, only a row marked `[rescue]` is eligible. Current rescue-capable
+If a legacy internal-flash nRF52 reports `no EndF`, only a row marked `[rescue]` is eligible. Current rescue-capable
 firmware requires `ota pull <mid8> flash rescue`, followed after completion by
 `ota rescue install <base_hash16>`. Older running firmware without those commands must be recovered over USB.
+Shared-internal bootloader-update builds are stricter: without a valid live
+`EndF`, every internal pull is refused before erase because the normal
+application may extend through `0xED000`. Recover those builds over USB/BLE DFU
+or SWD instead of relying on the older 608 KiB rescue estimate.
 
 Monitor the transfer:
 

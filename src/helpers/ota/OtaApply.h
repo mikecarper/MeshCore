@@ -101,6 +101,17 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
                                          ApplyState& st, char* msg);
 #endif
 #endif
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && \
+    defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+class OtaStoreFlashNrf52;
+bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg);
+#endif
 
 // Commit the (already approved/armed) update and reboot into it - does NOT return. Call this only after
 // a successful ota_apply_* AND after the confirmation reply has been delivered, so the operator knows

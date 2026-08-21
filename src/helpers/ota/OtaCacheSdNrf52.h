@@ -55,7 +55,7 @@ public:
   bool finalize() override;
   void checkpoint() override;
   bool reopen() override;
-  bool plan_layout(bool, uint32_t, uint32_t, uint32_t) override { return true; }
+  bool plan_layout(bool, uint32_t, uint32_t, uint32_t, bool) override { return true; }
 
   // MotaSource: completed files are advertised and read directly from SD on demand.
   uint8_t count() override { return _initialized ? _count : 0; }

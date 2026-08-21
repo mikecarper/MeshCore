@@ -13,6 +13,7 @@ import io
 import os
 import random
 import struct
+from pathlib import Path
 
 import motalib as ml
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -40,8 +41,34 @@ def test_target_id_for_env():
     assert ml.target_id_for_env("RAK_4631_repeater") != ml.target_id_for_env("RAK_4631_companion_radio_usb")
 
 
+def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
+    root = Path(__file__).resolve().parents[2]
+    inventory = [
+        line.strip()
+        for line in (root / "tools/mota/nrf52_internal_bootloader_targets.txt")
+        .read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert len(inventory) == len(set(inventory))
+    assert len(inventory) == 21
+
+    target_header = (root / "src/helpers/ota/OtaTargets.h").read_text(encoding="utf-8")
+    for target in inventory:
+        assert f'"{target}"' in target_header
+
+    pio = (root / "platformio.ini").read_text(encoding="utf-8")
+    nrf52_base = pio.split("[nrf52_base]", 1)[1].split("\n[", 1)[0]
+    assert nrf52_base.count("pre:scripts/nrf52_internal_bootloader_link.py") == 1
+
+    build = (root / "build.sh").read_text(encoding="utf-8")
+    recipe = build.split("apply_nrf52_lora_ota_build_recipe()", 1)[1]
+    recipe = recipe.split("supports_nrf52_internal_bootloader_update()", 1)[0]
+    assert "scripts/nrf52_internal_bootloader_link.py" not in recipe
+    assert "export MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE=1" in recipe
+
+
 def test_ota_target_generation_honors_explicit_disable():
-    from gen_targets import ota_envs
+    from gen_targets import ota_envs, release_aliases
 
     cfg = [
         ["env:enabled", [["build_flags", ["-D ENABLE_OTA=1"]]]],
@@ -49,6 +76,7 @@ def test_ota_target_generation_honors_explicit_disable():
         ["env:unrelated", [["build_flags", ["-D NRF52_PLATFORM"]]]],
     ]
     assert ota_envs(cfg) == ["enabled"]
+    assert "RAK_3401_repeater_lora_ota_no_external_sensors" in release_aliases()
 
 
 def test_hardware_id_for_env():
@@ -150,6 +178,15 @@ def test_nrf52_layout_record_roundtrip_and_policy():
     boot_qspi_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(8, 2048), boot_qspi))
     assert ml.parse_nrf52_layout(boot_qspi_image) == boot_qspi
     assert boot_qspi.bootloader_scratch
+    shared_internal = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        ml.NRF52_APP_END, 0)
+    shared_internal_image, _ = ml.ensure_endf(
+        ml.ensure_nrf52_layout(_fw(9, 2048), shared_internal))
+    assert ml.parse_nrf52_layout(shared_internal_image) == shared_internal
+    assert not shared_internal.bootloader_scratch
+    assert ((ml.NRF52_APP_END - ml.NRF52_BOOT_CONTAINER_SIZE) &
+            ~(ml.NRF52_FLASH_PAGE - 1)) == ml.NRF52_SHARED_BOOT_STAGE_START
     try:
         ml.build_nrf52_layout(ml.Nrf52Layout(
             ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
@@ -160,6 +197,7 @@ def test_nrf52_layout_record_roundtrip_and_policy():
     for flags in (
         ml.NRF52_LAYOUT_FLAG_SD | ml.NRF52_LAYOUT_FLAG_QSPI,
         ml.NRF52_LAYOUT_FLAG_QSPI | ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
+        0x10,
     ):
         try:
             ml.build_nrf52_layout(ml.Nrf52Layout(
@@ -176,13 +214,28 @@ def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
     struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
                      ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
-                     ml.XIAO_BOOT_STORAGE_QSPI | ml.XIAO_BOOT_STORAGE_UPDATE)
+                     ml.BOOT_STORAGE_QSPI_UPDATE)
     name = ml.XIAO_BOOT_DEVICE_NAME
     struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
                      ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
                      ml.XIAO_BOOT_IMAGE_START, ml.XIAO_BOOT_IMAGE_SIZE, board_id, name, 0)
     crc = zlib.crc32(image) & 0xFFFFFFFF
     struct.pack_into("<I", image, 0x100 + 40, crc)
+    return bytes(image)
+
+
+def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU"):
+    import zlib
+    image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
+    struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
+    struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
+                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
+                     ml.BOOT_STORAGE_INTERNAL_UPDATE)
+    name = device_name.encode("ascii").ljust(16, b"\0")
+    struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
+                     ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
+                     ml.XIAO_BOOT_IMAGE_START, ml.XIAO_BOOT_IMAGE_SIZE, board_id, name, 0)
+    struct.pack_into("<I", image, 0x100 + 40, zlib.crc32(image) & 0xFFFFFFFF)
     return bytes(image)
 
 
@@ -269,7 +322,7 @@ def test_xiao_bootloader_identity_skips_bad_decoy_and_rejects_two_valid_manifest
 def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
     def caps(*, offset=0, abi=ml.BOOT_FORMAT_VER,
              codecs=1 << ml.CODEC_FULL,
-             storage=ml.XIAO_BOOT_STORAGE_QSPI | ml.XIAO_BOOT_STORAGE_UPDATE,
+             storage=ml.BOOT_STORAGE_QSPI_UPDATE,
              reserved=b"\0\0\0"):
         image = bytearray(b"\xff" * 64)
         struct.pack_into("<8sHHB3s", image, offset, ml.XIAO_BOOT_CAPS_MAGIC,
@@ -282,6 +335,11 @@ def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
     assert not ml.xiao_bootloader_caps_ok(caps(codecs=0))
     assert not ml.xiao_bootloader_caps_ok(caps(storage=0x1C))
     assert not ml.xiao_bootloader_caps_ok(caps(reserved=b"\0\x01\0"))
+    duplicate = bytearray(caps())
+    struct.pack_into("<8sHHB3s", duplicate, 24, ml.XIAO_BOOT_CAPS_MAGIC,
+                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
+                     ml.BOOT_STORAGE_INTERNAL_UPDATE, b"\0\0\0")
+    assert ml.bootloader_caps_storage(bytes(duplicate)) is None
 
 
 def test_bootloader_v3_build_parse_and_strict_contract():
@@ -319,6 +377,84 @@ def test_bootloader_v3_build_parse_and_strict_contract():
     try:
         ml.parse_container(bytes(bad))
         assert False, "v3 non-bootloader flags accepted"
+    except ValueError:
+        pass
+
+
+def test_generic_internal_bootloader_build_parse_and_strict_contract():
+    priv = Ed25519PrivateKey.generate()
+    image = _generic_bootloader_image()
+    identity = ml.validate_bootloader_image(image)
+    assert identity.board_id == 0x239A0029 and identity.device_name == "3401_DFU"
+    target = ml.bootloader_target_id(identity.board_id, identity.device_name)
+    assert target == 0x23818A80
+    expected_hw = b"NRF_BL_239A0029_3401_DFU".ljust(32, b"\0")
+    assert ml.bootloader_hw_id(identity.board_id, identity.device_name) == expected_hw
+
+    manifest = ml.build_manifest(
+        target_id=target, fw_version=ml.pack_version("1.0.0"),
+        image_size=len(image), payload=image, block_size=1024,
+        image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
+        sign_priv=priv, bootloader=True)
+    parsed = ml.parse_container(ml.build_container(manifest, image))
+    assert parsed.manifest.target_id == target
+    assert parsed.manifest.hw_id == expected_hw
+    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+
+    wrong_target = target ^ 1
+    try:
+        ml.build_manifest(
+            target_id=wrong_target, fw_version=1, image_size=len(image), payload=image,
+            block_size=1024, image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL,
+            is_full=True, sign_priv=priv, bootloader=True)
+        assert False, "generic bootloader raw/wrong target accepted"
+    except ValueError:
+        pass
+
+
+def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
+    import re
+
+    expected = {
+        (0x239A0071, "TOWER_V2_OTA"): 0x1150F50E,
+        (0x239A0071, "T096_DFU"): 0x42354C85,
+        (0x239A0071, "T1_DFU"): 0xFC556FFC,
+        (0x239A0071, "T114_DFU"): 0x0C3F2902,
+        (0x239A0071, "MESH_POCKET_OTA"): 0x059277F4,
+        (0x239A00B3, "KeepteenLT1_OTA"): 0xDB2E7B51,
+        (0x239A0029, "MX25_DFU"): 0x026AA982,
+        (0x239A00B3, "PROM_DFU"): 0xAF79E8CC,
+        (0x28860057, "T1KE_DFU"): 0xE6F5F03F,
+        (0x239A00DA, "TNM3_DFU"): 0x0CA41DB2,
+        (0x239A0029, "3401_DFU"): 0x23818A80,
+        (0x239A0029, "4631_DFU"): 0x2D0DF000,
+        (0x239A0029, "RTAG_DFU"): 0xC72E9C9C,
+    }
+    assert set(ml.INTERNAL_BOOTLOADER_IDENTITIES) == set(expected)
+    for identity, target in expected.items():
+        assert ml.bootloader_target_id(*identity) == target
+
+    root = Path(__file__).resolve().parents[2]
+    target_header = (root / "src/helpers/ota/OtaTargets.h").read_text(encoding="utf-8")
+    app_targets = {
+        int(value, 16)
+        for value in re.findall(r"\{ 0x([0-9a-fA-F]{8}),", target_header)
+    }
+    audited = ml.audit_bootloader_target_inventory(app_targets)
+    assert len(audited) == len(expected) + 2  # generic internal plus two legacy XIAOs
+
+    # Generic parsing remains useful for inspecting a future candidate, but a
+    # signing/build call fails closed until its exact identity is qualified.
+    image = _generic_bootloader_image(device_name="UNKNOWN_DFU")
+    identity = ml.validate_bootloader_image(image)
+    target = ml.bootloader_target_id(identity.board_id, identity.device_name)
+    priv = Ed25519PrivateKey.generate()
+    try:
+        ml.build_manifest(
+            target_id=target, fw_version=1, image_size=len(image), payload=image,
+            block_size=1024, image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL,
+            is_full=True, sign_priv=priv, bootloader=True)
+        assert False, "unqualified generic bootloader package build accepted"
     except ValueError:
         pass
 

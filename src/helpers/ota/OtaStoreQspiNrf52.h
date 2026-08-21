@@ -159,7 +159,8 @@ public:
   bool finalize() override;
   void checkpoint() override;
   bool reopen() override;
-  bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off, uint32_t payload_size) override;
+  bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
+                   uint32_t payload_size, bool is_bootloader) override;
 
   // Sets APRV only after all app-side verification gates have passed.
   bool approve_for_bootloader();

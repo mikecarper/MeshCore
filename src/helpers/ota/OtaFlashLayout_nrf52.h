@@ -33,6 +33,14 @@ static const uint32_t MOTA_NRF52_EXTRAFS_START = 0x000D4000u;
 static const uint32_t MOTA_NRF52_BOOT_SCRATCH_START = 0x000E0000u;
 static const uint32_t MOTA_NRF52_BOOT_SCRATCH_END   = 0x000EA000u;
 static const uint32_t MOTA_NRF52_APP_END        = 0x000ED000u;
+// Internal-only targets do not reserve a second scratch bank. Their exact
+// 41,330-byte v3 package shares the normal bottom-aligned internal OTA store.
+// Under the 0xED000 filesystem ceiling it occupies eleven pages beginning at
+// 0xE2000; OTAFIX compacts the payload forward within this same slot before
+// handing that page-aligned source to the MBR. Admission requires a trustworthy
+// live EndF proving the running application ends at or below this address.
+static const uint32_t MOTA_NRF52_BOOT_CONTAINER_SIZE = 41330u;
+static const uint32_t MOTA_NRF52_SHARED_BOOT_STAGE_START = 0x000E2000u;
 static const uint32_t MOTA_NRF52_STAGE_CEILING_LEGACY   = MOTA_NRF52_EXTRAFS_START;
 static const uint32_t MOTA_NRF52_STAGE_CEILING_EXPANDED = MOTA_NRF52_APP_END;
 // Compatibility name for code that refers to the fixed lower boundary. New staging code must use an
@@ -44,6 +52,12 @@ static const uint8_t  GPREGRET_OTA_BOOTLOADER_UPDATE = 0x6Bu;
 static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
 static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
+
+inline uint8_t mota_nrf52_flash_stage_handoff(uint32_t effective_stage_ceiling) {
+  if (effective_stage_ceiling == MOTA_NRF52_STAGE_CEILING_EXPANDED)
+    return GPREGRET2_OTA_STAGE_EXPANDED;
+  return GPREGRET2_OTA_STAGE_LEGACY;
+}
 
 // Firmware without a valid EndF and older host tooling fall back to this conservative apply workspace.
 // New motatool builds read the firmware's appended layout record and derive memory_size from the actual
@@ -72,6 +86,13 @@ static_assert((MOTA_NRF52_STAGE_CEILING_LEGACY % MOTA_NRF52_FLASH_PAGE) == 0,
               "legacy staging ceiling must be page-aligned");
 static_assert((MOTA_NRF52_STAGE_CEILING_EXPANDED % MOTA_NRF52_FLASH_PAGE) == 0,
               "expanded staging ceiling must be page-aligned");
+static_assert((MOTA_NRF52_SHARED_BOOT_STAGE_START % MOTA_NRF52_FLASH_PAGE) == 0,
+              "shared bootloader stage start must be page-aligned");
+static_assert(((MOTA_NRF52_APP_END - MOTA_NRF52_BOOT_CONTAINER_SIZE) &
+               ~(MOTA_NRF52_FLASH_PAGE - 1u)) == MOTA_NRF52_SHARED_BOOT_STAGE_START,
+              "exact bootloader container must bottom-align at E2000");
+static_assert(MOTA_NRF52_APP_END - MOTA_NRF52_SHARED_BOOT_STAGE_START == 0xB000u,
+              "shared bootloader slot must be exactly eleven pages");
 static_assert(MOTA_NRF52_STAGE_CEILING_LEGACY < MOTA_NRF52_STAGE_CEILING_EXPANDED,
               "legacy staging ceiling must precede expanded ceiling");
 static_assert(MOTA_NRF52_BOOT_SCRATCH_END - MOTA_NRF52_BOOT_SCRATCH_START == 0xA000u,
@@ -150,6 +171,61 @@ inline uint32_t mota_nrf52_stage_capacity(uint32_t app_base, uint32_t app_end,
   return first_free_page <= stage_ceiling ? stage_ceiling - first_free_page : 0;
 }
 
+// Choose the erase-protection floor used while receiving/reopening an internal
+// flash container. A valid EndF provides the exact live-image extent. Legacy
+// app-only builds may opt into the conservative rescue fallback; a shared
+// internal bootloader-update build passes refuse_without_endf=true for every
+// package kind because its normal app linker may extend through 0xED000.
+inline bool mota_nrf52_protected_app_end(uint32_t app_base,
+                                          uint32_t stage_ceiling,
+                                          bool firmware_info_valid,
+                                          uint32_t firmware_image_size,
+                                          bool refuse_without_endf,
+                                          uint32_t& out_app_end) {
+  if (!mota_nrf52_layout_valid(app_base, stage_ceiling)) return false;
+  if (firmware_info_valid) {
+    if (firmware_image_size > UINT32_MAX - app_base) return false;
+    out_app_end = app_base + firmware_image_size;
+  } else {
+    if (refuse_without_endf) return false;
+    if (MOTA_NRF52_FALLBACK_INPLACE_MEMORY > UINT32_MAX - app_base) return false;
+    out_app_end = app_base + MOTA_NRF52_FALLBACK_INPLACE_MEMORY;
+  }
+  return out_app_end >= app_base && out_app_end <= stage_ceiling;
+}
+
+// Bound a staged header's untrusted total before any caller uses that value as
+// a memory-mapped parse length. Subtraction is safe only after start<=ceiling.
+inline bool mota_nrf52_container_span_valid(uint32_t start,
+                                             uint32_t stage_ceiling,
+                                             uint32_t total_size,
+                                             uint32_t minimum_size) {
+  return start <= stage_ceiling && total_size >= minimum_size &&
+         total_size <= stage_ceiling - start;
+}
+
+inline bool mota_nrf52_target_image_fits(uint32_t app_base, uint32_t image_size,
+                                         uint32_t application_ceiling) {
+  return image_size != 0 && app_base < application_ceiling &&
+         image_size <= application_ceiling - app_base;
+}
+
+// Internal in-place patches use whichever address the bottom-aligned container
+// actually starts at as their destructive workspace ceiling. A normal delta
+// may be larger than the boot package's eleven-page shared slot and start
+// below E2000; that remains safe when both the encoded detools memory and the
+// reconstructed application stop below their independent limits.
+inline bool mota_nrf52_internal_patch_workspace_valid(uint32_t memory_size,
+                                                        uint32_t app_base,
+                                                        uint32_t mota_start,
+                                                        uint32_t target_image_size,
+                                                        uint32_t application_ceiling) {
+  return memory_size != 0 && mota_start >= app_base &&
+         memory_size <= mota_start - app_base &&
+         mota_nrf52_target_image_fits(app_base, target_image_size,
+                                      application_ceiling);
+}
+
 // Plan where to stage a received `.mota` of `total_size` bytes. It is placed bottom-aligned within the
 // highest flash page below stage_ceiling (the bootloader scans downward from there), and it must sit
 // ENTIRELY above the running image and below the filesystem region (ExtraFS/InternalFS - where user prefs
@@ -166,6 +242,25 @@ inline bool mota_nrf52_stage_plan(uint32_t total_size, uint32_t app_base, uint32
   if (total_size < 13 || total_size > capacity) return false; // 13 = header(8)+trailer(5)
   uint32_t start = (stage_ceiling - total_size) & ~(MOTA_NRF52_FLASH_PAGE - 1);   // bottom-align down
   if (start < app_end) return false;                            // would overlap the running app
+  out_start = start;
+  return true;
+}
+
+// Privileged shared-slot admission. Unlike ordinary rescue staging, this
+// requires the caller to have a trustworthy live EndF (`app_end` is exact),
+// accepts only the fixed v3 package size, and proves the dynamic slot is wholly
+// above the running image before any erase/write begins.
+inline bool mota_nrf52_shared_boot_stage_plan(uint32_t total_size,
+                                               uint32_t app_base,
+                                               bool firmware_info_valid,
+                                               uint32_t app_end,
+                                               uint32_t& out_start) {
+  uint32_t start;
+  if (!firmware_info_valid || total_size != MOTA_NRF52_BOOT_CONTAINER_SIZE ||
+      !mota_nrf52_stage_plan(total_size, app_base, app_end,
+                             MOTA_NRF52_APP_END, start) ||
+      start != MOTA_NRF52_SHARED_BOOT_STAGE_START)
+    return false;
   out_start = start;
   return true;
 }

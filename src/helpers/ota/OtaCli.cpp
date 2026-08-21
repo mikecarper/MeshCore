@@ -170,9 +170,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       "announce | folder | config. LoRa install is disabled.");
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
       !defined(OTA_QSPI_STORE)
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    strcpy(reply,
+      "OTA: status | stats | ls | get <id> flash | install | "
+      "bootloader | cancel | announce | self | folder | config | key");
+#else
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
       "cancel | announce | self | folder | config | key");
+#endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
     strcpy(reply,
@@ -220,10 +226,6 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     }
     const char* hw = (c.hw_id[0]) ? c.hw_id : "?";
     const char* tenv = ota_target_env_name(c.manager.target());   // env name, or "?" if not in the table
-    int n = snprintf(reply, 160, "OTA | this fw %s (%uK) hw=%s | %s | serving:%s (%u) | keys:%u | target:%08X (%s)",
-             selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw, dl,
-             c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
-             (unsigned)c.allow.count(), (unsigned)c.manager.target(), tenv ? tenv : "?");
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
     // blrc = the bootloader's last apply code (diagnostic; 0xB8=success, see ota_delta.c).
@@ -238,12 +240,23 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     const char* bl_state = bl.present ? "apply" : "NONE";
 #endif
     const uint8_t last_rc = ota_bootloader_last_rc();
-    if (n < 146) {
-      if (ota_nrf52_boot_update_result(last_rc))
-        n += snprintf(reply + n, 160 - n, " | bl:%s blup:%02X", bl_state, last_rc);
-      else
-        n += snprintf(reply + n, 160 - n, " | bl:%s blrc:%02X", bl_state, last_rc);
-    }
+    const char* rc_name = ota_nrf52_boot_update_result(last_rc) ? "blup" : "blrc";
+    // Keep the fixed-width parser/diagnostic fields ahead of the variable download text and optional
+    // human target name. hw is bounded to 32 bytes, so target + the complete blup/blrc token always fit
+    // in the 160-byte reply; snprintf may truncate only the descriptive tail.
+    snprintf(reply, 160,
+             "OTA | this fw %s (%uK) hw=%s | target:%08X | bl:%s %s:%02X | %s | "
+             "serving:%s (%u) | keys:%u | env:%s",
+             selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw,
+             (unsigned)c.manager.target(), bl_state, rc_name, last_rc, dl,
+             c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
+             (unsigned)c.allow.count(), tenv ? tenv : "?");
+#else
+    snprintf(reply, 160,
+             "OTA | this fw %s (%uK) hw=%s | %s | serving:%s (%u) | keys:%u | target:%08X (%s)",
+             selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw, dl,
+             c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
+             (unsigned)c.allow.count(), (unsigned)c.manager.target(), tenv ? tenv : "?");
 #endif
 #endif
 
@@ -334,21 +347,20 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       uint32_t age = (now - h->last_ms) / 1000; if (age > 99999) age = 99999;
       char ver[20]; ver_str(ver, sizeof ver, h->fw_version);
       // Target equality alone is not an install-safety claim. Surface local codec/bootloader limitations,
-      // and flag the explicit rescue path when this internal-flash nRF52 has no valid running EndF.
+      // and flag the explicit legacy rescue path when an app-only internal-flash nRF52 has no valid EndF.
       char hwbuf[16];
       const char* fit;
       const char* env = ota_target_env_name(h->target_id);
       const bool boot_package = (h->flags & MFLAG_BOOTLOADER) != 0;
       if (boot_package) {
         bool installable = false;
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && defined(OTA_QSPI_BOOTLOADER_UPDATE)
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
-                      h->target_id == bid.board_id && list_bl.present &&
-                      list_bl.apply_abi >= MOTA_BOOT_FORMAT_VER &&
-                      (list_bl.storage_flags & (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) ==
-                          (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE);
+                      h->target_id == ota_bootloader_target_id(bid) &&
+                      ota_bootloader_self_update_caps_valid(list_bl);
 #endif
         fit = installable ? "yours" : "bootloader unsupported";
       } else if (myt && h->target_id == myt) {
@@ -363,7 +375,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #endif
 #endif
         if (!installable) fit = "unsupported";
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+#if defined(NRF52_PLATFORM) && defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+        else if (!list_has_endf) fit = "no EndF; local recovery";
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
     !defined(OTA_QSPI_STORE)
         else if (!list_has_endf) fit = "rescue";
 #endif
@@ -381,6 +395,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   // ---- start fetching a specific catalogued mOTA (by list index or manifest_id) ----
   } else if (is_cmd(a, "pull|get|download", &rest)) {
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+    !defined(OTA_QSPI_STORE) && !defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    const char* pull_usage = "usage: ota pull <id> flash [rescue] | folder [validate]   (see `ota ls`)";
+#else
+    const char* pull_usage = "usage: ota pull <id> flash | folder [validate]   (see `ota ls`)";
+#endif
     const char* p = rest; while (*p == ' ') p++;
     // split into "<selector> [destination]": selector = #N / N (catalogue index) or mid hex; destination =
     // flash | folder (MANDATORY - `folder` captures the .mota onto the connected motatool folder as <mid>.mota).
@@ -388,7 +408,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     while (p[i] && p[i] != ' ' && i < (int)sizeof(selstr) - 1) { selstr[i] = p[i]; i++; }
     selstr[i] = 0;
     const char* dst = p + i; while (*dst == ' ') dst++;
-    if (selstr[0] == 0) { strcpy(reply, "usage: ota pull <id> flash [rescue] | folder [validate]   (see `ota ls`)"); return true; }
+    if (selstr[0] == 0) { strcpy(reply, pull_usage); return true; }
     // resolve the catalogue row (index or explicit manifest_id)
     const OtaManager::CatRow* sel = nullptr; uint8_t mid[4];
     // An eight-digit all-numeric manifest ID is still an ID, not a huge list index. Bare short decimal
@@ -435,7 +455,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     char destination[8] = {0}, option[10] = {0}, extra[2] = {0};
     int parts = sscanf(dst, "%7s %9s %1s", destination, option, extra);
     if (parts < 1 || parts > 2) {
-      strcpy(reply, "ERR usage: ota pull <id> flash [rescue] | folder [validate]");
+      snprintf(reply, 160, "ERR %s", pull_usage);
       return true;
     }
     bool to_flash = strcmp(destination, "flash") == 0;
@@ -443,7 +463,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     bool validate = to_folder && parts == 2 && strcmp(option, "validate") == 0;
     bool rescue = to_flash && parts == 2 && strcmp(option, "rescue") == 0;
     if ((!to_flash && !to_folder) || (parts == 2 && !validate && !rescue)) {
-      strcpy(reply, "ERR usage: ota pull <id> flash [rescue] | folder [validate]");
+      snprintf(reply, 160, "ERR %s", pull_usage);
       return true;
     }
 
@@ -468,7 +488,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       return true;
 #else
       if (selboot) {
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && defined(OTA_QSPI_BOOTLOADER_UPDATE)
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         const OtaBlCaps& bl = c.bootloaderCaps();
         if (selflags != (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) ||
@@ -476,13 +497,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
           return true;
         }
-        if (!bid.present || !bid.crc_ok || seltgt != bid.board_id) {
-          strcpy(reply, "ERR bootloader package does not match this installed XIAO bootloader");
+        if (!bid.present || !bid.crc_ok || seltgt != ota_bootloader_target_id(bid)) {
+          strcpy(reply, "ERR bootloader package does not match this installed bootloader identity");
           return true;
         }
-        if (!bl.present || bl.apply_abi < MOTA_BOOT_FORMAT_VER ||
-            (bl.storage_flags & (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) !=
-                (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE)) {
+        if (!ota_bootloader_self_update_caps_valid(bl)) {
           strcpy(reply, "ERR installed bootloader lacks safe LoRa bootloader-update support");
           return true;
         }
@@ -524,6 +543,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     !defined(OTA_QSPI_STORE)
       SelfFwInfo self;
       bool has_endf = ota_self_firmware(self) && self.valid;
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+      if (!has_endf) {
+        strcpy(reply, "ERR no EndF; shared-slot builds refuse internal pulls; recover via USB/BLE DFU or SWD");
+        return true;
+      }
+      if (rescue) {
+        strcpy(reply, "ERR rescue is disabled on shared-slot bootloader-update builds; use `flash`");
+        return true;
+      }
+#else
       if (!has_endf && !rescue) {
         snprintf(reply, 160,
                  "ERR no EndF; retry `ota pull %s flash rescue`, then use `ota rescue install <hash16>`",
@@ -538,6 +567,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         strcpy(reply, "ERR rescue is only for a running firmware with no valid EndF; use `flash`");
         return true;
       }
+#endif
 #else
       if (rescue) {
         strcpy(reply, "ERR rescue is available only on internal-flash nRF52 builds");
@@ -656,7 +686,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // the exact 8-byte base hash carried by the already-fetched package. The bootloader independently
     // hashes the running app and refuses a mismatch before writing any application flash.
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
-    !defined(OTA_QSPI_STORE) && !defined(OTA_SEEDER_ONLY)
+    !defined(OTA_QSPI_STORE) && !defined(OTA_SEEDER_ONLY) && \
+    !defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
     if (c.fetch_to_folder) {
       strcpy(reply, "ERR the complete update was captured to a folder, not staged for install; use `ota cancel`");
       return true;
@@ -677,13 +708,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     char m2[100];
     bool ok = c.apply_fetched_rescue(operator_base_hash, m2);
     sprintf(reply, "%s | %s", ok ? "OK" : "ERR", m2);
+#elif defined(NRF52_PLATFORM) && defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    strcpy(reply, "ERR rescue is disabled on shared-slot bootloader-update builds; use local DFU/SWD if EndF is invalid");
 #else
     strcpy(reply, "ERR rescue requires an internal-flash nRF52 LoRa OTA build");
 #endif
 
   } else if (is_cmd(a, "bootloader|blupdate", &rest)) {
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && \
-    defined(OTA_QSPI_BOOTLOADER_UPDATE) && !defined(OTA_SEEDER_ONLY)
+#if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
     const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
     const OtaBlCaps& bl = c.bootloaderCaps();
     if (*rest == 0 || strcmp(rest, "status") == 0) {
@@ -699,8 +732,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
         mesh::Utils::toHex(hashhx, staged.image_hash, 8);
       }
-      snprintf(reply, 160, "BL board=%08X name=%s crc=%08X abi=%u caps=%02X | staged:%s mid=%s hash=%s",
-               (unsigned)bid.board_id, bid.device_name, (unsigned)bid.crc32,
+      snprintf(reply, 160, "BL board=%08X target=%08X name=%s crc=%08X abi=%u caps=%02X | staged:%s mid=%s hash=%s",
+               (unsigned)bid.board_id, (unsigned)ota_bootloader_target_id(bid),
+               bid.device_name, (unsigned)bid.crc32,
                bl.apply_abi, bl.storage_flags, ready ? "ready" : "none", midhx, hashhx);
       return true;
     }
@@ -720,7 +754,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (c.apply_pending) { strcpy(reply, "ERR another update is already armed"); return true; }
     if (c.fetch_to_folder || c.manager.fetchState() != OtaManager::COMPLETE ||
         c.fetch_store.staged_size() == 0 || !c.manager.fetched_is_bootloader()) {
-      strcpy(reply, "ERR no complete bootloader package in local QSPI storage"); return true;
+      strcpy(reply, "ERR no complete bootloader package in local install storage"); return true;
     }
     char m2[100];
     const bool ok = c.apply_fetched_bootloader(operator_mid, operator_hash8, m2);

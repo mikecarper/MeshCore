@@ -676,7 +676,8 @@ uint32_t OtaStoreQspiNrf52::capacity() const {
   return result;
 }
 
-bool OtaStoreQspiNrf52::plan_layout(bool, uint32_t image_size, uint32_t, uint32_t payload_size) {
+bool OtaStoreQspiNrf52::plan_layout(bool, uint32_t image_size, uint32_t,
+                                    uint32_t payload_size, bool) {
   // This is the start of a new manifest admission attempt. Clear diagnostics
   // left by the normal empty-store reopen probe, then latch the first error
   // from this attempt until the operator reads it or starts another attempt.

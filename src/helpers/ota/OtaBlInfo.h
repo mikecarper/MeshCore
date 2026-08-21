@@ -33,6 +33,27 @@ static const uint8_t OTA_BL_STORAGE_SD            = 0x01;
 static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
 static const uint8_t OTA_BL_STORAGE_QSPI          = 0x04;
 static const uint8_t OTA_BL_STORAGE_BOOT_UPDATE    = 0x08;
+static const uint8_t OTA_BL_STORAGE_KNOWN          = 0x0F;
+
+inline uint8_t ota_bootloader_update_storage_flags() {
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  // No external-storage bit means the ordinary internal flash store. The
+  // same store holds either an app delta or a boot package; BOOT_UPDATE marks
+  // only the privileged package capability, not a second storage backend.
+  return OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE;
+#elif defined(OTA_QSPI_BOOTLOADER_UPDATE)
+  return OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI |
+         OTA_BL_STORAGE_BOOT_UPDATE;
+#else
+  return 0;
+#endif
+}
+
+inline bool ota_bootloader_self_update_caps_valid(const OtaBlCaps& c) {
+  const uint8_t required = ota_bootloader_update_storage_flags();
+  return required != 0 && c.present && c.apply_abi >= 3u &&
+         (c.codec_mask & 1u) != 0 && c.storage_flags == required;
+}
 
 // Prefer a continuity-capable marker over a numerically newer legacy-looking candidate. Bootloader
 // images contain the marker magic in code/literal data as well as in the real structure, so the scan
@@ -53,17 +74,33 @@ inline bool ota_bl_caps_prefer(const OtaBlCaps& current, uint16_t candidate_abi,
 // uint16_t fields and OTAFIX emits it aligned(4); accepting a byte-shifted magic
 // occurrence would let instruction/literal bytes masquerade as capabilities.
 inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
-                                          bool require_boot_update) {
+                                          bool require_boot_update,
+                                          uint8_t exact_storage_flags = 0) {
   OtaBlCaps c;
   if (!bytes) return c;
+  uint8_t privileged_count = 0;
   for (size_t off = 0; off + 16u <= len; off += 4u) {
     const uint8_t* p = bytes + off;
     if (p[0] != OTA_BL_MAGIC[0] || memcmp(p, OTA_BL_MAGIC, 8) != 0) continue;
     const uint16_t abi = (uint16_t)(p[8] | ((uint16_t)p[9] << 8));
     const uint16_t codecs = (uint16_t)(p[10] | ((uint16_t)p[11] << 8));
     const uint8_t storage = p[12];
-    if (abi == 0 || abi == 0xFFFFu || codecs == 0 || (storage & ~0x0Fu) != 0 ||
+    if (abi == 0 || abi == 0xFFFFu || codecs == 0 || (storage & ~OTA_BL_STORAGE_KNOWN) != 0 ||
         p[13] != 0 || p[14] != 0 || p[15] != 0) continue;
+    const bool exact_profile = exact_storage_flags == 0 || storage == exact_storage_flags;
+    if (require_boot_update && exact_profile && abi >= 3u && (codecs & 1u) != 0 &&
+        (storage & OTA_BL_STORAGE_BOOT_UPDATE) != 0) {
+      // A self-update build must have one unambiguous privileged marker. Do
+      // not silently choose between two otherwise valid structures (including
+      // two copies of the expected exact profile). Malformed magic/literal
+      // decoys were filtered above and do not count.
+      if (++privileged_count != 1u) return OtaBlCaps();
+      c.present = true;
+      c.apply_abi = abi;
+      c.codec_mask = codecs;
+      c.storage_flags = storage;
+      continue;
+    }
     if (ota_bl_caps_prefer(c, abi, storage, require_boot_update)) {
       c.present = true;
       c.apply_abi = abi;
@@ -71,6 +108,7 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
       c.storage_flags = storage;
     }
   }
+  if (require_boot_update && privileged_count != 1u) return OtaBlCaps();
   return c;
 }
 
@@ -80,8 +118,8 @@ inline OtaBlCaps ota_bootloader_caps() {
   const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
   const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
   return ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo),
-#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
-                                  true
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+                                  true, ota_bootloader_update_storage_flags()
 #else
                                   false
 #endif
@@ -103,11 +141,18 @@ inline bool ota_bootloader_can_apply(uint8_t format_ver, uint8_t codec_id) {
 // the legacy 0xD4000 ceiling. Packages sized for the expanded window still require the newer bootloader.
 inline uint32_t ota_nrf52_effective_stage_ceiling(const OtaBlCaps& c) {
   const uint32_t desired = mota_nrf52_layout_stage_ceiling();
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  if (desired != MOTA_NRF52_STAGE_CEILING_EXPANDED ||
+      !ota_bootloader_self_update_caps_valid(c))
+    return MOTA_NRF52_STAGE_CEILING_LEGACY;
+  return desired;
+#else
   if (desired == MOTA_NRF52_STAGE_CEILING_EXPANDED) {
     if (!c.present || !(c.storage_flags & OTA_BL_STORAGE_STAGE_CEILING))
       return MOTA_NRF52_STAGE_CEILING_LEGACY;
   }
   return desired;
+#endif
 }
 
 inline uint32_t ota_nrf52_effective_stage_ceiling() {

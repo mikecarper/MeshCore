@@ -364,6 +364,13 @@ public:
   bool codecOk(uint8_t c) const {
     return (c == CODEC_FULL && _accept_full) || c == _apply_codec || c == _apply_codec2;
   }
+  // Bootloader FULL images are a separate, privileged install class. They are
+  // admitted only for an explicit MID pull on a self-update-capable build;
+  // accepting one must never turn ordinary application FULL images on for an
+  // nRF52 single-slot target.
+  bool fetchCodecOk(uint8_t c, bool bootloader, bool manual) const {
+    return bootloader ? (_accept_bootloader && manual && c == CODEC_FULL) : codecOk(c);
+  }
 
   // Auto-fetch policy (manual `ota pull` always works regardless): 0=off (discover only), 1=any
   // compatible own-target advert, 2=only signed adverts. Conservative default = off.

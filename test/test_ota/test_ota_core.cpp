@@ -24,6 +24,8 @@ extern "C" {
 
 using namespace mesh::ota;
 
+static std::vector<uint8_t> boot_manifest_bytes();
+
 TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x90), 0x90);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x9F), 0x9F);
@@ -41,7 +43,75 @@ TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x51), 0x00); // QSPI handoff
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xD4), 0x00); // legacy handoff
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xED), 0x00); // expanded handoff
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xE0), 0x00); // retired handoff remains non-result
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0x00);
+}
+
+TEST(OtaBootPackage, GenericIdentityUsesBoardAndNameForCollisionSafeTarget) {
+  const uint32_t shared_board_id = 0x239A0029u;
+  const uint8_t rak3401_name[16] = {'3','4','0','1','_','D','F','U',0,0,0,0,0,0,0,0};
+  const uint8_t rak4631_name[16] = {'4','6','3','1','_','D','F','U',0,0,0,0,0,0,0,0};
+  uint8_t hw3401[32], hw4631[32];
+  ASSERT_TRUE(ota_bootloader_hw_id(shared_board_id, rak3401_name, hw3401));
+  ASSERT_TRUE(ota_bootloader_hw_id(shared_board_id, rak4631_name, hw4631));
+  EXPECT_EQ(0, memcmp(hw3401, "NRF_BL_239A0029_3401_DFU", 24));
+  EXPECT_EQ(0, memcmp(hw4631, "NRF_BL_239A0029_4631_DFU", 24));
+  EXPECT_NE(0, memcmp(hw3401, hw4631, sizeof(hw3401)));
+  EXPECT_EQ(ota_bootloader_target_id(shared_board_id, rak3401_name), 0x23818A80u);
+  EXPECT_EQ(ota_bootloader_target_id(shared_board_id, rak4631_name), 0x2D0DF000u);
+
+  uint8_t invalid[16] = {'B','A','D',0,'T','A','I','L',0,0,0,0,0,0,0,0};
+  EXPECT_FALSE(ota_bootloader_device_name_valid(shared_board_id, invalid));
+  memset(invalid, 'A', sizeof(invalid));
+  EXPECT_FALSE(ota_bootloader_device_name_valid(shared_board_id, invalid));
+  EXPECT_FALSE(ota_bootloader_board_id_valid(0));
+  EXPECT_FALSE(ota_bootloader_board_id_valid(UINT32_MAX));
+
+  auto raw = boot_manifest_bytes();
+  wr_u32le(raw.data() + 3, ota_bootloader_target_id(shared_board_id, rak3401_name));
+  memcpy(raw.data() + 57, hw3401, sizeof(hw3401));
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse_manifest(raw.data(), raw.size(), manifest));
+  OtaBootloaderIdentity installed;
+  installed.present = installed.crc_ok = true;
+  installed.image_start = OTA_BOOT_IMAGE_START;
+  installed.image_size = OTA_BOOT_IMAGE_SIZE;
+  installed.board_id = shared_board_id;
+  memcpy(installed.device_name, rak3401_name, sizeof(rak3401_name));
+  uint8_t mid[4] = {0x11,0x22,0x33,0x44};
+  uint8_t hash8[8]; memcpy(hash8, manifest.image_hash, sizeof(hash8));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, installed, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_OK);
+  wr_u32le(raw.data() + 3, shared_board_id); // raw USB ID is not the generic wire target
+  ASSERT_TRUE(mota_parse_manifest(raw.data(), raw.size(), manifest));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, installed, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_TARGET);
+
+  struct KnownIdentity { uint32_t board_id; const char* name; uint32_t target_id; };
+  const KnownIdentity known[] = {
+      {0x239A0071u, "TOWER_V2_OTA",   0x1150F50Eu},
+      {0x239A0071u, "T096_DFU",       0x42354C85u},
+      {0x239A0071u, "T1_DFU",         0xFC556FFCu},
+      {0x239A0071u, "T114_DFU",       0x0C3F2902u},
+      {0x239A0071u, "MESH_POCKET_OTA",0x059277F4u},
+      {0x239A00B3u, "KeepteenLT1_OTA",0xDB2E7B51u},
+      {0x239A0029u, "MX25_DFU",       0x026AA982u},
+      {0x239A00B3u, "PROM_DFU",       0xAF79E8CCu},
+      {0x28860057u, "T1KE_DFU",       0xE6F5F03Fu},
+      {0x239A00DAu, "TNM3_DFU",       0x0CA41DB2u},
+      {0x239A0029u, "3401_DFU",       0x23818A80u},
+      {0x239A0029u, "4631_DFU",       0x2D0DF000u},
+      {0x239A0029u, "RTAG_DFU",       0xC72E9C9Cu},
+  };
+  uint32_t targets[sizeof(known) / sizeof(known[0])] = {0};
+  for (size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
+    uint8_t name[16] = {0};
+    ASSERT_LT(strlen(known[i].name), sizeof(name));
+    memcpy(name, known[i].name, strlen(known[i].name));
+    targets[i] = ota_bootloader_target_id(known[i].board_id, name);
+    EXPECT_EQ(targets[i], known[i].target_id);
+    for (size_t j = 0; j < i; j++) EXPECT_NE(targets[i], targets[j]);
+  }
 }
 
 static std::vector<uint8_t> boot_manifest_bytes() {
@@ -146,6 +216,27 @@ TEST(OtaBootPackage, EmbeddedIdentityVectorCapsAndExplicitConfirmationGate) {
   marker[15] = 1;
   EXPECT_FALSE(ota_bootloader_caps_marker_parse(marker, caps));
 
+  std::vector<uint8_t> internal_caps_image(64, 0xFF);
+  const uint8_t internal_marker[16] = {
+      'M','O','T','A','B','L','D','R', 3,0, 1,0,
+      (uint8_t)(OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE), 0,0,0};
+  memcpy(internal_caps_image.data() + 4, internal_marker, sizeof(internal_marker));
+  EXPECT_TRUE(ota_bootloader_caps_from_image(
+      internal_caps_image.data(), internal_caps_image.size(),
+      OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE,
+      caps));
+  EXPECT_FALSE(ota_bootloader_caps_from_image(
+      internal_caps_image.data(), internal_caps_image.size(),
+      OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE,
+      caps));
+  memcpy(internal_caps_image.data() + 24, internal_marker, sizeof(internal_marker));
+  internal_caps_image[24 + 12] =
+      OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE;
+  EXPECT_FALSE(ota_bootloader_caps_from_image(
+      internal_caps_image.data(), internal_caps_image.size(),
+      OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE,
+      caps));
+
   OtaBlCaps selected;
   selected.present = true;
   selected.apply_abi = 3;
@@ -176,20 +267,38 @@ TEST(OtaBootPackage, EmbeddedIdentityVectorCapsAndExplicitConfirmationGate) {
 }
 
 TEST(OtaBootPackage, CapabilityScannerRejectsAnOtherwiseValidUnalignedMarker) {
+  const uint8_t qspi_profile =
+      OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI |
+      OTA_BL_STORAGE_BOOT_UPDATE;
   const uint8_t marker[16] = {'M','O','T','A','B','L','D','R', 3,0, 1,0,
-                              (uint8_t)(OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE), 0,0,0};
+                              qspi_profile, 0,0,0};
   uint8_t image[64];
   memset(image, 0xFF, sizeof(image));
   memcpy(image + 1, marker, sizeof(marker));
-  EXPECT_FALSE(ota_bl_caps_scan_aligned(image, sizeof(image), true).present);
+  EXPECT_FALSE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
 
   memset(image, 0xFF, sizeof(image));
   memcpy(image + 4, marker, sizeof(marker));
-  const OtaBlCaps caps = ota_bl_caps_scan_aligned(image, sizeof(image), true);
+  const OtaBlCaps caps = ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile);
   ASSERT_TRUE(caps.present);
   EXPECT_EQ(caps.apply_abi, 3u);
-  EXPECT_EQ(caps.storage_flags,
-            (uint8_t)(OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_BOOT_UPDATE));
+  EXPECT_EQ(caps.storage_flags, qspi_profile);
+
+  // A malformed aligned magic decoy is ignored, but a second fully valid
+  // privileged marker makes the installed capability identity ambiguous.
+  memcpy(image + 24, marker, sizeof(marker));
+  EXPECT_FALSE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
+  memset(image + 24, 0xFF, sizeof(marker));
+  memcpy(image + 24, marker, sizeof(marker));
+  image[24 + 13] = 1;
+  EXPECT_TRUE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
+
+  // A structurally valid marker for the other storage profile is not an
+  // installed-profile candidate and cannot shadow the exact marker.
+  memcpy(image + 24, marker, sizeof(marker));
+  image[24 + 12] = OTA_BL_STORAGE_STAGE_CEILING |
+                   OTA_BL_STORAGE_BOOT_UPDATE;
+  EXPECT_TRUE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
 }
 
 class FakeMotaSeederStream : public Stream {
@@ -1979,12 +2088,21 @@ TEST(OtaTransfer, BootloaderPackageRequiresCapableExplicitMidPull) {
   OtaStoreRam<45000> capable_store;
   capable.begin(OTA_XIAO_BOARD_ID_BASE, nullptr, nullptr);
   capable.set_fetch_store(&capable_store);
-  capable.set_accept_full(true);
+  capable.set_accept_full(false);                    // internal nRF52 app FULL remains forbidden
   capable.set_accept_bootloader(true);
   capable.set_autofetch(OtaManager::AUTOFETCH_ANY);
   capable.on_message(
       wire, make_have1(wire, sizeof(wire), mid, OTA_XIAO_BOARD_ID_BASE, 1,
                        CODEC_FULL, boot_flags));
+  EXPECT_EQ(capable.fetchState(), OtaManager::IDLE);
+  EXPECT_EQ(capable_store.staged_size(), 0u);
+
+  // Enabling the privileged bootloader path must not broaden the ordinary
+  // single-slot application codec policy or turn autofetch on for FULL apps.
+  const uint8_t app_mid[4] = {0x21, 0x22, 0x23, 0x24};
+  capable.on_message(
+      wire, make_have1(wire, sizeof(wire), app_mid, OTA_XIAO_BOARD_ID_BASE, 2,
+                       CODEC_FULL, MFLAG_FULL));
   EXPECT_EQ(capable.fetchState(), OtaManager::IDLE);
   EXPECT_EQ(capable_store.staged_size(), 0u);
 

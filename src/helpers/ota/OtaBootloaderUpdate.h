@@ -2,9 +2,13 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "MotaContainer.h"
+#include "Multihash.h"
+#include "OtaBlInfo.h"
+#include "OtaByteIO.h"
 
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
   #if !defined(NRF52_PLATFORM) || !defined(OTA_QSPI_STORE)
@@ -15,6 +19,15 @@
   #endif
   #if defined(QSPIFLASH) || defined(OTA_SD_STORE)
     #error "bootloader-update QSPI cannot share a filesystem or SD staging configuration"
+  #endif
+#endif
+
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  #if !defined(NRF52_PLATFORM) || !defined(OTA_FLASH_STORE)
+    #error "OTA_INTERNAL_BOOTLOADER_UPDATE requires nRF52 internal-flash staging"
+  #endif
+  #if defined(OTA_QSPI_STORE) || defined(OTA_SD_STORE) || defined(QSPIFLASH)
+    #error "internal bootloader staging cannot share an external OTA/filesystem store"
   #endif
 #endif
 
@@ -83,8 +96,30 @@ inline bool ota_xiao_bootloader_board_id(uint32_t board_id) {
   return board_id == OTA_XIAO_BOARD_ID_BASE || board_id == OTA_XIAO_BOARD_ID_SENSE;
 }
 
-// Canonical signed .mota hw_id. It is intentionally distinct from application hw_id values and is
-// derived solely from the exact embedded board ID.
+inline bool ota_bootloader_board_id_valid(uint32_t board_id) {
+  return board_id != 0u && board_id != UINT32_MAX;
+}
+
+// New exact-board manifests use one to fifteen printable ASCII bytes followed by zero padding. Requiring
+// a terminator keeps the canonical signed hw_id at 31 bytes or less. The two already-deployed XIAO
+// identities retain their exact legacy name and signed hardware IDs.
+inline bool ota_bootloader_device_name_valid(uint32_t board_id, const uint8_t name[16]) {
+  if (!name) return false;
+  if (ota_xiao_bootloader_board_id(board_id))
+    return memcmp(name, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+  size_t end = 0;
+  while (end < OTA_BOOT_DEVICE_NAME_SIZE && name[end] != 0) {
+    if (name[end] < 0x21u || name[end] > 0x7Eu) return false;
+    end++;
+  }
+  if (end == 0 || end == OTA_BOOT_DEVICE_NAME_SIZE) return false;
+  for (size_t i = end; i < OTA_BOOT_DEVICE_NAME_SIZE; i++)
+    if (name[i] != 0) return false;
+  return true;
+}
+
+// Legacy XIAO signed .mota hw_id. It is intentionally distinct from application hw_id values and is
+// derived from the exact embedded board ID for compatibility with already-deployed packages.
 inline bool ota_xiao_bootloader_hw_id(uint32_t board_id, uint8_t out[32]) {
   if (!out || !ota_xiao_bootloader_board_id(board_id)) return false;
   memset(out, 0, 32);
@@ -92,6 +127,37 @@ inline bool ota_xiao_bootloader_hw_id(uint32_t board_id, uint8_t out[32]) {
       ? "XIAO_BL_28860044" : "XIAO_BL_28860045";
   memcpy(out, value, strlen(value));
   return true;
+}
+
+
+// Canonical generic bootloader identity. The board ID alone is not unique (several nRF52 families use
+// the same USB VID/PID-derived ID), so the signed identity includes the complete embedded device name.
+// Hashing all 32 padded bytes produces the bootloader package's collision-checked wire target ID.
+inline bool ota_bootloader_hw_id(uint32_t board_id, const uint8_t device_name[16],
+                                 uint8_t out[32]) {
+  if (!out || !ota_bootloader_board_id_valid(board_id) ||
+      !ota_bootloader_device_name_valid(board_id, device_name)) return false;
+  if (ota_xiao_bootloader_board_id(board_id)) return ota_xiao_bootloader_hw_id(board_id, out);
+  static const char hex[] = "0123456789ABCDEF";
+  memset(out, 0, 32);
+  memcpy(out, "NRF_BL_", 7);
+  for (uint8_t i = 0; i < 8; i++)
+    out[7 + i] = (uint8_t)hex[(board_id >> (28u - 4u * i)) & 0x0Fu];
+  out[15] = '_';
+  size_t n = 0;
+  while (n < 15 && device_name[n]) n++;
+  memcpy(out + 16, device_name, n);
+  return true;
+}
+
+inline bool ota_bootloader_hw_id(const OtaBootloaderIdentity& identity, uint8_t out[32]);
+
+inline uint32_t ota_bootloader_target_id(uint32_t board_id, const uint8_t device_name[16]) {
+  if (ota_xiao_bootloader_board_id(board_id)) return board_id;
+  uint8_t hw_id[32], digest[4];
+  if (!ota_bootloader_hw_id(board_id, device_name, hw_id)) return 0;
+  mh4(digest, hw_id, sizeof(hw_id));
+  return rd_u32le(digest);
 }
 
 inline uint32_t ota_boot_crc32_update(uint32_t crc, uint8_t value) {
@@ -122,8 +188,8 @@ inline bool ota_bootloader_manifest_parse(const uint8_t* raw, uint32_t raw_offse
       ota_boot_rd16(raw + 10) != OTA_BOOT_MANIFEST_SIZE ||
       ota_boot_rd32(raw + 12) != OTA_BOOT_IMAGE_START ||
       ota_boot_rd32(raw + 16) != OTA_BOOT_IMAGE_SIZE ||
-      !ota_xiao_bootloader_board_id(ota_boot_rd32(raw + 20)) ||
-      memcmp(raw + 24, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) != 0) return false;
+      !ota_bootloader_board_id_valid(ota_boot_rd32(raw + 20)) ||
+      !ota_bootloader_device_name_valid(ota_boot_rd32(raw + 20), raw + 24)) return false;
 
   out = OtaBootloaderIdentity();
   out.present = true;
@@ -135,6 +201,18 @@ inline bool ota_bootloader_manifest_parse(const uint8_t* raw, uint32_t raw_offse
   out.device_name[OTA_BOOT_DEVICE_NAME_SIZE] = 0;
   out.crc32 = ota_boot_rd32(raw + 40);
   return true;
+}
+
+inline bool ota_bootloader_hw_id(const OtaBootloaderIdentity& identity, uint8_t out[32]) {
+  return identity.present && identity.crc_ok &&
+         ota_bootloader_hw_id(identity.board_id,
+                              reinterpret_cast<const uint8_t*>(identity.device_name), out);
+}
+
+inline uint32_t ota_bootloader_target_id(const OtaBootloaderIdentity& identity) {
+  return identity.present && identity.crc_ok
+      ? ota_bootloader_target_id(identity.board_id,
+                                 reinterpret_cast<const uint8_t*>(identity.device_name)) : 0;
 }
 
 // Validate an installed memory-mapped bootloader and recover its exact identity. Scan on word
@@ -187,13 +265,32 @@ inline bool ota_bootloader_caps_marker_parse(const uint8_t raw[16],
   static const uint8_t magic[8] = {'M','O','T','A','B','L','D','R'};
   if (!raw || memcmp(raw, magic, sizeof(magic)) != 0 ||
       raw[8] == 0 || (raw[8] == 0xFF && raw[9] == 0xFF) ||
-      (raw[10] == 0 && raw[11] == 0) || (raw[12] & ~0x0Fu) != 0 ||
+      (raw[10] == 0 && raw[11] == 0) || (raw[12] & ~OTA_BL_STORAGE_KNOWN) != 0 ||
       raw[13] != 0 || raw[14] != 0 || raw[15] != 0) return false;
   out.present = true;
   out.apply_abi = ota_boot_rd16(raw + 8);
   out.codec_mask = ota_boot_rd16(raw + 10);
   out.storage_flags = raw[12];
   return true;
+}
+
+inline bool ota_bootloader_caps_from_image(const uint8_t* image, size_t image_size,
+                                            uint8_t exact_storage_flags,
+                                            OtaBootloaderCapsMarker& out) {
+  out = OtaBootloaderCapsMarker();
+  if (!image || exact_storage_flags == 0) return false;
+  uint8_t valid_count = 0;
+  for (size_t off = 0; off + 16u <= image_size; off += 4u) {
+    OtaBootloaderCapsMarker parsed;
+    if (!ota_bootloader_caps_marker_parse(image + off, parsed) ||
+        parsed.apply_abi < MOTA_BOOT_FORMAT_VER ||
+        (parsed.codec_mask & (1u << CODEC_FULL)) == 0 ||
+        (parsed.storage_flags & OTA_BL_STORAGE_BOOT_UPDATE) == 0) continue;
+    if (++valid_count != 1u) return false; // privileged marker identity must be unambiguous
+    if (parsed.storage_flags != exact_storage_flags) continue;
+    out = parsed;
+  }
+  return valid_count == 1u && out.present;
 }
 
 enum OtaBootloaderConfirmGate : uint8_t {
@@ -223,11 +320,13 @@ inline OtaBootloaderConfirmGate ota_bootloader_confirmation_gate(
       memcmp(m.base_hash, zero_base, sizeof(zero_base)) != 0)
     return OTA_BOOT_CONFIRM_GEOMETRY;
   if (!installed.present || !installed.crc_ok ||
-      !ota_xiao_bootloader_board_id(installed.board_id))
+      !ota_bootloader_board_id_valid(installed.board_id) ||
+      !ota_bootloader_device_name_valid(
+          installed.board_id, reinterpret_cast<const uint8_t*>(installed.device_name)))
     return OTA_BOOT_CONFIRM_LOCAL_IDENTITY;
-  if (m.target_id != installed.board_id) return OTA_BOOT_CONFIRM_TARGET;
+  if (m.target_id != ota_bootloader_target_id(installed)) return OTA_BOOT_CONFIRM_TARGET;
   uint8_t expected_hw[32];
-  if (!ota_xiao_bootloader_hw_id(installed.board_id, expected_hw) || !m.hw_id ||
+  if (!ota_bootloader_hw_id(installed, expected_hw) || !m.hw_id ||
       memcmp(m.hw_id, expected_hw, sizeof(expected_hw)) != 0)
     return OTA_BOOT_CONFIRM_HW_ID;
   if (!actual_mid || !operator_mid || memcmp(actual_mid, operator_mid, 4) != 0 ||

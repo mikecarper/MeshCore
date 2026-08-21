@@ -40,7 +40,7 @@ public:
 
   // A host-backed store is fully random-access, so it needs no pinned-meta RAM page and no layout planning.
   bool set_meta_size(uint32_t) override { return true; }
-  bool plan_layout(bool, uint32_t, uint32_t, uint32_t) override { return true; }
+  bool plan_layout(bool, uint32_t, uint32_t, uint32_t, bool) override { return true; }
 
 private:
   // One request/response transaction over the seeder link (mirrors SerialMotaSource). `arglen` is uint16 so

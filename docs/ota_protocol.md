@@ -62,7 +62,7 @@ the authoritative reference for byte-level details.
 | `EndF` marker | `45 6E 64 46` | `EndF` |
 | `hash_algo` (sha2-256) | `0x12` | multihash code |
 | application `format_ver` | `0x02` | ordinary full/delta application package |
-| bootloader `format_ver` | `0x03` | privileged XIAO bootloader package only |
+| bootloader `format_ver` | `0x03` | privileged exact-identity nRF52 bootloader package only |
 | `approval` = not approved | `FF FF FF FF` | erased NOR word |
 | `approval` = approved | `41 50 52 56` | `APRV` |
 | `MFLAG_FULL` | `0x01` | flags bit0 |
@@ -260,17 +260,19 @@ cover `approval` or `leaves[]`:
 - Bound to this image (lives in this `.mota`'s manifest, re-erased when a new `.mota` is staged).
 - A **consent** marker, not a security primitive. Authenticity = `signature` + `image_hash` + `hw_id`.
 
-### 4.3 Privileged XIAO bootloader package profile
+### 4.3 Privileged nRF52 bootloader package profile
 
 A v3 bootloader package has a deliberately narrow, non-extensible profile:
 
 - flags exactly `FULL|SIGNED|BOOTLOADER`, `CODEC_FULL`, nonzero `fw_version`, zero `base_hash`;
 - a raw payload and `image_size` of exactly `0xA000` (40 KiB), split into exactly forty 1024-byte blocks;
-- `target_id` equal to the installed OTAFIX embedded board ID (`0x28860044` for XIAO nRF52840 or
-  `0x28860045` for XIAO nRF52840 Sense);
-- signed `hw_id` exactly `XIAO_BL_28860044` or `XIAO_BL_28860045`, derived from that board ID;
-- a sane nRF52840 vector table, a CRC-valid embedded manifest v1 with the exact padded device name
-  `XIAO_DFU`, and a `MOTABLDR` marker advertising ABI >= 3, full codec, QSPI, and boot-update continuity.
+- a target derived from the installed CRC-valid embedded manifest identity. Deployed XIAO identities keep
+  raw board IDs `0x28860044`/`0x28860045`; generic identities use LE32(SHA-256(canonical padded hw32));
+- signed `hw_id` exactly `XIAO_BL_28860044`/`XIAO_BL_28860045` for deployed XIAO, or the zero-padded
+  32-byte `NRF_BL_<BOARD_ID>_<DEVICE_NAME>` for a generic target;
+- a sane nRF52840 vector table, exactly one CRC-valid embedded manifest v1 with the exact board/name pair,
+  and exactly one `MOTABLDR` marker advertising ABI >= 3, full codec, boot-update continuity, and the exact
+  storage flags for the application layout (`0x0E` XIAO QSPI or `0x0A` shared internal staging).
 
 The incoming embedded identity must exactly match the installed CRC-valid bootloader identity. Both scans
 consider every aligned structurally valid candidate so magic bytes in a literal pool cannot shadow the real
@@ -770,7 +772,7 @@ ota get | pull | download <mid8|#index> flash [rescue] | folder [validate]
                                       fetch by stable mid8 (preferred) or current page index
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
 ota rescue install <base_hash16>  internal-flash nRF52 only: recover from failed app-side EndF validation
-ota bootloader [status]           capable XIAO QSPI repeater: installed BL identity/caps + staged confirmation
+ota bootloader [status]           capable allowlisted nRF52 repeater: installed BL identity/caps + staged confirmation
 ota bootloader install <MID8> <HASH16>
                                       explicitly verify/arm one complete trusted v3 package; never automatic
 ota cancel | drop | stop           drop the current fetch session (frees the slot)
@@ -805,7 +807,9 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
 - **nRF52 internal staging ceiling:** an internal-store application derives the ceiling from facts available
   in every build, not a board-name list. A companion that actually links the internal ExtraFS datastore stays
   below `0xD4000`; a default linker region or a role that does not mount ExtraFS can reclaim the unused
-  100 KiB through `0xED000`. The application uses the larger window only when the
+  100 KiB through `0xED000`. An internal bootloader-self-update target keeps that normal linker and ceiling;
+  it does not reserve a second boot-package or scratch region. The application uses a larger-than-legacy
+  window only when the
   installed bootloader advertises the GPREGRET2 ceiling-handoff capability. The bootloader treats every
   unknown/legacy handoff value as
   `0xD4000`, and accepts a container only at the bottom-aligned position for the selected ceiling.
@@ -832,6 +836,9 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   fails, so a rescue-capable bridge can fetch its exact successor before invoking the guarded command. Such
   a node must acknowledge the condition up front with `ota pull <mid8> flash rescue`; an ordinary flash pull
   refuses before altering staged data. Firmware that predates both rescue commands still requires USB recovery.
+  Internal-bootloader-self-update builds are a stricter exception: because their ordinary linker may extend
+  through `0xED000`, an absent/corrupt live `EndF` disables every internal staging pull before erase instead
+  of trusting the legacy 608 KiB estimate.
 - **MeshTower V2 SD nRF52:** the application stores a contiguous `/meshcore-ota.mota` on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,
@@ -852,10 +859,27 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   `ota bootloader install <MID8> <HASH16>`. The app repeats the strict v3 geometry, installed/candidate
   identity, vectors, embedded CRC/capabilities, complete payload/image hashes, signature, and trusted-key
   gates before writing `APRV`. GPREGRET `0x6B` plus GPREGRET2 `0x51` hands the QSPI package to OTAFIX.
-  OTAFIX independently repeats all privileged checks, uses the scratch bank to preserve the running
-  application while replacing `0xF4000..0xFE000`, and reports boot-update results in GPREGRET2 `0xC0..0xCF`
+  `APRV` carries the app's authenticated and explicitly confirmed authorization decision; OTAFIX does not
+  repeat Ed25519/allowlist, Merkle, or typed operator confirmation. It independently rechecks the strict v3
+  structure, canonical identity/capabilities, vectors, payload SHA, embedded CRC, and scratch/copy hashes,
+  uses the scratch bank to preserve the running application while replacing `0xF4000..0xFE000`, and reports
+  boot-update results in GPREGRET2 `0xC0..0xCF`
   (`0xC8` success). This mechanism cannot bootstrap a stock/older bootloader; install an ABI-3,
   boot-update-capable exact-board OTAFIX over USB/BLE DFU or SWD once first.
+- **Internal-flash bootloader self-update (explicit only):** curated nRF52840 lean repeater/bridge targets
+  without an OTA-owned SD/QSPI store share the normal bottom-aligned internal store below `0xED000`.
+  It holds either an ordinary app delta or the exact 41,330-byte v3 container, never both. The boot package
+  bottom-aligns at `0xE2000`; a hash-valid live `EndF` must prove the complete running image ends at or below
+  that address before the first erase. OTAFIX reads each source window before erasing and compacts the
+  payload forward in the same eleven pages to raw `0xE2000..0xEC000`; no separate scratch bank or special
+  application linker exists. GPREGRET `0x6B` plus GPREGRET2 `0xED` selects boot update, while ordinary app
+  apply uses GPREGRET `0x6A` plus the same storage source. Exact installed/candidate capability flags are
+  `0x0A` (`STAGE_CEILING|BOOT_UPDATE`). Ordinary deltas remain dynamically sized, may start below
+  `0xE2000`, and reconstruct only below the normal `0xED000` app ceiling. The same signature, explicit
+  confirmation, exact identity, vector, CRC, and single-marker rules as the XIAO path apply. Bootloader FULL
+  admission is isolated from ordinary application FULL policy, and privileged partials are never resumed
+  automatically after an application reboot. See
+  [the nRF52 bootloader-update guide](ota_nrf52_bootloader_update.md) for the exact target inventory.
 
 A signature, when present, proves author authenticity and must pass the device allowlist. Unsigned v2
 application packages remain installable when local policy permits them. A v3 bootloader package is always

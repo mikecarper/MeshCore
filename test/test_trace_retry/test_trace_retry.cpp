@@ -164,6 +164,21 @@ static mesh::Packet makeFloodPacket(uint8_t payload_type) {
   return packet;
 }
 
+static mesh::Packet makeOtaManifestFragment(uint8_t format_version) {
+  mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  packet.payload_len = 12;
+  packet.payload[0] = mesh::ota::OTA_MANIFEST;
+  packet.payload[1] = 0x11;
+  packet.payload[2] = 0x22;
+  packet.payload[3] = 0x33;
+  packet.payload[4] = 0x44;
+  packet.payload[5] = 0;  // fragment index
+  packet.payload[6] = 2;  // fragment count
+  memcpy(packet.payload + 7, mesh::ota::MOTA_MAGIC, sizeof(mesh::ota::MOTA_MAGIC));
+  packet.payload[11] = format_version;
+  return packet;
+}
+
 TEST(RepeaterTransport, UnknownFloodPayloadIsRelayedWhenForwardingAllowsIt) {
   TraceTestClock clock;
   TraceTestRTC rtc;
@@ -231,6 +246,41 @@ TEST(RepeaterTransport, OtaDiscoveryRelaysInBackgroundOnlyDuringTempRadio) {
 
   node.tempRadioActive = false;
   EXPECT_FALSE(node.canTransmit(&packet));  // queued-near-expiry packets cannot leak onto the normal channel
+}
+
+TEST(RepeaterTransport, AppV2AndBootV3ShareOta0cTempRadioRelayPolicy) {
+  // The package format is metadata inside an OTA_MANIFEST fragment. It must
+  // never select a second mesh payload type or bypass the repeater default
+  // `flood.filter.1 0x0C all suspend=tempradio` policy.
+  ASSERT_EQ(0x0C, PAYLOAD_TYPE_OTA);
+  const uint8_t formats[] = {
+    mesh::ota::MOTA_APP_FORMAT_VER,
+    mesh::ota::MOTA_BOOT_FORMAT_VER,
+  };
+
+  for (uint8_t format : formats) {
+    TraceTestClock clock;
+    TraceTestRTC rtc;
+    TraceTestRNG rng;
+    TraceTestRadio radio;
+    ForwardingTestTables tables;
+    StaticPoolPacketManager manager(12);
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+    node.forwardFloods = true;
+
+    mesh::Packet packet = makeOtaManifestFragment(format);
+    ASSERT_EQ(PAYLOAD_TYPE_OTA, packet.getPayloadType());
+    ASSERT_EQ(format, packet.payload[11]);
+    EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+    EXPECT_EQ(0, tables.mark_seen_calls);
+
+    node.tempRadioActive = true;
+    mesh::DispatcherAction action = node.receivePacket(&packet);
+    EXPECT_NE(ACTION_RELEASE, action);
+    EXPECT_EQ(OTA_TRANSFER_TX_PRIORITY, (action >> 24) - 1);
+    EXPECT_EQ(1, tables.mark_seen_calls);
+    EXPECT_EQ(1, packet.getPathHashCount());
+  }
 }
 
 TEST(RepeaterTransport, OtaTransferRelaysAsPrimaryTrafficWithoutOtaManager) {

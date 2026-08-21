@@ -2394,6 +2394,26 @@ apply_nrf52_lora_ota_build_recipe() {
   if ! pio_env_option_contains "$pio_env_name" extra_scripts "tools/mota/pio_endf.py"; then
     append_platformio_extra_script "post:tools/mota/pio_endf.py"
   fi
+
+  if supports_nrf52_internal_bootloader_update "$env_name"; then
+    export MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE=1
+  else
+    unset MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE
+  fi
+}
+
+# Exact-board OTAFIX manifests currently emitted for shared internal,
+# app-preserving bootloader staging. Keep this list narrower than generic nRF52
+# OTA support: external QSPI/SD, ExtraFS Companions, Ethernet, and
+# unqualified/full-sensor roles must not advertise this privileged path. The
+# same inventory is consumed by the nrf52_base pre-script so direct explicit-env
+# and build.sh release builds cannot silently differ.
+supports_nrf52_internal_bootloader_update() {
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] || return 1
+  [ "${PIO_ENV_QSPI_OTA_BY_NAME[$1]:-0}" = "0" ] || return 1
+  [ "${PIO_ENV_SD_OTA_BY_NAME[$1]:-0}" = "0" ] || return 1
+  is_lora_ota_build "$1" || return 1
+  grep -Fqx -- "$1" tools/mota/nrf52_internal_bootloader_targets.txt
 }
 
 apply_lora_ota_override() {
@@ -2890,6 +2910,7 @@ build_firmware() {
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
   unset MESHCORE_ESP32_FULL_BUILD
   unset MESHCORE_COMPANION_RADIO_FULL
+  unset MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE
   if [ "$had_platformio_build_unflags" -eq 1 ]; then
     export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
   else

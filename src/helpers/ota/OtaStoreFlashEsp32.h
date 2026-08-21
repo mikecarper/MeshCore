@@ -84,7 +84,8 @@ class OtaStoreFlashEsp32 : public OtaStore {
 
 public:
   ~OtaStoreFlashEsp32() override;
-  bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off, uint32_t payload_size) override;
+  bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
+                   uint32_t payload_size, bool is_bootloader) override;
   bool begin(uint32_t total_size) override;
   bool write(uint32_t offset, const uint8_t* data, uint32_t len) override;
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;

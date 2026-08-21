@@ -12,6 +12,7 @@ Below are a few quick start guides.
 - [Easy LoRa OTA: ESP32 and nRF52 firmware updates](./ota_easy.md)
 - [Scripted LoRa OTA: Bash and PowerShell](./lora_ota_automation.md)
 - [nRF52 repeater OTA with external QSPI](./ota_nrf52_qspi.md)
+- [nRF52 bootloader updates over LoRa](./ota_nrf52_bootloader_update.md)
 - [MeshTower V2 microSD self-updates](./ota_meshtower_v2_sdcard.md)
 - [GPS Tracking](./gps_tracking.md)
 - [Companion Protocol](./companion_protocol.md)

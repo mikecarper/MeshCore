@@ -176,6 +176,11 @@ enforces the package's hardware identity before approval.
 
 ## Explicit XIAO bootloader updates over LoRa
 
+This section documents the deployed XIAO raw-QSPI layout. Curated nRF52840
+targets without external staging use a separate internal-flash layout with the
+same explicit operator safety model; see
+[nRF52 bootloader updates over LoRa](ota_nrf52_bootloader_update.md).
+
 Bootloader delivery is available only when all of these are already true:
 
 - the application is an `OTA_QSPI_BOOTLOADER_UPDATE` XIAO-module repeater build
@@ -212,8 +217,10 @@ continuity. A signed older bootloader that would remove remote update support
 is refused.
 
 After the reply drains, GPREGRET `0x6B` and GPREGRET2 `0x51` enter the special
-OTAFIX path. OTAFIX independently rechecks the package before using the
-reserved scratch bank to replace its own `0xF4000..0xFE000` region. The running
+OTAFIX path. `APRV` carries the app's signature/allowlist and explicit operator
+authorization decision. OTAFIX independently rechecks the strict structure,
+identity/capabilities, vectors, payload SHA, embedded CRC, and copy hashes
+before using the reserved scratch bank to replace its own `0xF4000..0xFE000` region. The running
 application remains preserved; a rejected candidate returns to it unchanged.
 Post-reboot `ota status` reports bootloader-update diagnostics as `blup:C0` to
 `blup:CF` (`blup:C8` is success), separately from ordinary application `blrc`.

@@ -4,6 +4,7 @@
 
 #include "OtaSelf.h"
 #include "OtaBlInfo.h"
+#include "MotaContainer.h"
 #include "OtaDebug.h"
 #include "OtaByteIO.h"           // align_down / rd_u32le (flash-page geometry + header read)
 #include <string.h>
@@ -12,14 +13,55 @@
 namespace mesh {
 namespace ota {
 
-// A valid EndF gives the exact live-image extent. Rescue/bring-up builds without one retain the old
-// 608 KiB protection floor so staging cannot begin in the middle of a normally sized application.
+// A valid EndF gives the exact live-image extent. Legacy app-only builds keep
+// the conservative rescue fallback. Shared internal bootloader-update builds
+// reject every package kind without EndF because their normal linker may place
+// live application bytes anywhere through the 0xED000 stage ceiling.
 static bool protected_app_end(uint32_t app_base, uint32_t stage_ceiling, uint32_t& app_end) {
-  if (!mota_nrf52_layout_valid(app_base, stage_ceiling)) return false;
-  app_end = app_base + MOTA_NRF52_FALLBACK_INPLACE_MEMORY;
   SelfFwInfo fi;
-  if (ota_self_firmware(fi) && fi.valid) app_end = app_base + fi.image_len;
-  return app_end >= app_base && app_end <= stage_ceiling;
+  const bool valid = ota_self_firmware(fi) && fi.valid;
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  const bool refuse_without_endf = true;
+#else
+  const bool refuse_without_endf = false;
+#endif
+  return mota_nrf52_protected_app_end(
+      app_base, stage_ceiling, valid, valid ? fi.image_len : 0u,
+      refuse_without_endf, app_end);
+}
+
+bool OtaStoreFlashNrf52::plan_layout(bool is_full, uint32_t image_size,
+                                      uint32_t payload_off, uint32_t payload_size,
+                                      bool is_bootloader) {
+  _planned_bootloader = false;
+  _planned_total = 0;
+  _planned_start = 0;
+  if (!is_bootloader) return true;
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  const uint64_t total64 = (uint64_t)payload_off + payload_size + 5u;
+  if (!is_full || image_size != 40u * 1024u || payload_size != 40u * 1024u ||
+      payload_off != 365u || total64 != MOTA_NRF52_BOOT_CONTAINER_SIZE ||
+      !ota_bootloader_self_update_caps_valid(ota_bootloader_caps()))
+    return false;
+
+  // This is the release-blocking no-EndF gate: package kind is known before
+  // begin(), and no page may be erased until the exact live app extent proves
+  // the shared E2000..ED000 slot is free.
+  SelfFwInfo fi;
+  uint32_t start;
+  const uint32_t app_base = mota_nrf52_app_base();
+  if (!ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
+      !mota_nrf52_shared_boot_stage_plan(
+          (uint32_t)total64, app_base, true, app_base + fi.image_len, start))
+    return false;
+  _planned_bootloader = true;
+  _planned_total = (uint32_t)total64;
+  _planned_start = start;
+  return true;
+#else
+  (void)is_full; (void)image_size; (void)payload_off; (void)payload_size;
+  return false;
+#endif
 }
 
 // Write one whole 4 KB page from `buf` to flash (erase + program, ~85 ms). `buf` is PG bytes, 0xFF-padded
@@ -88,18 +130,38 @@ uint8_t* OtaStoreFlashNrf52::write_slot(uint32_t pos) {
 }
 
 bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
+  const bool planned_bootloader = _planned_bootloader;
+  const uint32_t planned_total = _planned_total;
+  const uint32_t planned_start = _planned_start;
   clear();
 
   // never collide with the running application image (its extent comes from its EndF trailer)
   const uint32_t app_base = mota_nrf52_app_base();
   const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
   uint32_t app_end;
-  if (!protected_app_end(app_base, stage_ceiling, app_end)) return false;
+  if (planned_bootloader) {
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    SelfFwInfo fi;
+    uint32_t checked_start;
+    if (stage_ceiling != MOTA_NRF52_APP_END || total_size != planned_total ||
+        !ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
+        !mota_nrf52_shared_boot_stage_plan(
+            total_size, app_base, true, app_base + fi.image_len, checked_start) ||
+        checked_start != planned_start)
+      return false;
+    app_end = app_base + fi.image_len;
+#else
+    return false;
+#endif
+  } else if (!protected_app_end(app_base, stage_ceiling, app_end)) {
+    return false;
+  }
 
   // Bottom-align below the selected ceiling and reject unless it sits above the running image. The
   // approval path later verifies the patch's detools workspace ends at/below this exact start.
   uint32_t start;
   if (!mota_nrf52_stage_plan(total_size, app_base, app_end, stage_ceiling, start)) return false;
+  if (planned_bootloader && start != planned_start) return false;
 
   _write_start = start;
   _stage_ceiling = stage_ceiling;
@@ -109,6 +171,9 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
   _pay_idx = 0;
   _flushed = false;
   _io_ok = true;
+  _planned_bootloader = planned_bootloader;
+  _planned_total = planned_total;
+  _planned_start = planned_start;
   OTA_DBG("OTA flash: begin total=%u start=%08x app_end=%08x ceiling=%08x\n",
           (unsigned)total_size, (unsigned)start, (unsigned)app_end, (unsigned)stage_ceiling);
   return true;                      // no pre-erase: each page is erased by its own (single) flush
@@ -160,6 +225,26 @@ bool OtaStoreFlashNrf52::finalize() {
   return true;
 }
 
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+bool OtaStoreFlashNrf52::approve_for_bootloader() {
+  if (!finalize() || _total < 8u + MOTA_MFL + 5u) return false;
+  const uint32_t offset = 8u + MOTA_OFF_APPROVAL;
+  if (offset + sizeof(APPROVAL_YES) > _total) return false;
+  const uint32_t address = _write_start + offset;
+  if (flash_nrf5x_write(address, APPROVAL_YES, sizeof(APPROVAL_YES)) < 0) {
+    _io_ok = false;
+    return false;
+  }
+  flash_nrf5x_flush();
+  if (!flash_matches(address, APPROVAL_YES, sizeof(APPROVAL_YES))) {
+    _io_ok = false;
+    return false;
+  }
+  memcpy(_meta_page + offset, APPROVAL_YES, sizeof(APPROVAL_YES));
+  return true;
+}
+#endif
+
 // Persist mid-transfer progress so a reboot can resume. Order matters for consistency: flush the open
 // payload page FIRST, then page 0 (the leaf-progress markers) -- so every block whose leaf is now in flash
 // also has its payload in flash. Infrequent (every OTA_CHECKPOINT_BLOCKS blocks), so the 2 extra page
@@ -184,8 +269,27 @@ bool OtaStoreFlashNrf52::reopen() {
     const uint8_t* p = (const uint8_t*)(uintptr_t)start;
     if (memcmp(p, MOTA_MAGIC, 4) != 0) continue;
     uint32_t total = rd_u32le(p + 4);
+    if (!mota_nrf52_container_span_valid(
+            start, stage_ceiling, total, 8u + MOTA_MFL + 5u))
+      continue;
     uint32_t want;   // must be valid + placed exactly where begin() would have staged it (same bounds fn)
-    if (!mota_nrf52_stage_plan(total, app_base, app_end, stage_ceiling, want) || want != start) continue;
+    MotaManifest manifest;
+    const bool manifest_ok = mota_parse_manifest(p + 8u, MOTA_MFL, manifest);
+    const bool bootloader = manifest_ok && manifest.is_bootloader();
+    if (bootloader) {
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+      SelfFwInfo fi;
+      if (!ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
+          !mota_nrf52_shared_boot_stage_plan(
+              total, app_base, true, app_base + fi.image_len, want) || want != start)
+        continue;
+#else
+      continue;
+#endif
+    } else if (!mota_nrf52_stage_plan(
+                   total, app_base, app_end, stage_ceiling, want) || want != start) {
+      continue;
+    }
     _write_start = start;
     _stage_ceiling = stage_ceiling;
     _total = total;
@@ -194,6 +298,9 @@ bool OtaStoreFlashNrf52::reopen() {
     _pay_idx = 0;
     _flushed = false;
     _io_ok = true;
+    _planned_bootloader = bootloader;
+    _planned_total = bootloader ? total : 0u;
+    _planned_start = bootloader ? start : 0u;
     OTA_DBG("OTA flash: reopen total=%u start=%08x ceiling=%08x\n",
             (unsigned)total, (unsigned)start, (unsigned)stage_ceiling);
     return true;

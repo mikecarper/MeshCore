@@ -40,6 +40,9 @@ class OtaStoreFlashNrf52 : public OtaStore {
   uint32_t _total = 0;              // staged container size (0 = none)
   bool     _flushed = false;        // finalize() committed everything to flash
   bool     _io_ok = true;           // cleared on a failed/out-of-bounds flash write or readback mismatch
+  bool     _planned_bootloader = false; // manifest-kind decision made before begin()/any erase
+  uint32_t _planned_total = 0;
+  uint32_t _planned_start = 0;
 
   uint8_t  _meta_page[PG];          // pinned flash page 0 (header + manifest + leaves + 1st payload)
   uint8_t  _pay_page[PG];           // sliding buffer for one payload page (index _pay_idx)
@@ -56,6 +59,8 @@ class OtaStoreFlashNrf52 : public OtaStore {
   bool flush_page(uint32_t page_idx, const uint8_t* buf);   // write + verify a full page
 
 public:
+  bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
+                   uint32_t payload_size, bool is_bootloader) override;
   bool begin(uint32_t total_size) override;
   bool write(uint32_t offset, const uint8_t* data, uint32_t len) override;
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;
@@ -64,11 +69,21 @@ public:
   void clear() override {
     _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
     _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true;
+    _planned_bootloader = false; _planned_total = 0; _planned_start = 0;
   }
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes <= PG; }  // leaves must fit page 0
   bool finalize() override;
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in flash (scan for it)
+
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  // Clear the manifest approval word only after the privileged signed-image gates pass. OTAFIX scans
+  // this page-aligned shared container after the ED handoff and repeats the structural, identity,
+  // payload-integrity, in-place compaction, and readback checks before self-write. APRV carries the app's completed
+  // signature/allowlist and explicit-operator authorization decision across the reboot.
+  bool approve_for_bootloader();
+  const char* last_error() const { return _io_ok ? "" : "internal flash write/verify failed"; }
+#endif
 
   // Contiguous view (flash is memory-mapped). VALID ONLY AFTER finalize() - before that, page 0 and the
   // tail are still in RAM. OtaManager/OtaCli/verify use this only once the transfer is COMPLETE.

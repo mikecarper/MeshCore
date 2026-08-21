@@ -54,7 +54,10 @@ bool OtaStoreFlashEsp32::layout() {
 
 // Choose placement from the parsed manifest and refuse anything that won't fit, BEFORE any block is
 // staged. (See the header for the delta-vs-full layout rationale.)
-bool OtaStoreFlashEsp32::plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off, uint32_t payload_size) {
+bool OtaStoreFlashEsp32::plan_layout(bool is_full, uint32_t image_size,
+                                     uint32_t payload_off, uint32_t payload_size,
+                                     bool is_bootloader) {
+  if (is_bootloader) return false;
   if (!acquire()) return false;
   _full = is_full; _image_size = image_size; _meta_bytes = payload_off; _pay_size = payload_size;
   bool ok = layout();

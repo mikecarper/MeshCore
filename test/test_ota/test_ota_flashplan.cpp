@@ -18,6 +18,7 @@ static constexpr uint32_t APP_V6 = MOTA_NRF52_APP_BASE_S140_V6;
 static constexpr uint32_t APP_V7 = MOTA_NRF52_APP_BASE_S140_V7;
 static constexpr uint32_t LEGACY = MOTA_NRF52_STAGE_CEILING_LEGACY;
 static constexpr uint32_t EXPANDED = MOTA_NRF52_STAGE_CEILING_EXPANDED;
+static constexpr uint32_t SHARED_BOOT_START = MOTA_NRF52_SHARED_BOOT_STAGE_START;
 static constexpr uint32_t APP_IMAGE_SIZE = 520u * 1024u;
 static constexpr uint32_t APP_END_V6 = APP_V6 + APP_IMAGE_SIZE;
 static constexpr uint32_t APP_END_V7 = APP_V7 + APP_IMAGE_SIZE;
@@ -190,8 +191,132 @@ TEST(OtaFlashPlan, RejectsAppOutsideSelectedRegion) {
 
 TEST(OtaFlashPlan, RejectsUnknownCeiling) {
   uint32_t start = 0x1234ABCD;
-  EXPECT_FALSE(mota_nrf52_stage_plan(4096, APP_V6, APP_V6, 0xE0000u, start));
+  EXPECT_FALSE(mota_nrf52_stage_plan(4096, APP_V6, APP_V6, 0xE1000u, start));
   EXPECT_EQ(start, 0x1234ABCDu);
+}
+
+TEST(OtaFlashPlan, BootPackageUsesOneDynamicSharedInternalSlot) {
+  // v3 = header + fixed manifest + forty leaves + 40 KiB image + trailer.
+  const uint32_t total = 8u + 197u + 40u * 4u + 40u * 1024u + 5u;
+  ASSERT_EQ(total, MOTA_NRF52_BOOT_CONTAINER_SIZE);
+  uint32_t start = 0;
+  ASSERT_TRUE(mota_nrf52_shared_boot_stage_plan(
+      total, APP_V6, true, SHARED_BOOT_START, start));
+  EXPECT_EQ(start, SHARED_BOOT_START);
+  EXPECT_EQ(start, (EXPANDED - total) & ~(MOTA_NRF52_FLASH_PAGE - 1u));
+
+  // OTAFIX compacts payload offset +365 forward inside these same eleven
+  // pages; no independent scratch bank participates in the internal path.
+  const uint32_t payload_offset = 8u + 197u + 40u * 4u;
+  EXPECT_EQ(payload_offset, 365u);
+  EXPECT_LE(start + payload_offset + 40u * 1024u, EXPANDED);
+  EXPECT_LE(start + 40u * 1024u, EXPANDED);
+
+  // Runtime headroom, not a special linker, is authoritative.
+  EXPECT_FALSE(mota_nrf52_shared_boot_stage_plan(
+      total, APP_V6, true, SHARED_BOOT_START + 1u, start));
+  EXPECT_FALSE(mota_nrf52_shared_boot_stage_plan(
+      total - 1u, APP_V6, true, APP_V6, start));
+  EXPECT_FALSE(mota_nrf52_shared_boot_stage_plan(
+      total + 1u, APP_V6, true, APP_V6, start));
+}
+
+TEST(OtaFlashPlan, SharedInternalStoreKeepsNormalApplicationCeilingAndHandoff) {
+  EXPECT_TRUE(mota_nrf52_target_image_fits(
+      APP_V6, EXPANDED - APP_V6, EXPANDED));
+  EXPECT_FALSE(mota_nrf52_target_image_fits(
+      APP_V6, EXPANDED - APP_V6 + 1u, EXPANDED));
+  EXPECT_EQ(mota_nrf52_flash_stage_handoff(EXPANDED),
+            GPREGRET2_OTA_STAGE_EXPANDED);
+  EXPECT_EQ(mota_nrf52_flash_stage_handoff(LEGACY),
+            GPREGRET2_OTA_STAGE_LEGACY);
+}
+
+TEST(OtaFlashPlan, InternalOrdinaryDeltaUsesTheSameEd000Store) {
+  const uint32_t running_end = APP_V6 + 500u * 1024u;
+  const uint32_t delta_container = 28u * 1024u;
+  uint32_t staged = 0;
+  ASSERT_TRUE(mota_nrf52_stage_plan(delta_container, APP_V6, running_end,
+                                    EXPANDED, staged));
+  EXPECT_GE(staged, running_end);
+  EXPECT_LE(staged + delta_container, EXPANDED);
+  EXPECT_EQ(mota_nrf52_flash_stage_handoff(EXPANDED), 0xEDu);
+}
+
+TEST(OtaFlashPlan, LargeInternalOrdinaryDeltaMayStageBelowSharedBootStart) {
+  // An ordinary delta container can exceed the boot package's eleven pages.
+  // It bottom-aligns below E2000 and remains valid when detools'
+  // encoded workspace ends before the actual container start.
+  const uint32_t running_end = APP_V6 + 600u * 1024u;
+  const uint32_t delta_container = 80u * 1024u;
+  uint32_t staged = 0;
+  ASSERT_TRUE(mota_nrf52_stage_plan(delta_container, APP_V6, running_end,
+                                    EXPANDED, staged));
+  EXPECT_LT(staged, SHARED_BOOT_START);
+  EXPECT_GE(staged, running_end);
+
+  const uint32_t workspace = staged - APP_V6;
+  const uint32_t target_size = workspace;
+  EXPECT_TRUE(mota_nrf52_internal_patch_workspace_valid(
+      workspace, APP_V6, staged, target_size, EXPANDED));
+  EXPECT_FALSE(mota_nrf52_internal_patch_workspace_valid(
+      workspace + 1u, APP_V6, staged, target_size, EXPANDED));
+  EXPECT_FALSE(mota_nrf52_internal_patch_workspace_valid(
+      workspace, APP_V6, staged, EXPANDED - APP_V6 + 1u, EXPANDED));
+}
+
+TEST(OtaFlashPlan, MissingEndfRejectsEverySharedInternalPackageBeforeErase) {
+  uint32_t protected_end = 0;
+  ASSERT_TRUE(mota_nrf52_protected_app_end(
+      APP_V6, EXPANDED, false, 0, false, protected_end));
+  EXPECT_EQ(protected_end, APP_V6 + MOTA_NRF52_FALLBACK_INPLACE_MEMORY);
+
+  // A shared-internal-update build is linked through ED000, so the old 608 KiB
+  // estimate is not a safe erase floor for either package kind. Missing EndF
+  // disables all internal staging before begin()/reopen can erase a page.
+  EXPECT_FALSE(mota_nrf52_protected_app_end(
+      APP_V6, EXPANDED, false, 0, true, protected_end));
+
+  // The old rescue estimate would also admit this ordinary 80 KiB delta at
+  // D9000 even though a legal ED000-linked image can have live bytes there.
+  // A privileged shared-internal build therefore never calls stage_plan with
+  // that estimate: protected_app_end() above returns false/capacity zero.
+  const uint32_t ordinary_container = 80u * 1024u;
+  uint32_t unsafe_start = 0;
+  const uint32_t legacy_estimate =
+      APP_V6 + MOTA_NRF52_FALLBACK_INPLACE_MEMORY;
+  ASSERT_TRUE(mota_nrf52_stage_plan(
+      ordinary_container, APP_V6, legacy_estimate, EXPANDED, unsafe_start));
+  const uint32_t legal_live_tail = unsafe_start + MOTA_NRF52_FLASH_PAGE;
+  ASSERT_GT(legal_live_tail, legacy_estimate);
+  ASSERT_LT(legal_live_tail, EXPANDED);
+  EXPECT_FALSE(mota_nrf52_stage_plan(
+      ordinary_container, APP_V6, legal_live_tail, EXPANDED, protected_end));
+
+  // Model a legal linked image whose tail extends beyond the old 608 KiB
+  // estimate. The privileged planner rejects missing EndF even if the generic
+  // rescue fallback would appear to leave enough room.
+  const uint32_t real_tail = APP_V6 + MOTA_NRF52_FALLBACK_INPLACE_MEMORY + 0x8000u;
+  ASSERT_LT(real_tail, SHARED_BOOT_START);
+  uint32_t staged = 0;
+  EXPECT_FALSE(mota_nrf52_shared_boot_stage_plan(
+      MOTA_NRF52_BOOT_CONTAINER_SIZE, APP_V6, false, protected_end, staged));
+  ASSERT_TRUE(mota_nrf52_shared_boot_stage_plan(
+      MOTA_NRF52_BOOT_CONTAINER_SIZE, APP_V6, true, real_tail, staged));
+  EXPECT_EQ(staged, SHARED_BOOT_START);
+}
+
+TEST(OtaFlashPlan, ReopenBoundsUntrustedTotalBeforeManifestRead) {
+  const uint32_t start = SHARED_BOOT_START;
+  EXPECT_TRUE(mota_nrf52_container_span_valid(
+      start, EXPANDED, MOTA_NRF52_BOOT_CONTAINER_SIZE, 8u + 197u + 5u));
+  EXPECT_FALSE(mota_nrf52_container_span_valid(
+      start, EXPANDED, UINT32_MAX, 8u + 197u + 5u));
+  EXPECT_FALSE(mota_nrf52_container_span_valid(
+      start, EXPANDED, 8u + 197u + 4u, 8u + 197u + 5u));
+  EXPECT_FALSE(mota_nrf52_container_span_valid(
+      EXPANDED + 1u, EXPANDED, MOTA_NRF52_BOOT_CONTAINER_SIZE,
+      8u + 197u + 5u));
 }
 
 // out_start is only written on success - a rejected plan must not clobber the caller's variable.

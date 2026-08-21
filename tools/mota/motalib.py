@@ -68,6 +68,8 @@ NRF52_EXTRAFS_START = 0x000D4000
 NRF52_BOOT_SCRATCH_START = 0x000E0000
 NRF52_BOOT_SCRATCH_END = 0x000EA000
 NRF52_APP_END = 0x000ED000
+NRF52_BOOT_CONTAINER_SIZE = 41330
+NRF52_SHARED_BOOT_STAGE_START = 0x000E2000
 NRF52_FLASH_PAGE = 4096
 
 # A validated nRF52 firmware carries this record immediately before EndF. It lets an offline packager
@@ -90,8 +92,34 @@ XIAO_BOOT_MANIFEST_VERSION = 1
 XIAO_BOOT_MANIFEST_SIZE = 44
 XIAO_BOOT_DEVICE_NAME = b"XIAO_DFU".ljust(16, b"\0")
 XIAO_BOOT_CAPS_MAGIC = b"MOTABLDR"
+BOOT_STORAGE_STAGE_CEILING = 0x02
 XIAO_BOOT_STORAGE_QSPI = 0x04
 XIAO_BOOT_STORAGE_UPDATE = 0x08
+BOOT_STORAGE_KNOWN = 0x0F
+BOOT_STORAGE_QSPI_UPDATE = (BOOT_STORAGE_STAGE_CEILING | XIAO_BOOT_STORAGE_QSPI |
+                            XIAO_BOOT_STORAGE_UPDATE)
+BOOT_STORAGE_INTERNAL_UPDATE = BOOT_STORAGE_STAGE_CEILING | XIAO_BOOT_STORAGE_UPDATE
+
+# Exact embedded manifests for the qualified shared-internal nRF52840
+# bootloaders. Parsing/inspection remains generic, but package creation is
+# deliberately limited to this collision-audited release inventory. Carrier
+# aliases use the same installed bootloader identity and therefore do not add
+# rows here.
+INTERNAL_BOOTLOADER_IDENTITIES = (
+    (0x239A0071, "TOWER_V2_OTA"),
+    (0x239A0071, "T096_DFU"),
+    (0x239A0071, "T1_DFU"),
+    (0x239A0071, "T114_DFU"),
+    (0x239A0071, "MESH_POCKET_OTA"),
+    (0x239A00B3, "KeepteenLT1_OTA"),
+    (0x239A0029, "MX25_DFU"),
+    (0x239A00B3, "PROM_DFU"),
+    (0x28860057, "T1KE_DFU"),
+    (0x239A00DA, "TNM3_DFU"),
+    (0x239A0029, "3401_DFU"),
+    (0x239A0029, "4631_DFU"),
+    (0x239A0029, "RTAG_DFU"),
+)
 
 # MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
 # complete S140 v6 application region up to InternalFS instead of leaving room for internal staging.
@@ -222,7 +250,6 @@ class Nrf52Layout:
     def bootloader_scratch(self) -> bool:
         return bool(self.flags & NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
 
-
 def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: bool) -> int:
     """Select a safe staging ceiling from linker geometry and actual secondary-storage type."""
     if uses_internal_extrafs:
@@ -235,7 +262,8 @@ def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: b
 def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
     if layout.app_base not in (NRF52_APP_BASE_S140_V6, NRF52_APP_BASE_S140_V7):
         raise ValueError(f"unsupported nRF52 app base 0x{layout.app_base:X}")
-    if layout.linked_app_end not in (NRF52_EXTRAFS_START, NRF52_BOOT_SCRATCH_START, NRF52_APP_END):
+    if layout.linked_app_end not in (NRF52_EXTRAFS_START,
+                                     NRF52_BOOT_SCRATCH_START, NRF52_APP_END):
         raise ValueError(f"unsupported nRF52 linked app end 0x{layout.linked_app_end:X}")
     if layout.stage_ceiling not in (NRF52_EXTRAFS_START, NRF52_APP_END):
         raise ValueError(f"unsupported nRF52 staging ceiling 0x{layout.stage_ceiling:X}")
@@ -250,10 +278,12 @@ def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
     if layout.external_backed and layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS:
         raise ValueError("nRF52 external staging cannot also reserve internal ExtraFS")
     if layout.bootloader_scratch:
-        if not layout.qspi_backed or layout.sd_backed or layout.linked_app_end != NRF52_BOOT_SCRATCH_START:
-            raise ValueError("nRF52 bootloader scratch requires QSPI and linked app end 0xE0000")
+        qspi_shape = (layout.qspi_backed and not layout.sd_backed and
+                      layout.linked_app_end == NRF52_BOOT_SCRATCH_START)
+        if not qspi_shape:
+            raise ValueError("nRF52 bootloader scratch requires the XIAO QSPI layout")
     elif layout.linked_app_end == NRF52_BOOT_SCRATCH_START:
-        raise ValueError("nRF52 linked app end 0xE0000 requires the bootloader-scratch flag")
+        raise ValueError("reserved bootloader geometry requires the bootloader-scratch flag")
     expected_ceiling = (NRF52_APP_END if layout.external_backed else
                         nrf52_stage_ceiling_for_layout(
                             layout.linked_app_end,
@@ -501,7 +531,7 @@ def xiao_bootloader_hw_id(board_id: int) -> str:
 
 
 @dataclass(frozen=True)
-class XiaoBootloaderIdentity:
+class BootloaderIdentity:
     manifest_offset: int
     image_start: int
     image_size: int
@@ -510,7 +540,73 @@ class XiaoBootloaderIdentity:
     crc32: int
 
 
-def _xiao_bootloader_vector_sane(image: bytes) -> bool:
+XiaoBootloaderIdentity = BootloaderIdentity  # compatibility for callers of the original reference API
+
+
+def _bootloader_device_name(board_id: int, name_raw: bytes) -> Optional[str]:
+    if len(name_raw) != 16 or board_id in (0, 0xFFFFFFFF):
+        return None
+    if board_id in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
+        return "XIAO_DFU" if name_raw == XIAO_BOOT_DEVICE_NAME else None
+    try:
+        end = name_raw.index(0)
+    except ValueError:
+        return None
+    if end == 0 or end > 15 or any(name_raw[end:]) or any(b < 0x21 or b > 0x7E for b in name_raw[:end]):
+        return None
+    return name_raw[:end].decode("ascii", "strict")
+
+
+def bootloader_hw_id(board_id: int, device_name: str) -> bytes:
+    name_raw = device_name.encode("ascii", "strict")
+    if len(name_raw) > 15 or _bootloader_device_name(board_id, name_raw.ljust(16, b"\0")) is None:
+        raise ValueError("invalid embedded bootloader board/name identity")
+    if board_id in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
+        return hw_id_bytes(xiao_bootloader_hw_id(board_id))
+    return hw_id_bytes(f"NRF_BL_{board_id:08X}_{device_name}")
+
+
+def bootloader_target_id(board_id: int, device_name: str) -> int:
+    if board_id in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
+        return board_id
+    return int.from_bytes(sha256(bootloader_hw_id(board_id, device_name))[:4], "little")
+
+
+def audit_bootloader_target_inventory(application_target_ids=()) -> dict:
+    """Return target->identity after rejecting boot/app target collisions.
+
+    The generic image parser intentionally accepts future canonical embedded
+    identities for diagnostics. Only the curated identities below are allowed
+    to enter a newly built signed package, and release tests pass the generated
+    application target table here to keep the two wire namespaces disjoint.
+    """
+    identities = (
+        (XIAO_BOOT_BOARD_ID_BASE, "XIAO_DFU"),
+        (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU"),
+    ) + INTERNAL_BOOTLOADER_IDENTITIES
+    app_ids = set(application_target_ids)
+    targets = {}
+    for identity in identities:
+        target = bootloader_target_id(*identity)
+        if target in targets:
+            raise ValueError(
+                f"bootloader target collision 0x{target:08X}: "
+                f"{targets[target]!r} vs {identity!r}")
+        if target in app_ids:
+            raise ValueError(
+                f"bootloader target 0x{target:08X} collides with an application target")
+        targets[target] = identity
+    return targets
+
+
+def bootloader_identity_is_buildable(board_id: int, device_name: str) -> bool:
+    return ((board_id, device_name) in INTERNAL_BOOTLOADER_IDENTITIES or
+            (board_id, device_name) in (
+                (XIAO_BOOT_BOARD_ID_BASE, "XIAO_DFU"),
+                (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU")))
+
+
+def _bootloader_vector_sane(image: bytes) -> bool:
     if len(image) < 8:
         return False
     sp, reset = struct.unpack_from("<II", image)
@@ -519,7 +615,7 @@ def _xiao_bootloader_vector_sane(image: bytes) -> bool:
         and XIAO_BOOT_IMAGE_START <= entry < XIAO_BOOT_IMAGE_START + XIAO_BOOT_IMAGE_SIZE
 
 
-def parse_xiao_bootloader_identity(image: bytes) -> Optional[XiaoBootloaderIdentity]:
+def parse_bootloader_identity(image: bytes) -> Optional[BootloaderIdentity]:
     """Find exactly one CRC-valid embedded v1 manifest, continuing past invalid decoys."""
     if len(image) != XIAO_BOOT_IMAGE_SIZE:
         return None
@@ -531,56 +627,82 @@ def parse_xiao_bootloader_identity(image: bytes) -> Optional[XiaoBootloaderIdent
         start, image_size, board_id = struct.unpack_from("<III", image, off + 12)
         name_raw = image[off + 24:off + 40]
         stored_crc = struct.unpack_from("<I", image, off + 40)[0]
+        device_name = _bootloader_device_name(board_id, name_raw)
         if (version != XIAO_BOOT_MANIFEST_VERSION or size != XIAO_BOOT_MANIFEST_SIZE or
                 start != XIAO_BOOT_IMAGE_START or image_size != XIAO_BOOT_IMAGE_SIZE or
-                board_id not in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE) or
-                name_raw != XIAO_BOOT_DEVICE_NAME):
+                device_name is None):
             continue
         crc_image = bytearray(image)
         crc_image[off + 40:off + 44] = b"\0" * 4
         import zlib
         if zlib.crc32(crc_image) & 0xFFFFFFFF != stored_crc:
             continue
-        candidate = XiaoBootloaderIdentity(
-            off, start, image_size, board_id,
-            name_raw.split(b"\0", 1)[0].decode("ascii", "strict"), stored_crc)
+        candidate = BootloaderIdentity(off, start, image_size, board_id, device_name, stored_crc)
         if found is not None:
             return None
         found = candidate
     return found
 
 
-def xiao_bootloader_caps_ok(image: bytes) -> bool:
-    """Find a real capability marker; a bare MOTABLDR literal is skipped."""
-    # The structure is emitted with uint16_t fields, so only aligned candidates
-    # are valid. This also avoids accepting an incidental magic string embedded
-    # in instruction/literal data as the privileged continuity marker.
+def parse_xiao_bootloader_identity(image: bytes) -> Optional[XiaoBootloaderIdentity]:
+    """Compatibility wrapper restricted to the two deployed XIAO identities."""
+    identity = parse_bootloader_identity(image)
+    return identity if identity and identity.board_id in (
+        XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE) else None
+
+
+def bootloader_caps_storage(image: bytes) -> Optional[int]:
+    """Return the one exact supported self-update storage marker, or None."""
+    found = None
     for off in range(0, len(image) - 16 + 1, 4):
         if image[off:off + 8] != XIAO_BOOT_CAPS_MAGIC:
             continue
         abi, codecs = struct.unpack_from("<HH", image, off + 8)
         storage = image[off + 12]
-        if (abi >= BOOT_FORMAT_VER and abi != 0xFFFF and
-                codecs & (1 << CODEC_FULL) and (storage & ~0x0F) == 0 and
-                storage & (XIAO_BOOT_STORAGE_QSPI | XIAO_BOOT_STORAGE_UPDATE) ==
-                (XIAO_BOOT_STORAGE_QSPI | XIAO_BOOT_STORAGE_UPDATE) and
-                image[off + 13:off + 16] == b"\0\0\0"):
-            return True
-    return False
+        if (abi < BOOT_FORMAT_VER or abi == 0xFFFF or not codecs & (1 << CODEC_FULL) or
+                storage & ~BOOT_STORAGE_KNOWN or image[off + 13:off + 16] != b"\0\0\0" or
+                storage not in (BOOT_STORAGE_QSPI_UPDATE, BOOT_STORAGE_INTERNAL_UPDATE)):
+            continue
+        if found is not None:
+            return None
+        found = storage
+    return found
+
+
+def xiao_bootloader_caps_ok(image: bytes) -> bool:
+    return bootloader_caps_storage(image) == BOOT_STORAGE_QSPI_UPDATE
+
+
+def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
+                              signed_hw_id: Optional[bytes] = None) -> BootloaderIdentity:
+    if len(image) != XIAO_BOOT_IMAGE_SIZE:
+        raise ValueError(f"bootloader image must be exactly {XIAO_BOOT_IMAGE_SIZE} bytes")
+    if not _bootloader_vector_sane(image):
+        raise ValueError("bootloader vector table is invalid")
+    identity = parse_bootloader_identity(image)
+    if identity is None:
+        raise ValueError("bootloader embedded manifest/CRC is invalid or ambiguous")
+    expected_target = bootloader_target_id(identity.board_id, identity.device_name)
+    if target_id is not None and target_id != expected_target:
+        raise ValueError("bootloader target ID does not match embedded identity")
+    expected_hw = bootloader_hw_id(identity.board_id, identity.device_name)
+    if signed_hw_id is not None and bytes(signed_hw_id) != expected_hw:
+        raise ValueError("bootloader signed hw_id does not match embedded identity")
+    expected_storage = (BOOT_STORAGE_QSPI_UPDATE
+                        if identity.board_id in (XIAO_BOOT_BOARD_ID_BASE,
+                                                 XIAO_BOOT_BOARD_ID_SENSE)
+                        else BOOT_STORAGE_INTERNAL_UPDATE)
+    if bootloader_caps_storage(image) != expected_storage:
+        raise ValueError(f"bootloader lacks exact ABI 3 self-update capabilities 0x{expected_storage:02X}")
+    return identity
 
 
 def validate_xiao_bootloader_image(image: bytes, board_id: Optional[int] = None) -> XiaoBootloaderIdentity:
-    if len(image) != XIAO_BOOT_IMAGE_SIZE:
-        raise ValueError(f"bootloader image must be exactly {XIAO_BOOT_IMAGE_SIZE} bytes")
-    if not _xiao_bootloader_vector_sane(image):
-        raise ValueError("bootloader vector table is invalid")
-    identity = parse_xiao_bootloader_identity(image)
-    if identity is None:
-        raise ValueError("bootloader embedded manifest/CRC is invalid")
+    identity = validate_bootloader_image(image)
+    if identity.board_id not in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
+        raise ValueError("bootloader is not a deployed XIAO identity")
     if board_id is not None and identity.board_id != board_id:
         raise ValueError("bootloader embedded board ID does not match package target")
-    if not xiao_bootloader_caps_ok(image):
-        raise ValueError("bootloader lacks ABI 3 QSPI boot-update continuity capabilities")
     return identity
 
 
@@ -601,16 +723,19 @@ def build_manifest(*, target_id: int, fw_version: int, image_size: int, payload:
     assert (block_size & (block_size - 1)) == 0, "block_size must be a power of two"
     leaves = leaf_hashes(payload, block_size)
     if bootloader:
-        identity = validate_xiao_bootloader_image(payload, target_id)
+        identity = validate_bootloader_image(payload, target_id)
+        audit_bootloader_target_inventory()
+        if not bootloader_identity_is_buildable(identity.board_id, identity.device_name):
+            raise ValueError("bootloader embedded identity is not in the qualified build inventory")
         if (fw_version == 0 or not is_full or codec_id != CODEC_FULL or
                 image_size != XIAO_BOOT_IMAGE_SIZE or
                 block_size != DEFAULT_BLOCK_SIZE or base_hash not in (None, b"\0" * 8)):
             raise ValueError("bootloader package needs a nonzero version and a 40 KiB CODEC_FULL image with 1 KiB blocks")
         if sign_priv is None:
             raise ValueError("bootloader package must be signed")
-        expected_hw = xiao_bootloader_hw_id(identity.board_id)
-        if hw_id is not None and hw_id_bytes(hw_id) != hw_id_bytes(expected_hw):
-            raise ValueError("bootloader package hw_id must be canonical for its embedded board ID")
+        expected_hw = bootloader_hw_id(identity.board_id, identity.device_name)
+        if hw_id is not None and hw_id_bytes(hw_id) != expected_hw:
+            raise ValueError("bootloader package hw_id must be canonical for its embedded identity")
         hw_id = expected_hw
     m = Manifest(
         format_ver=BOOT_FORMAT_VER if bootloader else APP_FORMAT_VER,
@@ -707,10 +832,12 @@ def parse_container(blob: bytes) -> Parsed:
         if (m.fw_version == 0 or m.codec_id != CODEC_FULL or
                 m.image_size != XIAO_BOOT_IMAGE_SIZE or
                 m.payload_size != XIAO_BOOT_IMAGE_SIZE or
-                m.block_size_log2 != 10 or m.block_count != 40 or m.base_hash != b"\0" * 8 or
-                m.target_id not in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE) or
-                m.hw_id != hw_id_bytes(xiao_bootloader_hw_id(m.target_id))):
+                m.block_size_log2 != 10 or m.block_count != 40 or m.base_hash != b"\0" * 8):
             raise ValueError("v3 bootloader manifest geometry/identity is invalid")
+        try:
+            validate_bootloader_image(payload, m.target_id, m.hw_id)
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError(f"v3 bootloader image identity/capability is invalid: {exc}") from exc
     return Parsed(manifest=m, payload=payload, total_size=total)
 
 
@@ -726,7 +853,7 @@ def verify(parsed: Parsed, *, expect_pub: Optional[bytes] = None,
 
     if m.is_bootloader:
         try:
-            validate_xiao_bootloader_image(payload, m.target_id)
+            validate_bootloader_image(payload, m.target_id, m.hw_id)
         except (UnicodeDecodeError, ValueError) as exc:
             problems.append(f"bootloader image contract: {exc}")
 

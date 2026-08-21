@@ -33,7 +33,8 @@ public:
   void checkpoint() override;
   bool reopen() override;
   bool plan_layout(bool is_full, uint32_t image_size,
-                   uint32_t payload_off, uint32_t payload_size) override;
+                   uint32_t payload_off, uint32_t payload_size,
+                   bool is_bootloader) override;
 
   // Called only after the app has verified payload, base, signature and trust.
   // Writes APRV into the file, then publishes the raw-sector handoff record.

@@ -151,7 +151,14 @@ struct OtaContext {
   // Explicit recovery entry point for an internal-flash nRF52 whose normal EndF validation fails. This
   // is never called by auto-install; the CLI requires the package's exact 8-byte base hash.
   bool apply_fetched_rescue(const uint8_t operator_base_hash[8], char* msg) {
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    (void)operator_base_hash;
+    strncpy(msg, "rescue is disabled on shared-slot bootloader-update builds", 96);
+    msg[95] = 0;
+    return false;
+#else
     return apply_fetched_impl(operator_base_hash, msg);
+#endif
   }
 
   bool apply_fetched_impl(const uint8_t* rescue_base_hash, char* msg) {
@@ -168,6 +175,13 @@ struct OtaContext {
 #if !defined(NRF52_PLATFORM) || defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
     if (rescue_base_hash) {
       strncpy(msg, "rescue is only for internal-flash nRF52 builds", 96);
+      msg[95] = 0;
+      return false;
+    }
+#endif
+#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+    if (rescue_base_hash) {
+      strncpy(msg, "rescue is disabled on shared-slot bootloader-update builds", 96);
       msg[95] = 0;
       return false;
     }
@@ -223,10 +237,10 @@ struct OtaContext {
 
   bool apply_fetched_bootloader(const uint8_t operator_mid[4],
                                 const uint8_t operator_hash8[8], char* msg) {
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && \
-    defined(OTA_QSPI_BOOTLOADER_UPDATE) && !defined(OTA_SEEDER_ONLY)
+#if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
     if (fetch_to_folder) {
-      strncpy(msg, "refused: bootloader package is not in local QSPI storage", 96);
+      strncpy(msg, "refused: bootloader package is not in local install storage", 96);
       msg[95] = 0; return false;
     }
     if (manager.fetchState() != OtaManager::COMPLETE || fetch_store.staged_size() == 0) {
@@ -503,7 +517,8 @@ struct OtaContext {
     manager.set_apply_codec(CODEC_DETOOLS_SEQUENTIAL);   // preferred (streams straight to the slot)
     manager.set_apply_codec2(CODEC_DETOOLS_INPLACE);     // also accepted -> a single in-place .mota fits both
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE) && defined(OTA_QSPI_BOOTLOADER_UPDATE)
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
     manager.set_accept_bootloader(true);
 #else
     manager.set_accept_bootloader(false);

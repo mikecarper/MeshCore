@@ -179,23 +179,29 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
                         and _builds_companion_radio())
     sd_backed = _cppdef("OTA_SD_STORE") is not None
     qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
-    bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
+    qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
+    internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
     if qspi_backed and _cppdef("QSPIFLASH") is not None:
         raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
-    if bootloader_update:
+    if qspi_bootloader_update:
         xiao_module = _cppdef("XIAO_NRF52") is not None or _cppdef("IKOKA_NRF52") is not None
         if not qspi_backed or sd_backed or not xiao_module:
             raise RuntimeError("bootloader update requires a XIAO nRF52840 raw-QSPI OTA build")
         if linked_app_end != ml.NRF52_BOOT_SCRATCH_START:
             raise RuntimeError("bootloader-update build must link exactly below scratch at 0xE0000")
+    if internal_bootloader_update:
+        if sd_backed or qspi_backed or _cppdef("QSPIFLASH") is not None or internal_extrafs:
+            raise RuntimeError("internal bootloader update cannot use SD/QSPI/ExtraFS")
+        if linked_app_end != ml.NRF52_APP_END:
+            raise RuntimeError("shared-slot bootloader update requires the normal 0xED000 linker ceiling")
     stage_ceiling = (ml.NRF52_APP_END if (sd_backed or qspi_backed) else
                      ml.nrf52_stage_ceiling_for_layout(linked_app_end, internal_extrafs))
     layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
                     (ml.NRF52_LAYOUT_FLAG_QSPI if qspi_backed else 0) |
                     (ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS if internal_extrafs else 0) |
-                    (ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH if bootloader_update else 0))
+                    (ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH if qspi_bootloader_update else 0))
     layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
     body = ml.ensure_nrf52_layout(raw_body, layout)
     ident = _firmware_ident()

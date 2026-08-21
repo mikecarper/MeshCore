@@ -368,7 +368,9 @@ bool OtaStoreSdNrf52::locate_file() {
 }
 
 bool OtaStoreSdNrf52::plan_layout(bool, uint32_t image_size,
-                                  uint32_t, uint32_t payload_size) {
+                                  uint32_t, uint32_t payload_size,
+                                  bool is_bootloader) {
+  if (is_bootloader) return false;
   const uint32_t app_base = mota_nrf52_app_base();
   if (image_size == 0 || payload_size == 0 || app_base >= MOTA_NRF52_APP_END ||
       image_size > MOTA_NRF52_APP_END - app_base) {
