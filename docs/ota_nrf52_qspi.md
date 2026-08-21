@@ -108,20 +108,27 @@ After installing the repeater application, check:
 get bootloader.ver
 ota self
 ota status
+ota qspi
 ```
 
-A ready target reports all of the following:
+A ready RAK15001 target reports all of the following:
 
 ```text
 QSPI store:2048K
 bootloader: QSPI apply OK
 bl:QSPI
+QSPI jedec=C84015 size=2048K sr1=00 stage=jedec
 ```
 
 Other supported boards can report a capacity different from 2048K; the
 RAK15001 target must report exactly 2048K. `QSPI store:ERR 0K`, `NO QSPI`, or
 `bl:NO-QSPI` means the flash wiring, flash power, or bootloader does not match.
 Do not start an install in that state.
+
+`ota qspi` is a read-only diagnostic probe available on QSPI OTA builds. It
+reports the exact JEDEC ID, status-register byte, last store stage, and the
+first latched storage error. Run it after an immediate `storage error` before
+starting another pull; later capacity probes preserve that failure detail.
 
 ## Capacity and package types
 

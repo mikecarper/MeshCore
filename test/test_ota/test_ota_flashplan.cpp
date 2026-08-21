@@ -35,6 +35,22 @@ TEST(OtaQspiTiming, PreservesDeepPowerDownEntryAndWakeGuards) {
   EXPECT_GE(MOTA_QSPI_DPD_WAKE_GUARD_US, 45u);
 }
 
+TEST(OtaQspiStatus, TreatsOnlyTheNorWriteInProgressBitAsBusy) {
+  // Nordic READY is not flash completion. The hardware path polls RDSR until
+  // this predicate clears after every program and erase operation.
+  EXPECT_FALSE(mota_qspi_status_busy(0x00));
+  EXPECT_FALSE(mota_qspi_status_busy(0xFC));
+  EXPECT_TRUE(mota_qspi_status_busy(0x01));
+  EXPECT_TRUE(mota_qspi_status_busy(0xFF));
+}
+
+TEST(OtaQspiDiagnostics, ExposesStableFailureStageNames) {
+  EXPECT_STREQ(mota_qspi_stage_name(OtaQspiStage::PROGRAM), "program");
+  EXPECT_STREQ(mota_qspi_stage_name(OtaQspiStage::PROGRAM_BUSY), "program-busy");
+  EXPECT_STREQ(mota_qspi_stage_name(OtaQspiStage::ERASE_BUSY), "erase-busy");
+  EXPECT_STREQ(mota_qspi_stage_name(OtaQspiStage::INVALIDATE_VERIFY), "invalidate-verify");
+}
+
 TEST(OtaFlashPlan, SelectsCeilingFromLinkedLayoutAndStorage) {
   // Actual internal secondary storage is authoritative regardless of linker selection.
   EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(EXPANDED, true), LEGACY);

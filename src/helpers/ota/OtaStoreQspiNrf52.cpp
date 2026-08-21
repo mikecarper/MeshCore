@@ -4,6 +4,7 @@
 
 #include "OtaByteIO.h"
 #include "OtaFlashLayout_nrf52.h"
+#include "hal/nrf_gpio.h"
 #include "hal/nrf_qspi.h"
 #include "nrf.h"
 
@@ -139,6 +140,28 @@ static uint8_t qspi_io3_pin() {
 #endif
 }
 
+static void configure_qspi_gpio(const nrf_qspi_pins_t& pins) {
+  // The QSPI PSEL registers do not configure GPIO drive strength. Nordic
+  // initializes every connected pad as input-disconnected/high-drive before
+  // the peripheral takes ownership and controls each pin's direction.
+  nrf_gpio_pin_clear(pins.sck_pin); // mode 0 idle level
+  nrf_gpio_pin_set(pins.csn_pin);   // never select the NOR during handoff
+  nrf_gpio_cfg(pins.sck_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.csn_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.io0_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.io1_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  if (pins.io2_pin != NRF_QSPI_PIN_NOT_CONNECTED)
+    nrf_gpio_cfg(pins.io2_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  if (pins.io3_pin != NRF_QSPI_PIN_NOT_CONNECTED)
+    nrf_gpio_cfg(pins.io3_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+}
+
 } // namespace
 
 OtaStoreQspiNrf52::OtaStoreQspiNrf52() {
@@ -151,6 +174,9 @@ OtaStoreQspiNrf52::~OtaStoreQspiNrf52() {
 
 void OtaStoreQspiNrf52::fail(const char *message) {
   _io_ok = false;
+  // Keep the first concrete failure from a manifest attempt. Higher-level
+  // wrappers must not replace a program/status error with a generic one.
+  if (_error[0]) return;
   strncpy(_error, message ? message : "QSPI error", sizeof(_error) - 1);
   _error[sizeof(_error) - 1] = 0;
 }
@@ -165,6 +191,7 @@ void OtaStoreQspiNrf52::resetSession() {
   memset(_data_page, 0xFF, sizeof(_data_page));
   memset(_known_pages, 0, sizeof(_known_pages));
   _error[0] = 0;
+  _stage = OtaQspiStage::IDLE;
 }
 
 bool OtaStoreQspiNrf52::pageKnown(uint32_t page) const {
@@ -199,10 +226,35 @@ bool OtaStoreQspiNrf52::customInstruction(uint8_t opcode, uint8_t length, uint8_
   return true;
 }
 
+bool OtaStoreQspiNrf52::readStatus1() {
+  uint8_t status = 0;
+  if (!customInstruction(0x05, NRF_QSPI_CINSTR_LEN_2B, &status)) {
+    fail("QSPI status read failed");
+    return false;
+  }
+  _status1 = status;
+  return true;
+}
+
+bool OtaStoreQspiNrf52::waitMemoryReady(uint32_t timeout_ms) {
+  const uint32_t started = millis();
+  for (;;) {
+    if (!readStatus1()) return false;
+    if (!mota_qspi_status_busy(_status1)) {
+      _memory_operation_pending = false;
+      return true;
+    }
+    // This also covers recovery after a reset during an earlier NOR write:
+    // once WIP is observed, releaseFlash must not send DPD or cut power unless
+    // a later status read proves the operation finished.
+    _memory_operation_pending = true;
+    if ((uint32_t)(millis() - started) >= timeout_ms) return false;
+    delay(1);
+  }
+}
+
 bool OtaStoreQspiNrf52::ensureFlash() {
   if (_qspi_ready) return true;
-  _error[0] = 0;
-  _io_ok = true;
 
 #if defined(OTA_QSPI_POWER_PIN)
   pinMode(OTA_QSPI_POWER_PIN, OUTPUT);
@@ -229,6 +281,7 @@ bool OtaStoreQspiNrf52::ensureFlash() {
   pins.io1_pin = qspi_io1_pin();
   pins.io2_pin = qspi_io2_pin();
   pins.io3_pin = qspi_io3_pin();
+  configure_qspi_gpio(pins);
   nrf_qspi_pins_set(NRF_QSPI, &pins);
 
   nrf_qspi_prot_conf_t protocol;
@@ -251,6 +304,7 @@ bool OtaStoreQspiNrf52::ensureFlash() {
 
   nrf_qspi_enable(NRF_QSPI);
   _qspi_active = true;
+  _stage = OtaQspiStage::ACTIVATE;
   nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
   nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_ACTIVATE);
   if (!waitReady(1000)) {
@@ -260,23 +314,45 @@ bool OtaStoreQspiNrf52::ensureFlash() {
   }
 
   // Release from deep power-down, then identify capacity from the JEDEC byte.
+  _stage = OtaQspiStage::WAKE;
   if (!customInstruction(0xAB, NRF_QSPI_CINSTR_LEN_1B)) {
     releaseFlash();
     fail("QSPI wake failed");
     return false;
   }
   _qspi_awake = true;
+  // Until SR1 is read successfully, conservatively assume an operation from
+  // the preceding boot may still be active. Only waitMemoryReady() may clear
+  // this guard after observing WIP=0.
+  _memory_operation_pending = true;
   delayMicroseconds(MOTA_QSPI_DPD_WAKE_GUARD_US);
+
+  // Recover cleanly if this boot/activation follows an interrupted program or
+  // erase. RDID is not guaranteed to respond while WIP is set, so prove the
+  // NOR idle before requesting its identity.
+  _stage = OtaQspiStage::STATUS;
+  if (!waitMemoryReady(30000)) {
+    if (_io_ok) fail("QSPI wake busy timed out");
+    releaseFlash();
+    return false;
+  }
+
   alignas(4) uint8_t jedec[4] = { 0, 0, 0, 0 };
-  if (!customInstruction(0x9F, NRF_QSPI_CINSTR_LEN_4B, jedec) || jedec[0] == 0 || jedec[0] == 0xFF ||
-      jedec[2] < 20 || jedec[2] > 24) {
+  _stage = OtaQspiStage::JEDEC;
+  _jedec_id = 0;
+  if (!customInstruction(0x9F, NRF_QSPI_CINSTR_LEN_4B, jedec)) {
+    releaseFlash();
+    fail("QSPI JEDEC read failed");
+    return false;
+  }
+  _jedec_id = ((uint32_t)jedec[0] << 16) | ((uint32_t)jedec[1] << 8) | jedec[2];
+  if (jedec[0] == 0 || jedec[0] == 0xFF || jedec[2] < 20 || jedec[2] > 24) {
     releaseFlash();
     fail("QSPI JEDEC ID/capacity unsupported");
     return false;
   }
 #ifdef OTA_QSPI_EXPECTED_JEDEC_ID
-  const uint32_t jedec_id = ((uint32_t)jedec[0] << 16) | ((uint32_t)jedec[1] << 8) | jedec[2];
-  if (jedec_id != (uint32_t)OTA_QSPI_EXPECTED_JEDEC_ID) {
+  if (_jedec_id != (uint32_t)OTA_QSPI_EXPECTED_JEDEC_ID) {
     releaseFlash();
     fail("QSPI JEDEC ID does not match target");
     return false;
@@ -300,7 +376,7 @@ bool OtaStoreQspiNrf52::ensureFlash() {
 }
 
 void OtaStoreQspiNrf52::releaseFlash() {
-  if (_qspi_awake) {
+  if (_qspi_awake && !_memory_operation_pending) {
     // The repeater can remain idle for hours after a capacity/status probe or
     // a completed checkpoint. Put the NOR into deep power-down before
     // releasing the nRF QSPI peripheral instead of leaving both active for
@@ -311,24 +387,45 @@ void OtaStoreQspiNrf52::releaseFlash() {
     // plan_layout() is intentionally followed immediately by begin().
     delayMicroseconds(MOTA_QSPI_DPD_ENTRY_GUARD_US);
   }
+  // If WIP could not be proven clear, do not send DPD or cut flash power.
+  // Deactivating the controller leaves CS high while the NOR finishes or
+  // remains available for a later diagnostic probe.
+
   // Match nrfx_qspi_uninit(): DEACTIVATE does not require a READY wait before
   // disabling the peripheral. Trigger it after every successful ENABLE, even
   // when wake or JEDEC identification failed before _qspi_ready was set.
   if (_qspi_active) {
+    if (_memory_operation_pending) {
+      // QSPI owns pin direction while enabled. Preload and configure CS# high
+      // before releasing the peripheral so an unresolved NOR operation cannot
+      // see a floating or asserted chip select during the handoff.
+      const uint8_t cs_pin = qspi_cs_pin();
+      nrf_gpio_pin_set(cs_pin);
+      nrf_gpio_cfg(cs_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                   NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+    }
     nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
     nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_DEACTIVATE);
     nrf_qspi_disable(NRF_QSPI);
     nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
+    if (_memory_operation_pending) {
+      const nrf_qspi_pins_t disconnected = {
+        NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
+        NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
+        NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED
+      };
+      nrf_qspi_pins_set(NRF_QSPI, &disconnected);
+    }
   }
   _qspi_active = false;
   _qspi_awake = false;
   _qspi_ready = false;
 #if defined(OTA_QSPI_POWER_PIN)
-  digitalWrite(OTA_QSPI_POWER_PIN, LOW);
+  if (!_memory_operation_pending) digitalWrite(OTA_QSPI_POWER_PIN, LOW);
 #elif defined(PIN_FLASH_EN)
-  digitalWrite(PIN_FLASH_EN, LOW);
+  if (!_memory_operation_pending) digitalWrite(PIN_FLASH_EN, LOW);
 #elif defined(QSPI_FLASH_EN)
-  digitalWrite(QSPI_FLASH_EN, LOW);
+  if (!_memory_operation_pending) digitalWrite(QSPI_FLASH_EN, LOW);
 #endif
 }
 
@@ -341,6 +438,7 @@ bool OtaStoreQspiNrf52::dmaReadAligned(uint32_t address, uint32_t length) {
     fail("QSPI aligned read invalid");
     return false;
   }
+  _stage = OtaQspiStage::READ;
   nrf_qspi_read_buffer_set(NRF_QSPI, _bounce, length, address);
   nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
   nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_READSTART);
@@ -358,13 +456,23 @@ bool OtaStoreQspiNrf52::dmaWriteAligned(uint32_t address, uint32_t length) {
     fail("QSPI aligned program invalid");
     return false;
   }
+  _stage = OtaQspiStage::PROGRAM;
   nrf_qspi_write_buffer_set(NRF_QSPI, _bounce, length, address);
   nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
+  _memory_operation_pending = true;
   nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_WRITESTART);
   if (!waitReady(10000)) {
     fail("QSPI program timed out");
     return false;
   }
+  // READY only reports that the page-program command/data were sent. Poll the
+  // NOR WIP bit before verifying, issuing another operation, or entering DPD.
+  _stage = OtaQspiStage::PROGRAM_BUSY;
+  if (!waitMemoryReady(10000)) {
+    if (_io_ok) fail("QSPI program busy timed out");
+    return false;
+  }
+  _memory_operation_pending = false;
   return true;
 }
 
@@ -436,13 +544,22 @@ bool OtaStoreQspiNrf52::rawWrite(uint32_t address, const void *data, uint32_t le
 
 bool OtaStoreQspiNrf52::rawErasePage(uint32_t address) {
   if (!ensureFlash() || (address & (PAGE - 1)) != 0 || address > _flash_size - PAGE) return false;
+  _stage = OtaQspiStage::ERASE;
   nrf_qspi_erase_ptr_set(NRF_QSPI, address, NRF_QSPI_ERASE_LEN_4KB);
   nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
+  _memory_operation_pending = true;
   nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_ERASESTART);
   if (!waitReady(30000)) {
     fail("QSPI erase timed out");
     return false;
   }
+  // As with program, READY precedes completion of the flash's internal erase.
+  _stage = OtaQspiStage::ERASE_BUSY;
+  if (!waitMemoryReady(30000)) {
+    if (_io_ok) fail("QSPI erase busy timed out");
+    return false;
+  }
+  _memory_operation_pending = false;
   return true;
 }
 
@@ -498,12 +615,36 @@ bool OtaStoreQspiNrf52::useDataPage(uint32_t page) {
 
 uint32_t OtaStoreQspiNrf52::capacity() const {
   OtaStoreQspiNrf52 *self = const_cast<OtaStoreQspiNrf52 *>(this);
+  // A read-only CLI probe must not erase the reason a fetch just failed.
+  // Preserve the latched failure while still refreshing the JEDEC ID/capacity.
+  const bool preserve_failure = self->_error[0] != 0;
+  char saved_error[sizeof(self->_error)];
+  OtaQspiStage saved_stage = self->_stage;
+  uint8_t saved_status1 = self->_status1;
+  bool saved_io_ok = self->_io_ok;
+  if (preserve_failure) {
+    strncpy(saved_error, self->_error, sizeof(saved_error));
+    saved_error[sizeof(saved_error) - 1] = 0;
+  }
   uint32_t result = self->ensureFlash() ? self->_flash_size : 0;
   self->releaseFlash();
+  if (preserve_failure) {
+    strncpy(self->_error, saved_error, sizeof(self->_error));
+    self->_error[sizeof(self->_error) - 1] = 0;
+    self->_stage = saved_stage;
+    self->_status1 = saved_status1;
+    self->_io_ok = saved_io_ok;
+  }
   return result;
 }
 
 bool OtaStoreQspiNrf52::plan_layout(bool, uint32_t image_size, uint32_t, uint32_t payload_size) {
+  // This is the start of a new manifest admission attempt. Clear diagnostics
+  // left by the normal empty-store reopen probe, then latch the first error
+  // from this attempt until the operator reads it or starts another attempt.
+  _error[0] = 0;
+  _io_ok = true;
+  _stage = OtaQspiStage::IDLE;
   const uint32_t app_base = mota_nrf52_app_base();
   if (image_size == 0 || payload_size == 0 || app_base >= MOTA_NRF52_APP_END ||
       image_size > MOTA_NRF52_APP_END - app_base) {
@@ -517,8 +658,12 @@ bool OtaStoreQspiNrf52::plan_layout(bool, uint32_t image_size, uint32_t, uint32_
 }
 
 bool OtaStoreQspiNrf52::begin(uint32_t total_size) {
-  if (!ensureFlash() || total_size < 13 || total_size > _flash_size) {
-    if (_io_ok) fail("QSPI lacks space for update");
+  if (!ensureFlash()) {
+    releaseFlash();
+    return false;
+  }
+  if (total_size < 13 || total_size > _flash_size) {
+    fail("QSPI lacks space for update");
     releaseFlash();
     return false;
   }
@@ -527,9 +672,19 @@ bool OtaStoreQspiNrf52::begin(uint32_t total_size) {
   // replaced with the new header at the first checkpoint/finalize.
   uint8_t zero[4] = { 0, 0, 0, 0 };
   uint8_t check[sizeof(zero)];
-  if (!rawWrite(0, zero, sizeof(zero)) || !rawRead(0, check, sizeof(check)) ||
-      memcmp(check, zero, sizeof(zero)) != 0) {
-    fail("QSPI old-container invalidation failed");
+  if (!rawWrite(0, zero, sizeof(zero))) {
+    releaseFlash();
+    return false;
+  }
+  if (!rawRead(0, check, sizeof(check))) {
+    releaseFlash();
+    return false;
+  }
+  if (memcmp(check, zero, sizeof(zero)) != 0) {
+    _stage = OtaQspiStage::INVALIDATE_VERIFY;
+    char message[sizeof(_error)];
+    snprintf(message, sizeof(message), "QSPI invalidation mismatch sr1=%02X", _status1);
+    fail(message);
     releaseFlash();
     return false;
   }
@@ -540,11 +695,22 @@ bool OtaStoreQspiNrf52::begin(uint32_t total_size) {
 }
 
 bool OtaStoreQspiNrf52::set_meta_size(uint32_t meta_bytes) {
-  return _total >= 13 && meta_bytes <= PAGE;
+  if (_total < 13 || meta_bytes > PAGE) {
+    _stage = OtaQspiStage::META_SIZE;
+    fail("QSPI metadata exceeds first page");
+    return false;
+  }
+  return true;
 }
 
 bool OtaStoreQspiNrf52::write(uint32_t offset, const uint8_t *data, uint32_t len) {
-  if (!_io_ok || !data || (uint64_t)offset + len > _total) {
+  if (!_io_ok) {
+    releaseFlash();
+    return false;
+  }
+  if (!data || (uint64_t)offset + len > _total) {
+    _stage = OtaQspiStage::BUFFER_WRITE;
+    fail(!data ? "QSPI write buffer missing" : "QSPI write outside container");
     releaseFlash();
     return false;
   }

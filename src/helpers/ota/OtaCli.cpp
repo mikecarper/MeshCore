@@ -151,6 +151,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
       "cancel | announce | self | folder | config | key");
+#elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+    strcpy(reply,
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | qspi | "
+      "folder | config | key");
 #else
     snprintf(reply, 160,
       "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | folder | "
@@ -520,6 +524,21 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (!c.serving) c.serving = ota_serve_self(c, 0);
     c.manager.announce();
     sprintf(reply, "OK beacon sent (serving=%s)", c.serving ? "self fw" : "nothing");
+#endif
+
+  // ---- raw-QSPI staging diagnostics (read-only probe; preserves a latched fetch failure) ----
+  } else if (is_cmd(a, "qspi|storage", &rest)) {
+#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+    // This probe only reads JEDEC/SR1. capacity() deliberately preserves a
+    // latched fetch failure so asking for diagnostics cannot erase its cause.
+    uint32_t qspi_capacity = c.fetch_store.capacity();
+    const char *error = c.fetch_store.last_error();
+    snprintf(reply, 160, "QSPI jedec=%06lX size=%luK sr1=%02X stage=%s%s%s",
+             (unsigned long)c.fetch_store.jedec_id(),
+             (unsigned long)(qspi_capacity / 1024), c.fetch_store.status1(),
+             c.fetch_store.last_stage(), error[0] ? " error=" : "", error);
+#else
+    strcpy(reply, "ERR this build does not use a QSPI OTA store");
 #endif
 
   // ---- running firmware identity (compare against a delta's base_hash) ----

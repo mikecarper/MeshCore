@@ -728,7 +728,8 @@ class ReliabilityTests(unittest.TestCase):
                     "OTA | no download | target:1234ABCD hw=Xiao_nrf52 | bl:QSPI blrc:B0",
                     "> 0.9.2-OTAFIX2.4",
                     "self body=1 image=2 base_hash=0011223344556677 | "
-                    "bootloader: QSPI apply OK (abi=2 codecs=0x5)",
+                    "QSPI store:2048K | bootloader: QSPI apply OK "
+                    "(abi=2 codecs=0x5)",
                     "OTA | fw v1.17.0 id=00112233",
                 ])
 

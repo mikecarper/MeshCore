@@ -30,6 +30,49 @@ static const uint32_t MOTA_QSPI_DPD_ENTRY_GUARD_US = 50u;
 // Release-from-deep-power-down latency is as high as 45 us on supported NOR.
 static const uint32_t MOTA_QSPI_DPD_WAKE_GUARD_US = 50u;
 
+// The nRF QSPI READY event only says that a program/erase command and its
+// data reached the NOR. The memory can remain internally busy afterwards;
+// issuing another command or powering it down before WIP clears is unsafe.
+static const uint8_t MOTA_QSPI_STATUS_WIP = 0x01u;
+
+inline bool mota_qspi_status_busy(uint8_t status1) {
+  return (status1 & MOTA_QSPI_STATUS_WIP) != 0;
+}
+
+enum class OtaQspiStage : uint8_t {
+  IDLE = 0,
+  ACTIVATE,
+  WAKE,
+  JEDEC,
+  STATUS,
+  READ,
+  PROGRAM,
+  PROGRAM_BUSY,
+  ERASE,
+  ERASE_BUSY,
+  INVALIDATE_VERIFY,
+  META_SIZE,
+  BUFFER_WRITE
+};
+
+inline const char *mota_qspi_stage_name(OtaQspiStage stage) {
+  switch (stage) {
+    case OtaQspiStage::ACTIVATE:          return "activate";
+    case OtaQspiStage::WAKE:              return "wake";
+    case OtaQspiStage::JEDEC:             return "jedec";
+    case OtaQspiStage::STATUS:            return "status";
+    case OtaQspiStage::READ:              return "read";
+    case OtaQspiStage::PROGRAM:           return "program";
+    case OtaQspiStage::PROGRAM_BUSY:      return "program-busy";
+    case OtaQspiStage::ERASE:             return "erase";
+    case OtaQspiStage::ERASE_BUSY:        return "erase-busy";
+    case OtaQspiStage::INVALIDATE_VERIFY: return "invalidate-verify";
+    case OtaQspiStage::META_SIZE:         return "meta-size";
+    case OtaQspiStage::BUFFER_WRITE:      return "buffer-write";
+    default:                              return "idle";
+  }
+}
+
 } // namespace ota
 } // namespace mesh
 
@@ -53,9 +96,13 @@ class OtaStoreQspiNrf52 : public OtaStore {
 
   uint32_t _total = 0;
   uint32_t _flash_size = 0;
+  uint32_t _jedec_id = 0;
+  uint8_t _status1 = 0xFF;
+  OtaQspiStage _stage = OtaQspiStage::IDLE;
   bool _qspi_active = false;
   bool _qspi_awake = false;
   bool _qspi_ready = false;
+  bool _memory_operation_pending = false;
   bool _io_ok = true;
   bool _meta_dirty = false;
   bool _data_dirty = false;
@@ -72,6 +119,8 @@ class OtaStoreQspiNrf52 : public OtaStore {
   void releaseFlash();
   bool waitReady(uint32_t timeout_ms);
   bool customInstruction(uint8_t opcode, uint8_t length, uint8_t *rx = nullptr);
+  bool readStatus1();
+  bool waitMemoryReady(uint32_t timeout_ms);
   bool dmaReadAligned(uint32_t address, uint32_t length);
   bool dmaWriteAligned(uint32_t address, uint32_t length);
   bool rawRead(uint32_t address, void *data, uint32_t length);
@@ -104,6 +153,9 @@ public:
   // Sets APRV only after all app-side verification gates have passed.
   bool approve_for_bootloader();
   const char *last_error() const { return _error; }
+  const char *last_stage() const { return mota_qspi_stage_name(_stage); }
+  uint32_t jedec_id() const { return _jedec_id; }
+  uint8_t status1() const { return _status1; }
 };
 
 } // namespace ota

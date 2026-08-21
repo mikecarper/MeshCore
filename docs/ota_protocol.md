@@ -749,6 +749,7 @@ ota rescue install <base_hash16>  internal-flash nRF52 only: recover from failed
 ota cancel | drop | stop           drop the current fetch session (frees the slot)
 ota announce | adv                 serve self + send a beacon now
 ota self | id                      print this firmware's EndF (body/image size, base_hash)
+ota qspi | storage                 QSPI nRF52 only: JEDEC/SR1/stage/latched storage error (read-only)
 ota folder | fold [on|off]         attach/detach an external .mota folder (host daemon) ; bare = list
 ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persisted policy
 ota key | keys [add|rm <hex>]      trusted signer allowlist ; bare = list
