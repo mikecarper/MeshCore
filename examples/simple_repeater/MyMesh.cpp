@@ -5001,7 +5001,8 @@ bool MyMesh::loadFloodPacketFilters() {
   bool version_7 = success && memcmp(magic, "FPF7", sizeof(magic)) == 0;
   success = (version_6 || version_7)
       && file.read(&count, sizeof(count)) == sizeof(count)
-      && count <= FLOOD_PACKET_FILTER_SLOTS;
+      && FloodFilterPolicy::forwardPersistenceCountSupported(
+          count, FLOOD_PACKET_FILTER_SLOTS);
 
   for (int i = 0; success && i < count; i++) {
     uint8_t active = 0;
@@ -5762,14 +5763,13 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
   };
 
   const uint8_t magic[4] = {'F', 'P', 'F', '7'};
-  uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
+  const uint8_t count = FloodFilterPolicy::forwardPersistenceCount(
+      flood_packet_filters, FLOOD_PACKET_FILTER_SLOTS,
+      empty_forward_phase);
   bool success = writeExact(magic, sizeof(magic))
       && writeExact(&count, sizeof(count));
-  FloodPacketFilterEntry empty_entry;
-  memset(&empty_entry, 0, sizeof(empty_entry));
-  for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
-    const auto& entry = empty_forward_phase
-        ? empty_entry : flood_packet_filters[i];
+  for (int i = 0; success && i < count; i++) {
+    const auto& entry = flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
     uint8_t suspend_on_temp_radio = entry.suspend_on_temp_radio ? 1 : 0;
     uint8_t match_blacklisted_path = entry.match_blacklisted_path ? 1 : 0;

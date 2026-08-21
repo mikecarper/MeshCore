@@ -3,6 +3,41 @@
 #include <helpers/FloodFilterPolicy.h>
 #include <helpers/RegionNameUtils.h>
 
+struct FloodPersistenceRow {
+  bool active;
+};
+
+TEST(FloodFilterPersistence, DefaultRowsTrimTheInactiveTail) {
+  FloodPersistenceRow rows[63] = {};
+  rows[0].active = true;
+  rows[1].active = true;
+
+  EXPECT_EQ(2, FloodFilterPolicy::forwardPersistenceCount(
+                   rows, 63, false));
+}
+
+TEST(FloodFilterPersistence, SparseHighSlotPreservesEveryEarlierPosition) {
+  FloodPersistenceRow rows[63] = {};
+  rows[0].active = true;
+  rows[47].active = true;
+
+  EXPECT_EQ(48, FloodFilterPolicy::forwardPersistenceCount(
+                    rows, 63, false));
+}
+
+TEST(FloodFilterPersistence, EmptyForwardPhaseSerializesNoRows) {
+  FloodPersistenceRow rows[63] = {};
+  rows[62].active = true;
+
+  EXPECT_EQ(0, FloodFilterPolicy::forwardPersistenceCount(
+                   rows, 63, true));
+}
+
+TEST(FloodFilterPersistence, OldFullCountRemainsLoadCompatible) {
+  EXPECT_TRUE(FloodFilterPolicy::forwardPersistenceCountSupported(63, 63));
+  EXPECT_FALSE(FloodFilterPolicy::forwardPersistenceCountSupported(64, 63));
+}
+
 static mesh::Packet makeFloodPacket(uint8_t hash_size,
                                     const uint8_t* path,
                                     uint8_t path_hops) {

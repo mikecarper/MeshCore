@@ -40,6 +40,25 @@ enum ChannelScopeGate {
   CHANNEL_SCOPE_REQUIRED_REJECTED,
 };
 
+// Persist only through the highest occupied forward-rule slot.  The on-disk
+// formats are dense, so inactive holes before that slot must remain present,
+// while the usually-large inactive tail need not consume LittleFS space.
+// `empty_forward_phase` deliberately wins over the live table for atomic
+// phase-clearing transactions.
+template<typename Entry>
+inline uint8_t forwardPersistenceCount(const Entry entries[],
+                                       uint8_t slot_count,
+                                       bool empty_forward_phase) {
+  if (empty_forward_phase || entries == NULL) return 0;
+  while (slot_count > 0 && !entries[slot_count - 1].active) slot_count--;
+  return slot_count;
+}
+
+inline bool forwardPersistenceCountSupported(uint8_t count,
+                                             uint8_t slot_count) {
+  return count <= slot_count;
+}
+
 inline ChannelScopeGate channelScopeGate(bool table_active,
                                          bool is_group_channel_packet,
                                          bool channel_requires_scope,
