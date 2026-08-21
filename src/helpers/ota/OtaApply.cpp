@@ -419,6 +419,14 @@ void ota_reboot_to_apply() { esp_restart(); }  // boots the slot armed by ota_ap
 
 #elif defined(NRF52_PLATFORM)  // single-slot: verify + mark APPROVED + hand off to the bootloader
 
+// Capture a real OTAFIX result before board power-management initialization
+// consumes GPREGRET2. Ignore shutdown reasons and staging handoff markers that
+// share the register but are not bootloader apply results.
+static uint8_t g_bootloader_last_rc = 0;
+static void __attribute__((constructor(101))) ota_capture_bootloader_last_rc() {
+  g_bootloader_last_rc = ota_nrf52_boot_result_or_zero((uint8_t)NRF_POWER->GPREGRET2);
+}
+
 struct InplacePatchDims {
   uint32_t memory = 0;
   uint32_t segment = 0;
@@ -465,12 +473,7 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
   NVIC_SystemReset();                          // does not return
 }
 
-uint8_t ota_bootloader_last_rc() {             // bootloader's last in-place-apply code, stashed in GPREGRET2
-  uint32_t v = 0;
-  uint8_t en = 0; sd_softdevice_is_enabled(&en);
-  if (en) sd_power_gpregret_get(1, &v); else v = NRF_POWER->GPREGRET2;
-  return (uint8_t)v;
-}
+uint8_t ota_bootloader_last_rc() { return g_bootloader_last_rc; }
 
 static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
                                       const SignerAllowlist& allow,

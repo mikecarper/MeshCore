@@ -23,6 +23,21 @@ extern "C" {
 
 using namespace mesh::ota;
 
+TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x90), 0x90);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x9F), 0x9F);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB0), 0xB0);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB8), 0xB8);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBC), 0xBC);
+
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x00), 0x00);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x4C), 0x00); // shutdown reason
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x51), 0x00); // QSPI handoff
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xD4), 0x00); // legacy handoff
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xED), 0x00); // expanded handoff
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0x00);
+}
+
 class FakeMotaSeederStream : public Stream {
 public:
   using Stream::write;
