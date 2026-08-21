@@ -1346,7 +1346,7 @@ RAK15001. Firmware cannot independently select or detect the two chips, so a
 stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
 a hardware chip-select rework.</p>
 <h2 id="one-time-prerequisite">One-time prerequisite</h2>
-<p>Install a QSPI-capable OTAFIX 2.4.1 preview.8 or newer bootloader for the exact
+<p>Install a QSPI-capable OTAFIX 2.4.1 preview.9 or newer bootloader for the exact
 board from the
 <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases">OTAFIX releases</a>
 before using LoRa OTA. The release notes must explicitly list that board's QSPI
@@ -1370,16 +1370,22 @@ The combined OTAFIX package above is not the MeshCore application's Serial DFU
 <pre><code class="language-text">get bootloader.ver
 ota self
 ota status
+ota qspi
 </code></pre>
-<p>A ready target reports all of the following:</p>
+<p>A ready RAK15001 target reports all of the following:</p>
 <pre><code class="language-text">QSPI store:2048K
 bootloader: QSPI apply OK
 bl:QSPI
+QSPI jedec=C84015 size=2048K sr1=00 stage=jedec
 </code></pre>
 <p>Other supported boards can report a capacity different from 2048K; the
 RAK15001 target must report exactly 2048K. <code>QSPI store:ERR 0K</code>, <code>NO QSPI</code>, or
 <code>bl:NO-QSPI</code> means the flash wiring, flash power, or bootloader does not match.
 Do not start an install in that state.</p>
+<p><code>ota qspi</code> is a read-only diagnostic probe available on QSPI OTA builds. It
+reports the exact JEDEC ID, status-register byte, last store stage, and the
+first latched storage error. Run it after an immediate <code>storage error</code> before
+starting another pull; later capacity probes preserve that failure detail.</p>
 <h2 id="capacity-and-package-types">Capacity and package types</h2>
 <p>The store reads the JEDEC capacity at runtime and accepts supported 1 MiB
 through 16 MiB devices using 24-bit addressing. QSPI capacity is not the final
@@ -1432,8 +1438,12 @@ download is reopened only when its header and trailer are valid; every claimed
 block is re-hashed before it is trusted. Between a probe, transfer operation,
 or checkpoint, firmware puts the NOR into deep power-down, deactivates the nRF
 QSPI peripheral, and turns off a board-provided flash power-enable pin. The
-next operation powers and identifies the chip again, so merely running
-<code>ota self</code> does not leave QSPI drawing active-mode current.</p>
+next operation powers the chip, shifts the NOR's <code>0xAB</code> wake command over GPIO,
+then activates the nRF QSPI peripheral and identifies the flash. Waking it
+before peripheral activation is required because a flash in deep power-down
+ignores the activation traffic itself. Merely running <code>ota self</code> therefore does
+not leave QSPI drawing active-mode current or prevent the following operation
+from reactivating it.</p>
 <p>Installing a QSPI repeater build over a former companion build therefore
 repurposes the external flash and destroys companion filesystem data as OTA
 sectors are written. Back up anything important first. Returning to a companion
