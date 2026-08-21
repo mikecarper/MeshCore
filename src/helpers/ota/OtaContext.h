@@ -35,7 +35,8 @@
 // Per-device OTA singleton shared by the CLI (OtaCli) and the mesh adapter (the example's MyMesh).
 // Holds the session engine, a persistent staging store (fetch), a RAM serve buffer, and the signer
 // allowlist. nRF52 uses one of three stores selected by the exact target: internal flash for in-place
-// deltas, raw microSD, or dedicated raw QSPI for full images and in-place deltas. Flash-backed stores
+// deltas, raw microSD, or dedicated raw QSPI for full images and in-place deltas. One exact microSD
+// target also accepts explicitly confirmed signed bootloader packages. Flash-backed stores
 // coalesce writes at their erase-page boundary and checkpoint payload before leaf metadata, so an
 // interrupted fetch can be verified and resumed without trusting stale progress markers.
 
@@ -238,7 +239,8 @@ struct OtaContext {
   bool apply_fetched_bootloader(const uint8_t operator_mid[4],
                                 const uint8_t operator_hash8[8], char* msg) {
 #if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && \
-    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
     if (fetch_to_folder) {
       strncpy(msg, "refused: bootloader package is not in local install storage", 96);
       msg[95] = 0; return false;
@@ -518,7 +520,8 @@ struct OtaContext {
     manager.set_apply_codec2(CODEC_DETOOLS_INPLACE);     // also accepted -> a single in-place .mota fits both
 #endif
 #if defined(NRF52_PLATFORM) && \
-    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
     manager.set_accept_bootloader(true);
 #else
     manager.set_accept_bootloader(false);

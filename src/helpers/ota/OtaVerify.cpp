@@ -28,7 +28,9 @@ VerifyResult ota_verify(const uint8_t* buf, uint32_t len, const SignerAllowlist&
   return r;
 }
 
-VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow) {
+static VerifyResult ota_verify_store(const OtaStore& store,
+                                     const SignerAllowlist& allow,
+                                     const uint8_t* expected_manifest) {
   VerifyResult r;
   const uint32_t total = store.staged_size();
   uint8_t hdr[8], manifest[MOTA_MFL], trailer[5];
@@ -36,6 +38,8 @@ VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow) {
       !store.read(0, hdr, sizeof(hdr)) ||
       memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total ||
       !store.read(8, manifest, sizeof(manifest)) ||
+      (expected_manifest &&
+       memcmp(manifest, expected_manifest, sizeof(manifest)) != 0) ||
       !store.read(total - 5, trailer, sizeof(trailer)) ||
       memcmp(trailer, MOTA_TRAILER, sizeof(trailer)) != 0) return r;
 
@@ -97,6 +101,16 @@ VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow) {
   free(leaves);
   free(block);
   return r;
+}
+
+VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow) {
+  return ota_verify_store(store, allow, nullptr);
+}
+
+VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow,
+                        const uint8_t expected_manifest[MOTA_MFL]) {
+  if (!expected_manifest) return VerifyResult();
+  return ota_verify_store(store, allow, expected_manifest);
 }
 
 } // namespace ota

@@ -34,16 +34,29 @@ static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
 static const uint8_t OTA_BL_STORAGE_QSPI          = 0x04;
 static const uint8_t OTA_BL_STORAGE_BOOT_UPDATE    = 0x08;
 static const uint8_t OTA_BL_STORAGE_KNOWN          = 0x0F;
+static const uint8_t OTA_BL_PROFILE_SD_BOOT_UPDATE =
+    OTA_BL_STORAGE_SD | OTA_BL_STORAGE_BOOT_UPDATE;
+static const uint8_t OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE =
+    OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE;
+static const uint8_t OTA_BL_PROFILE_QSPI_BOOT_UPDATE =
+    OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI |
+    OTA_BL_STORAGE_BOOT_UPDATE;
+// A successor must retain both application update paths used by qualified
+// external stores: bit 0 CODEC_FULL and bit 2 CODEC_DETOOLS_INPLACE.
+static const uint16_t OTA_BL_REQUIRED_APP_CODEC_MASK = 0x0005u;
 
 inline uint8_t ota_bootloader_update_storage_flags() {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   // No external-storage bit means the ordinary internal flash store. The
   // same store holds either an app delta or a boot package; BOOT_UPDATE marks
   // only the privileged package capability, not a second storage backend.
-  return OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_BOOT_UPDATE;
+  return OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE;
 #elif defined(OTA_QSPI_BOOTLOADER_UPDATE)
-  return OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI |
-         OTA_BL_STORAGE_BOOT_UPDATE;
+  return OTA_BL_PROFILE_QSPI_BOOT_UPDATE;
+#elif defined(OTA_SD_BOOTLOADER_UPDATE)
+  // The complete container remains in the contiguous SD staging file. No
+  // internal stage-ceiling capability is implied by this external store.
+  return OTA_BL_PROFILE_SD_BOOT_UPDATE;
 #else
   return 0;
 #endif
@@ -52,7 +65,9 @@ inline uint8_t ota_bootloader_update_storage_flags() {
 inline bool ota_bootloader_self_update_caps_valid(const OtaBlCaps& c) {
   const uint8_t required = ota_bootloader_update_storage_flags();
   return required != 0 && c.present && c.apply_abi >= 3u &&
-         (c.codec_mask & 1u) != 0 && c.storage_flags == required;
+         (c.codec_mask & OTA_BL_REQUIRED_APP_CODEC_MASK) ==
+             OTA_BL_REQUIRED_APP_CODEC_MASK &&
+         c.storage_flags == required;
 }
 
 // Prefer a continuity-capable marker over a numerically newer legacy-looking candidate. Bootloader
@@ -88,7 +103,8 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
     if (abi == 0 || abi == 0xFFFFu || codecs == 0 || (storage & ~OTA_BL_STORAGE_KNOWN) != 0 ||
         p[13] != 0 || p[14] != 0 || p[15] != 0) continue;
     const bool exact_profile = exact_storage_flags == 0 || storage == exact_storage_flags;
-    if (require_boot_update && exact_profile && abi >= 3u && (codecs & 1u) != 0 &&
+    if (require_boot_update && exact_profile && abi >= 3u &&
+        (codecs & OTA_BL_REQUIRED_APP_CODEC_MASK) == OTA_BL_REQUIRED_APP_CODEC_MASK &&
         (storage & OTA_BL_STORAGE_BOOT_UPDATE) != 0) {
       // A self-update build must have one unambiguous privileged marker. Do
       // not silently choose between two otherwise valid structures (including
@@ -118,7 +134,8 @@ inline OtaBlCaps ota_bootloader_caps() {
   const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
   const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
   return ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo),
-#if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+    defined(OTA_SD_BOOTLOADER_UPDATE)
                                   true, ota_bootloader_update_storage_flags()
 #else
                                   false

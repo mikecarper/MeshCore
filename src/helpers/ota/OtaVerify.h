@@ -31,5 +31,11 @@ VerifyResult ota_verify(const uint8_t* buf, uint32_t len, const SignerAllowlist&
 // contiguous memory view (notably the MeshTower V2 SD-backed nRF52 store).
 VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow);
 
+// As above, but the store's manifest must be byte-identical to an already
+// authenticated local copy. This binds removable-media payload verification
+// to the exact signed anchors later written into an internal approval token.
+VerifyResult ota_verify(const OtaStore& store, const SignerAllowlist& allow,
+                        const uint8_t expected_manifest[MOTA_MFL]);
+
 } // namespace ota
 } // namespace mesh

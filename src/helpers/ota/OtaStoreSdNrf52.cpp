@@ -9,9 +9,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "MeshCore.h"
+#include "OtaBootloaderUpdate.h"
 #include "OtaByteIO.h"
 #include "OtaFlashLayout_nrf52.h"
+#include "OtaSdBootToken.h"
 #include "OtaSdHandoff.h"
+#include "OtaSelf.h"
+#include "flash/flash_nrf5x.h"
 
 #ifndef OTA_SD_CS_PIN
 #define OTA_SD_CS_PIN PIN_SPI1_NSS
@@ -44,6 +48,7 @@ void OtaStoreSdNrf52::resetStoreState() {
   _allocated_sectors = 0;
   _partition_start = 0;
   _partition_end = 0;
+  _planned_bootloader = false;
   if (_file && *_file) _file->close();
   if (_sd) _sd->end();
   _mounted = false;
@@ -370,7 +375,19 @@ bool OtaStoreSdNrf52::locate_file() {
 bool OtaStoreSdNrf52::plan_layout(bool, uint32_t image_size,
                                   uint32_t, uint32_t payload_size,
                                   bool is_bootloader) {
-  if (is_bootloader) return false;
+  _planned_bootloader = false;
+  if (is_bootloader) {
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+    if (ota_bootloader_image_geometry_valid(image_size, payload_size)) {
+      _planned_bootloader = true;
+      return true;
+    }
+    fail("bootloader package geometry mismatch");
+#else
+    fail("bootloader update is not enabled for this SD target");
+#endif
+    return false;
+  }
   const uint32_t app_base = mota_nrf52_app_base();
   if (image_size == 0 || payload_size == 0 || app_base >= MOTA_NRF52_APP_END ||
       image_size > MOTA_NRF52_APP_END - app_base) {
@@ -464,6 +481,7 @@ void OtaStoreSdNrf52::checkpoint() {
 
 bool OtaStoreSdNrf52::reopen() {
   _total = 0;
+  _planned_bootloader = false;
   if (!mount()) return false;
   if (*_file) _file->close();
   if (!_file->open(PATH, O_RDWR)) return false;
@@ -480,6 +498,32 @@ bool OtaStoreSdNrf52::reopen() {
     return false;
   }
   _total = total;
+  uint8_t manifest[MOTA_MFL];
+  MotaManifest parsed;
+  if (total < 8u + sizeof(manifest) + 5u || !_file->seekSet(8u) ||
+      _file->read(manifest, sizeof(manifest)) != (int)sizeof(manifest) ||
+      !mota_parse_manifest(manifest, sizeof(manifest), parsed)) {
+    _total = 0;
+    _file->close();
+    return false;
+  }
+  if (parsed.is_bootloader()) {
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+    const uint64_t payload_off = 8u + sizeof(manifest) +
+        (uint64_t)parsed.block_count * 4u;
+    if (!ota_bootloader_image_geometry_valid(parsed.image_size, parsed.payload_size) ||
+        payload_off + parsed.payload_size + 5u != total) {
+      _total = 0;
+      _file->close();
+      return false;
+    }
+    _planned_bootloader = true;
+#else
+    _total = 0;
+    _file->close();
+    return false;
+#endif
+  }
   if (!locate_file()) {
     _total = 0;
     _file->close();
@@ -490,6 +534,7 @@ bool OtaStoreSdNrf52::reopen() {
 
 void OtaStoreSdNrf52::clear() {
   _total = 0;
+  _planned_bootloader = false;
   _first_sector = 0;
   _allocated_sectors = 0;
   if (!mount()) return;
@@ -498,13 +543,53 @@ void OtaStoreSdNrf52::clear() {
   _sd->remove(PATH);
 }
 
-bool OtaStoreSdNrf52::approve_for_bootloader() {
+bool OtaStoreSdNrf52::approve_for_bootloader(
+    const uint8_t expected_boot_image_hash[32]) {
   if (!_total || !finalize()) return false;
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+  if (_planned_bootloader) {
+    SelfFwInfo fi;
+    if (!expected_boot_image_hash ||
+        _total != MOTA_NRF52_BOOT_CONTAINER_SIZE ||
+        !ota_self_firmware(fi) ||
+        !ota_bootloader_scratch_headroom_valid(
+            fi.valid, mota_nrf52_app_base(), fi.image_len,
+            OTA_BOOT_SCRATCH_START) ||
+        !ota_bootloader_live_bank_preserves_scratch(
+            mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START)) {
+      fail("running firmware/settings do not preserve boot scratch");
+      return false;
+    }
+  }
+#endif
   if (!write(8 + MOTA_OFF_APPROVAL, APPROVAL_YES, sizeof(APPROVAL_YES)) ||
       !_file->sync() || !_sd->card()->syncDevice()) {
     fail("SD approval write failed");
     return false;
   }
+
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+  if (_planned_bootloader) {
+    uint8_t token[MOTA_SD_BOOT_TOKEN_LEN];
+    mota_sd_boot_token_encode(token, _total, expected_boot_image_hash);
+
+    // This page is outside the hash-valid live app and below InternalFS. The
+    // token is temporary: OTAFIX validates it against the current SD bytes,
+    // then consumes the page as the first bootloader scratch page.
+    flash_nrf5x_flush();
+    if (!flash_nrf5x_erase(OTA_BOOT_SCRATCH_START) ||
+        flash_nrf5x_write(OTA_BOOT_SCRATCH_START, token, sizeof(token)) < 0) {
+      fail("SD bootloader token flash write failed");
+      return false;
+    }
+    flash_nrf5x_flush();
+    if (memcmp((const void*)(uintptr_t)OTA_BOOT_SCRATCH_START,
+               token, sizeof(token)) != 0) {
+      fail("SD bootloader token flash verify failed");
+      return false;
+    }
+  }
+#endif
 
   uint8_t sector[MOTA_SD_SECTOR_SIZE];
   if (!_sd->card()->readSector(MOTA_SD_HANDOFF_SECTOR, sector)) {

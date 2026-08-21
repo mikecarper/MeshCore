@@ -219,7 +219,9 @@ After it reboots, run `ota status` to confirm the new version.
 ### Updating an nRF52 bootloader (advanced, explicit only)
 
 This is available on specially marked no-external-flash nRF52840 lean
-repeater/bridge builds and on the legacy XIAO nRF52840/Sense raw-QSPI builds,
+repeater/bridge builds, on the legacy XIAO nRF52840/Sense raw-QSPI builds, and
+on the exact `Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors`
+microSD build,
 after a one-time exact-board ABI-3 OTAFIX installation over USB/BLE DFU or
 SWD. It is not the normal firmware update path. Check support first:
 
@@ -228,8 +230,8 @@ ota bootloader
 ```
 
 The reply must show a CRC-valid installed identity plus ABI 3 and the exact
-storage/boot-update capability bits for that build (`0x0A` for the shared
-internal store or `0x0E` for XIAO raw QSPI). A bootloader package appears as
+storage/boot-update capability bits for that build (`0x09` for MeshTower V2
+microSD, `0x0A` for the shared internal store, or `0x0E` for XIAO raw QSPI). A bootloader package appears as
 `bootloader` in `ota ls`. It is never downloaded or installed automatically,
 even if both OTA automation settings are enabled. Use its stable ID explicitly:
 
@@ -254,6 +256,15 @@ On an internal-flash target, the package shares the ordinary store below
 bank. A valid live `EndF` must prove the current image ends at or below that
 address before any page is erased. If `EndF` is missing/corrupt or the app is
 too large, the pull is refused and local DFU/SWD is required.
+On the MeshTower V2 SD target, the application linker remains at `0xED000`, but
+bootloader replacement needs temporary scratch beginning at `0xE0000`. A
+hash-valid live `EndF` must therefore prove the complete current image ends by
+`0xE0000`. A CRC-bound boot-settings bank must cover that complete image while
+also ending by `0xE0000`. MeshCore binds approval to the exact authenticated
+signed image hash in an internal token before handing the removable SD card to
+OTAFIX, so a later card change fails instead of authorizing different bytes.
+Larger applications can continue to use normal application mOTA;
+only bootloader self-update is refused.
 See [the nRF52 bootloader-update guide](ota_nrf52_bootloader_update.md) for the
 complete target inventory, storage layouts, and safety contract.
 

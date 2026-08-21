@@ -2,9 +2,10 @@
 
 The `Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors` target uses the MeshTower V2 onboard
 microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
-both full `.mota` images and in-place delta `.mota` images. After verification,
-the matching SD-aware OTAFIX bootloader reads the staged file from the card and
-programs the nRF52840 application region.
+full application images, in-place application deltas, and explicitly selected
+signed v3 bootloader packages. After verification, the matching SD-aware OTAFIX
+bootloader reads the staged file from the card and programs the selected
+nRF52840 application or bootloader region.
 
 The pin assignment follows the
 [Heltec MeshTower V2 partial reference circuit](https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf):
@@ -70,6 +71,65 @@ bootloader capability marker does not advertise SD staging and the selected
 codec. Existing `Heltec_tower_v2_repeater` firmware continues to use the
 internal-flash delta path and is unchanged.
 
+## Signed bootloader update
+
+Only this exact SD build exposes the privileged LoRa bootloader-update command.
+It requires an already installed exact-board ABI-3 OTAFIX bootloader whose one
+unambiguous capability marker is exactly `0x09` (`SD|BOOT_UPDATE`) and whose
+codec mask is `0x0005` (`FULL|INPLACE`). Requiring both application codecs
+prevents a bootloader self-update from disabling either normal SD application
+path. It cannot bootstrap a stock or older bootloader; provision that
+prerequisite once over USB/BLE DFU or SWD.
+
+The signed v3 container is exactly 41,330 bytes and carries a 40 KiB candidate
+for the installed `239A0071 / TOWER_V2_OTA` identity (boot target `1150F50E`).
+It uses the same contiguous `/meshcore-ota.mota` file and sector-1 handoff as an
+application update. GPREGRET `0x6B` plus the distinct SD source marker `0x53`
+selects the bootloader path; LoRa transport remains payload type `0x0C`.
+
+The application linker still ends at `0xED000`, but OTAFIX needs
+`0xE0000..0xEA000` as temporary scratch while replacing itself. Before a boot
+package can be downloaded or approved, MeshCore requires a hash-valid live
+`EndF` proving the complete running image ends by `0xE0000`; OTAFIX repeats
+that no-overlap check before its first erase. An application extending above
+that boundary can still receive normal FULL or delta application updates from
+SD, but its bootloader must be updated locally.
+
+MeshCore also checks the live boot settings before touching that scratch page.
+Erased settings and a valid-app record with CRC disabled are allowed. When a
+nonzero bank CRC is active, its recorded `bank_0_size` must cover the complete
+EndF-inclusive running image and must end by `0xE0000`; an undersized or
+oversized record refuses the operation and requires local DFU/SWD.
+
+Because the card is removable, approval is bound to the exact bytes that were
+authenticated. MeshCore verifies the signature and signer allowlist over one
+exact local manifest copy, requires the streamed manifest on SD to remain
+byte-identical, and verifies the complete payload against that manifest. It
+then writes `APRV` and syncs the card. Before publishing the raw-sector
+handoff, it writes and readback-verifies a temporary 64-byte `MOTASDBL` token
+at `0xE0000` containing the exact container length and that signed manifest's
+`image_hash`. OTAFIX requires the parsed SD manifest, streamed payload, and
+final scratch image to match the same token. Replacing or changing the card
+after verification can therefore only make the boot update fail; it cannot
+authorize different bootloader bytes. The token page becomes the first
+scratch page during a successful update and is not permanently reserved.
+
+Bootloader packages are never autofetched or autoinstalled. Select and confirm
+one exact package manually:
+
+```text
+ota ls
+ota pull <MID8> flash
+# wait for ota status to report the bootloader download ready
+ota bootloader
+ota bootloader install <MID8> <HASH16>
+```
+
+Copy the MID and first 16 image-hash hex digits from `ota bootloader`. Ordinary
+`ota install` rejects this package, and the bootloader command rejects an
+application package. Keep the SD card inserted through the reboot. A later
+`ota status` value of `blup:C8` reports a successful bootloader replacement.
+
 ## SD card CLI
 
 The SD-backed target provides these CLI commands:
@@ -100,7 +160,7 @@ reset when the device reboots. The `get sdcard` age queries report how long ago
 each operation completed. `get sdcard free` reports used and free filesystem
 space in human-readable binary units.
 
-`get sdcard ls` and `get sdcard dir` recursively list files on the card, four
+`get sdcard ls` and `get sdcard dir` recursively list files on the card, two
 files per page. A bare command shows page 1; append a positive page number to
 move through the remaining results. Each row includes the path and a compact
 file size. The header reports the selected page, total pages, and total files.

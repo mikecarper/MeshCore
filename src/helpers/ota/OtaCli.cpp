@@ -189,6 +189,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | qspi | "
       "folder | config | key");
 #endif
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+    strcpy(reply,
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | "
+      "folder | cache | config | key");
+#else
+    strcpy(reply,
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | folder | "
+      "cache | config | key");
+#endif
 #else
     snprintf(reply, 160,
       "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | folder | "
@@ -329,6 +339,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
 #endif
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_BOOTLOADER_UPDATE)
+    SelfFwInfo list_sd_self;
+    const bool list_sd_headroom = ota_self_firmware(list_sd_self) &&
+        ota_bootloader_scratch_headroom_valid(
+            list_sd_self.valid, mota_nrf52_app_base(), list_sd_self.image_len,
+            OTA_BOOT_SCRATCH_START) &&
+        ota_bootloader_live_bank_preserves_scratch(
+            mota_nrf52_app_base(), list_sd_self.image_len,
+            OTA_BOOT_SCRATCH_START);
+#endif
     uint32_t now = millis(); int shown = 0;
     uint16_t first = (uint16_t)(page - 1) * PAGE_SIZE;
     uint16_t last = first + PAGE_SIZE; if (last > count) last = count;
@@ -355,12 +375,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       if (boot_package) {
         bool installable = false;
 #if defined(NRF52_PLATFORM) && \
-    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
                       h->target_id == ota_bootloader_target_id(bid) &&
                       ota_bootloader_self_update_caps_valid(list_bl);
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+        installable = installable && list_sd_headroom;
+#endif
 #endif
         fit = installable ? "yours" : "bootloader unsupported";
       } else if (myt && h->target_id == myt) {
@@ -489,7 +513,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #else
       if (selboot) {
 #if defined(NRF52_PLATFORM) && \
-    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         const OtaBlCaps& bl = c.bootloaderCaps();
         if (selflags != (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) ||
@@ -505,6 +530,19 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
           strcpy(reply, "ERR installed bootloader lacks safe LoRa bootloader-update support");
           return true;
         }
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+        SelfFwInfo sd_self;
+        if (!ota_self_firmware(sd_self) ||
+            !ota_bootloader_scratch_headroom_valid(
+                sd_self.valid, mota_nrf52_app_base(), sd_self.image_len,
+                OTA_BOOT_SCRATCH_START) ||
+            !ota_bootloader_live_bank_preserves_scratch(
+                mota_nrf52_app_base(), sd_self.image_len,
+                OTA_BOOT_SCRATCH_START)) {
+          strcpy(reply, "ERR running firmware/settings do not preserve E0000 scratch; use local DFU/SWD");
+          return true;
+        }
+#endif
 #else
         strcpy(reply, "ERR this build cannot install bootloader packages; use folder capture or USB DFU");
         return true;
@@ -716,7 +754,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   } else if (is_cmd(a, "bootloader|blupdate", &rest)) {
 #if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && \
-    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
     const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
     const OtaBlCaps& bl = c.bootloaderCaps();
     if (*rest == 0 || strcmp(rest, "status") == 0) {

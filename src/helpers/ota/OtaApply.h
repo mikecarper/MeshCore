@@ -86,6 +86,15 @@ bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len,
 class OtaStoreSdNrf52;
 bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+bool ota_prepare_bootloader_update_nrf52(OtaStoreSdNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg);
+#endif
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 class OtaStoreQspiNrf52;

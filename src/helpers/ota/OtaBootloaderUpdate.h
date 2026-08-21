@@ -31,6 +31,18 @@
   #endif
 #endif
 
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+  #if !defined(NRF52_PLATFORM) || !defined(OTA_SD_STORE)
+    #error "OTA_SD_BOOTLOADER_UPDATE requires nRF52 SD staging"
+  #endif
+  #if !defined(HELTEC_TOWER_V2_SDCARD)
+    #error "OTA_SD_BOOTLOADER_UPDATE is restricted to the qualified MeshTower V2 SD target"
+  #endif
+  #if defined(OTA_FLASH_STORE) || defined(OTA_QSPI_STORE) || defined(QSPIFLASH)
+    #error "SD bootloader staging cannot share another OTA/filesystem store"
+  #endif
+#endif
+
 namespace mesh {
 namespace ota {
 
@@ -45,8 +57,64 @@ static const uint32_t OTA_BOOT_IMAGE_START = 0x000F4000UL;
 static const uint32_t OTA_BOOT_IMAGE_SIZE = 0x0000A000UL; // F4000..FE000, padded to exactly 40 KiB
 static const uint32_t OTA_BOOT_SCRATCH_START = 0x000E0000UL;
 static const uint32_t OTA_BOOT_SCRATCH_END = 0x000EA000UL;
+static const uint32_t OTA_NRF52840_BOOT_SETTINGS_ADDRESS = 0x000FF000UL;
+static const uint16_t OTA_BOOT_BANK_VALID_APP = 0x0001u;
+static const uint16_t OTA_BOOT_BANK_ERASED_FALLBACK = 0xFFFFu;
 static const uint32_t OTA_NRF52840_RAM_START = 0x20000000UL;
 static const uint32_t OTA_NRF52840_RAM_END   = 0x20040000UL;
+
+inline bool ota_bootloader_image_geometry_valid(uint32_t image_size,
+                                                uint32_t payload_size) {
+  return image_size == OTA_BOOT_IMAGE_SIZE && payload_size == OTA_BOOT_IMAGE_SIZE;
+}
+
+// External SD keeps the normal ED000 application linker, but OTAFIX needs the
+// XIAO-sized E0000..EA000 internal scratch range temporarily while replacing
+// itself. A hash-valid live EndF must prove the complete running image ends
+// before that scratch range; a linker maximum alone is not sufficient.
+inline bool ota_bootloader_scratch_headroom_valid(bool self_valid,
+                                                  uint32_t app_base,
+                                                  uint32_t image_len,
+                                                  uint32_t scratch_start) {
+  return self_valid && app_base < scratch_start && image_len != 0 &&
+         image_len <= scratch_start - app_base;
+}
+
+// The bootloader may validate BANK_VALID_APP over bank_0_size on every reset.
+// Erasing the SD authorization-token page must not change bytes covered by a
+// nonzero stored CRC. A CRC-bound bank must cover the complete hash-valid live
+// image but stop by scratch_start; a smaller recorded size would disagree with
+// OTAFIX even if it did not overlap scratch. Debugger/UF2 installs can have
+// erased settings, and a valid-app record with CRC zero explicitly disables
+// that CRC check.
+inline bool ota_bootloader_scratch_bank_geometry_valid(uint16_t bank_0,
+                                                       uint16_t bank_0_crc,
+                                                       uint32_t bank_0_size,
+                                                       uint32_t live_image_size,
+                                                       uint32_t safe_span) {
+  if (bank_0 == OTA_BOOT_BANK_ERASED_FALLBACK) return true;
+  if (bank_0 != OTA_BOOT_BANK_VALID_APP) return false;
+  if (bank_0_crc == 0u) return true;
+  return live_image_size != 0u && bank_0_size >= live_image_size &&
+         bank_0_size <= safe_span;
+}
+
+#if defined(NRF52_PLATFORM)
+inline bool ota_bootloader_live_bank_preserves_scratch(uint32_t app_base,
+                                                       uint32_t live_image_size,
+                                                       uint32_t scratch_start) {
+  if (app_base >= scratch_start) return false;
+  const volatile uint8_t* raw =
+      (const volatile uint8_t*)(uintptr_t)OTA_NRF52840_BOOT_SETTINGS_ADDRESS;
+  const uint16_t bank_0 = (uint16_t)(raw[0] | ((uint16_t)raw[1] << 8));
+  const uint16_t bank_0_crc = (uint16_t)(raw[2] | ((uint16_t)raw[3] << 8));
+  const uint32_t bank_0_size = (uint32_t)raw[8] | ((uint32_t)raw[9] << 8) |
+      ((uint32_t)raw[10] << 16) | ((uint32_t)raw[11] << 24);
+  return ota_bootloader_scratch_bank_geometry_valid(
+      bank_0, bank_0_crc, bank_0_size, live_image_size,
+      scratch_start - app_base);
+}
+#endif
 
 // Only the two official XIAO nRF52840 OTAFIX identities are eligible. Runtime matching against the
 // installed, CRC-valid manifest distinguishes the base and Sense modules even for carrier-board aliases.
@@ -284,7 +352,8 @@ inline bool ota_bootloader_caps_from_image(const uint8_t* image, size_t image_si
     OtaBootloaderCapsMarker parsed;
     if (!ota_bootloader_caps_marker_parse(image + off, parsed) ||
         parsed.apply_abi < MOTA_BOOT_FORMAT_VER ||
-        (parsed.codec_mask & (1u << CODEC_FULL)) == 0 ||
+        (parsed.codec_mask & OTA_BL_REQUIRED_APP_CODEC_MASK) !=
+            OTA_BL_REQUIRED_APP_CODEC_MASK ||
         (parsed.storage_flags & OTA_BL_STORAGE_BOOT_UPDATE) == 0) continue;
     if (++valid_count != 1u) return false; // privileged marker identity must be unambiguous
     if (parsed.storage_flags != exact_storage_flags) continue;

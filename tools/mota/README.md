@@ -58,17 +58,21 @@ Ordinary calls to `build_manifest()` continue to emit v2 application packages.
 Passing `bootloader=True` is a deliberately narrow reference-only path: it
 requires a nonzero version, a signed exact 40 KiB OTAFIX region, 1024-byte
 blocks, full codec, zero base hash, a sane vector table, an exact embedded
-manifest/CRC identity, and an ABI-3 marker retaining the selected storage plus
-boot-update capabilities. Deployed XIAO packages retain their
+manifest/CRC identity, and an ABI-3 marker retaining both application codecs
+(`FULL|INPLACE`, mask `0x0005`), the selected storage, and boot-update
+capabilities. Deployed XIAO packages retain their
 `XIAO_BL_28860044`/`XIAO_BL_28860045` IDs. Generic packages derive the padded
 `NRF_BL_<BOARD_ID>_<DEVICE_NAME>` ID and collision-checked wire target from the
 full embedded manifest pair. Parsing and `verify()` repeat those gates; magic
 literals that are not complete valid structures are skipped.
 
 Generic parsing remains available for candidate inspection, but the signing
-builder accepts only identities in the qualified internal inventory plus the
-two deployed XIAO identities. The test suite verifies those boot target IDs are
-unique and disjoint from the generated application target table.
+builder accepts only identities in the qualified inventory. That inventory
+currently covers the shared-internal nRF52840 targets, the two deployed XIAO
+raw-QSPI identities, and the exact MeshTower V2 identity whose candidate
+marker may select either its internal (`0x0A`) or microSD (`0x09`) application
+layout. The test suite verifies those boot target IDs are unique and disjoint
+from the generated application target table.
 
 This library does not authorize a device update. A capable node will only arm
 such a v3 package through the exact manual confirmation described in

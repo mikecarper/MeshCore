@@ -335,8 +335,9 @@ or `delta` for any supported nRF52 target. Do not select `[unsupported]` (for ex
 full image on an internal-staging nRF52).
 Rows labelled `bootloader` are also outside this ordinary application flow:
 they are never automatic and `ota install` refuses them. Only an
-already-capable, allowlisted internal-flash or XIAO-QSPI nRF52 target can use
-the separate [explicit bootloader workflow](ota_nrf52_bootloader_update.md).
+already-capable, allowlisted internal-flash, XIAO-QSPI, or exact MeshTower V2
+microSD nRF52 target can use the separate
+[explicit bootloader workflow](ota_nrf52_bootloader_update.md).
 Use the row's stable eight-hex manifest ID rather than its changing list position:
 
 ```text

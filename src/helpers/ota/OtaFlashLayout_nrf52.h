@@ -52,6 +52,7 @@ static const uint8_t  GPREGRET_OTA_BOOTLOADER_UPDATE = 0x6Bu;
 static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
 static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
+static const uint8_t  GPREGRET2_OTA_STAGE_SD       = 0x53u;
 
 inline uint8_t mota_nrf52_flash_stage_handoff(uint32_t effective_stage_ceiling) {
   if (effective_stage_ceiling == MOTA_NRF52_STAGE_CEILING_EXPANDED)

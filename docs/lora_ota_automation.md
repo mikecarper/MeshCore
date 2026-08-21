@@ -17,8 +17,8 @@ The script cannot install the destination's first OTA-capable firmware. It is
 also deliberately application-only: it rejects both v3 bootloader containers
 and a v2 container carrying the bootloader flag, and it never sends the
 privileged install command. Do the first nRF52 bootloader installation over USB.
-An already-capable, explicitly supported internal-flash or XIAO QSPI repeater
-may later use the separate manual
+An already-capable, explicitly supported internal-flash, XIAO QSPI, or exact
+MeshTower V2 microSD repeater may later use the separate manual
 [`ota bootloader install`](ota_nrf52_bootloader_update.md) workflow.
 
 ## Required topology

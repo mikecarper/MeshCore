@@ -181,6 +181,7 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
     qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
     internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
+    sd_bootloader_update = _cppdef("OTA_SD_BOOTLOADER_UPDATE") is not None
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
     if qspi_backed and _cppdef("QSPIFLASH") is not None:
@@ -196,6 +197,11 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
             raise RuntimeError("internal bootloader update cannot use SD/QSPI/ExtraFS")
         if linked_app_end != ml.NRF52_APP_END:
             raise RuntimeError("shared-slot bootloader update requires the normal 0xED000 linker ceiling")
+    if sd_bootloader_update:
+        if not sd_backed or qspi_backed or internal_extrafs or _cppdef("QSPIFLASH") is not None:
+            raise RuntimeError("SD bootloader update requires the dedicated nRF52 SD OTA store")
+        if linked_app_end != ml.NRF52_APP_END:
+            raise RuntimeError("SD bootloader update requires the normal 0xED000 linker ceiling")
     stage_ceiling = (ml.NRF52_APP_END if (sd_backed or qspi_backed) else
                      ml.nrf52_stage_ceiling_for_layout(linked_app_end, internal_extrafs))
     layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
@@ -226,7 +232,8 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     for i, b in enumerate(suffix):
         ih[app_end + i] = b                        # write it right after the app's last byte
     ih.write_hex_file(path)
-    print(f"EndF: appended to {os.path.basename(path)} at 0x{app_end:X} "
+    endf_address = app_start + len(body)
+    print(f"EndF: appended to {os.path.basename(path)} at 0x{endf_address:X} "
           f"(app=0x{app_start:X}.. body_len={len(body)} body_hash={h8.hex()} "
           f"stage=0x{stage_ceiling:X} "
           f"target={ident.target_id:#010x} hw='{ident.hw_id}' fw={ident.fw_version:#010x})")

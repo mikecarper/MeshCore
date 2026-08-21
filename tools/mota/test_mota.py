@@ -213,7 +213,7 @@ def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
     image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
     struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
-                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
+                     ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      ml.BOOT_STORAGE_QSPI_UPDATE)
     name = ml.XIAO_BOOT_DEVICE_NAME
     struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
@@ -224,13 +224,14 @@ def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
     return bytes(image)
 
 
-def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU"):
+def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU",
+                              storage=ml.BOOT_STORAGE_INTERNAL_UPDATE):
     import zlib
     image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
     struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
-                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
-                     ml.BOOT_STORAGE_INTERNAL_UPDATE)
+                     ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
+                     storage)
     name = device_name.encode("ascii").ljust(16, b"\0")
     struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
                      ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
@@ -321,7 +322,7 @@ def test_xiao_bootloader_identity_skips_bad_decoy_and_rejects_two_valid_manifest
 
 def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
     def caps(*, offset=0, abi=ml.BOOT_FORMAT_VER,
-             codecs=1 << ml.CODEC_FULL,
+             codecs=ml.BOOT_REQUIRED_APP_CODEC_MASK,
              storage=ml.BOOT_STORAGE_QSPI_UPDATE,
              reserved=b"\0\0\0"):
         image = bytearray(b"\xff" * 64)
@@ -333,11 +334,12 @@ def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
     assert not ml.xiao_bootloader_caps_ok(caps(offset=1))
     assert not ml.xiao_bootloader_caps_ok(caps(abi=0xFFFF))
     assert not ml.xiao_bootloader_caps_ok(caps(codecs=0))
+    assert not ml.xiao_bootloader_caps_ok(caps(codecs=1 << ml.CODEC_FULL))
     assert not ml.xiao_bootloader_caps_ok(caps(storage=0x1C))
     assert not ml.xiao_bootloader_caps_ok(caps(reserved=b"\0\x01\0"))
     duplicate = bytearray(caps())
     struct.pack_into("<8sHHB3s", duplicate, 24, ml.XIAO_BOOT_CAPS_MAGIC,
-                     ml.BOOT_FORMAT_VER, 1 << ml.CODEC_FULL,
+                     ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      ml.BOOT_STORAGE_INTERNAL_UPDATE, b"\0\0\0")
     assert ml.bootloader_caps_storage(bytes(duplicate)) is None
 
@@ -410,6 +412,36 @@ def test_generic_internal_bootloader_build_parse_and_strict_contract():
         assert False, "generic bootloader raw/wrong target accepted"
     except ValueError:
         pass
+
+
+def test_meshtower_sd_bootloader_profile_builds_the_same_exact_identity():
+    priv = Ed25519PrivateKey.generate()
+    image = _generic_bootloader_image(
+        board_id=0x239A0071, device_name="TOWER_V2_OTA",
+        storage=ml.BOOT_STORAGE_SD_UPDATE)
+    identity = ml.validate_bootloader_image(image)
+    assert (identity.board_id, identity.device_name) in ml.SD_BOOTLOADER_IDENTITIES
+    assert ml.bootloader_caps_storage(image) == 0x09
+    target = ml.bootloader_target_id(identity.board_id, identity.device_name)
+    assert target == 0x1150F50E
+    manifest = ml.build_manifest(
+        target_id=target, fw_version=ml.pack_version("1.0.0"),
+        image_size=len(image), payload=image, block_size=1024,
+        image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
+        sign_priv=priv, bootloader=True)
+    parsed = ml.parse_container(ml.build_container(manifest, image))
+    assert parsed.manifest.hw_id == b"NRF_BL_239A0071_TOWER_V2_OTA".ljust(32, b"\0")
+    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+
+
+def test_meshtower_sd_bootloader_build_flag_is_exact_target_only():
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "variants/heltec_tower_v2/platformio.ini").read_text(encoding="utf-8")
+    section = text.split(
+        "[env:Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors]", 1)[1]
+    section = section.split("[env:", 1)[0]
+    assert "-D OTA_SD_STORE=1" in section
+    assert "-D OTA_SD_BOOTLOADER_UPDATE=1" in section
 
 
 def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():

@@ -485,6 +485,8 @@ void ota_reboot_to_bootloader_update() {
   uint8_t source = GPREGRET2_OTA_STAGE_QSPI;
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   source = GPREGRET2_OTA_STAGE_EXPANDED;
+#elif defined(OTA_SD_BOOTLOADER_UPDATE)
+  source = GPREGRET2_OTA_STAGE_SD;
 #endif
   uint8_t sd_en = 0;
   sd_softdevice_is_enabled(&sd_en);
@@ -749,22 +751,10 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
 }
 #endif
 
-#if defined(OTA_SD_STORE)
-bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
-                          ApplyState& st, char* msg) {
-  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", st, msg);
-}
-#endif
-
-#if defined(OTA_QSPI_STORE)
-bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow,
-                          ApplyState& st, char* msg) {
-  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", st, msg);
-}
-
-#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
-static bool qspi_bootloader_crc_ok(OtaStoreQspiNrf52& store, uint32_t payload_off,
-                                   const OtaBootloaderIdentity& identity) {
+#if defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE)
+template <typename Store>
+static bool external_bootloader_crc_ok(Store& store, uint32_t payload_off,
+                                       const OtaBootloaderIdentity& identity) {
   uint8_t buf[512];
   uint32_t crc = UINT32_MAX;
   for (uint32_t off = 0; off < OTA_BOOT_IMAGE_SIZE; off += sizeof(buf)) {
@@ -781,10 +771,10 @@ static bool qspi_bootloader_crc_ok(OtaStoreQspiNrf52& store, uint32_t payload_of
   return ~crc == identity.crc32;
 }
 
-static bool qspi_bootloader_image_metadata(OtaStoreQspiNrf52& store, uint32_t payload_off,
-                                            const OtaBootloaderIdentity& installed,
-                                            OtaBootloaderIdentity& candidate,
-                                            OtaBootloaderCapsMarker& caps) {
+template <typename Store>
+static bool external_bootloader_image_metadata(Store& store, uint32_t payload_off,
+                                                OtaBootloaderIdentity& candidate,
+                                                OtaBootloaderCapsMarker& caps) {
   // Keep enough overlap to catch a 44-byte manifest or 16-byte capability marker split across a
   // window. Every aligned manifest candidate is considered; a magic string in a literal pool is not
   // a terminal failure.
@@ -804,7 +794,8 @@ static bool qspi_bootloader_image_metadata(OtaStoreQspiNrf52& store, uint32_t pa
         OtaBootloaderCapsMarker parsed;
         if (ota_bootloader_caps_marker_parse(buf + local, parsed) &&
             parsed.apply_abi >= MOTA_BOOT_FORMAT_VER &&
-            (parsed.codec_mask & (1u << CODEC_FULL)) != 0 &&
+            (parsed.codec_mask & OTA_BL_REQUIRED_APP_CODEC_MASK) ==
+                OTA_BL_REQUIRED_APP_CODEC_MASK &&
             (parsed.storage_flags & OTA_BL_STORAGE_BOOT_UPDATE) != 0) {
           if (++valid_caps != 1u) return false;
           if (parsed.storage_flags == ota_bootloader_update_storage_flags()) caps = parsed;
@@ -812,10 +803,8 @@ static bool qspi_bootloader_image_metadata(OtaStoreQspiNrf52& store, uint32_t pa
       }
       if ((absolute & 3u) != 0 || local + OTA_BOOT_MANIFEST_SIZE > len) continue;
       OtaBootloaderIdentity parsed;
-      if (!ota_bootloader_manifest_parse(buf + local, absolute, parsed) ||
-          parsed.board_id != installed.board_id ||
-          memcmp(parsed.device_name, installed.device_name, OTA_BOOT_DEVICE_NAME_SIZE) != 0) continue;
-      if (qspi_bootloader_crc_ok(store, payload_off, parsed)) {
+      if (!ota_bootloader_manifest_parse(buf + local, absolute, parsed)) continue;
+      if (external_bootloader_crc_ok(store, payload_off, parsed)) {
         parsed.crc_ok = true;
         if (!ota_bootloader_identity_add_unique(parsed, candidate, valid_identities)) return false;
       }
@@ -825,13 +814,30 @@ static bool qspi_bootloader_image_metadata(OtaStoreQspiNrf52& store, uint32_t pa
          candidate.present && candidate.crc_ok && caps.present;
 }
 
-bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
-                                         const SignerAllowlist& allow,
-                                         const OtaBootloaderIdentity& installed,
-                                         const uint8_t actual_mid[4],
-                                         const uint8_t operator_mid[4],
-                                         const uint8_t operator_hash8[8],
-                                         ApplyState& st, char* msg) {
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+static bool external_bootloader_approve(OtaStoreSdNrf52& store,
+                                        const uint8_t image_hash[32]) {
+  return store.approve_for_bootloader(image_hash);
+}
+#endif
+
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+static bool external_bootloader_approve(OtaStoreQspiNrf52& store,
+                                        const uint8_t image_hash[32]) {
+  (void)image_hash;
+  return store.approve_for_bootloader();
+}
+#endif
+
+template <typename Store>
+static bool ota_prepare_bootloader_update_external(Store& store,
+                                                    const SignerAllowlist& allow,
+                                                    const OtaBootloaderIdentity& installed,
+                                                    const uint8_t actual_mid[4],
+                                                    const uint8_t operator_mid[4],
+                                                    const uint8_t operator_hash8[8],
+                                                    const char* storage_name,
+                                                    ApplyState& st, char* msg) {
   static const size_t CAP = 96;
   st = ApplyState();
   const uint32_t total = store.staged_size();
@@ -839,11 +845,22 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
   if (total < 8u + MOTA_MFL + 5u || !store.read(0, hdr, sizeof(hdr)) ||
       memcmp(hdr, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0 || rd_u32le(hdr + 4) != total ||
       !store.read(8, manifest, sizeof(manifest))) {
-    strcpy(msg, "QSPI bootloader container parse failed"); return false;
+    snprintf(msg, CAP, "%s bootloader container parse failed", storage_name); return false;
   }
   MotaManifest m;
   if (!mota_parse_manifest(manifest, sizeof(manifest), m)) {
     strcpy(msg, "not a valid v3 bootloader package"); return false;
+  }
+  // Authenticate this exact local manifest copy before any removable-media
+  // reread. The streaming verifier below requires byte identity with it, and
+  // the SD approval token copies its signed image_hash.
+  mesh::Identity authenticated_signer(m.signer_pubkey);
+  if (!authenticated_signer.verify(
+          m.signature, m.manifest_start, (int)m.signed_len)) {
+    strcpy(msg, "bootloader package signature invalid"); return false;
+  }
+  if (!allow.contains(m.signer_pubkey)) {
+    strcpy(msg, "bootloader signer is not in the trusted allowlist"); return false;
   }
   switch (ota_bootloader_confirmation_gate(m, installed, actual_mid, operator_mid,
                                             operator_hash8)) {
@@ -859,7 +876,8 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
 
   const OtaBlCaps current_caps = ota_bootloader_caps();
   if (!ota_bootloader_self_update_caps_valid(current_caps)) {
-    strcpy(msg, "installed bootloader cannot safely self-update from QSPI"); return false;
+    snprintf(msg, CAP, "installed bootloader cannot safely self-update from %s", storage_name);
+    return false;
   }
 
   const uint64_t payload_off64 = 8u + MOTA_MFL + (uint64_t)m.block_count * 4u;
@@ -868,7 +886,8 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
   }
   const uint32_t payload_off = (uint32_t)payload_off64;
 
-  VerifyResult vr = ota_verify(static_cast<const OtaStore&>(store), allow);
+  VerifyResult vr = ota_verify(
+      static_cast<const OtaStore&>(store), allow, manifest);
   st.manifest_ok = vr.parsed;
   st.sig_ok = vr.sig_ok;
   st.trusted = vr.trusted;
@@ -890,16 +909,66 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
   }
   OtaBootloaderIdentity candidate;
   OtaBootloaderCapsMarker candidate_caps;
-  if (!qspi_bootloader_image_metadata(store, payload_off, installed, candidate, candidate_caps) ||
+  if (!external_bootloader_image_metadata(store, payload_off, candidate, candidate_caps) ||
       !ota_bootloader_identity_matches(installed, candidate)) {
     strcpy(msg, "candidate bootloader identity/capability/CRC mismatch"); return false;
   }
   st.slot_ok = true;
-  if (!store.approve_for_bootloader()) {
-    snprintf(msg, CAP, "QSPI bootloader handoff failed: %s", store.last_error()); return false;
+  if (!external_bootloader_approve(store, m.image_hash)) {
+    snprintf(msg, CAP, "%s bootloader handoff failed: %s", storage_name, store.last_error());
+    return false;
   }
   strcpy(msg, "trusted bootloader verified and armed; rebooting after this reply");
   return true;
+}
+#endif
+
+#if defined(OTA_SD_STORE)
+bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", st, msg);
+}
+
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
+bool ota_prepare_bootloader_update_nrf52(OtaStoreSdNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg) {
+  SelfFwInfo fi;
+  if (!ota_self_firmware(fi) ||
+      !ota_bootloader_scratch_headroom_valid(
+          fi.valid, mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START) ||
+      !ota_bootloader_live_bank_preserves_scratch(
+          mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START)) {
+    st = ApplyState();
+    strcpy(msg, "running firmware/settings do not preserve E0000 scratch");
+    return false;
+  }
+  return ota_prepare_bootloader_update_external(
+      store, allow, installed, actual_mid, operator_mid, operator_hash8, "SD", st, msg);
+}
+#endif
+#endif
+
+#if defined(OTA_QSPI_STORE)
+bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", st, msg);
+}
+
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
+                                         const SignerAllowlist& allow,
+                                         const OtaBootloaderIdentity& installed,
+                                         const uint8_t actual_mid[4],
+                                         const uint8_t operator_mid[4],
+                                         const uint8_t operator_hash8[8],
+                                         ApplyState& st, char* msg) {
+  return ota_prepare_bootloader_update_external(
+      store, allow, installed, actual_mid, operator_mid, operator_hash8, "QSPI", st, msg);
 }
 #endif
 #endif

@@ -92,13 +92,17 @@ XIAO_BOOT_MANIFEST_VERSION = 1
 XIAO_BOOT_MANIFEST_SIZE = 44
 XIAO_BOOT_DEVICE_NAME = b"XIAO_DFU".ljust(16, b"\0")
 XIAO_BOOT_CAPS_MAGIC = b"MOTABLDR"
+BOOT_STORAGE_SD = 0x01
 BOOT_STORAGE_STAGE_CEILING = 0x02
 XIAO_BOOT_STORAGE_QSPI = 0x04
 XIAO_BOOT_STORAGE_UPDATE = 0x08
 BOOT_STORAGE_KNOWN = 0x0F
+BOOT_STORAGE_SD_UPDATE = BOOT_STORAGE_SD | XIAO_BOOT_STORAGE_UPDATE
 BOOT_STORAGE_QSPI_UPDATE = (BOOT_STORAGE_STAGE_CEILING | XIAO_BOOT_STORAGE_QSPI |
                             XIAO_BOOT_STORAGE_UPDATE)
 BOOT_STORAGE_INTERNAL_UPDATE = BOOT_STORAGE_STAGE_CEILING | XIAO_BOOT_STORAGE_UPDATE
+BOOT_REQUIRED_APP_CODEC_MASK = ((1 << CODEC_FULL) |
+                                (1 << CODEC_DETOOLS_INPLACE))
 
 # Exact embedded manifests for the qualified shared-internal nRF52840
 # bootloaders. Parsing/inspection remains generic, but package creation is
@@ -119,6 +123,14 @@ INTERNAL_BOOTLOADER_IDENTITIES = (
     (0x239A0029, "3401_DFU"),
     (0x239A0029, "4631_DFU"),
     (0x239A0029, "RTAG_DFU"),
+)
+
+# MeshTower V2 has both a lean internal-store application and an exact SD-store
+# application. They intentionally retain the same embedded bootloader identity
+# and signed wire target; the candidate capability marker selects the matching
+# storage contract and is checked again by the device before approval.
+SD_BOOTLOADER_IDENTITIES = (
+    (0x239A0071, "TOWER_V2_OTA"),
 )
 
 # MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
@@ -659,9 +671,11 @@ def bootloader_caps_storage(image: bytes) -> Optional[int]:
             continue
         abi, codecs = struct.unpack_from("<HH", image, off + 8)
         storage = image[off + 12]
-        if (abi < BOOT_FORMAT_VER or abi == 0xFFFF or not codecs & (1 << CODEC_FULL) or
+        if (abi < BOOT_FORMAT_VER or abi == 0xFFFF or
+                codecs & BOOT_REQUIRED_APP_CODEC_MASK != BOOT_REQUIRED_APP_CODEC_MASK or
                 storage & ~BOOT_STORAGE_KNOWN or image[off + 13:off + 16] != b"\0\0\0" or
-                storage not in (BOOT_STORAGE_QSPI_UPDATE, BOOT_STORAGE_INTERNAL_UPDATE)):
+                storage not in (BOOT_STORAGE_SD_UPDATE, BOOT_STORAGE_QSPI_UPDATE,
+                                BOOT_STORAGE_INTERNAL_UPDATE)):
             continue
         if found is not None:
             return None
@@ -688,12 +702,16 @@ def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
     expected_hw = bootloader_hw_id(identity.board_id, identity.device_name)
     if signed_hw_id is not None and bytes(signed_hw_id) != expected_hw:
         raise ValueError("bootloader signed hw_id does not match embedded identity")
-    expected_storage = (BOOT_STORAGE_QSPI_UPDATE
-                        if identity.board_id in (XIAO_BOOT_BOARD_ID_BASE,
-                                                 XIAO_BOOT_BOARD_ID_SENSE)
-                        else BOOT_STORAGE_INTERNAL_UPDATE)
-    if bootloader_caps_storage(image) != expected_storage:
-        raise ValueError(f"bootloader lacks exact ABI 3 self-update capabilities 0x{expected_storage:02X}")
+    if identity.board_id in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
+        expected_storage = (BOOT_STORAGE_QSPI_UPDATE,)
+    elif (identity.board_id, identity.device_name) in SD_BOOTLOADER_IDENTITIES:
+        expected_storage = (BOOT_STORAGE_INTERNAL_UPDATE, BOOT_STORAGE_SD_UPDATE)
+    else:
+        expected_storage = (BOOT_STORAGE_INTERNAL_UPDATE,)
+    actual_storage = bootloader_caps_storage(image)
+    if actual_storage not in expected_storage:
+        expected = "/".join(f"0x{value:02X}" for value in expected_storage)
+        raise ValueError(f"bootloader lacks exact ABI 3 self-update capabilities {expected}")
     return identity
 
 

@@ -166,7 +166,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build; internal-store nRF52 installs in-place deltas, while matched SD/QSPI nRF52 also accepts full images | No | No | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible bootloader and completed update | No | No | Yes |
 | LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Legacy internal-flash nRF52 LoRa OTA build with failed app-side EndF validation; shared bootloader-update builds require valid EndF | No | No | Feature |
-| LoRa OTA | [`ota bootloader`; `ota bootloader install <MID8> <HASH16>`](ota_nrf52_bootloader_update.md) | Allowlisted internal-flash or XIAO-QSPI nRF52 repeater with ABI-3 exact-board OTAFIX | No | No | Feature |
+| LoRa OTA | [`ota bootloader`; `ota bootloader install <MID8> <HASH16>`](ota_nrf52_bootloader_update.md) | Allowlisted internal-flash, XIAO-QSPI, or exact MeshTower V2 microSD nRF52 repeater with ABI-3 exact-board OTAFIX | No | No | Feature |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes |
