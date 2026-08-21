@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/docs/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_nrf52_bootloader_update/">
       
       
-        <link rel="prev" href="../companion_radio_full/">
+        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../ota_nrf52_qspi/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Local Documentation - MeshCore Docs</title>
+        <title>nRF52 bootloader updates over LoRa - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#local-documentation" class="md-skip">
+        <a href="#nrf52-bootloader-updates-over-lora" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Local Documentation
+              nRF52 bootloader updates over LoRa
             
           </span>
         </div>
@@ -443,37 +443,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Local Documentation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -489,37 +462,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building and viewing Docs
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -852,10 +794,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -871,6 +840,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#storage-layouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage layouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#internal-flash-target-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Internal-flash target inventory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#explicit-install-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit install workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1172,10 +1205,43 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
+  <a href="#storage-layouts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building and viewing Docs
+        Storage layouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#internal-flash-target-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Internal-flash target inventory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#explicit-install-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit install workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure behavior
       
     </span>
   </a>
@@ -1199,7 +1265,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/docs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_nrf52_bootloader_update.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1207,16 +1273,217 @@
   
 
 
-<h1 id="local-documentation">Local Documentation</h1>
-<p>This document explains how to build and view the MeshCore documentation locally.</p>
-<h2 id="building-and-viewing-docs">Building and viewing Docs</h2>
-<pre><code>pip install mkdocs
-pip install mkdocs-material
+<h1 id="nrf52-bootloader-updates-over-lora">nRF52 bootloader updates over LoRa</h1>
+<p>Selected nRF52840 repeater LoRa-OTA builds can replace their matching OTAFIX
+bootloader without replacing the running application. This is a privileged
+maintenance path, not a normal firmware update. It cannot bootstrap a stock or
+older bootloader: install the exact ABI-3 self-update-capable OTAFIX build once
+over USB/BLE DFU or SWD.</p>
+<h2 id="storage-layouts">Storage layouts</h2>
+<table>
+<thead>
+<tr>
+<th>Layout</th>
+<th style="text-align: right;">Application limit</th>
+<th style="text-align: right;">Staged boot package</th>
+<th style="text-align: right;">Work area</th>
+<th>Handoff / capability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>XIAO-module raw QSPI</td>
+<td style="text-align: right;">below <code>0xE0000</code></td>
+<td style="text-align: right;">external QSPI offset 0</td>
+<td style="text-align: right;">dedicated internal <code>0xE0000..0xEA000</code> scratch</td>
+<td>source <code>0x51</code>, flags <code>0x0E</code></td>
+</tr>
+<tr>
+<td>Qualified internal-flash target</td>
+<td style="text-align: right;">normal <code>0xED000</code> limit</td>
+<td style="text-align: right;">shared internal slot, exact start <code>0xE2000</code></td>
+<td style="text-align: right;">the same eleven-page slot; no second reservation</td>
+<td>source <code>0xED</code>, flags <code>0x0A</code></td>
+</tr>
+</tbody>
+</table>
+<p>The internal path does not change the application linker or permanently set
+aside separate app-OTA, boot-package, and scratch regions. The ordinary
+bottom-aligned internal store holds one container at a time: either an
+application delta or a bootloader package.</p>
+<p>The exact bootloader container is 41,330 bytes: 365 bytes of signed mOTA
+metadata, a 40 KiB payload, and the five-byte trailer. Below the normal
+<code>0xED000</code> store ceiling it bottom-aligns at <code>0xE2000</code>. Admission requires a
+hash-valid live <code>EndF</code> proving the current application, including its trailer,
+ends at or before <code>0xE2000</code>. OTAFIX then reads each source window before
+erasing and compacts the payload forward in place to the page-aligned raw range
+<code>0xE2000..0xEC000</code>; it verifies every page and the whole image before asking the
+MBR to copy that image over <code>0xF4000..0xFE000</code>.</p>
+<p>An ordinary application delta can be smaller or larger than this eleven-page
+shape. It bottom-aligns dynamically below <code>0xED000</code> and may begin below
+<code>0xE2000</code>; its detools workspace must stop at its actual container start, while
+the reconstructed application must stop below <code>0xED000</code>. The two package kinds
+are mutually exclusive because they use the same store.</p>
+<p>For internal-self-update builds, an absent or corrupt live <code>EndF</code> disables
+<strong>all</strong> internal staging before the first erase. The older 608 KiB rescue
+estimate is unsafe when a normally linked application may extend to
+<code>0xED000</code>. Builds without this feature retain the legacy rescue behavior.</p>
+<h2 id="internal-flash-target-inventory">Internal-flash target inventory</h2>
+<p>The release builder consumes the allowlist in
+<code>tools/mota/nrf52_internal_bootloader_targets.txt</code>. Ten names are also literal
+PlatformIO environments and are enabled automatically when built directly.
+The other eleven are release aliases assembled from a base environment plus
+the lean OTA overlay; build them through <code>build.sh</code>, which passes the same
+allowlist decision to the common pre-build guard. These lean repeater/bridge
+targets have no OTA-owned SD/QSPI store and have an exact curated OTAFIX
+manifest identity:</p>
+<table>
+<thead>
+<tr>
+<th>Build target(s)</th>
+<th>Installed OTAFIX identity</th>
+<th style="text-align: right;">Boot target ID</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Heltec_tower_v2_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0071 / TOWER_V2_OTA</code></td>
+<td style="text-align: right;"><code>1150F50E</code></td>
+</tr>
+<tr>
+<td>T096 lean repeater and RS232 bridge</td>
+<td><code>239A0071 / T096_DFU</code></td>
+<td style="text-align: right;"><code>42354C85</code></td>
+</tr>
+<tr>
+<td><code>Heltec_t1_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0071 / T1_DFU</code></td>
+<td style="text-align: right;"><code>FC556FFC</code></td>
+</tr>
+<tr>
+<td>T114 display and without-display lean repeaters</td>
+<td><code>239A0071 / T114_DFU</code></td>
+<td style="text-align: right;"><code>0C3F2902</code></td>
+</tr>
+<tr>
+<td><code>Mesh_pocket_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0071 / MESH_POCKET_OTA</code></td>
+<td style="text-align: right;"><code>059277F4</code></td>
+</tr>
+<tr>
+<td><code>KeepteenLT1_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A00B3 / KeepteenLT1_OTA</code></td>
+<td style="text-align: right;"><code>DB2E7B51</code></td>
+</tr>
+<tr>
+<td><code>Minewsemi_me25ls01_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0029 / MX25_DFU</code></td>
+<td style="text-align: right;"><code>026AA982</code></td>
+</tr>
+<tr>
+<td><code>ProMicro_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A00B3 / PROM_DFU</code></td>
+<td style="text-align: right;"><code>AF79E8CC</code></td>
+</tr>
+<tr>
+<td><code>t1000e_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>28860057 / T1KE_DFU</code></td>
+<td style="text-align: right;"><code>E6F5F03F</code></td>
+</tr>
+<tr>
+<td><code>ThinkNode_M3_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A00DA / TNM3_DFU</code></td>
+<td style="text-align: right;"><code>0CA41DB2</code></td>
+</tr>
+<tr>
+<td><code>RAK_3401_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0029 / 3401_DFU</code></td>
+<td style="text-align: right;"><code>23818A80</code></td>
+</tr>
+<tr>
+<td>RAK4631 lean repeater and both lean RS232 bridges</td>
+<td><code>239A0029 / 4631_DFU</code></td>
+<td style="text-align: right;"><code>2D0DF000</code></td>
+</tr>
+<tr>
+<td>GAT562 30S/Tracker Pro/EVB Pro and R1Neo lean carrier aliases</td>
+<td><code>239A0029 / 4631_DFU</code></td>
+<td style="text-align: right;"><code>2D0DF000</code></td>
+</tr>
+<tr>
+<td><code>RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors</code></td>
+<td><code>239A0029 / RTAG_DFU</code></td>
+<td style="text-align: right;"><code>C72E9C9C</code></td>
+</tr>
+</tbody>
+</table>
+<p>Board IDs are not globally unique. For generic targets, the signed hardware ID
+is the exact NUL-padded 32-byte value
+<code>NRF_BL_&lt;BOARD_ID&gt;_&lt;DEVICE_NAME&gt;</code>. The wire target is the little-endian first
+four SHA-256 bytes of all 32 padded bytes. The installed and candidate embedded
+manifest pairs must match exactly. XIAO retains its deployed
+<code>XIAO_BL_28860044</code> / <code>XIAO_BL_28860045</code> identity and raw board-ID target.</p>
+<p>The Python reference builder and release tooling audit these boot targets for
+duplicates and collisions with application target IDs. Generic image parsing
+can inspect a future canonical identity, but signing/building a package fails
+until that exact identity is in the qualified inventory.</p>
+<p>The <code>no_external_sensors</code> profiles omit optional/add-on sensor and GPS packages
+to preserve flash headroom. Board-integrated GPS can be retained by a board's
+recipe. The RAK3401 lean target specifically omits RAK12501/add-on GPS; use the
+ordinary full-sensor target when that module is required.</p>
+<p>Boards with onboard external flash are not silently redirected to internal
+staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
+Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
+need a separately matched QSPI path where available. Full Companions,
+SD/QSPI/ExtraFS roles, Ethernet roles, source-only roles, and unqualified
+full-sensor roles are excluded.</p>
+<p>This internal layout is limited to nRF52840 devices with 1 MiB internal flash,
+the exact S140 v6/v7 map, and the 40 KiB boot region at
+<code>0xF4000..0xFE000</code>. nRF52833 and smaller nRF52 parts cannot provide that map
+plus a non-overlapping 41,330-byte live staging slot, so configuration fails
+closed instead of selecting smaller or overlapping geometry.</p>
+<h2 id="explicit-install-workflow">Explicit install workflow</h2>
+<p>Check the installed identity and capability marker:</p>
+<pre><code class="language-text">ota bootloader
 </code></pre>
-<ul>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
-</ul>
+<p>The response must show a CRC-valid exact identity, ABI 3 or newer, full codec,
+and exact flags <code>0x0A</code> for internal shared storage or <code>0x0E</code> for XIAO QSPI. A
+bootloader row is visible in <code>ota ls</code>, but it is never autofetched or
+autoinstalled. Fetch its exact MID, then explicitly arm it:</p>
+<pre><code class="language-text">ota pull &lt;MID8&gt; flash
+# wait for ota status to report the download ready
+ota bootloader
+ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
+</code></pre>
+<p>Copy both confirmation values from the second <code>ota bootloader</code> response.
+Ordinary <code>ota install</code> rejects a bootloader package; the bootloader command
+rejects an application package. The FULL-codec exception exists only for that
+manual bootloader MID. Ordinary application FULL remains disabled on an
+internal single-slot node, bootloader autofetch remains off, and a partial
+bootloader package is not automatically resumed after an application reboot.</p>
+<p>Before writing <code>APRV</code>, the application authenticates and authorizes the
+package: exact v3 geometry, trusted Ed25519 signer, signed/embedded identity,
+one unambiguous capability marker, embedded CRC, sane vectors, complete
+Merkle/payload/image hashes, safe live placement, and the typed MID/hash
+confirmation. OTAFIX consumes that application-written authorization and then
+independently rechecks the safety/integrity subset: strict v3 structure,
+canonical identity/capabilities, vectors, full payload SHA, embedded manifest
+CRC, live <code>EndF</code> no-overlap geometry, page readback, and final copy hash. It
+does not re-run Ed25519, the signer allowlist, Merkle leaves/root, or the typed
+operator confirmation. Success is reported as <code>blup:C8</code>.</p>
+<h2 id="failure-behavior">Failure behavior</h2>
+<p>The feature fails closed when the MCU/map is wrong, current valid <code>EndF</code>
+headroom is insufficient, external/ExtraFS storage owns the target, the exact
+installed capability marker is absent or ambiguous, identity cannot be derived
+unambiguously, or any package check fails. Before compaction, the application
+and bootloader are unchanged. OTAFIX consumes the trigger/approval before the
+first in-place compaction erase, so an interrupted conversion cannot retry a
+partly converted package; it boots the untouched application and old
+bootloader instead. Use USB/BLE DFU or SWD for initial provisioning and local
+recovery.</p>
+<p>For XIAO and ordinary external-QSPI details, see
+<a href="../ota_nrf52_qspi/">nRF52 repeater LoRa OTA with external QSPI</a>.</p>
 
 
 

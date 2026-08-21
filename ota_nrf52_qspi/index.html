@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_nrf52_qspi/">
       
       
-        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
+        <link rel="prev" href="../ota_nrf52_bootloader_update/">
       
       
         <link rel="next" href="../ota_protocol/">
@@ -794,6 +794,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -1465,6 +1492,10 @@ operator can deliberately override the routing target for a role change, so
 <code>target_id</code> is not an apply-time safety assertion; the destination still
 enforces the package's hardware identity before approval.</p>
 <h2 id="explicit-xiao-bootloader-updates-over-lora">Explicit XIAO bootloader updates over LoRa</h2>
+<p>This section documents the deployed XIAO raw-QSPI layout. Curated nRF52840
+targets without external staging use a separate internal-flash layout with the
+same explicit operator safety model; see
+<a href="../ota_nrf52_bootloader_update/">nRF52 bootloader updates over LoRa</a>.</p>
 <p>Bootloader delivery is available only when all of these are already true:</p>
 <ul>
 <li>the application is an <code>OTA_QSPI_BOOTLOADER_UPDATE</code> XIAO-module repeater build
@@ -1497,8 +1528,10 @@ manifest/CRC/name/board identity, vector table, and ABI-3 QSPI+boot-update
 continuity. A signed older bootloader that would remove remote update support
 is refused.</p>
 <p>After the reply drains, GPREGRET <code>0x6B</code> and GPREGRET2 <code>0x51</code> enter the special
-OTAFIX path. OTAFIX independently rechecks the package before using the
-reserved scratch bank to replace its own <code>0xF4000..0xFE000</code> region. The running
+OTAFIX path. <code>APRV</code> carries the app's signature/allowlist and explicit operator
+authorization decision. OTAFIX independently rechecks the strict structure,
+identity/capabilities, vectors, payload SHA, embedded CRC, and copy hashes
+before using the reserved scratch bank to replace its own <code>0xF4000..0xFE000</code> region. The running
 application remains preserved; a rejected candidate returns to it unchanged.
 Post-reboot <code>ota status</code> reports bootloader-update diagnostics as <code>blup:C0</code> to
 <code>blup:CF</code> (<code>blup:C8</code> is success), separately from ordinary application <code>blrc</code>.</p>

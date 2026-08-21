@@ -1038,6 +1038,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ota_nrf52_qspi/" class="md-nav__link">
         
   
@@ -1847,15 +1874,19 @@ shows an older row. Select <code>[same target]</code>: it can say <code>full</co
 or <code>delta</code> for any supported nRF52 target. Do not select <code>[unsupported]</code> (for example, a source's self-served
 full image on an internal-staging nRF52).
 Rows labelled <code>bootloader</code> are also outside this ordinary application flow:
-they are never automatic and <code>ota install</code> refuses them. Only an already-capable
-XIAO QSPI repeater can use the separate
-<a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora">explicit bootloader workflow</a>.
+they are never automatic and <code>ota install</code> refuses them. Only an
+already-capable, allowlisted internal-flash or XIAO-QSPI nRF52 target can use
+the separate <a href="../ota_nrf52_bootloader_update/">explicit bootloader workflow</a>.
 Use the row's stable eight-hex manifest ID rather than its changing list position:</p>
 <pre><code class="language-text">ota pull 838B8169 flash
 </code></pre>
-<p>If an internal-flash nRF52 reports <code>no EndF</code>, only a row marked <code>[rescue]</code> is eligible. Current rescue-capable
+<p>If a legacy internal-flash nRF52 reports <code>no EndF</code>, only a row marked <code>[rescue]</code> is eligible. Current rescue-capable
 firmware requires <code>ota pull &lt;mid8&gt; flash rescue</code>, followed after completion by
-<code>ota rescue install &lt;base_hash16&gt;</code>. Older running firmware without those commands must be recovered over USB.</p>
+<code>ota rescue install &lt;base_hash16&gt;</code>. Older running firmware without those commands must be recovered over USB.
+Shared-internal bootloader-update builds are stricter: without a valid live
+<code>EndF</code>, every internal pull is refused before erase because the normal
+application may extend through <code>0xED000</code>. Recover those builds over USB/BLE DFU
+or SWD instead of relying on the older 608 KiB rescue estimate.</p>
 <p>Monitor the transfer:</p>
 <pre><code class="language-text">ota status
 </code></pre>

@@ -987,6 +987,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ota_nrf52_qspi/" class="md-nav__link">
         
   
@@ -1459,10 +1486,10 @@ controller, and check the rebooted node.</p>
 <p>The script cannot install the destination's first OTA-capable firmware. It is
 also deliberately application-only: it rejects both v3 bootloader containers
 and a v2 container carrying the bootloader flag, and it never sends the
-privileged install command. Do the first nRF52 bootloader installation over USB;
-an already-capable XIAO QSPI repeater may later use the separate, manual
-<a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora"><code>ota bootloader install</code></a>
-workflow.</p>
+privileged install command. Do the first nRF52 bootloader installation over USB.
+An already-capable, explicitly supported internal-flash or XIAO QSPI repeater
+may later use the separate manual
+<a href="../ota_nrf52_bootloader_update/"><code>ota bootloader install</code></a> workflow.</p>
 <h2 id="required-topology">Required topology</h2>
 <p>The reliable serial topology uses two local radios:</p>
 <pre><code class="language-text">                                      authenticated admin commands

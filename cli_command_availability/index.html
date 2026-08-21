@@ -1015,6 +1015,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ota_nrf52_qspi/" class="md-nav__link">
         
   
@@ -2543,15 +2570,15 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>LoRa OTA</td>
 <td><a href="../ota_protocol/#12-apply-bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
-<td>Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation</td>
+<td>Legacy internal-flash nRF52 LoRa OTA build with failed app-side EndF validation; shared bootloader-update builds require valid EndF</td>
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
 </tr>
 <tr>
 <td>LoRa OTA</td>
-<td><a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora"><code>ota bootloader</code>; <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code></a></td>
-<td>Boot-update-capable XIAO-module QSPI repeater with ABI-3 exact-board OTAFIX</td>
+<td><a href="../ota_nrf52_bootloader_update/"><code>ota bootloader</code>; <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code></a></td>
+<td>Allowlisted internal-flash or XIAO-QSPI nRF52 repeater with ABI-3 exact-board OTAFIX</td>
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
@@ -4048,7 +4075,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>LoRa OTA</td>
 <td><a href="../ota_protocol/#12-apply-bootloader-contract"><code>ota rescue install &lt;base_hash16&gt;</code></a></td>
-<td>Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation</td>
+<td>Legacy internal-flash nRF52 LoRa OTA build with failed app-side EndF validation; shared bootloader-update builds require valid EndF</td>
 <td>No</td>
 <td>No</td>
 <td>Feature</td>
@@ -4057,8 +4084,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>LoRa OTA</td>
-<td><a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora"><code>ota bootloader</code>; <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code></a></td>
-<td>nRF52 XIAO QSPI only</td>
+<td><a href="../ota_nrf52_bootloader_update/"><code>ota bootloader</code>; <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code></a></td>
+<td>Allowlisted nRF52 internal/QSPI repeater feature</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
