@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/docs/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_nrf52_qspi/">
       
       
-        <link rel="prev" href="../companion_radio_full/">
+        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../ota_protocol/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Local Documentation - MeshCore Docs</title>
+        <title>nRF52 repeater LoRa OTA with external QSPI - MeshCore Docs</title>
       
     
     
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#local-documentation" class="md-skip">
+        <a href="#nrf52-repeater-lora-ota-with-external-qspi" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Local Documentation
+              nRF52 repeater LoRa OTA with external QSPI
             
           </span>
         </div>
@@ -443,37 +443,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Local Documentation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -489,37 +462,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building and viewing Docs
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -852,10 +794,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -871,6 +840,87 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#supported-repeater-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported repeater families
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported repeater families">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rak15001-placement-and-module-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK15001 placement and module conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-time-prerequisite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-time prerequisite
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity-and-package-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capacity and package types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-ownership-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage ownership and recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1145,10 +1195,60 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#building-and-viewing-docs" class="md-nav__link">
+  <a href="#supported-repeater-families" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building and viewing Docs
+        Supported repeater families
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported repeater families">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rak15001-placement-and-module-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK15001 placement and module conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-time-prerequisite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-time prerequisite
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity-and-package-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capacity and package types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-ownership-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage ownership and recovery
       
     </span>
   </a>
@@ -1172,7 +1272,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/docs.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_nrf52_qspi.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1180,16 +1280,176 @@
   
 
 
-<h1 id="local-documentation">Local Documentation</h1>
-<p>This document explains how to build and view the MeshCore documentation locally.</p>
-<h2 id="building-and-viewing-docs">Building and viewing Docs</h2>
-<pre><code>pip install mkdocs
-pip install mkdocs-material
-</code></pre>
+<h1 id="nrf52-repeater-lora-ota-with-external-qspi">nRF52 repeater LoRa OTA with external QSPI</h1>
+<p>Selected nRF52840 repeater builds use their dedicated external QSPI NOR flash as
+a raw LoRa OTA staging device. This removes the internal-flash staging conflict:
+the complete <code>.mota</code> stays off-chip, and the bootloader can use the entire
+internal application region while it installs either a full image or an
+in-place delta.</p>
+<p>This is a matched application-and-bootloader feature. A board merely having an
+nRF52840, free RAM, or pins named QSPI is not enough. Both halves must use the
+exact flash wiring, and <code>ota self</code> must confirm the store and bootloader before
+an update is downloaded.</p>
+<h2 id="supported-repeater-families">Supported repeater families</h2>
+<p>QSPI staging is enabled only for repeater-role environments on these currently
+matched families:</p>
 <ul>
-<li><code>mkdocs serve</code> - Start the live-reloading docs server.</li>
-<li><code>mkdocs build</code> - Build the documentation site.</li>
+<li>Seeed XIAO nRF52840 and XIAO nRF52840 Sense modules, including the
+  <code>Xiao_nrf52</code>, SolarXiao 30S/33S, and XIAO-module Ikoka handheld, Nano, and
+  Stick repeaters</li>
+<li>original LilyGo T-Echo</li>
+<li>Elecrow ThinkNode M1 and M6</li>
+<li>Seeed Wio Tracker L1</li>
+<li>Seeed SenseCAP Solar Node P1</li>
+<li>RAK4631 with a RAK15001 in WisBlock sensor slot C, using the dedicated
+  <code>RAK_4631_repeater_rak15001_slot_c_lora_ota</code> application and matching
+  <code>wiscore_rak4631_board_rak15001_slot_c</code> OTAFIX bootloader</li>
 </ul>
+<p>Heltec T114 is intentionally not in this list. Its public V1, V2.0, and V2.1
+schematics show U9 (MX25R1635F) as an optional QSPI footprint, so standard T114
+application and bootloader targets do not assume that external NOR is populated.</p>
+<p>The XIAO-module derivatives use the matching XIAO or XIAO Sense OTAFIX
+bootloader shown by the module's <code>INFO_UF2.TXT</code>. Do not substitute a similar
+bootloader for a board with different QSPI pins. For example, the T-Echo Card
+and T-Echo Lite have different flash wiring and are not enabled by the original
+T-Echo target.</p>
+<p>Companion builds are intentionally excluded. Some companion targets use the
+same external QSPI as a LittleFS message/data store, where raw OTA staging
+would corrupt the filesystem; other companions simply do not assign that chip
+to OTA. Room-server, sensor, KISS, and repeater-bridge roles are also unchanged.
+Raw QSPI OTA is scoped to the explicitly matched repeater environments.</p>
+<h3 id="rak15001-placement-and-module-conflicts">RAK15001 placement and module conflicts</h3>
+<p><a href="https://docs.rakwireless.com/product-categories/wisblock/rak15001/datasheet/">RAK15001</a>
+is a 2 MiB GD25Q16C <strong>standard SPI</strong> module, not a quad-I/O flash. The dedicated
+RAK4631 target uses the nRF52840 QSPI peripheral in its single-data-line
+FAST_READ/page-program modes at 8 MHz and accepts only the module's exact
+<code>C8 40 15</code> JEDEC ID. <code>ota self</code> reports <code>QSPI store:2048K</code> only when the
+expected module responds. An empty slot or a different SPI device reports
+<code>QSPI store:ERR 0K</code>, and install is refused.</p>
+<p>The module is electrically usable in sensor slot A-D because those slots share
+the SPI signals and RAK15001 has onboard 10 kOhm pull-ups on WP# and HOLD#.
+The supported MeshCore/OTAFIX combination nevertheless requires <strong>slot C</strong>. It
+is the placement that remains safe when a
+<a href="https://docs.rakwireless.com/product-categories/wisblock/rak12501/datasheet/">RAK12501 GNSS</a>
+is fitted in either of its supported slots, A or D: slot C avoids the GNSS
+PPS/reset nets on IO1/IO2 and IO5/IO6. In particular, GPS in A plus flash in B
+would share IO1/IO2 through the modules' auxiliary pins.</p>
+<p>Only one device that uses the shared WisBlock SPI chip-select may be fitted.
+Do not combine this target with RAK13800 Ethernet, RAK15002 SD, or another SPI
+module. RAK13800 and RAK15001 cannot coexist because they use the same SPI
+chip-select. Update a RAK13800 Ethernet build locally over USB using the
+release's <strong>Manual UF2</strong> or <strong>Serial DFU (.zip)</strong> download; it cannot use this
+RAK15001 LoRa-OTA staging target.</p>
+<p>RAK3401 is intentionally unsupported. Its external RAK13302 1 W radio already
+uses the same WisBlock SPI clock/data pins <strong>and the same chip-select</strong> as
+RAK15001. Firmware cannot independently select or detect the two chips, so a
+stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
+a hardware chip-select rework.</p>
+<h2 id="one-time-prerequisite">One-time prerequisite</h2>
+<p>Install a QSPI-capable OTAFIX 2.4.1 preview.8 or newer bootloader for the exact
+board from the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases">OTAFIX releases</a>
+before using LoRa OTA. The release notes must explicitly list that board's QSPI
+mode. Also install the SoftDevice version expected by that target. The
+application refuses the install handoff when the bootloader does not advertise
+QSPI support.</p>
+<p>For the first migration from the ordinary <code>wiscore_rak4631_board</code> bootloader to
+<code>wiscore_rak4631_board_rak15001_slot_c</code>, use Nordic serial DFU or a compatible
+BLE DFU client with the exact slot-C OTAFIX <strong>combined bootloader + SoftDevice
+DFU package</strong> (or use SWD), then reinstall the slot-C MeshCore application. The
+release filename has this form:</p>
+<pre><code class="language-text">wiscore_rak4631_board_rak15001_slot_c_bootloader-&lt;OTAFIX-version&gt;_s140_6.1.1.zip
+</code></pre>
+<p>Do not copy the slot-C bootloader-update UF2 onto the stock UF2 drive. The
+stock loader is bound to <code>DEVICE_NAME=4631_DFU</code>, while the slot-C image is bound
+to <code>4631_15001C_DFU</code>, so that UF2 is intentionally rejected. After the one-time
+DFU/SWD migration, later canonical slot-C bootloader UF2 files work normally.
+The combined OTAFIX package above is not the MeshCore application's Serial DFU
+<code>.zip</code>; an application package does not migrate the bootloader.</p>
+<p>After installing the repeater application, check:</p>
+<pre><code class="language-text">get bootloader.ver
+ota self
+ota status
+</code></pre>
+<p>A ready target reports all of the following:</p>
+<pre><code class="language-text">QSPI store:2048K
+bootloader: QSPI apply OK
+bl:QSPI
+</code></pre>
+<p>Other supported boards can report a capacity different from 2048K; the
+RAK15001 target must report exactly 2048K. <code>QSPI store:ERR 0K</code>, <code>NO QSPI</code>, or
+<code>bl:NO-QSPI</code> means the flash wiring, flash power, or bootloader does not match.
+Do not start an install in that state.</p>
+<h2 id="capacity-and-package-types">Capacity and package types</h2>
+<p>The store reads the JEDEC capacity at runtime and accepts supported 1 MiB
+through 16 MiB devices using 24-bit addressing. QSPI capacity is not the final
+firmware limit. The reconstructed application, including its 56-byte <code>EndF</code>
+trailer, must fit below InternalFS at <code>0xED000</code>:</p>
+<table>
+<thead>
+<tr>
+<th>SoftDevice layout</th>
+<th>Application region</th>
+<th>Maximum image</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S140 v7, app base <code>0x27000</code></td>
+<td><code>0x27000..0xED000</code></td>
+<td><code>0xC6000</code> (811,008 bytes)</td>
+</tr>
+<tr>
+<td>S140 v6, app base <code>0x26000</code></td>
+<td><code>0x26000..0xED000</code></td>
+<td><code>0xC7000</code> (815,104 bytes)</td>
+</tr>
+</tbody>
+</table>
+<p>A full package needs only the new raw <code>firmware.hex</code> or non-merged application
+image. An in-place delta still needs the exact image currently running. The
+automation uses a conservative <code>0xC6000</code> detools workspace for external nRF52
+staging so one package setting is safe for both layouts.</p>
+<p>For online automation, QSPI is detected from <code>ota self</code> or <code>ota status</code>. For
+offline preparation, identify it explicitly:</p>
+<pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.zip target-name \
+  --prepare-only \
+  --platform nrf52 \
+  --nrf-qspi \
+  --target-id 12345678 \
+  --target-hw Xiao_nrf52
+</code></pre>
+<p>Use the real target ID and hardware identity from the destination. A ready
+full <code>.mota</code> normally uses that target ID for discovery and routing. An
+operator can deliberately override the routing target for a role change, so
+<code>target_id</code> is not an apply-time safety assertion; the destination still
+enforces the package's hardware identity before approval.</p>
+<h2 id="storage-ownership-and-recovery">Storage ownership and recovery</h2>
+<p>The QSPI store is raw, not a file inside LittleFS. It owns the flash from
+offset zero, erases 4 KiB sectors as blocks arrive, writes data before progress
+metadata, and verifies every programmed page. A previously interrupted
+download is reopened only when its header and trailer are valid; every claimed
+block is re-hashed before it is trusted. Between a probe, transfer operation,
+or checkpoint, firmware puts the NOR into deep power-down, deactivates the nRF
+QSPI peripheral, and turns off a board-provided flash power-enable pin. The
+next operation powers and identifies the chip again, so merely running
+<code>ota self</code> does not leave QSPI drawing active-mode current.</p>
+<p>Installing a QSPI repeater build over a former companion build therefore
+repurposes the external flash and destroys companion filesystem data as OTA
+sectors are written. Back up anything important first. Returning to a companion
+build may require formatting its external data store.</p>
+<p>Before changing internal application flash, the application verifies package
+integrity, hardware identity, signature policy, and bootloader capabilities.
+The target ID selects discovery/fetch routing and can be deliberately
+overridden; it is not a second hardware gate. The bootloader then verifies a
+full payload before its first application erase. For a delta, the application
+rejects invalid detools geometry before approval and the bootloader independently
+repeats the base and geometry checks before applying it.
+It clears the one-shot approval marker before invalidating the running image.
+If power is lost after application writes begin, the bank remains invalid and
+OTAFIX enters USB/BLE recovery rather than booting a partial image.</p>
+<p>See <a href="../ota_easy/">Easy firmware updates over LoRa</a> for the transfer commands and
+<a href="../ota_protocol/">the OTA protocol</a> for the container and handoff details.</p>
 
 
 

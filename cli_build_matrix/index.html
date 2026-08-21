@@ -899,6 +899,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ota_protocol/" class="md-nav__link">
         
   
@@ -1329,7 +1356,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
-<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands.</td>
+<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. On RAK3401, this profile also compiles out GPS, so RAK12501 requires the ordinary full-sensor build.</td>
 </tr>
 </tbody>
 </table>

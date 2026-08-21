@@ -797,6 +797,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../ota_protocol/" class="md-nav__link">
         
   
@@ -999,6 +1026,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Exact destination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gps-limitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPS limitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1253,6 +1297,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Exact destination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gps-limitation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPS limitation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1439,6 +1500,14 @@ target:</p>
 <li>endpoint packed version: <code>0x01110102</code> (EndF tools render this as <code>1.17.1.2</code>)</li>
 <li>deployment target key: <code>63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d</code></li>
 </ul>
+<h3 id="gps-limitation">GPS limitation</h3>
+<p>This chain's exact <code>RAK_3401_repeater_lora_ota_no_external_sensors</code> endpoint
+compiles with <code>ENV_INCLUDE_GPS</code> removed. It will not detect, configure, or read
+a RAK12501 GPS module. GPS requires the ordinary full-sensor
+<code>RAK_3401_repeater</code> firmware and the RAK12501 must be installed in sensor slot
+A. Do not use slot D with the RAK13302 1 W radio: the GPS reset/PPS signals
+would overlap the radio's BUSY/DIO1 signals. The full-sensor build is a
+different target and is not an endpoint of this compact OTA chain.</p>
 <p>Do not use the chain on another target ID, hardware family, starting image, or
 firmware body hash. The runner checks all four.</p>
 <h2 id="why-the-old-bootloader-works">Why the old bootloader works</h2>

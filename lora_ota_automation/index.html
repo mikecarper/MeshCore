@@ -761,10 +761,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-run-an-internal-flash-nrf52-update" class="md-nav__link">
+  <a href="#5-run-an-nrf52-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Run an internal-flash nRF52 update
+        5. Run an nRF52 update
       
     </span>
   </a>
@@ -968,6 +968,33 @@
     
   
     MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
   
 
     
@@ -1316,10 +1343,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-run-an-internal-flash-nrf52-update" class="md-nav__link">
+  <a href="#5-run-an-nrf52-update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Run an internal-flash nRF52 update
+        5. Run an nRF52 update
       
     </span>
   </a>
@@ -1489,6 +1516,12 @@ while the same link carries framed folder requests. BLE remains available.</p>
 <td>Requires <code>--base</code> with the exact image currently running</td>
 </tr>
 <tr>
+<td>nRF52 repeater, external QSPI</td>
+<td>Full image or in-place delta</td>
+<td>QSPI-aware exact-board OTAFIX bootloader and matched repeater build</td>
+<td>Builds a full mOTA; adding <code>--base</code> requests a delta</td>
+</tr>
+<tr>
 <td>MeshTower V2 nRF52, microSD</td>
 <td>Full image or in-place delta</td>
 <td>SD-aware exact-board OTAFIX bootloader and compatible card</td>
@@ -1500,7 +1533,7 @@ while the same link carries framed folder requests. BLE remains available.</p>
 ESP32 merged/factory image is not an application image and is rejected. A
 generic vendor DFU ZIP may also be unusable if it does not contain the raw
 EndF-bearing <code>.hex</code> or <code>.bin</code>.</p>
-<p>For an internal-flash nRF52, the exact base image is irreducible information.
+<p>For an internal-staging nRF52, the exact base image is irreducible information.
 The node reports its eight-byte body hash, but that hash cannot reconstruct the
 firmware bytes needed to create a delta. Keep the <code>.pio/build/ENV/firmware.hex</code>
 that was actually flashed. A matching filename or version alone is not enough.</p>
@@ -1574,7 +1607,8 @@ ota stats
 </code></pre>
 <p>The script uses <code>get bootloader.ver</code> to distinguish ESP32 from nRF52 and, for
 nRF52, report the installed bootloader version. It then requires <code>ota self</code> to
-report <code>bootloader: apply OK</code> or <code>bootloader: SD apply OK</code> and checks the
+report <code>bootloader: apply OK</code>, <code>bootloader: QSPI apply OK</code>, or
+<code>bootloader: SD apply OK</code> and checks the
 reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy <code>ota self</code> platform marker. If an nRF52 bootloader lacks
@@ -1619,7 +1653,7 @@ unattended job, add <code>--yes</code>:</p>
 <code>--password</code> works, but the wrapper's own command line may be visible to other
 local processes. The runner keeps the password out of child <code>meshcli</code> command
 lines and removes its protected temporary command file after each call.</p>
-<h2 id="5-run-an-internal-flash-nrf52-update">5. Run an internal-flash nRF52 update</h2>
+<h2 id="5-run-an-nrf52-update">5. Run an nRF52 update</h2>
 <p>If the input ZIP already contains a compatible in-place delta <code>.mota</code>, no
 base argument is needed: its embedded base hash is compared with the live
 node. If the ZIP contains raw new firmware, supply the exact running image:</p>
@@ -1633,14 +1667,22 @@ node. If the ZIP contains raw new firmware, supply the exact running image:</p>
   --controller-serial COM7 `
   --source-serial COM8
 </code></pre>
-<p>Before building the delta, the runner proves that the base's target ID,
+<p>Before building a delta, the runner proves that the base's target ID,
 hardware identity, firmware version when available, and <code>EndF</code> body hash match
 the live destination. It then asks <code>motatool</code> for codec 2, the nRF52 in-place
 format. The normal workspace is <code>0x98000</code>.</p>
-<p>For the SD-backed MeshTower V2 target, a raw ZIP becomes a full image without
-<code>--base</code>. Supplying an exact base requests a smaller in-place delta and
-automatically selects its <code>0xC7000</code> workspace. An explicit
+<p>For a QSPI-backed repeater or the SD-backed MeshTower V2 target, a raw ZIP
+becomes a full image without <code>--base</code>. Supplying an exact base requests a
+smaller in-place delta and automatically selects the conservative external
+workspace <code>0xC6000</code>, which is safe for S140 v6 and v7 application layouts. An explicit
 <code>--inplace-memory</code> overrides the automatic value.</p>
+<p>The live runner detects QSPI from <code>ota self</code> (<code>QSPI apply OK</code>) or <code>ota status</code>
+(<code>bl:QSPI</code>) and refuses an explicit <code>QSPI store:ERR 0K</code> report even when the
+bootloader itself advertises QSPI apply support. Offline <code>--prepare-only</code> runs
+must supply <code>--nrf-qspi</code>; do not use that switch for a board that only exposes
+QSPI pins or uses the chip as a
+Companion filesystem. The application and bootloader must both be from the
+matched repeater list in <a href="../ota_nrf52_qspi/">the nRF52 QSPI guide</a>.</p>
 <h2 id="6-add-intermediate-relays">6. Add intermediate relays</h2>
 <p>List relays from farthest to nearest so each command is sent before its route
 moves to TempRadio. A bare relay name uses the destination password; use
