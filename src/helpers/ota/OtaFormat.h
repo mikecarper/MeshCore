@@ -68,6 +68,12 @@ struct FwVersion {
   }
 };
 
+inline bool ota_trusted_auto_version_allows(uint32_t running_version,
+                                            uint32_t candidate_version) {
+  return running_version != 0 && candidate_version != 0 &&
+         candidate_version > running_version;
+}
+
 // ---- hash truncations -----------------------------------------------------
 static const uint8_t  MH4  = 4;    // sha2-256:4  (merkle leaves/nodes/root/proofs)
 static const uint8_t  MH8  = 8;    // sha2-256:8  (base/EndF body hash)

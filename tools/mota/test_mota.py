@@ -208,7 +208,20 @@ def test_nrf52_layout_record_roundtrip_and_policy():
             pass
 
 
-def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
+def _write_boot_continuity(image, offset, *, version=0x0117010D,
+                           family=ml.BOOT_CONTINUITY_FAMILY_S140,
+                           fwid=None, app_base=ml.NRF52_APP_BASE_S140_V7,
+                           layout_abi=ml.BOOT_CONTINUITY_LAYOUT_ABI):
+    if fwid is None:
+        fwid = 0x0123 if app_base == ml.NRF52_APP_BASE_S140_V7 else 0x00B6
+    struct.pack_into("<8sHHIHHIHHI", image, offset + ml.XIAO_BOOT_MANIFEST_SIZE,
+                     ml.BOOT_CONTINUITY_MAGIC, ml.BOOT_CONTINUITY_VERSION,
+                     ml.BOOT_CONTINUITY_SIZE, version,
+                     family, fwid, app_base, layout_abi, 0, 0)
+
+
+def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE,
+                           boot_version=0x0117010D):
     import zlib
     image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
@@ -216,16 +229,19 @@ def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE):
                      ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      ml.BOOT_STORAGE_QSPI_UPDATE)
     name = ml.XIAO_BOOT_DEVICE_NAME
-    struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
+    off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    struct.pack_into("<8sHHIII16sI", image, off, ml.XIAO_BOOT_MANIFEST_MAGIC,
                      ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
                      ml.XIAO_BOOT_IMAGE_START, ml.XIAO_BOOT_IMAGE_SIZE, board_id, name, 0)
+    _write_boot_continuity(image, off, version=boot_version)
     crc = zlib.crc32(image) & 0xFFFFFFFF
-    struct.pack_into("<I", image, 0x100 + 40, crc)
+    struct.pack_into("<I", image, off + 40, crc)
     return bytes(image)
 
 
 def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU",
-                              storage=ml.BOOT_STORAGE_INTERNAL_UPDATE):
+                              storage=ml.BOOT_STORAGE_INTERNAL_UPDATE,
+                              boot_version=0x0117010D):
     import zlib
     image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
@@ -233,11 +249,25 @@ def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU",
                      ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      storage)
     name = device_name.encode("ascii").ljust(16, b"\0")
-    struct.pack_into("<8sHHIII16sI", image, 0x100, ml.XIAO_BOOT_MANIFEST_MAGIC,
+    off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    struct.pack_into("<8sHHIII16sI", image, off, ml.XIAO_BOOT_MANIFEST_MAGIC,
                      ml.XIAO_BOOT_MANIFEST_VERSION, ml.XIAO_BOOT_MANIFEST_SIZE,
                      ml.XIAO_BOOT_IMAGE_START, ml.XIAO_BOOT_IMAGE_SIZE, board_id, name, 0)
-    struct.pack_into("<I", image, 0x100 + 40, zlib.crc32(image) & 0xFFFFFFFF)
+    _write_boot_continuity(image, off, version=boot_version,
+                           app_base=ml.NRF52_APP_BASE_S140_V6)
+    struct.pack_into("<I", image, off + 40, zlib.crc32(image) & 0xFFFFFFFF)
     return bytes(image)
+
+
+def _rewrite_boot_image(image, mutate):
+    import zlib
+    rewritten = bytearray(image)
+    mutate(rewritten)
+    off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    rewritten[off + 40:off + 44] = b"\0" * 4
+    struct.pack_into("<I", rewritten, off + 40,
+                     zlib.crc32(rewritten) & 0xFFFFFFFF)
+    return bytes(rewritten)
 
 
 def _xiao_manifest_crc(image, offset):
@@ -294,7 +324,8 @@ def _set_two_valid_xiao_manifest_crcs(image, first, second):
 
 
 def test_xiao_bootloader_identity_skips_bad_decoy_and_rejects_two_valid_manifests():
-    real_offset, decoy_offset, second_offset = 0x100, 0x20, 0x200
+    real_offset = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    decoy_offset, second_offset = 0x20, 0x200
     image = bytearray(_xiao_bootloader_image())
     image[decoy_offset:decoy_offset + ml.XIAO_BOOT_MANIFEST_SIZE] = \
         image[real_offset:real_offset + ml.XIAO_BOOT_MANIFEST_SIZE]
@@ -319,6 +350,37 @@ def test_xiao_bootloader_identity_skips_bad_decoy_and_rejects_two_valid_manifest
     except ValueError:
         pass
 
+    # Base identity counting happens before adjacent continuity parsing. A
+    # CRC-valid decoy cannot hide merely by claiming one corrupt BLM2 magic;
+    # this must match deployed legacy-updater duplicate semantics.
+    corrupt_extension = bytearray(_xiao_bootloader_image())
+    corrupt_extension[second_offset:second_offset + ml.XIAO_BOOT_MANIFEST_SIZE] = \
+        corrupt_extension[real_offset:real_offset + ml.XIAO_BOOT_MANIFEST_SIZE]
+    corrupt_extension[second_offset + ml.XIAO_BOOT_MANIFEST_SIZE:
+                      second_offset + ml.XIAO_BOOT_MANIFEST_SIZE + 8] = b"BLM2BAD!"
+    _set_two_valid_xiao_manifest_crcs(corrupt_extension, real_offset, second_offset)
+    assert ml.parse_xiao_bootloader_identity(bytes(corrupt_extension)) is None
+    try:
+        ml.validate_xiao_bootloader_image(bytes(corrupt_extension))
+        assert False, "CRC-valid identity with corrupt BLM2 decoy was hidden"
+    except ValueError:
+        pass
+
+    # The same malformed extension does not matter when the associated base
+    # CRC is invalid; the one canonical CRC-valid identity remains usable.
+    bad_crc_extension = bytearray(_xiao_bootloader_image())
+    bad_crc_extension[second_offset:second_offset + ml.XIAO_BOOT_MANIFEST_SIZE] = \
+        bad_crc_extension[real_offset:real_offset + ml.XIAO_BOOT_MANIFEST_SIZE]
+    bad_crc_extension[second_offset + ml.XIAO_BOOT_MANIFEST_SIZE:
+                      second_offset + ml.XIAO_BOOT_MANIFEST_SIZE + 8] = b"BLM2BAD!"
+    struct.pack_into("<I", bad_crc_extension, second_offset + 40, 0xA5A5A5A5)
+    struct.pack_into("<I", bad_crc_extension, real_offset + 40,
+                     _xiao_manifest_crc(bad_crc_extension, real_offset))
+    assert _xiao_manifest_crc(bad_crc_extension, second_offset) != 0xA5A5A5A5
+    parsed = ml.parse_xiao_bootloader_identity(bytes(bad_crc_extension))
+    assert parsed is not None and parsed.manifest_offset == real_offset
+    ml.validate_xiao_bootloader_image(bytes(bad_crc_extension))
+
 
 def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
     def caps(*, offset=0, abi=ml.BOOT_FORMAT_VER,
@@ -342,6 +404,18 @@ def test_xiao_bootloader_caps_rejects_malformed_or_unaligned_markers():
                      ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      ml.BOOT_STORAGE_INTERNAL_UPDATE, b"\0\0\0")
     assert ml.bootloader_caps_storage(bytes(duplicate)) is None
+    privileged_ambiguous = bytearray(caps())
+    struct.pack_into("<8sHHB3s", privileged_ambiguous, 24,
+                     ml.XIAO_BOOT_CAPS_MAGIC, ml.BOOT_FORMAT_VER,
+                     ml.BOOT_REQUIRED_APP_CODEC_MASK,
+                     ml.XIAO_BOOT_STORAGE_UPDATE, b"\0\0\0")
+    assert ml.bootloader_caps_storage(bytes(privileged_ambiguous)) is None
+    malformed_decoy = bytearray(caps())
+    struct.pack_into("<8sHHB3s", malformed_decoy, 24,
+                     ml.XIAO_BOOT_CAPS_MAGIC, ml.BOOT_FORMAT_VER,
+                     ml.BOOT_REQUIRED_APP_CODEC_MASK, 0x1C, b"\0\0\0")
+    assert ml.bootloader_caps_storage(bytes(malformed_decoy)) == \
+           ml.BOOT_STORAGE_QSPI_UPDATE
 
 
 def test_bootloader_v3_build_parse_and_strict_contract():
@@ -350,7 +424,7 @@ def test_bootloader_v3_build_parse_and_strict_contract():
     identity = ml.validate_xiao_bootloader_image(image, ml.XIAO_BOOT_BOARD_ID_BASE)
     assert identity.board_id == ml.XIAO_BOOT_BOARD_ID_BASE
     m = ml.build_manifest(
-        target_id=identity.board_id, fw_version=ml.pack_version("1.0.0"),
+        target_id=identity.board_id, fw_version=identity.boot_version,
         image_size=len(image), payload=image, block_size=1024,
         image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
         sign_priv=priv, bootloader=True)
@@ -394,7 +468,7 @@ def test_generic_internal_bootloader_build_parse_and_strict_contract():
     assert ml.bootloader_hw_id(identity.board_id, identity.device_name) == expected_hw
 
     manifest = ml.build_manifest(
-        target_id=target, fw_version=ml.pack_version("1.0.0"),
+        target_id=target, fw_version=identity.boot_version,
         image_size=len(image), payload=image, block_size=1024,
         image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
         sign_priv=priv, bootloader=True)
@@ -425,7 +499,7 @@ def test_meshtower_sd_bootloader_profile_builds_the_same_exact_identity():
     target = ml.bootloader_target_id(identity.board_id, identity.device_name)
     assert target == 0x1150F50E
     manifest = ml.build_manifest(
-        target_id=target, fw_version=ml.pack_version("1.0.0"),
+        target_id=target, fw_version=identity.boot_version,
         image_size=len(image), payload=image, block_size=1024,
         image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
         sign_priv=priv, bootloader=True)
@@ -442,6 +516,11 @@ def test_meshtower_sd_bootloader_build_flag_is_exact_target_only():
     section = section.split("[env:", 1)[0]
     assert "-D OTA_SD_STORE=1" in section
     assert "-D OTA_SD_BOOTLOADER_UPDATE=1" in section
+    store = (root / "src/helpers/ota/OtaStoreSdNrf52.cpp").read_text(encoding="utf-8")
+    assert "readSector(" not in store
+    assert "writeSector(" not in store
+    assert "OtaSdHandoff" not in store
+    assert not (root / "src/helpers/ota/OtaSdHandoff.h").exists()
 
 
 def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
@@ -491,10 +570,83 @@ def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
         pass
 
 
+def test_qualified_bootloader_platform_and_storage_profiles_are_exact():
+    qualified = (
+        (ml.XIAO_BOOT_BOARD_ID_BASE, "XIAO_DFU"),
+        (ml.XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU"),
+    ) + ml.INTERNAL_BOOTLOADER_IDENTITIES
+    for board_id, device_name in qualified:
+        family, fwid, app_base, layout_abi = \
+            ml.bootloader_qualified_platform_profile(board_id, device_name)
+        storages = ml.bootloader_qualified_storage_profiles(board_id, device_name)
+        assert family == ml.BOOT_CONTINUITY_FAMILY_S140
+        assert layout_abi == ml.BOOT_CONTINUITY_LAYOUT_ABI
+        if (board_id, device_name) in ml.BOOTLOADER_S140_V7_IDENTITIES:
+            assert (fwid, app_base) == (ml.BOOTLOADER_S140_V7_FWID,
+                                       ml.NRF52_APP_BASE_S140_V7)
+        else:
+            assert (fwid, app_base) == (ml.BOOTLOADER_S140_V6_FWID,
+                                       ml.NRF52_APP_BASE_S140_V6)
+        for storage in storages:
+            if board_id in (ml.XIAO_BOOT_BOARD_ID_BASE,
+                             ml.XIAO_BOOT_BOARD_ID_SENSE):
+                image = _xiao_bootloader_image(board_id)
+            else:
+                image = bytearray(_generic_bootloader_image(
+                    board_id=board_id, device_name=device_name, storage=storage))
+                off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+                _write_boot_continuity(image, off, fwid=fwid,
+                                       app_base=app_base)
+                image = _rewrite_boot_image(bytes(image), lambda raw: None)
+            parsed = ml.validate_bootloader_image(image)
+            assert (parsed.softdevice_family, parsed.softdevice_fwid,
+                    parsed.app_base, parsed.layout_abi) == \
+                   (family, fwid, app_base, layout_abi)
+            assert ml.bootloader_caps_storage(image) == storage
+
+    # Every individually well-formed but wrong continuity field must fail the
+    # qualified signing validator, for both v6 and v7 inventory profiles.
+    for image in (_generic_bootloader_image(), _xiao_bootloader_image()):
+        off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+        for field_offset, field_format, wrong in (
+            (60, "<H", 141),
+            (62, "<H", 0xBEEF),
+            (64, "<I", 0x28000),
+            (68, "<H", 2),
+        ):
+            invalid = _rewrite_boot_image(
+                image, lambda raw, at=field_offset, fmt=field_format, value=wrong:
+                struct.pack_into(fmt, raw, off + at, value))
+            try:
+                ml.validate_bootloader_image(invalid)
+                assert False, f"qualified image accepted wrong continuity field +{field_offset}"
+            except ValueError:
+                pass
+
+    # Capability storage is part of the profile too. Tower alone admits both
+    # internal and SD; QSPI is XIAO-only and non-Tower internals cannot claim SD.
+    for invalid in (
+        _generic_bootloader_image(storage=ml.BOOT_STORAGE_SD_UPDATE),
+        _generic_bootloader_image(board_id=0x239A0071,
+                                  device_name="TOWER_V2_OTA",
+                                  storage=ml.BOOT_STORAGE_QSPI_UPDATE),
+        _rewrite_boot_image(
+            _xiao_bootloader_image(),
+            lambda raw: raw.__setitem__(0x80 + 12,
+                                        ml.BOOT_STORAGE_INTERNAL_UPDATE)),
+    ):
+        try:
+            ml.validate_bootloader_image(invalid)
+            assert False, "qualified identity accepted wrong storage profile"
+        except ValueError:
+            pass
+
+
 def test_bootloader_builder_rejects_wrong_identity_geometry_and_continuity():
     priv = Ed25519PrivateKey.generate()
     image = _xiao_bootloader_image()
-    kwargs = dict(target_id=ml.XIAO_BOOT_BOARD_ID_BASE, fw_version=1,
+    kwargs = dict(target_id=ml.XIAO_BOOT_BOARD_ID_BASE,
+                  fw_version=ml.validate_xiao_bootloader_image(image).boot_version,
                   image_size=len(image), payload=image, block_size=1024,
                   image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL,
                   is_full=True, sign_priv=priv, bootloader=True)
@@ -516,11 +668,62 @@ def test_bootloader_builder_rejects_wrong_identity_geometry_and_continuity():
         assert False, "bad embedded CRC accepted"
     except ValueError:
         pass
+
+    missing_extension = _rewrite_boot_image(
+        image, lambda raw: raw.__setitem__(
+            slice(ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 44,
+                  ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 76), b"\xff" * 32))
+    half_extension = _rewrite_boot_image(
+        image, lambda raw: raw.__setitem__(
+            slice(ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 48,
+                  ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 52), b"FAIL"))
+    low_byte_zero = _rewrite_boot_image(
+        image, lambda raw: struct.pack_into(
+            "<I", raw, ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 56, 0x02040100))
+    all_ones = _rewrite_boot_image(
+        image, lambda raw: struct.pack_into(
+            "<I", raw, ml.BOOT_CANDIDATE_MANIFEST_OFFSET + 56, 0xFFFFFFFF))
+    for invalid, why in (
+        (missing_extension, "missing continuity extension"),
+        (half_extension, "half-present continuity extension"),
+        (low_byte_zero, "invalid preview zero"),
+        (all_ones, "un-upgradable all-ones version"),
+    ):
+        try:
+            ml.validate_xiao_bootloader_image(invalid)
+            assert False, f"accepted {why}"
+        except ValueError:
+            pass
+
     import zlib
+    wrong_offset = bytearray(image)
+    canonical = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    relocated = 0x8000
+    envelope = bytes(wrong_offset[canonical:canonical + ml.BOOT_ENVELOPE_SIZE])
+    wrong_offset[canonical:canonical + ml.BOOT_ENVELOPE_SIZE] = \
+        b"\xff" * ml.BOOT_ENVELOPE_SIZE
+    wrong_offset[relocated:relocated + ml.BOOT_ENVELOPE_SIZE] = envelope
+    wrong_offset[relocated + 40:relocated + 44] = b"\0" * 4
+    struct.pack_into("<I", wrong_offset, relocated + 40,
+                     zlib.crc32(wrong_offset) & 0xFFFFFFFF)
+    parsed_relocated = ml.parse_xiao_bootloader_identity(bytes(wrong_offset))
+    assert parsed_relocated is not None and parsed_relocated.manifest_offset == relocated
+    try:
+        ml.validate_xiao_bootloader_image(bytes(wrong_offset))
+        assert False, "otherwise-valid BLM2 envelope at a noncanonical offset accepted"
+    except ValueError:
+        pass
+
+    try:
+        ml.build_manifest(**(kwargs | {"fw_version": kwargs["fw_version"] + 1}))
+        assert False, "outer version differing from embedded BLM2 accepted"
+    except ValueError:
+        pass
     wrong_name = bytearray(image)
-    wrong_name[0x100 + 24:0x100 + 40] = b"FRIENDLY NAME".ljust(16, b"\0")
-    wrong_name[0x100 + 40:0x100 + 44] = b"\0" * 4
-    struct.pack_into("<I", wrong_name, 0x100 + 40, zlib.crc32(wrong_name) & 0xFFFFFFFF)
+    off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
+    wrong_name[off + 24:off + 40] = b"FRIENDLY NAME".ljust(16, b"\0")
+    wrong_name[off + 40:off + 44] = b"\0" * 4
+    struct.pack_into("<I", wrong_name, off + 40, zlib.crc32(wrong_name) & 0xFFFFFFFF)
     try:
         ml.validate_xiao_bootloader_image(bytes(wrong_name))
         assert False, "noncanonical embedded device name accepted"

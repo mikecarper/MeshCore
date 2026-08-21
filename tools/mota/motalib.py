@@ -90,6 +90,13 @@ XIAO_BOOT_IMAGE_SIZE = 0x0000A000
 XIAO_BOOT_MANIFEST_MAGIC = b"BLMFCRC1"
 XIAO_BOOT_MANIFEST_VERSION = 1
 XIAO_BOOT_MANIFEST_SIZE = 44
+BOOT_CONTINUITY_MAGIC = b"BLM2SOFT"
+BOOT_CONTINUITY_VERSION = 2
+BOOT_CONTINUITY_SIZE = 32
+BOOT_CONTINUITY_FAMILY_S140 = 140
+BOOT_CONTINUITY_LAYOUT_ABI = 1
+BOOT_ENVELOPE_SIZE = XIAO_BOOT_MANIFEST_SIZE + BOOT_CONTINUITY_SIZE
+BOOT_CANDIDATE_MANIFEST_OFFSET = XIAO_BOOT_IMAGE_SIZE - BOOT_ENVELOPE_SIZE
 XIAO_BOOT_DEVICE_NAME = b"XIAO_DFU".ljust(16, b"\0")
 XIAO_BOOT_CAPS_MAGIC = b"MOTABLDR"
 BOOT_STORAGE_SD = 0x01
@@ -132,6 +139,21 @@ INTERNAL_BOOTLOADER_IDENTITIES = (
 SD_BOOTLOADER_IDENTITIES = (
     (0x239A0071, "TOWER_V2_OTA"),
 )
+
+# Exact runtime continuity profiles for signed, remotely installable
+# bootloaders. A CRC-valid BLM2 envelope is not sufficient for package
+# creation: signing the wrong SoftDevice/application layout only produces a
+# package every qualified device will refuse. XIAO/Sense, Minew MX25LE01, and
+# T1000-E run S140 v7; the remaining inventory (including both Tower storage
+# profiles) runs S140 v6.
+BOOTLOADER_S140_V7_IDENTITIES = (
+    (XIAO_BOOT_BOARD_ID_BASE, "XIAO_DFU"),
+    (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU"),
+    (0x239A0029, "MX25_DFU"),
+    (0x28860057, "T1KE_DFU"),
+)
+BOOTLOADER_S140_V6_FWID = 0x00B6
+BOOTLOADER_S140_V7_FWID = 0x0123
 
 # MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
 # complete S140 v6 application region up to InternalFS instead of leaving room for internal staging.
@@ -550,9 +572,19 @@ class BootloaderIdentity:
     board_id: int
     device_name: str
     crc32: int
+    boot_version: Optional[int] = None
+    softdevice_family: Optional[int] = None
+    softdevice_fwid: Optional[int] = None
+    app_base: Optional[int] = None
+    layout_abi: Optional[int] = None
+    compat_flags: Optional[int] = None
 
 
 XiaoBootloaderIdentity = BootloaderIdentity  # compatibility for callers of the original reference API
+
+
+def bootloader_version_valid(version: int) -> bool:
+    return version not in (0, 0xFFFFFFFF) and version & 0xFF != 0
 
 
 def _bootloader_device_name(board_id: int, name_raw: bytes) -> Optional[str]:
@@ -618,6 +650,33 @@ def bootloader_identity_is_buildable(board_id: int, device_name: str) -> bool:
                 (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU")))
 
 
+def bootloader_qualified_platform_profile(board_id: int, device_name: str):
+    """Return exact (family, FWID, app_base, layout ABI), or None if unqualified."""
+    identity = (board_id, device_name)
+    if not bootloader_identity_is_buildable(*identity):
+        return None
+    if identity in BOOTLOADER_S140_V7_IDENTITIES:
+        return (BOOT_CONTINUITY_FAMILY_S140, BOOTLOADER_S140_V7_FWID,
+                NRF52_APP_BASE_S140_V7, BOOT_CONTINUITY_LAYOUT_ABI)
+    return (BOOT_CONTINUITY_FAMILY_S140, BOOTLOADER_S140_V6_FWID,
+            NRF52_APP_BASE_S140_V6, BOOT_CONTINUITY_LAYOUT_ABI)
+
+
+def bootloader_qualified_storage_profiles(board_id: int, device_name: str):
+    """Return the exact allowed capability-marker profiles for one identity."""
+    identity = (board_id, device_name)
+    if identity in ((XIAO_BOOT_BOARD_ID_BASE, "XIAO_DFU"),
+                    (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU")):
+        return (BOOT_STORAGE_QSPI_UPDATE,)
+    if identity in SD_BOOTLOADER_IDENTITIES:
+        # One embedded Tower identity supports two distinct application
+        # targets; its marker selects either the shared internal slot or SD.
+        return (BOOT_STORAGE_INTERNAL_UPDATE, BOOT_STORAGE_SD_UPDATE)
+    if identity in INTERNAL_BOOTLOADER_IDENTITIES:
+        return (BOOT_STORAGE_INTERNAL_UPDATE,)
+    return None
+
+
 def _bootloader_vector_sane(image: bytes) -> bool:
     if len(image) < 8:
         return False
@@ -628,7 +687,13 @@ def _bootloader_vector_sane(image: bytes) -> bool:
 
 
 def parse_bootloader_identity(image: bytes) -> Optional[BootloaderIdentity]:
-    """Find exactly one CRC-valid embedded v1 manifest, continuing past invalid decoys."""
+    """Find one CRC-valid base identity, then validate its optional BLM2 extension.
+
+    Duplicate accounting intentionally mirrors deployed legacy bootloaders: a
+    CRC-valid BLMF-v1 record counts even when adjacent claimed BLM2 metadata is
+    malformed. Otherwise a corrupt extension could hide a second privileged
+    identity from a new packager while an installed legacy updater rejects it.
+    """
     if len(image) != XIAO_BOOT_IMAGE_SIZE:
         return None
     found = None
@@ -649,11 +714,32 @@ def parse_bootloader_identity(image: bytes) -> Optional[BootloaderIdentity]:
         import zlib
         if zlib.crc32(crc_image) & 0xFFFFFFFF != stored_crc:
             continue
-        candidate = BootloaderIdentity(off, start, image_size, board_id, device_name, stored_crc)
+        candidate = BootloaderIdentity(off, start, image_size, board_id, device_name,
+                                       stored_crc)
         if found is not None:
             return None
         found = candidate
-    return found
+    if found is None:
+        return None
+
+    ext = image[found.manifest_offset + XIAO_BOOT_MANIFEST_SIZE:
+                found.manifest_offset + BOOT_ENVELOPE_SIZE]
+    magic0 = len(ext) >= 4 and ext[:4] == BOOT_CONTINUITY_MAGIC[:4]
+    magic1 = len(ext) >= 8 and ext[4:8] == BOOT_CONTINUITY_MAGIC[4:8]
+    if not magic0 and not magic1:
+        return found
+    if len(ext) != BOOT_CONTINUITY_SIZE or not magic0 or not magic1:
+        return None
+    ext_version, ext_size = struct.unpack_from("<HH", ext, 8)
+    boot_version, family, fwid, app_base, layout_abi, compat, reserved = \
+        struct.unpack_from("<IHHIHHI", ext, 12)
+    if (ext_version != BOOT_CONTINUITY_VERSION or ext_size != BOOT_CONTINUITY_SIZE or
+            not bootloader_version_valid(boot_version) or family == 0 or fwid == 0 or
+            app_base == 0 or layout_abi == 0 or compat != 0 or reserved != 0):
+        return None
+    return BootloaderIdentity(found.manifest_offset, found.image_start, found.image_size,
+                              found.board_id, found.device_name, found.crc32,
+                              boot_version, family, fwid, app_base, layout_abi, compat)
 
 
 def parse_xiao_bootloader_identity(image: bytes) -> Optional[XiaoBootloaderIdentity]:
@@ -666,6 +752,7 @@ def parse_xiao_bootloader_identity(image: bytes) -> Optional[XiaoBootloaderIdent
 def bootloader_caps_storage(image: bytes) -> Optional[int]:
     """Return the one exact supported self-update storage marker, or None."""
     found = None
+    valid_count = 0
     for off in range(0, len(image) - 16 + 1, 4):
         if image[off:off + 8] != XIAO_BOOT_CAPS_MAGIC:
             continue
@@ -674,13 +761,15 @@ def bootloader_caps_storage(image: bytes) -> Optional[int]:
         if (abi < BOOT_FORMAT_VER or abi == 0xFFFF or
                 codecs & BOOT_REQUIRED_APP_CODEC_MASK != BOOT_REQUIRED_APP_CODEC_MASK or
                 storage & ~BOOT_STORAGE_KNOWN or image[off + 13:off + 16] != b"\0\0\0" or
-                storage not in (BOOT_STORAGE_SD_UPDATE, BOOT_STORAGE_QSPI_UPDATE,
-                                BOOT_STORAGE_INTERNAL_UPDATE)):
+                not storage & XIAO_BOOT_STORAGE_UPDATE):
             continue
-        if found is not None:
+        valid_count += 1
+        if valid_count != 1:
             return None
-        found = storage
-    return found
+        if storage in (BOOT_STORAGE_SD_UPDATE, BOOT_STORAGE_QSPI_UPDATE,
+                       BOOT_STORAGE_INTERNAL_UPDATE):
+            found = storage
+    return found if valid_count == 1 else None
 
 
 def xiao_bootloader_caps_ok(image: bytes) -> bool:
@@ -696,22 +785,38 @@ def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
     identity = parse_bootloader_identity(image)
     if identity is None:
         raise ValueError("bootloader embedded manifest/CRC is invalid or ambiguous")
+    if identity.boot_version is None:
+        raise ValueError("bootloader lacks the BLM2/SOFT continuity extension")
+    if identity.manifest_offset != BOOT_CANDIDATE_MANIFEST_OFFSET:
+        raise ValueError(
+            f"bootloader continuity envelope must be at exact offset "
+            f"0x{BOOT_CANDIDATE_MANIFEST_OFFSET:04X}")
     expected_target = bootloader_target_id(identity.board_id, identity.device_name)
     if target_id is not None and target_id != expected_target:
         raise ValueError("bootloader target ID does not match embedded identity")
     expected_hw = bootloader_hw_id(identity.board_id, identity.device_name)
     if signed_hw_id is not None and bytes(signed_hw_id) != expected_hw:
         raise ValueError("bootloader signed hw_id does not match embedded identity")
-    if identity.board_id in (XIAO_BOOT_BOARD_ID_BASE, XIAO_BOOT_BOARD_ID_SENSE):
-        expected_storage = (BOOT_STORAGE_QSPI_UPDATE,)
-    elif (identity.board_id, identity.device_name) in SD_BOOTLOADER_IDENTITIES:
-        expected_storage = (BOOT_STORAGE_INTERNAL_UPDATE, BOOT_STORAGE_SD_UPDATE)
-    else:
+    expected_storage = bootloader_qualified_storage_profiles(
+        identity.board_id, identity.device_name)
+    if expected_storage is None:
+        # Keep generic parsing/inspection useful for future canonical images;
+        # only the signing/build path below admits the curated inventory.
         expected_storage = (BOOT_STORAGE_INTERNAL_UPDATE,)
     actual_storage = bootloader_caps_storage(image)
     if actual_storage not in expected_storage:
         expected = "/".join(f"0x{value:02X}" for value in expected_storage)
         raise ValueError(f"bootloader lacks exact ABI 3 self-update capabilities {expected}")
+    expected_platform = bootloader_qualified_platform_profile(
+        identity.board_id, identity.device_name)
+    if expected_platform is not None:
+        actual_platform = (identity.softdevice_family, identity.softdevice_fwid,
+                           identity.app_base, identity.layout_abi)
+        if actual_platform != expected_platform:
+            family, fwid, app_base, layout_abi = expected_platform
+            raise ValueError(
+                "bootloader continuity platform does not match qualified "
+                f"profile S{family}/0x{fwid:04X}/0x{app_base:X}/ABI{layout_abi}")
     return identity
 
 
@@ -745,10 +850,11 @@ def build_manifest(*, target_id: int, fw_version: int, image_size: int, payload:
         audit_bootloader_target_inventory()
         if not bootloader_identity_is_buildable(identity.board_id, identity.device_name):
             raise ValueError("bootloader embedded identity is not in the qualified build inventory")
-        if (fw_version == 0 or not is_full or codec_id != CODEC_FULL or
+        if (not bootloader_version_valid(fw_version) or
+                fw_version != identity.boot_version or not is_full or codec_id != CODEC_FULL or
                 image_size != XIAO_BOOT_IMAGE_SIZE or
                 block_size != DEFAULT_BLOCK_SIZE or base_hash not in (None, b"\0" * 8)):
-            raise ValueError("bootloader package needs a nonzero version and a 40 KiB CODEC_FULL image with 1 KiB blocks")
+            raise ValueError("bootloader package version must equal BLM2 metadata and use a 40 KiB CODEC_FULL image with 1 KiB blocks")
         if sign_priv is None:
             raise ValueError("bootloader package must be signed")
         expected_hw = bootloader_hw_id(identity.board_id, identity.device_name)
@@ -847,13 +953,15 @@ def parse_container(blob: bytes) -> Parsed:
     if rest != b"":
         raise ValueError("trailing bytes after payload")
     if m.is_bootloader:
-        if (m.fw_version == 0 or m.codec_id != CODEC_FULL or
+        if (not bootloader_version_valid(m.fw_version) or m.codec_id != CODEC_FULL or
                 m.image_size != XIAO_BOOT_IMAGE_SIZE or
                 m.payload_size != XIAO_BOOT_IMAGE_SIZE or
                 m.block_size_log2 != 10 or m.block_count != 40 or m.base_hash != b"\0" * 8):
             raise ValueError("v3 bootloader manifest geometry/identity is invalid")
         try:
-            validate_bootloader_image(payload, m.target_id, m.hw_id)
+            identity = validate_bootloader_image(payload, m.target_id, m.hw_id)
+            if m.fw_version != identity.boot_version:
+                raise ValueError("outer bootloader version does not match BLM2 metadata")
         except (UnicodeDecodeError, ValueError) as exc:
             raise ValueError(f"v3 bootloader image identity/capability is invalid: {exc}") from exc
     return Parsed(manifest=m, payload=payload, total_size=total)
@@ -871,7 +979,9 @@ def verify(parsed: Parsed, *, expect_pub: Optional[bytes] = None,
 
     if m.is_bootloader:
         try:
-            validate_bootloader_image(payload, m.target_id, m.hw_id)
+            identity = validate_bootloader_image(payload, m.target_id, m.hw_id)
+            if m.fw_version != identity.boot_version:
+                problems.append("outer bootloader version does not match BLM2 metadata")
         except (UnicodeDecodeError, ValueError) as exc:
             problems.append(f"bootloader image contract: {exc}")
 

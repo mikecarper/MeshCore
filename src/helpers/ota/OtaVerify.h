@@ -18,6 +18,8 @@ struct VerifyResult {
   bool is_signed = false;
   bool sig_ok = false;     // Ed25519 signature valid for signer_pubkey
   bool trusted = false;    // signer_pubkey is in the allowlist
+  bool container_hash_ok = false; // normalized full-container SHA was produced from the verified stream
+  uint8_t container_hash[32] = {0}; // SHA256(container with approval bytes normalized to zero)
 
   // Integrity holds (safe to keep/serve). For a signed image, the signature must also verify.
   bool integrity_ok() const { return parsed && root_ok && payload_ok && image_ok && (!is_signed || sig_ok); }

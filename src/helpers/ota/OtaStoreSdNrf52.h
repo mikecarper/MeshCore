@@ -40,12 +40,13 @@ public:
 
   // Called only after the app has verified package kind, payload, applicable
   // base/identity, signature, trust, and storage-specific safety geometry.
-  // For a bootloader package it writes APRV, binds the exact authenticated
-  // signed image_hash to an internal-flash token, and only then publishes the
-  // raw-sector handoff. Application packages retain the ordinary APRV+handoff
-  // path and omit expected_boot_image_hash.
+  // Every package writes APRV, then publishes a reset-retained authorization
+  // record containing geometry plus the normalized SHA-256 produced by the
+  // same verification pass. Bootloader packages additionally bind the exact
+  // authenticated signed image_hash to the E0000 scratch token.
   bool approve_for_bootloader(
-      const uint8_t expected_boot_image_hash[32] = nullptr);
+      const uint8_t expected_boot_image_hash[32],
+      const uint8_t authorized_container_hash[32]);
   bool formatCard(MainBoard& board);
   bool eraseCard(MainBoard& board);
   bool getSpace(MainBoard& board, uint64_t& used_bytes, uint64_t& free_bytes);
@@ -58,9 +59,7 @@ private:
 
   bool mount();
   bool beginCardOnly();
-  bool inspect_mbr();
   bool locate_file();
-  bool invalidate_handoff();
   void resetStoreState();
   void fail(const char* message);
 
@@ -71,8 +70,6 @@ private:
   uint32_t _total = 0;
   uint32_t _first_sector = 0;
   uint32_t _allocated_sectors = 0;
-  uint32_t _partition_start = 0;
-  uint32_t _partition_end = 0;
   char _error[80] = {0};
 };
 

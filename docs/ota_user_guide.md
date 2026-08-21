@@ -211,8 +211,11 @@ ota install
 
 The node verifies the firmware one last time, and if everything checks out it installs it and **reboots
 into the new version**. If the check fails, it tells you why and does **not** install. Unsigned images
-install only through this explicit command. A signed image whose signer is not in the device allowlist is
-rejected; trusted signed images can auto-install only when that policy is enabled.
+normally install only through this explicit command. The MeshTower V2 SD target is stricter and requires an
+allowlisted signature even for a manual application install, because it authorizes removable-media bytes for
+the bootloader. A signed image whose signer is not in the device allowlist is rejected; trusted signed images
+can auto-install only when that policy is enabled and the signed version is strictly newer than the running
+hash-valid EndF version. Manual `ota install` remains the deliberate equal-version/rollback override.
 
 After it reboots, run `ota status` to confirm the new version.
 
@@ -246,10 +249,13 @@ Copy both confirmation values exactly from the second `ota bootloader` reply.
 Ordinary `ota install` deliberately refuses this package. The privileged
 command requires an exact 40 KiB candidate payload in the fixed 41,330-byte
 container, a valid exact embedded identity/CRC and vector table, continued
-boot-update support, and a valid signature from a key already in `ota key`'s
-trusted allowlist. It preserves the running application while OTAFIX replaces
-itself; `blup:C8` in post-reboot `ota status` means success. Any node lacking
-this command or those capabilities must update its bootloader locally instead.
+boot-update support, required `BLM2`/`SOFT` continuity metadata at canonical
+raw-image offset `0x9FB4`, a boot version
+that exactly matches the package and is newer than installed BLM2, and a valid
+signature from a key already in `ota key`'s trusted allowlist. It preserves the
+running application while OTAFIX replaces itself; `blup:C8` in post-reboot
+`ota status` means success. Remote rollback is refused. Any node lacking this
+command or those capabilities must update its bootloader locally instead.
 
 On an internal-flash target, the package shares the ordinary store below
 `0xED000` and bottom-aligns at `0xE2000`; there is no separate reserved scratch
@@ -260,9 +266,14 @@ On the MeshTower V2 SD target, the application linker remains at `0xED000`, but
 bootloader replacement needs temporary scratch beginning at `0xE0000`. A
 hash-valid live `EndF` must therefore prove the complete current image ends by
 `0xE0000`. A CRC-bound boot-settings bank must cover that complete image while
-also ending by `0xE0000`. MeshCore binds approval to the exact authenticated
-signed image hash in an internal token before handing the removable SD card to
-OTAFIX, so a later card change fails instead of authorizing different bytes.
+also ending by `0xE0000`. MeshCore binds both application and bootloader SD
+approval to purpose, exact raw geometry, and a normalized SHA-256 in a
+reset-retained `MOTASDA2` record. Boot updates also bind the exact authenticated
+signed image hash in the E0000 token. OTAFIX consumes the retained record before
+media access, so a later card change or power cycle fails instead of authorizing
+different bytes. MeshCore never claims or writes raw sector 1. Both application
+and bootloader OTA wait until a matching BLM2 bootloader has been provisioned
+locally; preview.12 requires USB/BLE DFU or SWD first.
 Larger applications can continue to use normal application mOTA;
 only bootloader self-update is refused.
 See [the nRF52 bootloader-update guide](ota_nrf52_bootloader_update.md) for the
@@ -309,7 +320,7 @@ ota config autofetch any        # auto-DOWNLOAD any compatible update for this n
 ota config autofetch signed     # auto-download only signed updates
 ota config autofetch off        # back to manual (default)
 
-ota config autoinstall trusted  # auto-INSTALL a downloaded update IF it's signed by a key you trust
+ota config autoinstall trusted  # auto-INSTALL only a trusted signed version newer than the running EndF
 ota config autoinstall off      # never auto-install (default)
 
 ota config advert 1440          # re-advertise every N minutes while temp radio is running
@@ -321,8 +332,18 @@ ota config hops 0               # only exchange OTA with directly-connected node
 ota config                      # show the current settings
 ```
 
+These policies also govern automatic adoption of an interrupted staged download after reboot. `off` leaves
+it untouched, `signed` requires the stored manifest's signed flag, and automatic resume requires the stored
+target to match this node and its version to be newer than the running valid EndF. Reissuing an explicit
+`ota pull <MID8>` remains the deliberate override for an older or unsigned partial.
+For bring-up/debugging, `ota dev resume <MID8>` performs the same explicit MID-bound re-adoption without
+starting a new network fetch. After reboot it requires the MID; bare `ota dev resume` is accepted only while
+an active/requested session MID still exists, and malformed or missing identifiers are rejected.
+
 Recommended for most people: leave both **off** and update by hand. Use `autoinstall trusted` only once
-you've added the signer's key (next section) and you trust them to push updates unattended.
+you've added the signer's key (next section) and you trust them to push updates unattended. Automatic
+admission and final apply both reject zero, equal, or older signed versions; a dishonest catalog version
+cannot bypass the manifest check. Use manual `ota pull` plus `ota install` for an intentional rollback.
 
 The MeshTower V2 SD OTA target has a separate, default-on **archive** policy. It saves all mOTAs it sees
 to the SD card so the repeater can seed them later; this does not install them and does not change the
@@ -345,9 +366,10 @@ ota key list                    # show trusted signers
 ota key rm <public-key-hex>     # stop trusting one
 ```
 
-Only updates signed by a trusted key are eligible for auto-install. Manual `ota install` permits an unsigned
-package after all integrity, hardware, base, and bootloader checks pass. A signed package whose signer is not
-in the device allowlist is rejected rather than silently treated as unsigned.
+Only strictly newer updates signed by a trusted key are eligible for auto-install. Manual `ota install`
+permits an unsigned package after all integrity, hardware, base, and bootloader checks pass, except on the
+MeshTower V2 removable-SD path where all application installs must be signed and allowlisted. A signed
+package whose signer is not in the device allowlist is rejected rather than silently treated as unsigned.
 
 ---
 

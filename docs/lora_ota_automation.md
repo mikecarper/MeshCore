@@ -69,6 +69,11 @@ while the same link carries framed folder requests. BLE remains available.
 | nRF52 repeater, external QSPI | Full image or in-place delta | QSPI-aware exact-board OTAFIX bootloader and matched repeater build | Builds a full mOTA; adding `--base` requests a delta |
 | MeshTower V2 nRF52, microSD | Full image or in-place delta | SD-aware exact-board OTAFIX bootloader and compatible card | Builds a full mOTA; adding `--base` requests a delta |
 
+MeshTower V2 microSD application and bootloader containers require an Ed25519 signature from a key in the
+device allowlist. Supply `--sign-key` when the runner must build a container, and install the BLM2-capable
+SD-aware bootloader locally before attempting application or bootloader OTA. Preview.12 requires USB/BLE
+DFU or SWD; see [MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
+
 The firmware inside a raw ZIP must have a valid MeshCore `EndF` trailer. An
 ESP32 merged/factory image is not an application image and is rejected. A
 generic vendor DFU ZIP may also be unusable if it does not contain the raw

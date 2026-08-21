@@ -212,9 +212,13 @@ The final command must reproduce both the complete staged manifest ID and the
 first eight bytes of its signed image hash. Before approval the application
 again checks package/root/payload/image hashes, Ed25519 signature and trusted
 allowlist, exact signed `XIAO_BL_...` ID, installed and incoming embedded
-manifest/CRC/name/board identity, vector table, and ABI-3 QSPI+boot-update
-continuity. A signed older bootloader that would remove remote update support
-is refused.
+  manifest/CRC/name/board identity, vector table, ABI-3 QSPI+boot-update marker,
+  and the adjacent CRC-covered `BLM2`/`SOFT` continuity extension at the exact
+  final-image offset `0x9FB4`. The embedded
+  boot version must equal the signed outer package version, the SoftDevice
+  family/FWID/application base/layout ABI must match the running platform, and
+  a successor to installed BLM2 must be strictly newer. Low-byte-zero and
+  all-ones versions are invalid. Remote rollback is refused; use local DFU/SWD.
 
 After the reply drains, GPREGRET `0x6B` and GPREGRET2 `0x51` enter the special
 OTAFIX path. `APRV` carries the app's signature/allowlist and explicit operator

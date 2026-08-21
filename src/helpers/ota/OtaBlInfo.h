@@ -94,6 +94,7 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
   OtaBlCaps c;
   if (!bytes) return c;
   uint8_t privileged_count = 0;
+  bool exact_privileged = false;
   for (size_t off = 0; off + 16u <= len; off += 4u) {
     const uint8_t* p = bytes + off;
     if (p[0] != OTA_BL_MAGIC[0] || memcmp(p, OTA_BL_MAGIC, 8) != 0) continue;
@@ -103,18 +104,21 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
     if (abi == 0 || abi == 0xFFFFu || codecs == 0 || (storage & ~OTA_BL_STORAGE_KNOWN) != 0 ||
         p[13] != 0 || p[14] != 0 || p[15] != 0) continue;
     const bool exact_profile = exact_storage_flags == 0 || storage == exact_storage_flags;
-    if (require_boot_update && exact_profile && abi >= 3u &&
+    if (require_boot_update && abi >= 3u &&
         (codecs & OTA_BL_REQUIRED_APP_CODEC_MASK) == OTA_BL_REQUIRED_APP_CODEC_MASK &&
         (storage & OTA_BL_STORAGE_BOOT_UPDATE) != 0) {
       // A self-update build must have one unambiguous privileged marker. Do
-      // not silently choose between two otherwise valid structures (including
-      // two copies of the expected exact profile). Malformed magic/literal
-      // decoys were filtered above and do not count.
+      // not silently choose between two otherwise valid structures, even if
+      // one claims a different known storage profile (or only BOOT_UPDATE).
+      // Malformed magic/literal decoys were filtered above and do not count.
       if (++privileged_count != 1u) return OtaBlCaps();
-      c.present = true;
-      c.apply_abi = abi;
-      c.codec_mask = codecs;
-      c.storage_flags = storage;
+      if (exact_profile) {
+        exact_privileged = true;
+        c.present = true;
+        c.apply_abi = abi;
+        c.codec_mask = codecs;
+        c.storage_flags = storage;
+      }
       continue;
     }
     if (ota_bl_caps_prefer(c, abi, storage, require_boot_update)) {
@@ -124,7 +128,8 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
       c.storage_flags = storage;
     }
   }
-  if (require_boot_update && privileged_count != 1u) return OtaBlCaps();
+  if (require_boot_update &&
+      (privileged_count != 1u || !exact_privileged)) return OtaBlCaps();
   return c;
 }
 

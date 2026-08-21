@@ -107,7 +107,9 @@ void WiFiOtaSeeder::loop() {
            seeder_client.remoteIP().toString().c_str());
   context.set_folder_dest(&folder_store, link_info);
   if (context.manager.fetchState() == OtaManager::PAUSED) {
-    context.manager.resumeStaged(nullptr);
+    // This continues the active host-selected MID; it is not a boot-time
+    // automatic adoption governed by application autofetch policy.
+    context.manager.resumeStaged(context.manager.fetchManifestId());
   }
   context.manager.announce();
   Serial.printf("OTA seeder client connected (%s)\n", link_info);

@@ -52,9 +52,20 @@ static const uint32_t OTA_BOOT_MANIFEST_MAGIC0 = 0x464D4C42UL; // bytes "BLMF"
 static const uint32_t OTA_BOOT_MANIFEST_MAGIC1 = 0x31435243UL; // bytes "CRC1"
 static const uint16_t OTA_BOOT_MANIFEST_VERSION = 1;
 static const uint16_t OTA_BOOT_MANIFEST_SIZE = 44;
+static const uint32_t OTA_BOOT_CONTINUITY_MAGIC0 = 0x324D4C42UL; // bytes "BLM2"
+static const uint32_t OTA_BOOT_CONTINUITY_MAGIC1 = 0x54464F53UL; // bytes "SOFT"
+static const uint16_t OTA_BOOT_CONTINUITY_VERSION = 2;
+static const uint16_t OTA_BOOT_CONTINUITY_SIZE = 32;
+static const uint16_t OTA_BOOT_CONTINUITY_FAMILY_S140 = 140;
+static const uint16_t OTA_BOOT_CONTINUITY_LAYOUT_ABI = 1;
+static const uint32_t OTA_BOOT_CONTINUITY_OFFSET = OTA_BOOT_MANIFEST_SIZE;
+static const uint32_t OTA_BOOT_ENVELOPE_SIZE =
+    OTA_BOOT_MANIFEST_SIZE + OTA_BOOT_CONTINUITY_SIZE;
 static const uint8_t  OTA_BOOT_DEVICE_NAME_SIZE = 16;
 static const uint32_t OTA_BOOT_IMAGE_START = 0x000F4000UL;
 static const uint32_t OTA_BOOT_IMAGE_SIZE = 0x0000A000UL; // F4000..FE000, padded to exactly 40 KiB
+static const uint32_t OTA_BOOT_CANDIDATE_MANIFEST_OFFSET =
+    OTA_BOOT_IMAGE_SIZE - OTA_BOOT_ENVELOPE_SIZE; // final 76 bytes: 0x9FB4
 static const uint32_t OTA_BOOT_SCRATCH_START = 0x000E0000UL;
 static const uint32_t OTA_BOOT_SCRATCH_END = 0x000EA000UL;
 static const uint32_t OTA_NRF52840_BOOT_SETTINGS_ADDRESS = 0x000FF000UL;
@@ -133,6 +144,13 @@ struct OtaBootloaderIdentity {
   uint32_t board_id = 0;
   char device_name[OTA_BOOT_DEVICE_NAME_SIZE + 1] = {0};
   uint32_t crc32 = 0;
+  bool continuity_present = false;
+  uint32_t boot_version = 0;
+  uint16_t softdevice_family = 0;
+  uint16_t softdevice_fwid = 0;
+  uint32_t app_base = 0;
+  uint16_t layout_abi = 0;
+  uint16_t compat_flags = 0;
 };
 
 // Accumulate a stream of already CRC-validated candidates without silently
@@ -158,6 +176,12 @@ inline uint16_t ota_boot_rd16(const uint8_t* p) {
 inline uint32_t ota_boot_rd32(const uint8_t* p) {
   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
          ((uint32_t)p[3] << 24);
+}
+
+inline bool ota_bootloader_version_valid(uint32_t version) {
+  // Boot builds use preview 1..254 and 0xFF for a stable release. Zero is not
+  // a boot release, and all-ones must not establish an un-upgradable floor.
+  return version != 0 && version != UINT32_MAX && (version & 0xFFu) != 0;
 }
 
 inline bool ota_xiao_bootloader_board_id(uint32_t board_id) {
@@ -246,11 +270,16 @@ inline uint32_t ota_boot_image_crc32(const uint8_t* image, size_t image_size,
   return ~crc;
 }
 
-// Parse one candidate header. The caller independently validates the complete-region CRC so a magic
-// string in a literal pool cannot establish an identity.
-inline bool ota_bootloader_manifest_parse(const uint8_t* raw, uint32_t raw_offset,
-                                          OtaBootloaderIdentity& out) {
-  if (!raw || ota_boot_rd32(raw) != OTA_BOOT_MANIFEST_MAGIC0 ||
+// Parse only the legacy-v1 identity envelope. The complete-image CRC is checked
+// by the caller. Identity scanners deliberately count this base record before
+// interpreting an adjacent BLM2 extension: deployed legacy bootloaders do the
+// same, so a CRC-valid base record with a corrupt extension must not disappear
+// from duplicate-identity accounting.
+inline bool ota_bootloader_manifest_base_parse(const uint8_t* raw, uint32_t raw_offset,
+                                               OtaBootloaderIdentity& out,
+                                               size_t available = OTA_BOOT_MANIFEST_SIZE) {
+  if (!raw || available < OTA_BOOT_MANIFEST_SIZE ||
+      ota_boot_rd32(raw) != OTA_BOOT_MANIFEST_MAGIC0 ||
       ota_boot_rd32(raw + 4) != OTA_BOOT_MANIFEST_MAGIC1 ||
       ota_boot_rd16(raw + 8) != OTA_BOOT_MANIFEST_VERSION ||
       ota_boot_rd16(raw + 10) != OTA_BOOT_MANIFEST_SIZE ||
@@ -269,6 +298,52 @@ inline bool ota_bootloader_manifest_parse(const uint8_t* raw, uint32_t raw_offse
   out.device_name[OTA_BOOT_DEVICE_NAME_SIZE] = 0;
   out.crc32 = ota_boot_rd32(raw + 40);
   return true;
+}
+
+// Interpret continuity metadata only after the scanner has established that
+// exactly one CRC-valid base identity exists. Neither magic word means a true
+// legacy-v1 record. One magic word, truncated metadata, or invalid claimed
+// metadata fails closed instead of silently downgrading to legacy behavior.
+inline bool ota_bootloader_continuity_parse(const uint8_t* raw, size_t available,
+                                            OtaBootloaderIdentity& out) {
+  out.continuity_present = false;
+  out.boot_version = 0;
+  out.softdevice_family = 0;
+  out.softdevice_fwid = 0;
+  out.app_base = 0;
+  out.layout_abi = 0;
+  out.compat_flags = 0;
+  if (!raw || available <= OTA_BOOT_MANIFEST_SIZE) return true;
+
+  const bool magic0 = available >= OTA_BOOT_MANIFEST_SIZE + 4u &&
+      ota_boot_rd32(raw + 44) == OTA_BOOT_CONTINUITY_MAGIC0;
+  const bool magic1 = available >= OTA_BOOT_MANIFEST_SIZE + 8u &&
+      ota_boot_rd32(raw + 48) == OTA_BOOT_CONTINUITY_MAGIC1;
+  if (!magic0 && !magic1) return true;
+  if (available < OTA_BOOT_ENVELOPE_SIZE || !magic0 || !magic1 ||
+      ota_boot_rd16(raw + 52) != OTA_BOOT_CONTINUITY_VERSION ||
+      ota_boot_rd16(raw + 54) != OTA_BOOT_CONTINUITY_SIZE ||
+      !ota_bootloader_version_valid(ota_boot_rd32(raw + 56)) ||
+      ota_boot_rd16(raw + 60) == 0 || ota_boot_rd16(raw + 62) == 0 ||
+      ota_boot_rd32(raw + 64) == 0 || ota_boot_rd16(raw + 68) == 0 ||
+      ota_boot_rd16(raw + 70) != 0 || ota_boot_rd32(raw + 72) != 0) return false;
+  out.continuity_present = true;
+  out.boot_version = ota_boot_rd32(raw + 56);
+  out.softdevice_family = ota_boot_rd16(raw + 60);
+  out.softdevice_fwid = ota_boot_rd16(raw + 62);
+  out.app_base = ota_boot_rd32(raw + 64);
+  out.layout_abi = ota_boot_rd16(raw + 68);
+  out.compat_flags = ota_boot_rd16(raw + 70);
+  return true;
+}
+
+// Convenience parser for a single already-selected envelope. Whole-image
+// scanners must use the base parser for duplicate counting first.
+inline bool ota_bootloader_manifest_parse(const uint8_t* raw, uint32_t raw_offset,
+                                          OtaBootloaderIdentity& out,
+                                          size_t available = OTA_BOOT_MANIFEST_SIZE) {
+  return ota_bootloader_manifest_base_parse(raw, raw_offset, out, available) &&
+         ota_bootloader_continuity_parse(raw, available, out);
 }
 
 inline bool ota_bootloader_hw_id(const OtaBootloaderIdentity& identity, uint8_t out[32]) {
@@ -292,12 +367,30 @@ inline bool ota_bootloader_identity_from_image(const uint8_t* image, size_t imag
   uint8_t valid_count = 0;
   for (size_t offset = 0; offset + OTA_BOOT_MANIFEST_SIZE <= image_size; offset += 4) {
     OtaBootloaderIdentity candidate;
-    if (!ota_bootloader_manifest_parse(image + offset, (uint32_t)offset, candidate)) continue;
+    if (!ota_bootloader_manifest_base_parse(image + offset, (uint32_t)offset, candidate,
+                                            image_size - offset)) continue;
     candidate.crc_ok = ota_boot_image_crc32(image, image_size, offset + 40) == candidate.crc32;
     if (!candidate.crc_ok) continue;
     if (!ota_bootloader_identity_add_unique(candidate, out, valid_count)) return false;
   }
-  return valid_count == 1u;
+  return valid_count == 1u &&
+         ota_bootloader_continuity_parse(image + out.manifest_offset,
+                                         image_size - out.manifest_offset, out);
+}
+
+inline bool ota_bootloader_candidate_identity_canonical(
+    const OtaBootloaderIdentity& identity) {
+  return identity.present && identity.crc_ok && identity.continuity_present &&
+         identity.manifest_offset == OTA_BOOT_CANDIDATE_MANIFEST_OFFSET;
+}
+
+// New candidates place the complete v1+v2 envelope at one canonical offset.
+// Installed legacy-v1 discovery above intentionally remains a whole-image
+// scan for diagnostics and qualified non-SD transition paths.
+inline bool ota_bootloader_candidate_identity_from_image(
+    const uint8_t* image, size_t image_size, OtaBootloaderIdentity& out) {
+  return ota_bootloader_identity_from_image(image, image_size, out) &&
+         ota_bootloader_candidate_identity_canonical(out);
 }
 
 inline bool ota_bootloader_identity_matches(const OtaBootloaderIdentity& a,
@@ -306,6 +399,79 @@ inline bool ota_bootloader_identity_matches(const OtaBootloaderIdentity& a,
          a.image_start == b.image_start && a.image_size == b.image_size &&
          a.board_id == b.board_id &&
          memcmp(a.device_name, b.device_name, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+}
+
+enum OtaBootloaderContinuityGate : uint8_t {
+  OTA_BOOT_CONTINUITY_OK = 0,
+  OTA_BOOT_CONTINUITY_CANDIDATE_MISSING,
+  OTA_BOOT_CONTINUITY_OUTER_VERSION,
+  OTA_BOOT_CONTINUITY_PLATFORM,
+  OTA_BOOT_CONTINUITY_INSTALLED_PLATFORM,
+  OTA_BOOT_CONTINUITY_NOT_NEWER,
+};
+
+inline bool ota_bootloader_continuity_matches_runtime(
+    const OtaBootloaderIdentity& identity,
+    uint16_t runtime_softdevice_family,
+    uint16_t runtime_softdevice_fwid,
+    uint32_t runtime_app_base,
+    uint16_t runtime_layout_abi) {
+  return identity.continuity_present &&
+         ota_bootloader_version_valid(identity.boot_version) &&
+         identity.softdevice_family == runtime_softdevice_family &&
+         identity.softdevice_fwid == runtime_softdevice_fwid &&
+         identity.app_base == runtime_app_base &&
+         identity.layout_abi == runtime_layout_abi && identity.compat_flags == 0;
+}
+
+// SD OTAFIX accepts geometry only from the reset-retained authorization
+// record. A legacy BLMF-v1 bootloader predates that protocol and must be
+// upgraded locally; neither application nor bootloader OTA may fall back to a
+// raw card sector.
+inline bool ota_bootloader_sd_retained_auth_ready(
+    const OtaBootloaderIdentity& identity,
+    uint16_t runtime_softdevice_family,
+    uint16_t runtime_softdevice_fwid,
+    uint32_t runtime_app_base,
+    uint16_t runtime_layout_abi) {
+  return identity.present && identity.crc_ok &&
+         ota_bootloader_continuity_matches_runtime(
+             identity, runtime_softdevice_family, runtime_softdevice_fwid,
+             runtime_app_base, runtime_layout_abi);
+}
+
+// Qualified internal/QSPI paths may bootstrap a legacy-v1 installed manifest
+// once because deployed builds do not carry continuity metadata. SD callers
+// independently require retained-auth continuity before entering this gate.
+// Every remotely supplied successor must carry the extension. Once v2 is
+// installed, remote updates are strictly monotonic; rollback/migration remains
+// a local DFU/SWD operation.
+inline OtaBootloaderContinuityGate ota_bootloader_continuity_gate(
+    const OtaBootloaderIdentity& installed,
+    const OtaBootloaderIdentity& candidate,
+    uint32_t outer_fw_version,
+    uint16_t runtime_softdevice_family,
+    uint16_t runtime_softdevice_fwid,
+    uint32_t runtime_app_base,
+    uint16_t runtime_layout_abi) {
+  if (!candidate.continuity_present)
+    return OTA_BOOT_CONTINUITY_CANDIDATE_MISSING;
+  if (!ota_bootloader_version_valid(candidate.boot_version) ||
+      outer_fw_version != candidate.boot_version)
+    return OTA_BOOT_CONTINUITY_OUTER_VERSION;
+  if (!ota_bootloader_continuity_matches_runtime(
+          candidate, runtime_softdevice_family, runtime_softdevice_fwid,
+          runtime_app_base, runtime_layout_abi))
+    return OTA_BOOT_CONTINUITY_PLATFORM;
+  if (installed.continuity_present) {
+    if (!ota_bootloader_continuity_matches_runtime(
+            installed, runtime_softdevice_family, runtime_softdevice_fwid,
+            runtime_app_base, runtime_layout_abi))
+      return OTA_BOOT_CONTINUITY_INSTALLED_PLATFORM;
+    if (candidate.boot_version <= installed.boot_version)
+      return OTA_BOOT_CONTINUITY_NOT_NEWER;
+  }
+  return OTA_BOOT_CONTINUITY_OK;
 }
 
 // Cheap first-line rejection of a malformed raw bootloader region. OTAFIX repeats this check before
@@ -331,12 +497,13 @@ struct OtaBootloaderCapsMarker {
 inline bool ota_bootloader_caps_marker_parse(const uint8_t raw[16],
                                               OtaBootloaderCapsMarker& out) {
   static const uint8_t magic[8] = {'M','O','T','A','B','L','D','R'};
-  if (!raw || memcmp(raw, magic, sizeof(magic)) != 0 ||
-      raw[8] == 0 || (raw[8] == 0xFF && raw[9] == 0xFF) ||
+  if (!raw || memcmp(raw, magic, sizeof(magic)) != 0) return false;
+  const uint16_t apply_abi = ota_boot_rd16(raw + 8);
+  if (apply_abi == 0 || apply_abi == UINT16_MAX ||
       (raw[10] == 0 && raw[11] == 0) || (raw[12] & ~OTA_BL_STORAGE_KNOWN) != 0 ||
       raw[13] != 0 || raw[14] != 0 || raw[15] != 0) return false;
   out.present = true;
-  out.apply_abi = ota_boot_rd16(raw + 8);
+  out.apply_abi = apply_abi;
   out.codec_mask = ota_boot_rd16(raw + 10);
   out.storage_flags = raw[12];
   return true;
@@ -360,6 +527,84 @@ inline bool ota_bootloader_caps_from_image(const uint8_t* image, size_t image_si
     out = parsed;
   }
   return valid_count == 1u && out.present;
+}
+
+// Stream the bootloader payload through an arbitrary random-access store. Keeping
+// this scanner beside the memory-image parser makes the canonical-envelope and
+// duplicate-marker policy directly testable and identical for SD/QSPI staging.
+template <typename Store>
+inline bool ota_bootloader_external_crc_ok(
+    Store& store, uint32_t payload_off,
+    const OtaBootloaderIdentity& identity) {
+  uint8_t buf[512];
+  uint32_t crc = UINT32_MAX;
+  for (uint32_t off = 0; off < OTA_BOOT_IMAGE_SIZE; off += sizeof(buf)) {
+    uint32_t len = OTA_BOOT_IMAGE_SIZE - off;
+    if (len > sizeof(buf)) len = sizeof(buf);
+    if (!store.read(payload_off + off, buf, len)) return false;
+    for (uint32_t i = 0; i < len; ++i) {
+      const uint32_t pos = off + i;
+      const uint8_t value = pos >= identity.manifest_offset + 40u &&
+                            pos < identity.manifest_offset + 44u ? 0 : buf[i];
+      crc = ota_boot_crc32_update(crc, value);
+    }
+  }
+  return ~crc == identity.crc32;
+}
+
+template <typename Store>
+inline bool ota_bootloader_external_image_metadata(
+    Store& store, uint32_t payload_off, uint8_t exact_storage_flags,
+    OtaBootloaderIdentity& candidate, OtaBootloaderCapsMarker& caps) {
+  candidate = OtaBootloaderIdentity();
+  caps = OtaBootloaderCapsMarker();
+  if (exact_storage_flags == 0u) return false;
+
+  static const uint32_t STEP = 512u;
+  uint8_t buf[STEP + OTA_BOOT_ENVELOPE_SIZE - 1u];
+  uint8_t valid_identities = 0;
+  uint8_t valid_caps = 0;
+  for (uint32_t base = 0; base < OTA_BOOT_IMAGE_SIZE; base += STEP) {
+    uint32_t len = OTA_BOOT_IMAGE_SIZE - base;
+    if (len > sizeof(buf)) len = sizeof(buf);
+    if (!store.read(payload_off + base, buf, len)) return false;
+    const uint32_t starts = (OTA_BOOT_IMAGE_SIZE - base < STEP)
+        ? OTA_BOOT_IMAGE_SIZE - base : STEP;
+    for (uint32_t local = 0; local < starts; ++local) {
+      const uint32_t absolute = base + local;
+      if ((absolute & 3u) == 0u && local + 16u <= len) {
+        OtaBootloaderCapsMarker parsed;
+        if (ota_bootloader_caps_marker_parse(buf + local, parsed) &&
+            parsed.apply_abi >= MOTA_BOOT_FORMAT_VER &&
+            (parsed.codec_mask & OTA_BL_REQUIRED_APP_CODEC_MASK) ==
+                OTA_BL_REQUIRED_APP_CODEC_MASK &&
+            (parsed.storage_flags & OTA_BL_STORAGE_BOOT_UPDATE) != 0u) {
+          if (++valid_caps != 1u) return false;
+          if (parsed.storage_flags == exact_storage_flags) caps = parsed;
+        }
+      }
+      if ((absolute & 3u) != 0u ||
+          local + OTA_BOOT_MANIFEST_SIZE > len) continue;
+      OtaBootloaderIdentity parsed;
+      if (!ota_bootloader_manifest_base_parse(
+              buf + local, absolute, parsed, len - local)) continue;
+      if (ota_bootloader_external_crc_ok(store, payload_off, parsed)) {
+        parsed.crc_ok = true;
+        if (!ota_bootloader_identity_add_unique(
+                parsed, candidate, valid_identities)) return false;
+      }
+    }
+  }
+  if (valid_identities != 1u || valid_caps != 1u || !caps.present ||
+      candidate.manifest_offset > OTA_BOOT_IMAGE_SIZE - OTA_BOOT_MANIFEST_SIZE)
+    return false;
+  const uint32_t available = OTA_BOOT_IMAGE_SIZE - candidate.manifest_offset;
+  uint8_t envelope[OTA_BOOT_ENVELOPE_SIZE];
+  uint32_t envelope_len = available;
+  if (envelope_len > sizeof(envelope)) envelope_len = sizeof(envelope);
+  if (!store.read(payload_off + candidate.manifest_offset, envelope, envelope_len) ||
+      !ota_bootloader_continuity_parse(envelope, envelope_len, candidate)) return false;
+  return ota_bootloader_candidate_identity_canonical(candidate);
 }
 
 enum OtaBootloaderConfirmGate : uint8_t {

@@ -2,9 +2,10 @@
 
 Selected nRF52840 repeater LoRa-OTA builds can replace their matching OTAFIX
 bootloader without replacing the running application. This is a privileged
-maintenance path, not a normal firmware update. It cannot bootstrap a stock or
-older bootloader: install the exact ABI-3 self-update-capable OTAFIX build once
-over USB/BLE DFU or SWD.
+maintenance path, not a normal firmware update. A stock bootloader must first
+be replaced with the exact ABI-3 self-update-capable OTAFIX build over USB/BLE
+DFU or SWD. MeshTower SD also requires the BLM2 retained-auth version to be
+provisioned locally before either application or bootloader OTA.
 
 ## Storage layouts
 
@@ -28,17 +29,29 @@ replace `0xF4000..0xFE000`. The application linker remains at `0xED000`; a
 future application extending above `0xE0000` can still use application mOTA
 but must update its bootloader through local DFU/SWD.
 
-The removable SD authorization is fail-closed. MeshCore directly authenticates
-one exact manifest, requires the streamed manifest on SD to remain
-byte-identical, and verifies its complete payload. After writing and syncing
-`APRV`, but before publishing the raw-sector handoff, it writes and
-readback-verifies a 64-byte `MOTASDBL` token at `0xE0000`. The token contains
-the exact container length and the authenticated signed manifest's
-`image_hash`. OTAFIX requires that same hash in the parsed manifest, the
-streamed raw payload, and the final scratch image. A card swap or mutation
-after application verification therefore causes refusal rather than
-authorizing different bytes; the token page is consumed as scratch during a
-successful update and is not a permanent reservation.
+The removable SD authorization is fail-closed for both application and
+bootloader packages. MeshCore directly authenticates one exact signed
+manifest, requires the streamed copy to remain byte-identical, verifies all
+leaves/payload/image bytes, and computes a normalized full-container SHA-256 in
+that same pass (`APRV` bytes are treated as zero). After syncing `APRV`, it
+publishes a 72-byte `MOTASDA2` record in reset-retained RAM at `0x20006008`.
+That record binds purpose/format, first LBA, sector count, total length, card
+sector count, and the normalized digest. OTAFIX copies, validates, and clears
+the record before SD access. A card swap/mutation or a power cycle therefore
+fails closed; there is no general sector-1 ownership inference.
+
+For fmt3, MeshCore also writes and readback-verifies a 64-byte `MOTASDBL` token
+at `0xE0000`. That token contains the exact container length and the exact
+authenticated signed manifest `image_hash`. OTAFIX requires the same hash in
+the parsed manifest, streamed payload, and final scratch image. The page is
+consumed as scratch during success and is not permanently reserved.
+
+The first BLM2-capable MeshTower bootloader cannot be delivered to preview.12
+through the retained-RAM protocol that preview.12 predates. MeshCore does not
+write a raw-sector compatibility record because a blank sector is not proof of
+ownership. Upgrade preview.12 through USB/BLE DFU or SWD. Both fmt2 application
+and fmt3 bootloader OTA then require the installed BLM2 metadata to match the
+live SoftDevice/application layout; neither MeshCore nor OTAFIX uses sector 1.
 
 The internal path does not change the application linker or permanently set
 aside separate app-OTA, boot-package, and scratch regions. The ordinary
@@ -105,6 +118,30 @@ duplicates and collisions with application target IDs. Generic image parsing
 can inspect a future canonical identity, but signing/building a package fails
 until that exact identity is in the qualified inventory.
 
+## Embedded continuity and version policy
+
+Every remotely supplied successor retains the legacy 44-byte CRC-valid `BLMF`
+v1 record for identity continuity and diagnostics. Immediately after that
+record is a 32-byte `BLM2`/`SOFT` extension. The complete 76-byte envelope is
+fixed at the final raw-image offset `0x9FB4`; relocated candidates are refused,
+while installed legacy-v1 discovery remains a generic diagnostic scan. The extension carries the actual packed
+bootloader version, SoftDevice family and FWID, application base, layout ABI,
+and zero compatibility/reserved fields; the legacy whole-image CRC covers the
+extension too. Scanners first count CRC-valid 44-byte base manifests, then
+interpret continuity only after one base identity remains. A malformed claimed
+extension therefore cannot make a duplicate identity disappear, and a sole
+half-present extension is rejected rather than treated as legacy.
+
+MeshCore requires the candidate extension, exact equality between its embedded
+version and the signed outer mOTA version, and exact agreement with the running
+SoftDevice family/FWID/application layout. Qualified internal/QSPI paths may
+bootstrap a CRC-valid installed legacy-v1 image once; the SD path never does
+and requires local BLM2 provisioning. Once the installed bootloader has BLM2
+metadata, the candidate version must be strictly greater. Preview low bytes are `1..254`, a
+stable release uses `0xFF`, and low-byte zero or all-ones values are rejected.
+There is no remote rollback/migration override; intentional rollback uses
+USB/BLE DFU or SWD.
+
 The `no_external_sensors` profiles omit optional/add-on sensor and GPS packages
 to preserve flash headroom. Board-integrated GPS can be retained by a board's
 recipe. The RAK3401 lean target specifically omits RAK12501/add-on GPS; use the
@@ -156,9 +193,12 @@ Before writing `APRV`, the application authenticates and authorizes the
 package: exact v3 geometry, trusted Ed25519 signer, signed/embedded identity,
 one unambiguous capability marker, embedded CRC, sane vectors, complete
 Merkle/payload/image hashes, storage-specific safe live placement, and the
-typed MID/hash confirmation. On SD, `APRV` and the internal signed-image-hash
-token are synced and read back before the handoff becomes visible. OTAFIX consumes that application-written
-authorization and then
+typed MID/hash confirmation. The manifest root and target inside the received
+manifest must also equal the MID/target that opened the fetch before any store
+is allocated. On SD, `APRV`, the retained geometry/container authorization,
+and the internal signed-image-hash token are published in that order before
+the reset trigger. OTAFIX consumes that application-written authorization and
+then
 independently rechecks the safety/integrity subset: strict v3 structure,
 canonical identity/capabilities, vectors, full payload SHA, embedded manifest
 CRC, the applicable live `EndF`/bank-settings no-overlap geometry, the SD token
@@ -173,13 +213,13 @@ headroom is insufficient, an unsupported external/ExtraFS role owns the target,
 the exact installed capability marker is absent or ambiguous, identity cannot be derived
 unambiguously, or any package check fails. Before the storage-specific
 scratch/copy step, the application and bootloader are unchanged. OTAFIX
-consumes the trigger and, for internal/QSPI storage, clears approval before its
-first scratch erase, so an interrupted operation cannot retry a partly
-consumed package. The SD backend cannot rewrite raw card sectors: its `APRV`
-and checksummed handoff may persist, but the one-shot GPREGRET trigger is
-consumed before validation and they remain inert unless the running app again
-authenticates and explicitly re-arms that package. Use USB/BLE DFU or SWD for
-initial provisioning and local recovery.
+consumes the trigger and authorization before its first destructive action, so
+an interrupted operation cannot automatically retry a partly consumed
+package. On SD, the retained-RAM authorization is zero-consumed before media
+access; `APRV` and the fmt3 flash token may persist but are inert without a new
+explicit authenticated re-arm and reset trigger. No SD raw-sector handoff is
+created or consumed.
+Use USB/BLE DFU or SWD for initial provisioning and local recovery.
 
 For XIAO and ordinary external-QSPI details, see
 [nRF52 repeater LoRa OTA with external QSPI](ota_nrf52_qspi.md).

@@ -109,6 +109,7 @@ static const char* fetch_error_word(OtaManager::FetchError error) {
   switch (error) {
     case OtaManager::FETCH_ERROR_MANIFEST:         return "invalid manifest";
     case OtaManager::FETCH_ERROR_HASH_ALGO:        return "unsupported hash";
+    case OtaManager::FETCH_ERROR_VERSION:          return "not a newer version";
     case OtaManager::FETCH_ERROR_CODEC:            return "unsupported codec";
     case OtaManager::FETCH_ERROR_GEOMETRY:         return "invalid geometry";
     case OtaManager::FETCH_ERROR_TOO_LARGE:        return "image too large";
@@ -1051,8 +1052,23 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     sprintf(reply, "OK serving | root=%d payload=%d img=%d sig=%d trust=%d",
             r.root_ok, r.payload_ok, r.image_ok, r.sig_ok, r.trusted);
 
-  } else if (strncmp(d, "resume", 6) == 0) {     // re-adopt a container already staged in flash (test/debug)
-    bool ok = c.manager.resumeStaged(nullptr);
+  } else if (is_cmd(d, "resume", &d)) {     // explicit re-adopt of a known/active staged MID (test/debug)
+    uint8_t mid[4];
+    if (*d) {
+      if (!parse_hex_exact(d, mid, sizeof(mid))) {
+        strcpy(reply, "ERR usage: ota dev resume [mid8]");
+        return true;
+      }
+    } else {
+      // With no argument, reuse only an active/requested session MID. After a reboot the operator must
+      // name the persisted MID explicitly; nullptr is reserved for policy-governed automatic adoption.
+      if (c.manager.fetchState() == OtaManager::IDLE) {
+        strcpy(reply, "ERR usage: ota dev resume <mid8>");
+        return true;
+      }
+      memcpy(mid, c.manager.fetchManifestId(), sizeof(mid));
+    }
+    bool ok = c.manager.resumeStagedExplicit(mid, 0);
     sprintf(reply, "%s resume: sess=%c %u/%u", ok ? "OK" : "ERR", fstate_char(c.manager.fetchState()),
             (unsigned)c.manager.blocksHave(), (unsigned)c.manager.blocksTotal());
 
@@ -1125,7 +1141,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     strcpy(reply, "OK cleared");
 
   } else {
-    strcpy(reply, "ota dev: stage|recv|serve|announce|verify|want|apply slot|manifest|verify|commit|clear");
+    strcpy(reply, "ota dev: stage|recv|serve|announce|resume [mid8]|verify|want|apply|clear");
   }
 #endif
   return true;

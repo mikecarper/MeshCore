@@ -271,14 +271,25 @@ A v3 bootloader package has a deliberately narrow, non-extensible profile:
 - signed `hw_id` exactly `XIAO_BL_28860044`/`XIAO_BL_28860045` for deployed XIAO, or the zero-padded
   32-byte `NRF_BL_<BOARD_ID>_<DEVICE_NAME>` for a generic target;
 - a sane nRF52840 vector table, exactly one CRC-valid embedded manifest v1 with the exact board/name pair,
+  followed by the required CRC-covered `BLM2`/`SOFT` continuity extension (embedded boot version,
+  SoftDevice family/FWID, application base, and layout ABI), with that complete 76-byte envelope at the
+  canonical final-image offset `0x9FB4`,
   and exactly one `MOTABLDR` marker advertising ABI >= 3, both application codecs (`FULL|INPLACE`, mask
   `0x0005`), boot-update continuity, and the exact storage flags for the application layout (`0x09`
   MeshTower V2 SD, `0x0E` XIAO QSPI, or `0x0A` shared internal staging).
 
 The incoming embedded identity must exactly match the installed CRC-valid bootloader identity. Both scans
 consider every aligned structurally valid candidate so magic bytes in a literal pool cannot shadow the real
-manifest. A package must be signed by a key already in the device's trusted allowlist; unlike ordinary
+manifest. Duplicate accounting counts each CRC-valid 44-byte base record before interpreting adjacent
+continuity metadata, so a corrupt or half-present `BLM2` extension cannot hide a second identity; after
+exactly one base record is selected, malformed claimed continuity fails closed. A package must be signed by
+a key already in the device's trusted allowlist; unlike ordinary
 application packages, there is no unsigned manual-install exception.
+The signed outer `fw_version` must equal the embedded boot version. Qualified internal/QSPI targets may
+bootstrap a CRC-valid legacy-v1 installed bootloader once; MeshTower SD instead requires local BLM2
+provisioning because it has no safe legacy media handoff. After bootstrap every remote successor must be strictly newer and match the live
+SoftDevice/application layout. Low-byte zero and all-ones boot versions are invalid. Remote rollback has no
+override and must use local DFU/SWD.
 
 ---
 
@@ -360,7 +371,13 @@ There is no separate availability structure. **Block `i` is present <=> `leaves[
 the staged container after a reboot - re-parse the stored manifest, recompute geometry, count present
 blocks, continue fetching the holes (or jump straight to COMPLETE). The checkpoint cadence (persist progress
 every N committed blocks) is runtime-tunable (`ota config checkpoint <N>`, 0 = only finalized containers
-resume). Stores keep `leaves[]` in RAM until flush and never auto-GC, preserving resumable progress.
+resume). Boot-time adoption is an automatic fetch decision: current `autofetch` must be enabled, the stored
+target must equal the node target, policy `signed` requires the signed bit, and an enabled running-version
+floor requires a strictly newer manifest. An explicit MID pull may deliberately resume an older or unsigned
+package and keeps target `0` as a MID-only wildcard. Stores keep `leaves[]` in RAM until flush and never
+auto-GC, preserving resumable progress. The debug/operator equivalent is `ota dev resume <MID8>`; after a
+reboot the MID is mandatory, while a no-argument form may only reuse a still-active session MID. It never
+uses the `nullptr` automatic-adoption path, so a malformed MID or no active MID fails closed.
 
 **Flash-store note (RX-safe writes):** a flash page-erase halts the CPU (~85 ms on nRF52) and starves LoRa
 RX, so the flash stores (`OtaStoreFlashNrf52`/`OtaStoreFlashEsp32`) **coalesce writes to the erase unit**
@@ -493,6 +510,11 @@ fetcher                                   server (any node that has the mid)
     (clean flight grows by one block; recovered flight halves the next width)
   when all blocks present: verify full merkle_root + image_hash -> COMPLETE
 ```
+
+Before allocating or writing the selected store, the receiver parses the reassembled manifest and requires
+its `merkle_root` to equal the requested/wire `manifest_id` and its `target_id` to equal the catalog or
+explicit-pull target that opened the receive slot. The wire envelope and HAVE row are advisory; they cannot
+label and stage a different manifest.
 
 ### 8.4 Message bodies (transfer)
 
@@ -630,8 +652,13 @@ transmission per hop.
   independent of signature.
 - **Signing & allowlist:** a node keeps a runtime allowlist of trusted Ed25519 signer pubkeys (none embedded
   in firmware; `ota key add/list/rm`). A `.mota` is eligible for **auto-install** only if signed by an
-  allowlisted key, the signature verifies, and `image_hash` matches. Manual install permits unsigned packages,
+  allowlisted key, the signature verifies, `image_hash` matches, and its nonzero signed `fw_version` is
+  strictly greater than the running hash-valid EndF version. Both catalog admission and final automatic
+  apply enforce the version floor, so a lying HAVE row cannot bypass it. Manual `ota install` is the explicit
+  equal-version/rollback override and generally permits unsigned packages,
   but a package that claims to be signed must have a valid signature from an allowlisted key or it is rejected.
+  The removable-SD target is stricter: every application install needs a valid allowlisted signature because
+  the app mints an authenticated one-reset media authorization for OTAFIX.
   **Transfer needs no trust** - blocks are content-addressed against the manifest's merkle root.
 - **Policies (persisted):** `autofetch` in {off, any, signed} (default off) gates automatic block fetching of
   own-target adverts; `autoinstall` in {off, trusted} (default off) gates auto-apply of a COMPLETE signed +
@@ -783,7 +810,7 @@ ota qspi | storage                 QSPI nRF52 only: JEDEC/SR1/stage/latched stor
 ota folder | fold [on|off]         attach/detach an external .mota folder (host daemon) ; bare = list
 ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persisted policy
 ota key | keys [add|rm <hex>]      trusted signer allowlist ; bare = list
-ota dev ...                        bring-up helpers (stage/recv/serve/verify)
+ota dev ...                        bring-up helpers (stage/recv/serve/resume <MID8>/verify)
 ```
 
 ---
@@ -840,22 +867,27 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   Internal-bootloader-self-update builds are a stricter exception: because their ordinary linker may extend
   through `0xED000`, an absent/corrupt live `EndF` disables every internal staging pull before erase instead
   of trusting the legacy 608 KiB estimate.
-- **MeshTower V2 SD nRF52:** the application stores a contiguous `/meshcore-ota.mota` on microSD and
-  publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
-  bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,
+- **MeshTower V2 SD nRF52:** the application stores a contiguous `/meshcore-ota.mota` on microSD. After
+  authenticating one exact signed manifest and verifying the leaves/payload/image, it hashes the exact full
+  container with only `APRV` normalized to zero and publishes a 72-byte reset-retained `MOTASDA2` record.
+  That record binds app-vs-boot purpose, format, raw sector range, total/card geometry, and normalized digest;
+  OTAFIX consumes and clears it before reading the card. There is no normal sector-1 handoff or additional
+  OTA-specific partition-layout requirement beyond what the bundled SdFat can mount. The matching
+  bootloader reads the authorized sectors without mounting FAT, supports either a full image or an in-place delta,
   verifies the staged/full result hash, and never writes through `0xED000` where InternalFS begins. The
   exact SD repeater also accepts a manually selected, signed v3 bootloader package when installed and
   candidate markers are exactly `0x09` (`SD|BOOT_UPDATE`). MeshCore streams the same strict identity,
   CRC, vector, signature, MID/hash-confirmation, and complete-image checks from the SD file. GPREGRET
   `0x6B` plus GPREGRET2 `0x53` selects this privileged path. Both MeshCore and OTAFIX require a hash-valid
   live `EndF` ending by `0xE0000`; when a nonzero boot-settings bank CRC is active, its recorded size must
-  also cover that complete live image and stop by `0xE0000`. MeshCore authenticates one exact manifest,
-  verifies the streamed SD copy is byte-identical, writes and syncs `APRV`, then writes a readback-checked
-  `MOTASDBL` token at `0xE0000` containing the exact total and signed `image_hash` before publishing the
-  raw-sector handoff. OTAFIX binds the parsed manifest, streamed payload, and final scratch image to that
+  also cover that complete live image and stop by `0xE0000`. For fmt3 MeshCore additionally writes a readback-checked
+  `MOTASDBL` token at `0xE0000` containing the exact total and signed `image_hash`. OTAFIX binds the parsed manifest,
+  streamed payload, and final scratch image to that
   token, so a removable-media change can only fail closed. OTAFIX then uses `0xE0000..0xEA000` as temporary scratch; the normal
   application linker remains at `0xED000` and ordinary application updates do not inherit this scratch
-  headroom restriction.
+  headroom restriction. Both fmt2 application apply and fmt3 bootloader apply require installed BLM2
+  continuity matching the live S140 FWID/application layout. Preview.12 must be upgraded locally over
+  USB/BLE DFU or SWD. MeshCore never writes a raw sector-1 handoff.
 - **Matched external-QSPI nRF52 repeaters:** the application reserves the board's dedicated QSPI NOR as a
   raw store beginning at offset zero. It obtains a 1-16 MiB capacity from JEDEC, checkpoints payload before
   leaf metadata, and verifies each erased/programmed page. GPREGRET2 `0x51` selects QSPI only when the

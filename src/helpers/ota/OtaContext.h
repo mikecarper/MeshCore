@@ -146,7 +146,13 @@ struct OtaContext {
   // so the deferred-reboot path (mesh loop) takes over. Caller ensures the fetch is COMPLETE. Shared by
   // manual `ota applydelta` and the auto-install path.
   bool apply_fetched(char* msg) {
-    return apply_fetched_impl(nullptr, msg);
+    return apply_fetched_impl(nullptr, false, msg);
+  }
+
+  // Automatic installation has an additional anti-replay/rollback gate. Manual `ota install` remains
+  // the deliberate operator override for equal or older signed firmware.
+  bool apply_fetched_trusted_auto(char* msg) {
+    return apply_fetched_impl(nullptr, true, msg);
   }
 
   // Explicit recovery entry point for an internal-flash nRF52 whose normal EndF validation fails. This
@@ -158,11 +164,11 @@ struct OtaContext {
     msg[95] = 0;
     return false;
 #else
-    return apply_fetched_impl(operator_base_hash, msg);
+    return apply_fetched_impl(operator_base_hash, false, msg);
 #endif
   }
 
-  bool apply_fetched_impl(const uint8_t* rescue_base_hash, char* msg) {
+  bool apply_fetched_impl(const uint8_t* rescue_base_hash, bool trusted_auto, char* msg) {
     if (fetch_to_folder) {
       strncpy(msg, "refused: completed fetch was captured to a folder, not local install storage", 96);
       msg[95] = 0;
@@ -208,6 +214,21 @@ struct OtaContext {
         if (mm.is_bootloader()) {
           strncpy(msg, "refused: use ota bootloader install <MID8> <HASH16>", 96);
           msg[95] = 0; return false;
+        }
+        if (trusted_auto) {
+          SelfFwInfo self;
+          if (!mm.is_signed()) {
+            strncpy(msg, "refused: trusted auto-install requires a signed package", 96);
+            msg[95] = 0; return false;
+          }
+          if (!ota_self_firmware(self) || !self.valid ||
+              !ota_trusted_auto_version_allows(self.fw_version, mm.fw_version)) {
+            snprintf(msg, 96,
+                     "refused: trusted auto-install is forward-only (running=%08lX candidate=%08lX); use ota install to override",
+                     (unsigned long)(self.valid ? self.fw_version : 0),
+                     (unsigned long)mm.fw_version);
+            return false;
+          }
         }
         if (!hwMatches(mm.hw_id)) {
           char want[33] = {0}; memcpy(want, mm.hw_id, 32);
@@ -501,6 +522,7 @@ struct OtaContext {
     target_id = 0;
 #endif
     manager.begin(target_id, send, ctx);
+    manager.set_auto_version_floor(_fi.valid ? _fi.fw_version : 0, true);
     fetch_to_folder = false;
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place

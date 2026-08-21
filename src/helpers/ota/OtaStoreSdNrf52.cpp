@@ -12,8 +12,8 @@
 #include "OtaBootloaderUpdate.h"
 #include "OtaByteIO.h"
 #include "OtaFlashLayout_nrf52.h"
+#include "OtaSdAuthRecord.h"
 #include "OtaSdBootToken.h"
-#include "OtaSdHandoff.h"
 #include "OtaSelf.h"
 #include "flash/flash_nrf5x.h"
 
@@ -27,10 +27,45 @@
 namespace mesh {
 namespace ota {
 
+namespace {
+
+static void clear_sd_auth_record() {
+  volatile uint8_t* const retained =
+      reinterpret_cast<volatile uint8_t*>(MOTA_SD_AUTH_ADDR);
+  for (uint32_t i = 0; i < MOTA_SD_AUTH_LEN; ++i) retained[i] = 0;
+  __DMB();
+  __DSB();
+}
+
+static bool publish_sd_auth_record(const uint8_t record[MOTA_SD_AUTH_LEN]) {
+  volatile uint8_t* const retained =
+      reinterpret_cast<volatile uint8_t*>(MOTA_SD_AUTH_ADDR);
+  // Invalidate magic first, then publish the body and magic last. A reset at any
+  // intermediate instruction therefore leaves a record OTAFIX rejects.
+  for (uint32_t i = 0; i < sizeof(MOTA_SD_AUTH_MAGIC); ++i) retained[i] = 0;
+  __DMB();
+  for (uint32_t i = sizeof(MOTA_SD_AUTH_MAGIC); i < MOTA_SD_AUTH_LEN; ++i)
+    retained[i] = record[i];
+  __DMB();
+  for (uint32_t i = 0; i < sizeof(MOTA_SD_AUTH_MAGIC); ++i) retained[i] = record[i];
+  __DMB();
+  __DSB();
+  for (uint32_t i = 0; i < MOTA_SD_AUTH_LEN; ++i)
+    if (retained[i] != record[i]) return false;
+  return true;
+}
+
+} // namespace
+
 const char* const OtaStoreSdNrf52::PATH = "/meshcore-ota.mota";
 
 OtaStoreSdNrf52::OtaStoreSdNrf52()
-    : _sd(new (std::nothrow) SdFs()), _file(new (std::nothrow) FsFile()) {}
+    : _sd(new (std::nothrow) SdFs()), _file(new (std::nothrow) FsFile()) {
+  // If an earlier reset did not enter OTAFIX, stale authorization must not arm a
+  // later unrelated reboot. OTAFIX runs before application constructors and
+  // consumes a valid record on the intended apply boot.
+  clear_sd_auth_record();
+}
 
 OtaStoreSdNrf52::~OtaStoreSdNrf52() {
   if (_file) { _file->close(); delete _file; }
@@ -46,8 +81,6 @@ void OtaStoreSdNrf52::resetStoreState() {
   _total = 0;
   _first_sector = 0;
   _allocated_sectors = 0;
-  _partition_start = 0;
-  _partition_end = 0;
   _planned_bootloader = false;
   if (_file && *_file) _file->close();
   if (_sd) _sd->end();
@@ -75,15 +108,11 @@ bool OtaStoreSdNrf52::mount() {
     return false;
   }
   _mounted = true;
-  if (!inspect_mbr()) {
-    _sd->end();
-    _mounted = false;
-    return false;
-  }
   return true;
 }
 
 bool OtaStoreSdNrf52::formatCard(MainBoard& board) {
+  clear_sd_auth_record();
   if (!beginCardOnly()) return false;
 
   board.serviceWatchdog();
@@ -100,22 +129,12 @@ bool OtaStoreSdNrf52::formatCard(MainBoard& board) {
   }
 
   _mounted = true;
-  if (!inspect_mbr()) {
-    _sd->end();
-    _mounted = false;
-    return false;
-  }
-  if (!invalidate_handoff()) {
-    fail("SD handoff clear failed");
-    _sd->end();
-    _mounted = false;
-    return false;
-  }
   board.serviceWatchdog();
   return true;
 }
 
 bool OtaStoreSdNrf52::eraseCard(MainBoard& board) {
+  clear_sd_auth_record();
   if (!beginCardOnly()) return false;
 
   SdCard* card = _sd->card();
@@ -312,58 +331,18 @@ bool OtaStoreSdNrf52::listFiles(MainBoard& board, uint16_t page,
   return true;
 }
 
-bool OtaStoreSdNrf52::inspect_mbr() {
-  uint8_t sector[MOTA_SD_SECTOR_SIZE];
-  if (!_sd->card() || !_sd->card()->readSector(0, sector)) {
-    fail("SD MBR read failed");
-    return false;
-  }
-  if (sector[510] != 0x55 || sector[511] != 0xAA) {
-    fail("SD must use an MBR partition table");
-    return false;
-  }
-
-  // SdFs mounts the first usable MBR partition. Require its start to leave
-  // sector 1 unused; a protective GPT entry (type 0xEE) is not safe here.
-  for (uint8_t i = 0; i < 4; i++) {
-    const uint8_t* p = sector + 446 + (uint32_t)i * 16;
-    uint8_t type = p[4];
-    uint32_t start = mota_sd_rd32(p + 8);
-    uint32_t count = mota_sd_rd32(p + 12);
-    if (type == 0 || count == 0) continue;
-    if (type == 0xEE || start <= MOTA_SD_HANDOFF_SECTOR ||
-        start >= _sd->card()->sectorCount() ||
-        count > _sd->card()->sectorCount() - start) {
-      fail("SD needs an MBR partition starting after sector 1");
-      return false;
-    }
-    _partition_start = start;
-    _partition_end = start + count;
-    return true;
-  }
-  fail("SD has no usable MBR partition");
-  return false;
-}
-
-bool OtaStoreSdNrf52::invalidate_handoff() {
-  if (!_mounted || !_sd->card()) return false;
-  uint8_t sector[MOTA_SD_SECTOR_SIZE];
-  if (!_sd->card()->readSector(MOTA_SD_HANDOFF_SECTOR, sector)) return false;
-  memset(sector, 0xFF, MOTA_SD_HANDOFF_LEN);
-  return _sd->card()->writeSector(MOTA_SD_HANDOFF_SECTOR, sector) &&
-         _sd->card()->syncDevice();
-}
-
 bool OtaStoreSdNrf52::locate_file() {
   Sector_t first = 0, last = 0;
   if (!_file || !_file->contiguousRange(&first, &last) || last < first) {
     fail("OTA file is not contiguous");
     return false;
   }
-  uint64_t need = ((uint64_t)_total + MOTA_SD_SECTOR_SIZE - 1) / MOTA_SD_SECTOR_SIZE;
+  uint64_t need = ((uint64_t)_total + MOTA_SD_AUTH_SECTOR_SIZE - 1) /
+                  MOTA_SD_AUTH_SECTOR_SIZE;
   uint64_t available = (uint64_t)last - first + 1;
-  if (need == 0 || need > available || first < _partition_start ||
-      (uint64_t)first + need > _partition_end) {
+  const uint32_t card_sectors = _sd->card() ? _sd->card()->sectorCount() : 0;
+  if (need == 0 || need > available || first == 0 || card_sectors == 0 ||
+      first >= card_sectors || need > card_sectors - first) {
     fail("OTA file sector range is invalid");
     return false;
   }
@@ -401,11 +380,8 @@ bool OtaStoreSdNrf52::begin(uint32_t total_size) {
   _total = 0;
   _first_sector = 0;
   _allocated_sectors = 0;
+  clear_sd_auth_record();
   if (total_size < 13 || !mount()) return false;
-  if (!invalidate_handoff()) {
-    fail("SD handoff clear failed");
-    return false;
-  }
   if (*_file) _file->close();
   _sd->remove(PATH);
   if (!_file->open(PATH, O_RDWR | O_CREAT | O_EXCL)) {
@@ -460,12 +436,13 @@ bool OtaStoreSdNrf52::read(uint32_t offset, uint8_t* buf, uint32_t len) const {
 
 uint32_t OtaStoreSdNrf52::capacity() const {
   if (!_mounted || !_sd || !_sd->card()) return 0;
-  uint64_t bytes = (uint64_t)_sd->card()->sectorCount() * MOTA_SD_SECTOR_SIZE;
+  uint64_t bytes = (uint64_t)_sd->card()->sectorCount() * MOTA_SD_AUTH_SECTOR_SIZE;
   return bytes > UINT32_MAX ? UINT32_MAX : (uint32_t)bytes;
 }
 
 bool OtaStoreSdNrf52::finalize() {
-  if (!_file || !*_file || !_file->sync() || !_sd->card()->syncDevice()) {
+  SdCard* const card = _sd ? _sd->card() : nullptr;
+  if (!_file || !*_file || !card || !_file->sync() || !card->syncDevice()) {
     fail("SD OTA sync failed");
     return false;
   }
@@ -537,15 +514,22 @@ void OtaStoreSdNrf52::clear() {
   _planned_bootloader = false;
   _first_sector = 0;
   _allocated_sectors = 0;
+  clear_sd_auth_record();
   if (!mount()) return;
-  invalidate_handoff();
   if (_file && *_file) _file->close();
   _sd->remove(PATH);
 }
 
 bool OtaStoreSdNrf52::approve_for_bootloader(
-    const uint8_t expected_boot_image_hash[32]) {
+    const uint8_t expected_boot_image_hash[32],
+    const uint8_t authorized_container_hash[32]) {
   if (!_total || !finalize()) return false;
+  if (!authorized_container_hash) {
+    fail("missing authenticated SD container hash");
+    return false;
+  }
+  SdCard* const card = _sd ? _sd->card() : nullptr;
+  const uint32_t card_sectors = card ? card->sectorCount() : 0;
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
   if (_planned_bootloader) {
     SelfFwInfo fi;
@@ -563,7 +547,7 @@ bool OtaStoreSdNrf52::approve_for_bootloader(
   }
 #endif
   if (!write(8 + MOTA_OFF_APPROVAL, APPROVAL_YES, sizeof(APPROVAL_YES)) ||
-      !_file->sync() || !_sd->card()->syncDevice()) {
+      !_file->sync() || !card || !card->syncDevice()) {
     fail("SD approval write failed");
     return false;
   }
@@ -591,16 +575,16 @@ bool OtaStoreSdNrf52::approve_for_bootloader(
   }
 #endif
 
-  uint8_t sector[MOTA_SD_SECTOR_SIZE];
-  if (!_sd->card()->readSector(MOTA_SD_HANDOFF_SECTOR, sector)) {
-    fail("SD handoff sector read failed");
-    return false;
-  }
-  mota_sd_encode_handoff(sector, _first_sector, _allocated_sectors,
-                         _total, _sd->card()->sectorCount());
-  if (!_sd->card()->writeSector(MOTA_SD_HANDOFF_SECTOR, sector) ||
-      !_sd->card()->syncDevice()) {
-    fail("SD bootloader handoff write failed");
+  uint8_t auth[MOTA_SD_AUTH_LEN];
+  const uint8_t purpose = _planned_bootloader
+      ? MOTA_SD_AUTH_PURPOSE_BOOTLOADER : MOTA_SD_AUTH_PURPOSE_APP;
+  const uint8_t format = _planned_bootloader ? MOTA_BOOT_FORMAT_VER : MOTA_APP_FORMAT_VER;
+  if (!mota_sd_auth_encode(auth, purpose, format, _first_sector,
+                           _allocated_sectors, _total, card_sectors,
+                           authorized_container_hash) ||
+      !publish_sd_auth_record(auth)) {
+    clear_sd_auth_record();
+    fail("SD retained authorization publish failed");
     return false;
   }
   return true;

@@ -3,7 +3,6 @@
 
 #include "helpers/ota/OtaFlashLayout_nrf52.h"
 #include "helpers/ota/OtaStoreQspiNrf52.h"
-#include "helpers/ota/OtaSdHandoff.h"
 
 using namespace mesh::ota;
 
@@ -324,23 +323,4 @@ TEST(OtaFlashPlan, LeavesOutputUntouchedOnReject) {
   uint32_t start = 0x1234ABCD;
   EXPECT_FALSE(mota_nrf52_stage_plan(CAP_V6 + 1, APP_V6, APP_END_V6, LEGACY, start));
   EXPECT_EQ(start, 0x1234ABCDu);
-}
-
-TEST(OtaSdHandoff, EncodesChecksummedRecordAndPreservesSectorTail) {
-  uint8_t sector[MOTA_SD_SECTOR_SIZE];
-  std::memset(sector, 0xA5, sizeof(sector));
-  mota_sd_encode_handoff(sector, 2048, 1234, 630000, 8000000);
-
-  EXPECT_EQ(0, std::memcmp(sector, MOTA_SD_HANDOFF_MAGIC, 8));
-  EXPECT_EQ(mota_sd_rd32(sector + 8), MOTA_SD_HANDOFF_VERSION);
-  EXPECT_EQ(mota_sd_rd32(sector + 12), 2048u);
-  EXPECT_EQ(mota_sd_rd32(sector + 16), 1234u);
-  EXPECT_EQ(mota_sd_rd32(sector + 20), 630000u);
-  EXPECT_EQ(mota_sd_rd32(sector + 24), ~630000u);
-  EXPECT_EQ(mota_sd_rd32(sector + 28), 8000000u);
-  EXPECT_EQ(mota_sd_rd32(sector + 32), mota_sd_crc32(sector, 32));
-  EXPECT_EQ(sector[MOTA_SD_HANDOFF_LEN], 0xA5);  // bytes outside our record are untouched
-
-  sector[20] ^= 1u;
-  EXPECT_NE(mota_sd_rd32(sector + 32), mota_sd_crc32(sector, 32));
 }

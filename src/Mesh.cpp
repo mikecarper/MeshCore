@@ -415,7 +415,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
                && !oc.manager.fetched_is_bootloader()) {
       _ota_autoinstall_tried = true;
       char msg[100];
-      oc.apply_fetched(msg);   // arms + sets apply_pending only if signed & allowlisted; refused otherwise
+      oc.apply_fetched_trusted_auto(msg); // signed/trusted and strictly newer; manual install may override
     }
   }
 #endif

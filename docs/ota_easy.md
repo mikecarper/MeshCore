@@ -18,6 +18,11 @@ Matched QSPI repeater targets and the MeshTower V2 microSD target can also insta
 complete container stays off-chip. See [nRF52 repeater OTA with external QSPI](ota_nrf52_qspi.md) and
 [MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
 
+MeshTower V2 microSD application and bootloader containers must be Ed25519-signed by a key in the device
+allowlist; pass `--sign-key` when building one. Its BLM2-capable SD-aware bootloader is also required before
+ordinary application or bootloader OTA can use the reset-retained authorization record. Upgrade preview.12
+locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handoff.
+
 ## Temporary OTA channel used in this guide
 
 | Setting | Value |

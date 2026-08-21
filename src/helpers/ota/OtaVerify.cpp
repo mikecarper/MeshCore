@@ -60,6 +60,14 @@ static VerifyResult ota_verify_store(const OtaStore& store,
   }
 
   r.parsed = true;
+  // Bind the removable-media authorization to the exact stream verified below. Approval is the one mutable
+  // field, so normalize its four bytes to zero: the digest remains stable after APRV is written and synced.
+  SHA256 container_sha;
+  static const uint8_t zero_approval[4] = {0, 0, 0, 0};
+  container_sha.update(hdr, sizeof(hdr));
+  container_sha.update(manifest, MOTA_OFF_APPROVAL);
+  container_sha.update(zero_approval, sizeof(zero_approval));
+  container_sha.update(leaves, leaves_len);
   uint8_t root[4];
   merkle_root(root, leaves, m.block_count);
   r.root_ok = memcmp(root, m.merkle_root, sizeof(root)) == 0;
@@ -81,6 +89,7 @@ static VerifyResult ota_verify_store(const OtaStore& store,
       break;
     }
     if (m.is_full()) image_sha.update(block, n);
+    container_sha.update(block, n);
     off += n;
   }
   if (off != m.payload_size) r.payload_ok = false;
@@ -90,6 +99,12 @@ static VerifyResult ota_verify_store(const OtaStore& store,
     r.image_ok = memcmp(image_hash, m.image_hash, sizeof(image_hash)) == 0;
   } else {
     r.image_ok = !m.is_full();
+  }
+
+  if (r.root_ok && r.payload_ok && r.image_ok) {
+    container_sha.update(trailer, sizeof(trailer));
+    container_sha.finalize(r.container_hash, sizeof(r.container_hash));
+    r.container_hash_ok = true;
   }
 
   r.is_signed = m.is_signed();

@@ -22,14 +22,16 @@ LoRa radio pinout.
 
 ## Card requirements
 
-Use a FAT16, FAT32, or exFAT card with an MBR partition table whose first
-partition starts after sector 1. This is the normal layout produced by most SD
-formatters. GPT and unpartitioned "super-floppy" layouts are rejected.
+Use a FAT16, FAT32, or exFAT card accepted by the bundled SdFat version. The
+normal update path imposes no additional MBR/sector-1 layout requirement;
+filesystem layouts SdFat cannot mount are still rejected. MeshCore creates
+`/meshcore-ota.mota` as a contiguous file and passes its exact sector range to
+OTAFIX in reset-retained MCU RAM.
 
-MeshCore creates `/meshcore-ota.mota` as a contiguous file. Sector 1, which is
-outside the partition, holds a checksummed bootloader handoff record. The
-firmware validates this gap before writing it; an incompatible card layout
-fails safely without modifying sector 1.
+MeshCore never reads or writes raw sector 1 and does not infer ownership from
+blank card sectors. Both application and bootloader OTA require a locally
+provisioned BLM2-capable bootloader that understands the retained-RAM record.
+Preview.12 must first be upgraded over USB/BLE DFU or SWD.
 
 ## Capacity and update types
 
@@ -43,7 +45,8 @@ For this S140 v6 target, the maximum application image including its `EndF`
 trailer is `0xC7000` bytes (815,104 bytes). To package a full self-update:
 
 ```bash
-motatool build --fw ./Heltec_tower_v2_sdcard-new.hex --out-dir ./motas
+motatool build --fw ./Heltec_tower_v2_sdcard-new.hex \
+  --sign-key ./trusted-signer.key --out-dir ./motas
 motatool verify ./motas/*.mota
 ```
 
@@ -57,19 +60,23 @@ motatool build \
   --fw ./Heltec_tower_v2_sdcard-new.hex \
   --patch-type in-place \
   --inplace-memory 0xC7000 \
+  --sign-key ./trusted-signer.key \
   --out-dir ./motas
 motatool verify ./motas/*.mota
 ```
 
 The download is resumable because the partial `.mota` stays on the card.
 Once it reaches `ready`, `ota install` performs the final verification,
-publishes the bootloader handoff, and reboots. Keep the card inserted through
-the reboot and installation.
+publishes a one-reset authorization record, and reboots. SD application
+installation requires a valid signature from a key in the node's allowlist.
+Keep the card inserted through the reboot and installation.
 
-The SD-aware bootloader is mandatory. `ota install` refuses to reboot if the
-bootloader capability marker does not advertise SD staging and the selected
-codec. Existing `Heltec_tower_v2_repeater` firmware continues to use the
-internal-flash delta path and is unchanged.
+The BLM2 retained-auth SD-aware bootloader is mandatory for application OTA.
+`ota install` refuses to reboot if its continuity metadata does not match the
+running S140 family/FWID/application layout or if its capability marker does
+not advertise SD staging and the selected codec. Existing
+`Heltec_tower_v2_repeater` firmware continues to use the internal-flash delta
+path and is unchanged.
 
 ## Signed bootloader update
 
@@ -78,14 +85,15 @@ It requires an already installed exact-board ABI-3 OTAFIX bootloader whose one
 unambiguous capability marker is exactly `0x09` (`SD|BOOT_UPDATE`) and whose
 codec mask is `0x0005` (`FULL|INPLACE`). Requiring both application codecs
 prevents a bootloader self-update from disabling either normal SD application
-path. It cannot bootstrap a stock or older bootloader; provision that
-prerequisite once over USB/BLE DFU or SWD.
+path. A stock bootloader still requires USB/BLE DFU or SWD. The sole remote
+bootstrap is intentionally absent: preview.12 and any other legacy-v1 image
+must be upgraded locally before either SD application or bootloader OTA.
 
 The signed v3 container is exactly 41,330 bytes and carries a 40 KiB candidate
 for the installed `239A0071 / TOWER_V2_OTA` identity (boot target `1150F50E`).
-It uses the same contiguous `/meshcore-ota.mota` file and sector-1 handoff as an
-application update. GPREGRET `0x6B` plus the distinct SD source marker `0x53`
-selects the bootloader path; LoRa transport remains payload type `0x0C`.
+It uses the same contiguous `/meshcore-ota.mota` file as an application update.
+GPREGRET `0x6B` plus the distinct SD source marker `0x53` selects the bootloader
+path; LoRa transport remains payload type `0x0C`.
 
 The application linker still ends at `0xED000`, but OTAFIX needs
 `0xE0000..0xEA000` as temporary scratch while replacing itself. Before a boot
@@ -102,17 +110,33 @@ EndF-inclusive running image and must end by `0xE0000`; an undersized or
 oversized record refuses the operation and requires local DFU/SWD.
 
 Because the card is removable, approval is bound to the exact bytes that were
-authenticated. MeshCore verifies the signature and signer allowlist over one
-exact local manifest copy, requires the streamed manifest on SD to remain
-byte-identical, and verifies the complete payload against that manifest. It
-then writes `APRV` and syncs the card. Before publishing the raw-sector
-handoff, it writes and readback-verifies a temporary 64-byte `MOTASDBL` token
-at `0xE0000` containing the exact container length and that signed manifest's
-`image_hash`. OTAFIX requires the parsed SD manifest, streamed payload, and
-final scratch image to match the same token. Replacing or changing the card
-after verification can therefore only make the boot update fail; it cannot
-authorize different bootloader bytes. The token page becomes the first
-scratch page during a successful update and is not permanently reserved.
+authenticated. For both fmt2 application and fmt3 bootloader packages,
+MeshCore authenticates one exact signed manifest, requires every streamed
+manifest byte to match it, and verifies the leaves, payload, and image. During
+that same pass it hashes the entire container with only the mutable four-byte
+`APRV` field normalized to zero. After writing and syncing `APRV`, MeshCore
+publishes a 72-byte `MOTASDA2` record at reset-retained RAM address
+`0x20006008`. The record binds package purpose/format, exact LBA range, card
+size, container length, and that normalized SHA-256. OTAFIX consumes and clears
+the record before reading the card; changing the card or file can only fail.
+A power loss erases the authorization and also fails closed.
+
+For fmt3, MeshCore additionally writes and readback-verifies the temporary
+64-byte `MOTASDBL` token at `0xE0000`, binding the exact total and signed
+manifest `image_hash`. OTAFIX requires the parsed manifest, streamed payload,
+and final scratch image to match it. The token page becomes scratch during a
+successful boot update and is not permanently reserved.
+
+Every new candidate also carries a backward-compatible `BLM2`/`SOFT`
+continuity extension next to its legacy embedded manifest. The complete
+76-byte envelope is fixed at final raw-image offset `0x9FB4`; a relocated copy
+is not a valid candidate. Its embedded
+bootloader version must equal the outer package version, match the runtime
+SoftDevice family/FWID, application base, and layout ABI, and be strictly newer
+than an installed BLM2 version. Preview values use low bytes `1..254` and a
+stable release uses `0xFF`; zero-preview and all-ones versions are invalid.
+Remote bootloader rollback is not supported; use local DFU/SWD when rollback
+or migration is intentional.
 
 Bootloader packages are never autofetched or autoinstalled. Select and confirm
 one exact package manually:
@@ -235,9 +259,9 @@ clean replacement instead of treating path existence as a valid cache hit.
 To prepare and load the card:
 
 1. Format it as described under [Card requirements](#card-requirements). The
-   easiest way to guarantee the expected layout is to insert it in the
-   repeater, run `set sdcard format`, power the repeater off, and then move the
-   card to the computer. Formatting destroys the existing card contents.
+   easiest route is to insert it in the repeater, run `set sdcard format`, power
+   the repeater off, and then move the card to the computer. Formatting destroys
+   the existing card contents.
 2. Mount the card on the computer and create a directory named `mota` at the
    filesystem root. Do not use a nested directory such as `/firmware/mota`.
 3. Run `motatool verify FILE.mota` for every source file. Do not copy a file

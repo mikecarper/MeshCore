@@ -901,7 +901,7 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
       if (c.seeder_have[k] > c.have_max) c.have_max = c.seeder_have[k];
       if (c.seeder_last_ms[k] > c.last_ms) c.last_ms = c.seeder_last_ms[k];
     }
-    if (wantRow(mid, target, codec, flags)) startFetch(mid, target);
+    if (wantRow(mid, target, fwver, codec, flags)) startFetch(mid, target);
   }
 }
 
@@ -916,7 +916,8 @@ void OtaManager::deferCatalog(const uint8_t mid[4], uint32_t until_ms) {
   }
 }
 
-bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const {
+bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint32_t fw_version,
+                         uint8_t codec, uint8_t flags) const {
   if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED
       || _fstate == PAUSED) return false;  // busy
@@ -931,6 +932,8 @@ bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uin
   if (_autofetch == AUTOFETCH_OFF) return false;                                  // discover only
   if (target != _target) return false;                                            // auto-fetch = our own target
   if (_autofetch == AUTOFETCH_SIGNED && !(flags & MFLAG_SIGNED)) return false;    // signed-only policy
+  if (_enforce_auto_version &&
+      !ota_trusted_auto_version_allows(_running_fw_version, fw_version)) return false;
   return true;
 }
 
@@ -1068,6 +1071,7 @@ void OtaManager::clearFetchIntent() {
   _desired_target = 0;
   _have_desired_mid = false;
   memset(_desired_mid, 0, sizeof(_desired_mid));
+  _fexpected_target = 0;
 }
 
 void OtaManager::failFetch(FetchError error) {
@@ -1121,11 +1125,11 @@ OtaManager::PullResult OtaManager::pull_archive(const uint8_t* mid, uint32_t tar
 
 // Begin (or resume) fetching a chosen mid: try a staged-partial resume first, else request the manifest.
 OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t target, bool validate) {
-  (void)target;
   if (!mid) return PULL_BAD_MID;
   if (!_fetch) return PULL_NO_STORE;
   if (fetchActive()) return PULL_BUSY;
   _fetch_error = FETCH_ERROR_NONE;
+  _fexpected_target = target;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
@@ -1140,6 +1144,20 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
   uint8_t b[16];
   emit(b, encode_get_manifest(b, sizeof(b), gm), false);
   return PULL_STARTED;
+}
+
+bool OtaManager::resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected_target) {
+  if (!want_mid || !_fetch || fetchActive()) return false;
+  _fetch_error = FETCH_ERROR_NONE;
+  _validate = false;
+  _archive_fetch = false;
+  _desired_target = expected_target;
+  memcpy(_desired_mid, want_mid, sizeof(_desired_mid));
+  _have_desired_mid = true;
+  _fexpected_target = expected_target;
+  const bool adopted = resumeStaged(want_mid);
+  if (!adopted) clearFetchIntent();
+  return adopted;
 }
 
 void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
@@ -1174,6 +1192,24 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   if (mfl != MOTA_MFL) { failFetch(FETCH_ERROR_MANIFEST); return; } // fixed 197-byte manifest
   MotaManifest parsed;
   if (!mota_parse_manifest(mf, mfl, parsed)) { failFetch(FETCH_ERROR_MANIFEST); return; }
+  // The OTA_MANIFEST envelope is supplied by the peer and is not an authenticated description of the
+  // bytes inside it. Bind both identifiers from the parsed manifest to the catalog row / explicit pull
+  // that opened this receive slot before the store is planned, erased, or written. Otherwise a peer can
+  // label an unrelated manifest with the requested MID and make us stage a different target/package.
+  if (memcmp(parsed.merkle_root, _fid, sizeof(_fid)) != 0 ||
+      (_fexpected_target != 0 && parsed.target_id != _fexpected_target)) {
+    failFetch(FETCH_ERROR_MANIFEST); return;
+  }
+  // A HAVE row is advisory and may lie about its version. Repeat the
+  // forward-only check against the parsed manifest before touching storage.
+  const bool automatic_fetch = !_have_desired_mid && _desired_target == 0 && !_archive_fetch;
+  if (_enforce_auto_version && automatic_fetch &&
+      !ota_trusted_auto_version_allows(_running_fw_version, parsed.fw_version)) {
+    failFetch(FETCH_ERROR_VERSION); return;
+  }
+  if (automatic_fetch && _autofetch == AUTOFETCH_SIGNED && !parsed.is_signed()) {
+    failFetch(FETCH_ERROR_MANIFEST); return;
+  }
   if (parsed.hash_algo != HASH_ALGO_SHA256) { failFetch(FETCH_ERROR_HASH_ALGO); return; }
   if (!_archive_fetch &&
       !fetchCodecOk(parsed.codec_id, parsed.is_bootloader(), _have_desired_mid)) {
@@ -1190,7 +1226,7 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) {
     failFetch(FETCH_ERROR_TOO_LARGE); return;       // retaining an image we cannot seed is useless
   }
-  memcpy(_froot, mf + 20, 4);
+  memcpy(_froot, parsed.merkle_root, sizeof(_froot));
 
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
@@ -1324,6 +1360,18 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   MotaManifest m;
   if (!_fetch->read(8, mbuf, mread) || !mota_parse_manifest(mbuf, mread, m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
+  const bool automatic_resume = want_mid == nullptr;
+  // A boot-time resume is an automatic fetch decision and therefore belongs
+  // only to this node. An explicit pull retains target=0 as an intentional
+  // MID-only wildcard instead of silently narrowing it to the local target.
+  const uint32_t expected_target = automatic_resume ? _target : _fexpected_target;
+  if (expected_target != 0 && m.target_id != expected_target) return false;
+  if (automatic_resume) {
+    if (_autofetch == AUTOFETCH_OFF) return false;
+    if (_autofetch == AUTOFETCH_SIGNED && !m.is_signed()) return false;
+    if (_enforce_auto_version &&
+        !ota_trusted_auto_version_allows(_running_fw_version, m.fw_version)) return false;
+  }
   if (m.hash_algo != HASH_ALGO_SHA256) return false;
   // A bootloader partial is resumed only as part of the same explicit MID pull.
   // Boot-time resumeStaged(nullptr) must not silently re-adopt privileged data.

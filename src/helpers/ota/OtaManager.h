@@ -221,6 +221,7 @@ public:
     FETCH_ERROR_NONE,
     FETCH_ERROR_MANIFEST,
     FETCH_ERROR_HASH_ALGO,
+    FETCH_ERROR_VERSION,
     FETCH_ERROR_CODEC,
     FETCH_ERROR_GEOMETRY,
     FETCH_ERROR_TOO_LARGE,
@@ -302,12 +303,18 @@ public:
   // --- fetch ---  Provide the staging store; fetching starts on a matching OTA_ADV.
   void set_fetch_store(OtaStore* s) { _fetch = s; }
 
-  // Resume a fetch from a container already persisted in the store (after a reboot). want_mid=nullptr
-  // accepts whatever is staged; otherwise only resumes if the staged manifest_id matches. Re-parses the
-  // stored manifest, recomputes geometry, then incrementally rehashes every staged payload block before
-  // continuing FETCHING the holes. A fully staged image also has to reproduce the manifest Merkle root
-  // before it can become COMPLETE. Returns true if it adopted a staged container.
+  // Resume a fetch from a container already persisted in the store (after a reboot). want_mid=nullptr is
+  // automatic adoption and rechecks current autofetch/target/version policy; a non-null MID is an explicit
+  // resume and must match exactly. Re-parses the stored manifest, recomputes geometry, then incrementally
+  // rehashes every staged payload block before continuing FETCHING the holes. A fully staged image also has
+  // to reproduce the manifest Merkle root before it can become COMPLETE. Returns true if it adopted one.
   bool resumeStaged(const uint8_t* want_mid);
+
+  // Explicit operator/debug re-adoption of one known MID without starting a network fetch. This installs
+  // the same manual intent used by pull(), so target=0 remains a deliberate wildcard and bootloader FULL
+  // containers are eligible for the separately authenticated manual path. Unlike resumeStaged(nullptr),
+  // this never applies boot-time autofetch/version policy.
+  bool resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected_target = 0);
 
   // Manual cross-target override (decision: deliberate role switch, e.g. companion -> repeater on the
   // same hardware). Normally a node only auto-fetches its OWN target_id; `want(T)` makes it accept an
@@ -377,6 +384,10 @@ public:
   static const uint8_t AUTOFETCH_OFF = 0, AUTOFETCH_ANY = 1, AUTOFETCH_SIGNED = 2;
   void set_autofetch(uint8_t p) { _autofetch = p; reDiscover(); }
   uint8_t autofetch() const { return _autofetch; }
+  void set_auto_version_floor(uint32_t running_version, bool enforce = true) {
+    _running_fw_version = running_version;
+    _enforce_auto_version = enforce;
+  }
   // A persistent archive needs full catalogs even when install-oriented autofetch is off.
   void set_archive_interest(bool on) {
     if (_archive_interest != on) { _archive_interest = on; reDiscover(); }
@@ -488,7 +499,8 @@ private:
   bool handleReqProof(const uint8_t* m, uint16_t n);
   bool handleProof(const uint8_t* m, uint16_t n);
   PullResult startFetch(const uint8_t* mid, uint32_t target, bool validate = false); // begin/resume a fetch
-  bool wantRow(const uint8_t* mid, uint32_t target, uint8_t codec, uint8_t flags) const;  // fetch this row?
+  bool wantRow(const uint8_t* mid, uint32_t target, uint32_t fw_version,
+               uint8_t codec, uint8_t flags) const;  // fetch this row?
   bool fetchActive() const;
   void clearFetchIntent();
   void failFetch(FetchError error);
@@ -599,6 +611,7 @@ private:
   FetchError _fetch_error = FETCH_ERROR_NONE;
   uint8_t    _fid[4] = {0};
   uint8_t    _froot[4] = {0};
+  uint32_t   _fexpected_target = 0;          // catalog/CLI target bound to the requested manifest
   uint32_t   _ftotal = 0, _fpoff = 0, _floff = 0, _fpsize = 0, _fbc = 0, _fbs = 0;
   uint32_t   _have = 0;
   uint32_t   _resume_verify_idx = 0;
@@ -616,6 +629,8 @@ private:
   bool       _archive_interest = false;                 // query full catalogs for the persistent archive
   uint8_t    _seeder_id[4] = {0,0,0,0};        // our node id (pubkey[0:4]) for advert seeder counting
   uint8_t    _autofetch = AUTOFETCH_OFF;       // auto-fetch policy (persisted in NodePrefs)
+  uint32_t   _running_fw_version = 0;           // trusted EndF version used only for automatic admission
+  bool       _enforce_auto_version = false;     // OtaContext enables this even when EndF/version is unknown
   uint16_t   _checkpoint_blocks = OTA_CHECKPOINT_BLOCKS;  // resume checkpoint cadence (persisted)
   uint16_t   _advert_mins = OTA_ADVERT_INTERVAL_MINS;    // beacon re-advertise cadence, minutes; 0=off (persisted)
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
