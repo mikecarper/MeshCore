@@ -266,7 +266,7 @@ bool OtaStoreQspiNrf52::ensureFlash() {
     return false;
   }
   _qspi_awake = true;
-  delayMicroseconds(50);
+  delayMicroseconds(MOTA_QSPI_DPD_WAKE_GUARD_US);
   alignas(4) uint8_t jedec[4] = { 0, 0, 0, 0 };
   if (!customInstruction(0x9F, NRF_QSPI_CINSTR_LEN_4B, jedec) || jedec[0] == 0 || jedec[0] == 0xFF ||
       jedec[2] < 20 || jedec[2] > 24) {
@@ -306,7 +306,10 @@ void OtaStoreQspiNrf52::releaseFlash() {
     // releasing the nRF QSPI peripheral instead of leaving both active for
     // the rest of the boot. ensureFlash() issues 0xAB on the next operation.
     (void)customInstruction(0xB9, NRF_QSPI_CINSTR_LEN_1B);
-    delayMicroseconds(5);
+    // Do not deactivate or let a following ensureFlash() assert CS until the
+    // flash has both entered and remained in DPD for its required interval.
+    // plan_layout() is intentionally followed immediately by begin().
+    delayMicroseconds(MOTA_QSPI_DPD_ENTRY_GUARD_US);
   }
   // Match nrfx_qspi_uninit(): DEACTIVATE does not require a READY wait before
   // disabling the peripheral. Trigger it after every successful ENABLE, even

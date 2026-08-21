@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #if defined(OTA_QSPI_STORE) && defined(QSPIFLASH)
 #error "OTA_QSPI_STORE raw staging cannot share a QSPI chip with QSPIFLASH"
 #endif
@@ -15,6 +17,21 @@
 #if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(RAK_3401)
 #error "RAK3401's RAK13302 radio already owns the WisBlock SPI bus/chip-select"
 #endif
+
+namespace mesh {
+namespace ota {
+
+// A status/capacity probe can be followed immediately by begin(). Supported
+// NOR parts need time both to enter deep power-down after B9 and to remain
+// there before CS may be asserted again. MX25R1635F needs 10 us + 30 us;
+// retain margin for scheduling granularity and other matched flashes.
+static const uint32_t MOTA_QSPI_DPD_ENTRY_GUARD_US = 50u;
+
+// Release-from-deep-power-down latency is as high as 45 us on supported NOR.
+static const uint32_t MOTA_QSPI_DPD_WAKE_GUARD_US = 50u;
+
+} // namespace ota
+} // namespace mesh
 
 #if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 

@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "helpers/ota/OtaFlashLayout_nrf52.h"
+#include "helpers/ota/OtaStoreQspiNrf52.h"
 #include "helpers/ota/OtaSdHandoff.h"
 
 using namespace mesh::ota;
@@ -24,6 +25,15 @@ static constexpr uint32_t CAP_V6 = LEGACY - APP_END_V6;
 static constexpr uint32_t CAP_V7 = LEGACY - APP_END_V7;
 static constexpr uint32_t CAP_V6_EXPANDED = EXPANDED - APP_END_V6;
 static constexpr uint32_t CAP_V7_EXPANDED = EXPANDED - APP_END_V7;
+
+TEST(OtaQspiTiming, PreservesDeepPowerDownEntryAndWakeGuards) {
+  // MX25R1635F requires 10 us to enter DPD plus 30 us before another command;
+  // its release latency can reach 45 us. These constants are consumed by the
+  // real HAL path, so a future power-saving edit cannot restore the live
+  // plan_layout()->begin() race without failing the native suite.
+  EXPECT_GE(MOTA_QSPI_DPD_ENTRY_GUARD_US, 50u);
+  EXPECT_GE(MOTA_QSPI_DPD_WAKE_GUARD_US, 45u);
+}
 
 TEST(OtaFlashPlan, SelectsCeilingFromLinkedLayoutAndStorage) {
   // Actual internal secondary storage is authoritative regardless of linker selection.
