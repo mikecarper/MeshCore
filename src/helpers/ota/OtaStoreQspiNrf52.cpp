@@ -162,6 +162,47 @@ static void configure_qspi_gpio(const nrf_qspi_pins_t& pins) {
                  NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
 }
 
+static void wake_qspi_flash_before_activate(const nrf_qspi_pins_t& pins) {
+  // nRF52840 TASKS_ACTIVATE communicates with the NOR before CINSTR is
+  // available. A flash put to sleep by our preceding 0xB9 ignores that
+  // activation traffic, so issue the only command it accepts (0xAB) with a
+  // short mode-0 GPIO transaction first. IO2/WP# and IO3/HOLD# stay high.
+  nrf_gpio_pin_clear(pins.sck_pin);
+  nrf_gpio_pin_set(pins.csn_pin);
+  nrf_gpio_pin_set(pins.io0_pin);
+  if (pins.io2_pin != NRF_QSPI_PIN_NOT_CONNECTED) nrf_gpio_pin_set(pins.io2_pin);
+  if (pins.io3_pin != NRF_QSPI_PIN_NOT_CONNECTED) nrf_gpio_pin_set(pins.io3_pin);
+
+  nrf_gpio_cfg(pins.sck_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.csn_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.io0_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  nrf_gpio_cfg(pins.io1_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  if (pins.io2_pin != NRF_QSPI_PIN_NOT_CONNECTED)
+    nrf_gpio_cfg(pins.io2_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  if (pins.io3_pin != NRF_QSPI_PIN_NOT_CONNECTED)
+    nrf_gpio_cfg(pins.io3_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+
+  delayMicroseconds(1);
+  nrf_gpio_pin_clear(pins.csn_pin);
+  delayMicroseconds(1);
+  for (uint8_t bit = 0; bit < 8u; bit++) {
+    nrf_gpio_pin_write(pins.io0_pin, mota_qspi_release_from_dpd_bit(bit));
+    delayMicroseconds(1);
+    nrf_gpio_pin_set(pins.sck_pin);
+    delayMicroseconds(1);
+    nrf_gpio_pin_clear(pins.sck_pin);
+    delayMicroseconds(1);
+  }
+  nrf_gpio_pin_set(pins.csn_pin);
+  delayMicroseconds(MOTA_QSPI_DPD_WAKE_GUARD_US);
+}
+
 } // namespace
 
 OtaStoreQspiNrf52::OtaStoreQspiNrf52() {
@@ -281,6 +322,12 @@ bool OtaStoreQspiNrf52::ensureFlash() {
   pins.io1_pin = qspi_io1_pin();
   pins.io2_pin = qspi_io2_pin();
   pins.io3_pin = qspi_io3_pin();
+  _stage = OtaQspiStage::WAKE;
+  // A reset may have interrupted a NOR program/erase. Until activation and a
+  // successful RDSR prove WIP clear, every failure path must retain power and
+  // hold CS# high instead of sending B9 or cutting the flash rail.
+  _memory_operation_pending = true;
+  wake_qspi_flash_before_activate(pins);
   configure_qspi_gpio(pins);
   nrf_qspi_pins_set(NRF_QSPI, &pins);
 
@@ -307,26 +354,17 @@ bool OtaStoreQspiNrf52::ensureFlash() {
   _stage = OtaQspiStage::ACTIVATE;
   nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
   nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_ACTIVATE);
-  if (!waitReady(1000)) {
+  // ACTIVATE itself can wait for a previously interrupted NOR erase. Match the
+  // recovery window used by the explicit status poll below.
+  if (!waitReady(30000)) {
     releaseFlash();
     fail("QSPI activate timed out");
     return false;
   }
 
-  // Release from deep power-down, then identify capacity from the JEDEC byte.
-  _stage = OtaQspiStage::WAKE;
-  if (!customInstruction(0xAB, NRF_QSPI_CINSTR_LEN_1B)) {
-    releaseFlash();
-    fail("QSPI wake failed");
-    return false;
-  }
+  // The GPIO 0xAB issued before TASKS_ACTIVATE already woke the NOR. CINSTR
+  // cannot perform that first wake because it is unavailable until activation.
   _qspi_awake = true;
-  // Until SR1 is read successfully, conservatively assume an operation from
-  // the preceding boot may still be active. Only waitMemoryReady() may clear
-  // this guard after observing WIP=0.
-  _memory_operation_pending = true;
-  delayMicroseconds(MOTA_QSPI_DPD_WAKE_GUARD_US);
-
   // Recover cleanly if this boot/activation follows an interrupted program or
   // erase. RDID is not guaranteed to respond while WIP is set, so prove the
   // NOR idle before requesting its identity.

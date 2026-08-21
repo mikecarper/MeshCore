@@ -29,6 +29,17 @@ static const uint32_t MOTA_QSPI_DPD_ENTRY_GUARD_US = 50u;
 
 // Release-from-deep-power-down latency is as high as 45 us on supported NOR.
 static const uint32_t MOTA_QSPI_DPD_WAKE_GUARD_US = 50u;
+static const uint8_t MOTA_QSPI_RELEASE_FROM_DPD_OPCODE = 0xABu;
+
+// TASKS_ACTIVATE initiates traffic with the external memory. A NOR in deep
+// power-down ignores that traffic and the nRF QSPI peripheral can wait forever
+// for READY, so the 0xAB wake command has to be shifted over GPIO before QSPI
+// owns the pins. Keep the bit order host-testable instead of open-coding it in
+// the hardware-only path.
+inline bool mota_qspi_release_from_dpd_bit(uint8_t bit_index) {
+  return bit_index < 8u &&
+         ((MOTA_QSPI_RELEASE_FROM_DPD_OPCODE >> (7u - bit_index)) & 1u) != 0;
+}
 
 // The nRF QSPI READY event only says that a program/erase command and its
 // data reached the NOR. The memory can remain internally busy afterwards;

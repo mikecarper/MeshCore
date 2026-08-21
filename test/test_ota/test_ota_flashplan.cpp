@@ -35,6 +35,17 @@ TEST(OtaQspiTiming, PreservesDeepPowerDownEntryAndWakeGuards) {
   EXPECT_GE(MOTA_QSPI_DPD_WAKE_GUARD_US, 45u);
 }
 
+TEST(OtaQspiWake, ShiftsReleaseCommandMostSignificantBitFirst) {
+  // This byte is emitted over GPIO before TASKS_ACTIVATE. If activation is
+  // attempted first, a sleeping NOR ignores it and READY never arrives.
+  const bool expected[] = {true, false, true, false, true, false, true, true};
+  EXPECT_EQ(MOTA_QSPI_RELEASE_FROM_DPD_OPCODE, 0xABu);
+  for (uint8_t bit = 0; bit < 8u; bit++) {
+    EXPECT_EQ(mota_qspi_release_from_dpd_bit(bit), expected[bit]);
+  }
+  EXPECT_FALSE(mota_qspi_release_from_dpd_bit(8u));
+}
+
 TEST(OtaQspiStatus, TreatsOnlyTheNorWriteInProgressBitAsBusy) {
   // Nordic READY is not flash completion. The hardware path polls RDSR until
   // this predicate clears after every program and erase operation.

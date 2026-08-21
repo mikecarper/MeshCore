@@ -77,7 +77,7 @@ a hardware chip-select rework.
 
 ## One-time prerequisite
 
-Install a QSPI-capable OTAFIX 2.4.1 preview.8 or newer bootloader for the exact
+Install a QSPI-capable OTAFIX 2.4.1 preview.9 or newer bootloader for the exact
 board from the
 [OTAFIX releases](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases)
 before using LoRa OTA. The release notes must explicitly list that board's QSPI
@@ -174,8 +174,12 @@ download is reopened only when its header and trailer are valid; every claimed
 block is re-hashed before it is trusted. Between a probe, transfer operation,
 or checkpoint, firmware puts the NOR into deep power-down, deactivates the nRF
 QSPI peripheral, and turns off a board-provided flash power-enable pin. The
-next operation powers and identifies the chip again, so merely running
-`ota self` does not leave QSPI drawing active-mode current.
+next operation powers the chip, shifts the NOR's `0xAB` wake command over GPIO,
+then activates the nRF QSPI peripheral and identifies the flash. Waking it
+before peripheral activation is required because a flash in deep power-down
+ignores the activation traffic itself. Merely running `ota self` therefore does
+not leave QSPI drawing active-mode current or prevent the following operation
+from reactivating it.
 
 Installing a QSPI repeater build over a former companion build therefore
 repurposes the external flash and destroys companion filesystem data as OTA
