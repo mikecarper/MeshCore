@@ -328,7 +328,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota announce`; `ota adv`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota self`; `ota id`](ota_protocol.md#11-cli-surface-otaclicpp) | Firmware with EndF trailer | No | No | Yes | Yes | Yes |
-| LoRa OTA | [`ota qspi`; `ota storage`](ota_protocol.md#11-cli-surface-otaclicpp) | nRF52 build with raw-QSPI OTA staging | Feature | Feature | Feature | No | No |
+| LoRa OTA | [`ota qspi`; `ota storage`](ota_protocol.md#11-cli-surface-otaclicpp) | nRF52 build with raw-QSPI OTA staging | No | No | No | No | No |
 | LoRa OTA | [`ota folder`; `ota fold`](ota_protocol.md#11-cli-surface-otaclicpp) | `on` needs compiled serial or TCP folder transport | No | No | Feature | Feature | Feature |
 | LoRa OTA | [`ota config`; `ota cfg`; `ota set`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
 | LoRa OTA | [`ota key`; `ota keys`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |
