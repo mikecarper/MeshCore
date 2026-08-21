@@ -72,6 +72,7 @@ NRF52_LAYOUT_VERSION = 1
 NRF52_LAYOUT_LEN = 24
 NRF52_LAYOUT_FLAG_SD = 0x01
 NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS = 0x02
+NRF52_LAYOUT_FLAG_QSPI = 0x04
 
 # MeshTower V2's SD-backed OTA target keeps the staged .mota off-chip, so the application may use the
 # complete S140 v6 application region up to InternalFS instead of leaving room for internal staging.
@@ -140,6 +141,15 @@ def hardware_id_for_env(env_name: str) -> str:
     possible, while a cross-board install is rejected. Long family names retain a short hash suffix to
     avoid collisions inside EndF's fixed 32-byte field.
     """
+    # Optional storage that requires a different bootloader/application pair is
+    # a distinct hardware class even though it uses the same WisBlock Core.
+    if re.fullmatch(
+        r"RAK_4631_repeater_rak15001_slot_c_lora_ota",
+        env_name,
+        re.IGNORECASE,
+    ):
+        return "RAK4631_RAK15001_C"
+
     role = re.search(
         r"[_-](?:repeater|repeatr|room_server|room_svr|sensor|terminal_chat|kiss_modem|"
         r"companion_radio|companion|comp_radio)(?=[_-]|$)", env_name, re.IGNORECASE)
@@ -181,6 +191,14 @@ class Nrf52Layout:
     def sd_backed(self) -> bool:
         return bool(self.flags & NRF52_LAYOUT_FLAG_SD)
 
+    @property
+    def qspi_backed(self) -> bool:
+        return bool(self.flags & NRF52_LAYOUT_FLAG_QSPI)
+
+    @property
+    def external_backed(self) -> bool:
+        return self.sd_backed or self.qspi_backed
+
 
 def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: bool) -> int:
     """Select a safe staging ceiling from linker geometry and actual secondary-storage type."""
@@ -200,9 +218,15 @@ def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
         raise ValueError(f"unsupported nRF52 staging ceiling 0x{layout.stage_ceiling:X}")
     if not (layout.app_base < layout.linked_app_end <= NRF52_APP_END):
         raise ValueError("invalid nRF52 app region")
-    if layout.flags & ~(NRF52_LAYOUT_FLAG_SD | NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS):
+    known_flags = (NRF52_LAYOUT_FLAG_SD | NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS |
+                   NRF52_LAYOUT_FLAG_QSPI)
+    if layout.flags & ~known_flags:
         raise ValueError(f"unsupported nRF52 layout flags 0x{layout.flags:X}")
-    expected_ceiling = (NRF52_APP_END if layout.sd_backed else
+    if layout.sd_backed and layout.qspi_backed:
+        raise ValueError("nRF52 layout cannot use both SD and QSPI staging")
+    if layout.external_backed and layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS:
+        raise ValueError("nRF52 external staging cannot also reserve internal ExtraFS")
+    expected_ceiling = (NRF52_APP_END if layout.external_backed else
                         nrf52_stage_ceiling_for_layout(
                             layout.linked_app_end,
                             bool(layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS)))

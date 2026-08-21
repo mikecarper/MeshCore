@@ -163,7 +163,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | LoRa OTA | [`ota`; `ota status`; `ota st`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota stats`](ota_user_guide.md#1-see-what-im-running-and-whether-anything-is-going-on) | LoRa OTA build | No | No | Yes |
 | LoRa OTA | [`ota ls`; `ota neighbors`; `ota nbrs`; `ota updates`; `ota n`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
-| LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build; nRF52 installs in-place deltas | No | No | Yes |
+| LoRa OTA | [`ota get`; `ota pull`; `ota download`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build; internal-store nRF52 installs in-place deltas, while matched SD/QSPI nRF52 also accepts full images | No | No | Yes |
 | LoRa OTA | [`ota install`; `ota apply`; `ota applydelta`](ota_protocol.md#11-cli-surface-otaclicpp) | Compatible bootloader and completed update | No | No | Yes |
 | LoRa OTA | [`ota rescue install <base_hash16>`](ota_protocol.md#12-apply-bootloader-contract) | Internal-flash nRF52 LoRa OTA build with failed app-side EndF validation | No | No | Feature |
 | LoRa OTA | [`ota cancel`; `ota drop`; `ota stop`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |

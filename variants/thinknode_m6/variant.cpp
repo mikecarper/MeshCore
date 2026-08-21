@@ -14,7 +14,13 @@ void initVariant() {
   digitalWrite(PIN_PWR_EN, HIGH);
 
   pinMode(QSPI_FLASH_EN, OUTPUT);
+#if defined(OTA_QSPI_STORE)
+  // Raw OTA staging wakes and identifies the NOR only while an operation is
+  // active. Start power-saving repeater builds with the flash rail off.
+  digitalWrite(QSPI_FLASH_EN, LOW);
+#else
   digitalWrite(QSPI_FLASH_EN, HIGH);
+#endif
 
   // For now stick adc_ctrl to fixed value
   pinMode(PIN_ADC_CTRL, OUTPUT);

@@ -837,7 +837,7 @@ def query_live_target(
         raise ota.OtaError(
             f"live hardware is {target.hw_id!r}, expected {EXPECTED_HARDWARE!r}"
         )
-    if target.platform != "nrf52" or target.nrf_sd:
+    if target.platform != "nrf52" or target.nrf_external:
         raise ota.OtaError("live target is not the expected internal-flash nRF52 node")
     if target.bootloader_abi is None or target.bootloader_abi < 2:
         raise ota.OtaError("live target does not report OTAFIX mOTA ABI 2")

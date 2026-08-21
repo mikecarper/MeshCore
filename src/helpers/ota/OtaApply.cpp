@@ -29,6 +29,9 @@
   #if defined(OTA_SD_STORE)
     #include "OtaStoreSdNrf52.h"
   #endif
+  #if defined(OTA_QSPI_STORE)
+    #include "OtaStoreQspiNrf52.h"
+  #endif
 #endif
 
 namespace mesh {
@@ -442,7 +445,9 @@ bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, Ap
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
   uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
-#if defined(OTA_FLASH_STORE)
+#if defined(OTA_QSPI_STORE)
+  stage_handoff = GPREGRET2_OTA_STAGE_QSPI;
+#elif defined(OTA_FLASH_STORE)
   if (ota_nrf52_effective_stage_ceiling() == MOTA_NRF52_STAGE_CEILING_EXPANDED)
     stage_handoff = GPREGRET2_OTA_STAGE_EXPANDED;
 #endif
@@ -589,28 +594,33 @@ bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowli
   return ota_apply_mota_nrf52_impl(buf, len, allow, operator_base_hash, local_target_id, st, msg);
 }
 
-#if defined(OTA_SD_STORE)
-bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
-                          ApplyState& st, char* msg) {
+#if defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
+static const size_t NRF52_APPLY_MSG_CAP = 96;
+
+template <typename Store>
+static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& allow,
+                                          uint8_t storage_flag, const char* storage_name,
+                                          ApplyState& st, char* msg) {
   st = ApplyState();
   uint8_t hdr[8], manifest[MOTA_MFL];
   uint32_t total = store.staged_size();
   if (total < 8 + MOTA_MFL + 5 || !store.read(0, hdr, sizeof(hdr)) ||
       memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total ||
       !store.read(8, manifest, sizeof(manifest))) {
-    strcpy(msg, "SD container parse failed");
+    snprintf(msg, NRF52_APPLY_MSG_CAP, "%s container parse failed", storage_name);
     return false;
   }
   MotaManifest m;
   if (!mota_parse_manifest(manifest, sizeof(manifest), m)) {
-    strcpy(msg, "SD manifest parse failed");
+    snprintf(msg, NRF52_APPLY_MSG_CAP, "%s manifest parse failed", storage_name);
     return false;
   }
   const bool full = m.is_full() && m.codec_id == CODEC_FULL &&
                     m.payload_size == m.image_size;
   const bool delta = !m.is_full() && m.codec_id == CODEC_DETOOLS_INPLACE;
   if (!full && !delta) {
-    strcpy(msg, "nRF52 SD bootloader accepts full or in-place delta only");
+    snprintf(msg, NRF52_APPLY_MSG_CAP,
+             "nRF52 %s bootloader accepts full or in-place delta only", storage_name);
     return false;
   }
   const uint32_t app_base = mota_nrf52_app_base();
@@ -624,14 +634,15 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
   st.manifest_ok = true;
 
   OtaBlCaps bl = ota_bootloader_caps();
-  if (!bl.present || !(bl.storage_flags & OTA_BL_STORAGE_SD)) {
-    strcpy(msg, "this bootloader has no SD OTA support - update the bootloader first");
+  if (!bl.present || !(bl.storage_flags & storage_flag)) {
+    snprintf(msg, NRF52_APPLY_MSG_CAP,
+             "this bootloader has no %s OTA support - update the bootloader first", storage_name);
     return false;
   }
   if (bl.apply_abi < m.format_ver || !(bl.codec_mask & (1u << m.codec_id))) {
-    snprintf(msg, 159,
-             "bootloader cannot apply this SD update (abi=%u codecs=0x%x; need fmt=%u codec=%u)",
-             bl.apply_abi, bl.codec_mask, m.format_ver, m.codec_id);
+    snprintf(msg, NRF52_APPLY_MSG_CAP,
+             "bootloader cannot apply this %s update (abi=%u codecs=0x%x; need fmt=%u codec=%u)",
+             storage_name, bl.apply_abi, bl.codec_mask, m.format_ver, m.codec_id);
     return false;
   }
 
@@ -639,12 +650,13 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
   st.sig_ok = vr.sig_ok;
   st.trusted = vr.trusted;
   if (!vr.root_ok || !vr.payload_ok || !vr.image_ok) {
-    strcpy(msg, "payload hash mismatch (incomplete or corrupt SD .mota)");
+    snprintf(msg, NRF52_APPLY_MSG_CAP,
+             "payload hash mismatch (incomplete or corrupt %s .mota)", storage_name);
     return false;
   }
 
+  SelfFwInfo fi;
   if (delta) {
-    SelfFwInfo fi;
     if (!ota_self_firmware(fi) || !fi.valid) {
       strcpy(msg, "cannot read running firmware (no EndF)");
       return false;
@@ -659,13 +671,48 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
     if (!vr.sig_ok)  { strcpy(msg, "bad signature"); return false; }
     if (!vr.trusted) { strcpy(msg, "untrusted signer (pubkey not in allowlist)"); return false; }
   }
+  if (delta) {
+    const uint64_t payload_off64 = 8u + MOTA_MFL + (uint64_t)m.block_count * 4u;
+    uint8_t patch_header[32]; // fixed byte + five detools varints (at most 26 bytes for uint32)
+    uint32_t header_len = m.payload_size < sizeof(patch_header) ? m.payload_size : sizeof(patch_header);
+    InplacePatchDims d;
+    if (payload_off64 > UINT32_MAX || payload_off64 + m.payload_size + 5u != total ||
+        !store.read((uint32_t)payload_off64, patch_header, header_len) ||
+        !parse_inplace_patch_dims(patch_header, header_len, d)) {
+      strcpy(msg, "bad in-place patch header");
+      return false;
+    }
+    if (!mota_nrf52_external_patch_geometry_valid(
+            d.memory, d.segment, d.shift, d.from, d.to,
+            MOTA_NRF52_APP_END - app_base, fi.image_len, m.image_size)) {
+      strcpy(msg, "invalid in-place patch geometry");
+      return false;
+    }
+  }
   if (!store.approve_for_bootloader()) {
-    snprintf(msg, 159, "SD handoff failed: %s", store.last_error());
+    snprintf(msg, NRF52_APPLY_MSG_CAP, "%s handoff failed: %s", storage_name,
+             store.last_error());
     return false;
   }
-  sprintf(msg, "verified%s %s image on SD; rebooting into bootloader once this reply is sent",
-          vr.is_signed ? " (signer trusted)" : " (unsigned)", full ? "full" : "delta");
+  snprintf(msg, NRF52_APPLY_MSG_CAP,
+           "verified%s %s image on %s; rebooting into bootloader once this reply is sent",
+           vr.is_signed ? " (signer trusted)" : " (unsigned)", full ? "full" : "delta",
+           storage_name);
   return true;
+}
+#endif
+
+#if defined(OTA_SD_STORE)
+bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", st, msg);
+}
+#endif
+
+#if defined(OTA_QSPI_STORE)
+bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", st, msg);
 }
 #endif
 

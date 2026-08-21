@@ -7,6 +7,7 @@ declare -A PIO_ENV_BOARD_BY_NAME=()
 declare -A PIO_ENV_MQTT_BY_NAME=()
 declare -A PIO_ENV_OTA_BY_NAME=()
 declare -A PIO_ENV_SD_OTA_BY_NAME=()
+declare -A PIO_ENV_QSPI_OTA_BY_NAME=()
 declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
 declare -A PIO_ENV_FULL_BUILD_BY_NAME=()
 declare -A PIO_ENV_FULL_WIFI_OTA_BY_NAME=()
@@ -43,7 +44,7 @@ PARSED_COMMAND_ARGS=()
 FIRMWARE_VERSION_EXPLICIT=0
 OUTPUT_POLICY_EXPLICIT=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak15001_slot_c_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -95,7 +96,7 @@ Commands:
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
   get-companion-firmwares-to-build: List USB and BLE companion targets for release automation.
-  get-repeater-firmwares-to-build: List standard repeater targets for release automation.
+  get-repeater-firmwares-to-build: List standard and specialized external-storage repeater targets for release automation.
   get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
 Options:
@@ -189,7 +190,7 @@ init_project_context() {
   fi
 
   if [ ${#SUPPORTED_PIO_ENVS[@]} -eq 0 ]; then
-    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_sd_ota env_full env_full_wifi env_board; do
+    while IFS=$'\t' read -r env_name env_platform env_mqtt env_ota env_sd_ota env_qspi_ota env_full env_full_wifi env_board; do
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
@@ -199,6 +200,7 @@ init_project_context() {
       PIO_ENV_MQTT_BY_NAME["$env_name"]=$env_mqtt
       PIO_ENV_OTA_BY_NAME["$env_name"]=$env_ota
       PIO_ENV_SD_OTA_BY_NAME["$env_name"]=$env_sd_ota
+      PIO_ENV_QSPI_OTA_BY_NAME["$env_name"]=$env_qspi_ota
       PIO_ENV_FULL_BUILD_BY_NAME["$env_name"]=$env_full
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$env_name"]=$env_full_wifi
     done < <(
@@ -217,6 +219,7 @@ for section, options in data:
     ota_enabled = False
     ota_disabled = False
     sd_ota = False
+    qspi_ota = False
     admin_enabled = False
     espnow_enabled = "bridge_espnow" in env_name.lower()
     full_wifi_ota = False
@@ -244,6 +247,8 @@ for section, options in data:
                 ota_disabled = True
             if "OTA_SD_STORE" in str(flag):
                 sd_ota = True
+            if "OTA_QSPI_STORE" in str(flag):
+                qspi_ota = True
             match = pattern.search(str(flag))
             if match and platform is None:
                 platform = match.group(0)
@@ -256,6 +261,7 @@ for section, options in data:
             f"{env_name}\t{platform}\t{1 if mqtt_enabled else 0}"
             f"\t{1 if ota_enabled and not ota_disabled else 0}"
             f"\t{1 if sd_ota else 0}"
+            f"\t{1 if qspi_ota else 0}"
             f"\t{1 if full_enabled else 0}\t{1 if full_wifi_ota else 0}"
             f"\t{board_value}"
         )
@@ -290,6 +296,7 @@ for section, options in data:
       PIO_ENV_MQTT_BY_NAME["$ota_env"]=0
       PIO_ENV_OTA_BY_NAME["$ota_env"]=1
       PIO_ENV_SD_OTA_BY_NAME["$ota_env"]="${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}"
+      PIO_ENV_QSPI_OTA_BY_NAME["$ota_env"]="${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}"
       PIO_ENV_FULL_BUILD_BY_NAME["$ota_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$ota_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$ota_env"]="$env_name"
@@ -313,6 +320,13 @@ for section, options in data:
       [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] || continue
 
       full_env=${env_name/companion_radio_wifi/companion_radio_full}
+      # This FEM-enabled image auto-detects both the GC1109 used by Heltec V4.2
+      # and the KCT8103L used by V4.3. Keep both revisions in the generated
+      # target and artifact name so users do not mistake it for a V4.0-only
+      # build. The slash used in the display label is not valid in a filename.
+      if [ "$full_env" = "heltec_v4_companion_radio_full_femon" ]; then
+        full_env=heltec_v4_2_v4_3_companion_radio_full_femon
+      fi
       usb_env=${env_name/companion_radio_wifi/companion_radio_usb}
       ble_env=${env_name/companion_radio_wifi/companion_radio_ble}
       if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ] \
@@ -329,6 +343,7 @@ for section, options in data:
       PIO_ENV_MQTT_BY_NAME["$full_env"]=0
       PIO_ENV_OTA_BY_NAME["$full_env"]=1
       PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_QSPI_OTA_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]="${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}"
       PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
@@ -360,6 +375,7 @@ for section, options in data:
       PIO_ENV_MQTT_BY_NAME["$full_env"]=0
       PIO_ENV_OTA_BY_NAME["$full_env"]=1
       PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_QSPI_OTA_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
@@ -1457,6 +1473,12 @@ print_release_firmware_targets() {
       ;;
     get-repeater-firmwares-to-build)
       get_pio_envs_ending_with_string "_repeater"
+      # This full-sensor target is a distinct hardware/bootloader contract,
+      # not a generated lean OTA alias, so tagged repeater releases must ship
+      # it explicitly alongside the canonical standard repeaters.
+      if is_supported_build_env "RAK_4631_repeater_rak15001_slot_c_lora_ota"; then
+        printf '%s\n' "RAK_4631_repeater_rak15001_slot_c_lora_ota"
+      fi
       ;;
     get-room-server-firmwares-to-build)
       get_pio_envs_ending_with_string "_room_server"
@@ -1552,6 +1574,11 @@ filter_out_bluetooth_targets() {
 is_lora_ota_only_target() {
   local target_lc=${1,,}
   [[ "$target_lc" == *lora_ota* ]]
+}
+
+is_lora_ota_no_external_sensors_target() {
+  local target_lc=${1,,}
+  [[ "$target_lc" == *lora_ota_no_external_sensors ]]
 }
 
 filter_out_lora_ota_only_targets() {
@@ -2043,10 +2070,11 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # The OTA manager, staging store, and self-install path are deliberately opt-in. The standard repeater
-  # remains a normal, sensor-enabled build, but Mesh transport still relays OTA floods opaquely during
-  # TempRadio. Its explicit _lora_ota_no_external_sensors sibling is the constrained self-updatable image.
-  if [[ "$env_name_lc" != *lora_ota_no_external_sensors ]]; then
+  # The OTA manager, staging store, and self-install path are deliberately
+  # opt-in. Most boards use the constrained no-external-sensors sibling. A
+  # purpose-built external-QSPI target may retain the full board feature set.
+  if ! is_lora_ota_no_external_sensors_target "$env_name" \
+      && [ "${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}" != "1" ]; then
     return 1
   fi
 
@@ -2268,7 +2296,8 @@ apply_nrf52_size_profile() {
 apply_lora_ota_no_external_sensors_profile() {
   local env_name=$1
 
-  if ! is_lora_ota_build "$env_name" || ! is_lora_ota_only_target "$env_name"; then
+  if ! is_lora_ota_build "$env_name" \
+      || ! is_lora_ota_no_external_sensors_target "$env_name"; then
     return 0
   fi
 
@@ -2378,7 +2407,10 @@ apply_lora_ota_override() {
   fi
 
   if is_lora_ota_build "$env_name"; then
-    if [ "${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
+    if [ "${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
+      append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -DOTA_QSPI_STORE=1 -DOTA_FOLDER_SERIAL"
+    elif [ "${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
       append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1 -DOTA_FLASH_STORE=1"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -DOTA_SD_STORE=1 -DOTA_FOLDER_SERIAL"
     else

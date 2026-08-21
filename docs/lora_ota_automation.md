@@ -61,6 +61,7 @@ while the same link carries framed folder requests. BLE remains available.
 | --- | --- | --- | --- |
 | ESP32 | Full application image | OTA-enabled image with an A/B partition table | Builds a full mOTA from the matching non-merged application `.bin` |
 | nRF52, internal flash | In-place delta | Exact-board OTAFIX bootloader with mOTA apply support | Requires `--base` with the exact image currently running |
+| nRF52 repeater, external QSPI | Full image or in-place delta | QSPI-aware exact-board OTAFIX bootloader and matched repeater build | Builds a full mOTA; adding `--base` requests a delta |
 | MeshTower V2 nRF52, microSD | Full image or in-place delta | SD-aware exact-board OTAFIX bootloader and compatible card | Builds a full mOTA; adding `--base` requests a delta |
 
 The firmware inside a raw ZIP must have a valid MeshCore `EndF` trailer. An
@@ -68,7 +69,7 @@ ESP32 merged/factory image is not an application image and is rejected. A
 generic vendor DFU ZIP may also be unusable if it does not contain the raw
 EndF-bearing `.hex` or `.bin`.
 
-For an internal-flash nRF52, the exact base image is irreducible information.
+For an internal-staging nRF52, the exact base image is irreducible information.
 The node reports its eight-byte body hash, but that hash cannot reconstruct the
 firmware bytes needed to create a delta. Keep the `.pio/build/ENV/firmware.hex`
 that was actually flashed. A matching filename or version alone is not enough.
@@ -177,7 +178,8 @@ ota stats
 
 The script uses `get bootloader.ver` to distinguish ESP32 from nRF52 and, for
 nRF52, report the installed bootloader version. It then requires `ota self` to
-report `bootloader: apply OK` or `bootloader: SD apply OK` and checks the
+report `bootloader: apply OK`, `bootloader: QSPI apply OK`, or
+`bootloader: SD apply OK` and checks the
 reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy `ota self` platform marker. If an nRF52 bootloader lacks
@@ -238,7 +240,7 @@ Prefer the environment variable or the interactive password prompt. Passing
 local processes. The runner keeps the password out of child `meshcli` command
 lines and removes its protected temporary command file after each call.
 
-## 5. Run an internal-flash nRF52 update
+## 5. Run an nRF52 update
 
 If the input ZIP already contains a compatible in-place delta `.mota`, no
 base argument is needed: its embedded base hash is compared with the live
@@ -258,15 +260,24 @@ node. If the ZIP contains raw new firmware, supply the exact running image:
   --source-serial COM8
 ```
 
-Before building the delta, the runner proves that the base's target ID,
+Before building a delta, the runner proves that the base's target ID,
 hardware identity, firmware version when available, and `EndF` body hash match
 the live destination. It then asks `motatool` for codec 2, the nRF52 in-place
 format. The normal workspace is `0x98000`.
 
-For the SD-backed MeshTower V2 target, a raw ZIP becomes a full image without
-`--base`. Supplying an exact base requests a smaller in-place delta and
-automatically selects its `0xC7000` workspace. An explicit
+For a QSPI-backed repeater or the SD-backed MeshTower V2 target, a raw ZIP
+becomes a full image without `--base`. Supplying an exact base requests a
+smaller in-place delta and automatically selects the conservative external
+workspace `0xC6000`, which is safe for S140 v6 and v7 application layouts. An explicit
 `--inplace-memory` overrides the automatic value.
+
+The live runner detects QSPI from `ota self` (`QSPI apply OK`) or `ota status`
+(`bl:QSPI`) and refuses an explicit `QSPI store:ERR 0K` report even when the
+bootloader itself advertises QSPI apply support. Offline `--prepare-only` runs
+must supply `--nrf-qspi`; do not use that switch for a board that only exposes
+QSPI pins or uses the chip as a
+Companion filesystem. The application and bootloader must both be from the
+matched repeater list in [the nRF52 QSPI guide](ota_nrf52_qspi.md).
 
 ## 6. Add intermediate relays
 

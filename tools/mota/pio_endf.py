@@ -178,9 +178,15 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     internal_extrafs = (_cppdef("EXTRAFS") is not None and _cppdef("QSPIFLASH") is None
                         and _builds_companion_radio())
     sd_backed = _cppdef("OTA_SD_STORE") is not None
-    stage_ceiling = (ml.NRF52_APP_END if sd_backed else
+    qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
+    if sd_backed and qspi_backed:
+        raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
+    if qspi_backed and _cppdef("QSPIFLASH") is not None:
+        raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
+    stage_ceiling = (ml.NRF52_APP_END if (sd_backed or qspi_backed) else
                      ml.nrf52_stage_ceiling_for_layout(linked_app_end, internal_extrafs))
     layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
+                    (ml.NRF52_LAYOUT_FLAG_QSPI if qspi_backed else 0) |
                     (ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS if internal_extrafs else 0))
     layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
     body = ml.ensure_nrf52_layout(raw_body, layout)

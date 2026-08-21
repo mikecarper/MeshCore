@@ -146,7 +146,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     snprintf(reply, 160,
       "OTA seeder: status | stats | ls=find images | get <id> folder=capture | cancel | "
       "announce | folder | config. LoRa install is disabled.");
-#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+      !defined(OTA_QSPI_STORE)
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
       "cancel | announce | self | folder | config | key");
@@ -194,7 +195,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
     // blrc = the bootloader's last apply code (diagnostic; 0xB8=success, see ota_delta.c).
     const OtaBlCaps& bl = c.bootloaderCaps();
-#if defined(OTA_SD_STORE)
+#if defined(OTA_QSPI_STORE)
+    const char* bl_state = !bl.present ? "NONE" :
+                           (bl.storage_flags & OTA_BL_STORAGE_QSPI) ? "QSPI" : "NO-QSPI";
+#elif defined(OTA_SD_STORE)
     const char* bl_state = !bl.present ? "NONE" :
                            (bl.storage_flags & OTA_BL_STORAGE_SD) ? "SD" : "NO-SD";
 #else
@@ -269,7 +273,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM)
     const OtaBlCaps& list_bl = c.bootloaderCaps();
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+    !defined(OTA_QSPI_STORE)
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
 #endif
@@ -302,10 +307,13 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
                    && h->codec < 16 && (list_bl.codec_mask & (1u << h->codec));
 #if defined(OTA_SD_STORE)
         installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_SD);
+#elif defined(OTA_QSPI_STORE)
+        installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_QSPI);
 #endif
 #endif
         if (!installable) fit = "unsupported";
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+    !defined(OTA_QSPI_STORE)
         else if (!list_has_endf) fit = "rescue";
 #endif
         else fit = "same target";
@@ -428,9 +436,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         strcpy(reply, "ERR bootloader cannot apply an update staged on SD; update it over USB first");
         return true;
       }
+#elif defined(OTA_QSPI_STORE)
+      if (!(bl.storage_flags & OTA_BL_STORAGE_QSPI)) {
+        strcpy(reply, "ERR bootloader cannot apply an update staged on QSPI; update it over USB first");
+        return true;
+      }
 #endif
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+    !defined(OTA_QSPI_STORE)
       SelfFwInfo self;
       bool has_endf = ota_self_firmware(self) && self.valid;
       if (!has_endf && !rescue) {
@@ -489,7 +503,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
     c.fetch_to_folder = false;
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
-#if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE) && !defined(OTA_QSPI_STORE)
     c.manager.set_accept_full(false);
 #endif
     c.fetch_store.clear(); c.serving = false; c.serve_expected = 0; c.session_started_ms = 0;
@@ -517,7 +531,17 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can install this store.
     const OtaBlCaps& bl = c.bootloaderCaps();   // cached (flash scanned once)
-#if defined(OTA_SD_STORE)
+#if defined(OTA_QSPI_STORE)
+    uint32_t qspi_capacity = c.fetch_store.capacity();
+    n += snprintf(reply + n, 160 - n, " | QSPI store:%s%uK",
+                  qspi_capacity ? "" : "ERR ", (unsigned)(qspi_capacity / 1024));
+    if (bl.present && (bl.storage_flags & OTA_BL_STORAGE_QSPI))
+      snprintf(reply + n, 160 - n, " | bootloader: QSPI apply OK (abi=%u codecs=0x%x)",
+               bl.apply_abi, bl.codec_mask);
+    else
+      snprintf(reply + n, 160 - n,
+               " | bootloader: NO QSPI mota-apply support (install will refuse)");
+#elif defined(OTA_SD_STORE)
     if (bl.present && (bl.storage_flags & OTA_BL_STORAGE_SD))
       snprintf(reply + n, 160 - n, " | bootloader: SD apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
     else
@@ -538,7 +562,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // deliberately not an alias or automatic fallback: the operator must name `install` and provide
     // the exact 8-byte base hash carried by the already-fetched package. The bootloader independently
     // hashes the running app and refuses a mismatch before writing any application flash.
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+    !defined(OTA_QSPI_STORE) && !defined(OTA_SEEDER_ONLY)
     if (c.fetch_to_folder) {
       strcpy(reply, "ERR the complete update was captured to a folder, not staged for install; use `ota cancel`");
       return true;
@@ -827,7 +852,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       strcpy(reply, "ERR completed fetch is in the host folder, not local verification storage");
       return true;
     }
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     if (c.manager.fetchState() == OtaManager::COMPLETE) {
       VerifyResult r = ota_verify(static_cast<const OtaStore&>(c.fetch_store), c.allow);
       sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
@@ -837,7 +862,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 #endif
     const uint8_t* buf; uint32_t len;
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     buf = c.serve_buf; len = c.serve_buf ? c.serve_expected : 0;
 #else
     if (c.manager.fetchState() == OtaManager::COMPLETE) { buf = c.fetch_store.data(); len = c.fetch_store.staged_size(); }

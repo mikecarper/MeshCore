@@ -30,6 +30,7 @@ struct OtaBlCaps {
 
 static const uint8_t OTA_BL_STORAGE_SD            = 0x01;
 static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
+static const uint8_t OTA_BL_STORAGE_QSPI          = 0x04;
 
 // Scan the bootloader flash region for the marker. Returns {present=false} if not found / non-nRF52.
 inline OtaBlCaps ota_bootloader_caps() {

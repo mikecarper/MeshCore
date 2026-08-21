@@ -37,6 +37,7 @@ static const uint32_t MOTA_NRF52_FLASH_PAGE = 4096u;
 static const uint8_t  GPREGRET_OTA_APPLY    = 0x6Au;        // distinct from DFU magics 0x57/0x4E/0xA8
 static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
+static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
 
 // Firmware without a valid EndF and older host tooling fall back to this conservative apply workspace.
 // New motatool builds read the firmware's appended layout record and derive memory_size from the actual
@@ -104,6 +105,20 @@ inline bool mota_nrf52_layout_valid(uint32_t app_base, uint32_t stage_ceiling) {
 
 inline bool mota_nrf52_layout_valid(uint32_t app_base) {
   return mota_nrf52_layout_valid(app_base, mota_nrf52_layout_stage_ceiling());
+}
+
+// Validate the five sizes encoded at the start of a detools in-place patch
+// before an external SD/QSPI handoff is approved. External media leaves the
+// complete application region available as workspace; the bootloader repeats
+// these checks before its first destructive write.
+inline bool mota_nrf52_external_patch_geometry_valid(uint32_t memory, uint32_t segment,
+                                                       uint32_t shift, uint32_t from,
+                                                       uint32_t to, uint32_t workspace_span,
+                                                       uint32_t running_image_size,
+                                                       uint32_t target_image_size) {
+  return memory != 0 && memory <= workspace_span && segment == MOTA_NRF52_FLASH_PAGE &&
+         shift <= memory && shift % segment == 0 && from <= memory - shift &&
+         from == running_image_size && to == target_image_size && to <= memory;
 }
 
 inline uint32_t mota_nrf52_stage_capacity(uint32_t app_base, uint32_t app_end,

@@ -9,12 +9,14 @@ For an end-to-end controller that accepts a release ZIP or ready mOTA, see
 | Destination | Update type | Files needed to build the `.mota` | Installer |
 | --- | --- | --- | --- |
 | ESP32 | Full firmware | New non-merged application `.bin` | ESP32 A/B firmware slots |
-| nRF52 | In-place delta | Exact running `firmware.hex` and new `firmware.hex` | Exact-board OTAFIX bootloader |
+| nRF52, internal staging | In-place delta | Exact running `firmware.hex` and new `firmware.hex` | Exact-board OTAFIX bootloader |
+| Supported nRF52 QSPI repeater | Full firmware or in-place delta | New `firmware.hex`; a delta also needs the exact running `firmware.hex` | Matching QSPI-aware OTAFIX bootloader |
 | MeshTower V2 SD target | Full firmware or in-place delta | New `firmware.hex`; a delta also needs the exact running `firmware.hex` | Matching SD-aware OTAFIX bootloader |
 
-A normal nRF52 target cannot install a full-image container. It deliberately accepts only an in-place
-delta built against its exact running firmware. The MeshTower V2 microSD target is the exception because
-it stages the complete container off-chip; see [MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
+An internal-staging nRF52 target accepts only an in-place delta built against its exact running firmware.
+Matched QSPI repeater targets and the MeshTower V2 microSD target can also install a full image because the
+complete container stays off-chip. See [nRF52 repeater OTA with external QSPI](ota_nrf52_qspi.md) and
+[MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
 
 ## Temporary OTA channel used in this guide
 
@@ -44,10 +46,11 @@ configurations. Confirm that it is permitted in your location and change it when
 
 Both paths require:
 
-- An OTA-enabled build whose artifact filename contains `-ota-` on the destination. The `-ota-` stamp confirms
-  that the node can discover, download, verify, and install LoRa OTA. Intermediate repeaters do **not** need an
-  OTA-enabled build: current repeater firmware relays OTA packets opaquely without storing or installing them.
-  Standard logging and untagged builds cannot install LoRa OTA; FULL MQTT and FULL logging OTA builds can.
+- A destination artifact explicitly identified by its release table as install-capable. Some lean internal
+  nRF52 builds carry `lora_ota_no_external_sensors` in the filename, while matched QSPI boards enable install
+  support in the normal full-sensor repeater artifact, so filename text alone is not authoritative. Confirm
+  support with `ota self` and `ota status`. Intermediate repeaters do **not** need an install-capable build:
+  current repeater firmware relays OTA packets opaquely without storing or installing them.
 - An OTA-enabled MeshCore source connected to the computer by USB serial, or
   an ESP32 WiFi companion/FULL source connected over WiFi as described below.
 - Overlapping `tempradio` windows on the source, destination, and every repeater needed between them.
@@ -57,14 +60,23 @@ apply their normal forwarding filters, duplicate checks, and flood limits; they 
 payload. If any required window closes, the transfer stops making progress and can resume during a later
 overlapping window.
 
-`build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for every standalone ESP32 and nRF52
-repeater target. The normal repeater build keeps its external-sensor support and can serve as an intermediate
-OTA relay, but it cannot download or install an update for itself. The `-ota-` sibling omits optional external
-I2C environmental sensors to preserve the update workspace, while retaining board-native features such as its
-display, buttons, battery monitoring, and integrated GPS. ESP32 `-ota-` siblings also retain the lightweight
-browser WiFi uploader (`start ota`), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32 repeaters do not
-currently have a safe self-apply path, but current repeater firmware can still relay OTA packets opaquely
-during TempRadio.
+`build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52 repeater
+targets that need a smaller internal update workspace. Those siblings omit optional external I2C
+environmental sensors while retaining board-native features such as displays, buttons, battery monitoring,
+and integrated GPS where the target uses the GPS-preserving lean profile. The
+RAK3401 target is an explicit exception:
+`RAK_3401_repeater_lora_ota_no_external_sensors` compiles out GPS and cannot
+use a RAK12501. Use the ordinary full-sensor `RAK_3401_repeater` build with a
+RAK12501 in sensor slot A when GPS is required; slot D conflicts with the
+RAK13302 radio's BUSY/DIO1 lines. Selected nRF52 boards with matched external
+QSPI application and bootloader support can instead make the normal full-sensor
+repeater install-capable; those targets do not need to reserve internal flash
+for the downloaded container. Other normal repeaters can still serve as
+intermediate relays but cannot necessarily install an update themselves. ESP32
+`-ota-` siblings also retain the lightweight browser WiFi uploader (`start
+ota`), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32
+repeaters do not currently have a safe self-apply path, but current repeater
+firmware can still relay OTA packets opaquely during TempRadio.
 
 nRF52 `-ota-` siblings are compiled with size optimization instead of the Adafruit platform's default
 speed optimization. This prevents the retained software Ed25519 fallback from expanding beyond the fixed
@@ -153,16 +165,17 @@ identity trailer so `motatool` and the destination can verify the target, hardwa
 
 Do not continue if `motatool verify` reports a failure.
 
-## nRF52: package an in-place delta
+## nRF52: package a full image or in-place delta
 
 ### 1. Install and check the OTAFIX bootloader
 
 This is a one-time prerequisite. Install the OTAFIX bootloader built for the destination's **exact board**
 from the
-[OTAFIX 2.4 nRF52 bootloader release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.9.2-OTAFIX2.4).
-Follow the release's board-specific installation and erase instructions. If it does not contain the
-destination's exact board, this LoRa install path is not yet available for that board; never substitute a
-similar board's bootloader.
+[OTAFIX nRF52 bootloader releases](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases).
+Internal-staging delta updates require OTAFIX 2.4 or newer. External QSPI and SD staging require OTAFIX
+2.4.1 or newer and release notes that explicitly list the exact board and storage mode. Follow the release's
+board-specific installation and erase instructions. If it does not contain the destination's exact board,
+this LoRa install path is not yet available for that board; never substitute a similar board's bootloader.
 
 Before preparing or downloading a LoRa update, run this on the destination:
 
@@ -172,17 +185,33 @@ ota self
 ```
 
 The first command identifies the installed nRF52 bootloader. Continue only if
-the `ota self` reply includes:
+the `ota self` reply includes the apply mode required by this target:
 
 ```text
 bootloader: apply OK
+bootloader: QSPI apply OK
+bootloader: SD apply OK
 ```
 
 The reply also contains the running firmware's `base_hash`. Save it for the package check below. A stock,
 legacy, or older OTAFIX bootloader without `.mota` in-place-apply support will report that apply support is
 missing, and `ota install` will refuse to reboot into it.
 
-### 2. Keep the exact current and new application images
+### 2. Choose full or delta packaging
+
+For a QSPI- or SD-backed target, a full update needs only the new raw
+`firmware.hex`:
+
+```bash
+mkdir -p ./motas
+motatool build --fw ./LilyGo_T-Echo_repeater-new.hex --out-dir ./motas
+motatool verify ./motas/*.mota
+```
+
+Use a full package when an exact base image is unavailable. Use the delta path
+below when reducing airtime is worth retaining the exact running image.
+
+### 3. Keep the exact current and new application images for a delta
 
 You need the raw `.pio/build/<environment>/firmware.hex` from the build that is **actually running**, plus
 the corresponding `firmware.hex` from the new build. Save the current file before building the new version,
@@ -190,13 +219,16 @@ because PlatformIO reuses that path. For example:
 
 ```bash
 # Save this immediately after building/flashing the version now running on the node.
-cp .pio/build/Heltec_t114_repeater/firmware.hex ./Heltec_t114_repeater-running.hex
+cp .pio/build/Heltec_t114_repeater_lora_ota_no_external_sensors/firmware.hex \
+  ./Heltec_t114_repeater_lora_ota_no_external_sensors-running.hex
 
 # After checking out and building the new version, save its image separately.
-cp .pio/build/Heltec_t114_repeater/firmware.hex ./Heltec_t114_repeater-new.hex
+cp .pio/build/Heltec_t114_repeater_lora_ota_no_external_sensors/firmware.hex \
+  ./Heltec_t114_repeater_lora_ota_no_external_sensors-new.hex
 ```
 
-Replace `Heltec_t114_repeater` with the destination's exact PlatformIO environment. The two images must be
+Replace `Heltec_t114_repeater_lora_ota_no_external_sensors` with the destination's exact PlatformIO
+environment. The two images must be
 for the same board and role, and both must contain their `EndF` trailers. Do not pass a release `.uf2` or
 BLE-DFU `.zip` to `motatool`; those are installation containers rather than raw application images.
 
@@ -206,14 +238,19 @@ running application. The hash check in the next step proves that it is the right
 On RAK4631 repeaters, use the
 `RAK_4631_repeater_lora_ota_no_external_sensors` environment. It retains built-in battery monitoring but
 omits optional external environmental sensor packages so the delta fits the safe in-place workspace.
+If the device has a RAK15001 installed in sensor slot C and the matching
+RAK15001 OTAFIX bootloader, use
+`RAK_4631_repeater_rak15001_slot_c_lora_ota` instead. That target retains the
+full sensor/GPS set and can install either a full image or a delta from the
+external 2 MiB store.
 
-### 3. Build and check the in-place delta
+### 4. Build and check the in-place delta
 
 ```bash
 mkdir -p ./motas
 motatool build \
-  --base ./Heltec_t114_repeater-running.hex \
-  --fw ./Heltec_t114_repeater-new.hex \
+  --base ./Heltec_t114_repeater_lora_ota_no_external_sensors-running.hex \
+  --fw ./Heltec_t114_repeater_lora_ota_no_external_sensors-new.hex \
   --patch-type in-place \
   --out-dir ./motas
 motatool verify ./motas/*.mota
@@ -233,9 +270,12 @@ Check all three of these before serving it:
   firmware version identify the intended board and role. If `inspect` shows `N/A` for the human-readable
   target name, the tool's name table is older than that environment; the numeric IDs still must match.
 
-The default `--inplace-memory 0x98000` and 4096-byte segment size match the supported MeshCore OTAFIX
-builds; do not override them for this normal nRF52 flow. Do not continue if verification or any identity
-check fails.
+Current layout-aware `motatool` derives the safe workspace from the new firmware's authenticated EndF layout
+record, so the normal recipe deliberately omits `--inplace-memory`. If older tooling requires an explicit
+override, use `0xC6000` only for matched external SD/QSPI staging and `0x98000` for an internal-staging nRF52
+such as the RAK4631 lean OTA build. Do not substitute the external value on an internal target, and do not
+override either value unless you have verified the exact app base, bootloader, and package geometry. Do not
+continue if verification or any identity check fails.
 
 ## Transfer and install either package
 
@@ -290,8 +330,9 @@ ota ls
 ```
 
 Discovery is asynchronous. `ota ls` says `refreshing`; wait a few seconds and run it again even if it first
-shows an older row. Select `[same target]`: it should say `full` for the ESP32 path or `delta` for the nRF52
-path. Do not select `[unsupported]` (for example, a source's self-served full image on a single-slot nRF52).
+shows an older row. Select `[same target]`: it can say `full` for ESP32 and external SD/QSPI nRF52 targets,
+or `delta` for any supported nRF52 target. Do not select `[unsupported]` (for example, a source's self-served
+full image on an internal-staging nRF52).
 Use the row's stable eight-hex manifest ID rather than its changing list position:
 
 ```text
@@ -335,8 +376,9 @@ ota install
 ```
 
 The destination verifies the complete package again before approving it. ESP32 installs the full image into
-its inactive A/B slot. nRF52 checks the base hash and bootloader capability, then reboots into OTAFIX; the
-bootloader independently rechecks the package, applies the delta in place, and verifies the resulting image.
+its inactive A/B slot. nRF52 checks the bootloader and storage capabilities and, for a delta, the base hash,
+then reboots into OTAFIX. The bootloader independently rechecks the package, installs the external full image
+or applies the delta in place, and verifies the resulting image.
 Pre-install failures leave the running firmware unchanged and report the reason. If power is lost after an
 nRF52 in-place apply has begun, OTAFIX will not boot a partial image; it enters recovery DFU so a known-good
 application can be restored.
@@ -357,7 +399,9 @@ ota status
 - **The update shows another environment or a raw `[hw XXXXXXXX]`:** it is for a different board or firmware
   role. Do not install it.
 - **An internal-flash nRF52 marks a full update `[unsupported]`:** it can install only an in-place delta.
-  The MeshTower V2 microSD target accepts full images with its matching SD-aware bootloader.
+  A matched QSPI repeater or MeshTower V2 microSD target accepts full images with its corresponding bootloader.
+- **A QSPI nRF52 reports `QSPI store:ERR 0K` or `bl:NO-QSPI`:** do not download an install package. Install
+  the exact QSPI-aware bootloader and check that the selected application matches the board's flash wiring.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.
 - **nRF52 reports a base mismatch:** the file passed to `--base` is not the exact application running on

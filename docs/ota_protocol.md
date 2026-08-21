@@ -126,9 +126,13 @@ established target-specific 1920 KiB or larger A/B app layout and are checked ag
 partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also exposes an explicit
 `*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled, while that sibling
 disables optional external environmental-sensor drivers for LoRa distribution. Integrated GPS and other
-board-native telemetry remain enabled. ESP32 siblings retain the compact browser WiFi updater and use the
-full 254-entry neighbor table. RP2040 and STM32 targets are not offered because those platforms do not yet
-have a safe bootloader/apply path.
+board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. RAK3401 is
+the explicit exception: `RAK_3401_repeater_lora_ota_no_external_sensors` undefines `ENV_INCLUDE_GPS`, so it
+does not detect or use a RAK12501. RAK12501 GPS requires the ordinary full-sensor `RAK_3401_repeater` build
+and sensor slot A; slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines.
+ESP32 siblings retain the compact browser WiFi updater and use the full
+254-entry neighbor table. RP2040 and STM32 targets are not offered because
+those platforms do not yet have a safe bootloader/apply path.
 
 nRF52 LoRa-OTA siblings use size optimization rather than the Adafruit platform's default `-Ofast`. This
 keeps the runtime software Ed25519 fallback from being expanded into tens of kilobytes of repeated curve
@@ -257,7 +261,7 @@ cover `approval` or `leaves[]`:
 
 | `codec_id` | Meaning | Used by |
 |---|---|---|
-| 0 | full / raw | PAYLOAD = reconstructed image (`BODY||EndF`). ESP32 A/B or the SD-backed MeshTower V2 target. |
+| 0 | full / raw | PAYLOAD = reconstructed image (`BODY||EndF`). ESP32 A/B or an external SD/QSPI nRF52 target. |
 | 1 | detools **sequential** | random read of base + sequential write of result -> ESP32 A->B inactive slot. |
 | 2 | detools **in-place** | bounded scratch; rewrites the app region in place -> nRF52 single-slot. |
 
@@ -266,9 +270,9 @@ delta only if `base_hash` matches its own `EndF.body_hash`. After applying, the 
 (sha2-256:32) to `image_hash` before it is booted - the hard security gate.
 
 **A fetcher only requests firmware it can apply.** Each node declares the codec(s) it can apply
-(`set_apply_codec`/`set_apply_codec2`): ESP32 accepts `full` + `sequential` (+ `in-place`). Normal nRF52
-targets accept only `in-place` because internal flash cannot stage a full application image. The
-MeshTower V2 SD target accepts `full` + `in-place` because the card holds the container. A `.mota` with
+(`set_apply_codec`/`set_apply_codec2`): ESP32 accepts `full` + `sequential` (+ `in-place`). Internal-staging
+nRF52 targets accept only `in-place` because internal flash cannot hold a second full application image.
+Matched SD and raw-QSPI nRF52 targets accept `full` + `in-place` because external media holds the container. A `.mota` with
 an unsupported codec is rejected at discovery time, before any blocks are requested. A manual pull to
 an external folder may accept other codecs because that path captures bytes and never installs them.
 
@@ -599,8 +603,9 @@ transmission per hop.
   independent of signature.
 - **Signing & allowlist:** a node keeps a runtime allowlist of trusted Ed25519 signer pubkeys (none embedded
   in firmware; `ota key add/list/rm`). A `.mota` is eligible for **auto-install** only if signed by an
-  allowlisted key, the signature verifies, and `image_hash` matches; otherwise it is manual-apply only with
-  explicit confirmation. **Transfer needs no trust** - blocks are content-addressed against the signed root.
+  allowlisted key, the signature verifies, and `image_hash` matches. Manual install permits unsigned packages,
+  but a package that claims to be signed must have a valid signature from an allowlisted key or it is rejected.
+  **Transfer needs no trust** - blocks are content-addressed against the manifest's merkle root.
 - **Policies (persisted):** `autofetch` in {off, any, signed} (default off) gates automatic block fetching of
   own-target adverts; `autoinstall` in {off, trusted} (default off) gates auto-apply of a COMPLETE signed +
   allowlisted fetch. Conservative defaults: a fresh node discovers + announces but never fetches/installs
@@ -758,26 +763,31 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
 - **ESP32 (A/B):** applied in-firmware via the detools decoder into the inactive OTA slot
   (`OtaApply.cpp::ota_apply_detools_mota` + `OtaStoreFlashEsp32`), then set-boot + reboot (power-safe,
   rollback-capable). No bootloader changes. Erase ranges must be sector-aligned (4096).
-- **nRF52 (single-slot):** the running firmware **never** flashes the app. `ota applydelta` verifies fully
-  (`image_hash`, `base_hash`, signature/allowlist, `hw_id`), writes `approval = "APRV"`, then reboots into
-  the modified bootloader (`Adafruit_nRF52_Bootloader_OTAFIX`). The bootloader:
-  1. **scans flash for `MAGIC`** to find the staged `.mota` (it must NOT trust any stored size),
-  2. re-checks `TRAILER`, `image_hash`, `approval == "APRV"`, and that the delta's `base_hash` equals the
-     running firmware's `EndF.body_hash` (recomputed by scanning for `EndF` - never trust `bank_0_size`),
-  3. applies the in-place codec over the app region and boots only if the result hashes to `image_hash`.
-- **nRF52 internal staging ceiling:** the application derives the ceiling from facts available in every
-  build, not a board-name list. A companion that actually links the internal ExtraFS datastore stays below
-  `0xD4000`; a default linker region, QSPI secondary storage, or a role that does not mount ExtraFS can
-  reclaim the unused 100 KiB through `0xED000`. The application uses the larger window only when the
+- **nRF52 (single-slot):** the running firmware **never** flashes the app. `ota install` verifies the
+  container fully (`image_hash`, codec, signature/allowlist, `hw_id`, and `base_hash` for a delta), writes
+  `approval = "APRV"`, then reboots into the modified bootloader
+  (`Adafruit_nRF52_Bootloader_OTAFIX`). The bootloader:
+  1. locates the staged `.mota` in the approved internal, raw-SD, or raw-QSPI store without trusting an
+     unchecked stored size,
+  2. re-checks `TRAILER`, `image_hash`, and `approval == "APRV"`; for a delta it also checks that
+     `base_hash` equals the running firmware's `EndF.body_hash` (recomputed by scanning for `EndF` - never
+     trust `bank_0_size`),
+  3. writes a full external-media payload or applies the in-place codec over the app region, then boots only
+     if the result hashes to `image_hash`.
+- **nRF52 internal staging ceiling:** an internal-store application derives the ceiling from facts available
+  in every build, not a board-name list. A companion that actually links the internal ExtraFS datastore stays
+  below `0xD4000`; a default linker region or a role that does not mount ExtraFS can reclaim the unused
+  100 KiB through `0xED000`. The application uses the larger window only when the
   installed bootloader advertises the GPREGRET2 ceiling-handoff capability. The bootloader treats every
   unknown/legacy handoff value as
   `0xD4000`, and accepts a container only at the bottom-aligned position for the selected ceiling.
 - **nRF52 dynamic apply window:** the post-build hook records the resolved app base, linked app end,
-  storage flags, and desired staging ceiling immediately before `EndF`. `motatool` reads that authenticated
+  internal-ExtraFS/SD/QSPI storage flags, and desired staging ceiling immediately before `EndF`. `motatool` reads that authenticated
   firmware record and chooses `memory_size` from the actual patch size and bottom-aligned stage address;
-  firmware without the record retains the conservative `0x98000` default. Before writing `APRV`, the app
-  verifies the detools header fits below the staged container, and the bootloader independently repeats
-  the geometry check before its first application write. Expanded auto-sized packages require a bootloader
+  firmware without the record retains the conservative `0x98000` default. Before writing `APRV`, an
+  internal-store app validates the staged-address bound; an external SD/QSPI app validates the full detools
+  geometry against the application workspace. The bootloader independently parses and validates the same
+  geometry before its first application write. Expanded auto-sized packages require a bootloader
   with the ceiling-handoff capability; use `--inplace-memory 0x98000` when intentionally targeting an older
   bootloader and the images still fit that window.
 - **nRF52 EndF rescue:** `ota rescue install <base_hash16>` is a pre-provisioned recovery path for an
@@ -798,8 +808,18 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,
   verifies the staged/full result hash, and never writes through `0xED000` where InternalFS begins.
+- **Matched external-QSPI nRF52 repeaters:** the application reserves the board's dedicated QSPI NOR as a
+  raw store beginning at offset zero. It obtains a 1-16 MiB capacity from JEDEC, checkpoints payload before
+  leaf metadata, and verifies each erased/programmed page. GPREGRET2 `0x51` selects QSPI only when the
+  matching bootloader advertises the QSPI storage bit; legacy markers retain the internal scan path. The
+  bootloader pre-hashes a full payload before invalidating the app, or applies an in-place delta with the
+  complete internal application region as workspace. Companion builds never enable this raw store: some use
+  QSPI as a filesystem, while others simply leave that chip outside OTA ownership. See
+  [the nRF52 QSPI guide](ota_nrf52_qspi.md).
 
-The signature proves author authenticity; `approval` proves local owner consent - both required to apply.
+A signature, when present, proves author authenticity and must pass the device allowlist. Unsigned packages
+remain installable when local policy permits them. The one-shot `approval` marker records local consent for
+either form before the bootloader may apply it.
 
 > **Bootloader testing note:** always test apply with a *real different* image (base != target). A same-image
 > (X->X) "delta" trivially reproduces the target and gives a false positive.

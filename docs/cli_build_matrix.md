@@ -41,7 +41,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
 | FULL ESP32 | Uses the matching MQTT target with logging off and keeps the complete command surface supported by that role and hardware. |
 | FULL ESP32 logging | Uses the matching non-MQTT target with debug and packet logging enabled, session-only `get/set usb.logging` control, and the complete command surface supported by that role and hardware. |
-| `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. |
+| `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. On RAK3401, this profile also compiles out GPS, so RAK12501 requires the ordinary full-sensor build. |
 
 `logging`, `OTA`, and `FULL` describe independent build features. Do not infer
 that a command is missing merely because `logging` appears in the filename.

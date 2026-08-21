@@ -36,6 +36,30 @@ TEST(OtaFlashPlan, SelectsCeilingFromLinkedLayoutAndStorage) {
   EXPECT_EQ(mota_nrf52_stage_ceiling_for_layout(0xE0000u, false), LEGACY);
 }
 
+TEST(OtaFlashPlan, ValidatesExternalInplacePatchGeometryBeforeHandoff) {
+  const uint32_t workspace = EXPANDED - APP_V7;
+  const uint32_t running = 620000u;
+  const uint32_t target = 633984u;
+  ASSERT_TRUE(mota_nrf52_external_patch_geometry_valid(
+      workspace, MOTA_NRF52_FLASH_PAGE, 0, running, target,
+      workspace, running, target));
+
+  EXPECT_FALSE(mota_nrf52_external_patch_geometry_valid(
+      workspace + 1, MOTA_NRF52_FLASH_PAGE, 0, running, target,
+      workspace, running, target));
+  EXPECT_FALSE(mota_nrf52_external_patch_geometry_valid(
+      workspace, 2048, 0, running, target, workspace, running, target));
+  EXPECT_FALSE(mota_nrf52_external_patch_geometry_valid(
+      workspace, MOTA_NRF52_FLASH_PAGE, 1, running, target,
+      workspace, running, target));
+  EXPECT_FALSE(mota_nrf52_external_patch_geometry_valid(
+      workspace, MOTA_NRF52_FLASH_PAGE, 0, running - 1, target,
+      workspace, running, target));
+  EXPECT_FALSE(mota_nrf52_external_patch_geometry_valid(
+      workspace, MOTA_NRF52_FLASH_PAGE, 0, running, target + 1,
+      workspace, running, target));
+}
+
 // A typical running image (~520 KB) leaves room; the container lands strictly above it and below ExtraFS.
 TEST(OtaFlashPlan, StagesBelowFilesystemAndAboveApp) {
   uint32_t start = 0xDEADBEEF;

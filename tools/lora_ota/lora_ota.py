@@ -151,6 +151,12 @@ class TargetInfo:
     self_status: str
     current_version: str | None = None
     current_version_source: str | None = None
+    nrf_qspi: bool = False
+
+    @property
+    def nrf_external(self) -> bool:
+        """Whether nRF52 OTA staging is outside internal application flash."""
+        return self.nrf_sd or self.nrf_qspi
 
 
 @dataclass(frozen=True)
@@ -635,7 +641,7 @@ def compatible_mota(info: MotaInfo, target: TargetInfo) -> tuple[bool, str]:
     if info.hw_id and target.hw_id and info.hw_id != target.hw_id:
         return False, f"hardware {info.hw_id!r}, destination is {target.hw_id!r}"
     if info.is_full:
-        if target.platform == "nrf52" and not target.nrf_sd:
+        if target.platform == "nrf52" and not target.nrf_external:
             return False, "internal-flash nRF52 accepts only an in-place delta"
     else:
         if info.base_hash != target.base_hash:
@@ -943,7 +949,9 @@ def prepare_package(
             "--out",
             str(output),
         ]
-        if target.platform == "nrf52" and (not target.nrf_sd or args.base is not None):
+        if target.platform == "nrf52" and (
+            not target.nrf_external or args.base is not None
+        ):
             if args.base is None:
                 raise OtaError(
                     "this nRF52 ZIP contains raw firmware, not a ready delta mOTA; "
@@ -958,8 +966,12 @@ def prepare_package(
                 "--patch-type",
                 "in-place",
             ])
+            # External staging leaves the application region available as the
+            # detools workspace. 0xC6000 is safe for both S140 v7 (app starts
+            # at 0x27000) and older v6 layouts (0x26000). Internal staging
+            # retains its deliberately smaller legacy workspace.
             inplace_memory = args.inplace_memory or (
-                "0xC7000" if target.nrf_sd else "0x98000"
+                "0xC6000" if target.nrf_external else "0x98000"
             )
             command.extend(["--inplace-memory", inplace_memory])
         if args.sign_key:
@@ -1597,9 +1609,22 @@ def query_target(
     nrf_sd = "SD apply OK" in combined or bool(
         re.search(r"\bbl:SD\b", combined)
     )
+    nrf_qspi = "QSPI apply OK" in combined or bool(
+        re.search(r"\bbl:QSPI\b", combined)
+    )
+    qspi_store = re.search(r"\bQSPI store:(ERR\s+)?(\d+)K\b", combined)
+    if nrf_qspi and qspi_store and (
+        qspi_store.group(1) is not None or int(qspi_store.group(2)) == 0
+    ):
+        raise OtaError(
+            "destination bootloader supports QSPI apply, but the application "
+            "reports `QSPI store:ERR 0K`; check the exact-board firmware, "
+            "flash wiring, and flash power before downloading"
+        )
     if platform == "nrf52" and (
         "NO mota-apply" in combined
         or "NO SD mota-apply" in combined
+        or "NO QSPI mota-apply" in combined
         or bool(re.search(r"\bbl:NONE\b", combined))
     ):
         version = bootloader_version or "unknown version"
@@ -1659,6 +1684,7 @@ def query_target(
         self_status=self_status,
         current_version=current_version,
         current_version_source=current_version_source,
+        nrf_qspi=nrf_qspi,
     )
 
 
@@ -2897,7 +2923,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--base", type=Path,
         help=(
             "exact running .bin/.hex/.zip/full.mota (required to build an "
-            "internal-flash nRF52 delta; optional for SD-backed nRF52)"
+            "internal-flash nRF52 delta; optional for external SD/QSPI nRF52)"
         ),
     )
     parser.add_argument("--zip-member", help="select one exact path inside PACKAGE ZIP")
@@ -2905,7 +2931,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--public-key", type=Path, help="require this signer when verifying")
     parser.add_argument(
         "--inplace-memory",
-        help="nRF52 OTAFIX workspace (auto: 0x98000 internal, 0xC7000 SD)",
+        help="nRF52 OTAFIX workspace (auto: 0x98000 internal, 0xC6000 external SD/QSPI)",
     )
     parser.add_argument(
         "--platform", choices=("esp32", "nrf52"),
@@ -2987,6 +3013,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-id", help="8-hex target ID for --prepare-only")
     parser.add_argument("--target-base-hash", help="16-hex EndF body hash for --prepare-only")
     parser.add_argument("--nrf-sd", action="store_true", help="offline target uses nRF52 SD staging")
+    parser.add_argument(
+        "--nrf-qspi", action="store_true",
+        help="offline target uses nRF52 external QSPI staging",
+    )
     parser.add_argument("--target-hw", help="hardware identity for --prepare-only")
     parser.add_argument(
         "--allow-non-upgrade", action="store_true",
@@ -3038,15 +3068,22 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     if args.prepare_only:
         if not args.platform or not args.target_id:
             parser.error("--prepare-only requires --platform and --target-id")
-        if args.platform == "nrf52" and not args.nrf_sd and not args.target_base_hash:
+        if (
+            args.platform == "nrf52"
+            and not (args.nrf_sd or args.nrf_qspi)
+            and not args.target_base_hash
+        ):
             parser.error("offline internal-flash nRF52 preparation requires --target-base-hash")
-        if args.nrf_sd and args.platform != "nrf52":
-            parser.error("--nrf-sd requires --platform nrf52")
+        if args.nrf_sd and args.nrf_qspi:
+            parser.error("--nrf-sd and --nrf-qspi are mutually exclusive")
+        if (args.nrf_sd or args.nrf_qspi) and args.platform != "nrf52":
+            parser.error("--nrf-sd/--nrf-qspi require --platform nrf52")
     else:
-        if any((args.platform, args.target_id, args.target_base_hash, args.target_hw, args.nrf_sd)):
+        if any((args.platform, args.target_id, args.target_base_hash,
+                args.target_hw, args.nrf_sd, args.nrf_qspi)):
             parser.error(
                 "--platform, --target-id, --target-base-hash, --target-hw, and "
-                "--nrf-sd are only valid with --prepare-only"
+                "--nrf-sd/--nrf-qspi are only valid with --prepare-only"
             )
         if not any((args.controller_serial, args.controller_tcp, args.controller_ble)):
             parser.error("a controller connection is required")
@@ -3177,6 +3214,7 @@ def offline_target(args: argparse.Namespace) -> TargetInfo:
         bootloader_codecs=None,
         status="offline",
         self_status="offline",
+        nrf_qspi=args.nrf_qspi,
     )
 
 

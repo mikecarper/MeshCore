@@ -10,7 +10,9 @@
 #include "OtaFormat.h"
 #include "OtaSelf.h"          // ota_self_firmware() - prefer self-describing EndF identity at begin()
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+  #include "OtaStoreQspiNrf52.h"
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   #include "OtaStoreSdNrf52.h"
   #include "OtaCacheSdNrf52.h"
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
@@ -31,12 +33,11 @@
 #endif
 
 // Per-device OTA singleton shared by the CLI (OtaCli) and the mesh adapter (the example's MyMesh).
-// Holds the session engine, a staging store (fetch), a RAM serve buffer, and the signer allowlist.
-// nRF52 stages into FLASH (OtaStoreFlashNrf52): a delta can be 100 KB+, too big to hold in RAM, and the
-// COMPLETE container must persist so the bootloader can apply it after reboot. A flash page-erase halts
-// the CPU (~85 ms) and starves the LoRa RX, so the store COALESCES writes to the 4 KB page (the erase
-// unit) and commits each page once, off the per-packet path (see OtaManager.h) - RAM stays O(one page).
-// (v1 has no mid-transfer resume; an interrupted fetch simply restarts.) ESP32/native use the RAM store.
+// Holds the session engine, a persistent staging store (fetch), a RAM serve buffer, and the signer
+// allowlist. nRF52 uses one of three stores selected by the exact target: internal flash for in-place
+// deltas, raw microSD, or dedicated raw QSPI for full images and in-place deltas. Flash-backed stores
+// coalesce writes at their erase-page boundary and checkpoint payload before leaf metadata, so an
+// interrupted fetch can be verified and resumed without trusting stale progress markers.
 
 namespace mesh {
 namespace ota {
@@ -50,7 +51,8 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
     #define OTA_SERVE_BUF_SIZE 1
   // nRF52 self-serving streams from flash; this buffer is only for the manual `ota dev stage` helper.
   // Keep it to one flash page so the OTA singleton does not consume another 16 KB of scarce SRAM.
-  #elif defined(NRF52_PLATFORM) && (defined(OTA_FLASH_STORE) || defined(OTA_SD_STORE))
+  #elif defined(NRF52_PLATFORM) && \
+        (defined(OTA_FLASH_STORE) || defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     #define OTA_SERVE_BUF_SIZE 4096
   #else
     #define OTA_SERVE_BUF_SIZE 16384
@@ -67,6 +69,8 @@ struct OtaContext {
   // store object for OtaManager, while folder captures replace it with the
   // host-backed FolderMotaStore for the duration of the pull.
   OtaStoreRam<1> fetch_store;
+#elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+  OtaStoreQspiNrf52 fetch_store;             // persistent raw QSPI staging, full + in-place delta
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   OtaStoreSdNrf52 fetch_store;             // MeshTower V2: persistent SD staging, full + delta
   OtaCacheSdNrf52 sd_cache;                 // persistent capture + source for every OTA container heard
@@ -161,7 +165,7 @@ struct OtaContext {
     msg[95] = 0;
     return false;
 #else
-#if !defined(NRF52_PLATFORM) || defined(OTA_SD_STORE)
+#if !defined(NRF52_PLATFORM) || defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
     if (rescue_base_hash) {
       strncpy(msg, "rescue is only for internal-flash nRF52 builds", 96);
       msg[95] = 0;
@@ -191,7 +195,7 @@ struct OtaContext {
       }
     }
     bool ok;
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     ok = ota_apply_mota_nrf52(fetch_store, allow, apply_st, msg);
 #elif defined(NRF52_PLATFORM)
     if (rescue_base_hash) {
@@ -446,7 +450,7 @@ struct OtaContext {
     manager.set_accept_full(true);
     manager.set_autofetch(OtaManager::AUTOFETCH_OFF);
     autoinstall = AUTOINSTALL_OFF;
-#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#elif defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     manager.set_accept_full(true);
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(NRF52_PLATFORM)

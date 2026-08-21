@@ -85,6 +85,7 @@ def target(
     platform: str = "esp32",
     base_hash: bytes = b"\0" * 8,
     nrf_sd: bool = False,
+    nrf_qspi: bool = False,
     boot_codecs: int | None = None,
     boot_version: str | None = None,
     current_version: str | None = None,
@@ -102,6 +103,7 @@ def target(
         status="status",
         self_status="self",
         current_version=current_version,
+        nrf_qspi=nrf_qspi,
     )
 
 
@@ -176,6 +178,23 @@ class FormatTests(unittest.TestCase):
             "--target-id", f"{TARGET:08X}", "--nrf-sd",
         ])
         ota.validate_args(args, parser)
+
+    def test_offline_qspi_nrf52_does_not_require_a_base_hash(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.zip", "offline", "--prepare-only", "--platform", "nrf52",
+            "--target-id", f"{TARGET:08X}", "--nrf-qspi",
+        ])
+        ota.validate_args(args, parser)
+
+    def test_nrf_external_stores_are_mutually_exclusive(self) -> None:
+        parser = ota.build_parser()
+        args = parser.parse_args([
+            "release.zip", "offline", "--prepare-only", "--platform", "nrf52",
+            "--target-id", f"{TARGET:08X}", "--nrf-sd", "--nrf-qspi",
+        ])
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            ota.validate_args(args, parser)
 
     def test_nrf_sd_is_rejected_for_esp32(self) -> None:
         parser = ota.build_parser()
@@ -399,6 +418,11 @@ class CompatibilityTests(unittest.TestCase):
     def test_sd_nrf52_accepts_full_when_bootloader_does(self) -> None:
         full = ota.parse_mota(mota_blob(self.new_image))
         nrf = target(platform="nrf52", nrf_sd=True, boot_codecs=1)
+        self.assertTrue(ota.compatible_mota(full, nrf)[0])
+
+    def test_qspi_nrf52_accepts_full_when_bootloader_does(self) -> None:
+        full = ota.parse_mota(mota_blob(self.new_image))
+        nrf = target(platform="nrf52", nrf_qspi=True, boot_codecs=1)
         self.assertTrue(ota.compatible_mota(full, nrf)[0])
 
     def test_zip_prefers_equal_version_delta(self) -> None:
@@ -696,6 +720,48 @@ class ReliabilityTests(unittest.TestCase):
             controller.commands,
             ["ota status", "get bootloader.ver", "ota self", "ota stats"],
         )
+
+    def test_target_detects_qspi_staging(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=Xiao_nrf52 | bl:QSPI blrc:B0",
+                    "> 0.9.2-OTAFIX2.4",
+                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "bootloader: QSPI apply OK (abi=2 codecs=0x5)",
+                    "OTA | fw v1.17.0 id=00112233",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        result = ota.query_target(
+            Controller(), argparse.Namespace(target="remote")
+        )
+        self.assertTrue(result.nrf_qspi)
+        self.assertTrue(result.nrf_external)
+        self.assertFalse(result.nrf_sd)
+
+    def test_target_rejects_unavailable_qspi_store(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.replies = iter([
+                    "OTA | no download | target:1234ABCD hw=Xiao_nrf52 | bl:QSPI blrc:B0",
+                    "> 0.9.2-OTAFIX2.4",
+                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "QSPI store:ERR 0K | bootloader: QSPI apply OK "
+                    "(abi=2 codecs=0x5)",
+                ])
+
+            def remote_command(self, *_args: object, **_kwargs: object) -> str:
+                return next(self.replies)
+
+        with self.assertRaisesRegex(
+            ota.OtaError, "bootloader supports QSPI apply.*QSPI store:ERR 0K"
+        ):
+            ota.query_target(
+                Controller(), argparse.Namespace(target="remote")
+            )
 
     def test_stock_nrf52_bootloader_reports_required_action(self) -> None:
         class Controller:
@@ -2026,6 +2092,22 @@ class MotatoolIntegrationTests(unittest.TestCase):
             _path, package, _expected = ota.prepare_package(
                 prepare_args(archive_path, self.motatool),
                 target(platform="nrf52", nrf_sd=True, boot_codecs=1),
+                work,
+            )
+            self.assertTrue(package.is_full)
+
+    def test_raw_qspi_nrf52_zip_becomes_full_without_base(self) -> None:
+        image = firmware(b"nrf-qspi-new" * 800, VERSION_NEW)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive_path = root / "release.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("firmware.bin", image)
+            work = root / "work"
+            work.mkdir()
+            _path, package, _expected = ota.prepare_package(
+                prepare_args(archive_path, self.motatool),
+                target(platform="nrf52", nrf_qspi=True, boot_codecs=1),
                 work,
             )
             self.assertTrue(package.is_full)

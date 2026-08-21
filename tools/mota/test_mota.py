@@ -55,6 +55,14 @@ def test_hardware_id_for_env():
     assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK4631"
     assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK4631"
     assert (
+        ml.hardware_id_for_env("RAK_4631_repeater_rak15001_slot_c_lora_ota")
+        == "RAK4631_RAK15001_C"
+    )
+    assert (
+        ml.hardware_id_for_env("RAK_3401_repeater_rak15001_slot_c_lora_ota")
+        == "RAK_3401"
+    )
+    assert (
         ml.hardware_id_for_env("Heltec_t114_without_display_repeater")
         == "Heltec_t114"
     )
@@ -128,6 +136,12 @@ def test_nrf52_layout_record_roundtrip_and_policy():
         ml.NRF52_EXTRAFS_START, ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS)
     internal_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(6, 2048), internal))
     assert ml.parse_nrf52_layout(internal_image) == internal
+    qspi = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V7, ml.NRF52_APP_END,
+        ml.NRF52_APP_END, ml.NRF52_LAYOUT_FLAG_QSPI)
+    qspi_image, _ = ml.ensure_endf(ml.ensure_nrf52_layout(_fw(7, 2048), qspi))
+    assert ml.parse_nrf52_layout(qspi_image) == qspi
+    assert qspi.qspi_backed and qspi.external_backed and not qspi.sd_backed
     try:
         ml.build_nrf52_layout(ml.Nrf52Layout(
             ml.NRF52_APP_BASE_S140_V7, ml.NRF52_EXTRAFS_START,
@@ -135,6 +149,17 @@ def test_nrf52_layout_record_roundtrip_and_policy():
         assert False, "inconsistent layout record accepted"
     except ValueError:
         pass
+    for flags in (
+        ml.NRF52_LAYOUT_FLAG_SD | ml.NRF52_LAYOUT_FLAG_QSPI,
+        ml.NRF52_LAYOUT_FLAG_QSPI | ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
+    ):
+        try:
+            ml.build_nrf52_layout(ml.Nrf52Layout(
+                ml.NRF52_APP_BASE_S140_V7, ml.NRF52_APP_END,
+                ml.NRF52_APP_END, flags))
+            assert False, "conflicting nRF52 layout flags accepted"
+        except ValueError:
+            pass
 
 
 # --- merkle ----------------------------------------------------------------

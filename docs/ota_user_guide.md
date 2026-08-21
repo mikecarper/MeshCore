@@ -4,9 +4,12 @@ This guide is for **node operators**: how to update your MeshCore device's firmw
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
 
-LoRa OTA download and installation are present only in supported Keymind destination artifacts whose filename
-contains `-ota-`; the receiver must already be running one of those install-capable builds. A source can be an
-OTA-enabled infrastructure node or a source-only Full Companion backed by `motatool`. Intermediate repeaters
+LoRa OTA download and installation are present only in supported Keymind destination artifacts; the receiver
+must already be running one of those install-capable builds. Some internal-staging nRF52 targets use a lean
+`lora_ota_no_external_sensors` target, while matched external-QSPI boards can retain their normal full-sensor
+repeater features. Release filenames include an OTA marker, but capability must still be confirmed on the
+running device. A source can be an OTA-enabled infrastructure node or a source-only Full Companion backed
+by `motatool`. Intermediate repeaters
 do not need OTA-enabled firmware: current repeater builds transport OTA floods opaquely, subject to their normal
 forwarding filters, duplicate checks, and flood limits. OTA radio traffic is accepted, generated, and relayed
 only while `tempradio` is actually running on that node. Every source, receiver, and intermediate repeater must
@@ -21,23 +24,45 @@ tempradio 909.950,250,5,5,120
 
 Use the node's current permitted regional frequency in place of `909.950` when necessary.
 
-> **Can my node install the update?** Choose a supported repeater artifact carrying the `-ota-` filename stamp.
+> **Can my node install the update?** Choose a release-table artifact explicitly labelled LoRa-OTA capable,
+> then confirm `ota self` and `ota status` expose install support; do not infer support from the filename alone.
 > LoRa OTA firmware is available for supported **ESP32** boards and nRF52 repeater targets. Every nRF52
 > installation also requires the OTAFIX bootloader built for that exact board; having an OTA-capable
-> application image alone is not enough. An intermediate repeater only relays packets and needs neither the
-> `-ota-` image nor OTAFIX. Check the bootloader release for an exact board match before attempting an update.
+> application image alone is not enough. An intermediate repeater only relays packets and needs neither an
+> install-capable image nor OTAFIX. Check the bootloader release for an exact board match before attempting an update.
 
-The following nRF52 repeater targets gained firmware-side LoRa OTA support in this release without losing
-their normal external-sensor support:
+The following nRF52 repeater families gained firmware-side LoRa OTA targets in
+this release. Their ordinary repeater remains the full-sensor build; the
+install-capable `lora_ota_no_external_sensors` sibling is smaller:
 
 - Heltec Mesh Solar, T1, and Tower V2
 - Keepteen LT1, LilyGo T-Impulse Plus, Mesh Pocket, and Nano G2 Ultra
 - Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110
 
-The full-sensor `RAK_4631_repeater` image is too large for the safe nRF52 in-place update limit. Use
-`RAK_4631_repeater_lora_ota_no_external_sensors` when LoRa OTA is required. That target removes optional
-external environmental/GPS sensor packages, but retains the RAK4631's built-in battery-voltage reading,
-battery telemetry, and `battery.alert` behavior.
+RAK3401 is an important GPS exception: its
+`RAK_3401_repeater_lora_ota_no_external_sensors` image compiles out GPS support
+as well as the optional environmental sensors. It will not detect or use a
+RAK12501. For RAK12501 GPS, use the ordinary full-sensor
+`RAK_3401_repeater` build and install the GPS in sensor slot A. Slot D's GPS
+reset/PPS lines conflict with the RAK13302 radio's BUSY/DIO1 lines. The
+full-sensor RAK3401 build is not the self-updating target described by the
+RAK3401 compact OTA chain.
+
+Selected nRF52 repeaters with dedicated external QSPI can now stage the
+complete package off-chip, so their normal full-sensor repeater build can
+install a full image or an in-place delta. The current matched families are
+XIAO nRF52840 and its XIAO-module derivatives, original LilyGo T-Echo,
+ThinkNode M1/M6, Wio Tracker L1, SenseCAP Solar, and the dedicated RAK4631 +
+RAK15001 slot-C target. These require the corresponding QSPI-aware OTAFIX bootloader; see
+[the nRF52 QSPI guide](ota_nrf52_qspi.md).
+
+The ordinary full-sensor `RAK_4631_repeater` image remains too large for the
+safe internal in-place update limit. Without external flash, use
+`RAK_4631_repeater_lora_ota_no_external_sensors`; it removes optional external
+environmental/GPS packages but retains battery monitoring. A RAK4631 fitted
+with RAK15001 in sensor slot C can instead use
+`RAK_4631_repeater_rak15001_slot_c_lora_ota` to retain the full sensor/GPS set
+and stage full images or deltas off-chip.
 
 ---
 
@@ -112,7 +137,8 @@ long ago it was seen. The fit marker:
 - **[same target]** - the advertised target ID matches this hardware-and-role build. Download and apply
   still enforce codec, bootloader, signed hardware tag, base hash, and integrity checks.
 - **[unsupported]** - the target may match, but this build or its bootloader cannot apply that codec. A common
-  example is the source node's self-served **full** image on a single-slot nRF52, which needs an in-place delta.
+  example is the source node's self-served **full** image on an internal-staging nRF52, which needs an
+  in-place delta. A matched external-QSPI nRF52 can accept that full codec.
 - **[rescue]** - an installable in-place nRF52 delta for the same target, but this running firmware has no
   valid app-side EndF. It requires the explicit rescue download and install flow below.
 - **[name]** - a different known board or role (for example `[ProMicro_companion_radio_usb]`). Don't install it.
@@ -184,9 +210,9 @@ ota install
 ```
 
 The node verifies the firmware one last time, and if everything checks out it installs it and **reboots
-into the new version**. If the check fails, it tells you why and does **not** install. (If you haven't
-added the signer's key, an unsigned/untrusted image will only install with this explicit command - never
-automatically.)
+into the new version**. If the check fails, it tells you why and does **not** install. Unsigned images
+install only through this explicit command. A signed image whose signer is not in the device allowlist is
+rejected; trusted signed images can auto-install only when that policy is enabled.
 
 After it reboots, run `ota status` to confirm the new version.
 
@@ -263,8 +289,9 @@ ota key list                    # show trusted signers
 ota key rm <public-key-hex>     # stop trusting one
 ```
 
-Only updates signed by a trusted key are eligible for auto-install. Manual `ota install` still lets you
-install anything yourself, on your own responsibility.
+Only updates signed by a trusted key are eligible for auto-install. Manual `ota install` permits an unsigned
+package after all integrity, hardware, base, and bootloader checks pass. A signed package whose signer is not
+in the device allowlist is rejected rather than silently treated as unsigned.
 
 ---
 
