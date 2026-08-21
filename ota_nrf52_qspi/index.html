@@ -907,6 +907,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#explicit-xiao-bootloader-updates-over-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit XIAO bootloader updates over LoRa
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#storage-ownership-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1245,6 +1256,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#explicit-xiao-bootloader-updates-over-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explicit XIAO bootloader updates over LoRa
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#storage-ownership-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1291,8 +1313,9 @@ nRF52840, free RAM, or pins named QSPI is not enough. Both halves must use the
 exact flash wiring, and <code>ota self</code> must confirm the store and bootloader before
 an update is downloaded.</p>
 <h2 id="supported-repeater-families">Supported repeater families</h2>
-<p>QSPI staging is enabled only for repeater-role environments on these currently
-matched families:</p>
+<p>QSPI staging is enabled only for explicitly matched repeater-role environments
+(and RS232 bridge variants that directly inherit one of those repeater targets)
+on these currently matched families:</p>
 <ul>
 <li>Seeed XIAO nRF52840 and XIAO nRF52840 Sense modules, including the
   <code>Xiao_nrf52</code>, SolarXiao 30S/33S, and XIAO-module Ikoka handheld, Nano, and
@@ -1316,8 +1339,8 @@ T-Echo target.</p>
 <p>Companion builds are intentionally excluded. Some companion targets use the
 same external QSPI as a LittleFS message/data store, where raw OTA staging
 would corrupt the filesystem; other companions simply do not assign that chip
-to OTA. Room-server, sensor, KISS, and repeater-bridge roles are also unchanged.
-Raw QSPI OTA is scoped to the explicitly matched repeater environments.</p>
+to OTA. Room-server, sensor, and KISS roles are unchanged. Raw QSPI OTA is
+scoped to the explicitly matched repeater-derived environments.</p>
 <h3 id="rak15001-placement-and-module-conflicts">RAK15001 placement and module conflicts</h3>
 <p><a href="https://docs.rakwireless.com/product-categories/wisblock/rak15001/datasheet/">RAK15001</a>
 is a 2 MiB GD25Q16C <strong>standard SPI</strong> module, not a quad-I/O flash. The dedicated
@@ -1390,7 +1413,7 @@ starting another pull; later capacity probes preserve that failure detail.</p>
 <p>The store reads the JEDEC capacity at runtime and accepts supported 1 MiB
 through 16 MiB devices using 24-bit addressing. QSPI capacity is not the final
 firmware limit. The reconstructed application, including its 56-byte <code>EndF</code>
-trailer, must fit below InternalFS at <code>0xED000</code>:</p>
+trailer, must fit its build's linked application region:</p>
 <table>
 <thead>
 <tr>
@@ -1400,6 +1423,11 @@ trailer, must fit below InternalFS at <code>0xED000</code>:</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>S140 v7, boot-update-capable XIAO module</td>
+<td><code>0x27000..0xE0000</code></td>
+<td><code>0xB9000</code> (757,760 bytes)</td>
+</tr>
 <tr>
 <td>S140 v7, app base <code>0x27000</code></td>
 <td><code>0x27000..0xED000</code></td>
@@ -1412,6 +1440,12 @@ trailer, must fit below InternalFS at <code>0xED000</code>:</p>
 </tr>
 </tbody>
 </table>
+<p>The XIAO limit is deliberately 52 KiB smaller. Its linker and post-link record
+cap every ordinary application at <code>0xE0000</code>; OTAFIX reserves
+<code>0xE0000..0xEA000</code> as a 40 KiB self-update scratch bank, with the remaining gap
+left unused before InternalFS. Full and delta application packages for these
+targets derive their effective application end from that <code>0xE0000</code> record and
+are rejected if their reconstructed image or detools geometry crosses it.</p>
 <p>A full package needs only the new raw <code>firmware.hex</code> or non-merged application
 image. An in-place delta still needs the exact image currently running. The
 automation uses a conservative <code>0xC6000</code> detools workspace for external nRF52
@@ -1430,6 +1464,47 @@ full <code>.mota</code> normally uses that target ID for discovery and routing. 
 operator can deliberately override the routing target for a role change, so
 <code>target_id</code> is not an apply-time safety assertion; the destination still
 enforces the package's hardware identity before approval.</p>
+<h2 id="explicit-xiao-bootloader-updates-over-lora">Explicit XIAO bootloader updates over LoRa</h2>
+<p>Bootloader delivery is available only when all of these are already true:</p>
+<ul>
+<li>the application is an <code>OTA_QSPI_BOOTLOADER_UPDATE</code> XIAO-module repeater build
+  linked below <code>0xE0000</code>;</li>
+<li><code>ota bootloader</code> shows a CRC-valid installed <code>XIAO_DFU</code> embedded identity for
+  board ID <code>28860044</code> (base) or <code>28860045</code> (Sense);</li>
+<li>the installed OTAFIX marker reports ABI 3 or newer and both QSPI (<code>0x04</code>) and
+  boot-update (<code>0x08</code>) capability bits;</li>
+<li>the package is the exact signed v3/40-KiB/1-KiB-block profile for that board,
+  and its signer is already in <code>ota key</code>'s trusted allowlist.</li>
+</ul>
+<p>This is not part of normal automation. Bootloader catalog rows are labelled
+<code>bootloader</code>; even a capable node never autofetches or autoinstalls them, and
+ordinary <code>ota install</code> rejects them in every application backend. The
+<code>tools/lora_ota</code> deployment runner also refuses v3 packages. Fetch and arm one
+only with the explicit flow:</p>
+<pre><code class="language-text">ota ls
+ota pull &lt;MID8&gt; flash
+# wait for ota status to report the same bootloader download as ready
+ota bootloader
+# copy the exact mid= and hash= values printed above
+ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
+</code></pre>
+<p>The pull command is only transport intent; it does not authorize an install.
+The final command must reproduce both the complete staged manifest ID and the
+first eight bytes of its signed image hash. Before approval the application
+again checks package/root/payload/image hashes, Ed25519 signature and trusted
+allowlist, exact signed <code>XIAO_BL_...</code> ID, installed and incoming embedded
+manifest/CRC/name/board identity, vector table, and ABI-3 QSPI+boot-update
+continuity. A signed older bootloader that would remove remote update support
+is refused.</p>
+<p>After the reply drains, GPREGRET <code>0x6B</code> and GPREGRET2 <code>0x51</code> enter the special
+OTAFIX path. OTAFIX independently rechecks the package before using the
+reserved scratch bank to replace its own <code>0xF4000..0xFE000</code> region. The running
+application remains preserved; a rejected candidate returns to it unchanged.
+Post-reboot <code>ota status</code> reports bootloader-update diagnostics as <code>blup:C0</code> to
+<code>blup:CF</code> (<code>blup:C8</code> is success), separately from ordinary application <code>blrc</code>.</p>
+<p>This feature cannot update a stock or old bootloader that lacks the capability
+marker: perform the first exact-board combined bootloader+SoftDevice migration
+over USB/BLE DFU or SWD. Do not attempt to bootstrap it with a v3 package.</p>
 <h2 id="storage-ownership-and-recovery">Storage ownership and recovery</h2>
 <p>The QSPI store is raw, not a file inside LittleFS. It owns the flash from
 offset zero, erases 4 KiB sectors as blocks arrive, writes data before progress

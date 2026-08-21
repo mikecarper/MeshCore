@@ -967,6 +967,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#43-privileged-xiao-bootloader-package-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Privileged XIAO bootloader package profile
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1522,6 +1533,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#43-privileged-xiao-bootloader-package-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Privileged XIAO bootloader package profile
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1891,9 +1913,14 @@ document is the technical/wire specification.</p>
 <td>multihash code</td>
 </tr>
 <tr>
-<td><code>format_ver</code></td>
+<td>application <code>format_ver</code></td>
 <td><code>0x02</code></td>
-<td>this spec</td>
+<td>ordinary full/delta application package</td>
+</tr>
+<tr>
+<td>bootloader <code>format_ver</code></td>
+<td><code>0x03</code></td>
+<td>privileged XIAO bootloader package only</td>
 </tr>
 <tr>
 <td><code>approval</code> = not approved</td>
@@ -1914,6 +1941,11 @@ document is the technical/wire specification.</p>
 <td><code>MFLAG_SIGNED</code></td>
 <td><code>0x02</code></td>
 <td>flags bit1</td>
+</tr>
+<tr>
+<td><code>MFLAG_BOOTLOADER</code></td>
+<td><code>0x04</code></td>
+<td>flags bit2; valid only in the exact v3 bootloader profile</td>
 </tr>
 <tr>
 <td><code>CODEC_FULL</code> / <code>_SEQUENTIAL</code> / <code>_INPLACE</code></td>
@@ -2062,8 +2094,8 @@ is immutable.</p>
 Only <code>leaves[]</code> is variable (one 4-byte hash per block). So the manifest-minus-leaves (<code>mfl</code>) is <strong>always
 197 bytes</strong> and the parser is plain offset reads - no conditionals. Parsed by <code>mota_parse_manifest()</code>.</p>
 <pre><code>off  size   field            notes
-0    1      format_ver       = 0x02
-1    1      flags            bit0 FULL (0=delta/partial, 1=full image); bit1 SIGNED; bits2-7 reserved 0
+0    1      format_ver       = 0x02 application, or 0x03 privileged bootloader package
+1    1      flags            bit0 FULL; bit1 SIGNED; bit2 BOOTLOADER; bits3-7 reserved 0
 2    1      hash_algo        0x12 = sha2-256
 3    4      target_id        device/arch/role discriminator (Section 9)
 7    4      fw_version       MAJOR&lt;&lt;24 | MINOR&lt;&lt;16 | PATCH&lt;&lt;8 | pre   (comparable uint32)
@@ -2087,6 +2119,10 @@ outside the signed region so it can be flipped in place on consent without break
 <p>Manifest-minus-leaves size (<code>mfl</code>) is a constant <strong>197 bytes</strong> for every container (full or delta, signed
 or unsigned). At 197 bytes the manifest exceeds one packet, so <code>OTA_MANIFEST</code> is always sent multi-fragment
 (Section 8.4, 2 fragments) and reassembled by the fetcher.</p>
+<p>The two versions are deliberately disjoint. Version 2 accepts application packages only and rejects the
+BOOTLOADER bit. Version 3 accepts only flags exactly <code>FULL|SIGNED|BOOTLOADER</code>; a non-bootloader v3 package
+is invalid. Consequently, deployed v2-only application parsers reject a bootloader package before they can
+mistake its raw 40 KiB payload for an application image.</p>
 <h3 id="41-signed-region">4.1 Signed region</h3>
 <p><code>signature</code> covers manifest bytes <code>[0, 129)</code> - the head + <code>base_hash</code> + <code>signer_pubkey</code>. It does <strong>not</strong>
 cover <code>approval</code> or <code>leaves[]</code>:</p>
@@ -2102,6 +2138,21 @@ cover <code>approval</code> or <code>leaves[]</code>:</p>
 <li>Bound to this image (lives in this <code>.mota</code>'s manifest, re-erased when a new <code>.mota</code> is staged).</li>
 <li>A <strong>consent</strong> marker, not a security primitive. Authenticity = <code>signature</code> + <code>image_hash</code> + <code>hw_id</code>.</li>
 </ul>
+<h3 id="43-privileged-xiao-bootloader-package-profile">4.3 Privileged XIAO bootloader package profile</h3>
+<p>A v3 bootloader package has a deliberately narrow, non-extensible profile:</p>
+<ul>
+<li>flags exactly <code>FULL|SIGNED|BOOTLOADER</code>, <code>CODEC_FULL</code>, nonzero <code>fw_version</code>, zero <code>base_hash</code>;</li>
+<li>a raw payload and <code>image_size</code> of exactly <code>0xA000</code> (40 KiB), split into exactly forty 1024-byte blocks;</li>
+<li><code>target_id</code> equal to the installed OTAFIX embedded board ID (<code>0x28860044</code> for XIAO nRF52840 or
+  <code>0x28860045</code> for XIAO nRF52840 Sense);</li>
+<li>signed <code>hw_id</code> exactly <code>XIAO_BL_28860044</code> or <code>XIAO_BL_28860045</code>, derived from that board ID;</li>
+<li>a sane nRF52840 vector table, a CRC-valid embedded manifest v1 with the exact padded device name
+  <code>XIAO_DFU</code>, and a <code>MOTABLDR</code> marker advertising ABI &gt;= 3, full codec, QSPI, and boot-update continuity.</li>
+</ul>
+<p>The incoming embedded identity must exactly match the installed CRC-valid bootloader identity. Both scans
+consider every aligned structurally valid candidate so magic bytes in a literal pool cannot shadow the real
+manifest. A package must be signed by a key already in the device's trusted allowlist; unlike ordinary
+application packages, there is no unsigned manual-install exception.</p>
 <hr />
 <h2 id="5-payload-codecs-delta-base">5. Payload, codecs &amp; delta base</h2>
 <p><code>PAYLOAD</code> is either the full reconstructed image (<code>FULL</code>) or a delta (<code>!FULL</code>).</p>
@@ -2632,6 +2683,9 @@ ota get | pull | download &lt;mid8|#index&gt; flash [rescue] | folder [validate]
                                       fetch by stable mid8 (preferred) or current page index
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
 ota rescue install &lt;base_hash16&gt;  internal-flash nRF52 only: recover from failed app-side EndF validation
+ota bootloader [status]           capable XIAO QSPI repeater: installed BL identity/caps + staged confirmation
+ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
+                                      explicitly verify/arm one complete trusted v3 package; never automatic
 ota cancel | drop | stop           drop the current fetch session (frees the slot)
 ota announce | adv                 serve self + send a beacon now
 ota self | id                      print this firmware's EndF (body/image size, base_hash)
@@ -2701,20 +2755,33 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
   complete internal application region as workspace. Companion builds never enable this raw store: some use
   QSPI as a filesystem, while others simply leave that chip outside OTA ownership. See
   <a href="../ota_nrf52_qspi/">the nRF52 QSPI guide</a>.</li>
+<li><strong>XIAO bootloader self-update (explicit only):</strong> selected XIAO-module QSPI repeater builds link the
+  ordinary application below <code>0xE0000</code>, reserving <code>0xE0000..0xEA000</code> as a 40 KiB internal scratch bank.
+  They accept a v3 bootloader package only through an exact manual MID pull. Ordinary <code>ota install</code>,
+  autofetch, autoinstall, and every application apply backend reject it. The operator then copies the
+  staged package's exact values from <code>ota bootloader</code> into
+  <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code>. The app repeats the strict v3 geometry, installed/candidate
+  identity, vectors, embedded CRC/capabilities, complete payload/image hashes, signature, and trusted-key
+  gates before writing <code>APRV</code>. GPREGRET <code>0x6B</code> plus GPREGRET2 <code>0x51</code> hands the QSPI package to OTAFIX.
+  OTAFIX independently repeats all privileged checks, uses the scratch bank to preserve the running
+  application while replacing <code>0xF4000..0xFE000</code>, and reports boot-update results in GPREGRET2 <code>0xC0..0xCF</code>
+  (<code>0xC8</code> success). This mechanism cannot bootstrap a stock/older bootloader; install an ABI-3,
+  boot-update-capable exact-board OTAFIX over USB/BLE DFU or SWD once first.</li>
 </ul>
-<p>A signature, when present, proves author authenticity and must pass the device allowlist. Unsigned packages
-remain installable when local policy permits them. The one-shot <code>approval</code> marker records local consent for
-either form before the bootloader may apply it.</p>
+<p>A signature, when present, proves author authenticity and must pass the device allowlist. Unsigned v2
+application packages remain installable when local policy permits them. A v3 bootloader package is always
+signed and trusted. The one-shot <code>approval</code> marker records local consent before the bootloader may apply it.</p>
 <blockquote>
 <p><strong>Bootloader testing note:</strong> always test apply with a <em>real different</em> image (base != target). A same-image
 (X-&gt;X) "delta" trivially reproduces the target and gives a false positive.</p>
 </blockquote>
 <hr />
 <h2 id="13-versioning-of-this-spec">13. Versioning of this spec</h2>
-<p><code>format_ver = 2</code>. A parser accepts exactly this value and rejects anything else - there is one container
-format, fixed-layout, and no compatibility shims to carry. If the format ever needs to change, bump
-<code>format_ver</code>; the multihash <code>hash_algo</code> separately allows swapping the digest family without a format
-bump. Unknown <code>codec_id</code> / <code>ota_msg_type</code> values are ignored (a node simply won't fetch what it can't apply).</p>
+<p>The fixed byte layout has two intentionally disjoint profiles: <code>format_ver = 2</code> for ordinary application
+packages and <code>format_ver = 3</code> only for the exact privileged bootloader profile in Section 4.3. A parser must
+reject v2+BOOTLOADER, v3 without exact <code>FULL|SIGNED|BOOTLOADER</code>, and every other version. The multihash
+<code>hash_algo</code> separately allows swapping the digest family without a format bump. Unknown <code>codec_id</code> /
+<code>ota_msg_type</code> values are ignored (a node simply will not fetch what it cannot apply).</p>
 
 
 

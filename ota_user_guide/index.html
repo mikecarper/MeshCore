@@ -989,6 +989,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#updating-a-xiao-bootloader-advanced-explicit-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating a XIAO bootloader (advanced, explicit only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#5-if-something-goes-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1400,6 +1411,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#updating-a-xiao-bootloader-advanced-explicit-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating a XIAO bootloader (advanced, explicit only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#5-if-something-goes-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1704,6 +1726,32 @@ into the new version</strong>. If the check fails, it tells you why and does <st
 install only through this explicit command. A signed image whose signer is not in the device allowlist is
 rejected; trusted signed images can auto-install only when that policy is enabled.</p>
 <p>After it reboots, run <code>ota status</code> to confirm the new version.</p>
+<h3 id="updating-a-xiao-bootloader-advanced-explicit-only">Updating a XIAO bootloader (advanced, explicit only)</h3>
+<p>This is available only on the specially marked XIAO nRF52840/Sense QSPI
+repeater builds after a one-time exact-board ABI-3 OTAFIX installation over
+USB/BLE DFU or SWD. It is not the normal firmware update path. Check support
+first:</p>
+<pre><code class="language-text">ota bootloader
+</code></pre>
+<p>The reply must show a valid <code>XIAO_DFU</code> board identity plus ABI 3 and the QSPI /
+boot-update capability bits. A bootloader package appears as <code>bootloader</code> in
+<code>ota ls</code>. It is never downloaded or installed automatically, even if both OTA
+automation settings are enabled. Use its stable ID explicitly:</p>
+<pre><code class="language-text">ota pull &lt;MID8&gt; flash
+# wait until ota status says this bootloader download is ready
+ota bootloader
+ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
+</code></pre>
+<p>Copy both confirmation values exactly from the second <code>ota bootloader</code> reply.
+Ordinary <code>ota install</code> deliberately refuses this package. The privileged
+command requires an exact 40 KiB candidate for the installed XIAO board, a
+valid embedded identity/CRC and vector table, continued boot-update support,
+and a valid signature from a key already in <code>ota key</code>'s trusted allowlist. It
+preserves the running application while OTAFIX replaces itself; <code>blup:C8</code> in
+post-reboot <code>ota status</code> means success. Any node lacking this command or those
+capabilities must update its bootloader locally instead. See
+<a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora">the nRF52 QSPI guide</a>
+for the complete safety contract.</p>
 <h3 id="5-if-something-goes-wrong">5. If something goes wrong</h3>
 <ul>
 <li>A download that stalls or gets interrupted just <strong>resumes</strong> later, or you can <code>ota cancel</code> and try again.</li>

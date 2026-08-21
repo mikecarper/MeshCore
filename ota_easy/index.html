@@ -1846,6 +1846,10 @@ ota ls
 shows an older row. Select <code>[same target]</code>: it can say <code>full</code> for ESP32 and external SD/QSPI nRF52 targets,
 or <code>delta</code> for any supported nRF52 target. Do not select <code>[unsupported]</code> (for example, a source's self-served
 full image on an internal-staging nRF52).
+Rows labelled <code>bootloader</code> are also outside this ordinary application flow:
+they are never automatic and <code>ota install</code> refuses them. Only an already-capable
+XIAO QSPI repeater can use the separate
+<a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora">explicit bootloader workflow</a>.
 Use the row's stable eight-hex manifest ID rather than its changing list position:</p>
 <pre><code class="language-text">ota pull 838B8169 flash
 </code></pre>

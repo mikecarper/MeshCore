@@ -1456,8 +1456,13 @@ identify the destination, validate the hardware and running firmware, prepare
 the right container, move the participating nodes to a temporary radio
 channel, serve and monitor the download, request installation, restore the
 controller, and check the rebooted node.</p>
-<p>The script cannot install the destination's first OTA-capable firmware or its
-nRF52 bootloader. Do those one-time jobs over USB before using LoRa OTA.</p>
+<p>The script cannot install the destination's first OTA-capable firmware. It is
+also deliberately application-only: it rejects both v3 bootloader containers
+and a v2 container carrying the bootloader flag, and it never sends the
+privileged install command. Do the first nRF52 bootloader installation over USB;
+an already-capable XIAO QSPI repeater may later use the separate, manual
+<a href="../ota_nrf52_qspi/#explicit-xiao-bootloader-updates-over-lora"><code>ota bootloader install</code></a>
+workflow.</p>
 <h2 id="required-topology">Required topology</h2>
 <p>The reliable serial topology uses two local radios:</p>
 <pre><code class="language-text">                                      authenticated admin commands
@@ -1797,9 +1802,10 @@ the destination.</p>
 <li>Authenticate to the target and query its target ID, hardware, running body
    hash, firmware version, bootloader version, and nRF52 bootloader
    capabilities.</li>
-<li>Select or build one compatible mOTA and verify all block hashes, Merkle
-   root, full-image hash where applicable, identity fields, signature, codec,
-   base, and the firmware's 1024-byte maximum block size.</li>
+<li>Select or build one compatible <strong>v2 application</strong> mOTA and verify all block
+   hashes, Merkle root, full-image hash where applicable, identity fields,
+   signature, codec, base, and the firmware's 1024-byte maximum block size.
+   Version-3 bootloader packages are refused before any target state changes.</li>
 <li>Save the controller's normal radio tuple and show the confirmation prompt.</li>
 <li>Start TempRadio on the target, then far-to-near relays, then the source;
    finally switch the controller to the same tuple and read it back. The runner
