@@ -1305,8 +1305,39 @@ over USB/BLE DFU or SWD.</p>
 <td style="text-align: right;">the same eleven-page slot; no second reservation</td>
 <td>source <code>0xED</code>, flags <code>0x0A</code></td>
 </tr>
+<tr>
+<td>MeshTower V2 microSD</td>
+<td style="text-align: right;">normal <code>0xED000</code> limit</td>
+<td style="text-align: right;">contiguous <code>/meshcore-ota.mota</code></td>
+<td style="text-align: right;">dynamic internal <code>0xE0000..0xEA000</code> scratch; live image must end by <code>0xE0000</code></td>
+<td>source <code>0x53</code>, flags <code>0x09</code></td>
+</tr>
 </tbody>
 </table>
+<p>The exact SD target is
+<code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>. Its normal
+application FULL and delta updates continue to use the SD file without the
+bootloader-update scratch restriction. For a bootloader package only, both
+MeshCore and OTAFIX require a hash-valid live <code>EndF</code> proving the complete
+running image ends at or below <code>0xE0000</code>. If boot settings carry a nonzero app
+bank CRC, the recorded bank size must also cover that full EndF-inclusive
+image and stop by <code>0xE0000</code>; erased or explicitly CRC-disabled settings remain
+valid. OTAFIX then copies the verified 40
+KiB payload from SD into <code>0xE0000..0xEA000</code> and uses the MBR copy operation to
+replace <code>0xF4000..0xFE000</code>. The application linker remains at <code>0xED000</code>; a
+future application extending above <code>0xE0000</code> can still use application mOTA
+but must update its bootloader through local DFU/SWD.</p>
+<p>The removable SD authorization is fail-closed. MeshCore directly authenticates
+one exact manifest, requires the streamed manifest on SD to remain
+byte-identical, and verifies its complete payload. After writing and syncing
+<code>APRV</code>, but before publishing the raw-sector handoff, it writes and
+readback-verifies a 64-byte <code>MOTASDBL</code> token at <code>0xE0000</code>. The token contains
+the exact container length and the authenticated signed manifest's
+<code>image_hash</code>. OTAFIX requires that same hash in the parsed manifest, the
+streamed raw payload, and the final scratch image. A card swap or mutation
+after application verification therefore causes refusal rather than
+authorizing different bytes; the token page is consumed as scratch during a
+successful update and is not a permanent reservation.</p>
 <p>The internal path does not change the application linker or permanently set
 aside separate app-OTA, boot-package, and scratch regions. The ordinary
 bottom-aligned internal store holds one container at a time: either an
@@ -1435,9 +1466,10 @@ ordinary full-sensor target when that module is required.</p>
 <p>Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
 Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
-need a separately matched QSPI path where available. Full Companions,
+need a separately matched QSPI path where available. Full Companions, other
 SD/QSPI/ExtraFS roles, Ethernet roles, source-only roles, and unqualified
-full-sensor roles are excluded.</p>
+full-sensor roles are excluded from the internal-flash inventory. The exact
+MeshTower V2 SD role above is separately qualified for its SD path.</p>
 <p>This internal layout is limited to nRF52840 devices with 1 MiB internal flash,
 the exact S140 v6/v7 map, and the 40 KiB boot region at
 <code>0xF4000..0xFE000</code>. nRF52833 and smaller nRF52 parts cannot provide that map
@@ -1447,8 +1479,9 @@ closed instead of selecting smaller or overlapping geometry.</p>
 <p>Check the installed identity and capability marker:</p>
 <pre><code class="language-text">ota bootloader
 </code></pre>
-<p>The response must show a CRC-valid exact identity, ABI 3 or newer, full codec,
-and exact flags <code>0x0A</code> for internal shared storage or <code>0x0E</code> for XIAO QSPI. A
+<p>The response must show a CRC-valid exact identity, ABI 3 or newer, both FULL
+and INPLACE application codecs (<code>codecs=0x5</code>), and exact flags <code>0x09</code> for
+MeshTower V2 SD, <code>0x0A</code> for internal shared storage, or <code>0x0E</code> for XIAO QSPI. A
 bootloader row is visible in <code>ota ls</code>, but it is never autofetched or
 autoinstalled. Fetch its exact MID, then explicitly arm it:</p>
 <pre><code class="language-text">ota pull &lt;MID8&gt; flash
@@ -1465,23 +1498,29 @@ bootloader package is not automatically resumed after an application reboot.</p>
 <p>Before writing <code>APRV</code>, the application authenticates and authorizes the
 package: exact v3 geometry, trusted Ed25519 signer, signed/embedded identity,
 one unambiguous capability marker, embedded CRC, sane vectors, complete
-Merkle/payload/image hashes, safe live placement, and the typed MID/hash
-confirmation. OTAFIX consumes that application-written authorization and then
+Merkle/payload/image hashes, storage-specific safe live placement, and the
+typed MID/hash confirmation. On SD, <code>APRV</code> and the internal signed-image-hash
+token are synced and read back before the handoff becomes visible. OTAFIX consumes that application-written
+authorization and then
 independently rechecks the safety/integrity subset: strict v3 structure,
 canonical identity/capabilities, vectors, full payload SHA, embedded manifest
-CRC, live <code>EndF</code> no-overlap geometry, page readback, and final copy hash. It
-does not re-run Ed25519, the signer allowlist, Merkle leaves/root, or the typed
-operator confirmation. Success is reported as <code>blup:C8</code>.</p>
+CRC, the applicable live <code>EndF</code>/bank-settings no-overlap geometry, the SD token
+binding where applicable, scratch readback, and final
+copy hash. It does not re-run Ed25519, the signer allowlist, Merkle leaves/root,
+or the typed operator confirmation. Success is reported as <code>blup:C8</code>.</p>
 <h2 id="failure-behavior">Failure behavior</h2>
-<p>The feature fails closed when the MCU/map is wrong, current valid <code>EndF</code>
-headroom is insufficient, external/ExtraFS storage owns the target, the exact
-installed capability marker is absent or ambiguous, identity cannot be derived
-unambiguously, or any package check fails. Before compaction, the application
-and bootloader are unchanged. OTAFIX consumes the trigger/approval before the
-first in-place compaction erase, so an interrupted conversion cannot retry a
-partly converted package; it boots the untouched application and old
-bootloader instead. Use USB/BLE DFU or SWD for initial provisioning and local
-recovery.</p>
+<p>The feature fails closed when the MCU/map is wrong, required valid <code>EndF</code>
+headroom is insufficient, an unsupported external/ExtraFS role owns the target,
+the exact installed capability marker is absent or ambiguous, identity cannot be derived
+unambiguously, or any package check fails. Before the storage-specific
+scratch/copy step, the application and bootloader are unchanged. OTAFIX
+consumes the trigger and, for internal/QSPI storage, clears approval before its
+first scratch erase, so an interrupted operation cannot retry a partly
+consumed package. The SD backend cannot rewrite raw card sectors: its <code>APRV</code>
+and checksummed handoff may persist, but the one-shot GPREGRET trigger is
+consumed before validation and they remain inert unless the running app again
+authenticates and explicitly re-arms that package. Use USB/BLE DFU or SWD for
+initial provisioning and local recovery.</p>
 <p>For XIAO and ordinary external-QSPI details, see
 <a href="../ota_nrf52_qspi/">nRF52 repeater LoRa OTA with external QSPI</a>.</p>
 

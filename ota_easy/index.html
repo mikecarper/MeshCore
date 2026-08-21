@@ -1875,8 +1875,9 @@ or <code>delta</code> for any supported nRF52 target. Do not select <code>[unsup
 full image on an internal-staging nRF52).
 Rows labelled <code>bootloader</code> are also outside this ordinary application flow:
 they are never automatic and <code>ota install</code> refuses them. Only an
-already-capable, allowlisted internal-flash or XIAO-QSPI nRF52 target can use
-the separate <a href="../ota_nrf52_bootloader_update/">explicit bootloader workflow</a>.
+already-capable, allowlisted internal-flash, XIAO-QSPI, or exact MeshTower V2
+microSD nRF52 target can use the separate
+<a href="../ota_nrf52_bootloader_update/">explicit bootloader workflow</a>.
 Use the row's stable eight-hex manifest ID rather than its changing list position:</p>
 <pre><code class="language-text">ota pull 838B8169 flash
 </code></pre>

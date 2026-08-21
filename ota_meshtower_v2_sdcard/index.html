@@ -852,6 +852,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#signed-bootloader-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signed bootloader update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sd-card-cli" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1255,6 +1266,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#signed-bootloader-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signed bootloader update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sd-card-cli" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1332,9 +1354,10 @@
 <h1 id="meshtower-v2-microsd-lora-ota">MeshTower V2 microSD LoRa OTA</h1>
 <p>The <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> target uses the MeshTower V2 onboard
 microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
-both full <code>.mota</code> images and in-place delta <code>.mota</code> images. After verification,
-the matching SD-aware OTAFIX bootloader reads the staged file from the card and
-programs the nRF52840 application region.</p>
+full application images, in-place application deltas, and explicitly selected
+signed v3 bootloader packages. After verification, the matching SD-aware OTAFIX
+bootloader reads the staged file from the card and programs the selected
+nRF52840 application or bootloader region.</p>
 <p>The pin assignment follows the
 <a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf">Heltec MeshTower V2 partial reference circuit</a>:</p>
 <table>
@@ -1408,6 +1431,55 @@ the reboot and installation.</p>
 bootloader capability marker does not advertise SD staging and the selected
 codec. Existing <code>Heltec_tower_v2_repeater</code> firmware continues to use the
 internal-flash delta path and is unchanged.</p>
+<h2 id="signed-bootloader-update">Signed bootloader update</h2>
+<p>Only this exact SD build exposes the privileged LoRa bootloader-update command.
+It requires an already installed exact-board ABI-3 OTAFIX bootloader whose one
+unambiguous capability marker is exactly <code>0x09</code> (<code>SD|BOOT_UPDATE</code>) and whose
+codec mask is <code>0x0005</code> (<code>FULL|INPLACE</code>). Requiring both application codecs
+prevents a bootloader self-update from disabling either normal SD application
+path. It cannot bootstrap a stock or older bootloader; provision that
+prerequisite once over USB/BLE DFU or SWD.</p>
+<p>The signed v3 container is exactly 41,330 bytes and carries a 40 KiB candidate
+for the installed <code>239A0071 / TOWER_V2_OTA</code> identity (boot target <code>1150F50E</code>).
+It uses the same contiguous <code>/meshcore-ota.mota</code> file and sector-1 handoff as an
+application update. GPREGRET <code>0x6B</code> plus the distinct SD source marker <code>0x53</code>
+selects the bootloader path; LoRa transport remains payload type <code>0x0C</code>.</p>
+<p>The application linker still ends at <code>0xED000</code>, but OTAFIX needs
+<code>0xE0000..0xEA000</code> as temporary scratch while replacing itself. Before a boot
+package can be downloaded or approved, MeshCore requires a hash-valid live
+<code>EndF</code> proving the complete running image ends by <code>0xE0000</code>; OTAFIX repeats
+that no-overlap check before its first erase. An application extending above
+that boundary can still receive normal FULL or delta application updates from
+SD, but its bootloader must be updated locally.</p>
+<p>MeshCore also checks the live boot settings before touching that scratch page.
+Erased settings and a valid-app record with CRC disabled are allowed. When a
+nonzero bank CRC is active, its recorded <code>bank_0_size</code> must cover the complete
+EndF-inclusive running image and must end by <code>0xE0000</code>; an undersized or
+oversized record refuses the operation and requires local DFU/SWD.</p>
+<p>Because the card is removable, approval is bound to the exact bytes that were
+authenticated. MeshCore verifies the signature and signer allowlist over one
+exact local manifest copy, requires the streamed manifest on SD to remain
+byte-identical, and verifies the complete payload against that manifest. It
+then writes <code>APRV</code> and syncs the card. Before publishing the raw-sector
+handoff, it writes and readback-verifies a temporary 64-byte <code>MOTASDBL</code> token
+at <code>0xE0000</code> containing the exact container length and that signed manifest's
+<code>image_hash</code>. OTAFIX requires the parsed SD manifest, streamed payload, and
+final scratch image to match the same token. Replacing or changing the card
+after verification can therefore only make the boot update fail; it cannot
+authorize different bootloader bytes. The token page becomes the first
+scratch page during a successful update and is not permanently reserved.</p>
+<p>Bootloader packages are never autofetched or autoinstalled. Select and confirm
+one exact package manually:</p>
+<pre><code class="language-text">ota ls
+ota pull &lt;MID8&gt; flash
+# wait for ota status to report the bootloader download ready
+ota bootloader
+ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
+</code></pre>
+<p>Copy the MID and first 16 image-hash hex digits from <code>ota bootloader</code>. Ordinary
+<code>ota install</code> rejects this package, and the bootloader command rejects an
+application package. Keep the SD card inserted through the reboot. A later
+<code>ota status</code> value of <code>blup:C8</code> reports a successful bootloader replacement.</p>
 <h2 id="sd-card-cli">SD card CLI</h2>
 <p>The SD-backed target provides these CLI commands:</p>
 <pre><code class="language-text">set sdcard format [--force]
@@ -1432,7 +1504,7 @@ formats the card, a successful erase updates both timestamps. The timestamps
 reset when the device reboots. The <code>get sdcard</code> age queries report how long ago
 each operation completed. <code>get sdcard free</code> reports used and free filesystem
 space in human-readable binary units.</p>
-<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, four
+<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, two
 files per page. A bare command shows page 1; append a positive page number to
 move through the remaining results. Each row includes the path and a compact
 file size. The header reports the selected page, total pages, and total files.</p>

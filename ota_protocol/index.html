@@ -2175,8 +2175,9 @@ cover <code>approval</code> or <code>leaves[]</code>:</p>
 <li>signed <code>hw_id</code> exactly <code>XIAO_BL_28860044</code>/<code>XIAO_BL_28860045</code> for deployed XIAO, or the zero-padded
   32-byte <code>NRF_BL_&lt;BOARD_ID&gt;_&lt;DEVICE_NAME&gt;</code> for a generic target;</li>
 <li>a sane nRF52840 vector table, exactly one CRC-valid embedded manifest v1 with the exact board/name pair,
-  and exactly one <code>MOTABLDR</code> marker advertising ABI &gt;= 3, full codec, boot-update continuity, and the exact
-  storage flags for the application layout (<code>0x0E</code> XIAO QSPI or <code>0x0A</code> shared internal staging).</li>
+  and exactly one <code>MOTABLDR</code> marker advertising ABI &gt;= 3, both application codecs (<code>FULL|INPLACE</code>, mask
+  <code>0x0005</code>), boot-update continuity, and the exact storage flags for the application layout (<code>0x09</code>
+  MeshTower V2 SD, <code>0x0E</code> XIAO QSPI, or <code>0x0A</code> shared internal staging).</li>
 </ul>
 <p>The incoming embedded identity must exactly match the installed CRC-valid bootloader identity. Both scans
 consider every aligned structurally valid candidate so magic bytes in a literal pool cannot shadow the real
@@ -2780,7 +2781,19 @@ ota dev ...                        bring-up helpers (stage/recv/serve/verify)
 <li><strong>MeshTower V2 SD nRF52:</strong> the application stores a contiguous <code>/meshcore-ota.mota</code> on microSD and
   publishes its raw sector range in a checksummed handoff record outside the MBR partition. The matching
   bootloader reads the card without mounting FAT, supports either a full image or an in-place delta,
-  verifies the staged/full result hash, and never writes through <code>0xED000</code> where InternalFS begins.</li>
+  verifies the staged/full result hash, and never writes through <code>0xED000</code> where InternalFS begins. The
+  exact SD repeater also accepts a manually selected, signed v3 bootloader package when installed and
+  candidate markers are exactly <code>0x09</code> (<code>SD|BOOT_UPDATE</code>). MeshCore streams the same strict identity,
+  CRC, vector, signature, MID/hash-confirmation, and complete-image checks from the SD file. GPREGRET
+  <code>0x6B</code> plus GPREGRET2 <code>0x53</code> selects this privileged path. Both MeshCore and OTAFIX require a hash-valid
+  live <code>EndF</code> ending by <code>0xE0000</code>; when a nonzero boot-settings bank CRC is active, its recorded size must
+  also cover that complete live image and stop by <code>0xE0000</code>. MeshCore authenticates one exact manifest,
+  verifies the streamed SD copy is byte-identical, writes and syncs <code>APRV</code>, then writes a readback-checked
+  <code>MOTASDBL</code> token at <code>0xE0000</code> containing the exact total and signed <code>image_hash</code> before publishing the
+  raw-sector handoff. OTAFIX binds the parsed manifest, streamed payload, and final scratch image to that
+  token, so a removable-media change can only fail closed. OTAFIX then uses <code>0xE0000..0xEA000</code> as temporary scratch; the normal
+  application linker remains at <code>0xED000</code> and ordinary application updates do not inherit this scratch
+  headroom restriction.</li>
 <li><strong>Matched external-QSPI nRF52 repeaters:</strong> the application reserves the board's dedicated QSPI NOR as a
   raw store beginning at offset zero. It obtains a 1-16 MiB capacity from JEDEC, checkpoints payload before
   leaf metadata, and verifies each erased/programmed page. GPREGRET2 <code>0x51</code> selects QSPI only when the
