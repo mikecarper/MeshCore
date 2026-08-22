@@ -34,7 +34,7 @@ target:
 - endpoint packed version: `0x01110102` (EndF tools render this as `1.17.1.2`)
 - deployment target key: `63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d`
 
-### GPS limitation
+### Historical endpoint GPS limitation
 
 This chain's exact `RAK_3401_repeater_lora_ota_no_external_sensors` endpoint
 compiles with `ENV_INCLUDE_GPS` removed. It will not detect, configure, or read
@@ -43,6 +43,10 @@ a RAK12501 GPS module. GPS requires the ordinary full-sensor
 A. Do not use slot D with the RAK13302 1 W radio: the GPS reset/PPS signals
 would overlap the radio's BUSY/DIO1 signals. The full-sensor build is a
 different target and is not an endpoint of this compact OTA chain.
+
+This limitation describes the immutable released chain endpoint identified
+above. Newly built RAK3401 OTA repeater firmware retains RAK12501 support in
+slot A, but that newer image is not retroactively part of this exact chain.
 
 Do not use the chain on another target ID, hardware family, starting image, or
 firmware body hash. The runner checks all four.

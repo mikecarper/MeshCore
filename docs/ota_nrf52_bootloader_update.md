@@ -142,10 +142,10 @@ stable release uses `0xFF`, and low-byte zero or all-ones values are rejected.
 There is no remote rollback/migration override; intentional rollback uses
 USB/BLE DFU or SWD.
 
-The `no_external_sensors` profiles omit optional/add-on sensor and GPS packages
-to preserve flash headroom. Board-integrated GPS can be retained by a board's
-recipe. The RAK3401 lean target specifically omits RAK12501/add-on GPS; use the
-ordinary full-sensor target when that module is required.
+The `no_external_sensors` profiles omit optional/add-on sensor packages to
+preserve flash headroom. A board recipe can retain GPS. The RAK3401 OTA
+repeater retains RAK12501 GPS in sensor slot A, and the RAK4631 OTA repeater
+retains GPS except where a Serial1 RS232 bridge owns the same UART.
 
 Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo

@@ -39,14 +39,15 @@ install-capable `lora_ota_no_external_sensors` sibling is smaller:
 - Keepteen LT1, LilyGo T-Impulse Plus, Mesh Pocket, and Nano G2 Ultra
 - Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110
 
-RAK3401 is an important GPS exception: its
-`RAK_3401_repeater_lora_ota_no_external_sensors` image compiles out GPS support
-as well as the optional environmental sensors. It will not detect or use a
-RAK12501. For RAK12501 GPS, use the ordinary full-sensor
-`RAK_3401_repeater` build and install the GPS in sensor slot A. Slot D's GPS
-reset/PPS lines conflict with the RAK13302 radio's BUSY/DIO1 lines. The
-full-sensor RAK3401 build is not the self-updating target described by the
-RAK3401 compact OTA chain.
+The RAK3401 `RAK_3401_repeater_lora_ota_no_external_sensors` image retains
+RAK12501 GPS while omitting the other optional environmental sensors. Install
+the GPS in sensor slot A. Slot D's reset/PPS lines conflict with the RAK13302
+radio's BUSY/DIO1 lines.
+
+The RAK4631 internal-flash OTA repeater likewise retains GPS. A RAK12501 can
+use sensor slot A or D; a RAK12500 can use slot A or C. The RAK4631 Serial1
+RS232 OTA bridge is the exception because the bridge owns the GPS UART. The
+Serial2 RS232 OTA bridge retains GPS on Serial1.
 
 Selected nRF52 repeaters with dedicated external QSPI can now stage the
 complete package off-chip, so their normal full-sensor repeater build can

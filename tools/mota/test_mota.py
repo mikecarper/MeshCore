@@ -79,6 +79,38 @@ def test_ota_target_generation_honors_explicit_disable():
     assert "RAK_3401_repeater_lora_ota_no_external_sensors" in release_aliases()
 
 
+def test_rak_nrf52_ota_profiles_keep_gps_where_uart_is_available():
+    root = Path(__file__).resolve().parents[2]
+
+    def env_section(path, name):
+        text = path.read_text(encoding="utf-8")
+        return text.split(f"[env:{name}]", 1)[1].split("\n[", 1)[0]
+
+    rak4631_path = root / "variants/rak4631/platformio.ini"
+    gps_profiles = (
+        env_section(rak4631_path, "RAK_4631_repeater_lora_ota_no_external_sensors"),
+        env_section(
+            rak4631_path,
+            "RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors",
+        ),
+        env_section(
+            root / "variants/rak3401/platformio.ini",
+            "RAK_3401_repeater_lora_ota_no_external_sensors",
+        ),
+    )
+    for profile in gps_profiles:
+        assert "${nrf52_no_external_sensors_keep_gps.build_flags}" in profile
+        assert "${nrf52_no_external_sensors_keep_gps.lib_deps}" in profile
+        assert "SparkFun u-blox GNSS Arduino Library" in profile
+
+    serial1_bridge = env_section(
+        rak4631_path,
+        "RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors",
+    )
+    assert "${nrf52_no_external_sensors.build_flags}" in serial1_bridge
+    assert "WITH_RS232_BRIDGE=Serial1" in serial1_bridge
+
+
 def test_hardware_id_for_env():
     assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK4631"
     assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK4631"
