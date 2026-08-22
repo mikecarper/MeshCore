@@ -2053,10 +2053,10 @@ established target-specific 1920 KiB or larger A/B app layout and are checked ag
 partition. For every standalone ESP32 and nRF52 repeater, <code>build.sh</code> also exposes an explicit
 <code>*_lora_ota_no_external_sensors</code> artifact: the ordinary repeater remains sensor-enabled, while that sibling
 disables optional external environmental-sensor drivers for LoRa distribution. Integrated GPS and other
-board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. RAK3401 is
-the explicit exception: <code>RAK_3401_repeater_lora_ota_no_external_sensors</code> undefines <code>ENV_INCLUDE_GPS</code>, so it
-does not detect or use a RAK12501. RAK12501 GPS requires the ordinary full-sensor <code>RAK_3401_repeater</code> build
-and sensor slot A; slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines.
+board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The RAK3401
+OTA repeater also retains RAK12501 GPS support; install that module in sensor slot A because slot D conflicts
+with the RAK13302 radio's BUSY/DIO1 lines. RAK4631 OTA repeaters retain GPS except for the Serial1 RS232
+bridge, whose bridge and GPS would contend for the same UART.
 ESP32 siblings retain the compact browser WiFi updater and use the full
 254-entry neighbor table. RP2040 and STM32 targets are not offered because
 those platforms do not yet have a safe bootloader/apply path.</p>

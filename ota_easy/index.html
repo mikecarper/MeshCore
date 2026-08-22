@@ -1681,12 +1681,10 @@ overlapping window.</p>
 <p><code>build.sh</code> provides a <code>*_repeater_lora_ota_no_external_sensors</code> build for standalone ESP32 and nRF52 repeater
 targets that need a smaller internal update workspace. Those siblings omit optional external I2C
 environmental sensors while retaining board-native features such as displays, buttons, battery monitoring,
-and integrated GPS where the target uses the GPS-preserving lean profile. The
-RAK3401 target is an explicit exception:
-<code>RAK_3401_repeater_lora_ota_no_external_sensors</code> compiles out GPS and cannot
-use a RAK12501. Use the ordinary full-sensor <code>RAK_3401_repeater</code> build with a
-RAK12501 in sensor slot A when GPS is required; slot D conflicts with the
-RAK13302 radio's BUSY/DIO1 lines. Selected nRF52 boards with matched external
+and GPS where the target uses the GPS-preserving lean profile. The RAK3401 OTA
+repeater retains RAK12501 support in sensor slot A; slot D conflicts with the
+RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS except
+for its Serial1 RS232 bridge, which uses the same UART. Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
 for the downloaded container. Other normal repeaters can still serve as

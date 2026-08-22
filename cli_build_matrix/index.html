@@ -1383,7 +1383,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
-<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. On RAK3401, this profile also compiles out GPS, so RAK12501 requires the ordinary full-sensor build.</td>
+<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1.</td>
 </tr>
 </tbody>
 </table>

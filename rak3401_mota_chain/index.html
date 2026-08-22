@@ -1058,10 +1058,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gps-limitation" class="md-nav__link">
+  <a href="#historical-endpoint-gps-limitation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GPS limitation
+        Historical endpoint GPS limitation
       
     </span>
   </a>
@@ -1328,10 +1328,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gps-limitation" class="md-nav__link">
+  <a href="#historical-endpoint-gps-limitation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        GPS limitation
+        Historical endpoint GPS limitation
       
     </span>
   </a>
@@ -1527,7 +1527,7 @@ target:</p>
 <li>endpoint packed version: <code>0x01110102</code> (EndF tools render this as <code>1.17.1.2</code>)</li>
 <li>deployment target key: <code>63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d</code></li>
 </ul>
-<h3 id="gps-limitation">GPS limitation</h3>
+<h3 id="historical-endpoint-gps-limitation">Historical endpoint GPS limitation</h3>
 <p>This chain's exact <code>RAK_3401_repeater_lora_ota_no_external_sensors</code> endpoint
 compiles with <code>ENV_INCLUDE_GPS</code> removed. It will not detect, configure, or read
 a RAK12501 GPS module. GPS requires the ordinary full-sensor
@@ -1535,6 +1535,9 @@ a RAK12501 GPS module. GPS requires the ordinary full-sensor
 A. Do not use slot D with the RAK13302 1 W radio: the GPS reset/PPS signals
 would overlap the radio's BUSY/DIO1 signals. The full-sensor build is a
 different target and is not an endpoint of this compact OTA chain.</p>
+<p>This limitation describes the immutable released chain endpoint identified
+above. Newly built RAK3401 OTA repeater firmware retains RAK12501 support in
+slot A, but that newer image is not retroactively part of this exact chain.</p>
 <p>Do not use the chain on another target ID, hardware family, starting image, or
 firmware body hash. The runner checks all four.</p>
 <h2 id="why-the-old-bootloader-works">Why the old bootloader works</h2>

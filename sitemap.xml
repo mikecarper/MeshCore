@@ -2,130 +2,130 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://mikecarper.github.io/MeshCore/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/WiFi/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/cli_build_matrix/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/cli_command_availability/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/cli_commands/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/companion_offline_queue/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/companion_protocol/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/companion_radio_full/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/docs/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/faq/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/filter_tool/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/flood_filtering/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/gps_tracking/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/halo_keymind_settings/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/kiss_modem_protocol/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/lora_ota_automation/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/mbedtls-tls-footprint/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/nrf52_power_management/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/number_allocations/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_easy/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_meshtower_v2_sdcard/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_nrf52_bootloader_update/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_nrf52_qspi/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_protocol/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/ota_user_guide/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/packet_format/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/payloads/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/qr_codes/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/rak3401_mota_chain/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/stats_binary_frames/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/telemetry_decoder/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/terminal_chat_cli/</loc>
-         <lastmod>2026-08-21</lastmod>
+         <lastmod>2026-08-22</lastmod>
     </url>
 </urlset>
