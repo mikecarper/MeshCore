@@ -5,6 +5,7 @@ Welcome to the MeshCore documentation.
 Below are a few quick start guides.
 
 - [Frequently Asked Questions](./faq.md)
+- [Firmware Picker](./firmware_picker.md)
 - [CLI Commands](./cli_commands.md)
 - [Filter Policy Playground](./filter_tool.md)
 - [Telemetry Decoder](./telemetry_decoder.md)
