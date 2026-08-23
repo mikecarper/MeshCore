@@ -270,8 +270,9 @@ for section, options in data:
 
     # Keep each ordinary repeater environment feature-rich (including external
     # sensors), and expose a separately named no-external-sensors OTA build for
-    # every ESP32/nRF52 repeater role. These two platforms have a complete apply
-    # path; RP2040 and STM32 do not yet have the required bootloader/apply path.
+    # ESP32/nRF52 repeaters that need a lean staging profile. These two platforms
+    # have a complete apply path; RP2040 and STM32 do not yet have the required
+    # bootloader/apply path.
     local env_name ota_env full_env usb_env ble_env
     local -a base_envs=("${SUPPORTED_PIO_ENVS[@]}")
     for env_name in "${base_envs[@]}"; do
@@ -285,6 +286,12 @@ for section, options in data:
       case "${env_name,,}" in
         *_repeater|*_repeater_|*_repeatr|*_repeatr_) ;;
         *) continue ;;
+      esac
+      # SolarXiao 30S/33S repeaters already use matched external QSPI staging,
+      # so their normal full-sensor image is install-capable. A second lean
+      # no-external-sensors target provides no additional OTA capability.
+      case "${env_name,,}" in
+        solarxiao_30s_repeater|solarxiao_33s_repeater) continue ;;
       esac
       ota_env="${env_name%_}_lora_ota_no_external_sensors"
       if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$ota_env]+x}" ]; then

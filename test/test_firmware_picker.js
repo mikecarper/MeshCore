@@ -44,6 +44,8 @@ const releases = [
     asset("Station_G2_repeater-" + family + "-deadbee.bin"),
     asset("Station_G2_repeater-" + family + "-merged.bin"),
     asset("Station_G2_repeater-" + family + ".bin"),
+    asset("solarxiao_33S_repeater-ota-" + family + ".uf2"),
+    asset("solarxiao_33S_repeater-ota-" + family + ".zip"),
     asset("wio-e5-repeater_bridge_rs232-" + family + ".hex"),
   ]),
   release("utility-" + family, "2026-08-23T12:00:04Z", [
@@ -62,6 +64,14 @@ const releases = [
     asset(
       "Station_G2_repeater_lora_ota_no_external_sensors-ota-" +
         family + ".bin"
+    ),
+    asset(
+      "solarxiao_33S_repeater_lora_ota_no_external_sensors-ota-" +
+        family + ".uf2"
+    ),
+    asset(
+      "solarxiao_33S_repeater_lora_ota_no_external_sensors-ota-" +
+        family + ".zip"
     ),
   ]),
   release("full-profiles-" + family, "2026-08-23T12:00:01Z", [
@@ -96,8 +106,8 @@ assert(!releaseSet.releases.some(function (item) {
 
 const catalog = picker.buildCatalog(releases);
 assert.strictEqual(catalog.releaseSet.familyTag, family);
-assert.strictEqual(catalog.profiles.length, 11);
-assert.strictEqual(catalog.rows.length, 25);
+assert.strictEqual(catalog.profiles.length, 12);
+assert.strictEqual(catalog.rows.length, 29);
 
 function profile(target) {
   const found = catalog.profiles.find(function (item) {
@@ -153,23 +163,23 @@ assert.strictEqual(
 );
 assert.strictEqual(
   picker.canonicalHardware("heltec_v4_3_tft"),
-  "heltec_v4_tft"
+  "heltec_v4_3_tft"
 );
 assert.strictEqual(
   picker.canonicalHardware("heltec_v4_3_expansionkit_tft"),
-  "heltec_v4_expansionkit_tft"
+  "heltec_v4_3_expansionkit_tft"
 );
 
 const heltecV4FemOff = picker.parseTargetProfile(
   "heltec_v4_3_companion_radio_ble_femoff"
 );
-assert.strictEqual(heltecV4FemOff.hardware, "heltec_v4");
+assert.strictEqual(heltecV4FemOff.hardware, "heltec_v4_3");
 assert.strictEqual(heltecV4FemOff.variant, "femoff");
 
 const heltecV4TftFemOff = picker.parseTargetProfile(
   "heltec_v4_3_tft_companion_radio_wifi_femoff"
 );
-assert.strictEqual(heltecV4TftFemOff.hardware, "heltec_v4_tft");
+assert.strictEqual(heltecV4TftFemOff.hardware, "heltec_v4_3_tft");
 assert.strictEqual(heltecV4TftFemOff.variant, "femoff");
 
 const g2RxBoosted = profile("Station_G2_logging_repeater");
@@ -204,20 +214,53 @@ assert.strictEqual(
 
 const fullLogging = profile("Station_G2_repeater-full-logging");
 assert.strictEqual(fullLogging.logging, "usb");
-assert.strictEqual(fullLogging.ota, "ota-enabled");
+assert.strictEqual(fullLogging.ota, "lora-receiver");
 assert.strictEqual(fullLogging.feature, "full");
 assert.strictEqual(fullLogging.variant, "default");
 
 const mqtt = profile("Station_G2_repeater_observer_mqtt-full");
 assert.strictEqual(mqtt.logging, "wifi");
 assert.strictEqual(mqtt.mode, "mqtt");
-assert.strictEqual(mqtt.ota, "ota-enabled");
+assert.strictEqual(mqtt.ota, "lora-receiver");
 
 const lora = profile(
   "Station_G2_repeater_lora_ota_no_external_sensors"
 );
 assert.strictEqual(lora.ota, "lora-receiver");
 assert.strictEqual(lora.variant, "no-external-sensors");
+assert.strictEqual(
+  picker.OTA_LABELS["lora-receiver"],
+  "LoRa OTA enabled / receiver"
+);
+assert(!Object.prototype.hasOwnProperty.call(
+  picker.OTA_LABELS,
+  "ota-enabled"
+));
+assert(!picker.uniqueValues(catalog.profiles, "ota").includes("ota-enabled"));
+
+const solarXiao = profile("solarxiao_33S_repeater");
+assert.strictEqual(solarXiao.ota, "lora-receiver");
+assert.strictEqual(solarXiao.variant, "default");
+assert(!catalog.profiles.some(function (item) {
+  return item.target ===
+    "solarxiao_33S_repeater_lora_ota_no_external_sensors";
+}));
+assert(catalog.rows.some(function (item) {
+  return item.target ===
+    "solarxiao_33S_repeater_lora_ota_no_external_sensors";
+}));
+assert.deepStrictEqual(
+  picker.facetValues(
+    catalog.profiles,
+    {
+      hardware: "solarxiao_33S",
+      role: "repeater",
+      logging: "none",
+    },
+    "ota"
+  ),
+  ["lora-receiver"]
+);
 
 const wio = profile("wio-e5-repeater_bridge_rs232");
 assert.strictEqual(wio.hardware, "wio-e5");
@@ -269,11 +312,8 @@ assert.strictEqual(
   "Base / standard (V4.2 / V4.3 auto-detect)"
 );
 assert.strictEqual(
-  picker.humanizeHardwareVariant(
-    picker.canonicalHardware("heltec_v4_3_tft"),
-    "heltec_v4"
-  ),
-  "TFT"
+  picker.humanizeHardwareVariant("heltec_v4_3_tft", "heltec_v4"),
+  "V4.3 + TFT"
 );
 const groupedHardwareProfiles = [
   {
@@ -353,6 +393,7 @@ assert.deepStrictEqual(
     "RAK_4631",
     "Station_G2",
     "Station_G3_ESP32",
+    "solarxiao_33S",
     "wio-e5",
   ].sort()
 );

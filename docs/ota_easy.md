@@ -74,8 +74,10 @@ RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS except
 for its Serial1 RS232 bridge, which uses the same UART. Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
-for the downloaded container. Other normal repeaters can still serve as
-intermediate relays but cannot necessarily install an update themselves. ESP32
+for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
+path and therefore do not emit redundant no-external-sensors siblings. Other
+normal repeaters can still serve as intermediate relays but cannot necessarily
+install an update themselves. ESP32
 `-ota-` siblings also retain the lightweight browser WiFi uploader (`start
 ota`), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32
 repeaters do not currently have a safe self-apply path, but current repeater

@@ -135,9 +135,8 @@ from the published firmware assets.
 | USB logging / USB-connected MQTT | Node remains attached to a computer over a data-capable USB cable |
 | Wi-Fi MQTT observer | Firmware connects directly to MQTT over Wi-Fi; this is not USB logging |
 | No logging | Normal standalone operation without the dedicated logging/MQTT profile |
-| LoRa OTA receiver | Repeater profile that can stage an exact matching update received over LoRa |
-| LoRa OTA source | Full Companion serving a host-supplied update to another node |
-| OTA-enabled profile | Build uses an OTA-capable application/partition profile, but is not necessarily an explicit LoRa receiver |
+| LoRa OTA enabled / receiver | Install-capable profile that can stage an exact matching update received over LoRa |
+| LoRa OTA source only | Full Companion serving a host-supplied update to another node without self-installing it |
 
 Connection and bridge choices depend on the selected role. Companion firmware
 may offer Full, Bluetooth, USB, Wi-Fi, serial, or Ethernet transports.

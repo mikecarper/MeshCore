@@ -125,9 +125,12 @@ artifacts, including room, sensor, and repeater roles, must fit the legacy slot 
 limit and the target's actual app partition. The ESP32-C6 `no_external_sensors` OTA siblings are the narrow
 exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
 established target-specific 1920 KiB or larger A/B app layout and are checked against the actual app
-partition. For every standalone ESP32 and nRF52 repeater, `build.sh` also exposes an explicit
-`*_lora_ota_no_external_sensors` artifact: the ordinary repeater remains sensor-enabled, while that sibling
-disables optional external environmental-sensor drivers for LoRa distribution. Integrated GPS and other
+partition. For standalone ESP32 and nRF52 repeaters that need a lean staging
+profile, `build.sh` also exposes an explicit `*_lora_ota_no_external_sensors`
+artifact: the ordinary repeater remains sensor-enabled, while that sibling
+disables optional external environmental-sensor drivers for LoRa distribution. SolarXiao 30S and 33S use
+matched external QSPI staging, so their ordinary full-sensor repeater is already install-capable and no
+redundant lean sibling is generated. Integrated GPS and other
 board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The RAK3401
 OTA repeater also retains RAK12501 GPS support; install that module in sensor slot A because slot D conflicts
 with the RAK13302 radio's BUSY/DIO1 lines. RAK4631 OTA repeaters retain GPS except for the Serial1 RS232
