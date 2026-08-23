@@ -1,193 +1,421 @@
 (function (global) {
   "use strict";
 
-  const PURPOSES = Object.freeze({
-    "usb-logging": Object.freeze({
-      title: "Station G2 FULL USB logging repeater",
-      summary: "Best for a G2 that normally remains connected to a computer collecting serial packet logs.",
-      pattern: /^Station_G2_repeater-full-logging-ota-/,
-      expected: "Station_G2_repeater-full-logging-ota-...",
-      full: true,
-      notes: [
-        "Back up the node configuration before the first FULL install.",
-        "Use the merged image once to install the expanded partition table.",
-        "Reconnect at 115200 baud and leave the USB data connection attached for logging.",
-      ],
-    }),
-    field: Object.freeze({
-      title: "Station G2 standard repeater",
-      summary: "The simplest sensor-enabled repeater for local USB installation and ordinary field use.",
-      pattern: /^Station_G2_repeater-v/,
-      expected: "Station_G2_repeater-v...",
-      full: false,
-      notes: [
-        "Choose this when USB logging, MQTT, ESP-NOW, and remote LoRa updates are not required.",
-        "This keeps the standard Station G2 partition profile.",
-      ],
-    }),
-    "field-ota": Object.freeze({
-      title: "Station G2 lean OTA repeater",
-      summary: "A standalone repeater with LoRa/WiFi update support and no optional external environmental-sensor drivers.",
-      pattern: /^Station_G2_repeater_lora_ota_no_external_sensors-ota-/,
-      expected: "Station_G2_repeater_lora_ota_no_external_sensors-ota-...",
-      full: false,
-      notes: [
-        "Board-native GPS support remains available; only optional external sensor drivers are removed.",
-        "Use the exact matching target for every later LoRa package.",
-      ],
-    }),
-    mqtt: Object.freeze({
-      title: "Station G2 FULL MQTT observer/repeater",
-      summary: "For direct radio-to-MQTT forwarding over WiFi with the complete CLI and expanded partitions.",
-      pattern: /^Station_G2_repeater_observer_mqtt-full-ota-/,
-      expected: "Station_G2_repeater_observer_mqtt-full-ota-...",
-      full: true,
-      notes: [
-        "This is an MQTT observer role, not USB packet logging.",
-        "Use its merged image once before any app-only WiFi or LoRa update.",
-      ],
-    }),
-    espnow: Object.freeze({
-      title: "Station G2 FULL ESP-NOW bridge repeater",
-      summary: "For a repeater that bridges packets through ESP-NOW and needs the complete CLI.",
-      pattern: /^Station_G2_repeater_bridge_espnow-full-ota-/,
-      expected: "Station_G2_repeater_bridge_espnow-full-ota-...",
-      full: true,
-      notes: ["ESP-NOW bridge builds use the expanded FULL partition profile."],
-    }),
-    room: Object.freeze({
-      title: "Station G2 room server",
-      summary: "A standard room-server role without MQTT.",
-      pattern: /^Station_G2_room_server-v/,
-      expected: "Station_G2_room_server-v...",
-      full: false,
-      notes: ["Do not install this when the node is intended to remain a repeater."],
-    }),
-    "room-mqtt": Object.freeze({
-      title: "Station G2 FULL MQTT room observer",
-      summary: "A room server with direct MQTT/WiFi forwarding and expanded partitions.",
-      pattern: /^Station_G2_room_server_observer_mqtt-full-ota-/,
-      expected: "Station_G2_room_server_observer_mqtt-full-ota-...",
-      full: true,
-      notes: ["Use its merged image once before later same-profile OTA updates."],
-    }),
-    "companion-usb": Object.freeze({
-      title: "Station G2 USB Companion",
-      summary: "For a Station G2 controlled as a Companion through a USB serial connection.",
-      pattern: /^Station_G2_companion_radio_usb-ota-/,
-      expected: "Station_G2_companion_radio_usb-ota-...",
-      full: false,
-      notes: ["This is a Companion, not a standalone repeater or USB packet logger."],
-    }),
-    "companion-ble": Object.freeze({
-      title: "Station G2 Bluetooth Companion",
-      summary: "For a Station G2 controlled by a phone or computer through Bluetooth.",
-      pattern: /^Station_G2_companion_radio_ble-/,
-      expected: "Station_G2_companion_radio_ble-...",
-      full: false,
-      notes: ["Choose USB Companion instead when the data connection is normally wired."],
-    }),
-    "companion-wifi": Object.freeze({
-      title: "Station G2 WiFi Companion",
-      summary: "For Companion protocol access over WiFi.",
-      pattern: /^Station_G2_companion_radio_wifi-ota-/,
-      expected: "Station_G2_companion_radio_wifi-ota-...",
-      full: false,
-      notes: ["This is not the standalone MQTT observer role."],
-    }),
-    "companion-full": Object.freeze({
-      title: "Station G2 Full Companion",
-      summary: "A host-backed Companion that can serve LoRa OTA content and exposes the complete transport set.",
-      pattern: /^Station_G2_companion_radio_full-v/,
-      expected: "Station_G2_companion_radio_full-...",
-      full: true,
-      notes: [
-        "Full Companion is an OTA source and host-backed controller, not a self-updating repeater.",
-        "Install its merged image over USB.",
-      ],
-    }),
+  const RELEASE_PAGE_PREFIXES = Object.freeze([
+    "",
+    "repeater-room-",
+    "utility-",
+    "logging-",
+    "lora-ota-",
+    "full-profiles-",
+  ]);
+
+  const FILTER_FIELDS = Object.freeze([
+    "hardware",
+    "role",
+    "logging",
+    "ota",
+    "mode",
+    "feature",
+    "variant",
+  ]);
+
+  const ROLE_LABELS = Object.freeze({
+    companion: "Companion",
+    repeater: "Repeater",
+    room: "Room Server",
+    sensor: "Sensor / telemetry",
+    terminal: "Terminal Chat",
+    kiss: "KISS modem",
+    other: "Other",
   });
+
+  const LOGGING_LABELS = Object.freeze({
+    none: "None / normal operation",
+    usb: "USB logging / USB-connected MQTT",
+    wifi: "Wi-Fi MQTT observer",
+  });
+
+  const OTA_LABELS = Object.freeze({
+    none: "No explicit OTA profile",
+    "ota-enabled": "OTA-enabled profile",
+    "lora-receiver": "LoRa OTA receiver",
+    "lora-source": "LoRa OTA source (Full Companion)",
+  });
+
+  const MODE_LABELS = Object.freeze({
+    standard: "Standard",
+    full: "Full Companion transports",
+    ble: "Bluetooth LE",
+    usb: "USB",
+    wifi: "Wi-Fi",
+    serial: "Serial / UART",
+    ethernet: "Ethernet",
+    mqtt: "MQTT observer",
+    espnow: "ESP-NOW bridge",
+    rs232: "RS-232 bridge",
+  });
+
+  const FEATURE_LABELS = Object.freeze({
+    standard: "Standard profile",
+    full: "FULL / complete profile",
+  });
+
+  const INSTALL_LABELS = Object.freeze({
+    "merged-bin": "USB first install / recovery (.bin)",
+    bin: "Same-profile application update (.bin)",
+    zip: "nRF52 Serial DFU (.zip)",
+    uf2: "UF2 drag-and-drop (.uf2)",
+    hex: "Full wired flash (.hex)",
+  });
+
+  const INSTALL_ORDER = Object.freeze([
+    "merged-bin",
+    "bin",
+    "zip",
+    "uf2",
+    "hex",
+  ]);
 
   function isSafeGithubUrl(value) {
     try {
       const url = new URL(value);
       return url.protocol === "https:" &&
-        (url.hostname === "github.com" || url.hostname === "objects.githubusercontent.com");
+        (url.hostname === "github.com" ||
+          url.hostname === "objects.githubusercontent.com");
     } catch (_) {
       return false;
     }
   }
 
-  function flattenReleases(releases, channel) {
-    const allowPrerelease = channel === "development";
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+  }
+
+  function releaseDate(release) {
+    return release.published_at || release.created_at || "";
+  }
+
+  function selectReleaseSet(releases) {
+    const publicReleases = (Array.isArray(releases) ? releases : []).filter(
+      function (release) {
+        return release && !release.draft && typeof release.tag_name === "string";
+      }
+    );
+    const mainReleases = publicReleases.filter(function (release) {
+      return /^v\d/i.test(release.tag_name);
+    }).sort(function (a, b) {
+      return releaseDate(b).localeCompare(releaseDate(a));
+    });
+    const main = mainReleases[0];
+    if (!main) return null;
+
+    const familyTag = main.tag_name;
+    const acceptedTags = new Set(RELEASE_PAGE_PREFIXES.map(function (prefix) {
+      return prefix + familyTag;
+    }));
+    const familyReleases = publicReleases.filter(function (release) {
+      return acceptedTags.has(release.tag_name);
+    }).sort(function (a, b) {
+      return releaseDate(b).localeCompare(releaseDate(a));
+    });
+
+    return {
+      familyTag: familyTag,
+      name: main.name || familyTag,
+      url: isSafeGithubUrl(main.html_url) ? main.html_url : "",
+      prerelease: Boolean(main.prerelease),
+      releases: familyReleases,
+    };
+  }
+
+  function flattenReleaseAssets(releaseSet) {
     const rows = [];
-    (Array.isArray(releases) ? releases : []).forEach(function (release) {
-      if (!release || release.draft || (!allowPrerelease && release.prerelease)) return;
-      (Array.isArray(release.assets) ? release.assets : []).forEach(function (asset) {
-        if (!asset || typeof asset.name !== "string") return;
-        rows.push({
-          name: asset.name,
-          url: isSafeGithubUrl(asset.browser_download_url) ? asset.browser_download_url : "",
-          size: Number(asset.size) || 0,
-          releaseName: release.name || release.tag_name || "Release",
-          releaseTag: release.tag_name || "",
-          releaseUrl: isSafeGithubUrl(release.html_url) ? release.html_url : "",
-          prerelease: Boolean(release.prerelease),
-          publishedAt: release.published_at || release.created_at || "",
-        });
-      });
+    if (!releaseSet) return rows;
+    releaseSet.releases.forEach(function (release) {
+      (Array.isArray(release.assets) ? release.assets : []).forEach(
+        function (asset) {
+          if (!asset || typeof asset.name !== "string") return;
+          rows.push({
+            name: asset.name,
+            url: isSafeGithubUrl(asset.browser_download_url)
+              ? asset.browser_download_url
+              : "",
+            size: Number(asset.size) || 0,
+            releaseName: release.name || release.tag_name || "Release",
+            releaseTag: release.tag_name || "",
+            releaseUrl: isSafeGithubUrl(release.html_url)
+              ? release.html_url
+              : "",
+            publishedAt: releaseDate(release),
+          });
+        }
+      );
     });
-    return rows.sort(function (a, b) {
-      return String(b.publishedAt).localeCompare(String(a.publishedAt));
+    return rows;
+  }
+
+  function installKindForAsset(extension, merged) {
+    if (extension === "bin") return merged ? "merged-bin" : "bin";
+    if (extension === "zip") return "zip";
+    if (extension === "uf2") return "uf2";
+    if (extension === "hex") return "hex";
+    return "";
+  }
+
+  function parseFirmwareAsset(row, familyTag) {
+    if (!row || typeof row.name !== "string" || !familyTag) return null;
+    const extensionMatch = row.name.match(/\.([^.]+)$/);
+    if (!extensionMatch) return null;
+    const extension = extensionMatch[1].toLowerCase();
+    if (!["bin", "zip", "uf2", "hex"].includes(extension)) return null;
+
+    let stem = row.name.slice(0, -extensionMatch[0].length);
+    const merged = stem.endsWith("-merged");
+    if (merged) stem = stem.slice(0, -"-merged".length);
+
+    const versionPattern = new RegExp(
+      "^(.*?)-(ota-)?" + escapeRegExp(familyTag) +
+        "(?:-[0-9a-f]{7,8})?$",
+      "i"
+    );
+    const versionMatch = stem.match(versionPattern);
+    if (!versionMatch) return null;
+    const kind = installKindForAsset(extension, merged);
+    if (!kind) return null;
+
+    return Object.assign({}, row, {
+      target: versionMatch[1],
+      otaPackaged: Boolean(versionMatch[2]),
+      extension: extension,
+      merged: merged,
+      installKind: kind,
     });
   }
 
-  function wantedSuffix(install) {
-    return install === "first" ? "-merged.bin" : ".bin";
+  function roleParts(target) {
+    const definitions = [
+      {
+        role: "companion",
+        pattern: /_(?:companion_radio_|companion_|comp_radio_)/i,
+      },
+      {
+        role: "room",
+        pattern: /_(?:room_server|room_svr)(?=$|[_-])/i,
+      },
+      {
+        role: "repeater",
+        pattern: /(?:_|-)(?:repeater|repeatr)(?=$|[_-])/i,
+      },
+      {
+        role: "sensor",
+        pattern: /_sensor(?=$|[_-])/i,
+      },
+      {
+        role: "terminal",
+        pattern: /_terminal_chat(?=$|[_-])/i,
+      },
+      {
+        role: "kiss",
+        pattern: /_kiss_modem(?=$|[_-])/i,
+      },
+    ];
+
+    for (const definition of definitions) {
+      const match = definition.pattern.exec(target);
+      if (!match) continue;
+      return {
+        role: definition.role,
+        hardware: target.slice(0, match.index),
+        tail: target.slice(match.index + match[0].length),
+      };
+    }
+    return { role: "other", hardware: target, tail: "" };
   }
 
-  function selectAsset(rows, purposeKey, install) {
-    const purpose = PURPOSES[purposeKey];
-    if (!purpose) return null;
-    const suffix = wantedSuffix(install);
-    const matches = rows.filter(function (row) {
-      if (!purpose.pattern.test(row.name) || !row.name.endsWith(suffix)) return false;
-      if (install !== "first" && row.name.endsWith("-merged.bin")) return false;
-      return true;
-    });
-    matches.sort(function (a, b) {
-      const byDate = String(b.publishedAt).localeCompare(String(a.publishedAt));
-      if (byDate) return byDate;
+  function modeForRole(role, tail) {
+    const value = String(tail).toLowerCase().replace(/^[_-]+/, "");
+    if (role === "companion") {
+      if (/^full(?:$|[_-])/.test(value)) return "full";
+      if (/^ble(?:$|[_-])/.test(value)) return "ble";
+      if (/^usb(?:$|[_-])/.test(value)) return "usb";
+      if (/^wifi(?:$|[_-])/.test(value)) return "wifi";
+      if (/^serial(?:$|[_-])/.test(value)) return "serial";
+      if (/^ethernet(?:$|[_-])/.test(value)) return "ethernet";
+      return "standard";
+    }
+    if (value.includes("observer_mqtt")) return "mqtt";
+    if (value.includes("bridge_espnow")) return "espnow";
+    if (value.includes("bridge_rs232")) return "rs232";
+    if (value.includes("ethernet")) return "ethernet";
+    return "standard";
+  }
+
+  function variantForProfile(role, tail) {
+    let value = String(tail);
+    if (role === "companion") {
+      value = value.replace(
+        /^(?:full|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
+        " "
+      );
+    }
+    value = value.replace(/-logging/gi, "");
+    value = value.replace(/(?:^|[_-])full(?=$|[_-])/gi, " ");
+    value = value.replace(/observer_mqtt/gi, " ");
+    value = value.replace(/bridge_espnow/gi, " ");
+    value = value.replace(/bridge_rs232/gi, " ");
+    value = value.replace(/lora_ota/gi, " ");
+    value = value.replace(/(?:^|[_-])ethernet(?=$|[_-])/gi, " ");
+    value = value.replace(/^[_\-\s]+|[_\-\s]+$/g, "");
+    if (!value) return "default";
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "default";
+  }
+
+  function parseTargetProfile(target) {
+    const parts = roleParts(target);
+    const lowerTarget = target.toLowerCase();
+    const lowerTail = parts.tail.toLowerCase();
+    const mode = modeForRole(parts.role, parts.tail);
+    const logging = lowerTarget.includes("observer_mqtt")
+      ? "wifi"
+      : lowerTarget.includes("-logging")
+        ? "usb"
+        : "none";
+    const feature = lowerTail.includes("-full") ||
+      (parts.role === "companion" && mode === "full")
+      ? "full"
+      : "standard";
+    const explicitOta = lowerTarget.includes("lora_ota")
+      ? "lora-receiver"
+      : parts.role === "companion" && mode === "full"
+        ? "lora-source"
+        : "";
+
+    return {
+      target: target,
+      hardware: parts.hardware || target,
+      role: parts.role,
+      logging: logging,
+      mode: mode,
+      feature: feature,
+      variant: variantForProfile(parts.role, parts.tail),
+      explicitOta: explicitOta,
+    };
+  }
+
+  function canonicalAsset(files, installKind) {
+    return (Array.isArray(files) ? files : []).filter(function (file) {
+      return file.installKind === installKind;
+    }).sort(function (a, b) {
       const byLength = a.name.length - b.name.length;
       return byLength || a.name.localeCompare(b.name);
+    })[0] || null;
+  }
+
+  function buildCatalog(releases) {
+    const releaseSet = selectReleaseSet(releases);
+    if (!releaseSet) {
+      return { releaseSet: null, rows: [], profiles: [] };
+    }
+    const rows = flattenReleaseAssets(releaseSet);
+    const firmwareRows = rows.map(function (row) {
+      return parseFirmwareAsset(row, releaseSet.familyTag);
+    }).filter(Boolean);
+    const grouped = new Map();
+
+    firmwareRows.forEach(function (file) {
+      let profile = grouped.get(file.target);
+      if (!profile) {
+        profile = Object.assign(parseTargetProfile(file.target), {
+          files: [],
+          otaPackaged: false,
+        });
+        grouped.set(file.target, profile);
+      }
+      profile.files.push(file);
+      profile.otaPackaged = profile.otaPackaged || file.otaPackaged;
     });
-    return matches[0] || null;
+
+    const profiles = Array.from(grouped.values()).map(function (profile) {
+      profile.ota = profile.explicitOta ||
+        (profile.otaPackaged ? "ota-enabled" : "none");
+      profile.installKinds = INSTALL_ORDER.filter(function (kind) {
+        return Boolean(canonicalAsset(profile.files, kind));
+      });
+      profile.files.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+      });
+      return profile;
+    }).sort(function (a, b) {
+      return a.target.localeCompare(b.target, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+
+    return {
+      releaseSet: releaseSet,
+      rows: firmwareRows,
+      profiles: profiles,
+    };
+  }
+
+  function profileMatches(profile, filters, fields) {
+    const wantedFields = fields || FILTER_FIELDS;
+    return wantedFields.every(function (field) {
+      const value = filters && filters[field];
+      return !value || profile[field] === value;
+    });
+  }
+
+  function uniqueValues(profiles, field) {
+    return Array.from(new Set((profiles || []).map(function (profile) {
+      return profile[field];
+    }).filter(Boolean)));
+  }
+
+  function humanizeHardware(value) {
+    return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function humanizeVariant(value) {
+    if (!value || value === "default") return "Default";
+    const tokenLabels = {
+      ps: "Power save",
+      femon: "FEM on",
+      femoff: "FEM off",
+      serial1: "Serial 1",
+      serial2: "Serial 2",
+      sim: "SIM",
+      rak15001: "RAK15001",
+      qspi: "QSPI",
+    };
+    return value.split("-").map(function (token) {
+      return tokenLabels[token] ||
+        token.charAt(0).toUpperCase() + token.slice(1);
+    }).join(" ");
+  }
+
+  function labelFor(field, value) {
+    if (field === "hardware") return humanizeHardware(value);
+    if (field === "role") return ROLE_LABELS[value] || value;
+    if (field === "logging") return LOGGING_LABELS[value] || value;
+    if (field === "ota") return OTA_LABELS[value] || value;
+    if (field === "mode") return MODE_LABELS[value] || value;
+    if (field === "feature") return FEATURE_LABELS[value] || value;
+    if (field === "variant") return humanizeVariant(value);
+    if (field === "install") return INSTALL_LABELS[value] || value;
+    return value;
   }
 
   function formatBytes(value) {
     const size = Number(value) || 0;
-    if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + " MiB";
+    if (size >= 1024 * 1024) {
+      return (size / (1024 * 1024)).toFixed(2) + " MiB";
+    }
     if (size >= 1024) return (size / 1024).toFixed(1) + " KiB";
     return size + " bytes";
-  }
-
-  function installExplanation(install) {
-    if (install === "first") {
-      return {
-        label: "USB merged-image install",
-        warning: "This can replace the partition table. Back up configuration first.",
-      };
-    }
-    if (install === "lora") {
-      return {
-        label: "LoRa OTA source image",
-        warning: "Package the non-merged application for the exact target. The installed partition signature must already match.",
-      };
-    }
-    return {
-      label: "Browser/WiFi app-only update",
-      warning: "Use only when the installed board, role, and partition layout already match.",
-    };
   }
 
   function createElement(tag, text) {
@@ -196,94 +424,276 @@
     return element;
   }
 
+  function optionSort(field, a, b) {
+    const roleOrder = ["companion", "repeater", "room", "sensor", "terminal", "kiss", "other"];
+    const loggingOrder = ["none", "usb", "wifi"];
+    const otaOrder = ["none", "ota-enabled", "lora-receiver", "lora-source"];
+    const featureOrder = ["standard", "full"];
+    const modeOrder = ["standard", "full", "ble", "usb", "wifi", "serial", "ethernet", "mqtt", "espnow", "rs232"];
+    const orders = {
+      role: roleOrder,
+      logging: loggingOrder,
+      ota: otaOrder,
+      feature: featureOrder,
+      mode: modeOrder,
+    };
+    const order = orders[field];
+    if (order) {
+      const left = order.indexOf(a);
+      const right = order.indexOf(b);
+      if (left !== right) return left - right;
+    }
+    return labelFor(field, a).localeCompare(labelFor(field, b), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  }
+
+  function installSteps(profile, kind) {
+    const common = [
+      "Verify that the hardware name and every displayed variant match the physical board.",
+      "Back up configuration, keys, and radio settings before changing roles or profiles.",
+    ];
+    const byKind = {
+      "merged-bin": [
+        "Flash the merged image over a data-capable USB connection.",
+        "Use this path for a first install, recovery, or partition/profile migration.",
+      ],
+      bin: [
+        "Use this app-only image only when the installed board, role, and partition layout already match.",
+        "Do not use an app-only image to migrate partition layouts.",
+      ],
+      zip: [
+        "Use the ZIP as the native nRF52 Serial DFU package; it is not an extra archive.",
+        "For LoRa OTA receiving, install the exact-board OTAFIX bootloader first.",
+      ],
+      uf2: [
+        "Place the device in its UF2 bootloader mode and copy the UF2 to the mounted drive.",
+        "Confirm the role and radio settings after reboot.",
+      ],
+      hex: [
+        "Flash the HEX with the board's supported wired programmer or recovery method.",
+        "Confirm the bootloader and application versions after reboot.",
+      ],
+    };
+    const extra = [];
+    if (profile.ota === "lora-receiver") {
+      extra.push(
+        "This installs the LoRa OTA receiver profile. The later update package must still match the exact target and partition signature."
+      );
+    } else if (profile.ota === "lora-source") {
+      extra.push(
+        "Full Companion can serve a host-supplied update to another node; it does not self-install that LoRa update."
+      );
+    }
+    return common.concat(byKind[kind] || [], extra);
+  }
+
   function replaceFacts(container, facts) {
     container.replaceChildren();
     facts.forEach(function (fact) {
       container.appendChild(createElement("dt", fact[0]));
-      const dd = createElement("dd", fact[1]);
-      if (fact[2]) dd.title = fact[2];
-      container.appendChild(dd);
+      container.appendChild(createElement("dd", fact[1]));
     });
   }
 
-  function renderSteps(container, purpose, install) {
-    container.replaceChildren();
-    container.appendChild(createElement("strong", "What to do"));
+  function renderProfileCard(container, profile, asset, installKind) {
+    const card = createElement("article");
+    card.className = "firmware-picker-card";
+    card.appendChild(createElement(
+      "h3",
+      humanizeHardware(profile.hardware) + " — " +
+        (ROLE_LABELS[profile.role] || profile.role)
+    ));
+
+    const facts = createElement("dl");
+    facts.className = "firmware-picker-facts";
+    replaceFacts(facts, [
+      ["Target", profile.target],
+      ["Connection / mode", labelFor("mode", profile.mode)],
+      ["Logging", labelFor("logging", profile.logging)],
+      ["OTA", labelFor("ota", profile.ota)],
+      ["Feature profile", labelFor("feature", profile.feature)],
+      ["Variant", labelFor("variant", profile.variant)],
+      ["Install path", labelFor("install", installKind)],
+      ["File", asset.name],
+      ["Size", formatBytes(asset.size)],
+      ["Release", asset.releaseName],
+    ]);
+    card.appendChild(facts);
+
+    const actions = createElement("div");
+    actions.className = "firmware-picker-actions";
+    const download = createElement("a", "Download exact firmware");
+    download.className = "firmware-picker-primary";
+    download.href = asset.url || asset.releaseUrl;
+    actions.appendChild(download);
+    const release = createElement("a", "Open release notes");
+    release.href = asset.releaseUrl;
+    actions.appendChild(release);
+    card.appendChild(actions);
+
+    const steps = createElement("div");
+    steps.className = "firmware-picker-steps";
+    steps.appendChild(createElement("strong", "What to do"));
     const list = createElement("ol");
-    const common = install === "first"
-      ? [
-          "Back up configuration, keys, and radio settings.",
-          "Verify that the filename begins with Station_G2 before flashing.",
-          "Flash the merged image over a data-capable USB cable.",
-          "Wait for the board to reboot, reconnect, and verify its role and radio settings.",
-        ]
-      : install === "lora"
-        ? [
-            "Confirm the running target and partition signature already match this profile.",
-            "Use the non-merged application as input to the LoRa OTA packaging workflow.",
-            "Verify the target identity and completed update after reboot.",
-          ]
-        : [
-            "Confirm the running target and partition signature already match this profile.",
-            "Upload the non-merged application through the firmware's browser/WiFi updater.",
-            "Verify the role and version after reboot.",
-          ];
-    common.concat(purpose.notes).forEach(function (text) {
+    installSteps(profile, installKind).forEach(function (text) {
       list.appendChild(createElement("li", text));
     });
-    container.appendChild(list);
+    steps.appendChild(list);
+    card.appendChild(steps);
+    container.appendChild(card);
   }
 
   function initPicker(root) {
     const repo = root.getAttribute("data-release-repo") || "mikecarper/MeshCore";
-    const form = root.querySelector('[data-role="form"]');
-    const channelField = root.querySelector('[data-field="channel"]');
-    const purposeField = root.querySelector('[data-field="purpose"]');
-    const installField = root.querySelector('[data-field="install"]');
     const status = root.querySelector('[data-role="status"]');
+    const releaseSetStatus = root.querySelector('[data-role="release-set"]');
     const result = root.querySelector('[data-role="result"]');
+    const resultList = root.querySelector('[data-role="result-list"]');
     const missing = root.querySelector('[data-role="missing"]');
+    const installSelect = root.querySelector('[data-field="install"]');
     const search = root.querySelector('[data-field="asset-search"]');
     const assetResults = root.querySelector('[data-role="asset-results"]');
-    let releases = [];
+    const selects = {};
+    FILTER_FIELDS.forEach(function (field) {
+      selects[field] = root.querySelector('[data-field="' + field + '"]');
+    });
+    let catalog = { releaseSet: null, rows: [], profiles: [] };
+    const filters = {};
 
-    function currentRows() {
-      return flattenReleases(releases, channelField.value);
+    function matchingProfiles(fields) {
+      return catalog.profiles.filter(function (profile) {
+        return profileMatches(profile, filters, fields);
+      });
+    }
+
+    function setOptions(select, field, values, placeholder, selected) {
+      select.replaceChildren();
+      const blank = createElement("option", placeholder);
+      blank.value = "";
+      select.appendChild(blank);
+      values.slice().sort(function (a, b) {
+        return optionSort(field, a, b);
+      }).forEach(function (value) {
+        const option = createElement("option", labelFor(field, value));
+        option.value = value;
+        select.appendChild(option);
+      });
+      select.disabled = values.length === 0;
+      if (selected && values.includes(selected)) select.value = selected;
+      if (values.length === 1) select.value = values[0];
+    }
+
+    function rebuildCascade(changedIndex) {
+      if (changedIndex != null && changedIndex >= 0) {
+        FILTER_FIELDS.slice(changedIndex + 1).forEach(function (field) {
+          filters[field] = "";
+          selects[field].value = "";
+        });
+        installSelect.value = "";
+      }
+
+      let priorComplete = true;
+      FILTER_FIELDS.forEach(function (field, index) {
+        const select = selects[field];
+        if (!priorComplete) {
+          setOptions(select, field, [], "Choose earlier options first", "");
+          filters[field] = "";
+          return;
+        }
+        const priorFields = FILTER_FIELDS.slice(0, index);
+        const candidates = matchingProfiles(priorFields);
+        const values = uniqueValues(candidates, field);
+        const previous = filters[field] || select.value;
+        const placeholder = field === "hardware"
+          ? "Choose hardware"
+          : "Choose " + field;
+        setOptions(select, field, values, placeholder, previous);
+        filters[field] = select.value;
+        if (!filters[field]) priorComplete = false;
+      });
+      rebuildInstall(priorComplete);
+      render();
+    }
+
+    function rebuildInstall(profileComplete) {
+      if (!profileComplete) {
+        setOptions(
+          installSelect,
+          "install",
+          [],
+          "Choose firmware options first",
+          ""
+        );
+        return;
+      }
+      const matches = matchingProfiles(FILTER_FIELDS);
+      const kinds = Array.from(new Set(matches.flatMap(function (profile) {
+        return profile.installKinds;
+      }))).sort(function (a, b) {
+        return INSTALL_ORDER.indexOf(a) - INSTALL_ORDER.indexOf(b);
+      });
+      const previous = installSelect.value;
+      setOptions(
+        installSelect,
+        "install",
+        kinds,
+        "Choose installation method",
+        previous
+      );
+    }
+
+    function nextMissingField() {
+      return FILTER_FIELDS.find(function (field) {
+        return !filters[field];
+      }) || (!installSelect.value ? "installation method" : "");
     }
 
     function render() {
-      const purpose = PURPOSES[purposeField.value];
-      const install = installField.value;
-      const rows = currentRows();
-      const asset = selectAsset(rows, purposeField.value, install);
-      const installInfo = installExplanation(install);
       result.hidden = true;
       missing.hidden = true;
+      resultList.replaceChildren();
+      const missingField = nextMissingField();
+      const activeFields = FILTER_FIELDS.filter(function (field) {
+        return Boolean(filters[field]);
+      });
+      const matches = matchingProfiles(activeFields);
 
-      if (!asset) {
-        missing.hidden = false;
-        const suffix = wantedSuffix(install);
-        root.querySelector('[data-role="missing-text"]').textContent =
-          "Expected a recent asset beginning with " + purpose.expected +
-          " and ending in " + suffix + ". Try the other release channel or open the release collection.";
+      if (missingField) {
+        status.textContent = "Choose " + missingField + ". " +
+          matches.length + " compatible configuration" +
+          (matches.length === 1 ? " remains." : "s remain.");
         return;
       }
 
-      root.querySelector('[data-role="result-title"]').textContent = purpose.title;
-      root.querySelector('[data-role="result-summary"]').textContent = purpose.summary;
-      replaceFacts(root.querySelector('[data-role="result-facts"]'), [
-        ["File", asset.name],
-        ["Release", asset.releaseName],
-        ["Install path", installInfo.label],
-        ["Size", formatBytes(asset.size)],
-        ["Important", installInfo.warning],
-      ]);
-      const download = root.querySelector('[data-role="download"]');
-      download.href = asset.url || asset.releaseUrl;
-      download.hidden = !(asset.url || asset.releaseUrl);
-      const releaseLink = root.querySelector('[data-role="release"]');
-      releaseLink.href = asset.releaseUrl || "https://github.com/" + repo + "/releases";
-      renderSteps(root.querySelector('[data-role="steps"]'), purpose, install);
+      const installKind = installSelect.value;
+      const resolved = matches.map(function (profile) {
+        return {
+          profile: profile,
+          asset: canonicalAsset(profile.files, installKind),
+        };
+      }).filter(function (entry) {
+        return Boolean(entry.asset);
+      });
+      if (!resolved.length) {
+        missing.hidden = false;
+        root.querySelector('[data-role="missing-text"]').textContent =
+          "No exact file provides that installation method. Change the install method or one of the firmware options.";
+        status.textContent = "No exact firmware file matched.";
+        return;
+      }
+
+      status.textContent = resolved.length + " exact firmware configuration" +
+        (resolved.length === 1 ? " matched." : "s matched.");
+      resolved.forEach(function (entry) {
+        renderProfileCard(
+          resultList,
+          entry.profile,
+          entry.asset,
+          installKind
+        );
+      });
       result.hidden = false;
     }
 
@@ -291,11 +701,16 @@
       assetResults.replaceChildren();
       const query = search.value.trim().toLowerCase();
       if (query.length < 2) return;
-      const matches = currentRows().filter(function (row) {
+      const matches = catalog.rows.filter(function (row) {
         return row.name.toLowerCase().includes(query);
+      }).sort(function (a, b) {
+        const byLength = a.name.length - b.name.length;
+        return byLength || a.name.localeCompare(b.name);
       }).slice(0, 80);
       if (!matches.length) {
-        assetResults.appendChild(createElement("p", "No recent release filename matched."));
+        assetResults.appendChild(
+          createElement("p", "No current release filename matched.")
+        );
         return;
       }
       const list = createElement("ul");
@@ -305,7 +720,10 @@
         const link = createElement("a", row.name);
         link.href = row.url || row.releaseUrl;
         item.appendChild(link);
-        const meta = createElement("span", row.releaseName + " - " + formatBytes(row.size));
+        const meta = createElement(
+          "span",
+          row.releaseName + " — " + formatBytes(row.size)
+        );
         meta.className = "firmware-asset-meta";
         item.appendChild(meta);
         list.appendChild(item);
@@ -313,38 +731,82 @@
       assetResults.appendChild(list);
     }
 
-    form.addEventListener("change", function () {
-      render();
-      renderSearch();
+    FILTER_FIELDS.forEach(function (field, index) {
+      selects[field].addEventListener("change", function () {
+        filters[field] = selects[field].value;
+        rebuildCascade(index);
+      });
     });
+    installSelect.addEventListener("change", render);
     search.addEventListener("input", renderSearch);
 
-    const endpoint = "https://api.github.com/repos/" + encodeURIComponent(repo.split("/")[0]) +
-      "/" + encodeURIComponent(repo.split("/")[1]) + "/releases?per_page=20";
+    const endpoint = "https://api.github.com/repos/" +
+      encodeURIComponent(repo.split("/")[0]) + "/" +
+      encodeURIComponent(repo.split("/")[1]) +
+      "/releases?per_page=20";
     fetch(endpoint, { headers: { Accept: "application/vnd.github+json" } })
       .then(function (response) {
-        if (!response.ok) throw new Error("GitHub returned HTTP " + response.status);
+        if (!response.ok) {
+          throw new Error("GitHub returned HTTP " + response.status);
+        }
         return response.json();
       })
       .then(function (data) {
-        releases = Array.isArray(data) ? data : [];
-        const count = flattenReleases(releases, "development").length;
-        status.textContent = "Loaded " + count + " firmware assets from the 20 most recent releases.";
-        render();
+        catalog = buildCatalog(data);
+        if (!catalog.releaseSet || !catalog.profiles.length) {
+          throw new Error("no complete release family was found");
+        }
+        const set = catalog.releaseSet;
+        releaseSetStatus.replaceChildren();
+        releaseSetStatus.appendChild(
+          createElement(
+            "strong",
+            set.name + (set.prerelease ? " — prerelease" : "")
+          )
+        );
+        releaseSetStatus.appendChild(document.createTextNode(
+          " · " + catalog.profiles.length + " configurations · " +
+          catalog.rows.length + " firmware files · " +
+          set.releases.length + " release pages"
+        ));
+        if (set.url) {
+          releaseSetStatus.appendChild(document.createTextNode(" · "));
+          const link = createElement("a", "open primary release");
+          link.href = set.url;
+          releaseSetStatus.appendChild(link);
+        }
+        status.textContent =
+          "Catalog loaded. Start by choosing the exact hardware.";
+        rebuildCascade(-1);
       })
       .catch(function (error) {
-        status.textContent = "Could not load the GitHub release catalog: " + error.message;
+        status.textContent =
+          "Could not load the GitHub release catalog: " + error.message;
         missing.hidden = false;
         root.querySelector('[data-role="missing-text"]').textContent =
-          "Open the release collection and look for the expected filename shown by this picker.";
+          "Open the release collection and search for the exact hardware name.";
       });
   }
 
   const api = Object.freeze({
-    PURPOSES: PURPOSES,
-    flattenReleases: flattenReleases,
-    selectAsset: selectAsset,
-    wantedSuffix: wantedSuffix,
+    FILTER_FIELDS: FILTER_FIELDS,
+    ROLE_LABELS: ROLE_LABELS,
+    LOGGING_LABELS: LOGGING_LABELS,
+    OTA_LABELS: OTA_LABELS,
+    MODE_LABELS: MODE_LABELS,
+    FEATURE_LABELS: FEATURE_LABELS,
+    INSTALL_LABELS: INSTALL_LABELS,
+    selectReleaseSet: selectReleaseSet,
+    flattenReleaseAssets: flattenReleaseAssets,
+    parseFirmwareAsset: parseFirmwareAsset,
+    parseTargetProfile: parseTargetProfile,
+    buildCatalog: buildCatalog,
+    profileMatches: profileMatches,
+    uniqueValues: uniqueValues,
+    canonicalAsset: canonicalAsset,
+    humanizeHardware: humanizeHardware,
+    humanizeVariant: humanizeVariant,
+    labelFor: labelFor,
     formatBytes: formatBytes,
   });
 
