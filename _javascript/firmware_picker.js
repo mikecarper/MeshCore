@@ -84,7 +84,21 @@
     // Generated Full Companion artifact name. It uses the standard Heltec V4
     // board definition and auto-detects the V4.2 and V4.3 FEM hardware.
     "heltec_v4_2_v4_3": "heltec_v4",
+    // These target prefixes select a radio profile on otherwise identical
+    // hardware. Keep that distinction in the firmware variant facet instead.
+    "heltec_v4_3": "heltec_v4",
+    "heltec_v4_3_expansionkit_tft": "heltec_v4_expansionkit_tft",
+    "heltec_v4_3_tft": "heltec_v4_tft",
+    "Station_G2_logging": "Station_G2",
+    "Station_G3_ESP32_logging": "Station_G3_ESP32",
   });
+
+  const HIDDEN_PROFILE_HARDWARE = Object.freeze([
+    // This legacy environment only changes ADVERT_NAME. The standard G3
+    // target provides the same firmware behavior, while all legacy files stay
+    // available through exact filename search.
+    "Station_G3_ESP32_logging",
+  ]);
 
   let pickerInstanceCount = 0;
 
@@ -285,6 +299,7 @@
 
   function parseTargetProfile(target) {
     const parts = roleParts(target);
+    const sourceHardware = parts.hardware || target;
     const lowerTarget = target.toLowerCase();
     const lowerTail = parts.tail.toLowerCase();
     const mode = modeForRole(parts.role, parts.tail);
@@ -302,15 +317,22 @@
       : parts.role === "companion" && mode === "full"
         ? "lora-source"
         : "";
+    let variant = variantForProfile(parts.role, parts.tail);
+    if (sourceHardware === "Station_G2_logging") {
+      variant = variant === "default"
+        ? "rx-boosted"
+        : variant + "-rx-boosted";
+    }
 
     return {
       target: target,
-      hardware: canonicalHardware(parts.hardware || target),
+      sourceHardware: sourceHardware,
+      hardware: canonicalHardware(sourceHardware),
       role: parts.role,
       logging: logging,
       mode: mode,
       feature: feature,
-      variant: variantForProfile(parts.role, parts.tail),
+      variant: variant,
       explicitOta: explicitOta,
     };
   }
@@ -346,16 +368,11 @@
     }
 
     const knownLabels = {
-      "heltec_v4_3": "V4.3",
-      "heltec_v4_3_expansionkit_tft": "V4.3 + expansion kit + TFT",
-      "heltec_v4_3_tft": "V4.3 + TFT",
       "heltec_v4_expansionkit": "Expansion kit",
       "heltec_v4_expansionkit_tft": "Expansion kit + TFT",
       "heltec_v4_r8": "R8",
       "heltec_v4_r8_tft": "R8 + TFT",
       "heltec_v4_tft": "TFT",
-      "Station_G2_logging": "RX-boosted radio profile",
-      "Station_G3_ESP32_logging": "Alternate radio profile",
       "wio-e5-mini": "Mini",
     };
     if (knownLabels[value]) return knownLabels[value];
@@ -418,6 +435,8 @@
         return a.name.localeCompare(b.name);
       });
       return profile;
+    }).filter(function (profile) {
+      return !HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware);
     }).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
@@ -494,6 +513,7 @@
     if (!value || value === "default") return "Default";
     const tokenLabels = {
       ps: "Power save",
+      rx: "RX",
       femon: "FEM on",
       femoff: "FEM off",
       serial1: "Serial 1",
