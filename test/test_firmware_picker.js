@@ -30,6 +30,12 @@ const releases = [
   release(family, "2026-08-23T12:00:06Z", [
     asset("Station_G2_companion_radio_full-" + family + "-merged.bin"),
     asset("Station_G2_companion_radio_full-" + family + ".bin"),
+    asset("Station_G2_logging_repeater-" + family + "-merged.bin"),
+    asset("Station_G2_logging_repeater-" + family + ".bin"),
+    asset("Station_G3_ESP32_repeater-" + family + "-merged.bin"),
+    asset("Station_G3_ESP32_repeater-" + family + ".bin"),
+    asset("Station_G3_ESP32_logging_repeater-" + family + "-merged.bin"),
+    asset("Station_G3_ESP32_logging_repeater-" + family + ".bin"),
     asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".uf2"),
     asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".zip"),
   ]),
@@ -90,8 +96,8 @@ assert(!releaseSet.releases.some(function (item) {
 
 const catalog = picker.buildCatalog(releases);
 assert.strictEqual(catalog.releaseSet.familyTag, family);
-assert.strictEqual(catalog.profiles.length, 9);
-assert.strictEqual(catalog.rows.length, 19);
+assert.strictEqual(catalog.profiles.length, 11);
+assert.strictEqual(catalog.rows.length, 25);
 
 function profile(target) {
   const found = catalog.profiles.find(function (item) {
@@ -145,6 +151,44 @@ assert.strictEqual(
   picker.canonicalHardware("heltec_v4_2_v4_3"),
   "heltec_v4"
 );
+assert.strictEqual(
+  picker.canonicalHardware("heltec_v4_3_tft"),
+  "heltec_v4_tft"
+);
+assert.strictEqual(
+  picker.canonicalHardware("heltec_v4_3_expansionkit_tft"),
+  "heltec_v4_expansionkit_tft"
+);
+
+const heltecV4FemOff = picker.parseTargetProfile(
+  "heltec_v4_3_companion_radio_ble_femoff"
+);
+assert.strictEqual(heltecV4FemOff.hardware, "heltec_v4");
+assert.strictEqual(heltecV4FemOff.variant, "femoff");
+
+const heltecV4TftFemOff = picker.parseTargetProfile(
+  "heltec_v4_3_tft_companion_radio_wifi_femoff"
+);
+assert.strictEqual(heltecV4TftFemOff.hardware, "heltec_v4_tft");
+assert.strictEqual(heltecV4TftFemOff.variant, "femoff");
+
+const g2RxBoosted = profile("Station_G2_logging_repeater");
+assert.strictEqual(g2RxBoosted.sourceHardware, "Station_G2_logging");
+assert.strictEqual(g2RxBoosted.hardware, "Station_G2");
+assert.strictEqual(g2RxBoosted.variant, "rx-boosted");
+assert.strictEqual(
+  picker.humanizeVariant(g2RxBoosted.variant),
+  "RX Boosted"
+);
+
+const g3Standard = profile("Station_G3_ESP32_repeater");
+assert.strictEqual(g3Standard.hardware, "Station_G3_ESP32");
+assert(!catalog.profiles.some(function (item) {
+  return item.target === "Station_G3_ESP32_logging_repeater";
+}));
+assert(catalog.rows.some(function (item) {
+  return item.target === "Station_G3_ESP32_logging_repeater";
+}));
 
 const standardRepeater = profile("Station_G2_repeater");
 assert.strictEqual(standardRepeater.hardwareFamily, "Station_G2");
@@ -225,12 +269,11 @@ assert.strictEqual(
   "Base / standard (V4.2 / V4.3 auto-detect)"
 );
 assert.strictEqual(
-  picker.humanizeHardwareVariant("heltec_v4_3_tft", "heltec_v4"),
-  "V4.3 + TFT"
-);
-assert.strictEqual(
-  picker.humanizeHardwareVariant("Station_G2_logging", "Station_G2"),
-  "RX-boosted radio profile"
+  picker.humanizeHardwareVariant(
+    picker.canonicalHardware("heltec_v4_3_tft"),
+    "heltec_v4"
+  ),
+  "TFT"
 );
 const groupedHardwareProfiles = [
   {
@@ -304,7 +347,14 @@ assert.deepStrictEqual(
 
 assert.deepStrictEqual(
   picker.uniqueValues(catalog.profiles, "hardware").sort(),
-  ["Heltec_t096", "ProMicro", "RAK_4631", "Station_G2", "wio-e5"].sort()
+  [
+    "Heltec_t096",
+    "ProMicro",
+    "RAK_4631",
+    "Station_G2",
+    "Station_G3_ESP32",
+    "wio-e5",
+  ].sort()
 );
 assert.strictEqual(picker.humanizeHardware("RAK_4631"), "RAK 4631");
 assert.strictEqual(picker.formatBytes(2097152), "2.00 MiB");
