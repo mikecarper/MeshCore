@@ -3,83 +3,191 @@
 const assert = require("assert");
 const picker = require("../docs/_javascript/firmware_picker.js");
 
-const releases = [
-  {
-    name: "Stable FULL profiles",
-    tag_name: "full-profiles-v1",
-    html_url: "https://github.com/mikecarper/MeshCore/releases/tag/full-profiles-v1",
-    published_at: "2026-08-20T12:00:00Z",
-    prerelease: false,
-    draft: false,
-    assets: [
-      {
-        name: "Station_G2_repeater-full-logging-ota-v1-deadbee-merged.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1/Station_G2_repeater-full-logging-ota-v1-deadbee-merged.bin",
-        size: 2000000,
-      },
-      {
-        name: "Station_G2_repeater-full-logging-ota-v1-merged.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1/Station_G2_repeater-full-logging-ota-v1-merged.bin",
-        size: 2000000,
-      },
-      {
-        name: "Station_G2_repeater-full-logging-ota-v1.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1/Station_G2_repeater-full-logging-ota-v1.bin",
-        size: 1500000,
-      },
-      {
-        name: "Station_G2_companion_radio_full-logging-v1-merged.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1/Station_G2_companion_radio_full-logging-v1-merged.bin",
-        size: 1800000,
-      },
-      {
-        name: "Station_G2_companion_radio_full-v1-merged.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1/Station_G2_companion_radio_full-v1-merged.bin",
-        size: 1700000,
-      },
-    ],
-  },
-  {
-    name: "Development FULL profiles",
-    tag_name: "full-profiles-v2-dev",
-    html_url: "https://github.com/mikecarper/MeshCore/releases/tag/full-profiles-v2-dev",
-    published_at: "2026-08-21T12:00:00Z",
+const family = "v2.0.0-dev-abcd1234";
+
+function asset(name, size) {
+  return {
+    name: name,
+    browser_download_url:
+      "https://github.com/mikecarper/MeshCore/releases/download/test/" + name,
+    size: size || 1000000,
+  };
+}
+
+function release(tag, publishedAt, assets, extra) {
+  return Object.assign({
+    name: tag,
+    tag_name: tag,
+    html_url: "https://github.com/mikecarper/MeshCore/releases/tag/" + tag,
+    published_at: publishedAt,
     prerelease: true,
     draft: false,
-    assets: [
-      {
-        name: "Station_G2_repeater-full-logging-ota-v2-merged.bin",
-        browser_download_url: "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v2-dev/Station_G2_repeater-full-logging-ota-v2-merged.bin",
-        size: 2100000,
-      },
-    ],
-  },
+    assets: assets,
+  }, extra || {});
+}
+
+const releases = [
+  release(family, "2026-08-23T12:00:06Z", [
+    asset("Station_G2_companion_radio_full-" + family + "-merged.bin"),
+    asset("Station_G2_companion_radio_full-" + family + ".bin"),
+    asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".uf2"),
+    asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".zip"),
+  ]),
+  release("repeater-room-" + family, "2026-08-23T12:00:05Z", [
+    asset("Station_G2_repeater-" + family + "-deadbee-merged.bin"),
+    asset("Station_G2_repeater-" + family + "-deadbee.bin"),
+    asset("Station_G2_repeater-" + family + "-merged.bin"),
+    asset("Station_G2_repeater-" + family + ".bin"),
+    asset("wio-e5-repeater_bridge_rs232-" + family + ".hex"),
+  ]),
+  release("utility-" + family, "2026-08-23T12:00:04Z", [
+    asset("RAK_4631_sensor-" + family + ".uf2"),
+    asset("RAK_4631_sensor-" + family + ".zip"),
+  ]),
+  release("logging-" + family, "2026-08-23T12:00:03Z", [
+    asset("ProMicro_terminal_chat-logging-" + family + ".uf2"),
+    asset("ProMicro_terminal_chat-logging-" + family + ".zip"),
+  ]),
+  release("lora-ota-" + family, "2026-08-23T12:00:02Z", [
+    asset(
+      "Station_G2_repeater_lora_ota_no_external_sensors-ota-" +
+        family + "-merged.bin"
+    ),
+    asset(
+      "Station_G2_repeater_lora_ota_no_external_sensors-ota-" +
+        family + ".bin"
+    ),
+  ]),
+  release("full-profiles-" + family, "2026-08-23T12:00:01Z", [
+    asset(
+      "Station_G2_repeater-full-logging-ota-" + family + "-merged.bin"
+    ),
+    asset("Station_G2_repeater-full-logging-ota-" + family + ".bin"),
+    asset(
+      "Station_G2_repeater_observer_mqtt-full-ota-" +
+        family + "-merged.bin"
+    ),
+    asset(
+      "Station_G2_repeater_observer_mqtt-full-ota-" + family + ".bin"
+    ),
+  ]),
+  release(
+    "nrf52-mota-v1.0.0-to-" + family,
+    "2026-08-23T12:00:07Z",
+    [asset("Unrelated_repeater-" + family + ".uf2")]
+  ),
+  release("v1.9.9", "2026-08-20T12:00:00Z", [], {
+    prerelease: false,
+  }),
 ];
 
-const stable = picker.flattenReleases(releases, "stable");
-const development = picker.flattenReleases(releases, "development");
+const releaseSet = picker.selectReleaseSet(releases);
+assert.strictEqual(releaseSet.familyTag, family);
+assert.strictEqual(releaseSet.releases.length, 6);
+assert(!releaseSet.releases.some(function (item) {
+  return item.tag_name.startsWith("nrf52-mota-");
+}));
 
-assert.strictEqual(stable.length, 5);
-assert.strictEqual(development.length, 6);
-assert.strictEqual(picker.wantedSuffix("first"), "-merged.bin");
-assert.strictEqual(picker.wantedSuffix("wifi"), ".bin");
+const catalog = picker.buildCatalog(releases);
+assert.strictEqual(catalog.releaseSet.familyTag, family);
+assert.strictEqual(catalog.profiles.length, 9);
+assert.strictEqual(catalog.rows.length, 19);
+
+function profile(target) {
+  const found = catalog.profiles.find(function (item) {
+    return item.target === target;
+  });
+  assert(found, "missing profile " + target);
+  return found;
+}
+
+const companionFull = profile("Station_G2_companion_radio_full");
+assert.strictEqual(companionFull.hardware, "Station_G2");
+assert.strictEqual(companionFull.role, "companion");
+assert.strictEqual(companionFull.mode, "full");
+assert.strictEqual(companionFull.logging, "none");
+assert.strictEqual(companionFull.ota, "lora-source");
+assert.strictEqual(companionFull.feature, "full");
+assert.strictEqual(companionFull.variant, "default");
+
+const companionBle = profile("Heltec_t096_companion_radio_ble_ps_femon");
+assert.strictEqual(companionBle.hardware, "Heltec_t096");
+assert.strictEqual(companionBle.mode, "ble");
+assert.strictEqual(companionBle.variant, "ps-femon");
 assert.strictEqual(
-  picker.selectAsset(stable, "usb-logging", "first").name,
-  "Station_G2_repeater-full-logging-ota-v1-merged.bin"
+  picker.humanizeVariant(companionBle.variant),
+  "Power save FEM on"
 );
+
+const fullWifiLogging = picker.parseTargetProfile(
+  "Heltec_v2_companion_radio_wifi-full-logging"
+);
+assert.strictEqual(fullWifiLogging.mode, "wifi");
+assert.strictEqual(fullWifiLogging.logging, "usb");
+assert.strictEqual(fullWifiLogging.feature, "full");
+assert.strictEqual(fullWifiLogging.variant, "default");
+
+const fullUsbLogging = picker.parseTargetProfile(
+  "Meshadventurer_sx1262_companion_radio_usb-full-logging"
+);
+assert.strictEqual(fullUsbLogging.mode, "usb");
+assert.strictEqual(fullUsbLogging.variant, "default");
+
+const standardRepeater = profile("Station_G2_repeater");
+assert.strictEqual(standardRepeater.role, "repeater");
+assert.strictEqual(standardRepeater.logging, "none");
+assert.strictEqual(standardRepeater.ota, "none");
+assert.strictEqual(standardRepeater.mode, "standard");
+assert.strictEqual(standardRepeater.feature, "standard");
 assert.strictEqual(
-  picker.selectAsset(stable, "usb-logging", "wifi").name,
-  "Station_G2_repeater-full-logging-ota-v1.bin"
+  picker.canonicalAsset(standardRepeater.files, "merged-bin").name,
+  "Station_G2_repeater-" + family + "-merged.bin"
 );
-assert.strictEqual(
-  picker.selectAsset(development, "usb-logging", "first").name,
-  "Station_G2_repeater-full-logging-ota-v2-merged.bin"
+
+const fullLogging = profile("Station_G2_repeater-full-logging");
+assert.strictEqual(fullLogging.logging, "usb");
+assert.strictEqual(fullLogging.ota, "ota-enabled");
+assert.strictEqual(fullLogging.feature, "full");
+assert.strictEqual(fullLogging.variant, "default");
+
+const mqtt = profile("Station_G2_repeater_observer_mqtt-full");
+assert.strictEqual(mqtt.logging, "wifi");
+assert.strictEqual(mqtt.mode, "mqtt");
+assert.strictEqual(mqtt.ota, "ota-enabled");
+
+const lora = profile(
+  "Station_G2_repeater_lora_ota_no_external_sensors"
 );
-assert.strictEqual(picker.selectAsset(stable, "field", "first"), null);
-assert.strictEqual(
-  picker.selectAsset(stable, "companion-full", "first").name,
-  "Station_G2_companion_radio_full-v1-merged.bin"
+assert.strictEqual(lora.ota, "lora-receiver");
+assert.strictEqual(lora.variant, "no-external-sensors");
+
+const wio = profile("wio-e5-repeater_bridge_rs232");
+assert.strictEqual(wio.hardware, "wio-e5");
+assert.strictEqual(wio.role, "repeater");
+assert.strictEqual(wio.mode, "rs232");
+
+const matches = catalog.profiles.filter(function (item) {
+  return picker.profileMatches(item, {
+    hardware: "Station_G2",
+    role: "repeater",
+    logging: "usb",
+  });
+});
+assert.strictEqual(matches.length, 1);
+assert.strictEqual(matches[0].target, "Station_G2_repeater-full-logging");
+
+assert.deepStrictEqual(
+  picker.uniqueValues(catalog.profiles, "hardware").sort(),
+  ["Heltec_t096", "ProMicro", "RAK_4631", "Station_G2", "wio-e5"].sort()
 );
+assert.strictEqual(picker.humanizeHardware("RAK_4631"), "RAK 4631");
 assert.strictEqual(picker.formatBytes(2097152), "2.00 MiB");
+assert.strictEqual(
+  picker.parseFirmwareAsset(
+    { name: "wrong-version.bin", url: "", size: 1 },
+    family
+  ),
+  null
+);
 
-console.log("firmware picker tests passed");
+console.log("generalized firmware picker tests passed");

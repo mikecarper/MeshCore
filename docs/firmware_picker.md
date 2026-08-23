@@ -1,148 +1,174 @@
 # Firmware picker
 
-Choose what the board will do, then let the picker reduce the release assets
-to one recommended firmware. The first guided board is Station G2 because its
-standard, logging, FULL, LoRa-OTA, MQTT, bridge, room-server, and Companion
-profiles are easy to confuse.
+Choose the exact hardware first. The remaining menus then show only firmware
+roles and features that were actually built for that hardware in the current
+release set.
 
-The picker reads public release metadata from GitHub. It does not upload any
-device information.
+The picker reads public release metadata from GitHub. It does not upload device
+information. Hardware names, target names, and download links come directly
+from the published firmware assets.
 
 <div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore">
   <div class="firmware-picker-intro" role="note">
-    <strong>Station G2 shortcut</strong>
+    <strong>Current release set</strong>
+    <p data-role="release-set">Loading release information...</p>
     <p>
-      If the G2 normally stays connected to a computer and you want USB packet
-      logs, choose <strong>USB logging repeater</strong>. The recommended image
-      is the expanded <strong>FULL logging</strong> profile. The smaller legacy
-      logging image is mainly a compatibility fallback, not the normal choice
-      for a computer-powered logger.
+      For a new installation, choose the exact board and role, prefer a
+      <strong>FULL / complete profile</strong> when it is available, and select
+      <strong>USB first install / recovery</strong>. Narrower profiles remain
+      available when their reduced transport or feature set is intentional.
     </p>
   </div>
 
   <form class="firmware-picker-form" data-role="form">
     <label>
-      Release channel
-      <select data-field="channel">
-        <option value="development" selected>Current development and pre-releases</option>
-        <option value="stable">Stable releases</option>
+      1. Hardware
+      <select data-field="hardware" disabled>
+        <option value="">Loading hardware...</option>
       </select>
     </label>
 
     <label>
-      What should the Station G2 do?
-      <select data-field="purpose">
-        <option value="usb-logging">USB logging repeater - recommended when connected to a computer</option>
-        <option value="field">Simple standalone repeater</option>
-        <option value="field-ota">Standalone repeater with LoRa/WiFi OTA, no external sensors</option>
-        <option value="mqtt">Full MQTT observer/repeater</option>
-        <option value="espnow">ESP-NOW bridge repeater</option>
-        <option value="room">Room server</option>
-        <option value="room-mqtt">Full MQTT room observer</option>
-        <option value="companion-usb">USB Companion</option>
-        <option value="companion-ble">Bluetooth Companion</option>
-        <option value="companion-wifi">WiFi Companion</option>
-        <option value="companion-full">Full Companion and LoRa-OTA source</option>
+      2. Firmware role
+      <select data-field="role" disabled>
+        <option value="">Choose hardware first</option>
       </select>
     </label>
 
     <label>
-      How will this firmware be installed?
-      <select data-field="install">
-        <option value="first">First install, recovery, or changing partition/profile - USB cable</option>
-        <option value="wifi">Same profile and partition - browser/WiFi OTA</option>
-        <option value="lora">Same profile and partition - LoRa OTA</option>
+      3. Logging / MQTT
+      <select data-field="logging" disabled>
+        <option value="">Choose role first</option>
+      </select>
+    </label>
+
+    <label>
+      4. OTA capability
+      <select data-field="ota" disabled>
+        <option value="">Choose earlier options first</option>
+      </select>
+    </label>
+
+    <label>
+      5. Connection / bridge mode
+      <select data-field="mode" disabled>
+        <option value="">Choose earlier options first</option>
+      </select>
+    </label>
+
+    <label>
+      6. Feature profile
+      <select data-field="feature" disabled>
+        <option value="">Choose earlier options first</option>
+      </select>
+    </label>
+
+    <label>
+      7. Hardware/profile variant
+      <select data-field="variant" disabled>
+        <option value="">Choose earlier options first</option>
+      </select>
+    </label>
+
+    <label>
+      8. Installation method
+      <select data-field="install" disabled>
+        <option value="">Choose firmware options first</option>
       </select>
     </label>
   </form>
 
   <div class="firmware-picker-status" data-role="status" aria-live="polite">
-    Loading release catalog...
+    Loading the current firmware catalog...
   </div>
 
   <section class="firmware-picker-result" data-role="result" aria-live="polite" hidden>
-    <p class="firmware-picker-eyebrow">Recommended firmware</p>
-    <h2 data-role="result-title"></h2>
-    <p data-role="result-summary"></p>
-    <dl class="firmware-picker-facts" data-role="result-facts"></dl>
-    <div class="firmware-picker-actions">
-      <a class="firmware-picker-primary" data-role="download" href="#">Download recommended file</a>
-      <a data-role="release" href="#">Open its release</a>
-    </div>
-    <div class="firmware-picker-steps" data-role="steps"></div>
+    <p class="firmware-picker-eyebrow">Exact firmware match</p>
+    <h2>Recommended download</h2>
+    <div data-role="result-list"></div>
   </section>
 
   <section class="firmware-picker-missing" data-role="missing" aria-live="polite" hidden>
-    <h2>The matching asset is not in this release channel yet</h2>
+    <h2>No exact firmware matched</h2>
     <p data-role="missing-text"></p>
     <a href="https://github.com/mikecarper/MeshCore/releases">Browse all firmware releases</a>
   </section>
 
   <details class="firmware-asset-browser">
-    <summary>Advanced: search all recent release filenames</summary>
+    <summary>Advanced: search current release filenames</summary>
     <p>
-      This search is for uncommon hardware variants and expert recovery. A
-      filename match is not a board-identity check.
+      Use this for uncommon board suffixes or expert recovery. A filename match
+      is not a board-identity check.
     </p>
     <label>
       Filename contains
-      <input data-field="asset-search" placeholder="Station_G2, heltec_v4, repeater, ...">
+      <input data-field="asset-search" placeholder="Station_G2, heltec_v4, RAK_4631, ...">
     </label>
     <div data-role="asset-results"></div>
   </details>
 </div>
 
-## What FULL means for a USB logger
+## What the choices mean
 
-A Station G2 that is powered from and monitored by a computer normally should
-use the FULL logging profile:
+| Choice | Use |
+| --- | --- |
+| Companion | A phone, computer, or host application controls the radio |
+| Repeater | Standalone mesh relay |
+| Room Server | Hosts room conversations and history |
+| Sensor / telemetry | Publishes supported sensor data |
+| Terminal Chat | Standalone serial-terminal interface |
+| USB logging / USB-connected MQTT | Node remains attached to a computer over a data-capable USB cable |
+| Wi-Fi MQTT observer | Firmware connects directly to MQTT over Wi-Fi; this is not USB logging |
+| No logging | Normal standalone operation without the dedicated logging/MQTT profile |
+| LoRa OTA receiver | Repeater profile that can stage an exact matching update received over LoRa |
+| LoRa OTA source | Full Companion serving a host-supplied update to another node |
+| OTA-enabled profile | Build uses an OTA-capable application/partition profile, but is not necessarily an explicit LoRa receiver |
 
-1. Save its name, radio settings, keys, and other configuration.
-2. Download the exact Station G2 `full-logging-ota` merged image recommended
-   above.
-3. Flash that `-merged.bin` over USB once. It installs the expanded partition
-   table as well as the application.
-4. Reconnect the serial terminal at 115200 baud and restore any settings that
-   were not retained.
-5. Leave the data-capable USB connection attached to collect logs. Use
-   `set usb.logging off` temporarily if the runtime output needs to be quiet.
+Connection and bridge choices depend on the selected role. Companion firmware
+may offer Full, Bluetooth, USB, Wi-Fi, serial, or Ethernet transports.
+Repeaters may offer standard, ESP-NOW bridge, RS-232 bridge, Ethernet, or MQTT
+observer modes.
 
-Choose the standalone or lean OTA repeater instead when the board is normally
-battery/solar powered, has no computer collecting USB output, or must retain a
-known legacy partition layout.
+## FULL versus standard
 
-## Can a Heltec V4 partition be expanded by OTA?
+For a new installation, use the FULL / complete profile when it exists and the
+board has enough flash. FULL profiles keep the complete supported feature set
+and CLI. Standard profiles remain useful for boards without a FULL build, for
+an intentionally narrower transport, or when retaining an existing compatible
+partition layout.
 
-No. WiFi OTA and LoRa OTA write an application into the inactive application
-partition. They do not replace the partition table at flash offset `0x8000`.
-Allowing a running application to move its own active/inactive partitions
-would risk overwriting the running image, staged image, NVS, or filesystem.
+Changing between standard and FULL ESP32 layouts requires the exact-board
+merged image over USB. A running application cannot safely move its own active
+and inactive partitions.
 
-The current Heltec V4 definition already uses its 16 MiB flash efficiently:
-
-| Region | Size |
-|---|---:|
-| Application slot A | `0x640000` (6.25 MiB) |
-| Application slot B | `0x640000` (6.25 MiB) |
-| SPIFFS | `0x360000` (3.375 MiB) |
-
-That is much larger than current MeshCore V4 applications. A different layout
-is possible only as a custom build, and it requires a one-time exact-board
-merged-image flash over USB. Expanding the app slots further would shrink or
-remove SPIFFS, or remove the second slot and therefore remove safe OTA.
-
-After installing a new partition table over USB, later WiFi or LoRa updates
-must use a non-merged application built for the same board, role, and partition
-signature. Never use an app-only FULL image to try to migrate a device that is
-still running another partition layout.
-
-## Merged versus non-merged files
+## Installation methods
 
 | File | Use |
-|---|---|
-| `-merged.bin` | First install, recovery, role/profile migration, or partition-table change over USB |
-| `.bin` without `-merged` | Browser/WiFi application update when the installed partition layout already matches |
-| `.mota` | LoRa OTA package for the exact target identity and installed partition layout |
+| --- | --- |
+| <code>-merged.bin</code> | ESP32 first install, recovery, role migration, or partition-profile change over USB |
+| Non-merged <code>.bin</code> | Same-board, same-role, same-partition application update |
+| <code>.zip</code> | Native nRF52 Serial DFU package; it is not an extra archive |
+| <code>.uf2</code> | UF2 bootloader drag-and-drop installation |
+| <code>.hex</code> | Full wired programmer or recovery flash |
 
-When uncertain, back up the configuration and use the exact-board merged image
-over USB. Do not send a merged image through browser OTA or LoRa OTA.
+Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
+node configuration and verify every filename suffix before flashing.
+
+## LoRa OTA and OTAFIX
+
+An OTA receiver build installs the receiving/staging firmware. A later LoRa
+update still needs an exact target identity, compatible partition signature,
+matching radio settings, and the correct update package.
+
+nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
+is no universal bootloader file. Use the
+[latest stable OTAFIX release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest)
+and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.
+
+## Hardware and variant names
+
+The hardware menu preserves meaningful board suffixes such as display type,
+radio chip, PA/FEM layout, pin map, and external-flash variant. Later menus
+expose build variants such as FEM on/off, power saving, serial port, or
+no-external-sensors when those choices exist. Do not substitute a similarly
+named target.

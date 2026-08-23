@@ -25,6 +25,11 @@
   margin-bottom: 0;
 }
 
+.firmware-picker-intro [data-role="release-set"] {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
 .firmware-picker-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
@@ -73,6 +78,21 @@
 .firmware-picker-result h2,
 .firmware-picker-missing h2 {
   margin-top: 0.2rem;
+}
+
+.firmware-picker-card {
+  padding: 0.75rem 0 0.25rem;
+}
+
+.firmware-picker-card + .firmware-picker-card {
+  border-top: 1px solid var(--picker-border);
+  margin-top: 1rem;
+  padding-top: 1.25rem;
+}
+
+.firmware-picker-card h3 {
+  margin: 0 0 0.7rem;
+  overflow-wrap: anywhere;
 }
 
 .firmware-picker-facts {
