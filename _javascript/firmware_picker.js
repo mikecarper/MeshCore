@@ -80,6 +80,12 @@
     "hex",
   ]);
 
+  const HARDWARE_ALIASES = Object.freeze({
+    // Generated Full Companion artifact name. It uses the standard Heltec V4
+    // board definition and auto-detects the V4.2 and V4.3 FEM hardware.
+    "heltec_v4_2_v4_3": "heltec_v4",
+  });
+
   let pickerInstanceCount = 0;
 
   function isSafeGithubUrl(value) {
@@ -299,7 +305,7 @@
 
     return {
       target: target,
-      hardware: parts.hardware || target,
+      hardware: canonicalHardware(parts.hardware || target),
       role: parts.role,
       logging: logging,
       mode: mode,
@@ -307,6 +313,11 @@
       variant: variantForProfile(parts.role, parts.tail),
       explicitOta: explicitOta,
     };
+  }
+
+  function canonicalHardware(hardware) {
+    const value = String(hardware || "");
+    return HARDWARE_ALIASES[value] || value;
   }
 
   function hardwareFamilyFor(hardware, hardwareNames) {
@@ -327,10 +338,14 @@
   function humanizeHardwareVariant(hardware, family) {
     const value = String(hardware || "");
     const parent = String(family || "");
-    if (!parent || value === parent) return "Base / standard";
+    if (!parent || value === parent) {
+      if (value === "heltec_v4") {
+        return "Base / standard (V4.2 / V4.3 auto-detect)";
+      }
+      return "Base / standard";
+    }
 
     const knownLabels = {
-      "heltec_v4_2_v4_3": "V4.2 / V4.3",
       "heltec_v4_3": "V4.3",
       "heltec_v4_3_expansionkit_tft": "V4.3 + expansion kit + TFT",
       "heltec_v4_3_tft": "V4.3 + TFT",
@@ -943,6 +958,7 @@
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
+    canonicalHardware: canonicalHardware,
     hardwareFamilyFor: hardwareFamilyFor,
     humanizeHardwareVariant: humanizeHardwareVariant,
     buildCatalog: buildCatalog,
