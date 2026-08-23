@@ -40,10 +40,9 @@
   });
 
   const OTA_LABELS = Object.freeze({
-    none: "No explicit OTA profile",
-    "ota-enabled": "OTA-enabled profile",
-    "lora-receiver": "LoRa OTA receiver",
-    "lora-source": "LoRa OTA source (Full Companion)",
+    none: "No LoRa OTA",
+    "lora-receiver": "LoRa OTA enabled / receiver",
+    "lora-source": "LoRa OTA source only (Full Companion)",
   });
 
   const MODE_LABELS = Object.freeze({
@@ -84,11 +83,8 @@
     // Generated Full Companion artifact name. It uses the standard Heltec V4
     // board definition and auto-detects the V4.2 and V4.3 FEM hardware.
     "heltec_v4_2_v4_3": "heltec_v4",
-    // These target prefixes select a radio profile on otherwise identical
-    // hardware. Keep that distinction in the firmware variant facet instead.
-    "heltec_v4_3": "heltec_v4",
-    "heltec_v4_3_expansionkit_tft": "heltec_v4_expansionkit_tft",
-    "heltec_v4_3_tft": "heltec_v4_tft",
+    // These Station target prefixes select a firmware/radio profile on the
+    // same physical hardware.
     "Station_G2_logging": "Station_G2",
     "Station_G3_ESP32_logging": "Station_G3_ESP32",
   });
@@ -98,6 +94,14 @@
     // target provides the same firmware behavior, while all legacy files stay
     // available through exact filename search.
     "Station_G3_ESP32_logging",
+  ]);
+
+  const HIDDEN_PROFILE_TARGETS = Object.freeze([
+    // SolarXiao repeaters already stage full-sensor LoRa OTA images in their
+    // matched external QSPI flash. Older releases contain redundant lean
+    // siblings; keep those files searchable without recommending them.
+    "solarxiao_30S_repeater_lora_ota_no_external_sensors",
+    "solarxiao_33S_repeater_lora_ota_no_external_sensors",
   ]);
 
   let pickerInstanceCount = 0;
@@ -368,6 +372,9 @@
     }
 
     const knownLabels = {
+      "heltec_v4_3": "V4.3",
+      "heltec_v4_3_expansionkit_tft": "V4.3 + expansion kit + TFT",
+      "heltec_v4_3_tft": "V4.3 + TFT",
       "heltec_v4_expansionkit": "Expansion kit",
       "heltec_v4_expansionkit_tft": "Expansion kit + TFT",
       "heltec_v4_r8": "R8",
@@ -427,7 +434,7 @@
 
     const profiles = Array.from(grouped.values()).map(function (profile) {
       profile.ota = profile.explicitOta ||
-        (profile.otaPackaged ? "ota-enabled" : "none");
+        (profile.otaPackaged ? "lora-receiver" : "none");
       profile.installKinds = INSTALL_ORDER.filter(function (kind) {
         return Boolean(canonicalAsset(profile.files, kind));
       });
@@ -436,7 +443,8 @@
       });
       return profile;
     }).filter(function (profile) {
-      return !HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware);
+      return !HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) &&
+        !HIDDEN_PROFILE_TARGETS.includes(profile.target);
     }).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
@@ -559,7 +567,7 @@
   function optionSort(field, a, b) {
     const roleOrder = ["companion", "repeater", "room", "sensor", "terminal", "kiss", "other"];
     const loggingOrder = ["none", "usb", "wifi"];
-    const otaOrder = ["none", "ota-enabled", "lora-receiver", "lora-source"];
+    const otaOrder = ["none", "lora-receiver", "lora-source"];
     const featureOrder = ["standard", "full"];
     const modeOrder = ["standard", "full", "ble", "usb", "wifi", "serial", "ethernet", "mqtt", "espnow", "rs232"];
     const orders = {
