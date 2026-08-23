@@ -11,6 +11,7 @@
   ]);
 
   const FILTER_FIELDS = Object.freeze([
+    "hardwareFamily",
     "hardware",
     "role",
     "logging",
@@ -308,6 +309,57 @@
     };
   }
 
+  function hardwareFamilyFor(hardware, hardwareNames) {
+    const value = String(hardware || "");
+    const lowerValue = value.toLowerCase();
+    const parents = (hardwareNames || []).filter(function (candidate) {
+      const parent = String(candidate || "");
+      if (!parent || parent === value) return false;
+      const lowerParent = parent.toLowerCase();
+      return lowerValue.startsWith(lowerParent + "_") ||
+        lowerValue.startsWith(lowerParent + "-");
+    }).sort(function (a, b) {
+      return a.length - b.length || a.localeCompare(b);
+    });
+    return parents[0] || value;
+  }
+
+  function humanizeHardwareVariant(hardware, family) {
+    const value = String(hardware || "");
+    const parent = String(family || "");
+    if (!parent || value === parent) return "Base / standard";
+
+    const knownLabels = {
+      "heltec_v4_2_v4_3": "V4.2 / V4.3",
+      "heltec_v4_3": "V4.3",
+      "heltec_v4_3_expansionkit_tft": "V4.3 + expansion kit + TFT",
+      "heltec_v4_3_tft": "V4.3 + TFT",
+      "heltec_v4_expansionkit": "Expansion kit",
+      "heltec_v4_expansionkit_tft": "Expansion kit + TFT",
+      "heltec_v4_r8": "R8",
+      "heltec_v4_r8_tft": "R8 + TFT",
+      "heltec_v4_tft": "TFT",
+      "Station_G2_logging": "RX-boosted radio profile",
+      "Station_G3_ESP32_logging": "Alternate radio profile",
+      "wio-e5-mini": "Mini",
+    };
+    if (knownLabels[value]) return knownLabels[value];
+
+    let suffix = value.slice(parent.length).replace(/^[_-]+/, "");
+    const suffixLabels = {
+      logging: "Logging hardware profile",
+      without_display: "Without display",
+      sdcard: "SD card",
+      "096": "0.96-inch display",
+      "096_rotated": "0.96-inch rotated display",
+      Lite_non_shell: "Lite (no shell)",
+    };
+    if (suffixLabels[suffix]) return suffixLabels[suffix];
+    suffix = humanizeHardware(suffix).replace(/\bTft\b/gi, "TFT")
+      .replace(/\bWio\b/gi, "WIO");
+    return suffix || humanizeHardware(value);
+  }
+
   function canonicalAsset(files, installKind) {
     return (Array.isArray(files) ? files : []).filter(function (file) {
       return file.installKind === installKind;
@@ -358,6 +410,16 @@
       });
     });
 
+    const hardwareNames = Array.from(new Set(profiles.map(function (profile) {
+      return profile.hardware;
+    })));
+    profiles.forEach(function (profile) {
+      profile.hardwareFamily = hardwareFamilyFor(
+        profile.hardware,
+        hardwareNames
+      );
+    });
+
     return {
       releaseSet: releaseSet,
       rows: firmwareRows,
@@ -374,8 +436,11 @@
   }
 
   function profileMatchesFacets(profile, filters, ignoredField) {
+    const ignoredFields = new Set(
+      Array.isArray(ignoredField) ? ignoredField : [ignoredField]
+    );
     return FACET_FIELDS.every(function (field) {
-      if (field === ignoredField) return true;
+      if (ignoredFields.has(field)) return true;
       const value = filters && filters[field];
       if (!value) return true;
       if (field === "install") {
@@ -385,9 +450,10 @@
     });
   }
 
-  function facetValues(profiles, filters, field) {
+  function facetValues(profiles, filters, field, additionallyIgnoredFields) {
+    const ignoredFields = [field].concat(additionallyIgnoredFields || []);
     const compatible = (profiles || []).filter(function (profile) {
-      return profileMatchesFacets(profile, filters, field);
+      return profileMatchesFacets(profile, filters, ignoredFields);
     });
     const values = field === "install"
       ? compatible.flatMap(function (profile) {
@@ -428,6 +494,7 @@
   }
 
   function labelFor(field, value) {
+    if (field === "hardwareFamily") return humanizeHardware(value);
     if (field === "hardware") return humanizeHardware(value);
     if (field === "role") return ROLE_LABELS[value] || value;
     if (field === "logging") return LOGGING_LABELS[value] || value;
@@ -604,7 +671,8 @@
     function setSelectOptions(select, field, values, selected) {
       select.replaceChildren();
       const placeholders = {
-        hardware: "Any hardware",
+        hardwareFamily: "Any hardware",
+        hardware: "Choose a hardware variant",
         mode: "Any connection / mode",
         variant: "Any hardware/profile variant",
       };
@@ -614,7 +682,10 @@
       values.slice().sort(function (a, b) {
         return optionSort(field, a, b);
       }).forEach(function (value) {
-        const option = createElement("option", labelFor(field, value));
+        const label = field === "hardware"
+          ? humanizeHardwareVariant(value, filters.hardwareFamily)
+          : labelFor(field, value);
+        const option = createElement("option", label);
         option.value = value;
         select.appendChild(option);
       });
@@ -658,18 +729,35 @@
       }
     }
 
-    function stabilizeSingleChoices() {
+    function valuesForField(field) {
+      return facetValues(
+        catalog.profiles,
+        filters,
+        field,
+        field === "hardwareFamily" ? ["hardware"] : []
+      );
+    }
+
+    function stabilizeFilters() {
       let changed = true;
       let passes = 0;
       while (changed && passes <= FACET_FIELDS.length) {
         changed = false;
         passes += 1;
         FACET_FIELDS.forEach(function (field) {
-          const values = facetValues(catalog.profiles, filters, field);
+          if (field === "hardware" && !filters.hardwareFamily) {
+            if (filters.hardware) {
+              filters.hardware = "";
+              changed = true;
+            }
+            return;
+          }
+          const values = valuesForField(field);
           if (filters[field] && !values.includes(filters[field])) {
             filters[field] = "";
             changed = true;
-          } else if (!filters[field] && values.length === 1) {
+          } else if (field === "hardware" && filters.hardwareFamily &&
+            !filters[field] && values.length === 1) {
             filters[field] = values[0];
             changed = true;
           }
@@ -678,13 +766,16 @@
     }
 
     function refreshFacets() {
-      stabilizeSingleChoices();
+      stabilizeFilters();
       FACET_FIELDS.forEach(function (field) {
-        setControlOptions(
-          field,
-          facetValues(catalog.profiles, filters, field)
-        );
+        setControlOptions(field, valuesForField(field));
       });
+      const hardwareVariants = valuesForField("hardware");
+      const hardwareVariantControl = root.querySelector(
+        '[data-role="hardware-variant-control"]'
+      );
+      hardwareVariantControl.hidden = !filters.hardwareFamily ||
+        hardwareVariants.length <= 1;
       render();
     }
 
@@ -778,6 +869,7 @@
       const target = event.target;
       const field = target.dataset.choiceField || target.dataset.field;
       if (!FACET_FIELDS.includes(field)) return;
+      if (field === "hardwareFamily") filters.hardware = "";
       filters[field] = target.value;
       refreshFacets();
     });
@@ -851,6 +943,8 @@
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
+    hardwareFamilyFor: hardwareFamilyFor,
+    humanizeHardwareVariant: humanizeHardwareVariant,
     buildCatalog: buildCatalog,
     profileMatches: profileMatches,
     profileMatchesFacets: profileMatchesFacets,
