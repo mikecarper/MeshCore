@@ -11,6 +11,37 @@ repeater's public key. Match that 16-character hex value against the public-key
 prefix recorded for your repeaters. It comes from the telemetry payload itself,
 so it is available even when only the payload was copied.
 
+## Send raw telemetry packets
+
+From an administrator CLI session, first configure a direct route to the MQTT
+observer that will receive and upload the raw packets. Use `direct` when the
+observer is a zero-hop neighbor:
+
+```text
+set telemetry.tx direct
+send telemetry.tx now
+```
+
+For a routed observer, provide its comma-separated hop hashes instead:
+
+```text
+set telemetry.tx A1B2,C3D4
+send telemetry.tx now
+```
+
+Configuring the route also enables the default two-day schedule. To keep the
+route but use it only for manual tests, turn off the schedule before sending:
+
+```text
+set telemetry.tx schedule off
+send telemetry.tx now
+```
+
+The `send telemetry.tx now` command queues one `TTB1` temperature packet and
+one `TVB1` voltage packet containing all currently available samples, up to 165
+per packet. There is no temperature-only CLI command. The command requires at
+least one collected sample and works even when the automatic schedule is off.
+
 ## Decode a packet
 
 <div class="telemetry-tool" data-telemetry-decoder>

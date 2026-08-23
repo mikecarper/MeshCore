@@ -83,6 +83,12 @@
 #include <helpers/ClientACL.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/DeferredCliCommand.h>
+#ifndef MESH_ENABLE_HOST_CLI
+#define MESH_ENABLE_HOST_CLI 1
+#endif
+#if MESH_ENABLE_HOST_CLI
+#include <helpers/HostCliBridge.h>
+#endif
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
@@ -246,7 +252,6 @@ struct NeighbourInfo {
 #define CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS 600UL
 #define CLOCK_SYNC_DRIFT_MIN_SECONDS        30UL
 #define CLOCK_SYNC_DRIFT_MAX_SECONDS        86400UL
-#define CLOCK_SYNC_DRIFT_DEFAULT_SECONDS    3600UL
 #define CLOCK_SYNC_MESH_SUPPRESS_NONE       0
 #define CLOCK_SYNC_MESH_SUPPRESS_CLI        1
 #define CLOCK_SYNC_MESH_SUPPRESS_GPS        2
@@ -282,6 +287,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
   TransportKey deferred_cli_reply_scope;
   bool deferred_cli_reply_scoped;
+#if MESH_ENABLE_HOST_CLI
+  bool host_cli_waiting;
+  bool host_cli_claimed;
+  bool host_cli_claim_emit;
+  unsigned long host_cli_deadline;
+  unsigned long host_cli_claim_emit_at;
+  uint64_t host_cli_nonce;
+  uint64_t host_cli_claim_challenge;
+#endif
   uint32_t pending_self_advert_delay;
   bool pending_self_advert;
   bool pending_self_advert_flood;
@@ -597,6 +611,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
   void processDeferredCliCommand();
+  void clearDeferredCliCommand();
+#if MESH_ENABLE_HOST_CLI
+  bool completeHostCliRequest(const char* service_reply);
+#endif
   void sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
                           uint8_t path_hash_size, uint32_t sender_timestamp,
                           const char* reply, const TransportKey* fallback_scope);
@@ -936,6 +954,9 @@ public:
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     handleCommand(sender_timestamp, NULL, command, reply);
   }
+#if MESH_ENABLE_HOST_CLI
+  bool handleHostCliSerialReply(const char* command, char* reply);
+#endif
   void loop();
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 

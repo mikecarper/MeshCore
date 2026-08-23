@@ -375,7 +375,8 @@ struct OtaContext {
   // then advertises + relays them alongside its own fw). Only built when OTA_FOLDER_SERIAL is configured.
 #if defined(OTA_FOLDER_SERIAL)
   bool attach_folder(char* msg, size_t cap) {
-    static SerialMotaSource src(OTA_FOLDER_SERIAL_STREAM, 600);
+    static SerialMotaSource src(OTA_FOLDER_SERIAL_STREAM,
+                                MotaStreamWritePolicy::FlushTransmit, 600);
 #ifdef OTA_FOLDER_SERIAL_BEGIN
     OTA_FOLDER_SERIAL_STREAM.begin(OTA_FOLDER_SERIAL_BAUD);     // dedicated UART; console is already up
 #endif

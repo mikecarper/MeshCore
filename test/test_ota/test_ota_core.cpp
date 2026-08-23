@@ -2,6 +2,7 @@
 #include <array>
 #include <vector>
 #include <cstring>
+#include <type_traits>
 
 #include "helpers/ota/MotaContainer.h"
 #include "helpers/ota/MerkleTree.h"
@@ -10,6 +11,7 @@
 #include "helpers/ota/FirmwareInfo.h"
 #include "helpers/ota/MotaSeederProto.h"
 #include "helpers/ota/MotaSourceSerial.h"
+#include "helpers/ota/FolderMotaStore.h"
 #include "helpers/ota/SignerAllowlist.h"
 #include "helpers/ota/OtaStore.h"
 #include "helpers/ota/OtaProtocol.h"
@@ -688,21 +690,43 @@ public:
   }
 
   int read() override {
-    return response_pos < response.size() ? response[response_pos++] : -1;
+    if (response_pos < response.size()) return response[response_pos++];
+    ++g_mock_millis;
+    return -1;
+  }
+
+  void flush() override {
+    ++flush_calls;
+    if (flush_discards_receive) {
+      response.clear();
+      response_pos = 0;
+    }
   }
 
   std::vector<uint32_t> offsets;
   std::vector<uint16_t> lengths;
   bool request_valid = true;
+  bool flush_discards_receive = false;
+  size_t flush_calls = 0;
 
 private:
   std::vector<uint8_t> response;
   size_t response_pos = 0;
 };
 
+static_assert(!std::is_constructible<SerialMotaSource, Stream&>::value,
+              "mOTA source callers must choose a stream write policy");
+static_assert(!std::is_constructible<SerialMotaSource, Stream&, uint32_t>::value,
+              "a timeout must not be mistaken for a stream write policy");
+static_assert(!std::is_constructible<FolderMotaStore, Stream&>::value,
+              "folder store callers must choose a stream write policy");
+static_assert(!std::is_constructible<FolderMotaStore, Stream&, uint32_t>::value,
+              "a timeout must not be mistaken for a stream write policy");
+
 TEST(MotaSourceSerial, SplitsOneKilobyteReadsBelowCdcReceiveRing) {
+  resetArduinoMock();
   FakeMotaSeederStream stream;
-  SerialMotaSource source(stream);
+  SerialMotaSource source(stream, MotaStreamWritePolicy::FlushTransmit);
   std::array<uint8_t, 1024> data{};
 
   ASSERT_TRUE(source.read(0, 0x1000, data.data(), data.size()));
@@ -711,20 +735,112 @@ TEST(MotaSourceSerial, SplitsOneKilobyteReadsBelowCdcReceiveRing) {
             (std::vector<uint32_t>{0x1000, 0x10C0, 0x1180, 0x1240, 0x1300, 0x13C0}));
   EXPECT_EQ(stream.lengths,
             (std::vector<uint16_t>{192, 192, 192, 192, 192, 64}));
+  EXPECT_EQ(stream.flush_calls, 6U);
   for (size_t i = 0; i < data.size(); i++) {
     EXPECT_EQ(data[i], (uint8_t)(0x1000 + i));
   }
 }
 
 TEST(MotaSourceSerial, AcceptsEmptyReadAndRejectsInvalidRange) {
+  resetArduinoMock();
   FakeMotaSeederStream stream;
-  SerialMotaSource source(stream);
+  SerialMotaSource source(stream, MotaStreamWritePolicy::FlushTransmit);
   uint8_t byte = 0;
 
   EXPECT_TRUE(source.read(0, 123, nullptr, 0));
   EXPECT_FALSE(source.read(0, 123, nullptr, 1));
   EXPECT_FALSE(source.read(0, UINT32_MAX, &byte, 2));
   EXPECT_TRUE(stream.offsets.empty());
+}
+
+TEST(MotaSourceSerial, NetworkPolicyPreservesReplyWhenFlushWouldDiscardRx) {
+  resetArduinoMock();
+  FakeMotaSeederStream stream;
+  stream.flush_discards_receive = true;
+  SerialMotaSource source(stream, MotaStreamWritePolicy::NoFlush, 20);
+  std::array<uint8_t, 16> data{};
+
+  ASSERT_TRUE(source.read(0, 0x2000, data.data(), data.size()));
+  EXPECT_EQ(stream.flush_calls, 0U);
+  for (size_t i = 0; i < data.size(); i++) {
+    EXPECT_EQ(data[i], (uint8_t)(0x2000 + i));
+  }
+}
+
+TEST(MotaSourceSerial, WrongFlushPolicyDemonstratesNetworkReplyLoss) {
+  resetArduinoMock();
+  FakeMotaSeederStream stream;
+  stream.flush_discards_receive = true;
+  SerialMotaSource source(stream, MotaStreamWritePolicy::FlushTransmit, 20);
+  std::array<uint8_t, 4> data{};
+
+  EXPECT_FALSE(source.read(0, 0x3000, data.data(), data.size()));
+  EXPECT_EQ(stream.flush_calls, 1U);
+}
+
+class FakeFolderMotaSeederStream : public Stream {
+public:
+  using Stream::write;
+
+  size_t write(const uint8_t* request, size_t len) override {
+    request_valid = len >= 4
+        && request[0] == MOTA_SEEDER_REQ_MAGIC0
+        && request[1] == MOTA_SEEDER_REQ_MAGIC1;
+    if (!request_valid) return len;
+
+    uint8_t checksum = request[2];
+    for (size_t i = 3; i + 1 < len; i++) checksum ^= request[i];
+    request_valid = checksum == request[len - 1];
+    if (!request_valid) return len;
+
+    operations.push_back(request[2]);
+    response = {
+        MOTA_SEEDER_RSP_MAGIC0,
+        MOTA_SEEDER_RSP_MAGIC1,
+        request[2],
+        MS_STATUS_OK,
+        (uint8_t)(MOTA_SEEDER_RSP_MAGIC0 ^ MOTA_SEEDER_RSP_MAGIC1
+                  ^ request[2] ^ MS_STATUS_OK),
+    };
+    response_pos = 0;
+    return len;
+  }
+
+  int read() override {
+    if (response_pos < response.size()) return response[response_pos++];
+    ++g_mock_millis;
+    return -1;
+  }
+
+  void flush() override {
+    ++flush_calls;
+    response.clear();
+    response_pos = 0;
+  }
+
+  std::vector<uint8_t> operations;
+  bool request_valid = true;
+  size_t flush_calls = 0;
+
+private:
+  std::vector<uint8_t> response;
+  size_t response_pos = 0;
+};
+
+TEST(FolderMotaStore, NetworkPolicyPreservesFastBeginAndWriteReplies) {
+  resetArduinoMock();
+  FakeFolderMotaSeederStream stream;
+  FolderMotaStore store(stream, MotaStreamWritePolicy::NoFlush, 20);
+  const uint8_t mid[4] = {0x10, 0x20, 0x30, 0x40};
+  const uint8_t data[4] = {1, 2, 3, 4};
+  store.set_mid(mid);
+
+  ASSERT_TRUE(store.begin(64));
+  ASSERT_TRUE(store.write(0, data, sizeof(data)));
+  EXPECT_TRUE(stream.request_valid);
+  EXPECT_EQ(stream.operations,
+            (std::vector<uint8_t>{MS_OP_BEGIN, MS_OP_WRITE}));
+  EXPECT_EQ(stream.flush_calls, 0U);
 }
 
 // Build a flashed-image layout (body || fixed 56-byte EndF) the way the host packager / build hook do:

@@ -196,6 +196,20 @@ saved credentials take priority. With no credentials, its WebConfig portal
 starts in setup-AP mode. With credentials, the WebUI is enabled by default on
 the station IP.
 
+Full Companion can also be provisioned from its USB terminal or TCP port 5002:
+
+```text
+get wifi.ssid
+get wifi.status
+set wifi.ssid SlowFi
+set wifi.pwd your-password
+```
+
+Credential writes are persisted immediately. After the reply has drained, the
+Companion restarts its WiFi station with the saved pair. A port-5002 client is
+expected to disconnect and can reconnect at the new LAN IP. USB masks the
+password as it is entered; `get wifi.pwd` is intentionally unavailable.
+
 If the configured network remains unavailable for two minutes, the companion
 opens its setup AP so the credentials can be repaired. It continues retrying
 the saved network. WiFi modem sleep has its own persisted `wifi.powersave`
@@ -232,12 +246,19 @@ RXPS on at level 8 with a 16-symbol preamble, and WiFi modem power saving at
 When `ENABLE_OTA` is included, a WiFi companion also listens on:
 
 - TCP 5001 for the OTA folder seeder used by `motatool serve --tcp`;
-- TCP 5002 for the OTA text console.
+- TCP 5002 for a text management console.
 
 These ports do not replace the companion protocol on TCP 5000.
-On a `companion_radio_full` build, port 5002 additionally accepts bounded
-`tempradio`, `normalradio`, and `get/set wifi.powersave` commands, while LoRa
-staging and installation on the Companion itself are disabled.
+On a `companion_radio_full` build, port 5002 is the same role-specific text
+terminal available over USB, including chat, remote administration, radio and
+power settings, WiFi/WebConfig management, `tempradio`, and the source-only
+`ota` commands. Other
+OTA-enabled Companion builds keep the bounded `ota ...` console. LoRa staging
+and installation on the Full Companion itself remain disabled.
+
+Port 5002 is plaintext and has no independent login gate. Use it only on a
+trusted LAN or temporary setup network, especially when entering a remote-node
+admin password with the terminal's `login` command.
 
 FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
 role has a usable WiFi station or setup access point and stops when WiFi stops.

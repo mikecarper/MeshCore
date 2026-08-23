@@ -458,6 +458,10 @@ TEST(ClockSyncPathPolicy, EdgeModeAllowsOnePath) {
   EXPECT_FALSE(mesh::clockSyncRequiresUniquePath(true));
 }
 
+TEST(ClockSyncDefaults, DriftCorrectionThresholdIsTenMinutes) {
+  EXPECT_EQ(600U, mesh::CLOCK_SYNC_DRIFT_DEFAULT_SECONDS);
+}
+
 TEST(MeshReceiveHooks, GroupPacketIsObservedWhenForwardingIsDisabled) {
   TraceTestClock clock;
   TraceTestRTC rtc;

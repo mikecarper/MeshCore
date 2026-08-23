@@ -319,14 +319,27 @@ TEST(CLICommandUtils, RejectsMalformedTerminalPaths) {
                 "A1B2C3,D4E5F6", route, sizeof(route), 63, path));
 }
 
-TEST(CLICommandUtils, MasksOnlyTerminalLoginPasswordInput) {
+TEST(CLICommandUtils, MasksTerminalPasswordInput) {
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login"));
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login "));
   EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("login s"));
   EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("LOGIN s"));
   EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("  login secret phrase"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("set wifi.pwd"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("set wifi.pwd "));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("set wifi.pwd s"));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("SET WIFI.PWD secret phrase"));
+  EXPECT_TRUE(mesh::cli::shouldMaskTerminalInput("  set   wifi.pwd secret"));
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("cmd login secret"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("cmd set wifi.pwd secret"));
+  EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("set wifi.pwd-status secret"));
   EXPECT_FALSE(mesh::cli::shouldMaskTerminalInput("login-status"));
+
+  const char* login = "  login secret phrase";
+  EXPECT_STREQ("secret phrase", mesh::cli::terminalPasswordInput(login));
+  const char* wifi = "set wifi.pwd secret phrase";
+  EXPECT_STREQ("secret phrase", mesh::cli::terminalPasswordInput(wifi));
+  EXPECT_EQ(nullptr, mesh::cli::terminalPasswordInput("set wifi.pwd "));
 }
 
 TEST(CLICommandUtils, BackspaceErasesAsciiAndUtf8Characters) {

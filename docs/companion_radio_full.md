@@ -51,7 +51,7 @@ Heltec `_femon` Companion firmware can switch the external FEM receive gain at
 runtime, so the Companion bulk-build commands omit the redundant legacy
 `_femoff` targets. Those targets remain available through an explicit
 `build-firmware` command for compatibility. In WebConfig, use the **FEM RX
-boost** switch. From the USB terminal, use:
+boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
 ```text
 get radio.rxgain
@@ -71,7 +71,7 @@ are applied immediately and retained after reboot. FEM TX gain is reported as
 unsupported on boards without software-selectable PA gain.
 
 Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
-with the **Device power saving** switch or from the USB terminal:
+with the **Device power saving** switch or from the text terminal:
 
 ```text
 powersaving
@@ -80,14 +80,27 @@ powersaving off
 ```
 
 On ESP32, WiFi modem power saving is a third independent setting. Select it in
-the WebConfig **WiFi** card, or use the Full Companion USB terminal or TCP port
-5002:
+the WebConfig **WiFi** card, or use the Full Companion text terminal:
 
 ```text
+get wifi.ssid
+get wifi.status
 get wifi.powersave
+get wifi.cli
+get webui
+set wifi.ssid MyNetwork
+set wifi.pwd my-password
 set wifi.powersave min
 set wifi.powersave max
+set wifi.cli on
+start webconfig
+stop webconfig
 ```
+
+SSID and password writes return their reply first, then restart the Companion
+WiFi station with the saved credentials. A TCP terminal therefore disconnects
+shortly after either write; reconnect to the IP reported by the new network.
+The password is write-only and is masked while it is entered over USB.
 
 The normal binary Companion connection can also read or write this setting over
 USB, BLE, or TCP port 5000 without entering terminal mode. The saved values are
@@ -96,7 +109,7 @@ USB, BLE, or TCP port 5000 without entering terminal mode. The saved values are
 `none` because simultaneous WiFi and BLE require modem sleep. Fresh Cascade
 builds select `min`, and an existing saved selection takes precedence.
 
-On radios with RX duty-cycle support, WebConfig and the USB terminal also
+On radios with RX duty-cycle support, WebConfig and the text terminal also
 expose the persisted RXPS setting:
 
 ```text
@@ -172,7 +185,7 @@ itself.
 | ESP32 | TCP 5000 | Binary Companion over WiFi |
 | ESP32 | HTTP 80 | Companion WebConfig and first-boot WiFi setup |
 | ESP32 | TCP 5001 | Host `.mota` folder from `motatool serve --tcp` |
-| ESP32 | TCP 5002 | Local `ota`, `tempradio`, `normalradio`, and `wifi.powersave` console |
+| ESP32 | TCP 5002 | Full Companion text terminal; same role commands as the USB terminal |
 | nRF52 | USB mOTA mode | Host `.mota` folder from `motatool serve --serial` |
 
 Delivery-required replies are returned only to the interface which supplied the
@@ -201,7 +214,7 @@ ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
 Expose them only on a trusted LAN or temporary setup network. See
 [WiFi setup](./WiFi.md) for credential setup and reconnect behavior.
 
-## USB Binary and terminal modes
+## USB Binary and text terminal modes
 
 USB starts in Binary mode for MeshCore apps and `meshcli`:
 
@@ -228,9 +241,24 @@ The terminal supports Companion chat commands, including `channels`,
 `login <admin-password>` and `cmd <remote-command>`, and routed
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
 `normalradio` controls. ESP32 builds also provide local
-`get/set wifi.powersave`. Logging artifacts additionally provide session-only
+WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
+artifacts additionally provide session-only
 `get/set usb.logging`; turning it off suppresses live USB diagnostics without
-disabling Companion frames or terminal replies. For example:
+disabling Companion frames or terminal replies.
+
+ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
+with `nc DEVICE_IP 5002`; no USB control token is needed. USB terminal mode and
+the TCP terminal share recipient, login, command, trace, and display state, so
+only one may own the terminal at a time. Entering USB terminal mode closes an
+active TCP terminal session. Disconnecting TCP clears pending terminal-only
+state without cancelling Binary Companion delivery or radio retries.
+
+Port 5002 is plaintext and has no device-local login gate. A remote-admin
+password entered with `login` is sent across the LAN connection as typed even
+though the terminal does not echo it. Use port 5002 only on a trusted LAN or a
+temporary setup network.
+
+For example:
 
 ```text
 channels

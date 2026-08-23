@@ -92,8 +92,9 @@ does not exist on that target:
   family require an ESP32 WebConfig build. FULL standalone repeater and
   room-server builds support the corresponding WiFi setters and status
   commands. ESP32 WiFi Companion exposes `wifi.powersave` in its WebConfig
-  form and binary protocol; Full Companion also exposes the text getter and
-  setter on its USB terminal and TCP port 5002.
+  form and binary protocol; Full Companion exposes its complete role-specific
+  text terminal over USB and TCP port 5002, including WiFi credentials,
+  connection status, WebConfig, CLI-tab, and power-save controls.
 - MQTT commands require an MQTT observer target.
 - `discover.scopes` requires an MQTT observer with compiled neighbor support;
   it does not independently require PSRAM or the FULL parser.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "MotaStreamWritePolicy.h"
 #include "OtaStore.h"
 
 // An OtaStore that captures an in-transit `.mota` onto a HOST folder over the mota-seeder link (the WRITE
@@ -22,9 +23,9 @@ namespace ota {
 
 class FolderMotaStore : public OtaStore {
 public:
-  explicit FolderMotaStore(Stream& io, uint32_t timeout_ms = 3000,
-                           bool flush_after_write = true)
-      : _io(io), _to(timeout_ms), _flush_after_write(flush_after_write) {}
+  explicit FolderMotaStore(Stream& io, MotaStreamWritePolicy write_policy,
+                           uint32_t timeout_ms = 3000)
+      : _io(io), _to(timeout_ms), _write_policy(write_policy) {}
 
   // The container being pulled - set from the chosen `ota pull` mid before begin()/reopen().
   void set_mid(const uint8_t mid[4]) { memcpy(_mid, mid, 4); }
@@ -51,7 +52,7 @@ private:
 
   Stream&  _io;
   uint32_t _to;
-  bool     _flush_after_write;
+  MotaStreamWritePolicy _write_policy;
   uint8_t  _mid[4] = {0, 0, 0, 0};
   uint32_t _total = 0;
 };

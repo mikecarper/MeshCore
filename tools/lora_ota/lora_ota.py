@@ -77,6 +77,12 @@ INSTALL_RECONCILE_WAIT_SECONDS = 20
 DEFAULT_RELAY_TX_DELAY = 0.3
 RELAY_TIMING_COMMANDS_PER_RELAY = 12
 RELAY_TIMING_RECOVERY_FILE = "relay-timing-settings.json"
+MIN_MESHCLI_VERSION = (1, 6, 0)
+
+# This module is also imported by the pinned RAK3401 chain runner and by the
+# offline test suite. Keep diagnostics disabled until either CLI main enables
+# them; an uninitialized module global would break those direct callers.
+DEBUG = False
 
 T = TypeVar("T")
 
@@ -862,13 +868,69 @@ def load_base_image(path: Path, target: TargetInfo) -> EndFInfo:
     return identity
 
 
+def redact_text(value: str, sensitive_values: tuple[str, ...] = ()) -> str:
+    for sensitive in sensitive_values:
+        if sensitive:
+            value = value.replace(sensitive, "<REDACTED>")
+    return value
+
+
+def _debug_text(
+    value: str | bytes | None,
+    sensitive_values: tuple[str, ...] = (),
+) -> str:
+    if value is None:
+        return "<empty>"
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    return redact_text(value, sensitive_values).rstrip() or "<empty>"
+
+
+def debug_stream(
+    label: str,
+    value: str | bytes | None,
+    sensitive_values: tuple[str, ...] = (),
+) -> None:
+    if not DEBUG:
+        return
+    print(f"[debug] {label}:")
+    print(_debug_text(value, sensitive_values))
+
+
+def meshcli_sensitive_values(commands: list[str]) -> tuple[str, ...]:
+    return tuple(
+        commands[index + 2]
+        for index, token in enumerate(commands)
+        if token == "login" and index + 2 < len(commands)
+    )
+
+
+def redact_meshcli_commands(commands: list[str]) -> list[str]:
+    """Return a printable copy with every remote-admin password removed."""
+    redacted = list(commands)
+    for index, token in enumerate(commands):
+        # Controller command chains encode login as three consecutive tokens:
+        # login, target, password. Redact from the original list so a target or
+        # command literally named "login" cannot hide a later real password.
+        if token == "login" and index + 2 < len(redacted):
+            redacted[index + 2] = "<REDACTED>"
+    return redacted
+
+
 def run_checked(
     command: list[str],
     *,
     label: str,
     timeout: float | None = None,
+    sensitive_values: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     print(f"[run] {label}")
+    if DEBUG:
+        printable_command = [
+            redact_text(token, sensitive_values) for token in command
+        ]
+        print(f"[debug] command: {shlex.join(printable_command)}")
+        print(f"[debug] timeout: {timeout if timeout is not None else 'none'}")
     try:
         result = subprocess.run(
             command,
@@ -881,9 +943,19 @@ def run_checked(
     except FileNotFoundError as exc:
         raise OtaError(f"required command was not found: {command[0]}") from exc
     except subprocess.TimeoutExpired as exc:
+        if DEBUG:
+            print("[debug] timed out")
+            debug_stream("partial stdout", exc.stdout, sensitive_values)
+            debug_stream("partial stderr", exc.stderr, sensitive_values)
         raise OtaError(f"timed out while running {label}") from exc
+    if DEBUG:
+        print(f"[debug] exit code: {result.returncode}")
+        debug_stream("stdout", result.stdout, sensitive_values)
+        debug_stream("stderr", result.stderr, sensitive_values)
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
+        detail = redact_text(
+            (result.stderr or result.stdout).strip(), sensitive_values
+        )
         raise OtaError(f"{label} failed: {detail or f'exit {result.returncode}'}")
     return result
 
@@ -1162,9 +1234,15 @@ class PersistentMeshcliSession:
         self.close()
         self.output_queue = queue.Queue()
         self.pending = bytearray()
+        launch_command = [*self.command, "-C", "-i"]
+        if DEBUG:
+            print(
+                "[debug] persistent meshcli launch: "
+                f"{shlex.join(launch_command)}"
+            )
         try:
             self.process = subprocess.Popen(
-                [*self.command, "-C", "-i"],
+                launch_command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -1189,7 +1267,13 @@ class PersistentMeshcliSession:
             rb"(?:^|\r?\n)" + re.escape(marker.encode("ascii")) + rb"\r?\n"
         )
 
-    def _read_frame(self, start: str, end: str, timeout: float) -> str:
+    def _read_frame(
+        self,
+        start: str,
+        end: str,
+        timeout: float,
+        sensitive_values: tuple[str, ...] = (),
+    ) -> str:
         start_pattern = self._line_pattern(start)
         end_pattern = self._line_pattern(end)
         deadline = time.monotonic() + timeout
@@ -1208,6 +1292,11 @@ class PersistentMeshcliSession:
                 raise OtaError("persistent meshcli output exceeded 8 MiB")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                debug_stream(
+                    "persistent meshcli pending output",
+                    self.pending[-4096:],
+                    sensitive_values,
+                )
                 self.close()
                 raise OtaError("persistent meshcli command timed out")
             try:
@@ -1215,6 +1304,10 @@ class PersistentMeshcliSession:
             except queue.Empty:
                 if self.process is not None and self.process.poll() is not None:
                     detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
+                    debug_stream(
+                        "persistent meshcli final output", detail,
+                        sensitive_values,
+                    )
                     self.close()
                     raise OtaError(
                         "persistent meshcli session exited"
@@ -1223,6 +1316,10 @@ class PersistentMeshcliSession:
                 continue
             if chunk is None:
                 detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
+                debug_stream(
+                    "persistent meshcli final output", detail,
+                    sensitive_values,
+                )
                 self.close()
                 raise OtaError(
                     "persistent meshcli session closed"
@@ -1236,18 +1333,31 @@ class PersistentMeshcliSession:
         start_marker: str,
         end_marker: str,
         timeout: float,
+        sensitive_values: tuple[str, ...] = (),
     ) -> str:
         if self.process is None or self.process.poll() is not None:
             self._start()
         assert self.process is not None and self.process.stdin is not None
         command = shlex.join(["script", str(script_path)]) + "\n"
+        if DEBUG:
+            print(f"[debug] persistent meshcli input: {command.rstrip()}")
+            print(f"[debug] persistent meshcli timeout: {timeout}")
         try:
             self.process.stdin.write(command.encode("utf-8"))
             self.process.stdin.flush()
         except (BrokenPipeError, OSError) as exc:
             self.close()
             raise OtaError(f"persistent meshcli input failed: {exc}") from exc
-        output = self._read_frame(start_marker, end_marker, timeout)
+        output = self._read_frame(
+            start_marker, end_marker, timeout, sensitive_values
+        )
+        output = redact_text(output, sensitive_values)
+        if DEBUG:
+            print("[debug] persistent meshcli process: running")
+            debug_stream(
+                "persistent meshcli stdout", output, sensitive_values
+            )
+            debug_stream("persistent meshcli stderr", None)
         if not self.announced:
             print("[controller] persistent meshcli connection established")
             self.announced = True
@@ -1338,6 +1448,7 @@ class Controller:
         # us one safely quoted command line. The temporary file is removed even
         # when meshcli times out or fails.
         script_path: Path | None = None
+        sensitive_values = meshcli_sensitive_values(commands)
         frame_start = f"MESHCORE_HOST_START_{secrets.token_hex(16)}"
         frame_end = f"MESHCORE_HOST_END_{secrets.token_hex(16)}"
         try:
@@ -1354,12 +1465,18 @@ class Controller:
                     script.write(shlex.join(["echo", frame_end]))
                     script.write("\n")
                 script_path = Path(script.name)
+            if DEBUG:
+                printable = redact_meshcli_commands(commands)
+                print(f"[debug] meshcli operation: {label}")
+                print(f"[debug] meshcli commands: {shlex.join(printable)}")
+                print(f"[debug] meshcli script: {script_path}")
             if os.name != "nt":
                 script_path.chmod(0o600)
             timeout = max(90, self.reply_timeout + 60)
             if self._meshcli_session is not None:
                 stdout = self._meshcli_session.run_script(
-                    script_path, frame_start, frame_end, timeout
+                    script_path, frame_start, frame_end, timeout,
+                    sensitive_values,
                 )
                 result = subprocess.CompletedProcess(
                     [], 0, stdout=stdout, stderr=""
@@ -1369,11 +1486,21 @@ class Controller:
                     self.meshcli, "-j", "-c", "off", *self.connection,
                     "script", str(script_path),
                 ]
-                result = run_checked(command, label=label, timeout=timeout)
+                result = run_checked(
+                    command,
+                    label=label,
+                    timeout=timeout,
+                    sensitive_values=sensitive_values,
+                )
         finally:
             if script_path is not None:
                 script_path.unlink(missing_ok=True)
-        return result
+        return subprocess.CompletedProcess(
+            result.args,
+            result.returncode,
+            stdout=redact_text(result.stdout, sensitive_values),
+            stderr=redact_text(result.stderr, sensitive_values),
+        )
 
     @staticmethod
     def _no_json_error(result: subprocess.CompletedProcess[str], label: str) -> OtaError:
@@ -1753,7 +1880,15 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
             except (OSError, UnicodeError) as exc:
                 raise TransmissionError(f"source TCP console failed: {exc}") from exc
             text = response.decode("utf-8", "replace")
-            match = re.search(r"(?:^|\r?\n)\s*->\s*(.*?)\r?\n>\s*$", text, re.DOTALL)
+            # Legacy port 5002 prefixes its bounded OTA reply with `->`.
+            # Full Companion now exposes the same terminal as USB and writes
+            # the command reply directly. Accept both wire formats so current
+            # automation can manage old and new source firmware.
+            match = re.search(
+                r"(?:^|\r?\n)[ \t]*(?:->[ \t]*)?(.*?)\r?\n>[ \t]*$",
+                text,
+                re.DOTALL,
+            )
             if not match:
                 raise TransmissionError(
                     f"source TCP console returned no command reply: {text.strip() or 'no output'}"
@@ -1834,7 +1969,7 @@ def preflight_source_cli(args: argparse.Namespace) -> None:
         raise OtaError(
             "OTA source did not return a valid `ota status`. Use an OTA-enabled "
             "repeater raw text CLI, nRF52 full Companion USB port, or "
-            "companion_radio_full TCP console."
+            "companion_radio_full TCP terminal."
         )
 
 
@@ -2905,7 +3040,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     source_cli.add_argument(
         "--source-cli-tcp", metavar="HOST[:PORT]",
-        help="companion_radio_full text console for a TCP seeder source (default port 5002)",
+        help="companion_radio_full TCP terminal for a seeder source (default port 5002)",
     )
     parser.add_argument("--controller-baud", type=int, default=115200)
     parser.add_argument("--source-baud", type=int, default=115200)
@@ -2951,6 +3086,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--meshcli", default="meshcli")
     parser.add_argument("--motatool", default="motatool")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "show redacted motatool/meshcli commands, subprocess status, "
+            "stdout, stderr, and timeouts"
+        ),
+    )
     parser.add_argument("--reply-timeout", type=int, default=20)
     parser.add_argument("--discovery-timeout", type=int, default=180)
     parser.add_argument("--discovery-interval", type=int, default=8)
@@ -3178,6 +3321,25 @@ def require_command(command: str, label: str) -> None:
         )
 
 
+def require_meshcli_version(command: str) -> tuple[int, int, int]:
+    require_command(command, "meshcli")
+    result = run_checked(
+        [command, "-v"], label="read meshcli version", timeout=30
+    )
+    match = re.search(
+        r"\bv(\d+)\.(\d+)\.(\d+)\b", result.stdout + result.stderr
+    )
+    if match is None:
+        raise OtaError("could not determine meshcli version")
+    version = tuple(int(part) for part in match.groups())
+    if version < MIN_MESHCLI_VERSION:
+        need = ".".join(str(part) for part in MIN_MESHCLI_VERSION)
+        got = ".".join(str(part) for part in version)
+        raise OtaError(f"meshcli {got} is too old; install {need} or newer")
+    print(f"[host] meshcli {'.'.join(str(part) for part in version)}")
+    return version
+
+
 def preflight_inputs(args: argparse.Namespace) -> None:
     if not args.package.is_file():
         raise OtaError(f"package does not exist: {args.package.resolve()}")
@@ -3192,7 +3354,7 @@ def preflight_inputs(args: argparse.Namespace) -> None:
             raise OtaError(f"{label} file does not exist: {path.resolve()}")
     require_command(args.motatool, "motatool")
     if not args.prepare_only:
-        require_command(args.meshcli, "meshcli")
+        require_meshcli_version(args.meshcli)
 
 
 def make_work_dir(requested: Path | None) -> Path:
@@ -3234,8 +3396,11 @@ def main(
     *,
     controller_override: Controller | None = None,
 ) -> int:
+    global DEBUG
+
     parser = build_parser()
     args = parser.parse_args(argv)
+    DEBUG = bool(args.debug)
     validate_args(args, parser)
     work_dir: Path | None = None
     controller: Controller | None = controller_override

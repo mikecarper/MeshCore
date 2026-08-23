@@ -343,8 +343,11 @@ An ESP32 `companion_radio_full` uses WiFi for both dedicated source links:
 ```
 
 Port 5002 defaults automatically when it is omitted from
-`--source-cli-tcp`. The source-only Companion never stages or installs the
-image itself; it streams the host folder to other nodes over LoRa. See the
+`--source-cli-tcp`. Current Full Companion firmware exposes its complete
+role-specific text terminal there; the runner uses only `ota`, `tempradio`,
+and `normalradio`, and remains compatible with older bounded port-5002
+consoles. The source-only Companion never stages or installs the image itself;
+it streams the host folder to other nodes over LoRa. See the
 [full Companion guide](./companion_radio_full.md) for manual operation and
 interface details.
 
@@ -412,6 +415,9 @@ Useful controls:
   restores both values before the relay leaves TempRadio.
 - `--work-dir PATH` chooses a new, non-existent work directory.
 - `--meshcli PATH` and `--motatool PATH` select binaries not on `PATH`.
+- `--debug` prints redacted child commands, timeouts, process status, stdout,
+  and stderr. Admin passwords are never printed, but node names, addresses,
+  paths, and command replies can still be sensitive; share the log carefully.
 
 For offline package preparation only:
 

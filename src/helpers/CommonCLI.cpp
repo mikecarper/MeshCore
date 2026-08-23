@@ -7,6 +7,7 @@
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
 #if defined(NRF52_PLATFORM)
 #include "AtomicFileWriter.h"
+#include "ota/OtaFlashLayout_nrf52.h"
 #endif
 #include <RTClib.h>
 #include <ctype.h>
@@ -50,10 +51,15 @@ static void resetToUf2Bootloader() {
 #ifdef ESP_PLATFORM
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_wifi.h>
 #include <esp_heap_caps.h>
 #else
 #include <malloc.h>  // mallinfo() for the `memory` command on nRF52/RP2040
+#endif
+#if defined(STM32_PLATFORM)
+#include <InternalFileSystem.h>
 #endif
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
@@ -2717,6 +2723,135 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     }
 }
 
+bool CommonCLI::handleStorageLayoutGetCmd(const char* config, char* reply) {
+  static const char key[] = "storage.layout";
+  const size_t key_len = sizeof(key) - 1;
+  if (strncmp(config, key, key_len) != 0 ||
+      (config[key_len] != 0 && config[key_len] != ' ')) {
+    return false;
+  }
+  if (config[key_len] != 0) {
+    strcpy(reply, "Error: use get storage.layout");
+    return true;
+  }
+
+#if defined(ESP32_PLATFORM)
+  snprintf(reply, 160, "> int:esp32=%luK ext:none; ",
+           (unsigned long)(ESP.getFlashChipSize() / 1024UL));
+
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_partition_iterator_t iterator = esp_partition_find(
+      ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
+  bool first = true;
+  bool truncated = false;
+  while (iterator != NULL) {
+    const esp_partition_t* partition = esp_partition_get(iterator);
+    char entry[48];
+    snprintf(entry, sizeof(entry), "%s%s%s@0x%lX+%luK",
+             first ? "" : ",", partition->label,
+             running != NULL && partition->address == running->address ? "*" : "",
+             (unsigned long)partition->address,
+             (unsigned long)(partition->size / 1024UL));
+
+    const size_t used = strlen(reply);
+    const size_t entry_len = strlen(entry);
+    if (used + entry_len + 1 >= 160) {
+      truncated = true;
+      break;
+    }
+    memcpy(reply + used, entry, entry_len + 1);
+    first = false;
+    iterator = esp_partition_next(iterator);
+  }
+  if (iterator != NULL) esp_partition_iterator_release(iterator);
+  if (first) {
+    snprintf(reply + strlen(reply), 160 - strlen(reply), "partitions=none");
+  } else if (truncated) {
+    const size_t used = strlen(reply);
+    if (used + 4 < 160) memcpy(reply + used, ",...", 5);
+  }
+
+#elif defined(NRF52_PLATFORM)
+  const uint32_t flash_bytes =
+      (uint32_t)NRF_FICR->CODEPAGESIZE * (uint32_t)NRF_FICR->CODESIZE;
+  const uint32_t app_start = mesh::ota::mota_nrf52_app_base();
+  const uint32_t app_end =
+      (uint32_t)(uintptr_t)mesh::ota::__flash_arduino_end;
+#if defined(NRF52840_XXAA)
+  const uint32_t internal_fs_start = 0x000ED000UL;
+#else
+  const uint32_t internal_fs_start = 0x0006D000UL;
+#endif
+  const uint32_t internal_fs_size = 7UL * 4096UL;
+  snprintf(reply, 160,
+           "> int:nrf52=%luK app=0x%lX-0x%lX ifs=0x%lX+%luK",
+           (unsigned long)(flash_bytes / 1024UL),
+           (unsigned long)app_start, (unsigned long)app_end,
+           (unsigned long)internal_fs_start,
+           (unsigned long)(internal_fs_size / 1024UL));
+
+#if defined(ENABLE_OTA) && defined(OTA_QSPI_STORE)
+  mesh::ota::OtaStoreQspiNrf52& store = mesh::ota::ota_ctx().fetch_store;
+  const uint32_t capacity = store.capacity();
+  if (capacity != 0) {
+    snprintf(reply + strlen(reply), 160 - strlen(reply),
+             "; ext:qspi=%luK owner=ota-raw id=%06lX",
+             (unsigned long)(capacity / 1024UL),
+             (unsigned long)store.jedec_id());
+  } else {
+    snprintf(reply + strlen(reply), 160 - strlen(reply),
+             "; ext:qspi=error(%s)", store.last_error());
+  }
+#elif defined(ENABLE_OTA) && defined(OTA_SD_STORE)
+  uint64_t used_bytes = 0;
+  uint64_t free_bytes = 0;
+  mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+  if (store.getSpace(*_board, used_bytes, free_bytes)) {
+    char total[24];
+    char used[24];
+    char free[24];
+    formatSdCardBytes(total, sizeof(total), used_bytes + free_bytes);
+    formatSdCardBytes(used, sizeof(used), used_bytes);
+    formatSdCardBytes(free, sizeof(free), free_bytes);
+    snprintf(reply + strlen(reply), 160 - strlen(reply),
+             "; ext:sd=%s used=%s free=%s owner=ota",
+             total, used, free);
+  } else {
+    snprintf(reply + strlen(reply), 160 - strlen(reply),
+             "; ext:sd=error(%s)", store.last_error());
+  }
+#elif defined(QSPIFLASH)
+  snprintf(reply + strlen(reply), 160 - strlen(reply),
+           "; ext:qspi=configured owner=littlefs");
+#else
+  snprintf(reply + strlen(reply), 160 - strlen(reply), "; ext:none");
+#endif
+
+#elif defined(RP2040_PLATFORM)
+#if defined(PICO_FLASH_SIZE_BYTES) && defined(FS_START) && defined(FS_END)
+  snprintf(reply, 160,
+           "> int:rp2040=%luK ifs=%luK layout=fixed; ext:none",
+           (unsigned long)(PICO_FLASH_SIZE_BYTES / 1024UL),
+           (unsigned long)(((uintptr_t)FS_END - (uintptr_t)FS_START) / 1024UL));
+#elif defined(PICO_FLASH_SIZE_BYTES)
+  snprintf(reply, 160, "> int:rp2040=%luK layout=fixed; ext:none",
+           (unsigned long)(PICO_FLASH_SIZE_BYTES / 1024UL));
+#else
+  strcpy(reply, "> int:rp2040 layout=fixed; ext:none");
+#endif
+
+#elif defined(STM32_PLATFORM)
+  snprintf(reply, 160,
+           "> int:stm32=%luK ifs=0x%lX+%luK layout=fixed; ext:none",
+           (unsigned long)((FLASH_END_ADDR - FLASH_BASE + 1UL) / 1024UL),
+           (unsigned long)LFS_FLASH_ADDR_BASE,
+           (unsigned long)(LFS_FLASH_TOTAL_SIZE / 1024UL));
+#else
+  strcpy(reply, "Error: storage layout unsupported on this platform");
+#endif
+  return true;
+}
+
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
   if (strncmp(config, "sdcard", 6) != 0 ||
@@ -3891,6 +4026,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverGetCmd(sender_timestamp, config, reply)) return;
+  if (handleStorageLayoutGetCmd(config, reply)) return;
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   if (handleSdCardGetCmd(config, reply)) return;
 #endif

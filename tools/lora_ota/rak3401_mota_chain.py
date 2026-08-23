@@ -125,7 +125,6 @@ EXPECTED_STEP_COUNT = 9
 EXPECTED_START_VERSION = "1.16.7.0"
 EXPECTED_FINAL_VERSION = "1.17.1.02"
 SUPERSEDED_FINAL_VERSION = "1.17.1.0"
-MIN_MESHCLI_VERSION = (1, 6, 0)
 WATCHDOG_RESET_WAIT_SECONDS = 90
 WATCHDOG_STABILITY_WAIT_SECONDS = 90
 TRANSFER_SETTINGS_FILE = "target-transfer-settings.json"
@@ -753,17 +752,7 @@ def verify_motatool(args: argparse.Namespace, steps: list[ChainStep]) -> None:
 
 
 def require_meshcli_version(command: str) -> None:
-    ota.require_command(command, "meshcli")
-    result = ota.run_checked([command, "-v"], label="read meshcli version", timeout=30)
-    match = re.search(r"\bv(\d+)\.(\d+)\.(\d+)\b", result.stdout + result.stderr)
-    if match is None:
-        raise ota.OtaError("could not determine meshcli version")
-    version = tuple(int(part) for part in match.groups())
-    if version < MIN_MESHCLI_VERSION:
-        need = ".".join(str(part) for part in MIN_MESHCLI_VERSION)
-        got = ".".join(str(part) for part in version)
-        raise ota.OtaError(f"meshcli {got} is too old; install {need} or newer")
-    print(f"[host] meshcli {'.'.join(str(part) for part in version)}")
+    ota.require_meshcli_version(command)
 
 
 def controller_namespace(args: argparse.Namespace, target: str = "pending") -> SimpleNamespace:
@@ -1415,6 +1404,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-baud", type=int, default=115200)
     parser.add_argument("--meshcli", default="meshcli")
     parser.add_argument("--motatool", default="motatool")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "show redacted motatool/meshcli commands, subprocess status, "
+            "stdout, stderr, and timeouts"
+        ),
+    )
     parser.add_argument("--reply-timeout", type=int, default=45)
     parser.add_argument("--discovery-timeout", type=int, default=180)
     parser.add_argument("--discovery-interval", type=int, default=8)
@@ -1570,6 +1567,7 @@ def confirm_chain(
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    ota.DEBUG = bool(args.debug)
     validate_args(args, parser)
     work_dir = args.work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)

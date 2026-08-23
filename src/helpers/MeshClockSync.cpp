@@ -33,7 +33,6 @@ constexpr uint32_t SAMPLE_MAX_AGE_MILLIS = 2UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t CONSENSUS_WINDOW_SECONDS = 600UL;
 constexpr uint32_t DRIFT_MIN_SECONDS = 30UL;
 constexpr uint32_t DRIFT_MAX_SECONDS = 86400UL;
-constexpr uint32_t DRIFT_DEFAULT_SECONDS = 3600UL;
 constexpr uint16_t VALID_YEARS = 10;
 
 // Public-channel AES key, zero-padded to the shared-secret buffer width used
@@ -215,7 +214,7 @@ void MeshClockSync::resetDefaults() {
   _last_fresh_count = 0;
   _last_required_count = REQUIRED_SAMPLES_DEFAULT;
   _required_samples = REQUIRED_SAMPLES_DEFAULT;
-  _drift_seconds = DRIFT_DEFAULT_SECONDS;
+  _drift_seconds = mesh::CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   _last_estimate = 0;
   _last_abs_drift = 0;
   _next_attempt_uptime = STARTUP_DELAY_MILLIS;
@@ -231,7 +230,7 @@ void MeshClockSync::loadPrefs() {
   _mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
   _mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0;
   _internet_enabled = false;
-  _drift_seconds = DRIFT_DEFAULT_SECONDS;
+  _drift_seconds = mesh::CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   _required_samples = REQUIRED_SAMPLES_DEFAULT;
 
   if (_fs != nullptr && _fs->exists(PREFS_FILE)) {

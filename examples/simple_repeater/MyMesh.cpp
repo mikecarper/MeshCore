@@ -101,6 +101,12 @@ extern "C" caddr_t _sbrk(int increment);
 
 #define CLI_REPLY_DELAY_MILLIS      600
 
+#if MESH_ENABLE_HOST_CLI
+static_assert(mesh::HostCliBridge::REMOTE_REPLY_MAX
+                  == mesh::RemoteCliReplyCache::MAX_REPLY_TEXT,
+              "host CLI and remote CLI reply limits must stay aligned");
+#endif
+
 // Max time to flush the outbound queue (START alert + CLI reply) before the OTA
 // teardown blocks the loop until reboot. Best-effort: exits early once the queue
 // drains (immediate on a healthy node), caps the wait on a jammed/duty-limited
@@ -2796,28 +2802,46 @@ void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
 }
 #endif
 
-void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
-  if (!deferred_cli_command.pending) return;
+void MyMesh::clearDeferredCliCommand() {
+  deferred_cli_command.clear();
+  deferred_cli_reply_scoped = false;
+  memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
+#if MESH_ENABLE_HOST_CLI
+  host_cli_waiting = false;
+  host_cli_claimed = false;
+  host_cli_claim_emit = false;
+  host_cli_deadline = 0;
+  host_cli_claim_emit_at = 0;
+  host_cli_nonce = 0;
+  host_cli_claim_challenge = 0;
+#endif
+}
+
+#if MESH_ENABLE_HOST_CLI
+bool MyMesh::completeHostCliRequest(const char* service_reply) {
+  if (!deferred_cli_command.pending || !host_cli_waiting
+      || service_reply == NULL) {
+    return false;
+  }
 
   const int client_index = deferred_cli_command.client_index;
   if (client_index < 0 || client_index >= acl.getNumClients()) {
-    MESH_DEBUG_PRINTLN("processDeferredCliCommand: invalid client idx: %d", client_index);
-    deferred_cli_command.clear();
-    deferred_cli_reply_scoped = false;
-    memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
-    return;
+    MESH_DEBUG_PRINTLN("completeHostCliRequest: invalid client idx: %d",
+                       client_index);
+    clearDeferredCliCommand();
+    return false;
   }
 
   ClientInfo* client = acl.getClientByIdx(client_index);
   char* reply = (char*)&reply_data[5];
-  reply[0] = 0;
+  mesh::HostCliBridge::formatRemoteReply(
+      reply, mesh::HostCliBridge::REMOTE_REPLY_MAX + 1U,
+      deferred_cli_command.command, service_reply);
+
   const uint32_t command_fingerprint =
       mesh::RemoteCliReplyCache::fingerprint(
           deferred_cli_command.command,
           strlen(deferred_cli_command.command));
-  handleCommand(deferred_cli_command.sender_timestamp, client,
-                deferred_cli_command.command, reply, client_index,
-                deferred_cli_command.path_hash_size);
   remote_cli_reply_cache.remember(client->id.pub_key,
                                   deferred_cli_command.request_id,
                                   command_fingerprint, reply);
@@ -2825,9 +2849,173 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
                      deferred_cli_command.path_hash_size,
                      deferred_cli_command.sender_timestamp, reply,
                      deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL);
-  deferred_cli_command.clear();
-  deferred_cli_reply_scoped = false;
-  memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
+  clearDeferredCliCommand();
+  return true;
+}
+bool MyMesh::handleHostCliSerialReply(const char* command, char* reply) {
+  mesh::HostCliBridge::ReplyView parsed;
+  const mesh::HostCliBridge::ParseResult result =
+      mesh::HostCliBridge::parseReply(command, parsed);
+  if (result == mesh::HostCliBridge::NOT_HOST_COMMAND) return false;
+  if (reply == NULL) return true;
+
+  if (result != mesh::HostCliBridge::VALID_HOST_COMMAND) {
+    strcpy(reply, "Err - invalid host.reply format");
+  } else if (!deferred_cli_command.pending || !host_cli_waiting) {
+    strcpy(reply, "Err - no host request is pending");
+  } else if (parsed.request_id != deferred_cli_command.request_id
+             || parsed.request_nonce != host_cli_nonce) {
+    strcpy(reply, "Err - host request token mismatch");
+  } else if (millisHasNowPassed(host_cli_deadline)) {
+    completeHostCliRequest("Err - host service timeout");
+    strcpy(reply, "Err - host request expired");
+  } else {
+    uint64_t claim_challenge = 0;
+    const bool is_claim = mesh::HostCliBridge::parseServiceClaim(
+        parsed.text, parsed.text_len, claim_challenge);
+    if (is_claim && (host_cli_claimed || host_cli_claim_emit)) {
+      strcpy(reply, "Err - host request already claimed");
+    } else if (is_claim) {
+      host_cli_claim_challenge = claim_challenge;
+      host_cli_claim_emit = true;
+      host_cli_claim_emit_at = futureMillis(
+          mesh::HostCliBridge::SERVICE_CLAIM_EMIT_DELAY_MILLIS);
+      host_cli_deadline = futureMillis(
+          mesh::HostCliBridge::SERVICE_REPLY_TIMEOUT_MILLIS);
+      strcpy(reply, "OK - host claim accepted");
+    } else if (!host_cli_claimed) {
+      strcpy(reply, "Err - host request not claimed");
+    } else if (!completeHostCliRequest(parsed.text)) {
+      strcpy(reply, "Err - host requester is unavailable");
+    } else {
+      strcpy(reply, "OK - host reply accepted");
+    }
+  }
+  return true;
+}
+#endif
+
+void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
+  if (!deferred_cli_command.pending) return;
+
+  const int client_index = deferred_cli_command.client_index;
+  if (client_index < 0 || client_index >= acl.getNumClients()) {
+    MESH_DEBUG_PRINTLN("processDeferredCliCommand: invalid client idx: %d", client_index);
+    clearDeferredCliCommand();
+    return;
+  }
+
+#if MESH_ENABLE_HOST_CLI
+  if (host_cli_waiting) {
+    if (millisHasNowPassed(host_cli_deadline)) {
+      completeHostCliRequest("Err - host service timeout");
+      return;
+    }
+    if (host_cli_claim_emit
+        && millisHasNowPassed(host_cli_claim_emit_at)) {
+      char record[mesh::HostCliBridge::CLAIMED_USB_RECORD_MAX + 1U];
+      memcpy(record, "DEBUG ", 6);
+      char* signed_content = record + 6;
+      if (!mesh::HostCliBridge::formatUsbClaim(
+              signed_content,
+              mesh::HostCliBridge::CLAIMED_SIGNED_CONTENT_MAX + 1U,
+              deferred_cli_command.request_id, host_cli_nonce,
+              host_cli_claim_challenge)) {
+        completeHostCliRequest("Err - could not confirm host service");
+        return;
+      }
+      const size_t signed_content_len = strlen(signed_content);
+      uint8_t signature[SIGNATURE_SIZE];
+      self_id.sign(signature, (const uint8_t*)signed_content,
+                   signed_content_len);
+      record[6U + signed_content_len] = ' ';
+      mesh::Utils::toHex(record + 6U + signed_content_len + 1U,
+                         signature, sizeof(signature));
+      Serial.println(record);
+      host_cli_claim_emit = false;
+      host_cli_claim_emit_at = 0;
+      host_cli_claimed = true;
+    }
+    return;
+  }
+#endif
+
+  ClientInfo* client = acl.getClientByIdx(client_index);
+  char* reply = (char*)&reply_data[5];
+  reply[0] = 0;
+
+#if MESH_ENABLE_HOST_CLI
+  mesh::HostCliBridge::RequestView host_request;
+  const mesh::HostCliBridge::ParseResult host_result =
+      mesh::HostCliBridge::parseRequest(deferred_cli_command.command,
+                                        host_request);
+  if (host_result != mesh::HostCliBridge::NOT_HOST_COMMAND) {
+    if (!client->isAdmin()) {
+      mesh::HostCliBridge::formatRemoteReply(
+          reply, mesh::HostCliBridge::REMOTE_REPLY_MAX + 1U,
+          deferred_cli_command.command, "Err - not permitted");
+    } else if (host_result != mesh::HostCliBridge::VALID_HOST_COMMAND) {
+      mesh::HostCliBridge::formatRemoteReply(
+          reply, mesh::HostCliBridge::REMOTE_REPLY_MAX + 1U,
+          deferred_cli_command.command,
+          "Err - use: host <text up to 155 bytes>");
+    } else {
+      uint64_t request_nonce = 0;
+      getRNG()->random((uint8_t*)&request_nonce, sizeof(request_nonce));
+      if (request_nonce == 0) request_nonce = 1;
+
+      char record[mesh::HostCliBridge::USB_RECORD_MAX + 1U];
+      memcpy(record, "DEBUG ", 6);
+      char* signed_content = record + 6;
+      if (mesh::HostCliBridge::formatUsbRequest(
+              signed_content,
+              mesh::HostCliBridge::USB_SIGNED_CONTENT_MAX + 1U,
+              deferred_cli_command.request_id, request_nonce,
+              host_request.text, host_request.text_len)) {
+        const size_t signed_content_len = strlen(signed_content);
+        uint8_t signature[SIGNATURE_SIZE];
+        self_id.sign(signature, (const uint8_t*)signed_content,
+                     signed_content_len);
+        record[6U + signed_content_len] = ' ';
+        mesh::Utils::toHex(record + 6U + signed_content_len + 1U,
+                           signature, sizeof(signature));
+        Serial.println(record);
+        host_cli_waiting = true;
+        host_cli_claimed = false;
+        host_cli_claim_emit = false;
+        host_cli_claim_emit_at = 0;
+        host_cli_nonce = request_nonce;
+        host_cli_claim_challenge = 0;
+        host_cli_deadline = futureMillis(
+            mesh::HostCliBridge::SERVICE_CLAIM_TIMEOUT_MILLIS);
+        return;
+      }
+      mesh::HostCliBridge::formatRemoteReply(
+          reply, mesh::HostCliBridge::REMOTE_REPLY_MAX + 1U,
+          deferred_cli_command.command,
+          "Err - could not encode host request");
+    }
+  } else {
+#endif
+    handleCommand(deferred_cli_command.sender_timestamp, client,
+                  deferred_cli_command.command, reply, client_index,
+                  deferred_cli_command.path_hash_size);
+#if MESH_ENABLE_HOST_CLI
+  }
+#endif
+
+  const uint32_t command_fingerprint =
+      mesh::RemoteCliReplyCache::fingerprint(
+          deferred_cli_command.command,
+          strlen(deferred_cli_command.command));
+  remote_cli_reply_cache.remember(client->id.pub_key,
+                                  deferred_cli_command.request_id,
+                                  command_fingerprint, reply);
+  sendRemoteCliReply(client, deferred_cli_command.secret,
+                     deferred_cli_command.path_hash_size,
+                     deferred_cli_command.sender_timestamp, reply,
+                     deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL);
+  clearDeferredCliCommand();
 }
 
 bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t *secret, uint8_t *path,
@@ -2948,6 +3136,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_local_advert = next_flood_advert = 0;
   deferred_cli_reply_scoped = false;
   memset(deferred_cli_reply_scope.key, 0, sizeof(deferred_cli_reply_scope.key));
+#if MESH_ENABLE_HOST_CLI
+  host_cli_waiting = false;
+  host_cli_claimed = false;
+  host_cli_claim_emit = false;
+  host_cli_deadline = 0;
+  host_cli_claim_emit_at = 0;
+  host_cli_nonce = 0;
+  host_cli_claim_challenge = 0;
+#endif
   pending_self_advert_delay = 0;
   pending_self_advert = false;
   pending_self_advert_flood = false;
@@ -3012,7 +3209,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   clock_sync_last_fresh_count = 0;
   clock_sync_last_required_count = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
   clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
-  clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
+  clock_sync_drift_seconds = mesh::CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   clock_sync_last_estimate = 0;
   clock_sync_last_abs_drift = 0;
   clock_sync_internet_requested_millis = 0;
@@ -8893,7 +9090,7 @@ void MyMesh::loadClockSyncPrefs() {
   clock_sync_mesh_enabled = CLOCK_SYNC_MESH_DEFAULT_ENABLED != 0;
   clock_sync_mesh_edge_enabled = CLOCK_SYNC_MESH_EDGE_DEFAULT_ENABLED != 0;
   clock_sync_internet_enabled = false;
-  clock_sync_drift_seconds = CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
+  clock_sync_drift_seconds = mesh::CLOCK_SYNC_DRIFT_DEFAULT_SECONDS;
   clock_sync_required_samples = CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
 
   if (_fs != NULL && _fs->exists(CLOCK_SYNC_PREFS_FILE)) {
@@ -10182,6 +10379,34 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   mesh::cli::normalizeCommandVerb(command);
   const mesh::cli::NoArgCommandMatch discover_neighbors_match =
       mesh::cli::matchNoArgCommand(command, "discover.neighbors");
+
+#if MESH_ENABLE_HOST_CLI
+  if (strcmp(command, "get host") == 0) {
+    if (host_cli_waiting && deferred_cli_command.pending) {
+      snprintf(reply, 160,
+               "> waiting,%s,id=%08lX,request_max=%u,reply_max=%u,"
+               "claim=%lus,reply=%lus",
+               (host_cli_claimed || host_cli_claim_emit) ? "reply" : "claim",
+               (unsigned long)deferred_cli_command.request_id,
+               (unsigned)mesh::HostCliBridge::REQUEST_TEXT_MAX,
+               (unsigned)mesh::HostCliBridge::REMOTE_REPLY_MAX,
+               (unsigned long)(
+                   mesh::HostCliBridge::SERVICE_CLAIM_TIMEOUT_MILLIS / 1000UL),
+               (unsigned long)(
+                   mesh::HostCliBridge::SERVICE_REPLY_TIMEOUT_MILLIS / 1000UL));
+    } else {
+      snprintf(reply, 160,
+               "> ready,idle,request_max=%u,reply_max=%u,claim=%lus,reply=%lus",
+               (unsigned)mesh::HostCliBridge::REQUEST_TEXT_MAX,
+               (unsigned)mesh::HostCliBridge::REMOTE_REPLY_MAX,
+               (unsigned long)(
+                   mesh::HostCliBridge::SERVICE_CLAIM_TIMEOUT_MILLIS / 1000UL),
+               (unsigned long)(
+                   mesh::HostCliBridge::SERVICE_REPLY_TIMEOUT_MILLIS / 1000UL));
+    }
+    return;
+  }
+#endif
 
 #if MESH_ENABLE_TELEMETRY_HISTORY
   const char* telemetry_args = NULL;

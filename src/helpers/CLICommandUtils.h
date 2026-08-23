@@ -116,13 +116,31 @@ inline TerminalArgumentCommandMatch parseTerminalArgumentCommand(
   return TerminalArgumentCommandMatch::Valid;
 }
 
-// Return true once terminal input has reached a login password. The caller
-// can still retain the real bytes for command handling while echoing '*'.
-inline bool shouldMaskTerminalInput(const char* line) {
+// Return the first password byte once terminal input has reached a secret
+// value. The caller can retain the real bytes for command handling while
+// masking both the live echo and any backspace redraw.
+inline const char* terminalPasswordInput(const char* line) {
   line = skipRecentRepeaterSpaces(line);
   const char* password = nullptr;
-  return parseTerminalArgumentCommand(line, "login", password)
-      == TerminalArgumentCommandMatch::Valid;
+  if (parseTerminalArgumentCommand(line, "login", password)
+      == TerminalArgumentCommandMatch::Valid) {
+    return password;
+  }
+
+  const char* setting = nullptr;
+  if (parseTerminalArgumentCommand(line, "set", setting)
+      != TerminalArgumentCommandMatch::Valid) {
+    return nullptr;
+  }
+  if (parseTerminalArgumentCommand(setting, "wifi.pwd", password)
+      == TerminalArgumentCommandMatch::Valid) {
+    return password;
+  }
+  return nullptr;
+}
+
+inline bool shouldMaskTerminalInput(const char* line) {
+  return terminalPasswordInput(line) != nullptr;
 }
 
 // Remove one complete UTF-8 code point from a terminal input buffer. Invalid

@@ -22,8 +22,10 @@ WiFiClient seeder_client;
 // WiFiClient::flush() clears received bytes rather than flushing TX. Disabling
 // the serial-only flush prevents a fast host reply from being discarded and
 // turning every block read into a three-second timeout/retry.
-SerialMotaSource seeder_source(seeder_client, 3000, false);
-FolderMotaStore folder_store(seeder_client, 3000, false);
+SerialMotaSource seeder_source(seeder_client,
+                               MotaStreamWritePolicy::NoFlush, 3000);
+FolderMotaStore folder_store(seeder_client,
+                             MotaStreamWritePolicy::NoFlush, 3000);
 bool listener_active = false;
 bool tcp_folder_attached = false;
 

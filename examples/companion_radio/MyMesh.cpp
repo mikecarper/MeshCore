@@ -586,12 +586,13 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
   }
 
 #ifdef ENABLE_USB_INTERFACE
-  if (_terminal_mode && _terminal_display.shouldShowAdvert()) {
-    Serial.printf("\r\nADVERT from -> %s\r\n", contact.name);
-    Serial.printf("  type: %s\r\n", terminalContactTypeName(contact.type));
-    Serial.print("  public key: ");
-    mesh::Utils::printHex(Serial, contact.id.pub_key, PUB_KEY_SIZE);
-    Serial.print("\r\n> ");
+  if (hasTerminalOutput() && _terminal_display.shouldShowAdvert()) {
+    Stream& output = terminalOutput();
+    output.printf("\r\nADVERT from -> %s\r\n", contact.name);
+    output.printf("  type: %s\r\n", terminalContactTypeName(contact.type));
+    output.print("  public key: ");
+    mesh::Utils::printHex(output, contact.id.pub_key, PUB_KEY_SIZE);
+    output.print("\r\n> ");
   }
 #endif
 
@@ -639,11 +640,12 @@ int MyMesh::getRecentlyHeard(AdvertPath dest[], int max_num) {
 void MyMesh::onContactVisit(const ContactInfo& contact) {
   if (contact.type == ADV_TYPE_NONE) return;
 
-  Serial.printf("  %s (%s) - ", contact.name, terminalContactTypeName(contact.type));
+  Stream& output = terminalOutput();
+  output.printf("  %s (%s) - ", contact.name, terminalContactTypeName(contact.type));
   char relative_time[40];
   int32_t seconds_from_now = contact.last_advert_timestamp - getRTCClock()->getCurrentTime();
   AdvertTimeHelper::formatRelativeTimeDiff(relative_time, seconds_from_now, false);
-  Serial.println(relative_time);
+  output.println(relative_time);
 }
 #endif
 
@@ -655,8 +657,8 @@ void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
   scheduleContactWrite(contact);
 
 #ifdef ENABLE_USB_INTERFACE
-  if (_terminal_mode) {
-    Serial.printf("\r\nPATH updated -> %s\r\n> ", contact.name);
+  if (hasTerminalOutput()) {
+    terminalOutput().printf("\r\nPATH updated -> %s\r\n> ", contact.name);
   }
 #endif
 }
@@ -682,8 +684,8 @@ void MyMesh::expireExpectedAcks() {
     if (entry.expires_at == now || millisHasNowPassed(entry.expires_at)) {
       if (!hasActiveRetries(entry.retry_key)) {
 #ifdef ENABLE_USB_INTERFACE
-        if (entry.terminal_origin && _terminal_mode) {
-          Serial.print("\r\n  ERROR: timed out, no ACK.\r\n> ");
+        if (entry.terminal_origin && hasTerminalOutput()) {
+          terminalOutput().print("\r\n  ERROR: timed out, no ACK.\r\n> ");
         }
 #endif
         clearExpectedAck(entry, false);
@@ -736,9 +738,9 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       _serial->writeFrame(out_frame, 9);
 
 #ifdef ENABLE_USB_INTERFACE
-      if (expected_ack_table[i].terminal_origin && _terminal_mode) {
-        Serial.printf("\r\n  Got ACK! (round trip: %lu ms)\r\n> ",
-                      (unsigned long)trip_time);
+      if (expected_ack_table[i].terminal_origin && hasTerminalOutput()) {
+        terminalOutput().printf("\r\n  Got ACK! (round trip: %lu ms)\r\n> ",
+                                (unsigned long)trip_time);
       }
 #endif
 
@@ -791,17 +793,17 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
 
 #ifdef ENABLE_USB_INTERFACE
-  if (_terminal_mode) {
+  if (hasTerminalOutput()) {
+    Stream& output = terminalOutput();
     const char* kind = txt_type == TXT_TYPE_CLI_DATA ? "CLI" : "MSG";
-    Serial.printf("\r\n(%s) %s -> from %s",
-                  mesh::cli::terminalInboundRouteLabel(
-                      pkt->isRouteDirect()), kind,
-                  from.name);
+    output.printf("\r\n(%s) %s -> from %s",
+                  mesh::cli::terminalInboundRouteLabel(pkt->isRouteDirect()),
+                  kind, from.name);
     if (terminal_command_reply) {
-      Serial.printf(" (round trip %lu ms)",
+      output.printf(" (round trip %lu ms)",
                     (unsigned long)terminal_command_elapsed_millis);
     }
-    Serial.printf("\r\n  %s\r\n> ", text);
+    output.printf("\r\n  %s\r\n> ", text);
   }
 #endif
 
@@ -963,12 +965,13 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   }
 
 #ifdef ENABLE_USB_INTERFACE
-  if (_terminal_mode
+  if (hasTerminalOutput()
       && _terminal_display.shouldShowChannel(is_emergency_channel)) {
     ChannelDetails details;
     const char* channel_name = getChannel(channel_idx, details) ? details.name : "Unknown";
-    Serial.printf("\r\nCHANNEL MSG -> %s (%s)\r\n  %s\r\n> ",
-                  channel_name, pkt->isRouteDirect() ? "DIRECT" : "FLOOD", text);
+    terminalOutput().printf(
+        "\r\nCHANNEL MSG -> %s (%s)\r\n  %s\r\n> ", channel_name,
+        pkt->isRouteDirect() ? "DIRECT" : "FLOOD", text);
   }
 #endif
 #ifdef DISPLAY_CLASS
@@ -1143,16 +1146,17 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     _serial->writeFrame(out_frame, i);
 #ifdef ENABLE_USB_INTERFACE
     if (terminal_login_response) {
-      if (_terminal_mode) {
+      if (hasTerminalOutput()) {
+        Stream& output = terminalOutput();
         if (login_success && modern_login) {
-          Serial.printf("\r\nLOGIN -> %s accepted (ACL permissions 0x%02X, server v%u)\r\n> ",
-                        _terminal_login_target, (unsigned)data[7],
-                        (unsigned)data[12]);
+          output.printf(
+              "\r\nLOGIN -> %s accepted (ACL permissions 0x%02X, server v%u)\r\n> ",
+              _terminal_login_target, (unsigned)data[7], (unsigned)data[12]);
         } else if (login_success) {
-          Serial.printf("\r\nLOGIN -> %s accepted (legacy server)\r\n> ",
+          output.printf("\r\nLOGIN -> %s accepted (legacy server)\r\n> ",
                         _terminal_login_target);
         } else {
-          Serial.printf("\r\nLOGIN -> %s rejected\r\n> ",
+          output.printf("\r\nLOGIN -> %s rejected\r\n> ",
                         _terminal_login_target);
         }
       }
@@ -1294,29 +1298,30 @@ void MyMesh::onTraceRecv(mesh::Packet *packet, uint32_t tag, uint32_t auth_code,
   out_frame[i++] = (int8_t)(packet->getSNR() * 4); // extra/final SNR (to this node)
 
 #ifdef ENABLE_USB_INTERFACE
-  if (_terminal_mode && _terminal_trace_pending
+  if (hasTerminalOutput() && _terminal_trace_pending
       && tag == _terminal_trace_tag && auth_code == _terminal_trace_auth) {
+    Stream& output = terminalOutput();
     const uint8_t hash_size = _terminal_trace_hash_size;
     const uint8_t hop_count = hash_size == 0 ? 0 : path_len / hash_size;
     const uint8_t response_hash_size = 1 << (flags & 0x03);
     const unsigned long elapsed = _ms->getMillis() - _terminal_trace_sent_at;
-    Serial.printf("\r\nTRACE -> %s (%lu ms)\r\n",
+    output.printf("\r\nTRACE -> %s (%lu ms)\r\n",
                   _terminal_trace_target, elapsed);
     if (hash_size == 0 || response_hash_size != hash_size
         || path_len % hash_size != 0
         || hop_count >= MAX_PATH_SIZE) {
-      Serial.print("  ERROR: malformed trace response\r\n> ");
+      output.print("  ERROR: malformed trace response\r\n> ");
     } else {
-      Serial.print("  ");
+      output.print("  ");
       for (uint8_t hop = 0; hop < hop_count; hop++) {
-        Serial.print(((float)(int8_t)path_snrs[hop]) / 4.0f, 2);
-        Serial.print(" dB -> [");
-        mesh::Utils::printHex(Serial, &path_hashes[hop * hash_size],
+        output.print(((float)(int8_t)path_snrs[hop]) / 4.0f, 2);
+        output.print(" dB -> [");
+        mesh::Utils::printHex(output, &path_hashes[hop * hash_size],
                               hash_size);
-        Serial.print("] -> ");
+        output.print("] -> ");
       }
-      Serial.print(packet->getSNR(), 2);
-      Serial.print(" dB\r\n> ");
+      output.print(packet->getSNR(), 2);
+      output.print(" dB\r\n> ");
     }
     clearTerminalTrace();
   }
@@ -1350,6 +1355,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _cli_rescue = false;
 #ifdef ENABLE_USB_INTERFACE
   _terminal_mode = false;
+  _terminal_output = NULL;
   _terminal_recipient_set = false;
   memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
   _terminal_login_pending = false;
@@ -1782,6 +1788,148 @@ bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
   while (*command == ' ') command++;
 
 #if defined(ESP32) && defined(WIFI_SSID)
+#ifdef WITH_WEBCONFIG
+  if (strncmp(command, "get ", 4) == 0) {
+    const mesh::cli::StandaloneWiFiKey wifi_key =
+        mesh::cli::classifyStandaloneWiFiGet(command + 4);
+    switch (wifi_key) {
+      case mesh::cli::StandaloneWiFiKey::SSID:
+        WebConfigServer::formatWiFiSSID(reply, reply_size);
+        return true;
+      case mesh::cli::StandaloneWiFiKey::Status:
+        WebConfigServer::formatWiFiStatus(reply, reply_size);
+        return true;
+      case mesh::cli::StandaloneWiFiKey::CLI:
+        WebConfigServer::formatWiFiCliStatus(reply, reply_size);
+        return true;
+      default:
+        break;
+    }
+  }
+
+  if (strncmp(command, "set ", 4) == 0) {
+    const char* value = NULL;
+    const mesh::cli::StandaloneWiFiKey wifi_key =
+        mesh::cli::classifyStandaloneWiFiSet(command + 4, &value);
+    bool saved = false;
+    switch (wifi_key) {
+      case mesh::cli::StandaloneWiFiKey::SSID:
+        saved = WebConfigServer::setStandaloneWiFiSSID(
+            value, reply, reply_size);
+        break;
+      case mesh::cli::StandaloneWiFiKey::Password:
+        saved = WebConfigServer::setStandaloneWiFiPassword(
+            value, reply, reply_size);
+        break;
+      case mesh::cli::StandaloneWiFiKey::CLI:
+        WebConfigServer::setWiFiCliEnabled(value, reply, reply_size);
+        return true;
+      default:
+        break;
+    }
+    if (wifi_key == mesh::cli::StandaloneWiFiKey::SSID
+        || wifi_key == mesh::cli::StandaloneWiFiKey::Password) {
+      if (saved) {
+        char saved_ssid[32] = {0};
+        char saved_password[64] = {0};
+        uint8_t saved_power_save = mesh::wifi::kDefaultPowerSave;
+        const bool has_ssid = WebConfigServer::loadStandaloneWiFi(
+            saved_ssid, sizeof(saved_ssid), saved_password,
+            sizeof(saved_password), &saved_power_save);
+        memset(saved_password, 0, sizeof(saved_password));
+        if (_webconfig) {
+          _webconfig->reloadStandaloneWiFi();
+          if (has_ssid && _webconfig->isRunning()) {
+            _webconfig->requestStop();
+          }
+        }
+        if (has_ssid) {
+          scheduleCompanionWiFiCredentialReload();
+          snprintf(reply, reply_size,
+                   "OK - WiFi %s saved; reconnect scheduled",
+                   wifi_key == mesh::cli::StandaloneWiFiKey::SSID
+                       ? "SSID" : "password");
+        } else {
+          snprintf(reply, reply_size,
+                   "OK - WiFi password saved; set wifi.ssid to connect");
+        }
+      }
+      return true;
+    }
+  }
+
+  if (strcmp(command, "get webui") == 0) {
+    const bool enabled = WebConfigServer::loadEnabled(true);
+    if (!_webconfig
+        || (!_webconfig->isRunning() && !_webconfig->isStopping())) {
+      snprintf(reply, reply_size, "> %s, inactive", enabled ? "on" : "off");
+    } else if (_webconfig->mode() == WebConfigServer::MODE_SETUP) {
+      char ssid[33] = {0};
+      char ip[16] = {0};
+      WebConfigServer::getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
+      snprintf(reply, reply_size, "> %s, setup AP %s http://%s/",
+               enabled ? "on" : "off", ssid, ip);
+    } else if (_webconfig->mode() == WebConfigServer::MODE_CONNECTING) {
+      snprintf(reply, reply_size, "> %s, connecting to WiFi",
+               enabled ? "on" : "off");
+    } else {
+      snprintf(reply, reply_size, "> %s, http://%s/",
+               enabled ? "on" : "off",
+               WiFi.localIP().toString().c_str());
+    }
+    return true;
+  }
+
+  if (strcmp(command, "set webui on") == 0
+      || strcmp(command, "set webui off") == 0) {
+    const bool enabled = command[10] == 'o' && command[11] == 'n';
+    if (!WebConfigServer::saveEnabled(enabled)) {
+      snprintf(reply, reply_size, "Error: failed to save webui setting");
+    } else if (!enabled) {
+      if (_webconfig && _webconfig->isRunning()) _webconfig->requestStop();
+      snprintf(reply, reply_size, "OK - webui off");
+    } else if (_webconfig
+               && (_webconfig->isRunning() || _webconfig->isStopping())) {
+      snprintf(reply, reply_size, "OK - webui on (already active)");
+    } else {
+      char start_reply[160] = {0};
+      startWebConfig(false, start_reply);
+      if (strncmp(start_reply, "WebConfig", 9) == 0) {
+        snprintf(reply, reply_size, "OK - webui on; %s", start_reply);
+      } else {
+        snprintf(reply, reply_size, "%s", start_reply);
+      }
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set webui", 9) == 0
+      && (command[9] == 0 || command[9] == ' ' || command[9] == '\t')) {
+    snprintf(reply, reply_size, "Error: usage set webui on|off");
+    return true;
+  }
+
+  if (strcmp(command, "start webconfig") == 0
+      || strcmp(command, "start webconfig ap") == 0) {
+    startWebConfig(strcmp(command, "start webconfig ap") == 0, reply);
+    return true;
+  }
+  if (strncmp(command, "start webconfig", 15) == 0
+      && (command[15] == 0 || command[15] == ' ' || command[15] == '\t')) {
+    snprintf(reply, reply_size, "ERR: usage start webconfig [ap]");
+    return true;
+  }
+  if (strcmp(command, "stop webconfig") == 0) {
+    if (!_webconfig || !_webconfig->isRunning()) {
+      snprintf(reply, reply_size, "Err: webconfig not running");
+    } else {
+      _webconfig->requestStop();
+      snprintf(reply, reply_size, "OK - webconfig stopping");
+    }
+    return true;
+  }
+#endif
+
   if (strcmp(command, "get wifi.powersave") == 0) {
     formatWiFiPowerSaving(reply, reply_size);
     return true;
@@ -3941,30 +4089,76 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
 }
 
 #ifdef ENABLE_USB_INTERFACE
-void MyMesh::enterTerminalMode() {
-  _terminal_mode = true;
+Stream& MyMesh::terminalOutput() {
+  return _terminal_output != NULL ? *_terminal_output : Serial;
+}
+
+void MyMesh::resetTerminalSession() {
   _terminal_recipient_set = false;
   memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
   clearTerminalLogin();
   clearTerminalCommand();
   clearTerminalTrace();
 
-  Serial.print("\r\n===== MeshCore Chat Terminal =====\r\n\r\n");
-  Serial.printf("WELCOME  %s\r\n", _prefs.node_name);
-  mesh::Utils::printHex(Serial, self_id.pub_key, PUB_KEY_SIZE);
-  Serial.printf("\r\nCompanion %s\r\n", FIRMWARE_VERSION);
-  Serial.print("  (enter 'help' for commands)\r\n");
-  Serial.print("  (+++MESHCORE-TERM-STOP returns to Binary mode)\r\n\r\n> ");
+  // A reply from an abandoned TCP or USB terminal session must not be shown
+  // to whichever terminal connects next. Keep the radio retry alive for the
+  // Binary Companion interface, but remove its old text-terminal ownership.
+  for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; i++) {
+    expected_ack_table[i].terminal_origin = false;
+  }
+}
+
+void MyMesh::printTerminalBanner(bool show_binary_stop) {
+  Stream& output = terminalOutput();
+#if defined(COMPANION_RADIO_FULL)
+  output.print("\r\n===== MeshCore Full Companion Terminal =====\r\n\r\n");
+#else
+  output.print("\r\n===== MeshCore Companion Terminal =====\r\n\r\n");
+#endif
+  output.printf("WELCOME  %s\r\n", _prefs.node_name);
+  mesh::Utils::printHex(output, self_id.pub_key, PUB_KEY_SIZE);
+  output.printf("\r\nCompanion %s\r\n", FIRMWARE_VERSION);
+  output.print("  (enter 'help' for commands)\r\n");
+  if (show_binary_stop) {
+    output.print("  (+++MESHCORE-TERM-STOP returns to Binary mode)\r\n");
+  } else {
+    output.print("  (disconnect to close this TCP terminal)\r\n");
+  }
+  output.print("\r\n> ");
+}
+
+void MyMesh::enterTerminalMode() {
+  _terminal_mode = true;
+  _terminal_output = &Serial;
+  resetTerminalSession();
+  printTerminalBanner(true);
 }
 
 void MyMesh::exitTerminalMode() {
   _terminal_mode = false;
-  _terminal_recipient_set = false;
-  memset(_terminal_recipient_key, 0, sizeof(_terminal_recipient_key));
-  clearTerminalLogin();
-  clearTerminalCommand();
-  clearTerminalTrace();
+  resetTerminalSession();
+  if (_terminal_output == &Serial) _terminal_output = NULL;
 }
+
+#if defined(COMPANION_RADIO_FULL)
+bool MyMesh::enterNetworkTerminalMode(Stream& output) {
+  if (_terminal_mode) return false;
+  _terminal_output = &output;
+  resetTerminalSession();
+  printTerminalBanner(false);
+  return true;
+}
+
+void MyMesh::exitNetworkTerminalMode(Stream& output) {
+  if (_terminal_mode || _terminal_output != &output) return;
+  resetTerminalSession();
+  _terminal_output = NULL;
+}
+
+bool MyMesh::isNetworkTerminalMode(const Stream& output) const {
+  return !_terminal_mode && _terminal_output == &output;
+}
+#endif
 
 ContactInfo* MyMesh::getTerminalRecipient() {
   if (!_terminal_recipient_set) return NULL;
@@ -3978,30 +4172,30 @@ ContactInfo* MyMesh::getTerminalRecipient() {
 }
 
 void MyMesh::printTerminalPath(const ContactInfo& recipient) {
-  Serial.printf("  Path to %s: ", recipient.name);
+  terminalOutput().printf("  Path to %s: ", recipient.name);
   if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-    Serial.print("unknown (next send uses FLOOD)\r\n");
+    terminalOutput().print("unknown (next send uses FLOOD)\r\n");
     return;
   }
   if (!mesh::Packet::isValidPathLen(recipient.out_path_len)) {
-    Serial.print("invalid\r\n");
+    terminalOutput().print("invalid\r\n");
     return;
   }
 
   const uint8_t hash_size = (recipient.out_path_len >> 6) + 1;
   const uint8_t hop_count = recipient.out_path_len & 63;
   if (hop_count == 0) {
-    Serial.print("direct (zero hop)\r\n");
+    terminalOutput().print("direct (zero hop)\r\n");
     return;
   }
 
   for (uint8_t hop = 0; hop < hop_count; hop++) {
-    if (hop != 0) Serial.print(',');
-    mesh::Utils::printHex(Serial,
+    if (hop != 0) terminalOutput().print(',');
+    mesh::Utils::printHex(terminalOutput(),
                           &recipient.out_path[(size_t)hop * hash_size],
                           hash_size);
   }
-  Serial.printf(" (%u %s, %u-byte hashes; used by DIRECT sends)\r\n",
+  terminalOutput().printf(" (%u %s, %u-byte hashes; used by DIRECT sends)\r\n",
                 (unsigned)hop_count, hop_count == 1 ? "hop" : "hops",
                 (unsigned)hash_size);
 }
@@ -4021,22 +4215,22 @@ void MyMesh::handleTerminalPath(ContactInfo& recipient,
     case mesh::cli::TerminalPathParseResult::Valid:
       break;
     case mesh::cli::TerminalPathParseResult::Missing:
-      Serial.print("  ERROR: use path <direct|clear|hops separated by spaces or commas>\r\n");
+      terminalOutput().print("  ERROR: use path <direct|clear|hops separated by spaces or commas>\r\n");
       return;
     case mesh::cli::TerminalPathParseResult::InvalidPrefix:
-      Serial.print("  ERROR: each path hop must be 2, 4, or 6 hex digits\r\n");
+      terminalOutput().print("  ERROR: each path hop must be 2, 4, or 6 hex digits\r\n");
       return;
     case mesh::cli::TerminalPathParseResult::MixedPrefixSize:
-      Serial.print("  ERROR: all path hops must use the same width\r\n");
+      terminalOutput().print("  ERROR: all path hops must use the same width\r\n");
       return;
     case mesh::cli::TerminalPathParseResult::InvalidSeparator:
-      Serial.print("  ERROR: separate path hops with spaces or commas\r\n");
+      terminalOutput().print("  ERROR: separate path hops with spaces or commas\r\n");
       return;
     case mesh::cli::TerminalPathParseResult::TooManyHops:
-      Serial.print("  ERROR: path must contain at most 63 hops\r\n");
+      terminalOutput().print("  ERROR: path must contain at most 63 hops\r\n");
       return;
     case mesh::cli::TerminalPathParseResult::RouteTooLong:
-      Serial.print("  ERROR: path is too long\r\n");
+      terminalOutput().print("  ERROR: path is too long\r\n");
       return;
   }
 
@@ -4086,7 +4280,7 @@ void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
 void MyMesh::importTerminalCard(char* command) {
   while (*command == ' ') command++;
   if (strncmp(command, "meshcore://", 11) != 0) {
-    Serial.print("  ERROR: invalid card format\r\n");
+    terminalOutput().print("  ERROR: invalid card format\r\n");
     return;
   }
 
@@ -4099,31 +4293,31 @@ void MyMesh::importTerminalCard(char* command) {
   size_t encoded_len = strlen(encoded);
   if (encoded_len == 0 || (encoded_len & 1) != 0
       || encoded_len / 2 > sizeof(_terminal_tmp_buf)) {
-    Serial.print("  ERROR: invalid card format\r\n");
+    terminalOutput().print("  ERROR: invalid card format\r\n");
     return;
   }
 
   size_t raw_len = encoded_len / 2;
   if (!mesh::Utils::fromHex(_terminal_tmp_buf, raw_len, encoded)
       || !importContact(_terminal_tmp_buf, raw_len)) {
-    Serial.print("  ERROR: invalid card\r\n");
+    terminalOutput().print("  ERROR: invalid card\r\n");
     return;
   }
 
-  Serial.print("  OK - contact import queued\r\n");
+  terminalOutput().print("  OK - contact import queued\r\n");
 }
 
 void MyMesh::listTerminalChannels() {
   bool found = false;
-  Serial.print("Channels:\r\n");
+  terminalOutput().print("Channels:\r\n");
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails channel;
     if (getChannel(i, channel) && channel.name[0] != 0) {
-      Serial.printf("  %d: %s\r\n", i, channel.name);
+      terminalOutput().printf("  %d: %s\r\n", i, channel.name);
       found = true;
     }
   }
-  if (!found) Serial.print("  (none configured)\r\n");
+  if (!found) terminalOutput().print("  (none configured)\r\n");
 }
 
 void MyMesh::handleTerminalDisplayCommand(const char* arguments) {
@@ -4133,13 +4327,13 @@ void MyMesh::handleTerminalDisplayCommand(const char* arguments) {
 
   if (result == mesh::TerminalDisplayParseResult::InvalidCategory
       || result == mesh::TerminalDisplayParseResult::InvalidValue) {
-    Serial.print(
+    terminalOutput().print(
         "  ERROR: use show [adverts|channels|emergency] [on|off]\r\n");
     return;
   }
 
   if (result == mesh::TerminalDisplayParseResult::StatusAll) {
-    Serial.printf("  Terminal display: adverts %s, channels %s, emergency %s\r\n",
+    terminalOutput().printf("  Terminal display: adverts %s, channels %s, emergency %s\r\n",
                   _terminal_display.isEnabled(
                       mesh::TerminalDisplayCategory::Adverts) ? "on" : "off",
                   _terminal_display.isEnabled(
@@ -4153,7 +4347,7 @@ void MyMesh::handleTerminalDisplayCommand(const char* arguments) {
     _terminal_display.setEnabled(display_command.category,
                                  display_command.enabled);
   }
-  Serial.printf("  Terminal display: %s %s\r\n",
+  terminalOutput().printf("  Terminal display: %s %s\r\n",
                 mesh::terminalDisplayCategoryName(display_command.category),
                 _terminal_display.isEnabled(display_command.category)
                     ? "on" : "off");
@@ -4166,42 +4360,42 @@ void MyMesh::sendTerminalChannelMessage(ChannelDetails& channel,
       ? MAX_TEXT_LEN - prefix_len : 0;
   const size_t text_len = text == NULL ? 0 : strlen(text);
   if (text_len == 0) {
-    Serial.print("  ERROR: message is empty\r\n");
+    terminalOutput().print("  ERROR: message is empty\r\n");
   } else if (text_len > max_text_len) {
-    Serial.printf("  ERROR: message must be 1-%u UTF-8 bytes for this node name\r\n",
+    terminalOutput().printf("  ERROR: message must be 1-%u UTF-8 bytes for this node name\r\n",
                   (unsigned)max_text_len);
   } else if (sendGroupMessage(getRTCClock()->getCurrentTimeUnique(),
                               channel.channel, _prefs.node_name, text,
                               text_len)) {
-    Serial.printf("  Sent to %s.\r\n", channel.name);
+    terminalOutput().printf("  Sent to %s.\r\n", channel.name);
   } else {
-    Serial.print("  ERROR: unable to send\r\n");
+    terminalOutput().print("  ERROR: unable to send\r\n");
   }
 }
 
 void MyMesh::printTerminalSendStatus(const char* operation,
                                      const ContactInfo& recipient, int result,
                                      uint32_t timeout_millis) {
-  Serial.printf("  %s sent to %s (", operation, recipient.name);
+  terminalOutput().printf("  %s sent to %s (", operation, recipient.name);
   if (result == MSG_SEND_SENT_FLOOD) {
-    Serial.print("FLOOD");
+    terminalOutput().print("FLOOD");
   } else {
     const uint8_t hop_count = recipient.out_path_len & 63;
     if (hop_count == 0) {
-      Serial.print("zero-hop DIRECT");
+      terminalOutput().print("zero-hop DIRECT");
     } else {
       const uint8_t hash_size = (recipient.out_path_len >> 6) + 1;
-      Serial.print("DIRECT via path ");
+      terminalOutput().print("DIRECT via path ");
       for (uint8_t hop = 0; hop < hop_count; hop++) {
-        if (hop != 0) Serial.print(',');
+        if (hop != 0) terminalOutput().print(',');
         mesh::Utils::printHex(
-            Serial, &recipient.out_path[(size_t)hop * hash_size], hash_size);
+            terminalOutput(), &recipient.out_path[(size_t)hop * hash_size], hash_size);
       }
-      Serial.printf("; %u %s, %u-byte hashes", (unsigned)hop_count,
+      terminalOutput().printf("; %u %s, %u-byte hashes", (unsigned)hop_count,
                     hop_count == 1 ? "hop" : "hops", (unsigned)hash_size);
     }
   }
-  Serial.printf(", timeout %lu ms)\r\n", (unsigned long)timeout_millis);
+  terminalOutput().printf(", timeout %lu ms)\r\n", (unsigned long)timeout_millis);
 }
 
 void MyMesh::clearTerminalLogin() {
@@ -4224,8 +4418,8 @@ void MyMesh::serviceTerminalLogin() {
     return;
   }
 
-  if (_terminal_mode) {
-    Serial.printf("\r\n  ERROR: login to %s timed out (wrong password or no response).\r\n> ",
+  if (hasTerminalOutput()) {
+    terminalOutput().printf("\r\n  ERROR: login to %s timed out (wrong password or no response).\r\n> ",
                   _terminal_login_target);
   }
   clearTerminalLogin();
@@ -4235,21 +4429,21 @@ void MyMesh::sendTerminalLogin(ContactInfo& recipient,
                                const char* password) {
   serviceTerminalLogin();
   if (_terminal_login_pending) {
-    Serial.printf("  ERROR: login to %s is still pending\r\n",
+    terminalOutput().printf("  ERROR: login to %s is still pending\r\n",
                   _terminal_login_target);
     return;
   }
 
   const size_t password_len = password == NULL ? 0 : strlen(password);
   if (password_len == 0 || password_len > 15) {
-    Serial.print("  ERROR: password must be 1-15 UTF-8 bytes\r\n");
+    terminalOutput().print("  ERROR: password must be 1-15 UTF-8 bytes\r\n");
     return;
   }
 
   uint32_t est_timeout = 0;
   const int result = sendLogin(recipient, password, est_timeout);
   if (result == MSG_SEND_FAILED) {
-    Serial.print("  ERROR: unable to send login\r\n");
+    terminalOutput().print("  ERROR: unable to send login\r\n");
     return;
   }
 
@@ -4274,8 +4468,8 @@ void MyMesh::serviceTerminalCommand() {
   uint32_t elapsed_millis = 0;
   if (!_terminal_command.expire(_ms->getMillis(), elapsed_millis)) return;
 
-  if (_terminal_mode) {
-    Serial.printf("\r\n  ERROR: command to %s timed out after %lu ms.\r\n> ",
+  if (hasTerminalOutput()) {
+    terminalOutput().printf("\r\n  ERROR: command to %s timed out after %lu ms.\r\n> ",
                   _terminal_command_target, (unsigned long)elapsed_millis);
   }
   _terminal_command_target[0] = 0;
@@ -4285,14 +4479,14 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
                                  const char* command) {
   serviceTerminalLogin();
   if (_terminal_login_pending) {
-    Serial.printf("  ERROR: login to %s is still pending\r\n",
+    terminalOutput().printf("  ERROR: login to %s is still pending\r\n",
                   _terminal_login_target);
     return;
   }
 
   serviceTerminalCommand();
   if (_terminal_command.isPending()) {
-    Serial.printf("  ERROR: command to %s is still pending\r\n",
+    terminalOutput().printf("  ERROR: command to %s is still pending\r\n",
                   _terminal_command_target);
     return;
   }
@@ -4310,7 +4504,7 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
   const size_t command_len =
       on_air_command == NULL ? 0 : strlen(on_air_command);
   if (command_len == 0 || command_len > MAX_TEXT_LEN) {
-    Serial.printf("  ERROR: remote command must be 1-%u UTF-8 bytes\r\n",
+    terminalOutput().printf("  ERROR: remote command must be 1-%u UTF-8 bytes\r\n",
                   (unsigned)MAX_TEXT_LEN);
     return;
   }
@@ -4323,7 +4517,7 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
   const int result = sendCommandData(recipient, timestamp, 0, on_air_command,
                                      est_timeout, logical_request_id);
   if (result == MSG_SEND_FAILED) {
-    Serial.print("  ERROR: unable to send remote command\r\n");
+    terminalOutput().print("  ERROR: unable to send remote command\r\n");
     return;
   }
 
@@ -4353,8 +4547,8 @@ void MyMesh::serviceTerminalTrace() {
     return;
   }
 
-  if (_terminal_mode) {
-    Serial.printf("\r\n  ERROR: trace to %s timed out.\r\n> ",
+  if (hasTerminalOutput()) {
+    terminalOutput().printf("\r\n  ERROR: trace to %s timed out.\r\n> ",
                   _terminal_trace_target);
   }
   clearTerminalTrace();
@@ -4364,30 +4558,30 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
                                     uint8_t hop_count, const char* target) {
   serviceTerminalTrace();
   if (_terminal_trace_pending) {
-    Serial.printf("  ERROR: trace to %s is still pending\r\n",
+    terminalOutput().printf("  ERROR: trace to %s is still pending\r\n",
                   _terminal_trace_target);
     return;
   }
   if (route == NULL || hop_count == 0 || hop_count >= MAX_PATH_SIZE) {
-    Serial.print("  ERROR: trace path must contain 1-63 prefixes\r\n");
+    terminalOutput().print("  ERROR: trace path must contain 1-63 prefixes\r\n");
     return;
   }
 
   const size_t route_byte_len = static_cast<size_t>(hash_size) * hop_count;
   if (route_byte_len > MAX_PACKET_PAYLOAD - 9) {
-    Serial.print("  ERROR: trace path is too long\r\n");
+    terminalOutput().print("  ERROR: trace path is too long\r\n");
     return;
   }
 
   const uint8_t flags = mesh::traceFlagsForHashSize(hash_size);
   if (flags == 0xFF) {
-    Serial.print("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n");
+    terminalOutput().print("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n");
     return;
   }
 
   const uint32_t airtime = _radio->getEstAirtimeFor(9 + route_byte_len + 2);
   if (airtime == 0) {
-    Serial.print("  ERROR: unable to estimate trace timeout\r\n");
+    terminalOutput().print("  ERROR: unable to estimate trace timeout\r\n");
     return;
   }
   const uint32_t base_timeout =
@@ -4395,7 +4589,7 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   uint32_t trace_timeout = 0;
   if (!mesh::calculateTerminalTraceTimeoutMillis(base_timeout,
                                                  trace_timeout)) {
-    Serial.print("  ERROR: trace timeout is out of range\r\n");
+    terminalOutput().print("  ERROR: trace timeout is out of range\r\n");
     return;
   }
 
@@ -4405,12 +4599,12 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   getRNG()->random((uint8_t*)&auth, sizeof(auth));
   mesh::Packet* packet = createTrace(tag, auth, flags);
   if (packet == NULL) {
-    Serial.print("  ERROR: unable to allocate trace packet\r\n");
+    terminalOutput().print("  ERROR: unable to allocate trace packet\r\n");
     return;
   }
 
   if (!sendDirect(packet, route, static_cast<uint8_t>(route_byte_len))) {
-    Serial.print("  ERROR: unable to send trace\r\n");
+    terminalOutput().print("  ERROR: unable to send trace\r\n");
     return;
   }
 
@@ -4422,7 +4616,7 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   _terminal_trace_expires_at = futureMillis(trace_timeout);
   StrHelper::strzcpy(_terminal_trace_target, target,
                      sizeof(_terminal_trace_target));
-  Serial.printf("  Trace sent to %s (%u route hops, timeout %lu ms)\r\n",
+  terminalOutput().printf("  Trace sent to %s (%u route hops, timeout %lu ms)\r\n",
                 target, (unsigned)hop_count,
                 (unsigned long)trace_timeout);
 }
@@ -4430,7 +4624,7 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
 void MyMesh::sendTerminalTrace(ContactInfo& recipient) {
   if (recipient.out_path_len == OUT_PATH_UNKNOWN
       || !mesh::Packet::isValidPathLen(recipient.out_path_len)) {
-    Serial.print("  ERROR: recipient has no valid direct path\r\n");
+    terminalOutput().print("  ERROR: recipient has no valid direct path\r\n");
     return;
   }
 
@@ -4441,11 +4635,11 @@ void MyMesh::sendTerminalTrace(ContactInfo& recipient) {
           recipient.out_path, recipient.out_path_len, recipient.id.pub_key,
           include_endpoint, _terminal_tmp_buf, MAX_PACKET_PAYLOAD - 9,
           route)) {
-    Serial.print("  ERROR: recipient has no traceable round-trip path\r\n");
+    terminalOutput().print("  ERROR: recipient has no traceable round-trip path\r\n");
     return;
   }
   if (route.hop_count >= MAX_PATH_SIZE) {
-    Serial.print("  ERROR: round-trip trace path is too long\r\n");
+    terminalOutput().print("  ERROR: round-trip trace path is too long\r\n");
     return;
   }
 
@@ -4463,20 +4657,20 @@ void MyMesh::sendTerminalRawTrace(const char* arguments) {
       break;
     case mesh::RawTracePathParseResult::MissingHashSize:
     case mesh::RawTracePathParseResult::MissingPrefixes:
-      Serial.print("  ERROR: use trace path <1|2|4> <prefixes...>\r\n");
+      terminalOutput().print("  ERROR: use trace path <1|2|4> <prefixes...>\r\n");
       return;
     case mesh::RawTracePathParseResult::InvalidHashSize:
-      Serial.print("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n");
+      terminalOutput().print("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n");
       return;
     case mesh::RawTracePathParseResult::InvalidPrefix:
-      Serial.printf("  ERROR: every prefix must be exactly %u hex digits\r\n",
+      terminalOutput().printf("  ERROR: every prefix must be exactly %u hex digits\r\n",
                     (unsigned)route.hash_size * 2);
       return;
     case mesh::RawTracePathParseResult::TooManyHops:
-      Serial.print("  ERROR: trace path must contain at most 63 prefixes\r\n");
+      terminalOutput().print("  ERROR: trace path must contain at most 63 prefixes\r\n");
       return;
     case mesh::RawTracePathParseResult::RouteTooLong:
-      Serial.print("  ERROR: trace path is too long\r\n");
+      terminalOutput().print("  ERROR: trace path is too long\r\n");
       return;
   }
 
@@ -4495,7 +4689,7 @@ void MyMesh::handleTerminalCommand(char* command) {
 #if defined(COMPANION_RADIO_FULL)
   char full_reply[160];
   if (handleFullOtaCommand(command, full_reply, sizeof(full_reply))) {
-    Serial.printf("  %s\r\n", full_reply);
+    terminalOutput().printf("  %s\r\n", full_reply);
     return;
   }
 #endif
@@ -4531,7 +4725,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     listTerminalChannels();
   } else if (channel_match != mesh::cli::TerminalChannelCommandMatch::NoMatch) {
     if (channel_match != mesh::cli::TerminalChannelCommandMatch::Valid) {
-      Serial.print("  ERROR: use channel <name-or-slot> <message>\r\n");
+      terminalOutput().print("  ERROR: use channel <name-or-slot> <message>\r\n");
       return;
     }
 
@@ -4554,7 +4748,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
 
     if (!found) {
-      Serial.print("  ERROR: channel not found (use 'channels')\r\n");
+      terminalOutput().print("  ERROR: channel not found (use 'channels')\r\n");
     } else {
       sendTerminalChannelMessage(channel, channel_message.text);
     }
@@ -4562,9 +4756,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     ContactInfo* recipient = getTerminalRecipient();
     const char* text = command + 5;
     if (recipient == NULL) {
-      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+      terminalOutput().print("  ERROR: no recipient selected (use 'to' first)\r\n");
     } else if (*text == 0 || strlen(text) > MAX_TEXT_LEN) {
-      Serial.printf("  ERROR: message must be 1-%u characters\r\n", (unsigned)MAX_TEXT_LEN);
+      terminalOutput().printf("  ERROR: message must be 1-%u characters\r\n", (unsigned)MAX_TEXT_LEN);
     } else {
       uint32_t expected_ack = 0;
       uint32_t est_timeout = 0;
@@ -4580,11 +4774,11 @@ void MyMesh::handleTerminalCommand(char* command) {
                                expected_ack, est_timeout, packet_retry_key,
                                NULL, text_fingerprint);
       if (result == MSG_SEND_FAILED) {
-        Serial.print("  ERROR: unable to send\r\n");
+        terminalOutput().print("  ERROR: unable to send\r\n");
       } else {
         rememberTerminalAck(*recipient, text, message_timestamp, expected_ack,
                             est_timeout, packet_retry_key, replacement_entry);
-        Serial.printf("  message sent - %s\r\n",
+        terminalOutput().printf("  message sent - %s\r\n",
                       result == MSG_SEND_SENT_FLOOD ? "FLOOD" : "DIRECT");
       }
     }
@@ -4592,7 +4786,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     ChannelDetails channel;
     const char* text = command + 7;
     if (!getChannel(0, channel) || channel.name[0] == 0) {
-      Serial.print("  ERROR: Public channel is unavailable\r\n");
+      terminalOutput().print("  ERROR: Public channel is unavailable\r\n");
     } else {
       sendTerminalChannelMessage(channel, text);
     }
@@ -4601,16 +4795,16 @@ void MyMesh::handleTerminalCommand(char* command) {
     scanRecentContacts(count, this);
   } else if (strcmp(command, "clock") == 0) {
     DateTime dt(getRTCClock()->getCurrentTime());
-    Serial.printf("%02d:%02d - %d/%d/%d UTC\r\n",
+    terminalOutput().printf("%02d:%02d - %d/%d/%d UTC\r\n",
                   dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
   } else if (strncmp(command, "time ", 5) == 0) {
     uint32_t timestamp = strtoul(command + 5, NULL, 10);
     uint32_t current = getRTCClock()->getCurrentTime();
     if (timestamp >= current) {
       getRTCClock()->setCurrentTime(timestamp);
-      Serial.print("  OK - clock set\r\n");
+      terminalOutput().print("  OK - clock set\r\n");
     } else {
-      Serial.print("  ERROR: clock cannot go backwards\r\n");
+      terminalOutput().print("  ERROR: clock cannot go backwards\r\n");
     }
   } else if (recipient_match
              == mesh::cli::TerminalArgumentCommandMatch::Valid) {
@@ -4619,25 +4813,25 @@ void MyMesh::handleTerminalCommand(char* command) {
       recipient = searchContactsByPrefix(recipient_prefix);
     }
     if (recipient == NULL || recipient->type == ADV_TYPE_NONE) {
-      Serial.print("  ERROR: name prefix not found\r\n");
+      terminalOutput().print("  ERROR: name prefix not found\r\n");
     } else {
       memcpy(_terminal_recipient_key, recipient->id.pub_key, PUB_KEY_SIZE);
       _terminal_recipient_set = true;
-      Serial.printf("  Recipient %s selected\r\n", recipient->name);
+      terminalOutput().printf("  Recipient %s selected\r\n", recipient->name);
     }
   } else if (recipient_match
              == mesh::cli::TerminalArgumentCommandMatch::MissingArgument) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient != NULL) {
-      Serial.printf("  Current recipient: %s\r\n", recipient->name);
+      terminalOutput().printf("  Current recipient: %s\r\n", recipient->name);
     } else {
-      Serial.print("  No recipient selected\r\n");
+      terminalOutput().print("  No recipient selected\r\n");
     }
   } else if (path_match
              != mesh::cli::TerminalArgumentCommandMatch::NoMatch) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient == NULL) {
-      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+      terminalOutput().print("  ERROR: no recipient selected (use 'to' first)\r\n");
     } else {
       handleTerminalPath(
           *recipient,
@@ -4649,9 +4843,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     ContactInfo* recipient = getTerminalRecipient();
     if (login_match
         != mesh::cli::TerminalArgumentCommandMatch::Valid) {
-      Serial.print("  ERROR: use login <admin-password>\r\n");
+      terminalOutput().print("  ERROR: use login <admin-password>\r\n");
     } else if (recipient == NULL) {
-      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+      terminalOutput().print("  ERROR: no recipient selected (use 'to' first)\r\n");
     } else {
       sendTerminalLogin(*recipient, login_password);
     }
@@ -4660,9 +4854,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     ContactInfo* recipient = getTerminalRecipient();
     if (command_match
         != mesh::cli::TerminalArgumentCommandMatch::Valid) {
-      Serial.print("  ERROR: use cmd <remote-command>\r\n");
+      terminalOutput().print("  ERROR: use cmd <remote-command>\r\n");
     } else if (recipient == NULL) {
-      Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+      terminalOutput().print("  ERROR: no recipient selected (use 'to' first)\r\n");
     } else {
       sendTerminalCommand(*recipient, remote_command);
     }
@@ -4680,63 +4874,63 @@ void MyMesh::handleTerminalCommand(char* command) {
         recipient = searchContactsByPrefix(prefix);
       }
       if (recipient == NULL || recipient->type == ADV_TYPE_NONE) {
-        Serial.print("  ERROR: recipient prefix not found\r\n");
+        terminalOutput().print("  ERROR: recipient prefix not found\r\n");
         return;
       }
     } else {
       recipient = getTerminalRecipient();
       if (recipient == NULL) {
-        Serial.print("  ERROR: no recipient selected (use 'to' first)\r\n");
+        terminalOutput().print("  ERROR: no recipient selected (use 'to' first)\r\n");
         return;
       }
     }
     sendTerminalTrace(*recipient);
   } else if (strcmp(command, "advert") == 0) {
-    Serial.print(advert() ? "  advert sent (zero hop)\r\n"
+    terminalOutput().print(advert() ? "  advert sent (zero hop)\r\n"
                           : "  ERROR: unable to send advert\r\n");
   } else if (strcmp(command, "reset path") == 0) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient == NULL) {
-      Serial.print("  ERROR: no recipient selected\r\n");
+      terminalOutput().print("  ERROR: no recipient selected\r\n");
     } else {
       resetPathTo(*recipient);
       scheduleContactWrite(*recipient);
-      Serial.print("  Done.\r\n");
+      terminalOutput().print("  Done.\r\n");
     }
   } else if (strcmp(command, "card") == 0) {
     mesh::Packet* packet = _prefs.advert_loc_policy == ADVERT_LOC_NONE
         ? createSelfAdvert(_prefs.node_name)
         : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
     if (packet == NULL) {
-      Serial.print("  ERROR: unable to create card\r\n");
+      terminalOutput().print("  ERROR: unable to create card\r\n");
     } else {
       packet->header |= ROUTE_TYPE_FLOOD;
       uint8_t raw_len = packet->writeTo(_terminal_tmp_buf);
       releasePacket(packet);
-      Serial.print("meshcore://");
-      mesh::Utils::printHex(Serial, _terminal_tmp_buf, raw_len);
-      Serial.print("\r\n");
+      terminalOutput().print("meshcore://");
+      mesh::Utils::printHex(terminalOutput(), _terminal_tmp_buf, raw_len);
+      terminalOutput().print("\r\n");
     }
   } else if (strncmp(command, "import ", 7) == 0) {
     importTerminalCard(command + 7);
   } else if (strcmp(command, "powersaving") == 0
              || strcmp(command, "get powersaving") == 0) {
-    Serial.printf("  powersaving %s\r\n",
+    terminalOutput().printf("  powersaving %s\r\n",
                   _prefs.powersaving_enabled ? "on" : "off");
 #if MESH_USB_LOGGING_AVAILABLE
   } else if (strcmp(command, "get usb.logging") == 0) {
-    Serial.printf("  usb.logging %s\r\n",
+    terminalOutput().printf("  usb.logging %s\r\n",
                   mesh::isUsbLoggingEnabled() ? "on" : "off");
 #endif
   } else if (strncmp(command, "powersaving ", 12) == 0) {
     char reply[160];
     applyAndSavePowerSaving(command + 12, reply);
-    Serial.printf("  %s\r\n", reply);
+    terminalOutput().printf("  %s\r\n", reply);
   } else if (strcmp(command, "get radio.rxps") == 0) {
     if (!radio_driver.supportsRxPowerSaving()) {
-      Serial.print("  ERROR: RX power saving is unsupported on this radio\r\n");
+      terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
     } else {
-      Serial.printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
+      terminalOutput().printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
                     _prefs.rx_powersaving_enabled ? "on" : "off",
                     (unsigned)_prefs.rx_ps_level,
                     (unsigned)_prefs.rx_ps_preamble,
@@ -4747,27 +4941,27 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "get wifi.powersave") == 0) {
     char reply[160];
     formatWiFiPowerSaving(reply, sizeof(reply));
-    Serial.printf("  %s\r\n", reply);
+    terminalOutput().printf("  %s\r\n", reply);
 #endif
   } else if (strcmp(command, "get radio.rxgain") == 0) {
     if (!radio_driver.supportsRxBoostedGainMode()) {
-      Serial.print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
+      terminalOutput().print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
     } else {
-      Serial.printf("  radio.rxgain %s\r\n",
+      terminalOutput().printf("  radio.rxgain %s\r\n",
                     _prefs.rx_boosted_gain ? "on" : "off");
     }
   } else if (strcmp(command, "get radio.fem.rxgain") == 0) {
     if (!board.canControlLoRaFemLna()) {
-      Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
+      terminalOutput().print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
     } else {
-      Serial.printf("  FEM RX gain: %s\r\n",
+      terminalOutput().printf("  FEM RX gain: %s\r\n",
                     board.isLoRaFemLnaEnabled() ? "on" : "off");
     }
   } else if (strcmp(command, "get radio.fem.txgain") == 0) {
     if (!board.canControlLoRaFemPaGain()) {
-      Serial.print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+      terminalOutput().print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
     } else {
-      Serial.printf("  FEM TX gain: %s\r\n",
+      terminalOutput().printf("  FEM TX gain: %s\r\n",
                     board.isLoRaFemPaGainEnabled() ? "on" : "off");
     }
   } else if (strncmp(command, "set ", 4) == 0) {
@@ -4779,11 +4973,11 @@ void MyMesh::handleTerminalCommand(char* command) {
       const char* value = config + 11;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        Serial.print("  ERROR: use set usb.logging <on|off>\r\n");
+        terminalOutput().print("  ERROR: use set usb.logging <on|off>\r\n");
       } else {
         const bool enabled = strcmp(value, "on") == 0;
         mesh::setUsbLoggingEnabled(enabled);
-        Serial.printf("  OK - USB logging %s until reboot\r\n",
+        terminalOutput().printf("  OK - USB logging %s until reboot\r\n",
                       enabled ? "on" : "off");
       }
     } else
@@ -4791,11 +4985,11 @@ void MyMesh::handleTerminalCommand(char* command) {
     if (strncmp(config, "powersaving ", 12) == 0) {
       char reply[160];
       applyAndSavePowerSaving(config + 12, reply);
-      Serial.printf("  %s\r\n", reply);
+      terminalOutput().printf("  %s\r\n", reply);
     } else if (strncmp(config, "radio.rxps ", 11) == 0) {
       char reply[160];
       applyAndSaveRxPowerSaving(config + 11, reply);
-      Serial.printf("  %s\r\n", reply);
+      terminalOutput().printf("  %s\r\n", reply);
 #if defined(ESP32) && defined(WIFI_SSID)
     } else if (strncmp(config, "wifi.powersave", 14) == 0
                && (config[14] == 0 || config[14] == ' '
@@ -4804,7 +4998,7 @@ void MyMesh::handleTerminalCommand(char* command) {
       while (*value == ' ' || *value == '\t') value++;
       char reply[160];
       applyAndSaveWiFiPowerSaving(value, reply, sizeof(reply));
-      Serial.printf("  %s\r\n", reply);
+      terminalOutput().printf("  %s\r\n", reply);
 #endif
     } else if (strncmp(config, "radio.rxgain", 12) == 0
                && (config[12] == 0 || config[12] == ' '
@@ -4812,51 +5006,51 @@ void MyMesh::handleTerminalCommand(char* command) {
       const char* value = config + 12;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        Serial.print("  ERROR: use set radio.rxgain <on|off>\r\n");
+        terminalOutput().print("  ERROR: use set radio.rxgain <on|off>\r\n");
       } else if (!radio_driver.supportsRxBoostedGainMode()) {
-        Serial.print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
+        terminalOutput().print("  ERROR: RX boosted gain is unsupported on this radio\r\n");
       } else if (!applyAndSaveRxBoostedGain(strcmp(value, "on") == 0)) {
-        Serial.print("  ERROR: radio busy; retry\r\n");
+        terminalOutput().print("  ERROR: radio busy; retry\r\n");
       } else {
-        Serial.printf("  OK - radio.rxgain %s\r\n", value);
+        terminalOutput().printf("  OK - radio.rxgain %s\r\n", value);
       }
     } else if (strncmp(config, "af ", 3) == 0) {
       _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
       savePrefs();
-      Serial.print("  OK\r\n");
+      terminalOutput().print("  OK\r\n");
     } else if (strncmp(config, "name ", 5) == 0 && config[5] != 0) {
       StrHelper::strncpy(_prefs.node_name, config + 5, sizeof(_prefs.node_name));
       savePrefs();
-      Serial.print("  OK\r\n");
+      terminalOutput().print("  OK\r\n");
     } else if (strncmp(config, "lat ", 4) == 0) {
       sensors.node_lat = constrain(atof(config + 4), -90.0, 90.0);
       savePrefs();
-      Serial.print("  OK\r\n");
+      terminalOutput().print("  OK\r\n");
     } else if (strncmp(config, "lon ", 4) == 0) {
       sensors.node_lon = constrain(atof(config + 4), -180.0, 180.0);
       savePrefs();
-      Serial.print("  OK\r\n");
+      terminalOutput().print("  OK\r\n");
     } else if (strncmp(config, "tx ", 3) == 0) {
       _prefs.tx_power_dbm = constrain(atoi(config + 3), -9, MAX_LORA_TX_POWER);
       savePrefs();
-      Serial.print("  OK - reboot to apply\r\n");
+      terminalOutput().print("  OK - reboot to apply\r\n");
     } else if (strncmp(config, "freq ", 5) == 0) {
       _prefs.freq = constrain((float)atof(config + 5), 150.0f, 2500.0f);
       savePrefs();
-      Serial.print("  OK - reboot to apply\r\n");
+      terminalOutput().print("  OK - reboot to apply\r\n");
     } else if (strncmp(config, "radio.fem.rxgain", 16) == 0
                && (config[16] == 0 || config[16] == ' '
                    || config[16] == '\t')) {
       const char* value = config + 16;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        Serial.print("  ERROR: use set radio.fem.rxgain <on|off>\r\n");
+        terminalOutput().print("  ERROR: use set radio.fem.rxgain <on|off>\r\n");
       } else if (!board.canControlLoRaFemLna()) {
-        Serial.print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
+        terminalOutput().print("  ERROR: FEM RX gain control is unsupported on this board\r\n");
       } else if (!applyAndSaveFemRxGain(strcmp(value, "on") == 0)) {
-        Serial.print("  ERROR: failed to apply FEM RX gain\r\n");
+        terminalOutput().print("  ERROR: failed to apply FEM RX gain\r\n");
       } else {
-        Serial.printf("  OK - FEM RX gain %s\r\n", value);
+        terminalOutput().printf("  OK - FEM RX gain %s\r\n", value);
       }
     } else if (strncmp(config, "radio.fem.txgain", 16) == 0
                && (config[16] == 0 || config[16] == ' '
@@ -4864,67 +5058,81 @@ void MyMesh::handleTerminalCommand(char* command) {
       const char* value = config + 16;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        Serial.print("  ERROR: use set radio.fem.txgain <on|off>\r\n");
+        terminalOutput().print("  ERROR: use set radio.fem.txgain <on|off>\r\n");
       } else if (!board.canControlLoRaFemPaGain()) {
-        Serial.print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+        terminalOutput().print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
       } else if (!applyAndSaveFemTxGain(strcmp(value, "on") == 0)) {
-        Serial.print("  ERROR: failed to apply FEM TX gain\r\n");
+        terminalOutput().print("  ERROR: failed to apply FEM TX gain\r\n");
       } else {
-        Serial.printf("  OK - FEM TX gain %s\r\n", value);
+        terminalOutput().printf("  OK - FEM TX gain %s\r\n", value);
       }
     } else {
-      Serial.printf("  ERROR: unknown setting: %s\r\n", config);
+      terminalOutput().printf("  ERROR: unknown setting: %s\r\n", config);
     }
   } else if (strcmp(command, "ver") == 0) {
-    Serial.printf("Companion %s (protocol %u, build %s)\r\n",
+    terminalOutput().printf("Companion %s (protocol %u, build %s)\r\n",
                   FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE, FIRMWARE_BUILD_DATE);
   } else if (strcmp(command, "help") == 0) {
-    Serial.print("Commands:\r\n");
-    Serial.print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
-    Serial.print("  powersaving [on|off]\r\n");
+    terminalOutput().print("Commands:\r\n");
+    terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    terminalOutput().print("  powersaving [on|off]\r\n");
 #if MESH_USB_LOGGING_AVAILABLE
-    Serial.print("  get usb.logging\r\n");
-    Serial.print("  set usb.logging <on|off>\r\n");
+    terminalOutput().print("  get usb.logging\r\n");
+    terminalOutput().print("  set usb.logging <on|off>\r\n");
 #endif
 #if defined(ESP32) && defined(WIFI_SSID)
-    Serial.print("  get wifi.powersave\r\n");
-    Serial.print("  set wifi.powersave <none|min|max>\r\n");
+    terminalOutput().print("  get wifi.powersave\r\n");
+    terminalOutput().print("  set wifi.powersave <none|min|max>\r\n");
+#ifdef WITH_WEBCONFIG
+    terminalOutput().print("  get wifi.{ssid|status|cli}\r\n");
+    terminalOutput().print("  set wifi.ssid <network name>\r\n");
+    terminalOutput().print("  set wifi.pwd <password>\r\n");
+    terminalOutput().print("  set wifi.cli <on|off>\r\n");
+    terminalOutput().print("  get webui\r\n");
+    terminalOutput().print("  set webui <on|off>\r\n");
+    terminalOutput().print("  start webconfig [ap]\r\n");
+    terminalOutput().print("  stop webconfig\r\n");
 #endif
-    Serial.print("  get radio.rxps\r\n");
-    Serial.print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
-    Serial.print("  get radio.rxgain\r\n");
-    Serial.print("  set radio.rxgain <on|off>\r\n");
-    Serial.print("  get radio.fem.rxgain\r\n");
-    Serial.print("  set radio.fem.rxgain <on|off>\r\n");
-    Serial.print("  get radio.fem.txgain\r\n");
-    Serial.print("  set radio.fem.txgain <on|off>\r\n");
-    Serial.print("  card\r\n");
-    Serial.print("  import <meshcore://card>\r\n");
-    Serial.print("  clock\r\n");
-    Serial.print("  time <epoch-seconds>\r\n");
-    Serial.print("  list [n]\r\n");
-    Serial.print("  show [adverts|channels|emergency] [on|off]\r\n");
-    Serial.print("  to [recipient name or prefix]\r\n");
-    Serial.print("  path [direct|clear|hops separated by spaces or commas]\r\n");
-    Serial.print("  send <text>\r\n");
-    Serial.print("  login <admin-password>\r\n");
-    Serial.print("  cmd <remote-command>\r\n");
-    Serial.print("  trace [recipient name or prefix]\r\n");
-    Serial.print("  trace path <1|2|4> <prefixes...>\r\n");
-    Serial.print("  advert\r\n");
-    Serial.print("  reset path\r\n");
-    Serial.print("  public <text>\r\n");
-    Serial.print("  channels\r\n");
-    Serial.print("  channel <name-or-slot> <text>\r\n");
+#endif
+    terminalOutput().print("  get radio.rxps\r\n");
+    terminalOutput().print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
+    terminalOutput().print("  get radio.rxgain\r\n");
+    terminalOutput().print("  set radio.rxgain <on|off>\r\n");
+    terminalOutput().print("  get radio.fem.rxgain\r\n");
+    terminalOutput().print("  set radio.fem.rxgain <on|off>\r\n");
+    terminalOutput().print("  get radio.fem.txgain\r\n");
+    terminalOutput().print("  set radio.fem.txgain <on|off>\r\n");
+    terminalOutput().print("  card\r\n");
+    terminalOutput().print("  import <meshcore://card>\r\n");
+    terminalOutput().print("  clock\r\n");
+    terminalOutput().print("  time <epoch-seconds>\r\n");
+    terminalOutput().print("  list [n]\r\n");
+    terminalOutput().print("  show [adverts|channels|emergency] [on|off]\r\n");
+    terminalOutput().print("  to [recipient name or prefix]\r\n");
+    terminalOutput().print("  path [direct|clear|hops separated by spaces or commas]\r\n");
+    terminalOutput().print("  send <text>\r\n");
+    terminalOutput().print("  login <admin-password>\r\n");
+    terminalOutput().print("  cmd <remote-command>\r\n");
+    terminalOutput().print("  trace [recipient name or prefix]\r\n");
+    terminalOutput().print("  trace path <1|2|4> <prefixes...>\r\n");
+    terminalOutput().print("  advert\r\n");
+    terminalOutput().print("  reset path\r\n");
+    terminalOutput().print("  public <text>\r\n");
+    terminalOutput().print("  channels\r\n");
+    terminalOutput().print("  channel <name-or-slot> <text>\r\n");
 #if defined(COMPANION_RADIO_FULL)
-    Serial.print("  tempradio [freq,bw,sf,cr,minutes]\r\n");
-    Serial.print("  normalradio\r\n");
-    Serial.print("  ota {status|ls|announce|folder|config|...}\r\n");
+    terminalOutput().print("  tempradio [freq,bw,sf,cr,minutes]\r\n");
+    terminalOutput().print("  normalradio\r\n");
+    terminalOutput().print("  ota {status|ls|announce|folder|config|...}\r\n");
 #endif
-    Serial.print("  ver\r\n");
-    Serial.print("  +++MESHCORE-TERM-STOP\r\n");
+    terminalOutput().print("  ver\r\n");
+    if (_terminal_mode) {
+      terminalOutput().print("  +++MESHCORE-TERM-STOP\r\n");
+    } else {
+      terminalOutput().print("  disconnect (closes the TCP terminal)\r\n");
+    }
   } else {
-    Serial.printf("  ERROR: unknown command: %s\r\n", command);
+    terminalOutput().printf("  ERROR: unknown command: %s\r\n", command);
   }
 }
 #endif

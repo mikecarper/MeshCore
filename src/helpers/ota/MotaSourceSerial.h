@@ -1,25 +1,23 @@
 #pragma once
 
 #include <Arduino.h>
+#include "MotaStreamWritePolicy.h"
 #include "OtaSource.h"
 
-// A MotaSource backed by a host "mota-seeder" daemon over a dedicated Stream (a spare UART / USB-UART).
-// The device pulls catalog + bytes on demand (MotaSeederProto.h); the folder image is never held on the
-// device - it streams through. Use a stream that is NOT the text-CLI console so the binary framing never
-// collides with command/log text. Reads block on the Stream up to `timeout_ms`; keep the daemon on a fast
-// link so a serial round-trip does not stall the primary transfer.
+// A MotaSource backed by a host "mota-seeder" daemon over a dedicated framed Stream, such as a spare
+// UART, USB CDC, or TCP client. The device pulls catalog + bytes on demand (MotaSeederProto.h); the folder
+// image is never held on the device - it streams through. Do not share the Stream with a text CLI because
+// command/log text would collide with the binary framing. Reads block up to `timeout_ms`; keep the host
+// endpoint responsive so a round-trip does not stall the primary transfer.
 
 namespace mesh {
 namespace ota {
 
 class SerialMotaSource : public MotaSource {
 public:
-  // Hardware serial needs flush() to finish transmitting before waiting for a
-  // reply. NetworkClient/WiFiClient gives flush() receive-side semantics and
-  // discards bytes, so TCP users must pass flush_after_write=false.
-  explicit SerialMotaSource(Stream& io, uint32_t timeout_ms = 400,
-                            bool flush_after_write = true)
-      : _io(io), _to(timeout_ms), _flush_after_write(flush_after_write) {}
+  explicit SerialMotaSource(Stream& io, MotaStreamWritePolicy write_policy,
+                            uint32_t timeout_ms = 400)
+      : _io(io), _to(timeout_ms), _write_policy(write_policy) {}
 
   uint8_t count() override;
   bool    describe(uint8_t idx, MotaDesc& out) override;
@@ -34,7 +32,7 @@ private:
 
   Stream&  _io;
   uint32_t _to;
-  bool     _flush_after_write;
+  MotaStreamWritePolicy _write_policy;
 };
 
 } // namespace ota

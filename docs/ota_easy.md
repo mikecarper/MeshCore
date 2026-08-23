@@ -134,8 +134,9 @@ motatool serve --dir ./motas --tcp <source-host>:5001 -v
 
 Port `5001` is separate from the companion application port (`5000`) and the
 HTTP configuration/browser-OTA port (`80`, depending on the role). An ESP32
-`companion_radio_full` also has a local OTA/TempRadio console on port `5002`;
-see the [full Companion guide](./companion_radio_full.md). On a FULL repeater or room
+`companion_radio_full` also has its complete role-specific text terminal on
+port `5002`; OTA automation uses its `ota` and TempRadio subset. See the
+[full Companion guide](./companion_radio_full.md). On a FULL repeater or room
 server, `start webconfig` can bring up the saved WiFi connection. Other FULL
 roles with browser OTA support can raise `MeshCore-OTA` with `start ota` and
 use `192.168.4.1:5001`. The TCP seeder auto-attaches; do not also run

@@ -284,11 +284,10 @@ static void clearUsbTerminalLine() {
 }
 
 static void printUsbTerminalInputEcho() {
-  const char* password = nullptr;
+  const char* password =
+      mesh::cli::terminalPasswordInput(usb_terminal_line);
   size_t visible_len = usb_terminal_line_len;
-  if (mesh::cli::parseTerminalArgumentCommand(
-          usb_terminal_line, "login", password)
-      == mesh::cli::TerminalArgumentCommandMatch::Valid) {
+  if (password != nullptr) {
     visible_len = static_cast<size_t>(password - usb_terminal_line);
   }
 
@@ -515,6 +514,8 @@ void halt() {
   static bool companion_wifi_active = false;
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
+  static bool companion_wifi_credential_reload_pending = false;
+  static unsigned long companion_wifi_credential_reload_at = 0;
   static bool companion_wifi_power_save_loaded = false;
   static uint8_t companion_wifi_power_save = mesh::wifi::kDefaultPowerSave;
 
@@ -612,6 +613,15 @@ void halt() {
     }
   }
 
+  void scheduleCompanionWiFiCredentialReload() {
+    loadCompanionWiFiCredentials();
+    companion_wifi_credential_reload_pending = true;
+    companion_wifi_credential_reload_at = millis() + 1500UL;
+    if (companion_wifi_credential_reload_at == 0) {
+      companion_wifi_credential_reload_at = 1;
+    }
+  }
+
   bool isCompanionWiFiEnabled() {
     return companion_wifi_requested;
   }
@@ -693,11 +703,10 @@ void halt() {
   }
 #endif
 
-/* WIFI OTA CONSOLE - a tiny text CLI for OTA over WiFi. Connect with e.g. `nc <ip> 5002` and type
-   `ota status` / `ota ls` / `ota announce` / ... - one client at a time, on a DEDICATED port separate from
-   the companion (5000) and the seeder (5001). Full companions also accept `tempradio ...`,
-   `normalradio`, and WiFi power-save commands here so a host can manage the source without
-   occupying the binary port. */
+/* WIFI TEXT CONSOLE - one client at a time on a dedicated port, separate from
+   Binary Companion (5000) and the mOTA seeder (5001). A Full Companion exposes
+   the same role CLI here as its USB terminal. Other OTA-enabled Companion
+   builds retain the bounded `ota ...` management console. */
 #if defined(ESP32) && defined(WIFI_SSID) && defined(ENABLE_OTA)
   #include <helpers/ota/OtaCli.h>          // mesh::ota::handle_ota_command(line, reply, board)
   #include <helpers/esp32/WiFiOtaSeeder.h>
@@ -706,50 +715,103 @@ void halt() {
   #endif
   static WiFiServer ota_console_server(OTA_CONSOLE_TCP_PORT);
   static WiFiClient ota_console_client;
-  static char    ota_console_line[128];
-  static uint8_t  ota_console_len = 0;
+  static char    ota_console_line[MAX_TRANS_UNIT * 2 + 32];
+  static size_t ota_console_len = 0;
+  static bool ota_console_discard_line = false;
+
+  static void ota_console_clear_line() {
+    memset(ota_console_line, 0, sizeof(ota_console_line));
+    ota_console_len = 0;
+  }
 
   static void ota_console_start() {
     ota_console_server.begin();
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+    WIFI_DEBUG_PRINTLN("Full Companion terminal listening on :%d  (nc <ip> %d)",
+                       OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
+#else
     WIFI_DEBUG_PRINTLN("OTA console listening on :%d  (nc <ip> %d, type `ota ...`)",
                        OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
+#endif
   }
 
   static void ota_console_stop() {
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+    the_mesh.exitNetworkTerminalMode(ota_console_client);
+#endif
     if (ota_console_client) ota_console_client.stop();
     ota_console_server.end();
-    ota_console_len = 0;
+    ota_console_clear_line();
+    ota_console_discard_line = false;
   }
 
   static void ota_console_loop() {
     if (!ota_console_client || !ota_console_client.connected()) {
-      WiFiClient c = ota_console_server.available();
-      if (c) { ota_console_client = c; ota_console_len = 0;
-               ota_console_client.print("OTA console - type `ota ...`");
-#if defined(COMPANION_RADIO_FULL)
-               ota_console_client.print(" or `tempradio freq,bw,sf,cr,minutes`");
-               ota_console_client.print("; `get/set wifi.powersave`");
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+      the_mesh.exitNetworkTerminalMode(ota_console_client);
 #endif
-               ota_console_client.print("\r\n> "); }
+      WiFiClient c = ota_console_server.available();
+      if (c) {
+        ota_console_client = c;
+        ota_console_clear_line();
+        ota_console_discard_line = false;
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+        if (!the_mesh.enterNetworkTerminalMode(ota_console_client)) {
+          ota_console_client.print(
+              "ERROR: USB currently owns the Full Companion terminal\r\n");
+          ota_console_client.stop();
+        }
+#else
+        ota_console_client.print("OTA console - type `ota ...`\r\n> ");
+#endif
+      }
       return;
     }
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+    if (!the_mesh.isNetworkTerminalMode(ota_console_client)) {
+      ota_console_client.print(
+          "\r\nERROR: terminal ownership moved to USB; closing\r\n");
+      ota_console_client.stop();
+      ota_console_clear_line();
+      ota_console_discard_line = false;
+      return;
+    }
+#endif
     while (ota_console_client.available()) {
       char ch = (char)ota_console_client.read();
+      if (ota_console_discard_line) {
+        if (ch == '\r' || ch == '\n') {
+          ota_console_discard_line = false;
+          ota_console_client.print("  ERROR: command too long\r\n> ");
+        }
+        continue;
+      }
       if (ch == '\r' || ch == '\n') {
         if (ota_console_len == 0) continue;                            // ignore blanks / the CRLF pair
         ota_console_line[ota_console_len] = 0;
-        char reply[160]; reply[0] = 0;
-#if defined(COMPANION_RADIO_FULL)
-        if (!the_mesh.handleFullOtaCommand(ota_console_line, reply, sizeof(reply)))
-          strcpy(reply, "supported: ota ... | tempradio ... | normalradio | get/set wifi.powersave");
+#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+        if (strcmp(ota_console_line, "disconnect") == 0) {
+          ota_console_client.print("  OK - disconnecting\r\n");
+          the_mesh.exitNetworkTerminalMode(ota_console_client);
+          ota_console_client.stop();
+          ota_console_clear_line();
+          ota_console_discard_line = false;
+          return;
+        }
+        the_mesh.handleTerminalCommand(ota_console_line);
+        ota_console_client.print("> ");
 #else
+        char reply[160]; reply[0] = 0;
         if (!mesh::ota::handle_ota_command(ota_console_line, reply, board))
           strcpy(reply, "only `ota ...` commands are supported on this console");
-#endif
         ota_console_client.print("  -> "); ota_console_client.print(reply); ota_console_client.print("\r\n> ");
-        ota_console_len = 0;
+#endif
+        ota_console_clear_line();
       } else if (ota_console_len < sizeof(ota_console_line) - 1) {
         ota_console_line[ota_console_len++] = ch;
+      } else {
+        ota_console_clear_line();
+        ota_console_discard_line = true;
       }
     }
   }
@@ -761,6 +823,32 @@ void halt() {
     wifi_setup_attempted = false;
     last_wifi_setup_attempt = 0;
     wifi_setup_recovery_mode = false;
+  }
+
+  static void serviceCompanionWiFiCredentialReload() {
+    if (!companion_wifi_credential_reload_pending
+        || static_cast<int32_t>(millis() - companion_wifi_credential_reload_at) < 0) {
+      return;
+    }
+#ifdef WITH_WEBCONFIG
+    if (the_mesh.isWebConfigActiveOrStopping()) return;
+#endif
+
+    companion_wifi_credential_reload_pending = false;
+    companion_wifi_credential_reload_at = 0;
+    loadCompanionWiFiCredentials();
+    resetCompanionWiFiRecoveryState();
+    if (!companion_wifi_requested || !companion_wifi_active
+        || !companion_wifi_has_credentials) {
+      return;
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(false, false);
+    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+    wifi_reconnect_tracker.noteAttempt(millis());
+    WIFI_DEBUG_PRINTLN("WiFi credentials reloaded; reconnecting to saved SSID");
   }
 
   static void startCompanionWiFi() {
@@ -1226,6 +1314,7 @@ void loop() {
   #ifdef WITH_WEBCONFIG
     the_mesh.serviceWebConfig();
   #endif
+  serviceCompanionWiFiCredentialReload();
   serviceCompanionWiFiState();
   if (companion_wifi_requested && companion_wifi_active) {
   #ifdef ENABLE_OTA

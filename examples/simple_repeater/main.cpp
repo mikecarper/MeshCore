@@ -47,7 +47,14 @@ void halt() {
   while (1) ;
 }
 
-static char command[160];
+#if MESH_ENABLE_HOST_CLI
+static constexpr size_t LOCAL_SERIAL_COMMAND_MAX =
+    mesh::HostCliBridge::SERIAL_REPLY_COMMAND_MAX;
+#else
+static constexpr size_t LOCAL_SERIAL_COMMAND_MAX = 159U;
+#endif
+static char command[LOCAL_SERIAL_COMMAND_MAX + 2U];
+static bool command_overflow = false;
 #ifdef ETHERNET_ENABLED
 static char ethernet_command[160];
 #endif
@@ -179,30 +186,66 @@ void setup() {
 static void __attribute__((noinline)) serviceCommandInterfaces() {
   // Handle Serial CLI
   int len = strlen(command);
-  while (Serial.available() && len < sizeof(command)-1) {
+  bool line_complete = false;
+  bool overlong_line_complete = false;
+  while (Serial.available()) {
     char c = Serial.read();
-    if (c != '\n') {
+    if (c == '\n') continue;
+    Serial.print(c);
+
+    if (command_overflow) {
+      if (c == '\r') {
+        command_overflow = false;
+        overlong_line_complete = true;
+        break;
+      }
+      continue;
+    }
+    if (c == '\r') {
+      line_complete = true;
+      break;
+    }
+    if ((size_t)len < LOCAL_SERIAL_COMMAND_MAX) {
       command[len++] = c;
       command[len] = 0;
-      Serial.print(c);
+    } else {
+      // Discard the entire record through its delimiter. Never parse a
+      // truncated prefix as one command and its tail as a second command.
+      command[0] = 0;
+      len = 0;
+      command_overflow = true;
     }
-    if (c == '\r') break;
-  }
-  if (len == sizeof(command)-1) {  // command buffer full
-    command[sizeof(command)-1] = '\r';
   }
 
-  if (len > 0 && command[len - 1] == '\r') {  // received complete line
+  if (overlong_line_complete) {
     Serial.print('\n');
-    command[len - 1] = 0;  // replace newline with C string null terminator
+    Serial.println("  -> Err - command too long");
+    command[0] = 0;
+    return;
+  }
+
+  if (line_complete) {
+    Serial.print('\n');
     char reply[160];
     reply[0] = 0;
 #ifdef ETHERNET_ENABLED
     if (!ethernet_handle_command(command, reply)) {
+#if MESH_ENABLE_HOST_CLI
+      if (!the_mesh.handleHostCliSerialReply(command, reply)) {
+        the_mesh.handleCommand(0, command, reply);
+      }
+#else
       the_mesh.handleCommand(0, command, reply);
+#endif
+    }
+#else
+#if MESH_ENABLE_HOST_CLI
+    if (!the_mesh.handleHostCliSerialReply(command, reply)) {
+      the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
     }
 #else
     the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+#endif
 #endif
     if (reply[0]) {
       Serial.print("  -> "); Serial.println(reply);

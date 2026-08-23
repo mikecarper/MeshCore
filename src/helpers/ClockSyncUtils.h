@@ -6,6 +6,8 @@ namespace mesh {
 
 static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT = 1;
 static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL = 2;
+// Used only when /clock_sync has no valid saved threshold; persisted operator settings win.
+static constexpr uint32_t CLOCK_SYNC_DRIFT_DEFAULT_SECONDS = 10UL * 60UL;
 
 inline bool clockSyncRequiresUniquePath(bool edge_mode) {
   return !edge_mode;

@@ -107,6 +107,38 @@ arguments such as node names, passwords, and keys is left unchanged.
 
 ---
 
+### Ask a USB-connected host service over LoRa (Repeater Only)
+
+**Usage:**
+
+- `host <text>` - authenticated remote administrator only
+- `get host` - show bridge state and byte limits
+
+`host` hands one remote LoRa CLI request to a service on the repeater's USB
+host and returns that service's reply over LoRa. It does not execute the text
+inside the firmware. The service has 4 seconds to prove the exact request is
+still pending, then 6 seconds to execute and reply. A second remote command
+receives busy while either phase is pending.
+
+Request text is limited to 155 UTF-8 bytes, or 152 bytes when a companion uses
+its legacy three-byte correlation prefix. The complete LoRa reply is limited to
+162 bytes. USB records use Base64URL text, a random 64-bit nonce, and the
+repeater identity's Ed25519 signature. Before executing anything, the service
+must return a random one-time challenge and receive the repeater's signed live
+proof. This avoids any dependency on repeater/Pi clock agreement. Every
+`host.reply` USB command must carry the matching request ID and nonce; it is not
+accepted from LoRa or the Ethernet CLI.
+
+The included Raspberry Pi endpoint supports exact commands for `help`,
+`cpu-temp`, `hostname`, `uptime`, `load`, `memory`, and `disk-free`. It also
+provides `reboot` as an opt-in action example and `run <alias> [arguments]` for
+locally allowlisted executables with typed arguments. Reboot is disabled by
+default, arbitrary executables are never accepted, and no action uses a shell.
+See [LoRa CLI host service](host_cli_service.md) for the complete
+`meshcoretomqtt` setup and security model.
+
+---
+
 ### Start or stop an Over-The-Air (OTA) firmware update
 **Usage:**
 - `start ota`
@@ -214,8 +246,12 @@ take effect on the next connection. `get wifi.pwd` is intentionally unavailable
 so the standalone password is never returned by the CLI.
 
 ESP32 WiFi Companion WebConfig exposes the same `wifi.powersave` values in its
-WiFi card. Full Companion also accepts `get/set wifi.powersave` from its USB
-terminal and TCP port 5002. Binary Companion clients can use command bytes
+WiFi card. Full Companion exposes the same role-specific text terminal over
+USB and TCP port 5002, including the standalone `wifi.ssid`, `wifi.status`,
+`wifi.powersave`, `wifi.cli`, and WebConfig command families. Credential
+writes reply before restarting the WiFi station, so a TCP client should expect
+to reconnect at the new address; USB password input is masked. Binary
+Companion clients can use command bytes
 `0x46` and `0x47` over USB, BLE, or TCP port 5000 without the terminal-start
 token. WiFi-only Companions accept all three modes; Full Companion rejects
 `none` because its simultaneous BLE transport requires modem sleep. Companion
@@ -536,6 +572,28 @@ It also does not change the node-storage capture controlled by `log start` and
 
 ### Show the hardware name
 **Usage:** `board`
+
+---
+
+### Show the storage layout
+**Usage:** `get storage.layout`
+
+Reports a compact, read-only summary of the storage compiled into the running
+firmware:
+
+- ESP32 reports the detected internal flash size and the live partition table.
+  Partition addresses after `@` are hexadecimal, sizes after `+` are KiB, and
+  `*` marks the running application. `...` means later entries did not fit in
+  the CLI reply.
+- nRF52 reports the physical internal flash size, linked application range,
+  InternalFS range, and any configured external store. Raw QSPI OTA storage
+  includes its detected size and JEDEC ID; SD storage includes total, used, and
+  free space.
+- RP2040 and STM32 report their fixed internal flash and filesystem geometry.
+
+The command does not write, format, or resize storage. A raw-QSPI or SD build
+may briefly probe, wake, or mount its configured external storage to read its
+capacity. Remote use follows the existing administrator-command permissions.
 
 ---
 
@@ -953,7 +1011,7 @@ send text.flood checking ridge link
 - `clock.sync.mesh`: `on` for all repeater, sensor, and room-server builds
 - `clock.sync.mesh.edge`: `on`
 - `clock.sync.internet`: `off`
-- `clock.sync.drift`: `3600` seconds
+- `clock.sync.drift`: `600` seconds (10 minutes)
 - `clock.sync.samples`: `9`
 
 When either source is enabled, the node makes its first clock-bootstrap
@@ -1092,7 +1150,7 @@ replays until corrected time passes the previously observed value.
 
 **Example:**
 ```text
-set clock.sync.drift 1800
+set clock.sync.drift 600
 set clock.sync.samples 3
 set clock.sync.mesh on
 set clock.sync.mesh.edge on

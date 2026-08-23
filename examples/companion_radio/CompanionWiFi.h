@@ -17,6 +17,10 @@ enum class CompanionWiFiPowerSaveResult : uint8_t {
 bool toggleCompanionWiFi();
 bool isCompanionWiFiEnabled();
 
+// Reload saved credentials after a text-terminal update. The reconnect is
+// deferred so the command reply can leave USB/TCP before WiFi is restarted.
+void scheduleCompanionWiFiCredentialReload();
+
 // Companion WiFi power save is stored in the shared mesh-wifi NVS namespace.
 // The returned mode is always the effective mode: WiFi+BLE builds map a stale
 // or default "none" value to "min" because modem sleep is required for radio

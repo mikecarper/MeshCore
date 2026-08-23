@@ -53,6 +53,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Operational | [`erase`](cli_commands.md#erasefactory-reset) | Local serial | Serial | Serial | Serial |
 | Information | [`ver`](cli_commands.md#get-the-version) | All text CLI roles | Yes | Yes | Yes |
 | Information | [`board`](cli_commands.md#show-the-hardware-name) | All text CLI roles | Yes | Yes | Yes |
+| Diagnostics | [`get storage.layout`](cli_commands.md#show-the-storage-layout) | Internal layout and configured QSPI or SD storage | Yes | Yes | Yes |
 | Diagnostics | [`memory`](#memory) | ESP32 only | No | No | No |
 | Diagnostics | [`sensor`](#sensor-hardware-summary) | Hardware wiring summary | Yes | Yes | Yes |
 | Diagnostics | [`powerlog`](#powerlog) | Reset, shutdown, and boot-voltage summary | Yes | Yes | Yes |
@@ -87,6 +88,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get/set owner.info`](cli_commands.md#view-or-change-this-nodes-owner-info) | All text CLI roles | Yes | Yes | Yes |
 | System | [`get/set adc.multiplier`](cli_commands.md#fine-tune-the-battery-reading) | Board ADC override support | Feature | Feature | Feature |
 | System | [`send text.flood <message>`](cli_commands.md#send-a-repeater-flood-text) | Repeater | Yes | Yes | Yes |
+| System | [`host <text>`; `get host`](cli_commands.md#ask-a-usb-connected-host-service-over-lora-repeater-only) | Repeater with host bridge; `host` requires a remote administrator and a USB/MQTT service | Yes | Yes | Yes |
 | System | [`get/set battery.alert`; `get battery.alert.region`](cli_commands.md#view-or-change-battery-alert-state) | Repeater | Yes | Yes | Yes |
 | System | [`get/set battery.alert.low`; `get/set battery.alert.critical`](cli_commands.md#view-or-change-battery-alert-thresholds) | Repeater | Yes | Yes | Yes |
 | System | [`get/set rx.watchdog`](cli_commands.md#enable-or-disable-the-rx-inactivity-watchdog-repeater-only) | Repeater | Yes | Yes | Yes |
@@ -213,6 +215,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Operational | [`erase`](cli_commands.md#erasefactory-reset) | Local serial | Serial | Serial | Serial | Serial | Serial |
 | Information | [`ver`](cli_commands.md#get-the-version) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Information | [`board`](cli_commands.md#show-the-hardware-name) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
+| Diagnostics | [`get storage.layout`](cli_commands.md#show-the-storage-layout) | Detected flash size and live partition table | Yes | Yes | Yes | Yes | Yes |
 | Diagnostics | [`memory`](#memory) | ESP32 heap and PSRAM summary | Yes | Yes | Yes | Yes | Yes |
 | Diagnostics | [`sensor`](#sensor-hardware-summary) | Hardware wiring summary | Yes | Yes | Yes | Yes | Yes |
 | Diagnostics | [`powerlog`](#powerlog) | Reset-reason summary | Yes | Yes | Yes | Yes | Yes |
@@ -247,6 +250,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | System | [`get/set owner.info`](cli_commands.md#view-or-change-this-nodes-owner-info) | Full parser | Yes | Yes | Yes | Yes | Yes |
 | System | [`get/set adc.multiplier`](cli_commands.md#fine-tune-the-battery-reading) | Board ADC override support | Feature | Feature | Feature | Feature | Feature |
 | System | [`send text.flood <message>`](cli_commands.md#send-a-repeater-flood-text) | Repeater | Yes | Yes | Yes | Yes | Yes |
+| System | [`host <text>`; `get host`](cli_commands.md#ask-a-usb-connected-host-service-over-lora-repeater-only) | Repeater with host bridge; `host` requires a remote administrator and a USB/MQTT service | Yes | Yes | Yes | Yes | Yes |
 | System | [`get/set battery.alert`; `get battery.alert.region`](cli_commands.md#view-or-change-battery-alert-state) | Repeater | Yes | Yes | Yes | Yes | Yes |
 | System | [`get/set battery.alert.low`; `get/set battery.alert.critical`](cli_commands.md#view-or-change-battery-alert-thresholds) | Repeater | Yes | Yes | Yes | Yes | Yes |
 | System | [`get/set rx.watchdog`](cli_commands.md#enable-or-disable-the-rx-inactivity-watchdog-repeater-only) | Repeater | Yes | Yes | Yes | Yes | Yes |

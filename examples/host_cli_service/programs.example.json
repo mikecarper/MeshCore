@@ -1,0 +1,41 @@
+{
+  "programs": {
+    "fan": {
+      "argv": [
+        "/usr/local/bin/mesh-fan-control",
+        "--source",
+        "lora"
+      ],
+      "timeout_seconds": 3,
+      "arguments": [
+        {
+          "name": "state",
+          "type": "choice",
+          "choices": [
+            "on",
+            "off"
+          ]
+        },
+        {
+          "name": "minutes",
+          "type": "integer",
+          "min": 1,
+          "max": 60
+        }
+      ]
+    },
+    "label-status": {
+      "argv": [
+        "/usr/local/bin/mesh-label-status"
+      ],
+      "timeout_seconds": 3,
+      "arguments": [
+        {
+          "name": "label",
+          "type": "token",
+          "max_bytes": 24
+        }
+      ]
+    }
+  }
+}

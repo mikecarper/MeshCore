@@ -164,6 +164,11 @@ public:
   void exitTerminalMode();
   bool isTerminalMode() const { return _terminal_mode; }
   void handleTerminalCommand(char* command);
+#if defined(COMPANION_RADIO_FULL)
+  bool enterNetworkTerminalMode(Stream& output);
+  void exitNetworkTerminalMode(Stream& output);
+  bool isNetworkTerminalMode(const Stream& output) const;
+#endif
 #endif
 
 #if defined(COMPANION_RADIO_FULL)
@@ -302,6 +307,10 @@ private:
   void syncWiFiPowerSaving();
 #endif
 #ifdef ENABLE_USB_INTERFACE
+  Stream& terminalOutput();
+  bool hasTerminalOutput() const { return _terminal_output != NULL; }
+  void resetTerminalSession();
+  void printTerminalBanner(bool show_binary_stop);
   ContactInfo* getTerminalRecipient();
   void printTerminalPath(const ContactInfo& recipient);
   void handleTerminalPath(ContactInfo& recipient, const char* path_spec);
@@ -374,6 +383,7 @@ private:
   bool _cli_rescue;
 #ifdef ENABLE_USB_INTERFACE
   bool _terminal_mode;
+  Stream* _terminal_output;
   mesh::TerminalDisplayFilter _terminal_display;
   bool _terminal_recipient_set;
   uint8_t _terminal_recipient_key[PUB_KEY_SIZE];

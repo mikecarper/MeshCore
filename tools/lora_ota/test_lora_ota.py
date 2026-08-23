@@ -271,13 +271,150 @@ class FormatTests(unittest.TestCase):
                 ota.read_bounded_file(path, 3, "mOTA file")
 
 
+class DebugTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.previous_debug = ota.DEBUG
+        ota.DEBUG = False
+
+    def tearDown(self) -> None:
+        ota.DEBUG = self.previous_debug
+
+    def test_debug_flag_is_available_in_both_runners(self) -> None:
+        generic = ota.build_parser().parse_args(
+            ["release.mota", "remote", "--debug"]
+        )
+        chain = rak_chain.build_parser().parse_args(["--debug"])
+        self.assertTrue(generic.debug)
+        self.assertTrue(chain.debug)
+        self.assertFalse(
+            ota.build_parser().parse_args(["release.mota", "remote"]).debug
+        )
+
+    def test_run_checked_is_safe_for_direct_module_callers(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=["tool"], returncode=0, stdout="ok", stderr=""
+        )
+        with mock.patch.object(ota.subprocess, "run", return_value=completed):
+            result = ota.run_checked(["tool"], label="direct call")
+        self.assertEqual(result.stdout, "ok")
+
+    def test_debug_reports_success_and_timeout_output(self) -> None:
+        ota.DEBUG = True
+        completed = subprocess.CompletedProcess(
+            args=["tool"], returncode=0, stdout="hello\n", stderr="warning\n"
+        )
+        output = io.StringIO()
+        with (
+            mock.patch.object(ota.subprocess, "run", return_value=completed),
+            contextlib.redirect_stdout(output),
+        ):
+            ota.run_checked(
+                ["tool", "argument with spaces"], label="debug success", timeout=5
+            )
+        rendered = output.getvalue()
+        self.assertIn("command: tool 'argument with spaces'", rendered)
+        self.assertIn("timeout: 5", rendered)
+        self.assertIn("exit code: 0", rendered)
+        self.assertIn("hello", rendered)
+        self.assertIn("warning", rendered)
+
+        timeout = subprocess.TimeoutExpired(
+            ["tool"], 3, output="partial out", stderr="partial err"
+        )
+        output = io.StringIO()
+        with (
+            mock.patch.object(ota.subprocess, "run", side_effect=timeout),
+            contextlib.redirect_stdout(output),
+            self.assertRaisesRegex(ota.OtaError, "timed out"),
+        ):
+            ota.run_checked(["tool"], label="debug timeout", timeout=3)
+        rendered = output.getvalue()
+        self.assertIn("partial out", rendered)
+        self.assertIn("partial err", rendered)
+
+    def test_run_checked_redacts_secrets_from_debug_command_and_output(self) -> None:
+        ota.DEBUG = True
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="reply top-secret", stderr=""
+        )
+        output = io.StringIO()
+        with (
+            mock.patch.object(ota.subprocess, "run", return_value=completed),
+            contextlib.redirect_stdout(output),
+        ):
+            ota.run_checked(
+                ["tool", "--password", "top-secret"],
+                label="redaction test",
+                sensitive_values=("top-secret",),
+            )
+        rendered = output.getvalue()
+        self.assertNotIn("top-secret", rendered)
+        self.assertIn("<REDACTED>", rendered)
+
+    def test_meshcli_debug_redacts_admin_password(self) -> None:
+        ota.DEBUG = True
+        args = argparse.Namespace(
+            meshcli="meshcli",
+            reply_timeout=20,
+            controller_serial="/dev/controller",
+            controller_tcp=None,
+            controller_ble=None,
+            controller_baud=115200,
+        )
+        controller = ota.Controller(args, "top-secret", persistent=False)
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="echo top-secret", stderr=""
+        )
+        output = io.StringIO()
+        with (
+            mock.patch.object(ota, "run_checked", return_value=completed),
+            contextlib.redirect_stdout(output),
+        ):
+            result = controller._execute(
+                [
+                    "contact_info", "login", "login", "login", "top-secret",
+                    "sync_msgs",
+                ],
+                "redaction test",
+            )
+        rendered = output.getvalue()
+        self.assertNotIn("top-secret", rendered)
+        self.assertIn("<REDACTED>", rendered)
+        self.assertNotIn("top-secret", result.stdout)
+
+    def test_meshcli_minimum_version_is_enforced(self) -> None:
+        old = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="meshcore-cli version v1.5.9", stderr="",
+        )
+        with (
+            mock.patch.object(ota, "require_command"),
+            mock.patch.object(ota, "run_checked", return_value=old),
+            self.assertRaisesRegex(ota.OtaError, "too old"),
+        ):
+            ota.require_meshcli_version("meshcli")
+
+        current = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="meshcore-cli version v1.6.0", stderr="",
+        )
+        with (
+            mock.patch.object(ota, "require_command"),
+            mock.patch.object(ota, "run_checked", return_value=current),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(
+                ota.require_meshcli_version("meshcli"), (1, 6, 0)
+            )
+
+
 class SourceCliTests(unittest.TestCase):
     def test_full_companion_tcp_console_command(self) -> None:
         connection = mock.MagicMock()
         connection.__enter__.return_value = connection
         connection.recv.side_effect = [
-            b"OTA console - type `ota ...`\r\n> ",
-            b"  -> OTA seeder | install:disabled | serving:1\r\n> ",
+            b"===== MeshCore Full Companion Terminal =====\r\n> ",
+            b"  OTA seeder | install:disabled | serving:1\r\n> ",
         ]
         args = argparse.Namespace(
             source_cli_serial=None,
@@ -294,6 +431,28 @@ class SourceCliTests(unittest.TestCase):
 
         create_connection.assert_called_once_with(("192.0.2.10", 5002), timeout=10)
         connection.sendall.assert_called_once_with(b"ota status\r\n")
+        self.assertEqual(output, "OTA seeder | install:disabled | serving:1")
+
+    def test_legacy_tcp_ota_console_reply_is_still_accepted(self) -> None:
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [
+            b"OTA console - type `ota ...`\r\n> ",
+            b"  -> OTA seeder | install:disabled | serving:1\r\n> ",
+        ]
+        args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial=None,
+            source_cli_tcp="192.0.2.10",
+            meshcli="meshcli",
+            source_baud=115200,
+        )
+
+        with mock.patch.object(
+            ota.socket, "create_connection", return_value=connection
+        ):
+            output = ota.source_cli_command(args, "ota status")
+
         self.assertEqual(output, "OTA seeder | install:disabled | serving:1")
 
     def test_full_companion_tcp_source_arguments_validate(self) -> None:
