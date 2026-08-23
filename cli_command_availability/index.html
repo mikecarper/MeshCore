@@ -855,6 +855,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1702,6 +1729,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Diagnostics</td>
+<td><a href="../cli_commands/#show-the-storage-layout"><code>get storage.layout</code></a></td>
+<td>Internal layout and configured QSPI or SD storage</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
 <td><a href="#memory"><code>memory</code></a></td>
 <td>ESP32 only</td>
 <td>No</td>
@@ -1968,6 +2003,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>System</td>
 <td><a href="../cli_commands/#send-a-repeater-flood-text"><code>send text.flood &lt;message&gt;</code></a></td>
 <td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#ask-a-usb-connected-host-service-over-lora-repeater-only"><code>host &lt;text&gt;</code>; <code>get host</code></a></td>
+<td>Repeater with host bridge; <code>host</code> requires a remote administrator and a USB/MQTT service</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2983,6 +3026,16 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Diagnostics</td>
+<td><a href="../cli_commands/#show-the-storage-layout"><code>get storage.layout</code></a></td>
+<td>Detected flash size and live partition table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Diagnostics</td>
 <td><a href="#memory"><code>memory</code></a></td>
 <td>ESP32 heap and PSRAM summary</td>
 <td>Yes</td>
@@ -3315,6 +3368,16 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>System</td>
 <td><a href="../cli_commands/#send-a-repeater-flood-text"><code>send text.flood &lt;message&gt;</code></a></td>
 <td>Repeater</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>System</td>
+<td><a href="../cli_commands/#ask-a-usb-connected-host-service-over-lora-repeater-only"><code>host &lt;text&gt;</code>; <code>get host</code></a></td>
+<td>Repeater with host bridge; <code>host</code> requires a remote administrator and a USB/MQTT service</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>

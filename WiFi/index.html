@@ -811,6 +811,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1703,6 +1730,16 @@ compile-time <code>WIFI_SSID</code>/<code>WIFI_PWD</code> can be used as a first
 saved credentials take priority. With no credentials, its WebConfig portal
 starts in setup-AP mode. With credentials, the WebUI is enabled by default on
 the station IP.</p>
+<p>Full Companion can also be provisioned from its USB terminal or TCP port 5002:</p>
+<pre><code class="language-text">get wifi.ssid
+get wifi.status
+set wifi.ssid SlowFi
+set wifi.pwd your-password
+</code></pre>
+<p>Credential writes are persisted immediately. After the reply has drained, the
+Companion restarts its WiFi station with the saved pair. A port-5002 client is
+expected to disconnect and can reconnect at the new LAN IP. USB masks the
+password as it is entered; <code>get wifi.pwd</code> is intentionally unavailable.</p>
 <p>If the configured network remains unavailable for two minutes, the companion
 opens its setup AP so the credentials can be repaired. It continues retrying
 the saved network. WiFi modem sleep has its own persisted <code>wifi.powersave</code>
@@ -1734,12 +1771,18 @@ RXPS on at level 8 with a 16-symbol preamble, and WiFi modem power saving at
 <p>When <code>ENABLE_OTA</code> is included, a WiFi companion also listens on:</p>
 <ul>
 <li>TCP 5001 for the OTA folder seeder used by <code>motatool serve --tcp</code>;</li>
-<li>TCP 5002 for the OTA text console.</li>
+<li>TCP 5002 for a text management console.</li>
 </ul>
 <p>These ports do not replace the companion protocol on TCP 5000.
-On a <code>companion_radio_full</code> build, port 5002 additionally accepts bounded
-<code>tempradio</code>, <code>normalradio</code>, and <code>get/set wifi.powersave</code> commands, while LoRa
-staging and installation on the Companion itself are disabled.</p>
+On a <code>companion_radio_full</code> build, port 5002 is the same role-specific text
+terminal available over USB, including chat, remote administration, radio and
+power settings, WiFi/WebConfig management, <code>tempradio</code>, and the source-only
+<code>ota</code> commands. Other
+OTA-enabled Companion builds keep the bounded <code>ota ...</code> console. LoRa staging
+and installation on the Full Companion itself remain disabled.</p>
+<p>Port 5002 is plaintext and has no independent login gate. Use it only on a
+trusted LAN or temporary setup network, especially when entering a remote-node
+admin password with the terminal's <code>login</code> command.</p>
 <p>FULL ESP32 builds share the port 5001 folder seeder. It starts whenever that
 role has a usable WiFi station or setup access point and stops when WiFi stops.
 For example, a FULL repeater can run <code>start webconfig</code> to join its saved

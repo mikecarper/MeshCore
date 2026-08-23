@@ -16,7 +16,7 @@
         <link rel="prev" href="../gps_tracking/">
       
       
-        <link rel="next" href="../kiss_modem_protocol/">
+        <link rel="next" href="../host_cli_service/">
       
       
         
@@ -794,6 +794,33 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1607,9 +1634,9 @@ set flood.retry.ignore none
 </tr>
 <tr>
 <td><code>clock.sync.drift</code></td>
-<td>Absolute correction threshold in seconds. The clock is moved forward or backward only when the estimate differs by more than this value.</td>
+<td>Absolute correction threshold in seconds; the default is 600 seconds (10 minutes). The clock is moved forward or backward only when the estimate differs by more than this value.</td>
 <td><code>get clock.sync.drift</code>, <code>set clock.sync.drift &lt;30-86400&gt;</code></td>
-<td><code>set clock.sync.drift 3600</code></td>
+<td><code>set clock.sync.drift 600</code></td>
 </tr>
 <tr>
 <td><code>clock.sync.samples</code></td>

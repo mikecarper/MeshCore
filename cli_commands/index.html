@@ -522,6 +522,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#ask-a-usb-connected-host-service-over-lora-repeater-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask a USB-connected host service over LoRa (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -792,6 +803,17 @@
     <span class="md-ellipsis">
       
         Show the hardware name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#show-the-storage-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Show the storage layout
       
     </span>
   </a>
@@ -2535,6 +2557,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -3163,6 +3212,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#ask-a-usb-connected-host-service-over-lora-repeater-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask a USB-connected host service over LoRa (Repeater Only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3433,6 +3493,17 @@
     <span class="md-ellipsis">
       
         Show the hardware name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#show-the-storage-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Show the storage layout
       
     </span>
   </a>
@@ -4998,6 +5069,33 @@ arguments such as node names, passwords, and keys is left unchanged.</p>
 <p><strong>Usage:</strong>
 - <code>advert.zerohop</code></p>
 <hr />
+<h3 id="ask-a-usb-connected-host-service-over-lora-repeater-only">Ask a USB-connected host service over LoRa (Repeater Only)</h3>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>host &lt;text&gt;</code> - authenticated remote administrator only</li>
+<li><code>get host</code> - show bridge state and byte limits</li>
+</ul>
+<p><code>host</code> hands one remote LoRa CLI request to a service on the repeater's USB
+host and returns that service's reply over LoRa. It does not execute the text
+inside the firmware. The service has 4 seconds to prove the exact request is
+still pending, then 6 seconds to execute and reply. A second remote command
+receives busy while either phase is pending.</p>
+<p>Request text is limited to 155 UTF-8 bytes, or 152 bytes when a companion uses
+its legacy three-byte correlation prefix. The complete LoRa reply is limited to
+162 bytes. USB records use Base64URL text, a random 64-bit nonce, and the
+repeater identity's Ed25519 signature. Before executing anything, the service
+must return a random one-time challenge and receive the repeater's signed live
+proof. This avoids any dependency on repeater/Pi clock agreement. Every
+<code>host.reply</code> USB command must carry the matching request ID and nonce; it is not
+accepted from LoRa or the Ethernet CLI.</p>
+<p>The included Raspberry Pi endpoint supports exact commands for <code>help</code>,
+<code>cpu-temp</code>, <code>hostname</code>, <code>uptime</code>, <code>load</code>, <code>memory</code>, and <code>disk-free</code>. It also
+provides <code>reboot</code> as an opt-in action example and <code>run &lt;alias&gt; [arguments]</code> for
+locally allowlisted executables with typed arguments. Reboot is disabled by
+default, arbitrary executables are never accepted, and no action uses a shell.
+See <a href="../host_cli_service/">LoRa CLI host service</a> for the complete
+<code>meshcoretomqtt</code> setup and security model.</p>
+<hr />
 <h3 id="start-or-stop-an-over-the-air-ota-firmware-update">Start or stop an Over-The-Air (OTA) firmware update</h3>
 <p><strong>Usage:</strong>
 - <code>start ota</code>
@@ -5092,8 +5190,12 @@ Power-save changes are applied immediately when WiFi is running and otherwise
 take effect on the next connection. <code>get wifi.pwd</code> is intentionally unavailable
 so the standalone password is never returned by the CLI.</p>
 <p>ESP32 WiFi Companion WebConfig exposes the same <code>wifi.powersave</code> values in its
-WiFi card. Full Companion also accepts <code>get/set wifi.powersave</code> from its USB
-terminal and TCP port 5002. Binary Companion clients can use command bytes
+WiFi card. Full Companion exposes the same role-specific text terminal over
+USB and TCP port 5002, including the standalone <code>wifi.ssid</code>, <code>wifi.status</code>,
+<code>wifi.powersave</code>, <code>wifi.cli</code>, and WebConfig command families. Credential
+writes reply before restarting the WiFi station, so a TCP client should expect
+to reconnect at the new address; USB password input is masked. Binary
+Companion clients can use command bytes
 <code>0x46</code> and <code>0x47</code> over USB, BLE, or TCP port 5000 without the terminal-start
 token. WiFi-only Companions accept all three modes; Full Companion rejects
 <code>none</code> because its simultaneous BLE transport requires modem sleep. Companion
@@ -5446,6 +5548,25 @@ It also does not change the node-storage capture controlled by <code>log start</
 <h3 id="show-the-hardware-name">Show the hardware name</h3>
 <p><strong>Usage:</strong> <code>board</code></p>
 <hr />
+<h3 id="show-the-storage-layout">Show the storage layout</h3>
+<p><strong>Usage:</strong> <code>get storage.layout</code></p>
+<p>Reports a compact, read-only summary of the storage compiled into the running
+firmware:</p>
+<ul>
+<li>ESP32 reports the detected internal flash size and the live partition table.
+  Partition addresses after <code>@</code> are hexadecimal, sizes after <code>+</code> are KiB, and
+  <code>*</code> marks the running application. <code>...</code> means later entries did not fit in
+  the CLI reply.</li>
+<li>nRF52 reports the physical internal flash size, linked application range,
+  InternalFS range, and any configured external store. Raw QSPI OTA storage
+  includes its detected size and JEDEC ID; SD storage includes total, used, and
+  free space.</li>
+<li>RP2040 and STM32 report their fixed internal flash and filesystem geometry.</li>
+</ul>
+<p>The command does not write, format, or resize storage. A raw-QSPI or SD build
+may briefly probe, wake, or mount its configured external storage to read its
+capacity. Remote use follows the existing administrator-command permissions.</p>
+<hr />
 <h2 id="configuration">Configuration</h2>
 <h3 id="radio">Radio</h3>
 <h4 id="view-or-change-this-nodes-radio-parameters">View or change this node's radio parameters</h4>
@@ -5747,7 +5868,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>clock.sync.mesh</code>: <code>on</code> for all repeater, sensor, and room-server builds
 - <code>clock.sync.mesh.edge</code>: <code>on</code>
 - <code>clock.sync.internet</code>: <code>off</code>
-- <code>clock.sync.drift</code>: <code>3600</code> seconds
+- <code>clock.sync.drift</code>: <code>600</code> seconds (10 minutes)
 - <code>clock.sync.samples</code>: <code>9</code></p>
 <p>When either source is enabled, the node makes its first clock-bootstrap
 attempt after 30 minutes of uptime, or immediately when the configured number
@@ -5870,7 +5991,7 @@ Settings are persistent in <code>/clock_sync</code>; samples and schedule state 
 a later timestamp from this node may temporarily reject its lower timestamps as
 replays until corrected time passes the previously observed value.</p>
 <p><strong>Example:</strong></p>
-<pre><code class="language-text">set clock.sync.drift 1800
+<pre><code class="language-text">set clock.sync.drift 600
 set clock.sync.samples 3
 set clock.sync.mesh on
 set clock.sync.mesh.edge on

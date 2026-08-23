@@ -637,6 +637,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1764,8 +1791,9 @@ tool or disconnecting resets USB to Binary. BLE remains available throughout.</p
 </code></pre>
 <p>Port <code>5001</code> is separate from the companion application port (<code>5000</code>) and the
 HTTP configuration/browser-OTA port (<code>80</code>, depending on the role). An ESP32
-<code>companion_radio_full</code> also has a local OTA/TempRadio console on port <code>5002</code>;
-see the <a href="../companion_radio_full/">full Companion guide</a>. On a FULL repeater or room
+<code>companion_radio_full</code> also has its complete role-specific text terminal on
+port <code>5002</code>; OTA automation uses its <code>ota</code> and TempRadio subset. See the
+<a href="../companion_radio_full/">full Companion guide</a>. On a FULL repeater or room
 server, <code>start webconfig</code> can bring up the saved WiFi connection. Other FULL
 roles with browser OTA support can raise <code>MeshCore-OTA</code> with <code>start ota</code> and
 use <code>192.168.4.1:5001</code>. The TCP seeder auto-attaches; do not also run

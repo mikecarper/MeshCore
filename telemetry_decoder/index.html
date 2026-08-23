@@ -637,6 +637,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
@@ -1129,6 +1156,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#send-raw-telemetry-packets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Send raw telemetry packets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#decode-a-packet" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1262,6 +1300,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#send-raw-telemetry-packets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Send raw telemetry packets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#decode-a-packet" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1368,6 +1417,26 @@ entirely in this browser; pasted data is not uploaded or sent anywhere.</p>
 repeater's public key. Match that 16-character hex value against the public-key
 prefix recorded for your repeaters. It comes from the telemetry payload itself,
 so it is available even when only the payload was copied.</p>
+<h2 id="send-raw-telemetry-packets">Send raw telemetry packets</h2>
+<p>From an administrator CLI session, first configure a direct route to the MQTT
+observer that will receive and upload the raw packets. Use <code>direct</code> when the
+observer is a zero-hop neighbor:</p>
+<pre><code class="language-text">set telemetry.tx direct
+send telemetry.tx now
+</code></pre>
+<p>For a routed observer, provide its comma-separated hop hashes instead:</p>
+<pre><code class="language-text">set telemetry.tx A1B2,C3D4
+send telemetry.tx now
+</code></pre>
+<p>Configuring the route also enables the default two-day schedule. To keep the
+route but use it only for manual tests, turn off the schedule before sending:</p>
+<pre><code class="language-text">set telemetry.tx schedule off
+send telemetry.tx now
+</code></pre>
+<p>The <code>send telemetry.tx now</code> command queues one <code>TTB1</code> temperature packet and
+one <code>TVB1</code> voltage packet containing all currently available samples, up to 165
+per packet. There is no temperature-only CLI command. The command requires at
+least one collected sample and works even when the automatic schedule is off.</p>
 <h2 id="decode-a-packet">Decode a packet</h2>
 <div class="telemetry-tool" data-telemetry-decoder>
   <div class="telemetry-examples" aria-label="Load an example reply">

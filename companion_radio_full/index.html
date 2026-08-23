@@ -503,10 +503,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usb-binary-and-terminal-modes" class="md-nav__link">
+  <a href="#usb-binary-and-text-terminal-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        USB Binary and terminal modes
+        USB Binary and text terminal modes
       
     </span>
   </a>
@@ -759,6 +759,33 @@
     
   
     Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
   
 
     
@@ -1306,10 +1333,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#usb-binary-and-terminal-modes" class="md-nav__link">
+  <a href="#usb-binary-and-text-terminal-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        USB Binary and terminal modes
+        USB Binary and text terminal modes
       
     </span>
   </a>
@@ -1475,7 +1502,7 @@ interactive menu item or run:</p>
 runtime, so the Companion bulk-build commands omit the redundant legacy
 <code>_femoff</code> targets. Those targets remain available through an explicit
 <code>build-firmware</code> command for compatibility. In WebConfig, use the <strong>FEM RX
-boost</strong> switch. From the USB terminal, use:</p>
+boost</strong> switch. From the text terminal (USB, or TCP 5002 on ESP32), use:</p>
 <pre><code class="language-text">get radio.rxgain
 set radio.rxgain off
 set radio.rxgain on
@@ -1491,25 +1518,37 @@ commands control the external receive and transmit paths. The selected states
 are applied immediately and retained after reboot. FEM TX gain is reported as
 unsupported on boards without software-selectable PA gain.</p>
 <p>Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
-with the <strong>Device power saving</strong> switch or from the USB terminal:</p>
+with the <strong>Device power saving</strong> switch or from the text terminal:</p>
 <pre><code class="language-text">powersaving
 powersaving on
 powersaving off
 </code></pre>
 <p>On ESP32, WiFi modem power saving is a third independent setting. Select it in
-the WebConfig <strong>WiFi</strong> card, or use the Full Companion USB terminal or TCP port
-5002:</p>
-<pre><code class="language-text">get wifi.powersave
+the WebConfig <strong>WiFi</strong> card, or use the Full Companion text terminal:</p>
+<pre><code class="language-text">get wifi.ssid
+get wifi.status
+get wifi.powersave
+get wifi.cli
+get webui
+set wifi.ssid MyNetwork
+set wifi.pwd my-password
 set wifi.powersave min
 set wifi.powersave max
+set wifi.cli on
+start webconfig
+stop webconfig
 </code></pre>
+<p>SSID and password writes return their reply first, then restart the Companion
+WiFi station with the saved credentials. A TCP terminal therefore disconnects
+shortly after either write; reconnect to the IP reported by the new network.
+The password is write-only and is masked while it is entered over USB.</p>
 <p>The normal binary Companion connection can also read or write this setting over
 USB, BLE, or TCP port 5000 without entering terminal mode. The saved values are
 <code>0</code> for <code>min</code>, <code>1</code> for <code>none</code>, and <code>2</code> for <code>max</code>; see the
 <a href="../companion_protocol/#commands">Companion protocol</a>. Full Companion rejects
 <code>none</code> because simultaneous WiFi and BLE require modem sleep. Fresh Cascade
 builds select <code>min</code>, and an existing saved selection takes precedence.</p>
-<p>On radios with RX duty-cycle support, WebConfig and the USB terminal also
+<p>On radios with RX duty-cycle support, WebConfig and the text terminal also
 expose the persisted RXPS setting:</p>
 <pre><code class="language-text">get radio.rxps
 set radio.rxps off
@@ -1603,7 +1642,7 @@ itself.</p>
 <tr>
 <td>ESP32</td>
 <td>TCP 5002</td>
-<td>Local <code>ota</code>, <code>tempradio</code>, <code>normalradio</code>, and <code>wifi.powersave</code> console</td>
+<td>Full Companion text terminal; same role commands as the USB terminal</td>
 </tr>
 <tr>
 <td>nRF52</td>
@@ -1634,7 +1673,7 @@ effect after reboot.</p>
 <p>ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
 Expose them only on a trusted LAN or temporary setup network. See
 <a href="../WiFi/">WiFi setup</a> for credential setup and reconnect behavior.</p>
-<h2 id="usb-binary-and-terminal-modes">USB Binary and terminal modes</h2>
+<h2 id="usb-binary-and-text-terminal-modes">USB Binary and text terminal modes</h2>
 <p>USB starts in Binary mode for MeshCore apps and <code>meshcli</code>:</p>
 <pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
 </code></pre>
@@ -1653,9 +1692,21 @@ is active; do not enter the start token again after it appears.</p>
 <code>login &lt;admin-password&gt;</code> and <code>cmd &lt;remote-command&gt;</code>, and routed
 <code>trace [recipient-name-or-prefix]</code>, plus local <code>ota</code>, <code>tempradio</code>, and
 <code>normalradio</code> controls. ESP32 builds also provide local
-<code>get/set wifi.powersave</code>. Logging artifacts additionally provide session-only
+WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
+artifacts additionally provide session-only
 <code>get/set usb.logging</code>; turning it off suppresses live USB diagnostics without
-disabling Companion frames or terminal replies. For example:</p>
+disabling Companion frames or terminal replies.</p>
+<p>ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
+with <code>nc DEVICE_IP 5002</code>; no USB control token is needed. USB terminal mode and
+the TCP terminal share recipient, login, command, trace, and display state, so
+only one may own the terminal at a time. Entering USB terminal mode closes an
+active TCP terminal session. Disconnecting TCP clears pending terminal-only
+state without cancelling Binary Companion delivery or radio retries.</p>
+<p>Port 5002 is plaintext and has no device-local login gate. A remote-admin
+password entered with <code>login</code> is sent across the LAN connection as typed even
+though the terminal does not echo it. Use port 5002 only on a trusted LAN or a
+temporary setup network.</p>
+<p>For example:</p>
 <pre><code class="language-text">channels
 channel #rgdata Hello from Eugene 👋
 show
