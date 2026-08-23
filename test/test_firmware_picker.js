@@ -133,6 +133,19 @@ const fullUsbLogging = picker.parseTargetProfile(
 assert.strictEqual(fullUsbLogging.mode, "usb");
 assert.strictEqual(fullUsbLogging.variant, "default");
 
+const heltecV4Full = picker.parseTargetProfile(
+  "heltec_v4_2_v4_3_companion_radio_full_femon"
+);
+assert.strictEqual(heltecV4Full.target,
+  "heltec_v4_2_v4_3_companion_radio_full_femon");
+assert.strictEqual(heltecV4Full.hardware, "heltec_v4");
+assert.strictEqual(heltecV4Full.mode, "full");
+assert.strictEqual(heltecV4Full.variant, "femon");
+assert.strictEqual(
+  picker.canonicalHardware("heltec_v4_2_v4_3"),
+  "heltec_v4"
+);
+
 const standardRepeater = profile("Station_G2_repeater");
 assert.strictEqual(standardRepeater.hardwareFamily, "Station_G2");
 assert.strictEqual(standardRepeater.role, "repeater");
@@ -209,7 +222,7 @@ assert.strictEqual(
 );
 assert.strictEqual(
   picker.humanizeHardwareVariant("heltec_v4", "heltec_v4"),
-  "Base / standard"
+  "Base / standard (V4.2 / V4.3 auto-detect)"
 );
 assert.strictEqual(
   picker.humanizeHardwareVariant("heltec_v4_3_tft", "heltec_v4"),
