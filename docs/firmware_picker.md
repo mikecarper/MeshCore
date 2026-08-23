@@ -26,9 +26,16 @@ from the published firmware assets.
 
   <form class="firmware-picker-form" data-role="form">
     <div class="firmware-picker-control firmware-picker-select-control">
-      <label for="firmware-picker-hardware">Hardware</label>
-      <select id="firmware-picker-hardware" data-field="hardware" disabled>
+      <label for="firmware-picker-hardware-family">Hardware</label>
+      <select id="firmware-picker-hardware-family" data-field="hardwareFamily" disabled>
         <option value="">Loading hardware...</option>
+      </select>
+    </div>
+
+    <div class="firmware-picker-control firmware-picker-select-control" data-role="hardware-variant-control" hidden>
+      <label for="firmware-picker-hardware">Hardware variant</label>
+      <select id="firmware-picker-hardware" data-field="hardware" disabled>
+        <option value="">Choose hardware first</option>
       </select>
     </div>
 
@@ -75,7 +82,7 @@ from the published firmware assets.
     </fieldset>
 
     <div class="firmware-picker-control firmware-picker-select-control">
-      <label for="firmware-picker-variant">Hardware/profile variant</label>
+      <label for="firmware-picker-variant">Firmware variant</label>
       <select id="firmware-picker-variant" data-field="variant" disabled>
         <option value="">Loading variants...</option>
       </select>
@@ -175,8 +182,9 @@ and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.
 
 ## Hardware and variant names
 
-The hardware menu preserves meaningful board suffixes such as display type,
-radio chip, PA/FEM layout, pin map, and external-flash variant. Later menus
-expose build variants such as FEM on/off, power saving, serial port, or
-no-external-sensors when those choices exist. Do not substitute a similarly
-named target.
+Hardware families with multiple released targets get a second hardware-variant
+menu. It separates revisions, display type, expansion kit, radio/PA layout,
+pin map, and other physical differences without crowding the first menu. The
+firmware-variant menu separately exposes build choices such as FEM on/off,
+power saving, serial port, or no-external-sensors. Do not substitute a
+similarly named target.

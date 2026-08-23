@@ -134,6 +134,7 @@ assert.strictEqual(fullUsbLogging.mode, "usb");
 assert.strictEqual(fullUsbLogging.variant, "default");
 
 const standardRepeater = profile("Station_G2_repeater");
+assert.strictEqual(standardRepeater.hardwareFamily, "Station_G2");
 assert.strictEqual(standardRepeater.role, "repeater");
 assert.strictEqual(standardRepeater.logging, "none");
 assert.strictEqual(standardRepeater.ota, "none");
@@ -179,6 +180,7 @@ assert.strictEqual(matches[0].target, "Station_G2_repeater-full-logging");
 assert.deepStrictEqual(
   picker.FACET_FIELDS,
   [
+    "hardwareFamily",
     "hardware",
     "role",
     "logging",
@@ -188,6 +190,68 @@ assert.deepStrictEqual(
     "variant",
     "install",
   ]
+);
+const hardwareNames = [
+  "heltec_v4",
+  "heltec_v4_3",
+  "heltec_v4_3_tft",
+  "heltec_v4_r8",
+  "wio-e5",
+  "wio-e5-mini",
+];
+assert.strictEqual(
+  picker.hardwareFamilyFor("heltec_v4_3_tft", hardwareNames),
+  "heltec_v4"
+);
+assert.strictEqual(
+  picker.hardwareFamilyFor("wio-e5-mini", hardwareNames),
+  "wio-e5"
+);
+assert.strictEqual(
+  picker.humanizeHardwareVariant("heltec_v4", "heltec_v4"),
+  "Base / standard"
+);
+assert.strictEqual(
+  picker.humanizeHardwareVariant("heltec_v4_3_tft", "heltec_v4"),
+  "V4.3 + TFT"
+);
+assert.strictEqual(
+  picker.humanizeHardwareVariant("Station_G2_logging", "Station_G2"),
+  "RX-boosted radio profile"
+);
+const groupedHardwareProfiles = [
+  {
+    hardwareFamily: "heltec_v4",
+    hardware: "heltec_v4",
+    installKinds: ["bin"],
+  },
+  {
+    hardwareFamily: "heltec_v4",
+    hardware: "heltec_v4_3_tft",
+    installKinds: ["bin"],
+  },
+  {
+    hardwareFamily: "wio-e5",
+    hardware: "wio-e5",
+    installKinds: ["hex"],
+  },
+];
+assert.deepStrictEqual(
+  picker.facetValues(
+    groupedHardwareProfiles,
+    { hardwareFamily: "heltec_v4", hardware: "heltec_v4_3_tft" },
+    "hardwareFamily",
+    ["hardware"]
+  ).sort(),
+  ["heltec_v4", "wio-e5"]
+);
+assert.deepStrictEqual(
+  picker.facetValues(
+    groupedHardwareProfiles,
+    { hardwareFamily: "heltec_v4" },
+    "hardware"
+  ).sort(),
+  ["heltec_v4", "heltec_v4_3_tft"]
 );
 assert.strictEqual(
   picker.INSTALL_LABELS["merged-bin"],
