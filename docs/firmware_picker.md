@@ -1,8 +1,7 @@
 # Firmware picker
 
-Choose the exact hardware first. The remaining menus then show only firmware
-roles and features that were actually built for that hardware in the current
-release set.
+Pick the choices in any order. Every selection narrows all the other controls
+to firmware combinations that were actually built in the current release set.
 
 The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
@@ -15,67 +14,76 @@ from the published firmware assets.
     <p>
       For a new installation, choose the exact board and role, prefer a
       <strong>FULL / complete profile</strong> when it is available, and select
-      <strong>USB first install / recovery</strong>. Narrower profiles remain
-      available when their reduced transport or feature set is intentional.
+      <strong>Erase &amp; fresh install (merged .bin)</strong>. Narrower profiles
+      remain available when their reduced transport or feature set is intentional.
     </p>
   </div>
 
+  <p class="firmware-picker-order-note">
+    Pick in any order. Use <strong>Any</strong> to clear one choice, or clear
+    everything with the button below.
+  </p>
+
   <form class="firmware-picker-form" data-role="form">
-    <label>
-      1. Hardware
-      <select data-field="hardware" disabled>
+    <div class="firmware-picker-control firmware-picker-select-control">
+      <label for="firmware-picker-hardware">Hardware</label>
+      <select id="firmware-picker-hardware" data-field="hardware" disabled>
         <option value="">Loading hardware...</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      2. Firmware role
-      <select data-field="role" disabled>
-        <option value="">Choose hardware first</option>
-      </select>
-    </label>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control firmware-picker-wide" data-radio-field="install" disabled>
+      <legend>Install operation</legend>
+      <div class="firmware-picker-radio-options" data-field="install">
+        Loading install choices...
+      </div>
+    </fieldset>
 
-    <label>
-      3. Logging / MQTT
-      <select data-field="logging" disabled>
-        <option value="">Choose role first</option>
-      </select>
-    </label>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="role" disabled>
+      <legend>Firmware role</legend>
+      <div class="firmware-picker-radio-options" data-field="role">
+        Loading roles...
+      </div>
+    </fieldset>
 
-    <label>
-      4. OTA capability
-      <select data-field="ota" disabled>
-        <option value="">Choose earlier options first</option>
-      </select>
-    </label>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="logging" disabled>
+      <legend>Logging / MQTT</legend>
+      <div class="firmware-picker-radio-options" data-field="logging">
+        Loading logging choices...
+      </div>
+    </fieldset>
 
-    <label>
-      5. Connection / bridge mode
-      <select data-field="mode" disabled>
-        <option value="">Choose earlier options first</option>
-      </select>
-    </label>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="ota" disabled>
+      <legend>OTA capability</legend>
+      <div class="firmware-picker-radio-options" data-field="ota">
+        Loading OTA choices...
+      </div>
+    </fieldset>
 
-    <label>
-      6. Feature profile
-      <select data-field="feature" disabled>
-        <option value="">Choose earlier options first</option>
+    <div class="firmware-picker-control firmware-picker-select-control">
+      <label for="firmware-picker-mode">Connection / bridge mode</label>
+      <select id="firmware-picker-mode" data-field="mode" disabled>
+        <option value="">Loading modes...</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      7. Hardware/profile variant
-      <select data-field="variant" disabled>
-        <option value="">Choose earlier options first</option>
-      </select>
-    </label>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="feature" disabled>
+      <legend>Feature profile</legend>
+      <div class="firmware-picker-radio-options" data-field="feature">
+        Loading profiles...
+      </div>
+    </fieldset>
 
-    <label>
-      8. Installation method
-      <select data-field="install" disabled>
-        <option value="">Choose firmware options first</option>
+    <div class="firmware-picker-control firmware-picker-select-control">
+      <label for="firmware-picker-variant">Hardware/profile variant</label>
+      <select id="firmware-picker-variant" data-field="variant" disabled>
+        <option value="">Loading variants...</option>
       </select>
-    </label>
+    </div>
+
+    <div class="firmware-picker-form-actions firmware-picker-wide">
+      <button type="reset" data-action="clear" disabled>Clear all choices</button>
+    </div>
   </form>
 
   <div class="firmware-picker-status" data-role="status" aria-live="polite">
@@ -145,11 +153,11 @@ and inactive partitions.
 
 | File | Use |
 | --- | --- |
-| <code>-merged.bin</code> | ESP32 first install, recovery, role migration, or partition-profile change over USB |
-| Non-merged <code>.bin</code> | Same-board, same-role, same-partition application update |
-| <code>.zip</code> | Native nRF52 Serial DFU package; it is not an extra archive |
-| <code>.uf2</code> | UF2 bootloader drag-and-drop installation |
-| <code>.hex</code> | Full wired programmer or recovery flash |
+| <code>-merged.bin</code> | Erase/fresh install, recovery, role migration, or partition-profile change on ESP32 over USB |
+| Non-merged <code>.bin</code> | Update an existing same-board, same-role, same-partition installation |
+| <code>.zip</code> | Native nRF52 Serial DFU update package; it is not an extra archive |
+| <code>.uf2</code> | UF2 bootloader drag-and-drop install or update |
+| <code>.hex</code> | Erase/recovery flash with a supported wired programmer |
 
 Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node configuration and verify every filename suffix before flashing.

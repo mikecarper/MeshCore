@@ -32,19 +32,41 @@
 
 .firmware-picker-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  align-items: start;
+  gap: 1rem;
   margin: 1.2rem 0;
 }
 
-.firmware-picker-form label,
+.firmware-picker-order-note {
+  margin: 1rem 0 0;
+  color: var(--md-default-fg-color--light);
+}
+
+.firmware-picker-control {
+  min-width: 0;
+  margin: 0;
+}
+
+.firmware-picker-select-control > label,
+.firmware-picker-radio-control > legend,
 .firmware-asset-browser label {
   display: grid;
   gap: 0.35rem;
   font-weight: 650;
 }
 
-.firmware-picker-form select,
+.firmware-picker-radio-control {
+  padding: 0;
+  border: 0;
+}
+
+.firmware-picker-radio-control > legend {
+  margin-bottom: 0.35rem;
+  padding: 0;
+}
+
+.firmware-picker-select-control select,
 .firmware-asset-browser input {
   width: 100%;
   min-height: 2.7rem;
@@ -54,6 +76,75 @@
   color: inherit;
   background: var(--md-default-bg-color);
   font: inherit;
+}
+
+.firmware-picker-radio-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.firmware-picker-radio-option {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.firmware-picker-radio-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.firmware-picker-radio-option span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0.45rem 0.72rem;
+  border: 1px solid var(--picker-border);
+  border-radius: 999px;
+  background: var(--md-default-bg-color);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.firmware-picker-radio-option input:checked + span {
+  border-color: var(--picker-accent);
+  color: white;
+  background: var(--picker-accent);
+}
+
+.firmware-picker-radio-option input:focus-visible + span {
+  outline: 0.16rem solid var(--picker-accent);
+  outline-offset: 0.12rem;
+}
+
+.firmware-picker-radio-control:disabled {
+  opacity: 0.62;
+}
+
+.firmware-picker-wide {
+  grid-column: 1 / -1;
+}
+
+.firmware-picker-form-actions button {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--picker-border);
+  border-radius: 0.35rem;
+  color: inherit;
+  background: var(--md-default-bg-color);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.firmware-picker-form-actions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .firmware-picker-status {

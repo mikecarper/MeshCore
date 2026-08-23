@@ -177,6 +177,55 @@ assert.strictEqual(matches.length, 1);
 assert.strictEqual(matches[0].target, "Station_G2_repeater-full-logging");
 
 assert.deepStrictEqual(
+  picker.FACET_FIELDS,
+  [
+    "hardware",
+    "role",
+    "logging",
+    "ota",
+    "mode",
+    "feature",
+    "variant",
+    "install",
+  ]
+);
+assert.strictEqual(
+  picker.INSTALL_LABELS["merged-bin"],
+  "Erase & fresh install (merged .bin)"
+);
+assert.strictEqual(
+  picker.INSTALL_LABELS.bin,
+  "Update existing install (.bin)"
+);
+assert(picker.profileMatchesFacets(wio, { install: "hex" }));
+assert(!picker.profileMatchesFacets(wio, { install: "merged-bin" }));
+assert.deepStrictEqual(
+  picker.facetValues(catalog.profiles, { install: "hex" }, "hardware"),
+  ["wio-e5"]
+);
+assert.deepStrictEqual(
+  picker.facetValues(catalog.profiles, { hardware: "wio-e5" }, "install"),
+  ["hex"]
+);
+assert.deepStrictEqual(
+  picker.facetValues(catalog.profiles, { logging: "wifi" }, "hardware"),
+  ["Station_G2"]
+);
+assert.deepStrictEqual(
+  picker.facetValues(
+    catalog.profiles,
+    {
+      install: "merged-bin",
+      feature: "full",
+      logging: "usb",
+      role: "repeater",
+    },
+    "hardware"
+  ),
+  ["Station_G2"]
+);
+
+assert.deepStrictEqual(
   picker.uniqueValues(catalog.profiles, "hardware").sort(),
   ["Heltec_t096", "ProMicro", "RAK_4631", "Station_G2", "wio-e5"].sort()
 );

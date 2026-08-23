@@ -20,6 +20,8 @@
     "variant",
   ]);
 
+  const FACET_FIELDS = Object.freeze(FILTER_FIELDS.concat(["install"]));
+
   const ROLE_LABELS = Object.freeze({
     companion: "Companion",
     repeater: "Repeater",
@@ -62,11 +64,11 @@
   });
 
   const INSTALL_LABELS = Object.freeze({
-    "merged-bin": "USB first install / recovery (.bin)",
-    bin: "Same-profile application update (.bin)",
-    zip: "nRF52 Serial DFU (.zip)",
-    uf2: "UF2 drag-and-drop (.uf2)",
-    hex: "Full wired flash (.hex)",
+    "merged-bin": "Erase & fresh install (merged .bin)",
+    bin: "Update existing install (.bin)",
+    zip: "nRF52 update / Serial DFU (.zip)",
+    uf2: "UF2 install / update (.uf2)",
+    hex: "Erase / recovery flash (.hex)",
   });
 
   const INSTALL_ORDER = Object.freeze([
@@ -76,6 +78,8 @@
     "uf2",
     "hex",
   ]);
+
+  let pickerInstanceCount = 0;
 
   function isSafeGithubUrl(value) {
     try {
@@ -369,6 +373,32 @@
     });
   }
 
+  function profileMatchesFacets(profile, filters, ignoredField) {
+    return FACET_FIELDS.every(function (field) {
+      if (field === ignoredField) return true;
+      const value = filters && filters[field];
+      if (!value) return true;
+      if (field === "install") {
+        return profile.installKinds.includes(value);
+      }
+      return profile[field] === value;
+    });
+  }
+
+  function facetValues(profiles, filters, field) {
+    const compatible = (profiles || []).filter(function (profile) {
+      return profileMatchesFacets(profile, filters, field);
+    });
+    const values = field === "install"
+      ? compatible.flatMap(function (profile) {
+        return profile.installKinds;
+      })
+      : compatible.map(function (profile) {
+        return profile[field];
+      });
+    return Array.from(new Set(values.filter(Boolean)));
+  }
+
   function uniqueValues(profiles, field) {
     return Array.from(new Set((profiles || []).map(function (profile) {
       return profile[field];
@@ -436,6 +466,7 @@
       ota: otaOrder,
       feature: featureOrder,
       mode: modeOrder,
+      install: INSTALL_ORDER,
     };
     const order = orders[field];
     if (order) {
@@ -457,7 +488,7 @@
     const byKind = {
       "merged-bin": [
         "Flash the merged image over a data-capable USB connection.",
-        "Use this path for a first install, recovery, or partition/profile migration.",
+        "Use this erase/fresh-install path for a first install, recovery, or partition/profile migration.",
       ],
       bin: [
         "Use this app-only image only when the installed board, role, and partition layout already match.",
@@ -515,7 +546,7 @@
       ["OTA", labelFor("ota", profile.ota)],
       ["Feature profile", labelFor("feature", profile.feature)],
       ["Variant", labelFor("variant", profile.variant)],
-      ["Install path", labelFor("install", installKind)],
+      ["Install operation", labelFor("install", installKind)],
       ["File", asset.name],
       ["Size", formatBytes(asset.size)],
       ["Release", asset.releaseName],
@@ -547,30 +578,37 @@
 
   function initPicker(root) {
     const repo = root.getAttribute("data-release-repo") || "mikecarper/MeshCore";
+    const form = root.querySelector('[data-role="form"]');
     const status = root.querySelector('[data-role="status"]');
     const releaseSetStatus = root.querySelector('[data-role="release-set"]');
     const result = root.querySelector('[data-role="result"]');
     const resultList = root.querySelector('[data-role="result-list"]');
     const missing = root.querySelector('[data-role="missing"]');
-    const installSelect = root.querySelector('[data-field="install"]');
     const search = root.querySelector('[data-field="asset-search"]');
     const assetResults = root.querySelector('[data-role="asset-results"]');
-    const selects = {};
-    FILTER_FIELDS.forEach(function (field) {
-      selects[field] = root.querySelector('[data-field="' + field + '"]');
+    const clearButton = form.querySelector('[data-action="clear"]');
+    const controls = {};
+    FACET_FIELDS.forEach(function (field) {
+      controls[field] = form.querySelector('[data-field="' + field + '"]');
     });
     let catalog = { releaseSet: null, rows: [], profiles: [] };
     const filters = {};
+    const groupPrefix = "firmware-picker-" + (++pickerInstanceCount);
 
-    function matchingProfiles(fields) {
+    function matchingProfiles(ignoredField) {
       return catalog.profiles.filter(function (profile) {
-        return profileMatches(profile, filters, fields);
+        return profileMatchesFacets(profile, filters, ignoredField);
       });
     }
 
-    function setOptions(select, field, values, placeholder, selected) {
+    function setSelectOptions(select, field, values, selected) {
       select.replaceChildren();
-      const blank = createElement("option", placeholder);
+      const placeholders = {
+        hardware: "Any hardware",
+        mode: "Any connection / mode",
+        variant: "Any hardware/profile variant",
+      };
+      const blank = createElement("option", placeholders[field] || "Any");
       blank.value = "";
       select.appendChild(blank);
       values.slice().sort(function (a, b) {
@@ -581,93 +619,98 @@
         select.appendChild(option);
       });
       select.disabled = values.length === 0;
-      if (selected && values.includes(selected)) select.value = selected;
-      if (values.length === 1) select.value = values[0];
+      select.value = selected && values.includes(selected) ? selected : "";
     }
 
-    function rebuildCascade(changedIndex) {
-      if (changedIndex != null && changedIndex >= 0) {
-        FILTER_FIELDS.slice(changedIndex + 1).forEach(function (field) {
-          filters[field] = "";
-          selects[field].value = "";
-        });
-        installSelect.value = "";
-      }
-
-      let priorComplete = true;
-      FILTER_FIELDS.forEach(function (field, index) {
-        const select = selects[field];
-        if (!priorComplete) {
-          setOptions(select, field, [], "Choose earlier options first", "");
-          filters[field] = "";
-          return;
-        }
-        const priorFields = FILTER_FIELDS.slice(0, index);
-        const candidates = matchingProfiles(priorFields);
-        const values = uniqueValues(candidates, field);
-        const previous = filters[field] || select.value;
-        const placeholder = field === "hardware"
-          ? "Choose hardware"
-          : "Choose " + field;
-        setOptions(select, field, values, placeholder, previous);
-        filters[field] = select.value;
-        if (!filters[field]) priorComplete = false;
-      });
-      rebuildInstall(priorComplete);
-      render();
-    }
-
-    function rebuildInstall(profileComplete) {
-      if (!profileComplete) {
-        setOptions(
-          installSelect,
-          "install",
-          [],
-          "Choose firmware options first",
-          ""
-        );
-        return;
-      }
-      const matches = matchingProfiles(FILTER_FIELDS);
-      const kinds = Array.from(new Set(matches.flatMap(function (profile) {
-        return profile.installKinds;
-      }))).sort(function (a, b) {
-        return INSTALL_ORDER.indexOf(a) - INSTALL_ORDER.indexOf(b);
-      });
-      const previous = installSelect.value;
-      setOptions(
-        installSelect,
-        "install",
-        kinds,
-        "Choose installation method",
-        previous
+    function setRadioOptions(container, field, values, selected) {
+      container.replaceChildren();
+      const options = [{ value: "", label: "Any" }].concat(
+        values.slice().sort(function (a, b) {
+          return optionSort(field, a, b);
+        }).map(function (value) {
+          return { value: value, label: labelFor(field, value) };
+        })
       );
+      options.forEach(function (option) {
+        const label = createElement("label");
+        label.className = "firmware-picker-radio-option";
+        const input = createElement("input");
+        input.type = "radio";
+        input.name = groupPrefix + "-" + field;
+        input.value = option.value;
+        input.dataset.choiceField = field;
+        input.checked = selected === option.value;
+        label.appendChild(input);
+        label.appendChild(createElement("span", option.label));
+        container.appendChild(label);
+      });
+      const fieldset = container.closest("fieldset");
+      if (fieldset) fieldset.disabled = values.length === 0;
     }
 
-    function nextMissingField() {
-      return FILTER_FIELDS.find(function (field) {
-        return !filters[field];
-      }) || (!installSelect.value ? "installation method" : "");
+    function setControlOptions(field, values) {
+      const control = controls[field];
+      if (!control) return;
+      if (control.tagName === "SELECT") {
+        setSelectOptions(control, field, values, filters[field] || "");
+      } else {
+        setRadioOptions(control, field, values, filters[field] || "");
+      }
+    }
+
+    function stabilizeSingleChoices() {
+      let changed = true;
+      let passes = 0;
+      while (changed && passes <= FACET_FIELDS.length) {
+        changed = false;
+        passes += 1;
+        FACET_FIELDS.forEach(function (field) {
+          const values = facetValues(catalog.profiles, filters, field);
+          if (filters[field] && !values.includes(filters[field])) {
+            filters[field] = "";
+            changed = true;
+          } else if (!filters[field] && values.length === 1) {
+            filters[field] = values[0];
+            changed = true;
+          }
+        });
+      }
+    }
+
+    function refreshFacets() {
+      stabilizeSingleChoices();
+      FACET_FIELDS.forEach(function (field) {
+        setControlOptions(
+          field,
+          facetValues(catalog.profiles, filters, field)
+        );
+      });
+      render();
     }
 
     function render() {
       result.hidden = true;
       missing.hidden = true;
       resultList.replaceChildren();
-      const missingField = nextMissingField();
-      const activeFields = FILTER_FIELDS.filter(function (field) {
-        return Boolean(filters[field]);
+      const missingFields = FACET_FIELDS.filter(function (field) {
+        return !filters[field];
       });
-      const matches = matchingProfiles(activeFields);
+      const matches = matchingProfiles();
 
-      if (missingField) {
-        status.textContent = "Choose " + missingField + ". " +
-          matches.length + " compatible configuration" +
-          (matches.length === 1 ? " remains." : "s remain.");
+      if (missingFields.length) {
+        if (missingFields.length === FACET_FIELDS.length) {
+          status.textContent = "Pick options in any order. " +
+            matches.length + " compatible configurations are available.";
+        } else {
+          status.textContent = matches.length + " compatible configuration" +
+            (matches.length === 1 ? " remains. " : "s remain. ") +
+            "Choose " + missingFields.length + " more option" +
+            (missingFields.length === 1 ? "" : "s") + " in any order.";
+        }
         return;
       }
 
-      const installKind = installSelect.value;
+      const installKind = filters.install;
       const resolved = matches.map(function (profile) {
         return {
           profile: profile,
@@ -731,13 +774,21 @@
       assetResults.appendChild(list);
     }
 
-    FILTER_FIELDS.forEach(function (field, index) {
-      selects[field].addEventListener("change", function () {
-        filters[field] = selects[field].value;
-        rebuildCascade(index);
-      });
+    form.addEventListener("change", function (event) {
+      const target = event.target;
+      const field = target.dataset.choiceField || target.dataset.field;
+      if (!FACET_FIELDS.includes(field)) return;
+      filters[field] = target.value;
+      refreshFacets();
     });
-    installSelect.addEventListener("change", render);
+    form.addEventListener("reset", function (event) {
+      event.preventDefault();
+      if (!catalog.profiles.length) return;
+      FACET_FIELDS.forEach(function (field) {
+        filters[field] = "";
+      });
+      refreshFacets();
+    });
     search.addEventListener("input", renderSearch);
 
     const endpoint = "https://api.github.com/repos/" +
@@ -775,9 +826,8 @@
           link.href = set.url;
           releaseSetStatus.appendChild(link);
         }
-        status.textContent =
-          "Catalog loaded. Start by choosing the exact hardware.";
-        rebuildCascade(-1);
+        clearButton.disabled = false;
+        refreshFacets();
       })
       .catch(function (error) {
         status.textContent =
@@ -790,6 +840,7 @@
 
   const api = Object.freeze({
     FILTER_FIELDS: FILTER_FIELDS,
+    FACET_FIELDS: FACET_FIELDS,
     ROLE_LABELS: ROLE_LABELS,
     LOGGING_LABELS: LOGGING_LABELS,
     OTA_LABELS: OTA_LABELS,
@@ -802,6 +853,8 @@
     parseTargetProfile: parseTargetProfile,
     buildCatalog: buildCatalog,
     profileMatches: profileMatches,
+    profileMatchesFacets: profileMatchesFacets,
+    facetValues: facetValues,
     uniqueValues: uniqueValues,
     canonicalAsset: canonicalAsset,
     humanizeHardware: humanizeHardware,
