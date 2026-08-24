@@ -21,7 +21,7 @@
 
 #ifdef MQTT_DEBUG
 #include <Arduino.h>
-#define ALERT_DEBUG_PRINTLN(...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("Alert: " __VA_ARGS__); Serial.println(); } } while (0)
+#define ALERT_DEBUG_PRINTLN(...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("Alert: " __VA_ARGS__); mesh::usbLoggingPort().println(); } } while (0)
 #else
 #define ALERT_DEBUG_PRINTLN(...) do {} while (0)
 #endif

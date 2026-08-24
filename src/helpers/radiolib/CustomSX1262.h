@@ -96,8 +96,8 @@ class CustomSX1262 : public SX1262 {
         status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo, useRegulatorLDO);
       }
       if (status != RADIOLIB_ERR_NONE) {
-        Serial.print("ERROR: radio init failed: ");
-        Serial.println(status);
+        mesh::usbLoggingPort().print("ERROR: radio init failed: ");
+        mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
     

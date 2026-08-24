@@ -201,8 +201,13 @@ WiFi SSID, the command starts the open `MeshCore-Setup-XXXX` captive AP at
 MQTT bridge, so run `set bridge.enabled off` first. Use `stop webconfig` to
 close either mode for the current boot. (`stop webconfig` does not change a
 saved `webui on`.)
-LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
-with no connected client.
+LAN mode otherwise remains active until reboot. On expanded FULL builds, an
+unconfigured automatic setup AP receives one absolute 30-minute window per
+boot, then powers WiFi off even if a client remains attached; rebooting starts
+a new automatic window. An administrator can explicitly run `start webconfig`
+again without rebooting. Once an SSID is saved, the cutoff no longer applies
+and the selected WiFi/MQTT mode keeps reconnecting. Other setup sessions retain
+their profile's idle timeout.
 
 The saved `wifi.cli` setting defaults to `on`. Use `set wifi.cli off` to disable
 the **CLI** tab.
@@ -225,7 +230,8 @@ single-command mode. A command that stops WebConfig, changes its WiFi
 connection, disables `wifi.cli`, or reboots the node stops the remaining block
 and can close the page before its reply is collected.
 
-On FULL MQTT and FULL logging ESP32 repeater/room-server builds,
+On unified FULL USB + WiFi and FULL logging-fallback ESP32
+repeater/room-server builds,
 `get wifi.ssid` reports the saved standalone WebConfig network and
 `get wifi.status` reports whether WiFi is unconfigured, off, connecting,
 running the setup AP, failed, or connected. A connected result includes the
@@ -301,7 +307,7 @@ remain available.
 - `discover.neighbors`
 
 This command is available in every repeater build profile, including portable
-MQTT, standard, logging, OTA, FULL, and FULL logging artifacts. It does not
+MQTT, standard, logging, OTA, unified FULL, and FULL logging-fallback artifacts. It does not
 require MQTT or PSRAM.
 
 ---
@@ -520,9 +526,9 @@ summary.
 
 Ordinary `-logging-` artifacts keep packet logging separate from LoRa OTA.
 Use the separately named `-ota-` artifact when LoRa OTA is required. A
-`-full-logging-ota-` artifact is intentionally the exception: it combines
-logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
-disabled.
+`-full-usb-wifi-ota-` artifact combines USB packet logging, direct WiFi MQTT,
+LoRa OTA, and the expanded FULL feature set. A `-full-logging-ota-` artifact is
+emitted only when that hardware/role has no matching WiFi MQTT environment.
 
 ### Control live USB logging
 
@@ -535,11 +541,30 @@ set usb.logging off
 ```
 
 These commands are compiled into logging artifacts and control their live USB
-debug and packet output. The switch is session-only: every reboot starts a
-logging artifact with USB logging on. Turning it off does not disable CLI
-replies, Companion protocol frames, or essential non-debug serial messages.
-It also does not change the node-storage capture controlled by `log start` and
-`log stop`.
+debug and packet output. CommonCLI roles save the setting in `/com_prefs`, so
+it survives reboot; first boot defaults to on. nRF52 Full Companion applies the
+gate only to USB interface `02`, its dedicated plaintext logging port. USB
+interface `00` continues carrying Companion, terminal, and serial mOTA traffic.
+Turning USB logging off does not disable CLI replies or Companion protocol
+frames. It also does not change the node-storage capture controlled by `log
+start` and `log stop`.
+
+Unified ESP32 FULL builds add one saved selector for both output paths:
+
+```text
+get logging.output
+set logging.output off
+set logging.output usb
+set logging.output wifi
+set logging.output both
+```
+
+`usb` emits `RAW:` packets for a USB-connected service such as
+meshcoretomqtt. `wifi` enables the direct MQTT bridge configured by the
+`wifi.*` and `mqtt.*` commands. `both` intentionally duplicates the radio
+stream to both consumers; do not point both consumers at the same broker unless
+the downstream setup deduplicates messages. Fresh unified FULL installs start
+in `both` mode.
 
 ### Begin capture of rx log to node storage
 **Usage:** `log start`

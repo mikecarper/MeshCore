@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "t1000e_sensors.h"
 #include "target.h"
+#include <helpers/UsbLogging.h>
 #include <helpers/sensors/MicroNMEALocationProvider.h>
 
 T1000eBoard board;
@@ -56,8 +57,7 @@ bool radio_init() {
   SPI.begin();
   int status = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
   if (status != RADIOLIB_ERR_NONE) {
-    Serial.print("ERROR: radio init failed: ");
-    Serial.println(status);
+    mesh::usbLoggingPort().printf("ERROR: radio init failed: %d\r\n", status);
     return false;  // fail
   }
   

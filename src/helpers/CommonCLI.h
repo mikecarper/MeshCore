@@ -166,6 +166,10 @@ public:
   // in-memory placement here does not shift the established binary layout.
   uint8_t extra_sf[4] = {};
   uint8_t radio_fem_txgain = 0; // LoRa FEM TX gain; persisted at /com_prefs offset 860
+  // Runtime USB packet output gate. Appended at /com_prefs offset 861 so
+  // older images remain readable and logging builds keep their historical
+  // enabled-at-first-boot behavior.
+  uint8_t usb_logging_enabled = 1;
   uint8_t retry_preset = 0;
   uint8_t direct_retry_attempts = 0;
   uint16_t direct_retry_base_ms = 0;
@@ -263,6 +267,7 @@ private:
       def("baud", _parent->bridge_baud);
       def("ch", _parent->bridge_channel);
       def("secret", _parent->bridge_secret, sizeof(_parent->bridge_secret));
+      def("usb_log", _parent->usb_logging_enabled);
     }
 
   public:

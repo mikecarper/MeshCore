@@ -25,23 +25,23 @@
 
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define MESH_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
-  #define MESH_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define MESH_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
+  #define MESH_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define MESH_DEBUG_PRINT(...) {}
   #define MESH_DEBUG_PRINTLN(...) {}
 #endif
 
 #if BRIDGE_DEBUG && ARDUINO
-#define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
+#define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
 #else
 #define BRIDGE_DEBUG_PRINTLN(...) {}
 #endif
 
 #if POWERSAVING_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define POWERSAVING_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("POWERSAVING: " F, ##__VA_ARGS__); } } while(0)
-  #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("POWERSAVING: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define POWERSAVING_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F, ##__VA_ARGS__); } } while(0)
+  #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define POWERSAVING_DEBUG_PRINT(...) {}
   #define POWERSAVING_DEBUG_PRINTLN(...) {}

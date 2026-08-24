@@ -56,8 +56,10 @@ The USB ASCII switch (`+++MESHCORE-TERM-START`) is the local control path, not
 the mOTA data framing. On an nRF52 full Companion, the script uses that mode
 briefly for `ota status` and TempRadio commands. It then closes the CLI and
 starts `motatool`, whose existing `ota folder on` preamble switches the same
-USB port into exclusive mOTA mode. On an ESP32 Full Companion with serial
-folder support, `motatool --companion-terminal` keeps the ASCII session open
+USB interface `00` into exclusive mOTA mode. Its separate USB interface `02`
+continues to provide plaintext logging and is not a controller or source port.
+On an ESP32 Full Companion with serial folder support,
+`motatool --companion-terminal` keeps the ASCII session open
 while the same link carries framed folder requests. BLE remains available.
 
 ## Destination requirements

@@ -129,6 +129,38 @@ TEST(WebConfigBatch, SetupWiFiHandoffUsesBoundedConnectAndBriefFlushDelays) {
   EXPECT_EQ(1000U, Batch::kSetupHandoffRebootConfirmMs);
 }
 
+TEST(WebConfigBatch, FullUnconfiguredSetupWindowIsAnAbsoluteThirtyMinutes) {
+  const uint32_t started = 1000;
+  EXPECT_EQ(30UL * 60UL * 1000UL, Batch::kFullSetupApWindowMs);
+  EXPECT_FALSE(Batch::unconfiguredSetupWindowExpired(
+      true, false, started + Batch::kFullSetupApWindowMs - 1, started,
+      Batch::kFullSetupApWindowMs));
+  EXPECT_TRUE(Batch::unconfiguredSetupWindowExpired(
+      true, false, started + Batch::kFullSetupApWindowMs, started,
+      Batch::kFullSetupApWindowMs));
+
+  // Saving any SSID converts the node to deployed behavior, which continues
+  // reconnecting and is not subject to the provisioning cutoff.
+  EXPECT_FALSE(Batch::unconfiguredSetupWindowExpired(
+      true, true, started + Batch::kFullSetupApWindowMs, started,
+      Batch::kFullSetupApWindowMs));
+  EXPECT_FALSE(Batch::unconfiguredSetupWindowExpired(
+      false, false, started + Batch::kFullSetupApWindowMs, started,
+      Batch::kFullSetupApWindowMs));
+  EXPECT_FALSE(Batch::unconfiguredSetupWindowExpired(
+      true, false, started + Batch::kFullSetupApWindowMs, started, 0));
+}
+
+TEST(WebConfigBatch, FullUnconfiguredSetupWindowSurvivesMillisRollover) {
+  const uint32_t started = std::numeric_limits<uint32_t>::max() - 1000;
+  EXPECT_FALSE(Batch::unconfiguredSetupWindowExpired(
+      true, false, started + Batch::kFullSetupApWindowMs - 1, started,
+      Batch::kFullSetupApWindowMs));
+  EXPECT_TRUE(Batch::unconfiguredSetupWindowExpired(
+      true, false, started + Batch::kFullSetupApWindowMs, started,
+      Batch::kFullSetupApWindowMs));
+}
+
 // --------------------------------------------------------------------------
 // Result read
 // --------------------------------------------------------------------------

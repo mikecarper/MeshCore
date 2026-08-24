@@ -31,8 +31,8 @@ class MeshSNMPAgent;  // Forward declaration
   // USB CDC-aware debug macros: only print if Serial is ready (non-blocking check)
   // Serial.availableForWrite() returns bytes available in write buffer (>0 means ready)
   // This prevents hangs when USB CDC isn't ready yet (e.g., ESP32-S3 native USB)
-  #define MQTT_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("MQTT: " F, ##__VA_ARGS__); } } while(0)
-  #define MQTT_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && Serial.availableForWrite() > 0) { Serial.printf("MQTT: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define MQTT_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("MQTT: " F, ##__VA_ARGS__); } } while(0)
+  #define MQTT_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("MQTT: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define MQTT_DEBUG_PRINT(...) {}
   #define MQTT_DEBUG_PRINTLN(...) {}

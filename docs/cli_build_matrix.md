@@ -36,15 +36,44 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.
 | Build/profile | Command availability |
 |---|---|
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable. |
-| Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile, adds the compiled logging behavior, and provides session-only `get/set usb.logging` control. |
+| Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist `get/set usb.logging`. ESP32 roles covered by unified FULL and nRF52 Companions covered by dual-CDC Full Companion are not duplicated here. |
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table. |
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
-| FULL ESP32 | Uses the matching MQTT target with logging off and keeps the complete command surface supported by that role and hardware. |
-| FULL ESP32 logging | Uses the matching non-MQTT target with debug and packet logging enabled, session-only `get/set usb.logging` control, and the complete command surface supported by that role and hardware. |
+| FULL ESP32 USB + WiFi | Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. `get/set logging.output off\|usb\|wifi\|both` selects and persists the active output paths. |
+| FULL ESP32 logging fallback | Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image. |
+| nRF52 Full Companion | Uses one physical USB connection with interface `00` for framed Companion/terminal/mOTA traffic and interface `02` for plaintext logging. It also provides BLE and source-only LoRa OTA. `get/set usb.logging` persistently gates only the logging interface. |
 | `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1. |
 
 `logging`, `OTA`, and `FULL` describe independent build features. Do not infer
 that a command is missing merely because `logging` appears in the filename.
+
+## Canonical bulk-build policy
+
+Bulk and release-matrix commands omit legacy names whose behavior is already
+available from a canonical image:
+
+- Companion `_ps` names are replaced by the ordinary Companion image plus the
+  persisted `powersaving on|off` setting.
+- Companion `_femoff` names are replaced by the matching controllable-FEM
+  image plus `radio.fem.rxgain on|off`. The old names remain explicit build
+  targets for compatibility.
+- `Station_G2_logging_*` and `Station_G3_ESP32_logging_*` hardware names are
+  replaced by their ordinary Station target. G2 boosted receive gain is the
+  persisted `radio.rxgain on|off` setting; the G3 alias changed only the
+  advertised default name.
+- When an nRF52 board has a generated Full Companion, that one artifact
+  replaces its separate USB, BLE, and USB packet-logging Companion artifacts.
+  It provides BLE plus two USB CDC interfaces: interface `00` carries framed
+  Companion/terminal/mOTA traffic and interface `02` carries plaintext logs.
+  Its LoRa OTA support is source-only: it can serve a host file to another node
+  but has no staging store and cannot update itself over LoRa.
+
+The old aliases still work with `build-firmware` and
+`build-matching-firmwares`. Dedicated repeater LoRa OTA receiver images are not
+collapsed; they retain their exact storage, bootloader, role, and target
+identity contracts. ESP32 USB, BLE, WiFi, and Full Companion images also remain
+separate because Full changes partitions, RAM use, active transports, and power
+behavior.
 
 ## Complete CLI policy
 
@@ -64,7 +93,7 @@ require MQTT or PSRAM.
 
 `discover.neighbors` sends the zero-hop node-discovery request used to refresh
 the repeater neighbor table. It is available in every repeater build profile,
-including standard, logging, OTA, FULL, and FULL logging builds.
+including standard, logging, OTA, unified FULL, and FULL logging-fallback builds.
 
 The exact command is:
 

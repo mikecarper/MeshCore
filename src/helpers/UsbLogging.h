@@ -12,12 +12,21 @@
 #endif
 
 #if defined(ARDUINO)
+class Stream;
+
 namespace mesh {
 
-// This is intentionally session-only. Logging artifacts start enabled after
-// every boot so a stale setting cannot make a diagnostic image look silent.
+// Logging starts enabled on first boot. Roles with saved preferences restore
+// the persisted setting after their preferences are loaded.
 bool isUsbLoggingEnabled();
 void setUsbLoggingEnabled(bool enabled);
+
+// Start the optional dedicated USB logging interface. Ordinary builds keep
+// using Serial. nRF52 Full Companion builds expose a second CDC ACM interface
+// so plaintext diagnostics never share the framed Companion stream.
+void beginUsbLoggingPort();
+Stream& usbLoggingPort();
+bool hasDedicatedUsbLoggingPort();
 
 }  // namespace mesh
 #endif

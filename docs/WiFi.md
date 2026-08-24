@@ -115,6 +115,25 @@ The setup AP is unauthenticated unless the firmware was built with
 location. When WebConfig is running on the normal LAN, repeater and room-server
 builds require the node's admin password.
 
+On an expanded FULL profile with no saved SSID, this automatic setup AP has an
+absolute 30-minute window. Browser activity or a phone left associated with the
+AP does not extend it. If no SSID has been saved when the window expires,
+WebConfig closes and the ESP32 WiFi radio remains off automatically for the
+remainder of that boot. A reboot or power cycle starts a new 30-minute setup
+window; the timeout is deliberately not written to preferences. An
+administrator can still override the automatic cutoff with an explicit
+`start webconfig` command.
+
+Once an SSID is saved, the provisioning cutoff no longer applies. When WiFi is
+selected by `logging.output wifi|both`, the station stays enabled and keeps
+trying the saved network indefinitely: ESP automatic reconnect remains on and
+the explicit fallback advances through 15, 30, 60, 120, then 300-second retry
+intervals, remaining at five minutes until it reconnects. MQTT broker retries
+use their own backoff; a repeatedly failing broker eventually receives one
+probe every 30 minutes. Selecting `logging.output off|usb` keeps the MQTT bridge
+off, so saved credentials alone do not force WiFi on unless WebConfig is also
+enabled explicitly.
+
 The equivalent MQTT observer CLI setup is:
 
 ```text
@@ -318,9 +337,10 @@ In this case WebConfig owns WiFi only while it is needed. Stopping the portal
 disconnects WiFi and turns the WiFi radio off. There is no persistent MQTT
 connection keeping WiFi active.
 
-FULL MQTT and FULL logging repeater/room-server builds both provide these CLI
-controls and status checks. FULL MQTT includes the MQTT bridge; FULL logging
-does not:
+Unified FULL USB + WiFi and FULL logging-fallback repeater/room-server builds
+both provide these CLI controls and status checks. The unified profile includes
+the MQTT bridge; the fallback is used only where no matching MQTT environment
+exists:
 
 ```text
 get wifi.ssid
@@ -396,10 +416,10 @@ role.
 | Build profile | WiFi/MQTT behavior |
 |---|---|
 | Standard | Uses the selected target's role. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile. |
-| Logging | Enables USB/debug packet logging and disables the MQTT bridge. `get/set usb.logging` can silence or restore the live output until reboot. Logging output is not an MQTT uplink. |
+| Logging | Enables USB/debug packet logging and disables the MQTT bridge. CommonCLI roles persist `get/set usb.logging`; logging output itself is not a direct MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. Non-companion ESP32 MQTT observers always use FULL expanded partitions. |
-| FULL ESP32 | Uses the board's MQTT target with logging off, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
-| FULL ESP32 logging | Uses the board's non-MQTT target with debug and packet logging enabled, session-only `get/set usb.logging` control, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. |
+| FULL ESP32 USB + WiFi | Uses the board's MQTT target with USB packet logging and direct WiFi MQTT together, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. `get/set logging.output off\|usb\|wifi\|both` persists the active paths. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
+| FULL ESP32 logging fallback | Uses the board's non-MQTT target only when no matching WiFi MQTT environment exists. It keeps debug and packet logging, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. Persistent `usb.logging off` also provides normal output-off operation, so ESP-NOW FULL roles need no second non-logging image. |
 | LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
 
 All repeater profiles use the full 254-entry neighbor table, including standard,
@@ -407,12 +427,13 @@ logging, bridge, and LoRa-OTA builds on every supported platform. The classic
 T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
 persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.
 
-The interactive Option 1 **FULL everything** choice selects the FULL logging
-profile: logging is enabled and MQTT is disabled. The standalone FULL ESP32
-profile and Profile 3 of the four-profile matrix use the matching MQTT target
-instead. Both FULL profiles include LoRa OTA, WebConfig where supported, up to
-254 neighbors, and expanded dual-OTA partitions. Target-specific internal-DRAM
-limits still apply.
+The interactive Option 1 **FULL everything** choice and the standalone FULL
+command select the unified USB + WiFi image when a matching MQTT target exists;
+otherwise they select the logging fallback. The build matrix no longer emits a
+separate standard logging image or non-MQTT FULL twin for a role covered by the
+unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
+up to 254 neighbors, and expanded dual-OTA partitions. Target-specific
+internal-DRAM limits still apply.
 
 FULL images change the ESP32 partition layout. Flash the matching
 `*-merged.bin` once when installing that layout. A partition-layout change can

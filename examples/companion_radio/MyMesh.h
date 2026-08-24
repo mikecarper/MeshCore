@@ -263,7 +263,9 @@ protected:
   }
 
 public:
-  void savePrefs() { _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon); }
+  bool savePrefs() {
+    return _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  }
 
 #if ENV_INCLUDE_GPS == 1
   void applyGpsPrefs() {

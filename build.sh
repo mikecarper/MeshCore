@@ -83,19 +83,19 @@ Commands:
   help|usage|-h|--help: Shows this message.
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
-  build-firmwares: Build all firmwares for all targets.
-  build-firmwares-logging-matrix: Build all firmwares in standard, logging, FULL ESP32 MQTT, and FULL ESP32 logging (no MQTT) profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL.
-  build-companion-firmwares-logging-matrix: Build every Companion target (including Full Companion and legacy FEM variants) in each applicable standard, logging, MQTT, and expanded FULL profile.
-  build-full-esp32-firmwares: Build only feature-complete ESP32 MQTT profiles with up to 254 neighbors, LoRa OTA, and expanded dual-OTA partitions.
-  build-full-esp32-logging-firmwares: Build only feature-complete ESP32 profiles with up to 254 neighbors, logging, MQTT disabled, LoRa OTA, and expanded dual-OTA partitions.
+  build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases remain available as explicit builds.
+  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. nRF52 Full Companion provides binary Companion and logging on separate USB ports.
+  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. nRF52 Full Companion replaces separate USB, BLE, and USB-logging artifacts by exposing Companion and logging on separate USB ports.
+  build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
-  build-companion-firmwares: Build canonical companion firmwares; legacy _femoff targets remain available as direct builds.
+  build-companion-firmwares: Build canonical companion firmwares; legacy setting aliases remain available as direct builds.
   build-full-companion-firmwares: Build canonical full Companion firmwares for supported ESP32 and nRF52 targets.
   build-repeater-firmwares: Build all repeater firmwares with 254 neighbors, except DRAM-limited targets that retain 50.
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
-  get-companion-firmwares-to-build: List USB and BLE companion targets for release automation.
+  get-companion-firmwares-to-build: List canonical attached companion targets for release automation; nRF52 uses Full Companion instead of separate USB/BLE artifacts.
   get-repeater-firmwares-to-build: List standard and specialized external-storage repeater targets for release automation.
   get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
@@ -502,14 +502,14 @@ prompt_on_off_choice() {
 prompt_for_build_mode() {
   local options=(
     "Build one firmware target"
-    "Build all firmwares"
-    "Build all firmwares in 5 profiles (standard, logging, MQTT, full ESP32 MQTT, full ESP32 logging without MQTT)"
+    "Build all canonical firmwares (legacy setting aliases remain direct-build only)"
+    "Build the canonical release matrix with unified FULL ESP32 USB + WiFi output (plus logging fallbacks where WiFi is unavailable)"
     "Build all repeater firmwares"
-    "Build canonical companion firmwares (FEM RX gain is runtime configurable)"
+    "Build canonical companion firmwares (nRF52 Full replaces USB/BLE; power saving and FEM/RX gain are runtime configurable)"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
-    "Build only FULL ESP32 MQTT firmwares (all features, MQTT, and LoRa OTA)"
-    "Build only FULL ESP32 logging firmwares (all features, logging, no MQTT, and LoRa OTA)"
+    "Build FULL ESP32 firmwares (all features, USB logging, WiFi MQTT where available, and LoRa OTA)"
+    "Build only FULL ESP32 USB-logging fallbacks for targets without WiFi MQTT"
     "Build canonical full Companion firmwares (runtime FEM control and host-backed LoRa OTA)"
   )
 
@@ -578,7 +578,7 @@ prompt_for_single_target_build_profile() {
 
   local options=(
     "Standard/custom build"
-    "FULL everything (all features, 254 neighbors, logging, MQTT off, LoRa OTA, expanded dual-OTA partitions)"
+    "FULL everything (all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, expanded dual-OTA partitions)"
   )
 
   echo "Select the Option 1 build profile:"
@@ -597,7 +597,7 @@ prompt_for_single_target_build_profile() {
         ;;
       2)
         SINGLE_TARGET_FULL_BUILD=1
-        echo "Using FULL everything: all features, 254 neighbors, logging, MQTT off, LoRa OTA, and expanded dual-OTA partitions."
+        echo "Using FULL everything: all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, and expanded dual-OTA partitions."
         return 0
         ;;
     esac
@@ -1465,7 +1465,9 @@ get_pio_envs_ending_with_string() {
 
   shopt -s nocasematch
   for env in "${SUPPORTED_PIO_ENVS[@]}"; do
-    if is_supported_build_env "$env" && [[ "$env" == *${suffix} ]]; then
+    if is_supported_build_env "$env" \
+        && ! is_redundant_bulk_build_target "$env" \
+        && [[ "$env" == *${suffix} ]]; then
       printf '%s\n' "$env"
     fi
   done
@@ -1477,6 +1479,17 @@ print_release_firmware_targets() {
     get-companion-firmwares-to-build)
       get_pio_envs_ending_with_string "_companion_radio_usb"
       get_pio_envs_ending_with_string "_companion_radio_ble"
+      # A generated nRF52 Full Companion supplies both attached transports and
+      # source-only serial mOTA in one image. It replaces the separate USB/BLE
+      # release artifacts without taking on a staging or self-install role.
+      local env_name
+      for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+        if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] \
+            && is_companion_radio_full_target "$env_name" \
+            && ! is_redundant_bulk_build_target "$env_name"; then
+          printf '%s\n' "$env_name"
+        fi
+      done
       ;;
     get-repeater-firmwares-to-build)
       get_pio_envs_ending_with_string "_repeater"
@@ -1959,16 +1972,30 @@ apply_debug_overrides() {
 disable_usb_logging_for_mqtt() {
   local env_name=$1
 
-  # FULL logging is an explicit diagnostic profile. Keep its requested USB
-  # debug and packet logging even when the target also publishes over MQTT.
+  # ESP32 Full Companion has one serial stream, so plaintext diagnostics would
+  # corrupt its framed Companion traffic. nRF52 Full Companion has a dedicated
+  # second CDC interface and enables logging later in its profile overlay.
+  if is_companion_radio_full_target "$env_name"; then
+    if is_nrf52_companion_radio_full_target "$env_name"; then
+      return 0
+    fi
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
+    return 0
+  fi
+
+  # Unified non-companion FULL builds deliberately publish the same radio
+  # stream over USB packet logging and direct WiFi MQTT. Full Companion keeps
+  # its framed binary serial protocol and must never inherit plaintext logs.
   if [ "$ESP32_FULL_BUILD" = "1" ] \
-      && [ "$FIRMWARE_FILENAME_INFIX" = "full-logging" ]; then
+      && [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ] \
+      && ! is_esp32_companion_build "$env_name"; then
     return 0
   fi
 
   if is_mqtt_bridge_target "$env_name" || [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
-    # MQTT observers already export packet traffic through the bridge. Keep the
-    # serial console available for the CLI without compiling a second logging path.
+    # Ordinary MQTT observers export packet traffic only through the bridge.
+    # Keep their serial console clean unless the explicit unified FULL profile
+    # above requested both output paths.
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
   fi
 }
@@ -2463,11 +2490,12 @@ apply_companion_radio_full_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
-    # The USB stream starts as Binary Companion. `motatool serve --serial`
-    # switches it into an exclusive host-folder mode with its existing
-    # `ota folder on` preamble; BLE remains an independent Companion link.
+    # CDC 0 starts as Binary Companion. `motatool serve --serial` switches it
+    # into an exclusive host-folder mode with its existing `ota folder on`
+    # preamble. CDC 1 is a write-only plaintext packet/debug logging stream;
+    # BLE remains an independent Companion link.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
     if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
       append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
@@ -2711,6 +2739,8 @@ get_firmware_filename() {
   if [ "$ESP32_FULL_BUILD" = "1" ] && is_lora_ota_build "$env_name"; then
     if [ "$filename_infix" = "full-logging" ]; then
       filename_infix="full-logging-ota"
+    elif [ "$filename_infix" = "full-usb-wifi" ]; then
+      filename_infix="full-usb-wifi-ota"
     else
       filename_infix="full-ota"
     fi
@@ -2946,7 +2976,22 @@ resolve_matching_firmwares() {
 }
 
 resolve_all_firmwares() {
-  get_supported_pio_envs
+  local env_name
+
+  while IFS= read -r env_name; do
+    if ! is_redundant_bulk_build_target "$env_name"; then
+      printf '%s\n' "$env_name"
+    fi
+  done < <(get_supported_pio_envs)
+}
+
+is_legacy_companion_power_saving_target() {
+  case "${1,,}" in
+    *companion_radio_*_ps|*companion_radio_*_ps_*)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 is_legacy_companion_femoff_target() {
@@ -2958,21 +3003,100 @@ is_legacy_companion_femoff_target() {
   return 1
 }
 
+is_legacy_radio_gain_profile_target() {
+  # The Station G2 name only selects the persisted SX126x boosted-RX default;
+  # the Station G3 name changes only ADVERT_NAME. The ordinary target supports
+  # `set radio.rxgain on|off`, so neither needs a separate release artifact.
+  case "${1,,}" in
+    station_g2_logging_*|station_g3_esp32_logging_*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_exact_companion_recipe_alias_target() {
+  # These two Heltec V4 aliases extend the unsuffixed target without changing
+  # any effective PlatformIO option. Other _femon names have no unsuffixed
+  # target and therefore remain the canonical recipe for that hardware.
+  case "${1,,}" in
+    heltec_v4_companion_radio_usb_femon|heltec_v4_companion_radio_ble_femon)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+get_nrf52_full_companion_replacement() {
+  local env_name=$1
+  local full_env=""
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] || return 1
+  case "${env_name,,}" in
+    *companion_radio_usb*)
+      full_env=${env_name/companion_radio_usb/companion_radio_full}
+      ;;
+    *companion_radio_ble*)
+      full_env=${env_name/companion_radio_ble/companion_radio_full}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$full_env]:-}" = "NRF52_PLATFORM" ] || return 1
+  printf '%s\n' "$full_env"
+}
+
+is_nrf52_companion_transport_replaced_by_full() {
+  get_nrf52_full_companion_replacement "$1" >/dev/null
+}
+
+is_runtime_setting_alias_target() {
+  if is_legacy_companion_power_saving_target "$1" \
+      || is_legacy_companion_femoff_target "$1" \
+      || is_legacy_radio_gain_profile_target "$1" \
+      || is_exact_companion_recipe_alias_target "$1"; then
+    return 0
+  fi
+  return 1
+}
+
+is_redundant_bulk_build_target() {
+  # Keep every legacy name available to `build-firmware` and
+  # `build-matching-firmwares`, but do not republish binaries that differ only
+  # by a saved/default setting or by an attached nRF52 transport already
+  # supplied by Full Companion.
+  if is_runtime_setting_alias_target "$1" \
+      || is_nrf52_companion_transport_replaced_by_full "$1"; then
+    return 0
+  fi
+  return 1
+}
+
+resolve_logging_matrix_firmwares() {
+  # nRF52 Full Companion replaces normal USB, BLE, and USB-logging artifacts.
+  # It exposes framed Companion traffic and plaintext logging as separate CDC
+  # interfaces over one physical USB connection.
+  resolve_all_firmwares
+}
+
 resolve_companion_firmwares() {
   local env_name
 
   while IFS= read -r env_name; do
-    if ! is_legacy_companion_femoff_target "$env_name"; then
+    if ! is_redundant_bulk_build_target "$env_name"; then
       printf '%s\n' "$env_name"
     fi
   done < <(get_pio_envs_for_variant_role companion)
 }
 
 resolve_all_companion_firmwares() {
-  # Corrective/replacement releases must cover every published Companion
-  # artifact, including generated Full Companion aliases and the legacy
-  # _femoff variants omitted from the canonical day-to-day bulk command.
-  get_pio_envs_for_variant_role companion
+  resolve_companion_firmwares
+}
+
+resolve_companion_logging_matrix_firmwares() {
+  resolve_all_companion_firmwares
 }
 
 resolve_full_companion_firmwares() {
@@ -2981,7 +3105,7 @@ resolve_full_companion_firmwares() {
   for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
     if is_supported_build_env "$env_name" \
         && is_companion_radio_full_target "$env_name"; then
-      if is_legacy_companion_femoff_target "$env_name"; then
+      if is_redundant_bulk_build_target "$env_name"; then
         continue
       fi
       printf '%s\n' "$env_name"
@@ -3022,10 +3146,10 @@ get_bulk_build_resolver_name() {
       echo "resolve_all_firmwares"
       ;;
     build-firmwares-logging-matrix)
-      echo "resolve_all_firmwares"
+      echo "resolve_logging_matrix_firmwares"
       ;;
     build-companion-firmwares-logging-matrix)
-      echo "resolve_all_companion_firmwares"
+      echo "resolve_companion_logging_matrix_firmwares"
       ;;
     build-full-esp32-firmwares)
       echo "resolve_full_esp32_firmwares"
@@ -3440,13 +3564,26 @@ run_logged_build_targets() {
   return "$overall_status"
 }
 
+has_esp32_full_profile() {
+  local target=$1
+  local candidate=""
+
+  candidate=$(get_mqtt_enabled_target "$target") || candidate=""
+  if [ -n "$candidate" ] && supports_esp32_full_build "$candidate"; then
+    return 0
+  fi
+  candidate=$(get_mqtt_disabled_target "$target") || candidate=""
+  [ -n "$candidate" ] && supports_esp32_full_build "$candidate"
+}
+
 run_full_esp32_profile() {
   local profile_label=$1
-  local logging_mode=$2
+  local profile_mode=$2
   shift 2
   local targets=("$@")
   local target
   local full_target
+  local mqtt_target
   local full_targets=()
   local -A seen_full_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
@@ -3460,7 +3597,13 @@ run_full_esp32_profile() {
 
   for target in "${targets[@]}"; do
     full_target=""
-    if [ "$logging_mode" = "on" ]; then
+    if [ "$profile_mode" = "fallback" ]; then
+      # A matching MQTT environment is emitted once by the unified profile;
+      # do not also build its former non-MQTT FULL-logging twin.
+      mqtt_target=$(get_mqtt_enabled_target "$target") || mqtt_target=""
+      if [ -n "$mqtt_target" ] && supports_esp32_full_build "$mqtt_target"; then
+        continue
+      fi
       full_target=$(get_mqtt_disabled_target "$target") || full_target=""
     else
       full_target=$(get_mqtt_enabled_target "$target") || full_target=""
@@ -3475,28 +3618,28 @@ run_full_esp32_profile() {
   done
 
   if [ ${#full_targets[@]} -eq 0 ]; then
-    if [ "$logging_mode" = "on" ]; then
-      echo "${profile_label}: no non-MQTT ESP32 FULL targets resolved; skipping."
+    if [ "$profile_mode" = "fallback" ]; then
+      echo "${profile_label}: every FULL target has a unified WiFi MQTT profile; no logging-only fallback is needed."
     else
-      echo "${profile_label}: no MQTT ESP32 FULL targets resolved; skipping."
+      echo "${profile_label}: no WiFi MQTT ESP32 FULL targets resolved; skipping."
     fi
     return 0
   fi
 
-  if [ "$logging_mode" = "on" ]; then
-    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), logging on, MQTT off, and expanded dual-OTA partitions."
-    echo "FULL logging artifacts exclude MQTT, include LoRa OTA, and use filename form: name-full-logging-ota-version."
+  if [ "$profile_mode" = "fallback" ]; then
+    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 fallback target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), USB logging on, no available WiFi MQTT sibling, and expanded dual-OTA partitions."
+    echo "Fallback artifacts include LoRa OTA and use filename form: name-full-logging-ota-version."
     MESHDEBUG_OVERRIDE="on"
     PACKET_LOGGING_OVERRIDE="on"
     MQTT_BRIDGE_OVERRIDE="off"
     FIRMWARE_FILENAME_INFIX="full-logging"
   else
-    echo "${profile_label}: building ${#full_targets[@]} feature-complete ESP32 MQTT target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), logging off, and expanded dual-OTA partitions."
-    echo "FULL artifacts include MQTT and LoRa OTA and use filename form: name-full-ota-version."
+    echo "${profile_label}: building ${#full_targets[@]} unified feature-complete ESP32 target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), USB packet logging, direct WiFi MQTT, and expanded dual-OTA partitions."
+    echo "Unified FULL artifacts include LoRa OTA, keep verbose debug off, and use filename form: name-full-usb-wifi-ota-version."
     MESHDEBUG_OVERRIDE="off"
-    PACKET_LOGGING_OVERRIDE="off"
+    PACKET_LOGGING_OVERRIDE="on"
     MQTT_BRIDGE_OVERRIDE="on"
-    FIRMWARE_FILENAME_INFIX="full"
+    FIRMWARE_FILENAME_INFIX="full-usb-wifi"
   fi
   echo "Flash the matching merged image once to install the expanded partition table."
   MQTT_DEBUG_OVERRIDE="off"
@@ -3521,19 +3664,32 @@ run_full_esp32_profile() {
 }
 
 run_full_esp32_build_targets() {
-  local logging_mode=$1
+  local profile_mode=$1
   shift
   local targets=("$@")
-  local profile_name="FULL MQTT"
+  local profile_name="FULL unified"
   local build_status=0
+  local pass_status=0
 
-  if [ "$logging_mode" = "on" ]; then
-    profile_name="FULL logging"
+  if [ "$profile_mode" = "fallback" ]; then
+    profile_name="FULL logging fallback"
   fi
 
   LOGGING_MATRIX_FAILURES=()
-  run_full_esp32_profile "${profile_name}-only build" "$logging_mode" "${targets[@]}"
-  build_status=$?
+  if [ "$profile_mode" = "fallback" ]; then
+    run_full_esp32_profile "${profile_name}-only build" "fallback" "${targets[@]}"
+    build_status=$?
+  else
+    run_full_esp32_profile "${profile_name} build" "unified" "${targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+
+    run_full_esp32_profile "FULL logging fallback build" "fallback" "${targets[@]}"
+    pass_status=$?
+    if [ "$pass_status" -eq 130 ]; then return 130; fi
+    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  fi
 
   if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
     echo "${profile_name}-only build completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
@@ -3551,6 +3707,7 @@ run_logging_matrix_build_targets() {
   local targets=("$@")
   local target
   local standard_targets=()
+  local logging_source_targets=()
   local logging_targets=()
   local filtered_logging_targets=()
   local constrained_logging_targets=()
@@ -3563,7 +3720,9 @@ run_logging_matrix_build_targets() {
   local original_profile_build_workers=$PROFILE_BUILD_WORKERS
   local bluetooth_skip_count=0
   local lora_ota_only_skip_count=0
-  local full_cli_logging_skip_count=0
+  local full_only_standard_skip_count=0
+  local full_companion_logging_skip_count=0
+  local full_profile_logging_skip_count=0
   local logging_target_count=0
   local build_status=0
   local pass_status=0
@@ -3577,13 +3736,21 @@ run_logging_matrix_build_targets() {
   echo "Option 3 parallelism: ${PROFILE_BUILD_WORKERS} target build(s), ${OPTION3_PIO_JOBS} PlatformIO job(s) per target."
 
   for target in "${targets[@]}"; do
-    if ! is_mqtt_bridge_target "$target"; then
+    if is_mqtt_bridge_target "$target"; then
+      continue
+    fi
+    logging_source_targets+=("$target")
+    if requires_esp32_full_cli_profile "$target"; then
+      full_only_standard_skip_count=$((full_only_standard_skip_count + 1))
+    else
       standard_targets+=("$target")
     fi
   done
 
-  echo "Profile 1/4: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
-  echo "ESP32 ESP-NOW bridge targets in this pass are automatically promoted to FULL so they retain the complete CLI."
+  echo "Profile 1/3: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  if [ "$full_only_standard_skip_count" -gt 0 ]; then
+    echo "Deferring ${full_only_standard_skip_count} ESP32 ESP-NOW target(s) to their FULL logging fallback; its persistent USB gate also provides normal output-off operation."
+  fi
   ESP32_FULL_BUILD=0
   MESHDEBUG_OVERRIDE="off"
   PACKET_LOGGING_OVERRIDE="off"
@@ -3596,8 +3763,8 @@ run_logging_matrix_build_targets() {
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
-  mapfile -t logging_targets < <(filter_out_bluetooth_targets "${standard_targets[@]}")
-  bluetooth_skip_count=$((${#standard_targets[@]} - ${#logging_targets[@]}))
+  mapfile -t logging_targets < <(filter_out_bluetooth_targets "${logging_source_targets[@]}")
+  bluetooth_skip_count=$((${#logging_source_targets[@]} - ${#logging_targets[@]}))
 
   if [ "$bluetooth_skip_count" -gt 0 ]; then
     echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
@@ -3617,15 +3784,20 @@ run_logging_matrix_build_targets() {
 
   filtered_logging_targets=()
   for target in "${logging_targets[@]}"; do
-    if requires_esp32_full_cli_profile "$target"; then
-      full_cli_logging_skip_count=$((full_cli_logging_skip_count + 1))
+    if is_companion_radio_full_target "$target"; then
+      full_companion_logging_skip_count=$((full_companion_logging_skip_count + 1))
+    elif has_esp32_full_profile "$target"; then
+      full_profile_logging_skip_count=$((full_profile_logging_skip_count + 1))
     else
       filtered_logging_targets+=("$target")
     fi
   done
   logging_targets=("${filtered_logging_targets[@]}")
-  if [ "$full_cli_logging_skip_count" -gt 0 ]; then
-    echo "Deferring ${full_cli_logging_skip_count} ESP32 target(s) to the FULL logging pass so the complete CLI is retained."
+  if [ "$full_profile_logging_skip_count" -gt 0 ]; then
+    echo "Deferring ${full_profile_logging_skip_count} ESP32 target(s) to the unified FULL/fallback pass; their separate standard logging artifacts would be redundant."
+  fi
+  if [ "$full_companion_logging_skip_count" -gt 0 ]; then
+    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; nRF52 Full already provides logging on its second USB port, while ESP32 Full keeps its single USB stream protocol-safe."
   fi
 
   for target in "${logging_targets[@]}"; do
@@ -3637,7 +3809,7 @@ run_logging_matrix_build_targets() {
   logging_target_count=$((${#logging_targets[@]} + ${#constrained_logging_targets[@]}))
 
   if [ "$logging_target_count" -gt 0 ]; then
-    echo "Profile 2/4: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
+    echo "Profile 2/3: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
     echo "Logging-on artifacts use filename form: name-logging-version"
   else
     echo "No non-Bluetooth targets remain for logging-on pass."
@@ -3666,12 +3838,12 @@ run_logging_matrix_build_targets() {
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
-  run_full_esp32_profile "Profile 3/4" "off" "${targets[@]}"
+  run_full_esp32_profile "Profile 3/3 unified FULL" "unified" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-  run_full_esp32_profile "Profile 4/4" "on" "${targets[@]}"
+  run_full_esp32_profile "Profile 3/3 logging fallback" "fallback" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
@@ -3724,7 +3896,7 @@ validate_command() {
 run_command() {
   # All build commands share execution after validation resolves their target list.
   if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
-    run_full_esp32_build_targets "on" "${RESOLVED_BUILD_TARGETS[@]}"
+    run_full_esp32_build_targets "all" "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
   fi
 
@@ -3734,12 +3906,12 @@ run_command() {
   fi
 
   if is_full_esp32_command "$1"; then
-    run_full_esp32_build_targets "off" "${RESOLVED_BUILD_TARGETS[@]}"
+    run_full_esp32_build_targets "all" "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
   fi
 
   if is_full_esp32_logging_command "$1"; then
-    run_full_esp32_build_targets "on" "${RESOLVED_BUILD_TARGETS[@]}"
+    run_full_esp32_build_targets "fallback" "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
   fi
 
@@ -3796,14 +3968,14 @@ main() {
 
     prompt_for_build_mode
     if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
-      echo "Skipping separate debug and MQTT prompts; FULL everything enables logging and explicitly disables MQTT."
+      echo "Skipping separate debug and MQTT prompts; FULL everything enables USB logging and WiFi MQTT where the hardware supports it."
     elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
-        echo "Skipping debug and MQTT prompts; this action builds all four profiles automatically."
+        echo "Skipping debug and MQTT prompts; this action builds standard, logging, and unified FULL profiles automatically."
       elif is_full_esp32_logging_command "${SELECTED_COMMAND_ARGS[0]}"; then
-        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 logging profile with MQTT disabled."
+        echo "Skipping debug and MQTT prompts; this action builds only logging fallbacks for FULL targets without WiFi MQTT."
       else
-        echo "Skipping debug and MQTT prompts; this action builds only the FULL ESP32 MQTT profile."
+        echo "Skipping debug and MQTT prompts; this action builds unified FULL USB + WiFi profiles and required logging fallbacks."
       fi
     else
       prompt_for_mqtt_bridge_build_setting

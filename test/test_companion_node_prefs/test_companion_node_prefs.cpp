@@ -80,6 +80,22 @@ TEST(CompanionNodePrefs, WiFiStateIsIndependentFromPowerSaving) {
   EXPECT_EQ(1, prefs.powersaving_enabled);
 }
 
+TEST(CompanionNodePrefs, UsbLoggingStateIsIndependentFromTransports) {
+  CompanionNodePrefs prefs = {};
+  prefs.usb_logging_enabled = 1;
+  prefs.wifi_enabled = 0;
+  prefs.powersaving_enabled = 1;
+
+  EXPECT_EQ(1, prefs.usb_logging_enabled);
+  EXPECT_EQ(0, prefs.wifi_enabled);
+  EXPECT_EQ(1, prefs.powersaving_enabled);
+
+  prefs.usb_logging_enabled = 0;
+  EXPECT_EQ(0, prefs.usb_logging_enabled);
+  EXPECT_EQ(0, prefs.wifi_enabled);
+  EXPECT_EQ(1, prefs.powersaving_enabled);
+}
+
 TEST(CompanionNodePrefs, MigratesRegressedPowerSavingDefaultOnce) {
   CompanionNodePrefs prefs = {};
   prefs.powersaving_enabled = 0;

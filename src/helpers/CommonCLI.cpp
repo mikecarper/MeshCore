@@ -722,6 +722,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   // contain its appended byte, so they safely inherit the enabled default.
   _prefs->system_watchdog_enabled = 1;
   memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
+  _prefs->usb_logging_enabled = 1;
 
 #ifdef WITH_MQTT_BRIDGE
   bool node_prefs_needs_migration = false;
@@ -824,6 +825,9 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #endif
 #if defined(ENABLE_OTA)
   if (loaded) syncOtaConfigFromPrefs();   // persisted OTA policy/keys -> OtaContext (else keep safe defaults)
+#endif
+#if MESH_USB_LOGGING_AVAILABLE
+  mesh::setUsbLoggingEnabled(_prefs->usb_logging_enabled != 0);
 #endif
 }
 
@@ -1205,6 +1209,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       if (file.available() >= (int)sizeof(_prefs->radio_fem_txgain)) {
         file.read((uint8_t *)&_prefs->radio_fem_txgain,
                   sizeof(_prefs->radio_fem_txgain));
+        if (file.available() >= (int)sizeof(_prefs->usb_logging_enabled)) {
+          file.read((uint8_t *)&_prefs->usb_logging_enabled,
+                    sizeof(_prefs->usb_logging_enabled));
+        }
       }
     } else if (file.available() > 0) {
       // Never accept a torn append as a partial detector list.
@@ -1275,6 +1283,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
     _prefs->radio_fem_rxgain = constrain(_prefs->radio_fem_rxgain, 0, 1); // boolean
     _prefs->radio_fem_txgain = constrain(_prefs->radio_fem_txgain, 0, 1); // boolean
+    _prefs->usb_logging_enabled = constrain(_prefs->usb_logging_enabled, 0, 1); // boolean
     _prefs->cad_enabled = constrain(_prefs->cad_enabled, 0, 1); // boolean
     if (!directRetryPrefsValid(_prefs)) {
       setDefaultDirectRetryPrefs(_prefs);
@@ -1482,6 +1491,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->system_watchdog_enabled);         // 855
   WRITE_COMMON_PREFS(&prefs->extra_sf);                        // 856
   WRITE_COMMON_PREFS(&prefs->radio_fem_txgain);                // 860
+  WRITE_COMMON_PREFS(&prefs->usb_logging_enabled);             // 861
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1633,7 +1643,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
                sizeof(_prefs->system_watchdog_enabled));                                           // 855
     file.write((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));                              // 856
     file.write((uint8_t *)&_prefs->radio_fem_txgain, sizeof(_prefs->radio_fem_txgain));             // 860
-    // next: 861
+    file.write((uint8_t *)&_prefs->usb_logging_enabled, sizeof(_prefs->usb_logging_enabled));       // 861
+    // next: 862
 
 #if defined(NRF52_PLATFORM)
     if (!file.commit()) {
@@ -3028,12 +3039,45 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     while (*value == ' ' || *value == '\t') value++;
     if (strcmp(value, "on") == 0 || strcmp(value, "off") == 0) {
       const bool enabled = strcmp(value, "on") == 0;
+      _prefs->usb_logging_enabled = enabled ? 1 : 0;
       mesh::setUsbLoggingEnabled(enabled);
-      snprintf(reply, 160, "OK - USB logging %s until reboot",
-               enabled ? "on" : "off");
+      savePrefs();
+      snprintf(reply, 160, "OK - USB logging %s (saved)", enabled ? "on" : "off");
     } else {
       strcpy(reply, "Error: usage set usb.logging on|off");
     }
+    return;
+  }
+#endif
+#if MESH_USB_LOGGING_AVAILABLE && defined(WITH_MQTT_BRIDGE)
+  if (strncmp(config, "logging.output", 14) == 0
+      && (config[14] == 0 || config[14] == ' ' || config[14] == '\t')) {
+    const char* value = &config[14];
+    while (*value == ' ' || *value == '\t') value++;
+    bool usb_enabled;
+    bool wifi_enabled;
+    if (strcmp(value, "off") == 0) {
+      usb_enabled = false;
+      wifi_enabled = false;
+    } else if (strcmp(value, "usb") == 0) {
+      usb_enabled = true;
+      wifi_enabled = false;
+    } else if (strcmp(value, "wifi") == 0) {
+      usb_enabled = false;
+      wifi_enabled = true;
+    } else if (strcmp(value, "both") == 0) {
+      usb_enabled = true;
+      wifi_enabled = true;
+    } else {
+      strcpy(reply, "Error: usage set logging.output off|usb|wifi|both");
+      return;
+    }
+    _prefs->usb_logging_enabled = usb_enabled ? 1 : 0;
+    _prefs->bridge_enabled = wifi_enabled ? 1 : 0;
+    mesh::setUsbLoggingEnabled(usb_enabled);
+    _callbacks->setBridgeState(wifi_enabled);
+    savePrefs();
+    snprintf(reply, 160, "OK - logging.output %s (saved)", value);
     return;
   }
 #endif
@@ -3997,6 +4041,17 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   if (strcmp(config, "usb.logging") == 0) {
     snprintf(reply, 160, "> %s",
              mesh::isUsbLoggingEnabled() ? "on" : "off");
+    return;
+  }
+#endif
+#if MESH_USB_LOGGING_AVAILABLE && defined(WITH_MQTT_BRIDGE)
+  if (strcmp(config, "logging.output") == 0) {
+    const bool usb_enabled = mesh::isUsbLoggingEnabled();
+    const bool wifi_enabled = _prefs->bridge_enabled != 0;
+    const char* mode = usb_enabled
+        ? (wifi_enabled ? "both" : "usb")
+        : (wifi_enabled ? "wifi" : "off");
+    snprintf(reply, 160, "> %s", mode);
     return;
   }
 #endif

@@ -442,11 +442,12 @@ bool ST7735Display::begin() {
     // alloc offscreen canvas
     sprite = new TFT_eSprite(&lcd);
     if (!sprite) {
-      Serial.println("ST7735Display: failed to alloc canvas");
+      mesh::usbLoggingPort().println("ST7735Display: failed to alloc canvas");
       return false;
     }
     if (!sprite->createSprite(160, 80)) {
-      Serial.println("ST7735Display: failed to alloc canvas pixels");
+      mesh::usbLoggingPort().println(
+          "ST7735Display: failed to alloc canvas pixels");
       delete sprite;
       sprite = NULL;
       return false;

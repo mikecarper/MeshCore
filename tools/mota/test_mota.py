@@ -10,6 +10,7 @@ Tests for motalib - run with the meshcore venv:
 from __future__ import annotations
 
 import io
+import importlib.util
 import os
 import random
 import struct
@@ -65,6 +66,151 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     recipe = recipe.split("supports_nrf52_internal_bootloader_update()", 1)[0]
     assert "scripts/nrf52_internal_bootloader_link.py" not in recipe
     assert "export MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE=1" in recipe
+
+
+def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
+    root = Path(__file__).resolve().parents[2]
+    build = (root / "build.sh").read_text(encoding="utf-8")
+    profile = build.split("run_full_esp32_profile()", 1)[1]
+    profile = profile.split("run_full_esp32_build_targets()", 1)[0]
+
+    assert 'PACKET_LOGGING_OVERRIDE="on"' in profile
+    assert 'MQTT_BRIDGE_OVERRIDE="on"' in profile
+    assert 'MESHDEBUG_OVERRIDE="off"' in profile
+    assert 'FIRMWARE_FILENAME_INFIX="full-usb-wifi"' in profile
+    assert "do not also build its former non-MQTT FULL-logging twin" in profile
+
+    mqtt_gate = build.split("disable_usb_logging_for_mqtt()", 1)[1]
+    mqtt_gate = mqtt_gate.split("is_esp32_usb_wifi_companion_ota_build()", 1)[0]
+    assert 'is_companion_radio_full_target "$env_name"' in mqtt_gate
+    assert 'PACKET_LOGGING_OVERRIDE,,}" = "on"' in mqtt_gate
+    assert '! is_esp32_companion_build "$env_name"' in mqtt_gate
+
+    matrix = build.split("run_logging_matrix_build_targets()", 1)[1]
+    matrix = matrix.split("run_build_targets()", 1)[0]
+    assert 'is_companion_radio_full_target "$target"' in matrix
+    assert "nRF52 Full already provides logging on its second USB port" in matrix
+
+
+def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
+    root = Path(__file__).resolve().parents[2]
+    build = (root / "build.sh").read_text(encoding="utf-8")
+
+    resolver = build.split("resolve_all_firmwares()", 1)[1]
+    resolver = resolver.split("is_legacy_companion_power_saving_target()", 1)[0]
+    assert 'is_redundant_bulk_build_target "$env_name"' in resolver
+
+    runtime = build.split("is_runtime_setting_alias_target()", 1)[1]
+    runtime = runtime.split("is_redundant_bulk_build_target()", 1)[0]
+    assert "is_legacy_companion_power_saving_target" in runtime
+    assert "is_legacy_companion_femoff_target" in runtime
+    assert "is_legacy_radio_gain_profile_target" in runtime
+    assert "is_exact_companion_recipe_alias_target" in runtime
+
+    redundant = build.split("is_redundant_bulk_build_target()", 1)[1]
+    redundant = redundant.split("resolve_logging_matrix_firmwares()", 1)[0]
+    assert "is_runtime_setting_alias_target" in redundant
+    assert "is_nrf52_companion_transport_replaced_by_full" in redundant
+
+    logging_matrix = build.split("resolve_logging_matrix_firmwares()", 1)[1]
+    logging_matrix = logging_matrix.split("resolve_companion_firmwares()", 1)[0]
+    assert "resolve_all_firmwares" in logging_matrix
+    assert "print_nrf52_usb_logging_source_targets" not in build
+
+    full = build.split("apply_companion_radio_full_profile()", 1)[1]
+    full = full.split("get_firmware_filename()", 1)[0]
+    assert "-DOTA_SEEDER_ONLY=1" in full
+    assert "-DMOTA_TARGET_ID=0" in full
+    assert "-UOTA_FLASH_STORE" in full
+    assert "-UOTA_SD_STORE" in full
+    assert "-DCFG_TUD_CDC=2" in full
+    assert "-DMESH_DUAL_CDC_LOGGING=1" in full
+    assert "-DMESH_DEBUG=1" in full
+    assert "-DMESH_PACKET_LOGGING=1" in full
+
+    usb_logging = (root / "src/helpers/UsbLogging.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "Adafruit_USBD_CDC dedicated_usb_logging_port" in usb_logging
+    assert "TinyUSBDevice.detach()" in usb_logging
+    assert "return dedicated_usb_logging_port" in usb_logging
+
+
+def test_release_catalog_resolves_canonical_runtime_aliases():
+    root = Path(__file__).resolve().parents[2]
+    provider_path = root / "mesh-america/update-provider-release.py"
+    spec = importlib.util.spec_from_file_location(
+        "meshcore_provider_release_test", provider_path
+    )
+    assert spec is not None and spec.loader is not None
+    provider = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(provider)
+
+    release_files = {
+        "RAK_4631_companion_radio_full": [Path("rak-full.zip")],
+        "Heltec_t096_companion_radio_ble_femon": [Path("t096.zip")],
+        "heltec_v4_companion_radio_ble": [Path("v4.bin")],
+        "Station_G2_repeater_observer_mqtt-full-usb-wifi-ota": [
+            Path("g2.bin")
+        ],
+    }
+    assert provider.resolve_release_identity(
+        "RAK_4631_companion_radio_usb", release_files
+    ) == ("RAK_4631_companion_radio_full", False)
+    assert provider.resolve_release_identity(
+        "RAK_4631_companion_radio_usb-logging", release_files
+    ) == ("RAK_4631_companion_radio_full", False)
+    assert provider.resolve_release_identity(
+        "Heltec_t096_companion_radio_ble_ps_femoff", release_files
+    ) == ("Heltec_t096_companion_radio_ble_femon", False)
+    assert provider.resolve_release_identity(
+        "heltec_v4_3_companion_radio_ble_femoff", release_files
+    ) == ("heltec_v4_companion_radio_ble", False)
+    assert provider.resolve_release_identity(
+        "Station_G2_logging_repeater-logging", release_files
+    ) == ("Station_G2_repeater_observer_mqtt-full-usb-wifi-ota", True)
+
+    # ESP32 transport-specific artifacts remain preferred when they exist.
+    release_files["Station_G2_companion_radio_usb"] = [Path("g2-usb.bin")]
+    release_files["Station_G2_companion_radio_full"] = [Path("g2-full.bin")]
+    assert provider.resolve_release_identity(
+        "Station_G2_companion_radio_usb", release_files
+    ) == ("Station_G2_companion_radio_usb", False)
+
+    dual_notes = provider.normalize_nrf52_full_companion_metadata(
+        {"title": "Companion USB", "subTitle": "USB logging"},
+        "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
+    )
+    assert "interface 00" in dual_notes
+    assert "interface 02" in dual_notes
+    assert "Input received on interface 02 is ignored" in dual_notes
+
+    legacy = {
+        "role": "companionBle",
+        "title": "Companion BLE",
+        "subTitle": "FEM off",
+        "version": {
+            "old": {
+                "notes": "old",
+                "files": [{"name": "Board_companion_radio_ble-v1.2.3.zip"}],
+            }
+        },
+    }
+    canonical = {
+        "role": "companionBle",
+        "title": "Companion BLE",
+        "version": {
+            "new": {
+                "notes": "new",
+                "files": [{"name": "Board_companion_radio_ble-v1.2.3.zip"}],
+            }
+        },
+    }
+    catalog = {"device": [{"firmware": [legacy, canonical]}]}
+    assert provider.deduplicate_resolved_firmware(
+        catalog, {id(legacy): 8, id(canonical): 0}
+    ) == 1
+    assert catalog["device"][0]["firmware"] == [canonical]
 
 
 def test_ota_target_generation_honors_explicit_disable():

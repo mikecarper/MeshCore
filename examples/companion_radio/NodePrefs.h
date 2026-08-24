@@ -53,6 +53,7 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t powersaving_enabled;    // device CPU/GPS idle power saving
   uint8_t wifi_enabled;           // Companion WiFi radio and services
   uint8_t powersaving_policy_version; // one-time default migration marker
+  uint8_t usb_logging_enabled;    // live USB packet/debug output
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

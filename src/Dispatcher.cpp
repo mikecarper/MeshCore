@@ -222,10 +222,12 @@ uint32_t Dispatcher::getCADFailMaxDuration() const {
 
 #if MESH_PACKET_LOGGING
 void Dispatcher::logPacketStart(const char* direction, const Packet* packet, int len) {
-  Serial.print(getLogDateTime());
-  Serial.printf(": %s, len=%d (type=%d, route=%s, payload_len=%d)",
-                direction, len, packet->getPayloadType(),
-                packet->isRouteDirect() ? "D" : "F", packet->payload_len);
+  Stream& logging_port = usbLoggingPort();
+  logging_port.print(getLogDateTime());
+  logging_port.printf(": %s, len=%d (type=%d, route=%s, payload_len=%d)",
+                      direction, len, packet->getPayloadType(),
+                      packet->isRouteDirect() ? "D" : "F",
+                      packet->payload_len);
 }
 
 void Dispatcher::logPacketEnd(const Packet* packet) {
@@ -233,10 +235,11 @@ void Dispatcher::logPacketEnd(const Packet* packet) {
   if (packet->payload_len >= 2
       && (type == PAYLOAD_TYPE_PATH || type == PAYLOAD_TYPE_REQ
           || type == PAYLOAD_TYPE_RESPONSE || type == PAYLOAD_TYPE_TXT_MSG)) {
-    Serial.printf(" [%02X -> %02X]\n", (uint32_t)packet->payload[1],
-                  (uint32_t)packet->payload[0]);
+    usbLoggingPort().printf(" [%02X -> %02X]\n",
+                            (uint32_t)packet->payload[1],
+                            (uint32_t)packet->payload[0]);
   } else {
-    Serial.write((uint8_t)'\n');
+    usbLoggingPort().write((uint8_t)'\n');
   }
 }
 #endif
@@ -593,13 +596,15 @@ void Dispatcher::checkRecv() {
     #if MESH_PACKET_LOGGING
     if (isUsbLoggingEnabled()) {
       logPacketStart("RX", pkt, pkt->getRawLength());
-      Serial.printf(" SNR=%d RSSI=%d score=%d time=%d", (int)pkt->getSNR(),
-                    (int)rssi, (int)(score * 1000), air_time);
+      Stream& logging_port = usbLoggingPort();
+      logging_port.printf(" SNR=%d RSSI=%d score=%d time=%d",
+                          (int)pkt->getSNR(), (int)rssi,
+                          (int)(score * 1000), air_time);
 
       static uint8_t packet_hash[MAX_HASH_SIZE];
       pkt->calculatePacketHash(packet_hash);
-      Serial.print(" hash=");
-      mesh::Utils::printHex(Serial, packet_hash, MAX_HASH_SIZE);
+      logging_port.print(" hash=");
+      mesh::Utils::printHex(logging_port, packet_hash, MAX_HASH_SIZE);
       logPacketEnd(pkt);
     }
     #endif

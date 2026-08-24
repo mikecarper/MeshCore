@@ -95,8 +95,8 @@ public:
 
 #if BLE_DEBUG_LOGGING && ARDUINO
   #include <Arduino.h>
-  #define BLE_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("BLE: " F, ##__VA_ARGS__); } } while(0)
-  #define BLE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf("BLE: " F "\n", ##__VA_ARGS__); } } while(0)
+  #define BLE_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("BLE: " F, ##__VA_ARGS__); } } while(0)
+  #define BLE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("BLE: " F "\n", ##__VA_ARGS__); } } while(0)
 #else
   #define BLE_DEBUG_PRINT(...) {}
   #define BLE_DEBUG_PRINTLN(...) {}

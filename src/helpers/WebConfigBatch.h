@@ -45,6 +45,7 @@ static const uint32_t kRebootConfirmMs = 3000;    // .cpp:784 first result-read 
 static const uint32_t kSetupWiFiConnectTimeoutMs = 20000;
 static const uint32_t kSetupHandoffRebootConfirmMs = 1000;
 static const uint32_t kStopWarnMs = 10000;   // .h:95 STOP_WARN_MS
+static const uint32_t kFullSetupApWindowMs = 30UL * 60UL * 1000UL;
 
 // The batch lifecycle. A fresh POST moves Idle->Pending; the drainer moves
 // Pending->Done; Done stays re-readable until the next POST claims the slot;
@@ -68,6 +69,22 @@ static inline uint32_t scheduleAt(uint32_t now, uint32_t delay) {
 // `(int32_t)(now - deadline) >= 0` comparisons.
 static inline bool deadlineReached(uint32_t now, uint32_t deadline) {
   return (int32_t)(now - deadline) >= 0;
+}
+
+// FULL images expose an unconfigured setup AP for one bounded, boot-local
+// window. Activity and connected stations do not extend it: until an SSID is
+// saved the WiFi radio must go dark after 30 minutes. A reboot constructs a new
+// WebConfigServer and therefore starts a new automatic window without
+// persisting a timeout state. An explicit later `start webconfig` is still an
+// operator override. timeout_ms == 0 keeps this policy disabled for profiles
+// that retain the legacy idle-only behavior.
+static inline bool unconfiguredSetupWindowExpired(bool setup_mode,
+                                                  bool has_saved_ssid,
+                                                  uint32_t now,
+                                                  uint32_t setup_started_at,
+                                                  uint32_t timeout_ms) {
+  return timeout_ms != 0 && setup_mode && !has_saved_ssid
+      && elapsedMs(now, setup_started_at) >= timeout_ms;
 }
 
 // --------------------------------------------------------------------------

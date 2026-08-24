@@ -47,11 +47,15 @@ bash build.sh build-full-companion-firmwares \
   --firmware-version v1.17.0
 ```
 
-Heltec `_femon` Companion firmware can switch the external FEM receive gain at
-runtime, so the Companion bulk-build commands omit the redundant legacy
-`_femoff` targets. Those targets remain available through an explicit
-`build-firmware` command for compatibility. In WebConfig, use the **FEM RX
-boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
+Canonical Companion bulk builds also omit legacy `_ps` and `_femoff` aliases.
+Power saving and controllable FEM receive gain are persisted runtime settings;
+the old names remain available through an explicit `build-firmware` command
+for compatibility. On nRF52, Full Companion replaces separate USB and BLE
+normal release artifacts whenever the exact board has both recipes. It also
+replaces the USB-only packet-logging artifact: one physical USB connection
+enumerates separate Companion and logging serial ports, so plaintext logs
+cannot corrupt binary frames. In WebConfig, use the
+**FEM RX boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
 ```text
 get radio.rxgain
@@ -242,9 +246,32 @@ The terminal supports Companion chat commands, including `channels`,
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
 `normalradio` controls. ESP32 builds also provide local
 WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
-artifacts additionally provide session-only
-`get/set usb.logging`; turning it off suppresses live USB diagnostics without
-disabling Companion frames or terminal replies.
+artifacts additionally provide `get/set usb.logging`; turning it off
+suppresses live USB diagnostics without disabling Companion frames or terminal
+replies. nRF52 Full Companion saves this setting and applies it only to its
+dedicated logging port.
+
+### nRF52 dual USB serial ports
+
+Current nRF52 Full Companion firmware exposes two CDC ACM serial interfaces on
+one physical USB cable:
+
+- USB interface `00` is the normal Binary Companion, text terminal, and serial
+  mOTA source port.
+- USB interface `02` is a write-only plaintext packet/debug logging port. Host
+  input on this interface is ignored and cannot invoke firmware commands.
+
+On Linux these normally appear as two `/dev/ttyACM*` devices. Match the stable
+`/dev/serial/by-id/*-if00` and `*-if02` links, or use a udev rule matching
+`ID_USB_INTERFACE_NUM`, rather than assuming which tty number is assigned. On
+Windows they appear as two COM ports; identify them by USB interface instead of
+depending on a particular COM number. The bootloader may temporarily expose
+only its normal DFU serial interface while an update is active.
+
+Point MeshCore Companion software, `meshcli`, and `motatool` at interface `00`.
+Point a plaintext reader or USB-connected MQTT service at interface `02`. Use
+`set usb.logging off|on` through the Companion terminal to persist whether the
+second port emits output.
 
 ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with `nc DEVICE_IP 5002`; no USB control token is needed. USB terminal mode and

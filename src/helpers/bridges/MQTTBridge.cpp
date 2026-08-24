@@ -248,7 +248,7 @@ static void agentLogHeap(const char* location, const char* message, const char* 
           "\"data\":{\"free\":%u,\"max_alloc\":%u,\"internal_free\":%lu,\"spiram_free\":%lu},\"timestamp\":%lu}",
           location, message, hypothesisId, (unsigned)free_h, (unsigned)max_alloc, internal_free, spiram_free,
           (unsigned long)millis());
-  Serial.println(buf);
+  mesh::usbLoggingPort().println(buf);
 }
 // #endregion
 #endif

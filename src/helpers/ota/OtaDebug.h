@@ -6,7 +6,7 @@
 #if defined(OTA_DEBUG) && defined(ARDUINO)
   #include <Arduino.h>
   #include <helpers/UsbLogging.h>
-  #define OTA_DBG(...) do { if (mesh::isUsbLoggingEnabled()) { Serial.printf(__VA_ARGS__); } } while (0)
+  #define OTA_DBG(...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf(__VA_ARGS__); } } while (0)
 #else
   #define OTA_DBG(...) do {} while (0)
 #endif

@@ -38,6 +38,10 @@ const releases = [
     asset("Station_G3_ESP32_logging_repeater-" + family + ".bin"),
     asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".uf2"),
     asset("Heltec_t096_companion_radio_ble_ps_femon-" + family + ".zip"),
+    asset("RAK_4631_companion_radio_full-" + family + ".uf2"),
+    asset("RAK_4631_companion_radio_full-" + family + ".zip"),
+    asset("RAK_4631_companion_radio_usb-logging-" + family + ".uf2"),
+    asset("RAK_4631_companion_radio_usb-logging-" + family + ".zip"),
   ]),
   release("repeater-room-" + family, "2026-08-23T12:00:05Z", [
     asset("Station_G2_repeater-" + family + "-deadbee-merged.bin"),
@@ -76,15 +80,15 @@ const releases = [
   ]),
   release("full-profiles-" + family, "2026-08-23T12:00:01Z", [
     asset(
-      "Station_G2_repeater-full-logging-ota-" + family + "-merged.bin"
+      "Generic_ESPNOW_repeatr-full-logging-ota-" + family + "-merged.bin"
     ),
-    asset("Station_G2_repeater-full-logging-ota-" + family + ".bin"),
+    asset("Generic_ESPNOW_repeatr-full-logging-ota-" + family + ".bin"),
     asset(
-      "Station_G2_repeater_observer_mqtt-full-ota-" +
+      "Station_G2_repeater_observer_mqtt-full-usb-wifi-ota-" +
         family + "-merged.bin"
     ),
     asset(
-      "Station_G2_repeater_observer_mqtt-full-ota-" + family + ".bin"
+      "Station_G2_repeater_observer_mqtt-full-usb-wifi-ota-" + family + ".bin"
     ),
   ]),
   release(
@@ -106,8 +110,8 @@ assert(!releaseSet.releases.some(function (item) {
 
 const catalog = picker.buildCatalog(releases);
 assert.strictEqual(catalog.releaseSet.familyTag, family);
-assert.strictEqual(catalog.profiles.length, 12);
-assert.strictEqual(catalog.rows.length, 29);
+assert.strictEqual(catalog.profiles.length, 11);
+assert.strictEqual(catalog.rows.length, 33);
 
 function profile(target) {
   const found = catalog.profiles.find(function (item) {
@@ -126,14 +130,29 @@ assert.strictEqual(companionFull.ota, "lora-source");
 assert.strictEqual(companionFull.feature, "full");
 assert.strictEqual(companionFull.variant, "default");
 
-const companionBle = profile("Heltec_t096_companion_radio_ble_ps_femon");
+const rakFull = profile("RAK_4631_companion_radio_full");
+assert.strictEqual(rakFull.logging, "usb-runtime");
+assert.deepStrictEqual(rakFull.loggingModes, ["none", "usb"]);
+assert.strictEqual(rakFull.dedicatedUsbLogging, true);
+assert(!catalog.profiles.some(function (item) {
+  return item.target === "RAK_4631_companion_radio_usb-logging";
+}));
+assert(catalog.rows.some(function (item) {
+  return item.target === "RAK_4631_companion_radio_usb-logging";
+}));
+
+const companionBle = picker.parseTargetProfile(
+  "Heltec_t096_companion_radio_ble_ps_femon"
+);
 assert.strictEqual(companionBle.hardware, "Heltec_t096");
 assert.strictEqual(companionBle.mode, "ble");
-assert.strictEqual(companionBle.variant, "ps-femon");
-assert.strictEqual(
-  picker.humanizeVariant(companionBle.variant),
-  "Power save FEM on"
-);
+assert.strictEqual(companionBle.variant, "default");
+assert(!catalog.profiles.some(function (item) {
+  return item.target === "Heltec_t096_companion_radio_ble_ps_femon";
+}));
+assert(catalog.rows.some(function (item) {
+  return item.target === "Heltec_t096_companion_radio_ble_ps_femon";
+}));
 
 const fullWifiLogging = picker.parseTargetProfile(
   "Heltec_v2_companion_radio_wifi-full-logging"
@@ -156,7 +175,7 @@ assert.strictEqual(heltecV4Full.target,
   "heltec_v4_2_v4_3_companion_radio_full_femon");
 assert.strictEqual(heltecV4Full.hardware, "heltec_v4");
 assert.strictEqual(heltecV4Full.mode, "full");
-assert.strictEqual(heltecV4Full.variant, "femon");
+assert.strictEqual(heltecV4Full.variant, "default");
 assert.strictEqual(
   picker.canonicalHardware("heltec_v4_2_v4_3"),
   "heltec_v4"
@@ -174,15 +193,17 @@ const heltecV4FemOff = picker.parseTargetProfile(
   "heltec_v4_3_companion_radio_ble_femoff"
 );
 assert.strictEqual(heltecV4FemOff.hardware, "heltec_v4_3");
-assert.strictEqual(heltecV4FemOff.variant, "femoff");
+assert.strictEqual(heltecV4FemOff.variant, "default");
 
 const heltecV4TftFemOff = picker.parseTargetProfile(
   "heltec_v4_3_tft_companion_radio_wifi_femoff"
 );
 assert.strictEqual(heltecV4TftFemOff.hardware, "heltec_v4_3_tft");
-assert.strictEqual(heltecV4TftFemOff.variant, "femoff");
+assert.strictEqual(heltecV4TftFemOff.variant, "default");
 
-const g2RxBoosted = profile("Station_G2_logging_repeater");
+const g2RxBoosted = picker.parseTargetProfile(
+  "Station_G2_logging_repeater"
+);
 assert.strictEqual(g2RxBoosted.sourceHardware, "Station_G2_logging");
 assert.strictEqual(g2RxBoosted.hardware, "Station_G2");
 assert.strictEqual(g2RxBoosted.variant, "rx-boosted");
@@ -190,6 +211,12 @@ assert.strictEqual(
   picker.humanizeVariant(g2RxBoosted.variant),
   "RX Boosted"
 );
+assert(!catalog.profiles.some(function (item) {
+  return item.target === "Station_G2_logging_repeater";
+}));
+assert(catalog.rows.some(function (item) {
+  return item.target === "Station_G2_logging_repeater";
+}));
 
 const g3Standard = profile("Station_G3_ESP32_repeater");
 assert.strictEqual(g3Standard.hardware, "Station_G3_ESP32");
@@ -199,6 +226,48 @@ assert(!catalog.profiles.some(function (item) {
 assert(catalog.rows.some(function (item) {
   return item.target === "Station_G3_ESP32_logging_repeater";
 }));
+
+assert.deepStrictEqual(
+  picker.omitNrf52TransportsReplacedByFull([
+    {
+      target: "RAK_4631_companion_radio_full",
+      hardware: "RAK_4631",
+      variant: "default",
+      role: "companion",
+      mode: "full",
+      logging: "none",
+      installKinds: ["zip", "uf2"],
+    },
+    {
+      target: "RAK_4631_companion_radio_usb",
+      hardware: "RAK_4631",
+      variant: "default",
+      role: "companion",
+      mode: "usb",
+      logging: "none",
+      installKinds: ["zip", "uf2"],
+    },
+    {
+      target: "RAK_4631_companion_radio_ble",
+      hardware: "RAK_4631",
+      variant: "default",
+      role: "companion",
+      mode: "ble",
+      logging: "none",
+      installKinds: ["zip", "uf2"],
+    },
+    {
+      target: "RAK_4631_companion_radio_usb-logging",
+      hardware: "RAK_4631",
+      variant: "default",
+      role: "companion",
+      mode: "usb",
+      logging: "usb",
+      installKinds: ["zip", "uf2"],
+    },
+  ]).map(function (item) { return item.target; }),
+  ["RAK_4631_companion_radio_full"]
+);
 
 const standardRepeater = profile("Station_G2_repeater");
 assert.strictEqual(standardRepeater.hardwareFamily, "Station_G2");
@@ -212,16 +281,19 @@ assert.strictEqual(
   "Station_G2_repeater-" + family + "-merged.bin"
 );
 
-const fullLogging = profile("Station_G2_repeater-full-logging");
-assert.strictEqual(fullLogging.logging, "usb");
+const fullLogging = profile("Generic_ESPNOW_repeatr-full-logging");
+assert.strictEqual(fullLogging.logging, "usb-runtime");
+assert.deepStrictEqual(fullLogging.loggingModes, ["none", "usb"]);
 assert.strictEqual(fullLogging.ota, "lora-receiver");
 assert.strictEqual(fullLogging.feature, "full");
 assert.strictEqual(fullLogging.variant, "default");
 
-const mqtt = profile("Station_G2_repeater_observer_mqtt-full");
-assert.strictEqual(mqtt.logging, "wifi");
+const mqtt = profile("Station_G2_repeater_observer_mqtt-full-usb-wifi");
+assert.strictEqual(mqtt.logging, "runtime");
+assert.deepStrictEqual(mqtt.loggingModes, ["none", "usb", "wifi", "both"]);
 assert.strictEqual(mqtt.mode, "mqtt");
 assert.strictEqual(mqtt.ota, "lora-receiver");
+assert.strictEqual(mqtt.variant, "default");
 
 const lora = profile(
   "Station_G2_repeater_lora_ota_no_external_sensors"
@@ -275,7 +347,10 @@ const matches = catalog.profiles.filter(function (item) {
   });
 });
 assert.strictEqual(matches.length, 1);
-assert.strictEqual(matches[0].target, "Station_G2_repeater-full-logging");
+assert.strictEqual(
+  matches[0].target,
+  "Station_G2_repeater_observer_mqtt-full-usb-wifi"
+);
 
 assert.deepStrictEqual(
   picker.FACET_FIELDS,
@@ -372,6 +447,10 @@ assert.deepStrictEqual(
   ["Station_G2"]
 );
 assert.deepStrictEqual(
+  picker.facetValues(catalog.profiles, { logging: "both" }, "hardware"),
+  ["Station_G2"]
+);
+assert.deepStrictEqual(
   picker.facetValues(
     catalog.profiles,
     {
@@ -382,13 +461,13 @@ assert.deepStrictEqual(
     },
     "hardware"
   ),
-  ["Station_G2"]
+  ["Generic_ESPNOW", "Station_G2"]
 );
 
 assert.deepStrictEqual(
   picker.uniqueValues(catalog.profiles, "hardware").sort(),
   [
-    "Heltec_t096",
+    "Generic_ESPNOW",
     "ProMicro",
     "RAK_4631",
     "Station_G2",

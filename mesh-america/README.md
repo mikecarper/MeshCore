@@ -26,6 +26,7 @@ python3 mesh-america/update-provider-release.py \
   --artifact-version v1.17.1.2-c9652754 \
   --main-tag v1.17.1.2-halo-keymind-cascade-c9652754 \
   --advanced-tag lora-ota-v1.17.1.2-halo-keymind-cascade-c9652754 \
+  --full-tag full-profiles-v1.17.1.2-halo-keymind-cascade-c9652754 \
   --utility-tag kiss-v1.17.1.1-halo-keymind-cascade-759a35fc \
   --companion-only
 ```
@@ -33,13 +34,14 @@ python3 mesh-america/update-provider-release.py \
 The updater preserves the catalog's curated device names, role choices, and
 hardware guidance; validates every referenced artifact; routes URLs to the
 correct GitHub release page; and replaces legacy portable MQTT choices with the
-matching expanded-partition FULL MQTT observer builds.
+matching expanded-partition unified FULL USB + Wi-Fi observer builds.
 
 The logging catalog likewise keeps unaffected roles on v1.17.1.1 while its
 Companion, Full Companion, and expanded Companion logging profiles track the
-v1.17.1.2 correction. Logging builds are for a USB-connected MQTT/logging host;
-they are not the direct on-device Wi-Fi MQTT bridge. Update only the Companion
-choices from the same completed matrix with:
+v1.17.1.2 correction. Ordinary logging builds are for a USB-connected
+MQTT/logging host. Unified FULL ESP32 builds can instead select USB, the direct
+on-device Wi-Fi MQTT bridge, both, or neither at runtime. Update only the
+Companion choices from the same completed matrix with:
 
 ```text
 python3 mesh-america/update-logging-provider-release.py \
@@ -58,7 +60,8 @@ In Companion-only mode, each updater preserves every unaffected catalog entry,
 validates every selected replacement artifact, and adds the one-time
 power-saving migration guidance. Without `--companion-only`, the existing
 all-role behavior remains available for a future complete matrix release; the
-logging updater then validates all 648 referenced firmware identities.
+logging updater then validates all curated entries while allowing consolidated
+FULL USB + Wi-Fi artifacts to replace their former duplicate identities.
 
 The older PowerShell generator remains available for the historical standard
 and logging source folders:

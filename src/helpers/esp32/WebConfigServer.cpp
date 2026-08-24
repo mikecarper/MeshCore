@@ -585,6 +585,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   _retry_saved_wifi_in_setup = false;
   _setup_reconnect_in_progress = false;
   _setup_reconnect_deadline = 0;
+  _setup_started_at = 0;
   // AP_STA (not pure AP) so the WiFi scan for the SSID picker works while
   // the AP is up. STA stays unconnected - the bridge won't touch WiFi
   // while wifi_ssid is empty, and `start webconfig ap` requires it stopped.
@@ -630,7 +631,8 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   NodeSnapshot node = {};
   _cb->getNodeSnapshot(node);
   _initial_setup = _wifi_ssid[0] == 0 && node.admin_password[0] != 0;
-  _last_activity = millis();
+  _setup_started_at = millis();
+  _last_activity = _setup_started_at;
   WiFi.scanNetworks(true);  // pre-populate the SSID picker
 
   sprintf(reply, "WebConfig AP started: join '%s' then open http://%s/", _ap_ssid, ip.toString().c_str());
@@ -647,6 +649,7 @@ bool WebConfigServer::startLanMode(char reply[]) {
     return false;
   }
   _mode = MODE_LAN;
+  _setup_started_at = 0;
   _wifi_reconnect_tracker.noteConnected();
   _retry_saved_wifi_in_setup = false;
   _setup_reconnect_in_progress = false;
@@ -678,6 +681,7 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   _retry_saved_wifi_in_setup = false;
   _setup_reconnect_in_progress = false;
   _setup_reconnect_deadline = 0;
+  _setup_started_at = 0;
   _wifi_reconnect_tracker.noteDisconnected(millis());
   WiFi.begin(_wifi_ssid, _wifi_password);
   _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
@@ -749,6 +753,7 @@ void WebConfigServer::finalizeTeardown() {
     WiFi.mode(WIFI_OFF);
   }
   _initial_setup = false;
+  _setup_started_at = 0;
   _stopping = false;
   _stop_warn_at = 0;
   _stop_warned = false;
@@ -857,6 +862,7 @@ void WebConfigServer::tick(uint32_t now) {
       WiFi.setAutoReconnect(true);
       _was_setup_ap = false;
       _initial_setup = false;
+      _setup_started_at = 0;
       _retry_saved_wifi_in_setup = false;
       _setup_reconnect_in_progress = false;
       _setup_reconnect_deadline = 0;
@@ -907,6 +913,21 @@ void WebConfigServer::tick(uint32_t now) {
     _stats_built_at = now;
   }
 
+  // A FULL image with no saved SSID gets one absolute setup window per boot.
+  // Browser activity and an attached station cannot extend it. requestStop()
+  // tears down the AP and finalizeTeardown() powers WiFi fully off; the saved
+  // bridge/output preference is deliberately left unchanged for the next boot.
+  if (WebConfigBatch::unconfiguredSetupWindowExpired(
+          _mode == MODE_SETUP, _wifi_ssid[0] != 0, now,
+          _setup_started_at,
+          (uint32_t)WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS)) {
+    Serial.printf(
+        "WebConfig: WiFi still unconfigured after %lu minutes; powering off until reboot or explicit restart\n",
+        (unsigned long)((uint32_t)WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS / 60000UL));
+    requestStop();
+    return;
+  }
+
   // Idle timeout: only the setup AP auto-stops (a deployed node must not be
   // left broadcasting an open AP). LAN mode runs until `stop webconfig`.
   if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0 &&
@@ -925,6 +946,7 @@ void WebConfigServer::tick(uint32_t now) {
       WiFi.setAutoReconnect(true);
       _was_setup_ap = false;
       _initial_setup = false;
+      _setup_started_at = 0;
       _retry_saved_wifi_in_setup = false;
       _setup_reconnect_in_progress = false;
       _setup_reconnect_deadline = 0;

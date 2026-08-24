@@ -43,8 +43,8 @@ class CustomSX1276 : public SX1276 {
       int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16);
       // if radio init fails with -707/-706, try again with tcxo voltage set to 0.0f
       if (status != RADIOLIB_ERR_NONE) {
-        Serial.print("ERROR: radio init failed: ");
-        Serial.println(status);
+        mesh::usbLoggingPort().print("ERROR: radio init failed: ");
+        mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
   #ifdef SX127X_CURRENT_LIMIT

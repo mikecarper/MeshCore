@@ -79,7 +79,7 @@ def is_constrained_logging(identity: str) -> bool:
 
 def release_tag(identity: str, args: argparse.Namespace) -> str:
     lowered = identity.lower()
-    if "full-logging-ota" in lowered:
+    if "full-logging-ota" in lowered or "full-usb-wifi-ota" in lowered:
         return args.full_tag
     if "-logging" in lowered:
         return args.logging_utility_tag if is_logging_utility(identity) else args.logging_main_tag
@@ -100,6 +100,25 @@ def release_tag(identity: str, args: argparse.Namespace) -> str:
     return args.utility_tag
 
 
+def identity_category(identity: str) -> str:
+    lowered = identity.lower()
+    if "full-usb-wifi-ota" in lowered:
+        return "full-unified"
+    if "full-logging-ota" in lowered:
+        return "full-logging"
+    if "-logging" in lowered:
+        return "logging-utility" if is_logging_utility(identity) else "logging-main"
+    if (
+        "companion_radio_full" in lowered
+        or "lora_ota" in lowered
+        or "observer_mqtt" in lowered
+    ):
+        return "standard-advanced"
+    if is_logging_utility(identity):
+        return "standard-utility"
+    return "standard-main"
+
+
 def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: argparse.Namespace) -> dict:
     display_version = args.artifact_version.rsplit("-", 1)[0]
     if args.companion_only:
@@ -117,10 +136,13 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             f"Keymind Cascade MeshCore {display_version} firmware with Halo/Keymind "
             "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
             "BW62.5 / CR5 preset. This catalog contains packet-logging builds with "
-            "USB debug enabled except on seven flash-constrained STM32 targets, "
-            "selected non-logging utility and FULL MQTT observer builds, "
-            "and expanded-partition FULL USB-logging LoRa-OTA builds. Host software "
-            "can consume the USB serial log and publish it separately. Open Release "
+            "USB debug enabled except on seven flash-constrained STM32 targets and "
+            "selected non-logging utilities. Unified expanded-partition FULL builds "
+            "provide USB packet logging and direct WiFi MQTT in one image with a "
+            "persistent off/USB/WiFi/both selector. Host software can consume the "
+            "USB serial log and publish it separately. nRF52 Full Companion uses "
+            "separate USB interfaces for Companion traffic and plaintext logging, "
+            "replacing its older separate USB-logging image. Open Release "
             "notes for role, hardware, installation, and partition requirements."
         )
 
@@ -131,10 +153,13 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
         "logging-main": 0,
         "logging-utility": 0,
         "full-logging": 0,
+        "full-unified": 0,
         "standard-main": 0,
         "standard-advanced": 0,
         "standard-utility": 0,
     }
+    processed_firmware_ids: set[int] = set()
+    firmware_priorities: dict[int, int] = {}
 
     for device in catalog["device"]:
         device_type = device["type"]
@@ -158,6 +183,10 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     or converted_observer
                     or "observer_mqtt" in identity.lower()
                 )
+            processed_firmware_ids.add(id(firmware))
+            firmware_priorities[id(firmware)] = common.legacy_identity_priority(
+                old_identities, identities
+            )
             paths: list[Path] = []
             for identity in identities:
                 if identity not in release_files:
@@ -165,22 +194,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 used_identities.add(identity)
                 paths.extend(release_files[identity])
 
-                lowered = identity.lower()
-                if "full-logging-ota" in lowered:
-                    category_counts["full-logging"] += 1
-                elif "-logging" in lowered:
-                    key = "logging-utility" if is_logging_utility(identity) else "logging-main"
-                    category_counts[key] += 1
-                elif (
-                    "companion_radio_full" in lowered
-                    or "lora_ota" in lowered
-                    or "observer_mqtt" in lowered
-                ):
-                    category_counts["standard-advanced"] += 1
-                elif is_logging_utility(identity):
-                    category_counts["standard-utility"] += 1
-                else:
-                    category_counts["standard-main"] += 1
+                category_counts[identity_category(identity)] += 1
 
             paths.sort(key=lambda path: common.file_sort_key(path, device_type))
             files = []
@@ -205,7 +219,14 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 notes = common.observer_notes(
                     firmware["role"], display_version, identities, old_notes
                 )
-                firmware["subTitle"] = "FULL MQTT observer"
+                firmware["subTitle"] = (
+                    "Unified FULL USB + Wi-Fi observer"
+                    if any(
+                        "-full-usb-wifi-ota" in identity.lower()
+                        for identity in identities
+                    )
+                    else "FULL MQTT observer"
+                )
             else:
                 notes = common.replace_release_version(old_notes, display_version)
             if "USA/Canada 910.525 MHz" not in notes:
@@ -246,6 +267,16 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 notes = common.append_companion_power_saving_note(
                     notes, display_version
                 )
+                notes = common.normalize_runtime_companion_metadata(
+                    firmware, notes
+                )
+                if device_type == "nrf52" and any(
+                    "companion_radio_full" in identity.lower()
+                    for identity in identities
+                ):
+                    notes = common.normalize_nrf52_full_companion_metadata(
+                        firmware, notes
+                    )
             if any("-logging" in identity.lower() for identity in identities):
                 logging_note = (
                     "LOGGING USE - This USB packet-logging build is for a "
@@ -259,17 +290,29 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             entry_count += 1
             file_count += len(files)
 
-    expected_entries = 129 if args.companion_only else 596
-    expected_identities = None if args.companion_only else 648
-    if entry_count != expected_entries:
-        raise ValueError(
-            f"expected {expected_entries} curated firmware entries, found {entry_count}"
-        )
-    if expected_identities is not None and len(used_identities) != expected_identities:
-        raise ValueError(
-            f"expected {expected_identities} curated identities, "
-            f"found {len(used_identities)}"
-        )
+    collapsed_entries = common.deduplicate_resolved_firmware(
+        catalog, firmware_priorities
+    )
+    retained_processed = [
+        firmware
+        for device in catalog["device"]
+        for firmware in device["firmware"]
+        if id(firmware) in processed_firmware_ids
+    ]
+    entry_count = len(retained_processed)
+    file_count = sum(
+        len(version["files"])
+        for firmware in retained_processed
+        for version in firmware["version"].values()
+    )
+    used_identities = {
+        identity
+        for firmware in retained_processed
+        for identity in common.ordered_catalog_identities(firmware)
+    }
+    category_counts = {key: 0 for key in category_counts}
+    for identity in used_identities:
+        category_counts[identity_category(identity)] += 1
     if file_count == 0:
         raise ValueError("catalog update produced no files")
     print(
@@ -279,6 +322,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 "catalog_files": file_count,
                 "release_identities_used": len(used_identities),
                 "identity_categories": category_counts,
+                "collapsed_alias_entries": collapsed_entries,
                 "update_mode": "companion-only" if args.companion_only else "all",
             },
             sort_keys=True,

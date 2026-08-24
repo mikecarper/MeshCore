@@ -1024,10 +1024,11 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #if MESH_PACKET_LOGGING
   if (mesh::isUsbLoggingEnabled()) {
     // Logging builds prefer backpressure over silently losing a packet record.
-    Serial.print(getLogDateTime());
-    Serial.print(" RAW: ");
-    mesh::Utils::printHex(Serial, raw, len);
-    Serial.println();
+    Stream& logging_port = mesh::usbLoggingPort();
+    logging_port.print(getLogDateTime());
+    logging_port.print(" RAW: ");
+    mesh::Utils::printHex(logging_port, raw, len);
+    logging_port.println();
   }
 #endif
 

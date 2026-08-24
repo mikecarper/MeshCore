@@ -147,7 +147,7 @@ public :
         while (_gps_serial->available()) {
             char c = _gps_serial->read();
             #ifdef GPS_NMEA_DEBUG
-            if (mesh::isUsbLoggingEnabled()) Serial.print(c);
+            if (mesh::isUsbLoggingEnabled()) mesh::usbLoggingPort().print(c);
             #endif
             nmea.process(c);
         }

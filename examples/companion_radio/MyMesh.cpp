@@ -1437,6 +1437,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_enabled = 1;
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
+  _prefs.usb_logging_enabled = 1;
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
@@ -1531,6 +1532,7 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   _prefs.rx_powersaving_enabled = constrain(_prefs.rx_powersaving_enabled, 0, 1);
   _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
   _prefs.wifi_enabled = constrain(_prefs.wifi_enabled, 0, 1);
+  _prefs.usb_logging_enabled = constrain(_prefs.usb_logging_enabled, 0, 1);
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
     _prefs.rx_ps_preamble = 0;
@@ -1542,6 +1544,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   if (power_saving_default_migrated) {
     _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
   }
+#if MESH_USB_LOGGING_AVAILABLE
+  mesh::setUsbLoggingEnabled(_prefs.usb_logging_enabled != 0);
+#endif
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
@@ -2085,9 +2090,10 @@ void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password) {
     _mqtt_started = true;  // begin is one-shot; avoid retrying partial allocations
     _mqtt_bridge->begin();
     if (_mqtt_bridge->isRunning()) {
-      Serial.println("MQTT companion: bridge started");
+      mesh::usbLoggingPort().println("MQTT companion: bridge started");
     } else {
-      Serial.println("MQTT companion: bridge could not start");
+      mesh::usbLoggingPort().println(
+          "MQTT companion: bridge could not start");
     }
   }
 }
@@ -4976,9 +4982,15 @@ void MyMesh::handleTerminalCommand(char* command) {
         terminalOutput().print("  ERROR: use set usb.logging <on|off>\r\n");
       } else {
         const bool enabled = strcmp(value, "on") == 0;
+        _prefs.usb_logging_enabled = enabled ? 1 : 0;
         mesh::setUsbLoggingEnabled(enabled);
-        terminalOutput().printf("  OK - USB logging %s until reboot\r\n",
-                      enabled ? "on" : "off");
+        if (savePrefs()) {
+          terminalOutput().printf("  OK - USB logging %s (saved)\r\n",
+                                  enabled ? "on" : "off");
+        } else {
+          terminalOutput().print(
+              "  ERROR: USB logging changed for this boot but save failed\r\n");
+        }
       }
     } else
 #endif

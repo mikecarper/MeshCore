@@ -36,7 +36,18 @@ class AsyncWebServerRequest;
 class DNSServer;
 
 #ifndef WEBCONFIG_AP_IDLE_TIMEOUT_MS
-  #define WEBCONFIG_AP_IDLE_TIMEOUT_MS  (10UL * 60UL * 1000UL)
+  #if defined(MESHCORE_ESP32_FULL_PROFILE)
+    #define WEBCONFIG_AP_IDLE_TIMEOUT_MS WebConfigBatch::kFullSetupApWindowMs
+  #else
+    #define WEBCONFIG_AP_IDLE_TIMEOUT_MS (10UL * 60UL * 1000UL)
+  #endif
+#endif
+#ifndef WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS
+  #if defined(MESHCORE_ESP32_FULL_PROFILE)
+    #define WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS WebConfigBatch::kFullSetupApWindowMs
+  #else
+    #define WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS 0UL
+  #endif
 #endif
 #ifndef WEBCONFIG_SESSION_TTL_MS
   #define WEBCONFIG_SESSION_TTL_MS      (20UL * 60UL * 1000UL)
@@ -227,6 +238,7 @@ private:
   bool _stopping = false;
   bool _was_setup_ap = false;
   bool _initial_setup = false;
+  uint32_t _setup_started_at = 0;
   uint32_t _connect_deadline = 0;
   char _wifi_ssid[32] = {0};
   char _wifi_password[64] = {0};

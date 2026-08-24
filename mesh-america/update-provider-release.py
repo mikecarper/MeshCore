@@ -63,6 +63,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--main-tag", required=True)
     parser.add_argument("--advanced-tag", required=True)
+    parser.add_argument(
+        "--full-tag",
+        help="FULL-profile release tag (defaults to --advanced-tag for compatibility)",
+    )
     parser.add_argument("--utility-tag", required=True)
     parser.add_argument("--repo", default="mikecarper/MeshCore")
     parser.add_argument("--output", type=Path)
@@ -79,7 +83,10 @@ def parse_args() -> argparse.Namespace:
             "all unaffected roles"
         ),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.full_tag:
+        args.full_tag = args.advanced_tag
+    return args
 
 
 def artifact_identity(name: str) -> str:
@@ -127,34 +134,300 @@ def ordered_catalog_identities(firmware: dict) -> list[str]:
     return identities
 
 
+def canonical_runtime_identity(identity: str) -> str:
+    """Map legacy setting/profile names to the canonical release identity."""
+    result = re.sub(
+        r"^Station_G2_logging(?=_)", "Station_G2", identity,
+        flags=re.IGNORECASE,
+    )
+    result = re.sub(
+        r"^Station_G3_ESP32_logging(?=_)", "Station_G3_ESP32", result,
+        flags=re.IGNORECASE,
+    )
+    result = re.sub(r"_ps(?=_|-|$)", "", result, flags=re.IGNORECASE)
+
+    # V4.3 _femoff recipes extend the corresponding auto-detect V4 recipe.
+    # Normalize the physical prefix before turning the compile-time default
+    # into the canonical runtime-configurable identity.
+    v4_prefixes = (
+        (r"^heltec_v4_3_expansionkit_tft(?=_companion_radio)",
+         "heltec_v4_expansionkit_tft"),
+        (r"^heltec_v4_3_tft(?=_companion_radio)", "heltec_v4_tft"),
+        (r"^heltec_v4_3(?=_companion_radio)", "heltec_v4"),
+    )
+    for pattern, replacement in v4_prefixes:
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+    result = re.sub(
+        r"_femoff(?=-|$)", "_femon", result, flags=re.IGNORECASE
+    )
+
+    # The unsuffixed V4 USB/BLE targets are exact aliases of their _femon
+    # recipes and are the shorter canonical release names.
+    result = re.sub(
+        r"^(heltec_v4_companion_radio_(?:usb|ble))_femon(?=-|$)",
+        r"\1",
+        result,
+        flags=re.IGNORECASE,
+    )
+    return result
+
+
+def release_identity_candidates(old_identity: str) -> list[str]:
+    candidates = [old_identity]
+    fixed_alias = LEGACY_COMPANION_IDENTITY_ALIASES.get(old_identity)
+    if fixed_alias is not None:
+        candidates.append(fixed_alias)
+    for identity in tuple(candidates):
+        canonical = canonical_runtime_identity(identity)
+        if canonical not in candidates:
+            candidates.append(canonical)
+    return candidates
+
+
+def legacy_identity_priority(
+    old_identities: list[str], resolved_identities: list[str]
+) -> int:
+    """Prefer canonical catalog rows when several rows resolve to one file."""
+    score = 0
+    resolved = set(resolved_identities)
+    for identity in old_identities:
+        lowered = identity.lower()
+        if identity not in resolved:
+            score += 4
+        if re.search(r"_ps(?=_|-|$)", lowered):
+            score += 8
+        if "_femoff" in lowered:
+            score += 8
+        if lowered.startswith(("station_g2_logging_", "station_g3_esp32_logging_")):
+            score += 8
+        if re.match(
+            r"^heltec_v4_companion_radio_(?:usb|ble)_femon(?=-|$)",
+            lowered,
+        ):
+            score += 1
+    return score
+
+
+def deduplicate_resolved_firmware(
+    catalog: dict, priorities: dict[int, int]
+) -> int:
+    """Collapse catalog rows that now point at the same canonical artifacts."""
+    collapsed = 0
+    for device in catalog["device"]:
+        retained: list[dict] = []
+        index_by_identity: dict[tuple[str, ...], int] = {}
+        for firmware in device["firmware"]:
+            identities = tuple(ordered_catalog_identities(firmware))
+            existing_index = index_by_identity.get(identities)
+            if existing_index is None:
+                index_by_identity[identities] = len(retained)
+                retained.append(firmware)
+                continue
+            existing = retained[existing_index]
+            if priorities.get(id(firmware), 0) < priorities.get(id(existing), 0):
+                retained[existing_index] = firmware
+            collapsed += 1
+        device["firmware"] = retained
+    return collapsed
+
+
+def normalize_runtime_companion_metadata(firmware: dict, notes: str) -> str:
+    subtitle = firmware.get("subTitle")
+    if isinstance(subtitle, str):
+        kept = []
+        for part in subtitle.split(","):
+            token = part.strip()
+            if token.lower() in {
+                "power saving", "fem on", "fem off",
+            }:
+                continue
+            kept.append(token)
+        if kept:
+            firmware["subTitle"] = ", ".join(kept)
+        else:
+            firmware.pop("subTitle", None)
+
+    paragraphs: list[str] = []
+    added_runtime_note = False
+    for paragraph in notes.split("\n\n"):
+        lowered = paragraph.lower()
+        if paragraph.startswith("HARDWARE ") and "fem on/off must match" in lowered:
+            if not added_runtime_note:
+                paragraphs.append(
+                    "CONFIGURATION - Controllable external FEM receive gain is "
+                    "a saved setting, not a different hardware image. Change it "
+                    "with WebConfig, the Companion protocol, or "
+                    "radio.fem.rxgain on|off where the text CLI is available."
+                )
+                added_runtime_note = True
+            continue
+        if paragraph.startswith("SELECTION "):
+            paragraph = re.sub(
+                r",?\s*(?:Power saving|FEM (?:on|off))(?=,|\.|$)",
+                "",
+                paragraph,
+                flags=re.IGNORECASE,
+            )
+            paragraph = re.sub(r",\s*,", ",", paragraph)
+            paragraph = re.sub(r"\s+,", ",", paragraph)
+        paragraphs.append(paragraph)
+    return "\n\n".join(paragraphs)
+
+
+def normalize_nrf52_full_companion_metadata(
+    firmware: dict, notes: str
+) -> str:
+    """Describe the canonical dual-CDC nRF52 Full Companion accurately."""
+    firmware["title"] = "Full Companion"
+    firmware["subTitle"] = (
+        "USB Companion + USB logging + BLE + LoRa OTA source"
+    )
+    profile = (
+        "PROFILE - nRF52 Full Companion: one USB cable exposes interface 00 "
+        "for Binary Companion, the text terminal, and serial mOTA source "
+        "traffic, while interface 02 is a separate plaintext packet/debug "
+        "logging port. BLE remains available. Use set usb.logging off|on to "
+        "save whether interface 02 emits output."
+    )
+    logging_use = (
+        "LOGGING USE - Point Companion software, meshcli, and motatool at USB "
+        "interface 00. Point a USB-connected MQTT/logging reader at interface "
+        "02. Match the USB interface number rather than assuming a tty or COM "
+        "port number. Input received on interface 02 is ignored."
+    )
+    ota_use = (
+        "LORA OTA SOURCE - This Full Companion can serve a host-supplied "
+        "update to another node. It has no target-side staging store and does "
+        "not install that LoRa update onto itself."
+    )
+
+    paragraphs: list[str] = []
+    profile_added = False
+    for paragraph in notes.split("\n\n"):
+        if paragraph.startswith("PROFILE "):
+            if not profile_added:
+                paragraphs.append(profile)
+                profile_added = True
+            continue
+        if paragraph.startswith("LOGGING USE "):
+            continue
+        if paragraph.startswith("SELECTION "):
+            paragraphs.append(
+                "SELECTION - nRF52 Full Companion with dual USB serial ports, "
+                "BLE, and source-only LoRa OTA."
+            )
+            continue
+        paragraphs.append(paragraph)
+    if not profile_added:
+        paragraphs.append(profile)
+    paragraphs.append(logging_use)
+    if ota_use not in paragraphs:
+        paragraphs.append(ota_use)
+    return "\n\n".join(paragraphs)
+
+
+def release_identity_has_nrf52_package(
+    release_files: dict[str, list[Path]], identity: str
+) -> bool:
+    return any(path.suffix.lower() == ".zip" for path in release_files[identity])
+
+
 def resolve_release_identity(
     old_identity: str, release_files: dict[str, list[Path]]
 ) -> tuple[str, bool]:
-    if old_identity in release_files:
-        return old_identity, False
+    candidates = release_identity_candidates(old_identity)
+    for candidate in candidates:
+        if candidate in release_files:
+            return candidate, False
 
-    alias = LEGACY_COMPANION_IDENTITY_ALIASES.get(old_identity)
-    if alias is not None and alias in release_files:
-        return alias, False
+    # Current nRF52 Full Companion also replaces the old USB-only logging
+    # artifact because its second CDC interface carries plaintext logs. Limit
+    # this fallback to identities with a native nRF52 DFU ZIP so an ESP32 Full
+    # Companion is never mistaken for a dual-port logging image.
+    for candidate in candidates:
+        if not candidate.endswith("-logging"):
+            continue
+        logging_base = candidate.removesuffix("-logging")
+        match = re.search(
+            r"_companion_radio_(?:usb|ble)(?=-|_|$)",
+            logging_base,
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            continue
+        full_identity = (
+            logging_base[:match.start()] + "_companion_radio_full" +
+            logging_base[match.end():]
+        )
+        if full_identity in release_files and release_identity_has_nrf52_package(
+            release_files, full_identity
+        ):
+            return full_identity, False
 
-    # Accept catalogs produced while portable MQTT observers were still
-    # emitted, and migrate them to the expanded-partition FULL artifact.
-    if "observer_mqtt" in old_identity.lower():
-        full_identity = f"{old_identity}-full-ota"
-        if full_identity in release_files:
-            return full_identity, True
-    if "bridge_espnow" in old_identity.lower():
-        full_identity = f"{old_identity}-full-ota"
+    # Canonical nRF52 Full Companion replaces separate USB and BLE artifacts.
+    # ESP32 transport-specific images still match exactly above and therefore
+    # remain separate. Full is source-only for LoRa OTA and needs no staging
+    # store or self-install slot.
+    for candidate in candidates:
+        match = re.search(
+            r"_companion_radio_(?:usb|ble)(?=-|_|$)",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+        if match is None:
+            continue
+        full_identity = (
+            candidate[:match.start()] + "_companion_radio_full" +
+            candidate[match.end():]
+        )
         if full_identity in release_files:
             return full_identity, False
 
+    # Accept catalogs produced while portable MQTT observers were still
+    # emitted, and migrate them to the expanded-partition FULL artifact.
+    for candidate in candidates:
+        if "observer_mqtt" in candidate.lower():
+            for full_suffix in ("-full-usb-wifi-ota", "-full-ota"):
+                full_identity = f"{candidate}{full_suffix}"
+                if full_identity in release_files:
+                    return full_identity, True
+        if "bridge_espnow" in candidate.lower():
+            for full_suffix in ("-full-usb-wifi-ota", "-full-ota"):
+                full_identity = f"{candidate}{full_suffix}"
+                if full_identity in release_files:
+                    return full_identity, False
+
     # Retain compatibility with the short-lived reverse migration used by
     # older release directories.
-    full_suffix = "-full-ota"
-    if old_identity.endswith(full_suffix):
-        portable_identity = old_identity[: -len(full_suffix)]
-        if portable_identity in release_files:
-            return portable_identity, True
+    for candidate in candidates:
+        for full_suffix in ("-full-usb-wifi-ota", "-full-ota"):
+            if candidate.endswith(full_suffix):
+                portable_identity = candidate[: -len(full_suffix)]
+                if portable_identity in release_files:
+                    return portable_identity, True
+                unified_identity = f"{portable_identity}-full-usb-wifi-ota"
+                if unified_identity in release_files:
+                    return unified_identity, True
+
+    # Logging catalogs historically carried a separate USB-only identity for
+    # every ESP32 target. Prefer the unified FULL observer when present; if the
+    # role has no MQTT sibling, use its FULL logging fallback instead.
+    for candidate in candidates:
+        logging_base = None
+        if candidate.endswith("-full-logging-ota"):
+            logging_base = candidate.removesuffix("-full-logging-ota")
+        elif candidate.endswith("-logging"):
+            logging_base = candidate.removesuffix("-logging")
+        if logging_base is None:
+            continue
+        logging_candidates = (
+            f"{logging_base}_observer_mqtt-full-usb-wifi-ota",
+            f"{logging_base}-full-usb-wifi-ota",
+            f"{logging_base}-full-logging-ota",
+        )
+        for identity in logging_candidates:
+            if identity in release_files:
+                return identity, "observer_mqtt" in identity.lower()
 
     raise ValueError(f"no new release artifact matches catalog target {old_identity!r}")
 
@@ -181,8 +454,13 @@ def replace_legacy_companion_ota_notes(notes: str) -> str:
 def release_tag_for_identity(identity: str, args: argparse.Namespace) -> str:
     lowered = identity.lower()
     if (
-        "companion_radio_full" in lowered
+        "-full-usb-wifi-ota" in lowered
+        or "-full-logging-ota" in lowered
         or "-full-ota" in lowered
+    ):
+        return args.full_tag
+    if (
+        "companion_radio_full" in lowered
         or "lora_ota" in lowered
         or "observer_mqtt" in lowered
     ):
@@ -251,6 +529,7 @@ def replace_release_version(notes: str, display_version: str) -> str:
 def partition_warning(identities: list[str]) -> str | None:
     if not any(
         identity.lower() in LEGACY_PORTABLE_CEILING_EXCEPTIONS
+        or "-full-usb-wifi-ota" in identity.lower()
         or "-full-ota" in identity.lower()
         or "-full-logging-ota" in identity.lower()
         for identity in identities
@@ -302,6 +581,24 @@ def observer_notes(
     role_paragraph = role_paragraphs.get(
         role, f"ROLE - {role}: use the firmware only for its named MeshCore role."
     )
+    unified_output = any(
+        "-full-usb-wifi-ota" in identity.lower() for identity in identities
+    )
+    profile_paragraph = (
+        "PROFILE - Unified FULL USB + Wi-Fi observer: uses expanded partitions, "
+        "compiles USB packet logging and the on-device Wi-Fi MQTT bridge into one "
+        "image, keeps verbose USB debug off, and retains the complete role CLI. "
+        "Use logging.output off|usb|wifi|both to persist the active paths. LoRa "
+        "self-update is enabled. With no saved SSID, the setup AP is available "
+        "for 30 minutes per boot and then powers Wi-Fi off; configured Wi-Fi "
+        "retains its normal indefinite reconnect behavior."
+        if unified_output
+        else
+        "PROFILE - FULL MQTT observer: uses expanded partitions, forwards mesh "
+        "observations to an on-device Wi-Fi MQTT bridge, keeps USB debug/packet "
+        "logging off, uses bridge NTP instead of mesh clock consensus, and retains "
+        "the complete role CLI. LoRa self-update is enabled."
+    )
     paragraphs = [
         (
             f"Keymind Cascade MeshCore {display_version} with Halo/Keymind retry "
@@ -309,12 +606,7 @@ def observer_notes(
             "BW62.5 / CR5 preset."
         ),
         role_paragraph,
-        (
-            "PROFILE - FULL MQTT observer: uses expanded partitions, forwards mesh observations to an "
-            "on-device Wi-Fi MQTT bridge, keeps USB debug/packet logging off, "
-            "uses bridge NTP instead of mesh clock consensus, and retains the "
-            "complete role CLI. LoRa self-update is enabled."
-        ),
+        profile_paragraph,
         (
             "INSTALL - Flash Full install (the merged bootloader + firmware image) "
             "over USB once to install the expanded partition table. Routine upgrades "
@@ -333,7 +625,11 @@ def observer_notes(
             "Board selection note:"
         ):
             paragraphs.append(paragraph)
-    paragraphs.append("SELECTION - FULL MQTT observer.")
+    paragraphs.append(
+        "SELECTION - Unified FULL USB + Wi-Fi observer."
+        if unified_output
+        else "SELECTION - FULL MQTT observer."
+    )
     return "\n\n".join(paragraphs)
 
 
@@ -355,9 +651,10 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "retry tuning, Cascade defaults, and the USA/Canada 910.525 MHz / SF7 / "
             "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
             "Companion builds, lean LoRa-OTA builds, and expanded-partition FULL "
-            "MQTT observer and ESP-NOW bridge builds. MQTT observers keep USB "
-            "debug/packet logging off. On nRF52, Full Companion "
-            "replaces separate BLE and USB choices; on ESP32, Full Companion is "
+            "USB + Wi-Fi observer and ESP-NOW bridge builds. Unified observers "
+            "provide persistent off/USB/WiFi/both output selection. On nRF52, Full Companion "
+            "replaces separate BLE, USB, and USB-logging choices with BLE plus "
+            "separate Companion and logging USB ports; on ESP32, Full Companion is "
             "offered next to the BLE/USB variants. Open Release notes for role, "
             "hardware, installation, and partition requirements."
         )
@@ -366,6 +663,8 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
     updated_files = 0
     observer_entries = 0
     used_identities: set[str] = set()
+    processed_firmware_ids: set[int] = set()
+    firmware_priorities: dict[int, int] = {}
 
     for device in catalog["device"]:
         device_type = device["type"]
@@ -377,8 +676,9 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             resolved_identities: list[str] = []
             converted_observer = False
             converted_legacy_companion_ota = False
+            old_identities = ordered_catalog_identities(firmware)
 
-            for old_identity in ordered_catalog_identities(firmware):
+            for old_identity in old_identities:
                 identity, converted = resolve_release_identity(old_identity, release_files)
                 converted_legacy_companion_ota = (
                     converted_legacy_companion_ota
@@ -391,6 +691,10 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     or converted
                     or "observer_mqtt" in identity.lower()
                 )
+            processed_firmware_ids.add(id(firmware))
+            firmware_priorities[id(firmware)] = legacy_identity_priority(
+                old_identities, resolved_identities
+            )
 
             paths: list[Path] = []
             for identity in resolved_identities:
@@ -420,7 +724,14 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     resolved_identities,
                     old_notes,
                 )
-                firmware["subTitle"] = "FULL MQTT observer"
+                firmware["subTitle"] = (
+                    "Unified FULL USB + Wi-Fi observer"
+                    if any(
+                        "-full-usb-wifi-ota" in identity.lower()
+                        for identity in resolved_identities
+                    )
+                    else "FULL MQTT observer"
+                )
                 observer_entries += 1
             else:
                 version_key = replacement_version_key(old_keys[0], args.artifact_version)
@@ -431,15 +742,42 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
 
             if firmware["role"].startswith("companion"):
                 notes = append_companion_power_saving_note(notes, display_version)
+                notes = normalize_runtime_companion_metadata(firmware, notes)
+                if device_type == "nrf52" and any(
+                    "companion_radio_full" in identity.lower()
+                    for identity in resolved_identities
+                ):
+                    notes = normalize_nrf52_full_companion_metadata(
+                        firmware, notes
+                    )
 
             firmware["version"] = {version_key: {"notes": notes, "files": files}}
             updated_entries += 1
             updated_files += len(files)
 
-    if args.companion_only and updated_entries != 216:
-        raise ValueError(
-            f"expected 216 curated Companion entries, found {updated_entries}"
-        )
+    collapsed_entries = deduplicate_resolved_firmware(catalog, firmware_priorities)
+    retained_processed = [
+        firmware
+        for device in catalog["device"]
+        for firmware in device["firmware"]
+        if id(firmware) in processed_firmware_ids
+    ]
+    updated_entries = len(retained_processed)
+    updated_files = sum(
+        len(version["files"])
+        for firmware in retained_processed
+        for version in firmware["version"].values()
+    )
+    observer_entries = sum(
+        any("observer_mqtt" in identity.lower()
+            for identity in ordered_catalog_identities(firmware))
+        for firmware in retained_processed
+    )
+    used_identities = {
+        identity
+        for firmware in retained_processed
+        for identity in ordered_catalog_identities(firmware)
+    }
     if updated_entries == 0 or updated_files == 0:
         raise ValueError("catalog update produced no firmware entries")
 
@@ -450,6 +788,7 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                 "catalog_files": updated_files,
                 "observer_entries": observer_entries,
                 "release_identities_used": len(used_identities),
+                "collapsed_alias_entries": collapsed_entries,
                 "update_mode": "companion-only" if args.companion_only else "all",
             },
             sort_keys=True,

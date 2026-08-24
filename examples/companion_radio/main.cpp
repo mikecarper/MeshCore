@@ -153,16 +153,17 @@ static void serviceCompanionRadioRecovery() {
       || (long)(millis() - companion_radio_retry_at) < 0) return;
 
   companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
-  Serial.println("Radio recovery probe starting");
+  mesh::usbLoggingPort().println("Radio recovery probe starting");
   board.powerCycleRadio();
   if (!radio_init()) {
-    Serial.println("Radio recovery probe failed; companion services remain available");
+    mesh::usbLoggingPort().println(
+        "Radio recovery probe failed; companion services remain available");
     return;
   }
 
   companion_radio_available = true;
   the_mesh.activateRadio();
-  Serial.println("Radio recovered; mesh transport is active");
+  mesh::usbLoggingPort().println("Radio recovered; mesh transport is active");
 }
 #endif
 
@@ -207,8 +208,8 @@ static bool applyCompanionPowerSaving(bool enabled) {
 
   esp_err_t pm_result = esp_pm_configure(&pm_config);
   if (pm_result != ESP_OK) {
-    Serial.printf("Device power saving failed: %s\r\n",
-                  esp_err_to_name(pm_result));
+    mesh::usbLoggingPort().printf("Device power saving failed: %s\r\n",
+                                  esp_err_to_name(pm_result));
     return false;
   }
 #else
@@ -216,8 +217,9 @@ static bool applyCompanionPowerSaving(bool enabled) {
   // which case esp_pm_configure() is a stub returning ESP_ERR_NOT_SUPPORTED.
   // Keep frequency throttling functional instead of retrying that stub.
   if (!setCpuFrequencyMhz(max_mhz)) {
-    Serial.printf("Device power saving failed: CPU %lu MHz is unsupported\r\n",
-                  (unsigned long)max_mhz);
+    mesh::usbLoggingPort().printf(
+        "Device power saving failed: CPU %lu MHz is unsupported\r\n",
+        (unsigned long)max_mhz);
     return false;
   }
 #endif
@@ -226,20 +228,21 @@ static bool applyCompanionPowerSaving(bool enabled) {
   esp_err_t bt_result = enabled ? esp_bt_sleep_enable()
                                 : esp_bt_sleep_disable();
   if (bt_result != ESP_OK) {
-    Serial.printf("Bluetooth sleep %s failed: %s\r\n",
-                  enabled ? "enable" : "disable",
-                  esp_err_to_name(bt_result));
+    mesh::usbLoggingPort().printf("Bluetooth sleep %s failed: %s\r\n",
+                                  enabled ? "enable" : "disable",
+                                  esp_err_to_name(bt_result));
   }
 #endif
 
 #if COMPANION_IDF_PM_AVAILABLE
-  Serial.printf("Device power saving %s: CPU %lu-%lu MHz, automatic light sleep %s\r\n",
-                enabled ? "on" : "off", (unsigned long)min_mhz,
-                (unsigned long)max_mhz,
-                automatic_light_sleep ? "on" : "off");
+  mesh::usbLoggingPort().printf(
+      "Device power saving %s: CPU %lu-%lu MHz, automatic light sleep %s\r\n",
+      enabled ? "on" : "off", (unsigned long)min_mhz,
+      (unsigned long)max_mhz, automatic_light_sleep ? "on" : "off");
 #else
-  Serial.printf("Device power saving %s: CPU %lu MHz\r\n",
-                enabled ? "on" : "off", (unsigned long)max_mhz);
+  mesh::usbLoggingPort().printf("Device power saving %s: CPU %lu MHz\r\n",
+                                enabled ? "on" : "off",
+                                (unsigned long)max_mhz);
 #endif
   return true;
 }
@@ -949,12 +952,13 @@ void halt() {
   static void startCompanionBluetooth() {
     if (companion_bluetooth_initialized) return;
 
-    Serial.println("Companion: starting Bluetooth");
+    mesh::usbLoggingPort().println("Companion: starting Bluetooth");
     bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name,
                               the_mesh.getBLEPin());
     if (!interface_manager.addInterface(InterfaceType::Bluetooth,
                                         &bluetooth_interface)) {
-      Serial.println("Companion: no interface slot available for Bluetooth");
+      mesh::usbLoggingPort().println(
+          "Companion: no interface slot available for Bluetooth");
       return;
     }
     companion_bluetooth_initialized = true;
@@ -973,7 +977,7 @@ void halt() {
 
 #if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
   static void logFullCompanionMemory(const char* stage) {
-    Serial.printf(
+    mesh::usbLoggingPort().printf(
         "Full Companion memory %s: heap=%u largest_internal=%u psram_free=%u/%u offline_queue=%d\r\n",
         stage, (unsigned)ESP.getFreeHeap(),
         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
@@ -984,6 +988,7 @@ void halt() {
 
 void setup() {
   Serial.begin(115200);
+  mesh::beginUsbLoggingPort();
   board.begin();
 
 #ifdef HAS_EXTERNAL_WATCHDOG
@@ -1015,7 +1020,8 @@ void setup() {
 #if defined(TBEAM_1W)
       // Continue into a recovery-capable Companion instead of trapping native
       // USB in a reboot loop. The main loop retries the radio independently.
-      Serial.println("Radio unavailable; starting display, USB, BLE, and WiFi recovery services");
+      mesh::usbLoggingPort().println(
+          "Radio unavailable; starting display, USB, BLE, and WiFi recovery services");
       break;
 #else
       MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
@@ -1148,7 +1154,8 @@ void setup() {
   #if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
     companion_bluetooth_start_at = millis() + 2000UL;
     if (companion_bluetooth_start_at == 0) companion_bluetooth_start_at = 1;
-    Serial.println("Companion: Bluetooth starts in 2 seconds");
+    mesh::usbLoggingPort().println(
+        "Companion: Bluetooth starts in 2 seconds");
   #else
     startCompanionBluetooth();
   #endif

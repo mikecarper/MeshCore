@@ -116,8 +116,9 @@ ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi co
 LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
 their target partition table rather than using the FULL profile. A small set of high-capacity, non-PSRAM classic ESP32
 companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
-OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 also emits `-full-ota-` and
-`-full-logging-ota-` variants with 100 contacts, 8 group channels, and a 16-frame offline queue. MQTT
+OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 emits a
+`-full-logging-ota-` fallback with 100 contacts, 8 group channels, a 16-frame offline queue, and a saved
+USB-logging on/off gate. MQTT
 observers and ESP-NOW bridges always use FULL builds because fitting them into the legacy slot would require
 removing CLI and role features. Except for those FULL roles and the ESP32-C6 case below, non-companion ESP32
 artifacts, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to
@@ -157,21 +158,27 @@ during a settings save restores the last committed common preference image or pu
 image; it does not leave a partially written `/com_prefs` file to fail on the next boot. A truncated legacy
 image is rejected before any partial radio or string fields are applied, then rewritten from safe defaults.
 
-Option 3 in `build.sh` emits `*-full-ota-*` and `*-full-logging-ota-*` ESP32 artifacts for
-FULL-capable non-companion roles and for the constrained companion fallbacks described above. MQTT observers
-and ESP-NOW bridges are emitted only with expanded FULL partitions. Menu option 8, or
-`build-full-esp32-firmwares`, builds the logging-off FULL
-artifacts from matching MQTT targets. Menu option 9, or `build-full-esp32-logging-firmwares`, builds the
-FULL logging artifacts from matching non-MQTT targets.
+Option 3 in `build.sh` emits one `*-full-usb-wifi-ota-*` ESP32 artifact for each
+FULL-capable non-companion hardware/role that has a matching MQTT environment.
+It compiles USB packet logging and direct WiFi MQTT together. A
+`*-full-logging-ota-*` fallback is emitted only when there is no MQTT sibling;
+the old separate standard-logging and non-MQTT FULL twins are skipped for
+covered ESP32 roles. MQTT observers and ESP-NOW bridges are emitted only with
+expanded FULL partitions. Menu option 8, or `build-full-esp32-firmwares`,
+builds the unified profiles plus necessary fallbacks. Menu option 9, or
+`build-full-esp32-logging-firmwares`, builds only those fallbacks.
 FULL builds restore WebConfig, display support, optional external sensors, and the full role CLI and feature
 set,
 full ElegantOTA where that target declares the required library, and LoRa OTA for every included role,
 including room servers, sensors, observers, and bridges. They use expanded A/B partition
 tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB
 and 16 MiB boards. Explicit `*_lora_ota_no_external_sensors` targets are not duplicated; their ordinary
-repeater build is the FULL, sensor-enabled counterpart. The `*-full-logging-ota-*` profile enables USB
-debug and packet logging and explicitly disables MQTT. Install a matching
-`*-full-ota-*-merged.bin` or `*-full-logging-ota-*-merged.bin` over USB once to write the expanded partition
+repeater build is the FULL, sensor-enabled counterpart. The
+`*-full-usb-wifi-ota-*` profile enables USB packet logging and MQTT, with a
+persistent `logging.output` selector; its verbose internal debug remains off.
+The fallback `*-full-logging-ota-*` profile enables USB debug and packet
+logging and has no MQTT target. Install a matching
+`*-full-usb-wifi-ota-*-merged.bin` or `*-full-logging-ota-*-merged.bin` over USB once to write the expanded partition
 table. After that, its matching non-merged FULL application image can be installed through USB, WiFi OTA,
 or LoRa OTA. Do not install a non-merged FULL image onto a node that still has its old partition table.
 

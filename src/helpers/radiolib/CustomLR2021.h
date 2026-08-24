@@ -58,8 +58,8 @@ class CustomLR2021 : public LR2021 {
         status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
       }
       if (status != RADIOLIB_ERR_NONE) {
-        Serial.print("ERROR: radio init failed: ");
-        Serial.println(status);
+        mesh::usbLoggingPort().print("ERROR: radio init failed: ");
+        mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
 

@@ -134,6 +134,7 @@ from the published firmware assets.
 | Terminal Chat | Standalone serial-terminal interface |
 | USB logging / USB-connected MQTT | Node remains attached to a computer over a data-capable USB cable |
 | Wi-Fi MQTT observer | Firmware connects directly to MQTT over Wi-Fi; this is not USB logging |
+| USB logging + Wi-Fi MQTT | Unified FULL image sends to both paths; avoid two publishers aimed at the same broker unless messages are deduplicated |
 | No logging | Normal standalone operation without the dedicated logging/MQTT profile |
 | LoRa OTA enabled / receiver | Install-capable profile that can stage an exact matching update received over LoRa |
 | LoRa OTA source only | Full Companion serving a host-supplied update to another node without self-installing it |
@@ -154,6 +155,25 @@ partition layout.
 Changing between standard and FULL ESP32 layouts requires the exact-board
 merged image over USB. A running application cannot safely move its own active
 and inactive partitions.
+
+Current `full-usb-wifi` profiles use one binary for no external output, USB
+packet logging/USB-connected MQTT, direct WiFi MQTT, or both. The picker shows
+that same exact binary for each compatible logging choice; select the saved
+runtime mode with `set logging.output off|usb|wifi|both`. A FULL logging-fallback
+profile is listed only when no WiFi MQTT sibling exists; it appears for both
+the no-output and USB choices because `set usb.logging off|on` is persistent.
+On a fresh unified FULL install with no saved SSID, the setup AP and WiFi radio
+remain available for 30 minutes per boot, then turn off automatically until the
+next reboot or power cycle. An explicit administrator `start webconfig` remains
+available as an override. A saved SSID switches to the normal indefinite
+reconnect behavior instead.
+
+Current nRF52 Full Companion profiles also use one binary for normal attached
+Companion use and USB packet logging. One USB cable exposes interface `00` for
+Binary Companion, terminal, and mOTA source traffic, plus interface `02` for
+plaintext logging. The picker therefore omits the older separate nRF52 USB,
+BLE, and USB-logging Companion choices when the matching Full artifact exists.
+Use `set usb.logging off|on` to persist the second port's output state.
 
 ## Installation methods
 
@@ -184,6 +204,14 @@ and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.
 Hardware families with multiple released targets get a second hardware-variant
 menu. It separates revisions, display type, expansion kit, radio/PA layout,
 pin map, and other physical differences without crowding the first menu. The
-firmware-variant menu separately exposes build choices such as FEM on/off,
-power saving, serial port, or no-external-sensors. Do not substitute a
-similarly named target.
+firmware-variant menu separately exposes choices that still require different
+code or wiring, such as serial port or no-external-sensors. Companion power
+saving, controllable FEM receive gain, and radio-chip receive gain are saved
+settings rather than separate recommended firmware files. Do not substitute a
+similarly named physical target.
+
+For nRF52 hardware with a Full Companion image, the picker recommends that one
+normal image instead of separate USB, BLE, and USB-logging images. Full
+Companion provides both attached transports and a dedicated plaintext logging
+port without mixing logs into framed Companion traffic. Exact filename search
+still finds old aliases from earlier releases.
