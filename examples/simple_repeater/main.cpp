@@ -98,8 +98,27 @@ void setup() {
     ++radioinit_attempts;
     MESH_DEBUG_PRINTLN("Radio init failed! (attempt %d)", radioinit_attempts);
     if (radioinit_attempts >= 3) {
+#ifdef RECOVERABLE_EXTERNAL_RADIO
+      // A remote external-radio node must not churn USB or require a physical
+      // power cut merely because its radio is temporarily unavailable. Keep
+      // the MCU alive and retry in place; target radio_init() performs the
+      // board-specific regulator/reset/wake recovery on each attempt.
+      Serial.println("Radio unavailable; retrying in 60 seconds");
+      radioinit_attempts = 0;
+      const uint32_t retry_started = millis();
+      while (millis() - retry_started < 60000UL) {
+#if defined(NRF52_PLATFORM)
+        board.feedWatchdog();
+#endif
+#ifdef HAS_EXTERNAL_WATCHDOG
+        external_watchdog.loop();
+#endif
+        delay(10);
+      }
+#else
       MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
       board.reboot();
+#endif
     }
     delay(500);
   }

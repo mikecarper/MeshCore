@@ -48,5 +48,13 @@ void initVariant()
 
   // 3V3 Power Rail
   pinMode(PIN_3V3_EN, OUTPUT);
-  digitalWrite(PIN_3V3_EN, HIGH);
+  // Start the auxiliary 3V3_S rail off so the RAK13302 FEM/boost circuitry is
+  // quiescent while the external SX1262 is reset. The SX1262 core itself uses
+  // unswitched 3V3, so RAK3401Board::begin() gives this rail one cold-start
+  // interval and recoverRadio() separately resets/wakes the radio core.
+  digitalWrite(PIN_3V3_EN, LOW);
+
+  // Keep the RAK13302 FEM disabled while its auxiliary rail is off.
+  pinMode(SX126X_POWER_EN, OUTPUT);
+  digitalWrite(SX126X_POWER_EN, LOW);
 }

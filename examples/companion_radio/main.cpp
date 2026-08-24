@@ -23,10 +23,6 @@
 #include <esp_heap_caps.h>
 #endif
 #endif
-#ifdef TBEAM_1W
-#include <esp_random.h>
-#endif
-
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -150,7 +146,7 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
 
 /* END GLOBAL OBJECTS */
 
-#ifdef TBEAM_1W
+#ifdef RECOVERABLE_EXTERNAL_RADIO
 static bool companion_radio_available = true;
 static unsigned long companion_radio_retry_at = 0;
 static const unsigned long COMPANION_RADIO_RETRY_MS = 60000UL;
@@ -161,7 +157,6 @@ static void serviceCompanionRadioRecovery() {
 
   companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
   mesh::usbLoggingPort().println("Radio recovery probe starting");
-  board.powerCycleRadio();
   if (!radio_init()) {
     mesh::usbLoggingPort().println(
         "Radio recovery probe failed; companion services remain available");
@@ -1054,11 +1049,11 @@ void setup() {
     ++radioinit_attempts;
     MESH_DEBUG_PRINTLN("Radio init failed! (attempt %d)", radioinit_attempts);
     if (radioinit_attempts >= 3) {
-#if defined(TBEAM_1W)
+#if defined(RECOVERABLE_EXTERNAL_RADIO)
       // Continue into a recovery-capable Companion instead of trapping native
       // USB in a reboot loop. The main loop retries the radio independently.
       mesh::usbLoggingPort().println(
-          "Radio unavailable; starting display, USB, BLE, and WiFi recovery services");
+          "Radio unavailable; starting companion management services");
       break;
 #else
       MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
@@ -1068,15 +1063,16 @@ void setup() {
     delay(500);
   }
 
-#ifdef TBEAM_1W
+#ifdef RECOVERABLE_EXTERNAL_RADIO
   companion_radio_available = radio_available;
   companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
-  fast_rng.begin(radio_available ? radio_driver.getRngSeed() : esp_random());
+  fast_rng.begin(radio_available ? radio_driver.getRngSeed()
+                                 : radio_fallback_rng_seed());
 #ifdef DISPLAY_CLASS
   if (!radio_available && disp != NULL) {
     disp->startFrame();
     disp->drawTextCentered(disp->width() / 2, 20, "Radio unavailable");
-    disp->drawTextCentered(disp->width() / 2, 40, "Starting WiFi...");
+    disp->drawTextCentered(disp->width() / 2, 40, "Starting interfaces...");
     disp->endFrame();
   }
 #endif
@@ -1289,7 +1285,7 @@ void loop() {
   board.feedWatchdog();
 #endif
   the_mesh.loop();
-#ifdef TBEAM_1W
+#ifdef RECOVERABLE_EXTERNAL_RADIO
   serviceCompanionRadioRecovery();
 #endif
 #if defined(ENABLE_USB_INTERFACE)

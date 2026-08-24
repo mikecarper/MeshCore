@@ -36,6 +36,10 @@ AutoDiscoverRTCClock rtc_clock(fallback_clock);
 #endif
 
 bool radio_init() {
+  if (target_peripherals_initialized && !target_radio_available) {
+    board.powerCycleRadio();
+  }
+
   if (!target_peripherals_initialized) {
     fallback_clock.begin();
     rtc_clock.begin(Wire);
@@ -64,6 +68,10 @@ bool radio_init() {
         digitalRead(SX126X_RXEN));
   }
   return success;
+}
+
+uint32_t radio_fallback_rng_seed() {
+  return esp_random();
 }
 
 mesh::LocalIdentity radio_new_identity() {

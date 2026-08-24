@@ -135,19 +135,14 @@ static const uint8_t AREF = PIN_AREF;
 #define PIN_WIRE_SDA (WB_I2C1_SDA)
 #define PIN_WIRE_SCL (WB_I2C1_SCL)
 
-// QSPI Pins
-// QSPI occupied by GPIO's
+// The RAK3401 has no on-board QSPI flash. These pads are the WisBlock SPI bus
+// and are used by the external RAK13300/RAK13302 radio module.
 #define PIN_QSPI_SCK 3
 #define PIN_QSPI_CS 26
 #define PIN_QSPI_IO0 30
 #define PIN_QSPI_IO1 29
 #define PIN_QSPI_IO2 28
 #define PIN_QSPI_IO3 2
-
-// On-board QSPI Flash
-// No onboard flash
-#define EXTERNAL_FLASH_DEVICES IS25LP080D
-#define EXTERNAL_FLASH_USE_QSPI
 
 #define USE_SX1262
 #define SX126X_CS (26)

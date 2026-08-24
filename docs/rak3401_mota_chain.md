@@ -389,3 +389,50 @@ OTA reach before every package, requires the exact post-boot EndF hash, and
 only re-enables the watchdog after step 9. Success requires endpoint body hash
 `4BB1526BF647547D`, target `2FA509C1`, hardware `RAK_3401`, normal radio
 `910.525 MHz / 62.5 kHz / SF7 / CR5`, and the watchdog verified on.
+
+## External-radio startup and manual USB recovery
+
+RAK3401 is a distinct target from RAK4631. Its RAK13300/RAK13302 radio is on
+the WisBlock SPI bus (`SPI1` in the Adafruit nRF52 core), with BUSY and DIO1 on
+P0.09/P0.10. Current builds explicitly enable those NFC-capable pads as GPIO
+and do not advertise the radio bus as an on-board QSPI flash device.
+
+The RAK13302's FEM and boost supply use switched `3V3_S`, but the SX1262 core
+uses unswitched 3V3. An MCU reset, a 1200-baud DFU touch, or disconnecting only
+USB may therefore leave a battery-powered SX1262 in its previous state. At
+startup, current firmware quiesces the FEM, reinitializes the dedicated SPI
+instance, asserts NRESET, and, if BUSY remains high, sends the Semtech
+NSS/GET_STATUS wake sequence without waiting on RadioLib first. The one-time
+board startup cold-starts `3V3_S`; later radio retries leave that shared rail
+enabled so they do not reset GPS or sensor modules.
+
+If BUSY still cannot be released, firmware must not enter a reset loop:
+
+- Companion starts its USB/BLE management services after three bounded probes,
+  uses nRF52 hardware entropy if it needs a first-boot identity, and retries the
+  radio every 60 seconds. Radio statistics remain zero until recovery.
+- Repeater keeps the same USB CDC session open and prints
+  `Radio unavailable; retrying in 60 seconds`. It repeats the board-level probe
+  in place. The normal repeater CLI and mesh transport cannot start until the
+  radio responds.
+
+A permanently high BUSY after NRESET and the direct wake transaction indicates
+an electrically unavailable radio, loose module, or power-domain fault; an MCU
+reboot cannot manufacture a response. If local access is possible, disconnect
+the battery as well as USB and reseat the WisBlock module. Remote firmware will
+continue retrying without requiring that physical intervention or churning the
+USB device.
+
+For a local Serial DFU recovery with the repository helper:
+
+```bash
+cd /path/to/meshfirmware
+MCFIRMWARE_NO_SUDO=1 ./mcfirmware.sh
+```
+
+Select the serial entry whose USB identity is `WisCore RAK3401 Board`, then
+choose **Custom**, **nrf52**, and the exact RAK3401 `.zip`. Use **flash-update**
+to preserve InternalFS preferences and identity. Use **flash-wipe + flash** only
+when erasing application data is intentional. The helper follows the same USB
+device into bootloader mode, so do not substitute another `/dev/ttyACM*` merely
+because its number appears first.

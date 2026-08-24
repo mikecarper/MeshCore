@@ -13,12 +13,15 @@
 
 class RAK3401Board : public NRF52BoardDCDC {
 protected:
+  bool radio_spi_initialized = false;
 #ifdef NRF52_POWER_MANAGEMENT
   void initiateShutdown(uint8_t reason) override;
 #endif
 public:
   RAK3401Board() : NRF52Board("RAK3401_OTA") {}
   void begin();
+  bool recoverRadio();
+  void enableRadioFrontend();
 
   #define BATTERY_SAMPLES 8
 

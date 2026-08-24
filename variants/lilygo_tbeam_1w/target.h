@@ -24,4 +24,5 @@ extern AutoDiscoverRTCClock rtc_clock;
 extern EnvironmentSensorManager sensors;
 
 bool radio_init();
+uint32_t radio_fallback_rng_seed();
 mesh::LocalIdentity radio_new_identity();
