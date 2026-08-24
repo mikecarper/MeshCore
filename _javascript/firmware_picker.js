@@ -37,6 +37,9 @@
     none: "None / normal operation",
     usb: "USB logging / USB-connected MQTT",
     wifi: "Wi-Fi MQTT observer",
+    both: "USB logging + Wi-Fi MQTT",
+    runtime: "Runtime selectable: off / USB / Wi-Fi / both",
+    "usb-runtime": "Runtime selectable: off / USB",
   });
 
   const OTA_LABELS = Object.freeze({
@@ -90,9 +93,10 @@
   });
 
   const HIDDEN_PROFILE_HARDWARE = Object.freeze([
-    // This legacy environment only changes ADVERT_NAME. The standard G3
-    // target provides the same firmware behavior, while all legacy files stay
-    // available through exact filename search.
+    // These legacy Station environments select a runtime radio-gain default
+    // or only change ADVERT_NAME. Their ordinary targets provide the same
+    // behavior, while all legacy files stay available through exact search.
+    "Station_G2_logging",
     "Station_G3_ESP32_logging",
   ]);
 
@@ -102,6 +106,9 @@
     // siblings; keep those files searchable without recommending them.
     "solarxiao_30S_repeater_lora_ota_no_external_sensors",
     "solarxiao_33S_repeater_lora_ota_no_external_sensors",
+    // Exact aliases of the unsuffixed Heltec V4 USB/BLE recipes.
+    "heltec_v4_companion_radio_usb_femon",
+    "heltec_v4_companion_radio_ble_femon",
   ]);
 
   let pickerInstanceCount = 0;
@@ -287,7 +294,13 @@
         /^(?:full|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
         " "
       );
+      // Power saving and controllable FEM gain are persisted settings. Legacy
+      // filenames retain these tokens for exact search, but they are not
+      // distinct recommended firmware variants.
+      value = value.replace(/(?:^|[_-])ps(?=$|[_-])/gi, " ");
+      value = value.replace(/(?:^|[_-])fem(?:on|off)(?=$|[_-])/gi, " ");
     }
+    value = value.replace(/-full-usb-wifi/gi, "");
     value = value.replace(/-logging/gi, "");
     value = value.replace(/(?:^|[_-])full(?=$|[_-])/gi, " ");
     value = value.replace(/observer_mqtt/gi, " ");
@@ -307,11 +320,23 @@
     const lowerTarget = target.toLowerCase();
     const lowerTail = parts.tail.toLowerCase();
     const mode = modeForRole(parts.role, parts.tail);
-    const logging = lowerTarget.includes("observer_mqtt")
-      ? "wifi"
-      : lowerTarget.includes("-logging")
-        ? "usb"
-        : "none";
+    const unifiedLogging = lowerTarget.includes("-full-usb-wifi");
+    const fullLoggingFallback = parts.role !== "companion" &&
+      lowerTarget.includes("-full-logging");
+    const logging = unifiedLogging
+      ? "runtime"
+      : fullLoggingFallback
+        ? "usb-runtime"
+        : lowerTarget.includes("observer_mqtt")
+          ? "wifi"
+          : lowerTarget.includes("-logging")
+            ? "usb"
+            : "none";
+    const loggingModes = unifiedLogging
+      ? ["none", "usb", "wifi", "both"]
+      : fullLoggingFallback
+        ? ["none", "usb"]
+        : [logging];
     const feature = lowerTail.includes("-full") ||
       (parts.role === "companion" && mode === "full")
       ? "full"
@@ -334,6 +359,7 @@
       hardware: canonicalHardware(sourceHardware),
       role: parts.role,
       logging: logging,
+      loggingModes: loggingModes,
       mode: mode,
       feature: feature,
       variant: variant,
@@ -344,6 +370,47 @@
   function canonicalHardware(hardware) {
     const value = String(hardware || "");
     return HARDWARE_ALIASES[value] || value;
+  }
+
+  function isHiddenLegacyProfile(profile) {
+    const target = String(profile && profile.target || "");
+    const lowerTarget = target.toLowerCase();
+    return HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) ||
+      HIDDEN_PROFILE_TARGETS.includes(target) ||
+      (lowerTarget.includes("companion_radio_") &&
+        /(?:^|[_-])(?:ps|femoff)(?=$|[_-])/.test(lowerTarget));
+  }
+
+  function omitNrf52TransportsReplacedByFull(profiles) {
+    const fullKeys = new Set((profiles || []).filter(function (profile) {
+      return profile.role === "companion" && profile.mode === "full" &&
+        profile.installKinds.includes("zip");
+    }).map(function (profile) {
+      return profile.hardware + "\n" + profile.variant;
+    }));
+
+    return (profiles || []).filter(function (profile) {
+      const key = profile.hardware + "\n" + profile.variant;
+      const replacedAttachedTransport = profile.role === "companion" &&
+        (profile.mode === "usb" || profile.mode === "ble");
+      return !(replacedAttachedTransport && fullKeys.has(key));
+    });
+  }
+
+  function applyNrf52FullCompanionCapabilities(profiles) {
+    return (profiles || []).map(function (profile) {
+      const nativeNrf52Full = profile.role === "companion" &&
+        profile.mode === "full" && profile.installKinds.includes("zip");
+      if (!nativeNrf52Full) return profile;
+
+      // Current nRF52 Full Companion images expose two CDC ACM interfaces:
+      // framed Companion traffic on interface 00 and plaintext logging on 02.
+      // The saved USB logging gate covers only the second interface.
+      profile.logging = "usb-runtime";
+      profile.loggingModes = ["none", "usb"];
+      profile.dedicatedUsbLogging = true;
+      return profile;
+    });
   }
 
   function hardwareFamilyFor(hardware, hardwareNames) {
@@ -432,7 +499,7 @@
       profile.otaPackaged = profile.otaPackaged || file.otaPackaged;
     });
 
-    const profiles = Array.from(grouped.values()).map(function (profile) {
+    const visibleProfiles = Array.from(grouped.values()).map(function (profile) {
       profile.ota = profile.explicitOta ||
         (profile.otaPackaged ? "lora-receiver" : "none");
       profile.installKinds = INSTALL_ORDER.filter(function (kind) {
@@ -443,9 +510,11 @@
       });
       return profile;
     }).filter(function (profile) {
-      return !HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) &&
-        !HIDDEN_PROFILE_TARGETS.includes(profile.target);
-    }).sort(function (a, b) {
+      return !isHiddenLegacyProfile(profile);
+    });
+    const profiles = omitNrf52TransportsReplacedByFull(
+      applyNrf52FullCompanionCapabilities(visibleProfiles)
+    ).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
         sensitivity: "base",
@@ -473,8 +542,15 @@
     const wantedFields = fields || FILTER_FIELDS;
     return wantedFields.every(function (field) {
       const value = filters && filters[field];
-      return !value || profile[field] === value;
+      return !value || profileFieldValues(profile, field).includes(value);
     });
+  }
+
+  function profileFieldValues(profile, field) {
+    if (field === "logging" && Array.isArray(profile.loggingModes)) {
+      return profile.loggingModes;
+    }
+    return profile[field] ? [profile[field]] : [];
   }
 
   function profileMatchesFacets(profile, filters, ignoredField) {
@@ -488,7 +564,7 @@
       if (field === "install") {
         return profile.installKinds.includes(value);
       }
-      return profile[field] === value;
+      return profileFieldValues(profile, field).includes(value);
     });
   }
 
@@ -501,15 +577,15 @@
       ? compatible.flatMap(function (profile) {
         return profile.installKinds;
       })
-      : compatible.map(function (profile) {
-        return profile[field];
+      : compatible.flatMap(function (profile) {
+        return profileFieldValues(profile, field);
       });
     return Array.from(new Set(values.filter(Boolean)));
   }
 
   function uniqueValues(profiles, field) {
-    return Array.from(new Set((profiles || []).map(function (profile) {
-      return profile[field];
+    return Array.from(new Set((profiles || []).flatMap(function (profile) {
+      return profileFieldValues(profile, field);
     }).filter(Boolean)));
   }
 
@@ -566,7 +642,7 @@
 
   function optionSort(field, a, b) {
     const roleOrder = ["companion", "repeater", "room", "sensor", "terminal", "kiss", "other"];
-    const loggingOrder = ["none", "usb", "wifi"];
+    const loggingOrder = ["none", "usb", "wifi", "both"];
     const otaOrder = ["none", "lora-receiver", "lora-source"];
     const featureOrder = ["standard", "full"];
     const modeOrder = ["standard", "full", "ble", "usb", "wifi", "serial", "ethernet", "mqtt", "espnow", "rs232"];
@@ -627,6 +703,23 @@
         "Full Companion can serve a host-supplied update to another node; it does not self-install that LoRa update."
       );
     }
+    if (profile.logging === "runtime") {
+      extra.push(
+        "Use get logging.output and set logging.output off|usb|wifi|both to choose the saved output mode. Avoid both when two consumers publish the same packets to one broker."
+      );
+      extra.push(
+        "With no saved SSID, the setup AP stays available for 30 minutes after each boot, then Wi-Fi powers off automatically until reboot or an explicit start webconfig command. A configured Wi-Fi mode keeps reconnecting instead."
+      );
+    } else if (profile.logging === "usb-runtime") {
+      extra.push(
+        "Use get usb.logging and set usb.logging off|on to choose and save normal output-off or USB packet logging."
+      );
+      if (profile.dedicatedUsbLogging) {
+        extra.push(
+          "This nRF52 Full Companion exposes two serial ports on one USB cable: interface 00 carries Companion/terminal/mOTA traffic and interface 02 carries plaintext logging. Match services by USB interface number instead of assuming tty or COM numbering."
+        );
+      }
+    }
     return common.concat(byKind[kind] || [], extra);
   }
 
@@ -649,7 +742,7 @@
 
     const facts = createElement("dl");
     facts.className = "firmware-picker-facts";
-    replaceFacts(facts, [
+    const factRows = [
       ["Target", profile.target],
       ["Connection / mode", labelFor("mode", profile.mode)],
       ["Logging", labelFor("logging", profile.logging)],
@@ -660,7 +753,14 @@
       ["File", asset.name],
       ["Size", formatBytes(asset.size)],
       ["Release", asset.releaseName],
-    ]);
+    ];
+    if (profile.dedicatedUsbLogging) {
+      factRows.splice(3, 0, [
+        "USB port split",
+        "Interface 00 Companion; interface 02 logging",
+      ]);
+    }
+    replaceFacts(facts, factRows);
     card.appendChild(facts);
 
     const actions = createElement("div");
@@ -986,11 +1086,15 @@
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
+    applyNrf52FullCompanionCapabilities:
+      applyNrf52FullCompanionCapabilities,
     canonicalHardware: canonicalHardware,
+    omitNrf52TransportsReplacedByFull: omitNrf52TransportsReplacedByFull,
     hardwareFamilyFor: hardwareFamilyFor,
     humanizeHardwareVariant: humanizeHardwareVariant,
     buildCatalog: buildCatalog,
     profileMatches: profileMatches,
+    profileFieldValues: profileFieldValues,
     profileMatchesFacets: profileMatchesFacets,
     facetValues: facetValues,
     uniqueValues: uniqueValues,

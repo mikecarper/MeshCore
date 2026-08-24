@@ -5150,8 +5150,13 @@ WiFi SSID, the command starts the open <code>MeshCore-Setup-XXXX</code> captive 
 MQTT bridge, so run <code>set bridge.enabled off</code> first. Use <code>stop webconfig</code> to
 close either mode for the current boot. (<code>stop webconfig</code> does not change a
 saved <code>webui on</code>.)
-LAN mode otherwise remains active until reboot; setup mode stops after 10 minutes
-with no connected client.</p>
+LAN mode otherwise remains active until reboot. On expanded FULL builds, an
+unconfigured automatic setup AP receives one absolute 30-minute window per
+boot, then powers WiFi off even if a client remains attached; rebooting starts
+a new automatic window. An administrator can explicitly run <code>start webconfig</code>
+again without rebooting. Once an SSID is saved, the cutoff no longer applies
+and the selected WiFi/MQTT mode keeps reconnecting. Other setup sessions retain
+their profile's idle timeout.</p>
 <p>The saved <code>wifi.cli</code> setting defaults to <code>on</code>. Use <code>set wifi.cli off</code> to disable
 the <strong>CLI</strong> tab.
 <code>get wifi.cli</code> reports <code>off</code>, <code>on, waiting for WiFi client</code>, or <code>on, active</code>.
@@ -5171,7 +5176,8 @@ also stops the remaining block.</p>
 single-command mode. A command that stops WebConfig, changes its WiFi
 connection, disables <code>wifi.cli</code>, or reboots the node stops the remaining block
 and can close the page before its reply is collected.</p>
-<p>On FULL MQTT and FULL logging ESP32 repeater/room-server builds,
+<p>On unified FULL USB + WiFi and FULL logging-fallback ESP32
+repeater/room-server builds,
 <code>get wifi.ssid</code> reports the saved standalone WebConfig network and
 <code>get wifi.status</code> reports whether WiFi is unconfigured, off, connecting,
 running the setup AP, failed, or connected. A connected result includes the
@@ -5228,7 +5234,7 @@ remain available.</p>
 <p><strong>Usage:</strong> 
 - <code>discover.neighbors</code></p>
 <p>This command is available in every repeater build profile, including portable
-MQTT, standard, logging, OTA, FULL, and FULL logging artifacts. It does not
+MQTT, standard, logging, OTA, unified FULL, and FULL logging-fallback artifacts. It does not
 require MQTT or PSRAM.</p>
 <hr />
 <h3 id="discover-neighbor-scopes-mqtt-observer-neighbors-feature">Discover neighbor scopes (MQTT observer, neighbors feature)</h3>
@@ -5513,9 +5519,9 @@ decoded still emit their <code>RAW:</code> line. Transmitted packets emit the de
 summary.</p>
 <p>Ordinary <code>-logging-</code> artifacts keep packet logging separate from LoRa OTA.
 Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
-<code>-full-logging-ota-</code> artifact is intentionally the exception: it combines
-logging with LoRa OTA and the expanded FULL feature set, while MQTT remains
-disabled.</p>
+<code>-full-usb-wifi-ota-</code> artifact combines USB packet logging, direct WiFi MQTT,
+LoRa OTA, and the expanded FULL feature set. A <code>-full-logging-ota-</code> artifact is
+emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
 <h3 id="control-live-usb-logging">Control live USB logging</h3>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-text">get usb.logging
@@ -5523,11 +5529,26 @@ set usb.logging on
 set usb.logging off
 </code></pre>
 <p>These commands are compiled into logging artifacts and control their live USB
-debug and packet output. The switch is session-only: every reboot starts a
-logging artifact with USB logging on. Turning it off does not disable CLI
-replies, Companion protocol frames, or essential non-debug serial messages.
-It also does not change the node-storage capture controlled by <code>log start</code> and
-<code>log stop</code>.</p>
+debug and packet output. CommonCLI roles save the setting in <code>/com_prefs</code>, so
+it survives reboot; first boot defaults to on. nRF52 Full Companion applies the
+gate only to USB interface <code>02</code>, its dedicated plaintext logging port. USB
+interface <code>00</code> continues carrying Companion, terminal, and serial mOTA traffic.
+Turning USB logging off does not disable CLI replies or Companion protocol
+frames. It also does not change the node-storage capture controlled by <code>log
+start</code> and <code>log stop</code>.</p>
+<p>Unified ESP32 FULL builds add one saved selector for both output paths:</p>
+<pre><code class="language-text">get logging.output
+set logging.output off
+set logging.output usb
+set logging.output wifi
+set logging.output both
+</code></pre>
+<p><code>usb</code> emits <code>RAW:</code> packets for a USB-connected service such as
+meshcoretomqtt. <code>wifi</code> enables the direct MQTT bridge configured by the
+<code>wifi.*</code> and <code>mqtt.*</code> commands. <code>both</code> intentionally duplicates the radio
+stream to both consumers; do not point both consumers at the same broker unless
+the downstream setup deduplicates messages. Fresh unified FULL installs start
+in <code>both</code> mode.</p>
 <h3 id="begin-capture-of-rx-log-to-node-storage">Begin capture of rx log to node storage</h3>
 <p><strong>Usage:</strong> <code>log start</code></p>
 <hr />

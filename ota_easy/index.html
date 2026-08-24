@@ -1755,14 +1755,15 @@ firmware can still relay OTA packets opaquely during TempRadio.</p>
 speed optimization. This prevents the retained software Ed25519 fallback from expanding beyond the fixed
 in-place workspace; CC310 hardware crypto, hardware RNG mixing, telemetry history, and board-native features
 remain enabled.</p>
-<p>ESP32 <code>*-full-ota-*</code> artifacts retain all compiled features and enable LoRa OTA for every FULL role,
+<p>ESP32 <code>*-full-usb-wifi-ota-*</code> artifacts retain all compiled features and enable LoRa OTA for every FULL role,
 including room servers, sensors, observers, and bridges. A FULL image requires its expanded partition table:
 install the matching merged image over USB once before installing later non-merged FULL updates over LoRa.
 ESP32 MQTT observers and ESP-NOW bridges are always emitted as FULL artifacts; compact-CLI variants are no
 longer built.
-The <code>*-full-ota-*</code> profile uses MQTT with logging off. Use a <code>*-full-logging-ota-*</code> artifact when USB debug
-and packet logging are needed instead; that diagnostic profile explicitly disables MQTT and can produce
-substantial serial output.</p>
+The <code>*-full-usb-wifi-ota-*</code> profile compiles USB packet logging and direct WiFi MQTT into one image. Use
+<code>set logging.output off|usb|wifi|both</code> to persist the desired path. A <code>*-full-logging-ota-*</code> artifact is now
+only a fallback for a hardware/role combination without a WiFi MQTT target and can produce substantial
+serial output.</p>
 <h3 id="choose-the-source-radio">Choose the source radio</h3>
 <p>Use an OTA-enabled MeshCore node as the source. It receives the update folder
 from the computer, then advertises it over LoRa. ESP32 USB/WiFi companions and
@@ -1772,14 +1773,15 @@ serves host images but cannot stage or install one for itself. ESP32 full
 combines USB, BLE, and WiFi; nRF52 full combines USB and BLE because nRF52840
 has no WiFi.
 A small set of high-capacity, non-PSRAM classic ESP32 companions
-keep their normal image and provide a separate <code>-full-ota-</code> image with 100 contacts, 8 group channels, and
-a 16-frame offline queue. Install that variant's merged image over USB once before using it. Connect the
+keep their normal image and provide a separate <code>-full-logging-ota-</code> fallback with 100 contacts, 8 group
+channels, a 16-frame offline queue, and persistent USB output selection. Install that variant's merged
+image over USB once before using it. Connect the
 source by USB serial or, when supported, by WiFi. For an ordinary raw-text USB
 source, confirm that its USB CLI accepts:</p>
 <pre><code class="language-text">ota folder on
 </code></pre>
-<p>If an older build reports that <code>OTA_FOLDER_SERIAL</code> is not compiled in, install a current <code>-ota-</code> or
-<code>-full-ota-</code> build first. Do <strong>not</strong> use a KISS modem: KISS firmware is a TNC/KISS frame interface
+<p>If an older build reports that <code>OTA_FOLDER_SERIAL</code> is not compiled in, install a current <code>-ota-</code>,
+<code>-full-usb-wifi-ota-</code>, or applicable <code>-full-logging-ota-</code> build first. Do <strong>not</strong> use a KISS modem: KISS firmware is a TNC/KISS frame interface
 and does not provide the MeshCore CLI or the OTA-folder transport that <code>motatool serve</code> requires.</p>
 <p>An nRF52 <code>companion_radio_full</code> starts in USB Binary mode. Use
 <code>+++MESHCORE-TERM-START</code> for local TempRadio commands, then return with

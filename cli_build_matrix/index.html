@@ -368,6 +368,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#canonical-bulk-build-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canonical bulk-build policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#complete-cli-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1294,6 +1305,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#canonical-bulk-build-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canonical bulk-build policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#complete-cli-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1419,7 +1441,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Standard logging</td>
-<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile, adds the compiled logging behavior, and provides session-only <code>get/set usb.logging</code> control.</td>
+<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist <code>get/set usb.logging</code>. ESP32 roles covered by unified FULL and nRF52 Companions covered by dual-CDC Full Companion are not duplicated here.</td>
 </tr>
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
@@ -1430,12 +1452,16 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <td>Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot.</td>
 </tr>
 <tr>
-<td>FULL ESP32</td>
-<td>Uses the matching MQTT target with logging off and keeps the complete command surface supported by that role and hardware.</td>
+<td>FULL ESP32 USB + WiFi</td>
+<td>Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. <code>get/set logging.output off\|usb\|wifi\|both</code> selects and persists the active output paths.</td>
 </tr>
 <tr>
-<td>FULL ESP32 logging</td>
-<td>Uses the matching non-MQTT target with debug and packet logging enabled, session-only <code>get/set usb.logging</code> control, and the complete command surface supported by that role and hardware.</td>
+<td>FULL ESP32 logging fallback</td>
+<td>Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image.</td>
+</tr>
+<tr>
+<td>nRF52 Full Companion</td>
+<td>Uses one physical USB connection with interface <code>00</code> for framed Companion/terminal/mOTA traffic and interface <code>02</code> for plaintext logging. It also provides BLE and source-only LoRa OTA. <code>get/set usb.logging</code> persistently gates only the logging interface.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
@@ -1445,6 +1471,32 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </table>
 <p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features. Do not infer
 that a command is missing merely because <code>logging</code> appears in the filename.</p>
+<h2 id="canonical-bulk-build-policy">Canonical bulk-build policy</h2>
+<p>Bulk and release-matrix commands omit legacy names whose behavior is already
+available from a canonical image:</p>
+<ul>
+<li>Companion <code>_ps</code> names are replaced by the ordinary Companion image plus the
+  persisted <code>powersaving on|off</code> setting.</li>
+<li>Companion <code>_femoff</code> names are replaced by the matching controllable-FEM
+  image plus <code>radio.fem.rxgain on|off</code>. The old names remain explicit build
+  targets for compatibility.</li>
+<li><code>Station_G2_logging_*</code> and <code>Station_G3_ESP32_logging_*</code> hardware names are
+  replaced by their ordinary Station target. G2 boosted receive gain is the
+  persisted <code>radio.rxgain on|off</code> setting; the G3 alias changed only the
+  advertised default name.</li>
+<li>When an nRF52 board has a generated Full Companion, that one artifact
+  replaces its separate USB, BLE, and USB packet-logging Companion artifacts.
+  It provides BLE plus two USB CDC interfaces: interface <code>00</code> carries framed
+  Companion/terminal/mOTA traffic and interface <code>02</code> carries plaintext logs.
+  Its LoRa OTA support is source-only: it can serve a host file to another node
+  but has no staging store and cannot update itself over LoRa.</li>
+</ul>
+<p>The old aliases still work with <code>build-firmware</code> and
+<code>build-matching-firmwares</code>. Dedicated repeater LoRa OTA receiver images are not
+collapsed; they retain their exact storage, bootloader, role, and target
+identity contracts. ESP32 USB, BLE, WiFi, and Full Companion images also remain
+separate because Full changes partitions, RAM use, active transports, and power
+behavior.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
 <p>The compact ESP32 CLI has been removed. MQTT observers and ESP-NOW bridges are
 automatically promoted to FULL builds with expanded partitions rather than
@@ -1459,7 +1511,7 @@ require MQTT or PSRAM.</p>
 <h2 id="discovery-invariant">Discovery invariant</h2>
 <p><code>discover.neighbors</code> sends the zero-hop node-discovery request used to refresh
 the repeater neighbor table. It is available in every repeater build profile,
-including standard, logging, OTA, FULL, and FULL logging builds.</p>
+including standard, logging, OTA, unified FULL, and FULL logging-fallback builds.</p>
 <p>The exact command is:</p>
 <pre><code class="language-text">discover.neighbors
 </code></pre>

@@ -1599,10 +1599,12 @@ own interface, so those build roles are not represented here.</p>
   remove commands by itself.</li>
 <li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. Its
   optional external-sensor drivers are removed, but onboard GPS is retained.</li>
-<li><strong>FULL</strong> - the expanded-partition ESP32 artifact with LoRa OTA and the
-  complete parser. MQTT observers and ESP-NOW bridges always use this profile.</li>
-<li><strong>FULL logging</strong> - the expanded-partition ESP32 non-MQTT artifact with
-  logging, LoRa OTA, and the complete parser.</li>
+<li><strong>FULL unified</strong> - the expanded-partition ESP32 artifact with LoRa OTA, the
+  complete parser, USB packet logging, and direct WiFi MQTT. Its saved output
+  mode can be off, USB, WiFi, or both. MQTT observers use this profile.</li>
+<li><strong>FULL fallback</strong> - the expanded-partition ESP32 non-MQTT artifact used only
+  where there is no MQTT sibling. It has the complete parser and a saved
+  USB-logging on/off gate. ESP-NOW bridges use this profile.</li>
 </ul>
 <p>Cell values mean:</p>
 <ul>
@@ -1857,8 +1859,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Logging</td>
-<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code></a></td>
-<td>Logging artifacts; session-only live USB output gate</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code>; unified FULL <code>get/set logging.output</code></a></td>
+<td>Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; nRF52 Full Companion gates its second USB port</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
@@ -2899,8 +2901,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <th>Standard</th>
 <th>Logging</th>
 <th>LoRa OTA</th>
-<th>FULL</th>
-<th>FULL logging</th>
+<th>FULL unified</th>
+<th>FULL fallback</th>
 </tr>
 </thead>
 <tbody>
@@ -3186,8 +3188,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 </tr>
 <tr>
 <td>Logging</td>
-<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code></a></td>
-<td>Logging artifacts; session-only live USB output gate</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code>; unified FULL <code>get/set logging.output</code></a></td>
+<td>Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; nRF52 Full Companion gates its second USB port</td>
 <td>No</td>
 <td>Yes</td>
 <td>No</td>
