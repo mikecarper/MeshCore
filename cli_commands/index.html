@@ -5615,7 +5615,11 @@ capacity. Remote use follows the existing administrator-command permissions.</p>
 - <code>cr</code>: Coding rate (5-8)</p>
 <p><strong>Set by build flag:</strong> <code>LORA_FREQ</code>, <code>LORA_BW</code>, <code>LORA_SF</code>, <code>LORA_CR</code></p>
 <p><strong>Default:</strong> <code>869.525,250,11,5</code></p>
-<p><strong>Note:</strong> Requires reboot to apply</p>
+<p><strong>Note:</strong> Requires reboot to apply. If RXPS is enabled and the saved minimum
+level/preamble cannot safely cover the new radio timing, the command reply
+reports the effective level and preamble, or <code>RXPS continuous-fast</code> when no
+level through 10 is safe. Slower settings recalculate from the saved RXPS
+minimum and return to it exactly when it is safe.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-transmit-power">View or change this node's transmit power</h4>
 <p><strong>Usage:</strong>
@@ -5663,7 +5667,57 @@ capacity. Remote use follows the existing administrator-command permissions.</p>
 - <code>get radioat</code> and <code>get tempradioat</code> list all entries when <code>n</code> is omitted.
 - <code>del radioat</code> and <code>del tempradioat</code> delete all entries when <code>n</code> is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
-- <code>radioat</code> saves the new radio preferences when it fires. <code>tempradioat</code> applies temporarily, then reverts to the saved radio preferences.</p>
+- <code>radioat</code> saves the new radio preferences when it fires. <code>tempradioat</code> applies temporarily, then reverts to the saved radio preferences.
+- A successful scheduling reply notes any RXPS effective-level/preamble change
+  required by the scheduled tuple. <code>RXPS continuous-fast</code> means the tuple is
+  accepted but will use continuous receive because no safe duty-cycle level is
+  available. Returning to slower settings recalculates from the saved RXPS
+  minimum.</p>
+<p>On SX1262+TCXO boards, the tested fast-setting boundaries are:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">SF</th>
+<th style="text-align: right;">BW (kHz)</th>
+<th style="text-align: right;">Effective preamble</th>
+<th style="text-align: right;">Minimum effective RXPS level</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: left;">RXPS duty cycling</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: left;">RXPS duty cycling</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">125</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: left;">RXPS duty cycling</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">62.5</td>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: left;">RXPS duty cycling</td>
+</tr>
+</tbody>
+</table>
+<p>SF7/BW500, SF6/BW250, and SF5/BW125 are timing-equivalent because each has a
+256 us LoRa symbol. SF5/BW250 and SF5/BW500 use <code>continuous-fast</code> even with
+preamble 32.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-frequency">View or change this node's frequency</h4>
 <p><strong>Usage:</strong>

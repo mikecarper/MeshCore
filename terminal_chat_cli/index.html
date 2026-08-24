@@ -1357,7 +1357,67 @@ protocol frames and terminal replies remain enabled on interface <code>00</code>
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
 </code></pre>
 <p>Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
-builds select level 8 with a 16-symbol preamble.</p>
+builds select level 8 with a 16-symbol preamble. A configured level is the
+minimum: when faster SF/BW settings shorten the timing window, firmware raises
+the effective level only as far as needed, up to level 10. For SF5-SF8 it can
+then use the radio's actual 32-symbol transmit preamble if no level is safe
+under the legacy 16-symbol assumption. The configured values remain unchanged,
+so every radio change recalculates from the saved minimum. A slower tuple
+returns to that exact level when it is safe; otherwise firmware keeps using the
+smallest safe effective level.</p>
+<p>If neither adjustment leaves enough time for the radio to wake, RXPS stays
+logically enabled but receives continuously instead of rejecting the radio
+setting or starting an invalid duty cycle. <code>get radio.rxps</code> reports this as
+<code>mode=continuous-fast</code> and reports any <code>effective-level</code> or
+<code>effective-preamble</code> adjustment. On SX1262 boards with a TCXO, SF5/BW125 works
+at effective level 7 with preamble 32; SF5/BW250 and SF5/BW500 use the
+continuous fallback. A later compatible SF/BW change resumes duty cycling
+without another RXPS command.</p>
+<p>For the SX1262+TCXO boards tested here, these fast combinations are the useful
+RXPS boundary profiles (CR does not change the RXPS preamble timing):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">SF</th>
+<th style="text-align: right;">BW (kHz)</th>
+<th style="text-align: right;">Effective preamble</th>
+<th style="text-align: right;">Minimum effective level</th>
+<th style="text-align: right;">RX / sleep</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">2731 / 6101 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">2731 / 6101 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">125</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">2731 / 6101 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">62.5</td>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">4096 / 6272 us</td>
+</tr>
+</tbody>
+</table>
+<p>SF5/BW250 and SF5/BW500 remain too fast for a true TCXO duty cycle even with
+preamble 32, so they use <code>continuous-fast</code>.</p>
 <pre><code>get wifi.powersave
 set wifi.powersave {none|min|max}
 </code></pre>
