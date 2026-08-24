@@ -116,6 +116,7 @@ public:
 
   virtual bool supportsRxPowerSaving() const { return false; }
   virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
+  virtual bool isRxPowerSavingContinuousFallback() const { return false; }
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool disabled) {
     (void)disabled;

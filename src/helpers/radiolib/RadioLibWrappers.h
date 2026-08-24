@@ -4,6 +4,7 @@
 #include <RadioLib.h>
 #include "CadTiming.h"
 #include "RadioAirtime.h"
+#include "RXPowerSaving.h"
 
 // Fallback RX powersaving timings, only used until setRxPowerSaving() is called
 // (begin() always applies the persisted values). The authoritative defaults live
@@ -40,6 +41,7 @@ protected:
   uint8_t _preamble_sf;
   bool _rx_ps_enabled;
   bool _rx_ps_armed;      // radio is currently in RX duty-cycle mode
+  bool _rx_ps_continuous_fallback; // requested RXPS is receiving continuously for this tuple
   bool _rx_hold_continuous; // keep plain RX active until Dispatcher consumes cached metadata
   uint32_t _rx_ps_rx_us;
   uint32_t _rx_ps_sleep_us;
@@ -119,7 +121,7 @@ public:
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
       : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
         _preamble_sf(0), _rx_ps_enabled(false), _rx_ps_armed(false),
-        _rx_hold_continuous(false),
+        _rx_ps_continuous_fallback(false), _rx_hold_continuous(false),
         _rx_ps_rx_us(RX_PS_FALLBACK_RX_US), _rx_ps_sleep_us(RX_PS_FALLBACK_SLEEP_US),
         _wd_last_busy(false), _wd_stage(0), _wd_strikes(0), _startrx_fails(0), _wd_last_transition(0),
         _wd_stuck_thresh(0), _wd_observe_until(0), _wd_observe_ms(0),
@@ -142,6 +144,9 @@ public:
   void onSendFinished() override;
   bool isInRecvMode() const override;
   bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) override;
+  bool isRxPowerSavingContinuousFallback() const override {
+    return _rx_ps_enabled && _rx_ps_continuous_fallback;
+  }
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool) { return false; }
   virtual bool isRxPowerSavingRfRxDisabled() const { return false; }
@@ -196,7 +201,9 @@ public:
   // true while a noise-floor batch needs prompt loop service; the app's
   // hasPendingWork() keeps the MCU awake only for this short sample burst.
   bool isCalibratingNoiseFloor() const {
-    return _nf_calib_active || (_nf_refresh_requested && !_rx_ps_enabled);
+    return _nf_calib_active
+        || (_nf_refresh_requested
+            && (!_rx_ps_enabled || _rx_ps_continuous_fallback));
   }
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 

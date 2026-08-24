@@ -415,6 +415,9 @@ void BaseChatMesh::handleReturnPathRetry(const ContactInfo& contact, const uint8
 int BaseChatMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel dest[], int max_matches) {
   int n = 0;
   for (int i = 0; i < MAX_GROUP_CHANNELS && n < max_matches; i++) {
+    // Empty slots have an all-zero secret and can otherwise validate null-key
+    // traffic as if it belonged to a configured local channel.
+    if (channels[i].name[0] == 0) continue;
     if (channels[i].channel.hash[0] == hash[0]) {
       dest[n++] = channels[i].channel;
     }

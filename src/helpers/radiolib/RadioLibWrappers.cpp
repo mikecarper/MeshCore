@@ -150,6 +150,8 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
       _rx_ps_enabled = true;
       _rx_ps_rx_us = rx_ps_timings[0];
       _rx_ps_sleep_us = rx_ps_timings[1];
+      _rx_ps_continuous_fallback = rxPowerSavingUsesContinuousFallback(
+          _rx_ps_rx_us, _rx_ps_sleep_us);
     }
   } else {
     bool restored = had_previous_params
@@ -424,14 +426,16 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
 }
 
 void RadioLibWrapper::loop() {
-  if (_rx_ps_enabled) {
+  if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
   unsigned long now = millis();
   if (_nf_calib_active || _nf_refresh_requested) {
     noiseFloorCalibCheck(now);
   }
-  if (_nf_refresh_requested && !_rx_ps_enabled && _nf_calib_deadline == 0
+  if (_nf_refresh_requested
+      && (!_rx_ps_enabled || _rx_ps_continuous_fallback)
+      && _nf_calib_deadline == 0
       && state == STATE_RX) {
     // Measure the awake-time bound from actual continuous RX, not from begin()
     // or a request made while the radio is idle, transmitting, or starting up.
@@ -467,7 +471,9 @@ void RadioLibWrapper::loop() {
     return;
   }
 
-  if (_nf_refresh_requested && !_rx_ps_enabled && _nf_calib_deadline != 0
+  if (_nf_refresh_requested
+      && (!_rx_ps_enabled || _rx_ps_continuous_fallback)
+      && _nf_calib_deadline != 0
       && (long)(now - _nf_calib_deadline) >= 0) {
     // A continuously busy channel can reject every candidate sample. Do not
     // keep the MCU awake indefinitely; retain the previous floor and let the
@@ -567,6 +573,8 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
   _rx_ps_enabled = enabled;
   _rx_ps_rx_us = rx_us;
   _rx_ps_sleep_us = sleep_us;
+  _rx_ps_continuous_fallback = enabled
+      && rxPowerSavingUsesContinuousFallback(rx_us, sleep_us);
   endReconfigure(resume_rx);
   return true;
 }
@@ -607,7 +615,7 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     #endif
   }
 
-  if (len > 0 && _rx_ps_enabled) {
+  if (len > 0 && _rx_ps_enabled && !_rx_ps_continuous_fallback) {
     // Dispatcher still needs the just-cached RSSI/SNR. Keep the receiver in
     // ordinary continuous mode until it has parsed and scored this packet,
     // then onReceiveProcessed() restores the duty cycle.
@@ -644,7 +652,7 @@ void RadioLibWrapper::finishReceiveProcessing() {
   }
 
   _rx_hold_continuous = false;
-  if (!_rx_ps_enabled || _nf_calib_active) return;
+  if (!_rx_ps_enabled || _rx_ps_continuous_fallback || _nf_calib_active) return;
 
   state = STATE_IDLE;
   startRecv();

@@ -453,7 +453,50 @@ bool CommonCLI::calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw
   if (level < 1 || level > 10 || (preamble != 16 && preamble != 32)) {
     return false;
   }
-  return calcRxPowerSavingLevel((uint8_t)level, sf, bw, (uint8_t)preamble, rx_us, sleep_us);
+  return calcRxPowerSavingLevelAtOrAbove(
+      (uint8_t)level, sf, bw, (uint8_t)preamble,
+      rxPowerSavingDefaultTransitionUs(), rx_us, sleep_us);
+}
+
+static void appendRxPowerSavingAdjustmentNote(char* reply, const NodePrefs* prefs,
+                                               uint8_t sf, float bw) {
+  if (!reply || !prefs || !prefs->rx_powersaving_enabled
+      || prefs->rx_ps_level < 1 || prefs->rx_ps_level > 10) {
+    return;
+  }
+
+  uint32_t rx_us = 0;
+  uint32_t sleep_us = 0;
+  uint8_t effective_level = 0;
+  uint8_t effective_preamble = 0;
+  if (!recalcRxPowerSavingFromLevel(
+          prefs->rx_ps_level, sf, bw, prefs->rx_ps_preamble,
+          &rx_us, &sleep_us, &effective_level, &effective_preamble)) {
+    return;
+  }
+
+  char note[96] = {};
+  if (rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)) {
+    snprintf(note, sizeof(note),
+             "; RXPS continuous-fast (no safe level %u-10)",
+             (unsigned)prefs->rx_ps_level);
+  } else {
+    const uint8_t requested_preamble = prefs->rx_ps_preamble == 0
+        ? rxPowerSavingPreambleForSF(sf) : prefs->rx_ps_preamble;
+    if (effective_level == prefs->rx_ps_level
+        && effective_preamble == requested_preamble) {
+      return;
+    }
+    snprintf(note, sizeof(note),
+             "; RXPS effective level %u, preamble %u (saved minimum %u)",
+             (unsigned)effective_level, (unsigned)effective_preamble,
+             (unsigned)prefs->rx_ps_level);
+  }
+
+  const size_t used = strlen(reply);
+  if (used < 159) {
+    snprintf(reply + used, 160 - used, "%s", note);
+  }
 }
 
 // Recomputes rx_ps_rx_us/rx_ps_sleep_us from the stored level and the current
@@ -2409,6 +2452,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           && isValidLoRaBandwidth(bw) && temp_timeout_mins > 0) {
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins);
         sprintf(reply, "OK - temp params for %d mins", temp_timeout_mins);
+        appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       } else {
         strcpy(reply, "Error, invalid params");
       }
@@ -3464,6 +3508,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
               (unsigned long)rx_us,
               (unsigned long)sleep_us,
               (unsigned long)preamble);
+      appendRxPowerSavingAdjustmentNote(
+          reply, _prefs, _prefs->sf, _prefs->bw);
     } else {
       sprintf(reply, "OK - %s,%lu,%lu", enable ? "on" : "off",
               (unsigned long)rx_us, (unsigned long)sleep_us);
@@ -3495,11 +3541,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->bw = bw;
       // Retune level-based RX powersaving to the new SF/BW. Persist only; the
       // radio itself is "reboot to apply", and begin() re-arms the timings then.
-      bool rxps_retuned = recalcRxPowerSavingFromLevel(
+      recalcRxPowerSavingFromLevel(
           _prefs->rx_ps_level, _prefs->sf, _prefs->bw, _prefs->rx_ps_preamble, &_prefs->rx_ps_rx_us,
           &_prefs->rx_ps_sleep_us); // retune level-based timings to the loaded SF/BW
       _callbacks->savePrefs();
-      strcpy(reply, rxps_retuned ? "OK - reboot to apply (rxps retuned)" : "OK - reboot to apply");
+      strcpy(reply, "OK - reboot to apply");
+      appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
     } else {
       strcpy(reply, "Error, invalid radio params");
     }
@@ -3513,6 +3560,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, invalid radio params");
     } else {
       _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply);
+      if (strncmp(reply, "OK", 2) == 0) {
+        appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
+      }
     }
   } else if (memcmp(config, "tempradioat ", 12) == 0) {
     float freq, bw;
@@ -3524,6 +3574,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, invalid radio params");
     } else {
       _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply);
+      if (strncmp(reply, "OK", 2) == 0) {
+        appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
+      }
     }
   } else if (memcmp(config, "lat ", 4) == 0) {
     float latitude = 0.0f;

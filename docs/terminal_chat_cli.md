@@ -107,7 +107,36 @@ get radio.rxps
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
 ```
 Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
-builds select level 8 with a 16-symbol preamble.
+builds select level 8 with a 16-symbol preamble. A configured level is the
+minimum: when faster SF/BW settings shorten the timing window, firmware raises
+the effective level only as far as needed, up to level 10. For SF5-SF8 it can
+then use the radio's actual 32-symbol transmit preamble if no level is safe
+under the legacy 16-symbol assumption. The configured values remain unchanged,
+so every radio change recalculates from the saved minimum. A slower tuple
+returns to that exact level when it is safe; otherwise firmware keeps using the
+smallest safe effective level.
+
+If neither adjustment leaves enough time for the radio to wake, RXPS stays
+logically enabled but receives continuously instead of rejecting the radio
+setting or starting an invalid duty cycle. `get radio.rxps` reports this as
+`mode=continuous-fast` and reports any `effective-level` or
+`effective-preamble` adjustment. On SX1262 boards with a TCXO, SF5/BW125 works
+at effective level 7 with preamble 32; SF5/BW250 and SF5/BW500 use the
+continuous fallback. A later compatible SF/BW change resumes duty cycling
+without another RXPS command.
+
+For the SX1262+TCXO boards tested here, these fast combinations are the useful
+RXPS boundary profiles (CR does not change the RXPS preamble timing):
+
+| SF | BW (kHz) | Effective preamble | Minimum effective level | RX / sleep |
+|---:|---------:|-------------------:|------------------------:|-----------:|
+| 7 | 500 | 32 | 7 | 2731 / 6101 us |
+| 6 | 250 | 32 | 7 | 2731 / 6101 us |
+| 5 | 125 | 32 | 7 | 2731 / 6101 us |
+| 5 | 62.5 | 16 | 10 | 4096 / 6272 us |
+
+SF5/BW250 and SF5/BW500 remain too fast for a true TCXO duty cycle even with
+preamble 32, so they use `continuous-fast`.
 
 ```
 get wifi.powersave

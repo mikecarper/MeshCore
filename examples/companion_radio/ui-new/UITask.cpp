@@ -109,7 +109,9 @@ class HomeScreen : public UIScreen {
 #if UI_SENSORS_PAGE == 1
     SENSORS,
 #endif
+#ifndef UI_NO_HIBERNATE
     SHUTDOWN,
+#endif
     Count    // keep as last
   };
 
@@ -165,9 +167,18 @@ class HomeScreen : public UIScreen {
     }
 
     display.setTextSize(1);
+    bool charging = board.isExternalPowered();
+#ifdef PIN_BUZZER
+    bool muted = _task->isBuzzerQuiet();
+#endif
+
     int uptimeWidth = display.getTextWidth(uptime);
     int spaceWidth = display.getTextWidth(" ");
-    display.setCursor(iconX - uptimeWidth - spaceWidth, iconY);
+    int statusWidth = charging ? 9 : 0;
+#ifdef PIN_BUZZER
+    if (muted) statusWidth += 9;
+#endif
+    display.setCursor(iconX - statusWidth - uptimeWidth - spaceWidth, iconY);
     display.print(uptime);
 
     // battery outline
@@ -180,11 +191,21 @@ class HomeScreen : public UIScreen {
     int fillWidth = (batteryPercentage * (iconWidth - 4)) / 100;
     display.fillRect(iconX + 2, iconY + 2, fillWidth, iconHeight - 4);
 
-    // show muted icon if buzzer is muted
+    // Show external power beside the battery. Most boards have no
+    // charge-complete signal, so use a high percentage band for the plug.
+    if (charging) {
+      static constexpr int BATT_FULL_PCT = 95;
+      const uint8_t* symbol =
+        batteryPercentage >= BATT_FULL_PCT ? plug_icon : charging_icon;
+      display.setColor(UIColor::title_txt);
+      display.drawXbm(iconX - 9, iconY + 1, symbol, 8, 8);
+    }
+
+    // Keep the mute icon left of the charging icon when both are present.
 #ifdef PIN_BUZZER
-    if (_task->isBuzzerQuiet()) {
+    if (muted) {
       display.setColor(UIColor::warning_txt);
-      display.drawXbm(iconX - 9, iconY + 1, muted_icon, 8, 8);
+      display.drawXbm(iconX - (charging ? 18 : 9), iconY + 1, muted_icon, 8, 8);
     }
 #endif
   }
@@ -487,6 +508,7 @@ public:
       if (sensors_scroll) sensors_scroll_offset = (sensors_scroll_offset+1)%sensors_nb;
       else sensors_scroll_offset = 0;
 #endif
+#ifndef UI_NO_HIBERNATE
     } else if (_page == HomePage::SHUTDOWN) {
       display.setColor(UIColor::corp_blue);
       display.setTextSize(1);
@@ -498,6 +520,7 @@ public:
         display.drawXbm((display.width() - 32) / 2, 18, power_icon, 32, 32);
         display.drawTextCentered(display.width() / 2, 64 - 11, "hibernate:" PRESS_LABEL);
       }
+#endif
     }
     return 5000;   // next render after 5000 ms
   }
@@ -544,10 +567,12 @@ public:
       return true;
     }
 #endif
+#ifndef UI_NO_HIBERNATE
     if (c == KEY_ENTER && _page == HomePage::SHUTDOWN) {
       _shutdown_init = true;  // need to wait for button to be released
       return true;
     }
+#endif
     return false;
   }
 };

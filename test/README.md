@@ -63,6 +63,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_packet_manager` | `src/Packet.cpp`, `src/Dispatcher.cpp`, `src/helpers/StaticPoolPacketManager.cpp` | truncated-packet rejection, unavailable-radio behavior, scoped RX-delay replacement, queue/CAD scheduling, and staged radio/TX recovery |
 | `test_persistent_store_format` | `src/helpers/PersistentStoreFormat.h` | contact-page headers and CRCs, dirty-page state, stable slot allocation, and bounded resumable legacy migration across power loss |
 | `test_power_management` | `src/helpers/PowerManagementUtils.h` | median filtering of a brownout outlier and valid-reading requirements for the boot lock |
+| `test_rx_power_saving` | `src/helpers/radiolib/RXPowerSaving.h` | level-derived timing, automatic level/preamble selection, equivalent SF7/BW500, SF6/BW250, and SF5/BW125 profiles, SF5/BW62.5 with preamble 16, SF5/BW250/BW500 continuous-RX fallback, automatic duty-cycle resume, and SX1262 TCXO timing thresholds |
 | `test_region_names` | `src/helpers/RegionNameUtils.h` | canonical public-region markers while preserving distinct private and differently named regions |
 | `test_routing_policy` | `src/helpers/RoutingPolicy.h` | scoped/unscoped flood hop limits and selection of direct, path-return, mirrored-scope, default-scope, or unscoped replies |
 | `test_rs232_uart` | `src/helpers/bridges/RS232UartUtils.h` | stopping the active UART peripheral before reassigning its pins |

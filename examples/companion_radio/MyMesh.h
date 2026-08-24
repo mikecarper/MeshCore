@@ -302,6 +302,8 @@ private:
   bool applyAndSaveRxBoostedGain(bool enabled);
   bool applyAndSavePowerSaving(const char* value, char* reply);
   bool applyAndSaveRxPowerSaving(const char* value, char* reply);
+  void appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
+                                         uint8_t sf, float bw) const;
 #if defined(ESP32) && defined(WIFI_SSID)
   bool applyAndSaveWiFiPowerSaving(const char* value, char* reply,
                                    size_t reply_size);

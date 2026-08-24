@@ -2,6 +2,7 @@
 
 #include <RadioLib.h>
 #include "MeshCore.h"
+#include "RXPowerSaving.h"
 
 #ifndef SX126X_TX_BUSY_TIMEOUT_MS
 #define SX126X_TX_BUSY_TIMEOUT_MS              1000UL
@@ -13,6 +14,7 @@ class CustomSX1262 : public SX1262 {
   uint32_t _activityAt = 0;
   bool _headerSeen = false;
   bool _rx_ps_rf_rx_disabled = false;
+  uint32_t _rxDutyCycleTransitionUs = 1000;
 
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
@@ -100,6 +102,11 @@ class CustomSX1262 : public SX1262 {
         mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
+
+      // RadioLib's default DIO3 TCXO delay is 5 ms and its RX duty-cycle
+      // command adds another 1 ms for sleep/wake transitions. If begin()
+      // fell back to a crystal, only the fixed 1 ms transition remains.
+      _rxDutyCycleTransitionUs = tcxo > 0.0f ? 6000UL : 1000UL;
     
       setCRC(1);
   
@@ -268,6 +275,7 @@ class CustomSX1262 : public SX1262 {
         }
         return true;
       }
+
       if (preamble) {
         if (_activityAt == 0) _activityAt = now;
         if (now - _activityAt > _preambleMillis) {
@@ -281,6 +289,12 @@ class CustomSX1262 : public SX1262 {
       }
       _activityAt = 0; _headerSeen = false;
       return false;
+    }
+
+    bool canUseRxPowerSavingDutyCycle(uint32_t rx_us, uint32_t sleep_us) const {
+      return !rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)
+          && canStartRxPowerSavingDutyCycle(
+              rx_us, sleep_us, _rxDutyCycleTransitionUs);
     }
 
     void setPreambleMillis(uint32_t preambleMillis) {

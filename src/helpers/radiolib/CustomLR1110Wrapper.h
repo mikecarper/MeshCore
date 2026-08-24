@@ -99,8 +99,16 @@ protected:
     if (!_rx_ps_enabled || _nf_calib_active) {
       // plain continuous RX: powersaving off, or a periodic noise-floor
       // calibration window is in progress
+      if (!_rx_ps_enabled) _rx_ps_continuous_fallback = false;
       return _radio->startReceive();
     }
+
+    if (rxPowerSavingUsesContinuousFallback(_rx_ps_rx_us, _rx_ps_sleep_us)) {
+      _rx_ps_continuous_fallback = true;
+      return _radio->startReceive();
+    }
+
+    _rx_ps_continuous_fallback = false;
 
     const RadioLibIrqFlags_t irqFlags = RADIOLIB_IRQ_RX_DEFAULT_FLAGS;
     // route RX timeout (false preamble detect) and error IRQs to the IRQ pin
@@ -117,6 +125,7 @@ protected:
       return err;
     }
 
+    _rx_ps_continuous_fallback = true;
     MESH_DEBUG_PRINTLN("CustomLR1110Wrapper: error: startReceiveDutyCycle(%d), falling back to continuous RX", err);
     return _radio->startReceive();
   }

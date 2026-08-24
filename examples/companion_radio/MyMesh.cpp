@@ -1790,6 +1790,7 @@ bool MyMesh::scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
   _temp_radio_failures = 0;
   snprintf(reply, reply_size, "OK - temp params for %lu mins",
            (unsigned long)timeout_mins);
+  appendRxPowerSavingAdjustmentNote(reply, reply_size, sf, bw);
   return true;
 }
 
@@ -4108,6 +4109,46 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   return true;
 }
 
+void MyMesh::appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
+                                                uint8_t sf, float bw) const {
+  if (!reply || reply_size == 0 || !_prefs.rx_powersaving_enabled
+      || _prefs.rx_ps_level < 1 || _prefs.rx_ps_level > 10) {
+    return;
+  }
+
+  uint32_t rx_us = 0;
+  uint32_t sleep_us = 0;
+  uint8_t effective_level = 0;
+  uint8_t effective_preamble = 0;
+  if (!recalcRxPowerSavingFromLevel(
+          _prefs.rx_ps_level, sf, bw, _prefs.rx_ps_preamble,
+          &rx_us, &sleep_us, &effective_level, &effective_preamble)) {
+    return;
+  }
+
+  const size_t used = strlen(reply);
+  if (used >= reply_size - 1) return;
+
+  if (rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)) {
+    snprintf(reply + used, reply_size - used,
+             "; RXPS continuous-fast (no safe level %u-10)",
+             (unsigned)_prefs.rx_ps_level);
+    return;
+  }
+
+  const uint8_t requested_preamble = _prefs.rx_ps_preamble == 0
+      ? rxPowerSavingPreambleForSF(sf) : _prefs.rx_ps_preamble;
+  if (effective_level == _prefs.rx_ps_level
+      && effective_preamble == requested_preamble) {
+    return;
+  }
+
+  snprintf(reply + used, reply_size - used,
+           "; RXPS effective level %u, preamble %u (saved minimum %u)",
+           (unsigned)effective_level, (unsigned)effective_preamble,
+           (unsigned)_prefs.rx_ps_level);
+}
+
 #ifdef ENABLE_USB_INTERFACE
 Stream& MyMesh::terminalOutput() {
   return _terminal_output != NULL ? *_terminal_output : Serial;
@@ -4953,12 +4994,49 @@ void MyMesh::handleTerminalCommand(char* command) {
     if (!radio_driver.supportsRxPowerSaving()) {
       terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
     } else {
-      terminalOutput().printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
+      uint8_t effective_level = 0;
+      uint8_t effective_preamble = 0;
+      uint32_t effective_rx_us = _prefs.rx_ps_rx_us;
+      uint32_t effective_sleep_us = _prefs.rx_ps_sleep_us;
+      uint8_t active_sf = _prefs.sf;
+      float active_bw = _prefs.bw;
+#if defined(COMPANION_RADIO_FULL)
+      if (isTempRadioActive()) {
+        active_sf = _temp_radio_sf;
+        active_bw = _temp_radio_bw;
+      }
+#endif
+      if (_prefs.rx_ps_level != 0) {
+        recalcRxPowerSavingFromLevel(
+            _prefs.rx_ps_level, active_sf, active_bw,
+            _prefs.rx_ps_preamble, &effective_rx_us, &effective_sleep_us,
+            &effective_level, &effective_preamble);
+      }
+      char effective_suffix[48] = {};
+      const bool adjusted_level = effective_level != 0
+          && effective_level != _prefs.rx_ps_level;
+      const bool adjusted_preamble = effective_preamble != 0
+          && effective_preamble != _prefs.rx_ps_preamble;
+      if (adjusted_level && adjusted_preamble) {
+        snprintf(effective_suffix, sizeof(effective_suffix),
+                 ",effective-level=%u,effective-preamble=%u",
+                 (unsigned)effective_level, (unsigned)effective_preamble);
+      } else if (adjusted_level) {
+        snprintf(effective_suffix, sizeof(effective_suffix),
+                 ",effective-level=%u", (unsigned)effective_level);
+      } else if (adjusted_preamble) {
+        snprintf(effective_suffix, sizeof(effective_suffix),
+                 ",effective-preamble=%u", (unsigned)effective_preamble);
+      }
+      terminalOutput().printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu%s%s\r\n",
                     _prefs.rx_powersaving_enabled ? "on" : "off",
                     (unsigned)_prefs.rx_ps_level,
                     (unsigned)_prefs.rx_ps_preamble,
-                    (unsigned long)_prefs.rx_ps_rx_us,
-                    (unsigned long)_prefs.rx_ps_sleep_us);
+                    (unsigned long)effective_rx_us,
+                    (unsigned long)effective_sleep_us,
+                    radio_driver.isRxPowerSavingContinuousFallback()
+                        ? ",mode=continuous-fast" : "",
+                    effective_suffix);
     }
 #if defined(ESP32) && defined(WIFI_SSID)
   } else if (strcmp(command, "get wifi.powersave") == 0) {

@@ -924,11 +924,16 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin) {
   }
 #endif
 
+  // RAK3401 shares WB_IO2 with the radio PA supply. Probing a GPS must never
+  // pulse that rail low or turn the pin back into an input.
+#ifndef RAK_3401
   // set initial waking state
   pinMode(ioPin, OUTPUT);
   digitalWrite(ioPin, LOW);
   delay(500);
   digitalWrite(ioPin, HIGH);
+#endif
+  // give the receiver time to become responsive
   delay(500);
 
   // Try to init RAK12500 on I2C
@@ -961,7 +966,9 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin) {
     return true;
   }
 
+#ifndef RAK_3401
   pinMode(ioPin, INPUT);
+#endif
   MESH_DEBUG_PRINTLN("GPS did not init with this IO pin... try the next");
   return false;
 }

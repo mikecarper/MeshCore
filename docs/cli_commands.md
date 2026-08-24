@@ -658,7 +658,11 @@ capacity. Remote use follows the existing administrator-command permissions.
 
 **Default:** `869.525,250,11,5`
 
-**Note:** Requires reboot to apply
+**Note:** Requires reboot to apply. If RXPS is enabled and the saved minimum
+level/preamble cannot safely cover the new radio timing, the command reply
+reports the effective level and preamble, or `RXPS continuous-fast` when no
+level through 10 is safe. Slower settings recalculate from the saved RXPS
+minimum and return to it exactly when it is safe.
 
 ---
 
@@ -721,6 +725,24 @@ capacity. Remote use follows the existing administrator-command permissions.
 - `del radioat` and `del tempradioat` delete all entries when `n` is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
 - `radioat` saves the new radio preferences when it fires. `tempradioat` applies temporarily, then reverts to the saved radio preferences.
+- A successful scheduling reply notes any RXPS effective-level/preamble change
+  required by the scheduled tuple. `RXPS continuous-fast` means the tuple is
+  accepted but will use continuous receive because no safe duty-cycle level is
+  available. Returning to slower settings recalculates from the saved RXPS
+  minimum.
+
+On SX1262+TCXO boards, the tested fast-setting boundaries are:
+
+| SF | BW (kHz) | Effective preamble | Minimum effective RXPS level | Result |
+|---:|---------:|-------------------:|-----------------------------:|:-------|
+| 7 | 500 | 32 | 7 | RXPS duty cycling |
+| 6 | 250 | 32 | 7 | RXPS duty cycling |
+| 5 | 125 | 32 | 7 | RXPS duty cycling |
+| 5 | 62.5 | 16 | 10 | RXPS duty cycling |
+
+SF7/BW500, SF6/BW250, and SF5/BW125 are timing-equivalent because each has a
+256 us LoRa symbol. SF5/BW250 and SF5/BW500 use `continuous-fast` even with
+preamble 32.
 
 ---
 
