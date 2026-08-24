@@ -6,6 +6,17 @@
 #define RX_POWERSAVING_MIN_PERIOD_US      1000UL
 #define RX_POWERSAVING_MAX_PERIOD_US      30000000UL
 
+// Actual transmit preamble used by MeshCore at SF5-SF8. Keep 32 as the wire
+// compatible default; controlled qualification builds can select 64 to test
+// faster RX duty-cycle profiles without pretending the sender transmits a
+// longer preamble than it really does.
+#ifndef LORA_FAST_PREAMBLE
+#define LORA_FAST_PREAMBLE                32
+#endif
+#if LORA_FAST_PREAMBLE != 32 && LORA_FAST_PREAMBLE != 64
+#error "LORA_FAST_PREAMBLE must be 32 or 64"
+#endif
+
 // A level-derived timing pair equal to this value means the requested LoRa
 // tuple is too fast for a safe duty cycle. Keep the operator's RXPS preference
 // enabled, but receive continuously until a later SF/BW change produces usable
@@ -95,7 +106,11 @@ inline bool canStartRxPowerSavingDutyCycle(uint32_t rx_us, uint32_t sleep_us,
 // Must stay in sync with RadioLibWrapper::preambleLengthForSF() (the value the
 // radio actually transmits); kept local here because CommonCLI is radio-agnostic.
 inline uint8_t rxPowerSavingPreambleForSF(uint8_t sf) {
-  return sf <= 8 ? 32 : 16;
+  return sf <= 8 ? LORA_FAST_PREAMBLE : 16;
+}
+
+inline bool isRxPowerSavingPreamble(uint8_t preamble) {
+  return preamble == 16 || preamble == 32 || preamble == 64;
 }
 
 inline bool isNumeric(const char *sp) {
@@ -115,7 +130,7 @@ inline uint32_t ceilPositiveFloat(float value) {
 inline bool calcRxPowerSavingLevel(uint8_t level, uint8_t sf, float bw, uint8_t preamble, uint32_t *rx_us,
                                    uint32_t *sleep_us) {
   if (!rx_us || !sleep_us || level < 1 || level > 10 || sf < 5 || sf > 12
-      || bw <= 0.0f || (preamble != 16 && preamble != 32)) {
+      || bw <= 0.0f || !isRxPowerSavingPreamble(preamble)) {
     return false;
   }
 
@@ -162,19 +177,19 @@ inline bool calcRxPowerSavingLevelAtOrAbove(
     uint8_t *effective_preamble = nullptr) {
   if (!rx_us || !sleep_us || requested_level < 1 || requested_level > 10
       || sf < 5 || sf > 12 || bw <= 0.0f
-      || (preamble != 16 && preamble != 32)) {
+      || !isRxPowerSavingPreamble(preamble)) {
     return false;
   }
 
   // Keep the configured/legacy preamble assumption if any level can satisfy
-  // it. For SF5-SF8 the radio already transmits 32 symbols, so a second pass
-  // may use that real preamble length when 16 symbols cannot cover the TCXO
-  // transition at a faster tuple.
-  const bool can_try_32 = preamble == 16
-      && rxPowerSavingPreambleForSF(sf) == 32;
-  const uint8_t pass_count = can_try_32 ? 2 : 1;
+  // it. A second pass may use the radio's real, longer transmit preamble when
+  // the configured assumption cannot cover the transition at a faster tuple.
+  const uint8_t transmitted_preamble = rxPowerSavingPreambleForSF(sf);
+  const bool can_try_transmitted = transmitted_preamble > preamble;
+  const uint8_t pass_count = can_try_transmitted ? 2 : 1;
   for (uint8_t pass = 0; pass < pass_count; pass++) {
-    const uint8_t candidate_preamble = pass == 0 ? preamble : 32;
+    const uint8_t candidate_preamble = pass == 0
+        ? preamble : transmitted_preamble;
     for (uint8_t level = requested_level; level <= 10; level++) {
       const float symbol_us = (1000.0f * (float)(1UL << sf)) / bw;
       const float amount = (float)(level - 1) / 9.0f;

@@ -64,8 +64,8 @@ TEST(RxPowerSaving, RequestedLevelIsRaisedOnlyToRequiredMinimum) {
   ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
       1, 7, 500.0f, 16, sx1262_tcxo_transition_us,
       &rx_us, &sleep_us, &effective_level, &effective_preamble));
-  EXPECT_EQ(7U, effective_level);
-  EXPECT_EQ(32U, effective_preamble);
+  EXPECT_EQ(LORA_FAST_PREAMBLE == 64 ? 3U : 7U, effective_level);
+  EXPECT_EQ((uint8_t)LORA_FAST_PREAMBLE, effective_preamble);
   EXPECT_TRUE(canStartRxPowerSavingDutyCycle(
       rx_us, sleep_us, sx1262_tcxo_transition_us));
 
@@ -73,7 +73,7 @@ TEST(RxPowerSaving, RequestedLevelIsRaisedOnlyToRequiredMinimum) {
       8, 7, 500.0f, 16, sx1262_tcxo_transition_us,
       &rx_us, &sleep_us, &effective_level, &effective_preamble));
   EXPECT_EQ(8U, effective_level);
-  EXPECT_EQ(32U, effective_preamble);
+  EXPECT_EQ((uint8_t)LORA_FAST_PREAMBLE, effective_preamble);
   EXPECT_TRUE(canStartRxPowerSavingDutyCycle(
       rx_us, sleep_us, sx1262_tcxo_transition_us));
 }
@@ -93,7 +93,7 @@ TEST(RxPowerSaving, Sf5Bw500StillFallsBackWithPreamble32) {
   EXPECT_TRUE(rxPowerSavingUsesContinuousFallback(rx_us, sleep_us));
 }
 
-TEST(RxPowerSaving, Sf5Bw250StillFallsBackWithPreamble32OnTcxoRadio) {
+TEST(RxPowerSaving, Sf5Bw250NeedsLongerTransmittedPreambleOnTcxoRadio) {
   constexpr uint32_t sx1262_tcxo_transition_us = 6000;
   uint32_t rx_us = 0;
   uint32_t sleep_us = 0;
@@ -112,10 +112,54 @@ TEST(RxPowerSaving, Sf5Bw250StillFallsBackWithPreamble32OnTcxoRadio) {
   ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
       1, 5, 250.0f, 16, sx1262_tcxo_transition_us,
       &rx_us, &sleep_us, &effective_level, &effective_preamble));
+#if LORA_FAST_PREAMBLE == 64
+  EXPECT_EQ(8U, effective_level);
+  EXPECT_EQ(64U, effective_preamble);
+  EXPECT_EQ(1252U, rx_us);
+  EXPECT_EQ(6424U, sleep_us);
+  EXPECT_FALSE(rxPowerSavingUsesContinuousFallback(rx_us, sleep_us));
+#else
   EXPECT_EQ(0U, effective_level);
   EXPECT_EQ(0U, effective_preamble);
   EXPECT_TRUE(rxPowerSavingUsesContinuousFallback(rx_us, sleep_us));
+#endif
 }
+
+TEST(RxPowerSaving, Sf5Bw250UsesPreamble64AtEffectiveLevel8) {
+  constexpr uint32_t sx1262_tcxo_transition_us = 6000;
+  uint32_t rx_us = 0;
+  uint32_t sleep_us = 0;
+  uint8_t effective_level = 0;
+  uint8_t effective_preamble = 0;
+
+  ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
+      1, 5, 250.0f, 64, sx1262_tcxo_transition_us,
+      &rx_us, &sleep_us, &effective_level, &effective_preamble));
+  EXPECT_EQ(8U, effective_level);
+  EXPECT_EQ(64U, effective_preamble);
+  EXPECT_EQ(1252U, rx_us);
+  EXPECT_EQ(6424U, sleep_us);
+  EXPECT_TRUE(canStartRxPowerSavingDutyCycle(
+      rx_us, sleep_us, sx1262_tcxo_transition_us));
+}
+
+#if LORA_FAST_PREAMBLE == 64
+TEST(RxPowerSaving, FastPreamble64BuildSelectsItAutomatically) {
+  constexpr uint32_t sx1262_tcxo_transition_us = 6000;
+  uint32_t rx_us = 0;
+  uint32_t sleep_us = 0;
+  uint8_t effective_level = 0;
+  uint8_t effective_preamble = 0;
+
+  ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
+      1, 5, 250.0f, 16, sx1262_tcxo_transition_us,
+      &rx_us, &sleep_us, &effective_level, &effective_preamble));
+  EXPECT_EQ(8U, effective_level);
+  EXPECT_EQ(64U, effective_preamble);
+  EXPECT_EQ(1252U, rx_us);
+  EXPECT_EQ(6424U, sleep_us);
+}
+#endif
 
 TEST(RxPowerSaving, Sf5Bw125UsesPreamble32AtEffectiveLevel7) {
   constexpr uint32_t sx1262_tcxo_transition_us = 6000;
@@ -127,10 +171,15 @@ TEST(RxPowerSaving, Sf5Bw125UsesPreamble32AtEffectiveLevel7) {
   ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
       1, 5, 125.0f, 16, sx1262_tcxo_transition_us,
       &rx_us, &sleep_us, &effective_level, &effective_preamble));
-  EXPECT_EQ(7U, effective_level);
-  EXPECT_EQ(32U, effective_preamble);
+  EXPECT_EQ(LORA_FAST_PREAMBLE == 64 ? 3U : 7U, effective_level);
+  EXPECT_EQ((uint8_t)LORA_FAST_PREAMBLE, effective_preamble);
+#if LORA_FAST_PREAMBLE == 64
+  EXPECT_EQ(3641U, rx_us);
+  EXPECT_EQ(6414U, sleep_us);
+#else
   EXPECT_EQ(2731U, rx_us);
   EXPECT_EQ(6101U, sleep_us);
+#endif
   EXPECT_TRUE(canStartRxPowerSavingDutyCycle(
       rx_us, sleep_us, sx1262_tcxo_transition_us));
 }
@@ -145,10 +194,15 @@ TEST(RxPowerSaving, Sf6Bw250UsesPreamble32AtEffectiveLevel7) {
   ASSERT_TRUE(calcRxPowerSavingLevelAtOrAbove(
       1, 6, 250.0f, 16, sx1262_tcxo_transition_us,
       &rx_us, &sleep_us, &effective_level, &effective_preamble));
-  EXPECT_EQ(7U, effective_level);
-  EXPECT_EQ(32U, effective_preamble);
+  EXPECT_EQ(LORA_FAST_PREAMBLE == 64 ? 3U : 7U, effective_level);
+  EXPECT_EQ((uint8_t)LORA_FAST_PREAMBLE, effective_preamble);
+#if LORA_FAST_PREAMBLE == 64
+  EXPECT_EQ(3641U, rx_us);
+  EXPECT_EQ(6414U, sleep_us);
+#else
   EXPECT_EQ(2731U, rx_us);
   EXPECT_EQ(6101U, sleep_us);
+#endif
 }
 
 TEST(RxPowerSaving, Sf5Bw62Point5UsesPreamble16AtEffectiveLevel10) {

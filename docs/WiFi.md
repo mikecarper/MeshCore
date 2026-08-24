@@ -250,9 +250,10 @@ a trusted LAN.
 The WebConfig **Advanced** card exposes device power saving on WiFi Companion,
 repeater, and room-server builds. It also exposes RX power saving on radio chips
 that support receive duty cycling. RXPS can select continuous receive, levels
-1-10, automatic or explicit 16/32-symbol preambles, or manual receive/sleep
-windows. The WebConfig **WiFi** card exposes WiFi modem power saving. All three
-settings are persisted across reboots.
+1-10, automatic or explicit 16/32-symbol timing assumptions, or manual
+receive/sleep windows. The timing assumption does not change the radio's actual
+wire preamble. The WebConfig **WiFi** card exposes WiFi modem power saving. All
+three settings are persisted across reboots.
 
 The three settings are independent. A WiFi Companion keeps its transports
 available while device power saving reduces CPU and GPS idle power. An

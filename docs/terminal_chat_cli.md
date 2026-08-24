@@ -107,14 +107,16 @@ get radio.rxps
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
 ```
 Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
-builds select level 8 with a 16-symbol preamble. A configured level is the
-minimum: when faster SF/BW settings shorten the timing window, firmware raises
-the effective level only as far as needed, up to level 10. For SF5-SF8 it can
-then use the radio's actual 32-symbol transmit preamble if no level is safe
-under the legacy 16-symbol assumption. The configured values remain unchanged,
-so every radio change recalculates from the saved minimum. A slower tuple
-returns to that exact level when it is safe; otherwise firmware keeps using the
-smallest safe effective level.
+builds select level 8 with a 16-symbol timing assumption. The `preamble`
+argument controls the RXPS calculation; it does not change the physical wire
+preamble. A configured level is the minimum: when faster SF/BW settings shorten
+the timing window, firmware raises the effective level only as far as needed,
+up to level 10. For SF5-SF8 the normal build can then use the radio's actual
+32-symbol transmit preamble if no level is safe under the legacy 16-symbol
+assumption. The configured values remain unchanged, so every radio change
+recalculates from the saved minimum. A slower tuple returns to that exact level
+when it is safe; otherwise firmware keeps using the smallest safe effective
+level.
 
 If neither adjustment leaves enough time for the radio to wake, RXPS stays
 logically enabled but receives continuously instead of rejecting the radio
@@ -135,8 +137,13 @@ RXPS boundary profiles (CR does not change the RXPS preamble timing):
 | 5 | 125 | 32 | 7 | 2731 / 6101 us |
 | 5 | 62.5 | 16 | 10 | 4096 / 6272 us |
 
-SF5/BW250 and SF5/BW500 remain too fast for a true TCXO duty cycle even with
-preamble 32, so they use `continuous-fast`.
+SF5/BW250 and SF5/BW500 remain too fast for a true TCXO duty cycle in the
+normal 32-symbol build, so they use `continuous-fast`. A controlled build with
+`-D LORA_FAST_PREAMBLE=64` changes the actual SF5-SF8 wire preamble. SF5/BW250
+then uses effective level 8 and `1252 / 6424 us`; that combination passed a
+16/16 on-air qualification at 909.950 MHz. SF5/BW500 still uses
+`continuous-fast`. Deploy a longer physical preamble consistently across all
+senders that may reach an RXPS receiver.
 
 ```
 get wifi.powersave

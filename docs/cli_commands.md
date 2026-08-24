@@ -742,7 +742,18 @@ On SX1262+TCXO boards, the tested fast-setting boundaries are:
 
 SF7/BW500, SF6/BW250, and SF5/BW125 are timing-equivalent because each has a
 256 us LoRa symbol. SF5/BW250 and SF5/BW500 use `continuous-fast` even with
-preamble 32.
+preamble 32 in the normal build.
+
+The table's effective preamble is the length RXPS uses for its timing window.
+The radio's actual transmitted preamble is a firmware property, not a
+`radio.rxps` preference. Normal firmware transmits 32 symbols at SF5-SF8 and
+16 symbols at SF9-SF12. A controlled build can set
+`-D LORA_FAST_PREAMBLE=64`; this changes the actual SF5-SF8 wire preamble and
+lets SF5/BW250 duty-cycle at effective level 8 (`1252 / 6424 us`). That profile
+passed a 16/16 on-air qualification at 909.950 MHz. SF5/BW500 remains too fast.
+Use the 64-symbol option only when every possible sender to an RXPS receiver
+uses the longer preamble; treating a 32-symbol sender as if it sent 64 would
+create a receive gap.
 
 ---
 
@@ -798,7 +809,8 @@ Station G2/G3 targets default to `off`.
 **Parameters:**
 - `rx_us`, `sleep_us`: Receive and sleep durations in microseconds (`1000`-`30000000`).
 - `level`: A power-saving level from `1` (most conservative) to `10` (least power saving).
-- `preamble`: LoRa preamble length in symbols; `16` or `32`.
+- `preamble`: RXPS timing assumption in symbols; `16` or `32`. This does not
+  change the radio's actual transmitted preamble.
 - `state`: `on` or `off`.
 
 **Notes:**
@@ -809,6 +821,9 @@ Station G2/G3 targets default to `off`.
 - `on` and `conservative` select level `1` with a 16-symbol preamble; `balanced` selects level `5` with a 16-symbol preamble.
 - Fresh Cascade-profile builds start with RXPS on at level `8` and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom `<rx_us> <sleep_us>` timings remain fixed.
+- `get radio.rxps` reports both the saved timing assumption and any effective
+  preamble/level selected for the current tuple. A 64-symbol effective preamble
+  appears only in a firmware build whose actual fast preamble is 64.
 - The selected mode is applied immediately, persisted, and restored after reboot.
 
 ---

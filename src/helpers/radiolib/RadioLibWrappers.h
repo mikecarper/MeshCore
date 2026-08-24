@@ -172,7 +172,9 @@ public:
 
   virtual float getCurrentRSSI() =0;
   virtual uint8_t getSpreadingFactor() const { return LORA_SF; }
-  static uint16_t preambleLengthForSF(uint8_t sf) { return sf <= 8 ? 32 : 16; }
+  static uint16_t preambleLengthForSF(uint8_t sf) {
+    return rxPowerSavingPreambleForSF(sf);
+  }
   bool updatePreamble(uint8_t sf) {
     if (_radio->setPreambleLength(preambleLengthForSF(sf)) != RADIOLIB_ERR_NONE) return false;
     _preamble_sf = sf;
