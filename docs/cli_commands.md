@@ -538,13 +538,30 @@ emitted only when that hardware/role has no matching WiFi MQTT environment.
 get usb.logging
 set usb.logging on
 set usb.logging off
+set usb.logging on reboot
+set usb.logging off reboot
 ```
 
 These commands are compiled into logging artifacts and control their live USB
 debug and packet output. CommonCLI roles save the setting in `/com_prefs`, so
-it survives reboot; first boot defaults to on. nRF52 Full Companion applies the
-gate only to USB interface `02`, its dedicated plaintext logging port. USB
-interface `00` continues carrying Companion, terminal, and serial mOTA traffic.
+it survives reboot; their first boot defaults to on.
+
+On Full Companion these lines belong to its text terminal, not `meshcli`'s
+Binary `get/set` parameter namespace. Open interface `00`, send
+`+++MESHCORE-TERM-START`, and then issue the command. Running
+`meshcli ... get usb.logging` directly can instead return
+`Unknown var usb.logging` because that is a different protocol operation.
+
+Dual-CDC Full Companion instead defaults logging to off and enumerates only
+USB interface `00`, which carries Companion, terminal, and serial mOTA traffic.
+Enabling logging adds interface `02`, its dedicated plaintext logging port, on
+the next boot. Disabling it removes interface `02` on the next boot. A command
+without the optional `reboot` argument saves the choice and reports that a
+reboot is required when the USB interface count must change. The exact
+`set usb.logging on reboot` and `set usb.logging off reboot` forms save the
+choice, send their reply, and reboot one second later only when needed. This
+behavior includes nRF52 and qualified native-USB ESP32-S3 Full images.
+
 Turning USB logging off does not disable CLI replies or Companion protocol
 frames. It also does not change the node-storage capture controlled by `log
 start` and `log stop`.

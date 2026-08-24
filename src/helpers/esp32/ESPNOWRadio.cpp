@@ -1,7 +1,11 @@
 #include "ESPNOWRadio.h"
 #include <esp_now.h>
+#include <esp_idf_version.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  #include <esp_mac.h>
+#endif
 
 static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static esp_now_peer_info_t peerInfo;
@@ -11,12 +15,26 @@ static uint8_t rx_buf[256];
 static uint8_t last_rx_len = 0;
 
 // callback when data is sent
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+static void OnDataSent(const esp_now_send_info_t *info,
+                       esp_now_send_status_t status) {
+  (void)info;
+#else
 static void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  (void)mac_addr;
+#endif
   is_send_complete = true;
   ESPNOW_DEBUG_PRINTLN("Send Status: %d", (int)status);
 }
 
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data,
+                       int len) {
+  (void)info;
+#else
 static void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
+  (void)mac;
+#endif
   ESPNOW_DEBUG_PRINTLN("Recv: len = %d", len);
   memcpy(rx_buf, data, len);
   last_rx_len = len;

@@ -42,6 +42,21 @@ const releases = [
     asset("RAK_4631_companion_radio_full-" + family + ".zip"),
     asset("RAK_4631_companion_radio_usb-logging-" + family + ".uf2"),
     asset("RAK_4631_companion_radio_usb-logging-" + family + ".zip"),
+    asset(
+      "heltec_v4_2_v4_3_companion_radio_full_femon-" + family +
+        "-merged.bin"
+    ),
+    asset(
+      "heltec_v4_2_v4_3_companion_radio_full_femon-" + family + ".bin"
+    ),
+    asset("heltec_v4_companion_radio_usb-" + family + "-merged.bin"),
+    asset("heltec_v4_companion_radio_usb-" + family + ".bin"),
+    asset("heltec_v4_companion_radio_ble-" + family + "-merged.bin"),
+    asset("heltec_v4_companion_radio_ble-" + family + ".bin"),
+    asset(
+      "heltec_v4_companion_radio_wifi_femon-" + family + "-merged.bin"
+    ),
+    asset("heltec_v4_companion_radio_wifi_femon-" + family + ".bin"),
   ]),
   release("repeater-room-" + family, "2026-08-23T12:00:05Z", [
     asset("Station_G2_repeater-" + family + "-deadbee-merged.bin"),
@@ -110,8 +125,8 @@ assert(!releaseSet.releases.some(function (item) {
 
 const catalog = picker.buildCatalog(releases);
 assert.strictEqual(catalog.releaseSet.familyTag, family);
-assert.strictEqual(catalog.profiles.length, 11);
-assert.strictEqual(catalog.rows.length, 33);
+assert.strictEqual(catalog.profiles.length, 12);
+assert.strictEqual(catalog.rows.length, 41);
 
 function profile(target) {
   const found = catalog.profiles.find(function (item) {
@@ -125,7 +140,9 @@ const companionFull = profile("Station_G2_companion_radio_full");
 assert.strictEqual(companionFull.hardware, "Station_G2");
 assert.strictEqual(companionFull.role, "companion");
 assert.strictEqual(companionFull.mode, "full");
-assert.strictEqual(companionFull.logging, "none");
+assert.strictEqual(companionFull.logging, "usb-runtime");
+assert.deepStrictEqual(companionFull.loggingModes, ["none", "usb"]);
+assert.strictEqual(companionFull.dedicatedUsbLogging, true);
 assert.strictEqual(companionFull.ota, "lora-source");
 assert.strictEqual(companionFull.feature, "full");
 assert.strictEqual(companionFull.variant, "default");
@@ -140,6 +157,37 @@ assert(!catalog.profiles.some(function (item) {
 assert(catalog.rows.some(function (item) {
   return item.target === "RAK_4631_companion_radio_usb-logging";
 }));
+
+const v4Full = profile("heltec_v4_2_v4_3_companion_radio_full_femon");
+assert.strictEqual(v4Full.logging, "usb-runtime");
+assert.deepStrictEqual(v4Full.loggingModes, ["none", "usb"]);
+assert.strictEqual(v4Full.dedicatedUsbLogging, true);
+["usb", "ble", "wifi"].forEach(function (mode) {
+  assert(!catalog.profiles.some(function (item) {
+    return item.hardware === "heltec_v4" && item.role === "companion" &&
+      item.mode === mode;
+  }));
+});
+
+["RAK_3112", "heltec_rc32", "heltec_rc32_without_display"].forEach(
+  function (hardware) {
+    const candidates = ["full", "usb", "ble", "wifi"].map(function (mode) {
+      return Object.assign(
+        picker.parseTargetProfile(
+          hardware + "_companion_radio_" + mode
+        ),
+        { installKinds: ["bin"] }
+      );
+    });
+    const classified = picker.applyDualCdcFullCompanionCapabilities(candidates);
+    assert.strictEqual(classified[0].logging, "none");
+    assert.strictEqual(classified[0].dedicatedUsbLogging, undefined);
+    assert.strictEqual(
+      picker.omitTransportsReplacedByDualCdcFull(classified).length,
+      candidates.length
+    );
+  }
+);
 
 const companionBle = picker.parseTargetProfile(
   "Heltec_t096_companion_radio_ble_ps_femon"
@@ -472,6 +520,7 @@ assert.deepStrictEqual(
     "RAK_4631",
     "Station_G2",
     "Station_G3_ESP32",
+    "heltec_v4",
     "solarxiao_33S",
     "wio-e5",
   ].sort()

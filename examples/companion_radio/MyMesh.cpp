@@ -1376,6 +1376,9 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   command_radio_cr = 0;
   command_radio_repeat = 0;
   command_radio_apply_deadline = 0;
+#if MESH_USB_LOGGING_AVAILABLE
+  _usb_logging_reboot_at = 0;
+#endif
 #if defined(COMPANION_RADIO_FULL)
   _temp_radio_set_at = 0;
   _temp_radio_revert_at = 0;
@@ -1437,7 +1440,13 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_enabled = 1;
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
+#if defined(COMPANION_RADIO_FULL) && defined(MESH_DUAL_CDC_LOGGING)
+  // Keep the primary CDC stream exclusively framed unless the owner opts in
+  // to the separate plaintext logging interface and reboots.
+  _prefs.usb_logging_enabled = 0;
+#else
   _prefs.usb_logging_enabled = 1;
+#endif
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
@@ -1457,6 +1466,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 void MyMesh::begin(bool has_display, bool radio_available) {
   _radio_available = radio_available;
   setRadioAvailable(radio_available);
+  initializeContactStorage();
   initializeOfflineQueue();
   BaseChatMesh::begin();
 
@@ -1545,7 +1555,11 @@ void MyMesh::begin(bool has_display, bool radio_available) {
     _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
   }
 #if MESH_USB_LOGGING_AVAILABLE
-  mesh::setUsbLoggingEnabled(_prefs.usb_logging_enabled != 0);
+  const bool usb_logging_enabled = _prefs.usb_logging_enabled != 0;
+  mesh::setUsbLoggingEnabled(usb_logging_enabled);
+  if (!mesh::saveUsbLoggingBootPreference(usb_logging_enabled)) {
+    MESH_DEBUG_PRINTLN("Unable to save next-boot USB logging interface state");
+  }
 #endif
 
 #ifdef BLE_PIN_CODE // 123456 by default
@@ -4925,8 +4939,11 @@ void MyMesh::handleTerminalCommand(char* command) {
                   _prefs.powersaving_enabled ? "on" : "off");
 #if MESH_USB_LOGGING_AVAILABLE
   } else if (strcmp(command, "get usb.logging") == 0) {
-    terminalOutput().printf("  usb.logging %s\r\n",
-                  mesh::isUsbLoggingEnabled() ? "on" : "off");
+    terminalOutput().printf(
+        "  usb.logging %s%s\r\n",
+        mesh::isUsbLoggingEnabled() ? "on" : "off",
+        mesh::usbLoggingInterfaceRestartRequired()
+            ? " (reboot required to change USB interfaces)" : "");
 #endif
   } else if (strncmp(command, "powersaving ", 12) == 0) {
     char reply[160];
@@ -4978,18 +4995,49 @@ void MyMesh::handleTerminalCommand(char* command) {
             || config[11] == '\t')) {
       const char* value = config + 11;
       while (*value == ' ' || *value == '\t') value++;
-      if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        terminalOutput().print("  ERROR: use set usb.logging <on|off>\r\n");
+      bool enabled = false;
+      bool reboot_if_needed = false;
+      bool valid = true;
+      if (strcmp(value, "on") == 0) {
+        enabled = true;
+      } else if (strcmp(value, "off") == 0) {
+        enabled = false;
+      } else if (strcmp(value, "on reboot") == 0) {
+        enabled = true;
+        reboot_if_needed = true;
+      } else if (strcmp(value, "off reboot") == 0) {
+        enabled = false;
+        reboot_if_needed = true;
       } else {
-        const bool enabled = strcmp(value, "on") == 0;
+        valid = false;
+      }
+
+      if (!valid) {
+        terminalOutput().print(
+            "  ERROR: use set usb.logging <on|off> [reboot]\r\n");
+      } else {
         _prefs.usb_logging_enabled = enabled ? 1 : 0;
         mesh::setUsbLoggingEnabled(enabled);
-        if (savePrefs()) {
-          terminalOutput().printf("  OK - USB logging %s (saved)\r\n",
-                                  enabled ? "on" : "off");
-        } else {
+        if (!savePrefs()) {
           terminalOutput().print(
               "  ERROR: USB logging changed for this boot but save failed\r\n");
+        } else if (!mesh::saveUsbLoggingBootPreference(enabled)) {
+          terminalOutput().print(
+              "  ERROR: setting saved, but next-boot USB interface state could not be saved\r\n");
+        } else if (mesh::usbLoggingInterfaceRestartRequired()) {
+          if (reboot_if_needed) {
+            terminalOutput().printf(
+                "  OK - USB logging %s (saved); rebooting to change USB interfaces\r\n",
+                enabled ? "on" : "off");
+            _usb_logging_reboot_at = futureMillis(1000);
+          } else {
+            terminalOutput().printf(
+                "  OK - USB logging %s (saved); reboot required to change USB interfaces\r\n",
+                enabled ? "on" : "off");
+          }
+        } else {
+          terminalOutput().printf("  OK - USB logging %s (saved)\r\n",
+                                  enabled ? "on" : "off");
         }
       }
     } else
@@ -5090,7 +5138,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  powersaving [on|off]\r\n");
 #if MESH_USB_LOGGING_AVAILABLE
     terminalOutput().print("  get usb.logging\r\n");
-    terminalOutput().print("  set usb.logging <on|off>\r\n");
+    terminalOutput().print("  set usb.logging <on|off> [reboot]\r\n");
 #endif
 #if defined(ESP32) && defined(WIFI_SSID)
     terminalOutput().print("  get wifi.powersave\r\n");
@@ -5361,6 +5409,14 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+#if MESH_USB_LOGGING_AVAILABLE
+  if (_usb_logging_reboot_at != 0
+      && millisHasNowPassed(_usb_logging_reboot_at)) {
+    _usb_logging_reboot_at = 0;
+    board.reboot();
+    return;
+  }
+#endif
 #if defined(COMPANION_RADIO_FULL)
   serviceTempRadio();
 #endif

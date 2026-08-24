@@ -23,7 +23,13 @@ void ESPNowBridge::recv_cb(const uint8_t *mac, const uint8_t *data, int len) {
 }
 #endif
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+void ESPNowBridge::send_cb(const esp_now_send_info_t *info,
+                           esp_now_send_status_t status) {
+  const uint8_t *mac = info != nullptr ? info->des_addr : nullptr;
+#else
 void ESPNowBridge::send_cb(const uint8_t *mac, esp_now_send_status_t status) {
+#endif
   if (_instance) {
     _instance->onDataSent(mac, status);
   }

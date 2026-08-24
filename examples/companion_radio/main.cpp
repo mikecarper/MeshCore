@@ -12,6 +12,13 @@
 #else
 #define COMPANION_IDF_PM_AVAILABLE 0
 #endif
+#if defined(BLE_PIN_CODE) && !CONFIG_IDF_TARGET_ESP32C6 \
+    && (defined(CONFIG_BT_CTRL_MODEM_SLEEP) \
+        || defined(CONFIG_BTDM_CTRL_MODEM_SLEEP))
+#define COMPANION_BT_MODEM_SLEEP_AVAILABLE 1
+#else
+#define COMPANION_BT_MODEM_SLEEP_AVAILABLE 0
+#endif
 #if defined(COMPANION_RADIO_FULL)
 #include <esp_heap_caps.h>
 #endif
@@ -180,6 +187,22 @@ static uint32_t companionNominalCpuMhz() {
 #endif
 }
 
+#if COMPANION_BT_MODEM_SLEEP_AVAILABLE
+static void applyCompanionBluetoothSleep(bool enabled,
+                                         bool allow_uninitialized) {
+  esp_err_t result = enabled ? esp_bt_sleep_enable()
+                             : esp_bt_sleep_disable();
+  if (result == ESP_OK
+      || (allow_uninitialized && result == ESP_ERR_INVALID_STATE)) {
+    return;
+  }
+
+  mesh::usbLoggingPort().printf("Bluetooth sleep %s failed: %s\r\n",
+                                enabled ? "enable" : "disable",
+                                esp_err_to_name(result));
+}
+#endif
+
 static bool applyCompanionPowerSaving(bool enabled) {
   const uint32_t nominal_mhz = companionNominalCpuMhz();
   const uint32_t max_mhz = enabled && nominal_mhz > 80 ? 80 : nominal_mhz;
@@ -224,14 +247,13 @@ static bool applyCompanionPowerSaving(bool enabled) {
   }
 #endif
 
-#if defined(BLE_PIN_CODE) && !CONFIG_IDF_TARGET_ESP32C6
-  esp_err_t bt_result = enabled ? esp_bt_sleep_enable()
-                                : esp_bt_sleep_disable();
-  if (bt_result != ESP_OK) {
-    mesh::usbLoggingPort().printf("Bluetooth sleep %s failed: %s\r\n",
-                                  enabled ? "enable" : "disable",
-                                  esp_err_to_name(bt_result));
-  }
+#if COMPANION_BT_MODEM_SLEEP_AVAILABLE
+  // Power saving is applied before the wireless interfaces are constructed.
+  // An uninitialized controller is expected here; apply the saved setting
+  // again immediately after BLEDevice::init() below. Some prebuilt ESP-IDF
+  // targets omit Bluetooth modem sleep entirely; the compile-time guard avoids
+  // calling an API which can only return ESP_ERR_NOT_SUPPORTED in those builds.
+  applyCompanionBluetoothSleep(enabled, true);
 #endif
 
 #if COMPANION_IDF_PM_AVAILABLE
@@ -945,32 +967,47 @@ void halt() {
 
 #if defined(BLE_PIN_CODE)
   static bool companion_bluetooth_initialized = false;
-#if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
   static uint32_t companion_bluetooth_start_at = 0;
-#endif
+  static constexpr uint32_t COMPANION_BLUETOOTH_RETRY_MS = 5000UL;
+
+  static void scheduleCompanionBluetoothRetry() {
+    companion_bluetooth_start_at = millis() + COMPANION_BLUETOOTH_RETRY_MS;
+    if (companion_bluetooth_start_at == 0) companion_bluetooth_start_at = 1;
+  }
 
   static void startCompanionBluetooth() {
     if (companion_bluetooth_initialized) return;
+    companion_bluetooth_start_at = 0;
 
     mesh::usbLoggingPort().println("Companion: starting Bluetooth");
-    bluetooth_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name,
-                              the_mesh.getBLEPin());
     if (!interface_manager.addInterface(InterfaceType::Bluetooth,
                                         &bluetooth_interface)) {
       mesh::usbLoggingPort().println(
-          "Companion: no interface slot available for Bluetooth");
+          "Companion: no interface slot available for Bluetooth; retrying");
+      scheduleCompanionBluetoothRetry();
       return;
     }
+    if (!bluetooth_interface.begin(BLE_NAME_PREFIX,
+                                   the_mesh.getNodePrefs()->node_name,
+                                   the_mesh.getBLEPin())) {
+      interface_manager.removeInterface(&bluetooth_interface);
+      mesh::usbLoggingPort().println(
+          "Companion: Bluetooth initialization failed; retrying in 5 seconds");
+      scheduleCompanionBluetoothRetry();
+      return;
+    }
+#if defined(ESP32_PLATFORM) && COMPANION_BT_MODEM_SLEEP_AVAILABLE
+    applyCompanionBluetoothSleep(
+        the_mesh.getNodePrefs()->powersaving_enabled != 0, false);
+#endif
     companion_bluetooth_initialized = true;
     if (interface_manager.isEnabled()) bluetooth_interface.enable();
   }
 
   static void serviceDeferredCompanionBluetooth() {
     if (companion_bluetooth_initialized) return;
-#if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
     if (companion_bluetooth_start_at == 0
         || (int32_t)(millis() - companion_bluetooth_start_at) < 0) return;
-#endif
     startCompanionBluetooth();
   }
 #endif
@@ -1109,6 +1146,11 @@ void setup() {
   #error "need to define filesystem"
 #endif
 
+  // nRF52 cannot decide whether to add its optional logging CDC interface
+  // until the saved Companion preferences above are available. ESP32 already
+  // fixed its descriptor from the early NVS mirror, so this is harmless there.
+  mesh::beginUsbLoggingPort();
+
 // Load WiFi state before bringing up either wireless stack.
 #ifdef WIFI_SSID
   loadCompanionWiFiCredentials();
@@ -1116,6 +1158,14 @@ void setup() {
 
 #if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
   logFullCompanionMemory("before interfaces");
+#endif
+
+// NimBLE must reserve its internal controller/host memory before WiFi starts
+// its AP and WebConfig services. Starting WiFi first can leave plenty of total
+// heap but no internal block large enough for nimble_port_init().
+#if defined(BLE_PIN_CODE) && defined(ESP32) \
+    && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
+  startCompanionBluetooth();
 #endif
 
 // add wifi interface
@@ -1147,16 +1197,11 @@ void setup() {
   logFullCompanionMemory("after WiFi start");
 #endif
 
-// The Full ESP32 profile starts WiFi/WebConfig first, gives its AP/server two
-// seconds to settle and reserve heap, then starts BLE from loop(). Other BLE
-// companions keep their existing immediate startup.
+// Full ESP32 WiFi+BLE companions started BLE above so its controller memory
+// could not be fragmented by WiFi. Other BLE companions start here.
 #if defined(BLE_PIN_CODE)
-  #if defined(ESP32) && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
-    companion_bluetooth_start_at = millis() + 2000UL;
-    if (companion_bluetooth_start_at == 0) companion_bluetooth_start_at = 1;
-    mesh::usbLoggingPort().println(
-        "Companion: Bluetooth starts in 2 seconds");
-  #else
+  #if !(defined(ESP32) && defined(COMPANION_RADIO_FULL) \
+        && defined(WIFI_SSID))
     startCompanionBluetooth();
   #endif
 #endif

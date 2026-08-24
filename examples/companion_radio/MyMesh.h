@@ -415,6 +415,9 @@ private:
   uint8_t command_radio_cr;
   uint8_t command_radio_repeat;
   unsigned long command_radio_apply_deadline;
+#if MESH_USB_LOGGING_AVAILABLE
+  unsigned long _usb_logging_reboot_at;
+#endif
 #if defined(COMPANION_RADIO_FULL)
   unsigned long _temp_radio_set_at;
   unsigned long _temp_radio_revert_at;

@@ -19,6 +19,7 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   bool deviceConnected;
   bool oldDeviceConnected;
   bool notifySucceeded;
+  std::atomic<bool> notificationsEnabled{false};
   bool _isEnabled;
   uint16_t last_conn_id;
   uint32_t _pin_code;
@@ -54,16 +55,31 @@ protected:
   void onPassKeyNotify(uint32_t pass_key) override;
   bool onConfirmPIN(uint32_t pass_key) override;
   bool onSecurityRequest() override;
+  #if defined(CONFIG_NIMBLE_ENABLED)
+  void onAuthenticationComplete(ble_gap_conn_desc* desc) override;
+  #else
   void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override;
+  #endif
 
   // BLEServerCallbacks methods
   void onConnect(BLEServer* pServer) override;
+  #if defined(CONFIG_NIMBLE_ENABLED)
+  void onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) override;
+  void onMtuChanged(BLEServer* pServer, ble_gap_conn_desc* desc, uint16_t mtu) override;
+  #else
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
   void onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override;
+  #endif
   void onDisconnect(BLEServer* pServer) override;
 
   // BLECharacteristicCallbacks methods
+  #if defined(CONFIG_NIMBLE_ENABLED)
+  void onWrite(BLECharacteristic* pCharacteristic, ble_gap_conn_desc* desc) override;
+  void onSubscribe(BLECharacteristic* pCharacteristic, ble_gap_conn_desc* desc,
+                   uint16_t subValue) override;
+  #else
   void onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) override;
+  #endif
   void onStatus(BLECharacteristic* pCharacteristic, Status status, uint32_t code) override;
 
 public:
@@ -75,6 +91,7 @@ public:
     deviceConnected = false;
     oldDeviceConnected = false;
     notifySucceeded = false;
+    notificationsEnabled.store(false, std::memory_order_relaxed);
     _adv_restart_started = 0;
     _adv_restart_pending = false;
     _isEnabled = false;
@@ -92,7 +109,7 @@ public:
    * @param name  IN/OUT - a name for the device (combined with prefix). If "@@MAC", is modified and returned
    * @param pin_code   the BLE security pin
    */
-  void begin(const char* prefix, char* name, uint32_t pin_code);
+  bool begin(const char* prefix, char* name, uint32_t pin_code);
 
   // BaseSerialInterface methods
   void enable() override;

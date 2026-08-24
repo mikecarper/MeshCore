@@ -11,11 +11,14 @@ no longer a user-facing CLI.
 
 ## Setup
 
-Uses the repo's Python venv (`meshcore/`). Dependencies: `detools` (delta), `cryptography` (Ed25519),
-`intelhex` (nRF52 `.hex` handling).
+Use one pipx-managed `detools` environment. `cryptography` (Ed25519) and
+`intelhex` (nRF52 `.hex` handling) are injected into that same environment;
+they are not separate pipx applications.
 
 ```bash
-./meshcore/bin/pip install detools cryptography intelhex
+pipx install detools
+pipx inject detools cryptography intelhex
+DETOOLS_PYTHON="$(pipx environment --value PIPX_LOCAL_VENVS)/detools/bin/python"
 ```
 
 ## Files
@@ -31,10 +34,10 @@ Uses the repo's Python venv (`meshcore/`). Dependencies: `detools` (delta), `cry
 ## Tests
 
 ```bash
-./meshcore/bin/python tools/mota/test_mota.py      # EndF, merkle+proofs, v2 apps/v3 nRF52 bootloader,
-                                                   # signing, tamper detection, approval enforcement
-./meshcore/bin/python tools/mota/gen_vectors.py    # regenerate the native-test cross-check vectors
-./meshcore/bin/python tools/mota/gen_targets.py    # regenerate src/helpers/ota/OtaTargets.h (needs `pio`)
+"$DETOOLS_PYTHON" tools/mota/test_mota.py      # EndF, merkle+proofs, v2 apps/v3 nRF52 bootloader,
+                                               # signing, tamper detection, approval enforcement
+"$DETOOLS_PYTHON" tools/mota/gen_vectors.py    # regenerate the native-test cross-check vectors
+"$DETOOLS_PYTHON" tools/mota/gen_targets.py    # regenerate src/helpers/ota/OtaTargets.h (needs `pio`)
 ```
 
 ## `EndF` build integration

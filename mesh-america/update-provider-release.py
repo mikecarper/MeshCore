@@ -19,6 +19,15 @@ VERSION_LABEL_RE = re.compile(r"v\d+(?:\.\d+)+")
 CATALOG_VERSION_TEXT_RE = re.compile(
     r"Keymind Cascade MeshCore v[0-9][A-Za-z0-9_.-]*"
 )
+ESP32_DUAL_CDC_FULL_RE = re.compile(
+    r"^(?:"
+    r"heltec_v4(?:_2_v4_3|_3)?(?:_r8)?(?:_tft)?|"
+    r"LilyGo_TBeam_1W|Station_G2|Station_G3_ESP32|Xiao_S3_WIO|"
+    r"heltec_tracker_v2|meshnology_w12|"
+    r"nibble_(?:screen|zero)_connect"
+    r")_companion_radio_full(?:_|$)",
+    flags=re.IGNORECASE,
+)
 
 LEGACY_PORTABLE_CEILING_EXCEPTIONS = {
     "heltec_ct62_repeater_lora_ota_no_external_sensors",
@@ -169,6 +178,12 @@ def canonical_runtime_identity(identity: str) -> str:
         result,
         flags=re.IGNORECASE,
     )
+    result = re.sub(
+        r"^heltec_v4_companion_radio_full(?:_femon)?(?=-|$)",
+        "heltec_v4_2_v4_3_companion_radio_full_femon",
+        result,
+        flags=re.IGNORECASE,
+    )
     return result
 
 
@@ -280,20 +295,23 @@ def normalize_nrf52_full_companion_metadata(
     """Describe the canonical dual-CDC nRF52 Full Companion accurately."""
     firmware["title"] = "Full Companion"
     firmware["subTitle"] = (
-        "USB Companion + USB logging + BLE + LoRa OTA source"
+        "USB Companion + optional USB logging + BLE + LoRa OTA source"
     )
     profile = (
-        "PROFILE - nRF52 Full Companion: one USB cable exposes interface 00 "
+        "PROFILE - nRF52 Full Companion: one USB cable always exposes interface 00 "
         "for Binary Companion, the text terminal, and serial mOTA source "
-        "traffic, while interface 02 is a separate plaintext packet/debug "
-        "logging port. BLE remains available. Use set usb.logging off|on to "
-        "save whether interface 02 emits output."
+        "traffic. Fresh installs default USB logging off and do not enumerate "
+        "interface 02. Enabling logging and rebooting adds interface 02 as a "
+        "separate plaintext packet/debug port. BLE remains available. Use "
+        "set usb.logging on reboot or set usb.logging off reboot to save and "
+        "apply the interface count."
     )
     logging_use = (
         "LOGGING USE - Point Companion software, meshcli, and motatool at USB "
-        "interface 00. Point a USB-connected MQTT/logging reader at interface "
-        "02. Match the USB interface number rather than assuming a tty or COM "
-        "port number. Input received on interface 02 is ignored."
+        "interface 00. After enabling logging and rebooting, point a "
+        "USB-connected MQTT/logging reader at interface 02. Match the USB "
+        "interface number rather than assuming a tty or COM port number. Input "
+        "received on interface 02 is ignored."
     )
     ota_use = (
         "LORA OTA SOURCE - This Full Companion can serve a host-supplied "
@@ -313,8 +331,8 @@ def normalize_nrf52_full_companion_metadata(
             continue
         if paragraph.startswith("SELECTION "):
             paragraphs.append(
-                "SELECTION - nRF52 Full Companion with dual USB serial ports, "
-                "BLE, and source-only LoRa OTA."
+                "SELECTION - nRF52 Full Companion with an optional second USB "
+                "logging port, BLE, and source-only LoRa OTA."
             )
             continue
         paragraphs.append(paragraph)
@@ -326,10 +344,93 @@ def normalize_nrf52_full_companion_metadata(
     return "\n\n".join(paragraphs)
 
 
+def normalize_esp32_dual_cdc_full_companion_metadata(
+    firmware: dict, notes: str
+) -> str:
+    """Describe a native-USB ESP32-S3 Full Companion accurately."""
+    firmware["title"] = "Full Companion"
+    firmware["subTitle"] = (
+        "USB Companion + optional USB logging + BLE + Wi-Fi + LoRa OTA source"
+    )
+    profile = (
+        "PROFILE - Native-USB ESP32-S3 Full Companion: one USB cable always "
+        "exposes interface 00 for Binary Companion, the text terminal, flashing, and "
+        "serial mOTA source traffic. Fresh installs default USB logging off and "
+        "do not enumerate interface 02. Enabling logging and rebooting adds "
+        "interface 02 as a separate plaintext packet/debug port. BLE, Wi-Fi "
+        "Companion on TCP 5000, "
+        "WebConfig, TCP mOTA seeding on 5001, and the text terminal on 5002 "
+        "remain available. Use set usb.logging on reboot or set usb.logging "
+        "off reboot to save and apply the interface count."
+    )
+    logging_use = (
+        "LOGGING USE - Point Companion software, meshcli, motatool, and wired "
+        "flashing at USB interface 00. After enabling logging and rebooting, "
+        "point a USB-connected MQTT/logging reader at interface 02. Match the "
+        "USB interface number rather than assuming a tty or COM port number. "
+        "Input received on interface 02 is ignored and cannot reboot the board."
+    )
+    selection = (
+        "SELECTION - One Full image for this exact native-USB hardware layout "
+        "replaces separate USB, BLE, ordinary Wi-Fi, and USB-logging images."
+    )
+
+    paragraphs: list[str] = []
+    profile_added = False
+    selection_added = False
+    for paragraph in notes.split("\n\n"):
+        if paragraph.startswith("PROFILE "):
+            if not profile_added:
+                paragraphs.append(profile)
+                profile_added = True
+            continue
+        if paragraph.startswith("LOGGING USE "):
+            continue
+        if paragraph.startswith("SELECTION "):
+            if not selection_added:
+                paragraphs.append(selection)
+                selection_added = True
+            continue
+        paragraphs.append(paragraph)
+    if not profile_added:
+        paragraphs.append(profile)
+    if not selection_added:
+        paragraphs.append(selection)
+    paragraphs.append(logging_use)
+    return "\n\n".join(paragraphs)
+
+
 def release_identity_has_nrf52_package(
     release_files: dict[str, list[Path]], identity: str
 ) -> bool:
     return any(path.suffix.lower() == ".zip" for path in release_files[identity])
+
+
+def canonical_full_identity_for_transport(identity: str) -> str | None:
+    match = re.search(
+        r"_companion_radio_(?:usb|ble|wifi(?!_mqtt))(?=-|_|$)",
+        identity,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    full_identity = (
+        identity[:match.start()] + "_companion_radio_full" +
+        identity[match.end():]
+    )
+    return canonical_runtime_identity(full_identity)
+
+
+def release_identity_is_dual_cdc_full(
+    release_files: dict[str, list[Path]], identity: str
+) -> bool:
+    return (
+        identity in release_files and
+        (
+            release_identity_has_nrf52_package(release_files, identity) or
+            ESP32_DUAL_CDC_FULL_RE.match(identity) is not None
+        )
+    )
 
 
 def resolve_release_identity(
@@ -340,47 +441,27 @@ def resolve_release_identity(
         if candidate in release_files:
             return candidate, False
 
-    # Current nRF52 Full Companion also replaces the old USB-only logging
-    # artifact because its second CDC interface carries plaintext logs. Limit
-    # this fallback to identities with a native nRF52 DFU ZIP so an ESP32 Full
-    # Companion is never mistaken for a dual-port logging image.
+    # Dual-CDC Full Companion replaces the old USB-only logging artifact because
+    # its second CDC interface carries plaintext logs. Limit this fallback to a
+    # native nRF52 Full package or a qualified native-USB ESP32-S3 identity.
     for candidate in candidates:
         if not candidate.endswith("-logging"):
             continue
         logging_base = candidate.removesuffix("-logging")
-        match = re.search(
-            r"_companion_radio_(?:usb|ble)(?=-|_|$)",
-            logging_base,
-            flags=re.IGNORECASE,
-        )
-        if match is None:
-            continue
-        full_identity = (
-            logging_base[:match.start()] + "_companion_radio_full" +
-            logging_base[match.end():]
-        )
-        if full_identity in release_files and release_identity_has_nrf52_package(
+        full_identity = canonical_full_identity_for_transport(logging_base)
+        if full_identity is not None and release_identity_is_dual_cdc_full(
             release_files, full_identity
         ):
             return full_identity, False
 
-    # Canonical nRF52 Full Companion replaces separate USB and BLE artifacts.
-    # ESP32 transport-specific images still match exactly above and therefore
-    # remain separate. Full is source-only for LoRa OTA and needs no staging
-    # store or self-install slot.
+    # Canonical dual-CDC Full Companion replaces separate USB, BLE, and ordinary
+    # Wi-Fi artifacts. Other ESP32 transport-specific images remain separate.
+    # Full is source-only for LoRa OTA and needs no staging/self-install slot.
     for candidate in candidates:
-        match = re.search(
-            r"_companion_radio_(?:usb|ble)(?=-|_|$)",
-            candidate,
-            flags=re.IGNORECASE,
-        )
-        if match is None:
-            continue
-        full_identity = (
-            candidate[:match.start()] + "_companion_radio_full" +
-            candidate[match.end():]
-        )
-        if full_identity in release_files:
+        full_identity = canonical_full_identity_for_transport(candidate)
+        if full_identity is not None and release_identity_is_dual_cdc_full(
+            release_files, full_identity
+        ):
             return full_identity, False
 
     # Accept catalogs produced while portable MQTT observers were still
@@ -652,10 +733,12 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
             "Companion builds, lean LoRa-OTA builds, and expanded-partition FULL "
             "USB + Wi-Fi observer and ESP-NOW bridge builds. Unified observers "
-            "provide persistent off/USB/WiFi/both output selection. On nRF52, Full Companion "
-            "replaces separate BLE, USB, and USB-logging choices with BLE plus "
-            "separate Companion and logging USB ports; on ESP32, Full Companion is "
-            "offered next to the BLE/USB variants. Open Release notes for role, "
+            "provide persistent off/USB/WiFi/both output selection. Dual-CDC Full "
+            "Companion replaces separate BLE, USB, ordinary Wi-Fi, and USB-logging "
+            "choices with one image. It defaults to one framed USB port; enabling "
+            "logging and rebooting adds the separate plaintext port. "
+            "This applies to nRF52 Full and qualified native-USB ESP32-S3 Full; "
+            "USB-UART bridge variants remain separate. Open Release notes for role, "
             "hardware, installation, and partition requirements."
         )
 
@@ -748,6 +831,13 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     for identity in resolved_identities
                 ):
                     notes = normalize_nrf52_full_companion_metadata(
+                        firmware, notes
+                    )
+                elif device_type == "esp32" and any(
+                    ESP32_DUAL_CDC_FULL_RE.match(identity) is not None
+                    for identity in resolved_identities
+                ):
+                    notes = normalize_esp32_dual_cdc_full_companion_metadata(
                         firmware, notes
                     )
 

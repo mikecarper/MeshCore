@@ -48,7 +48,12 @@ private:
 #else
   static void recv_cb(const uint8_t *mac, const uint8_t *data, int len);
 #endif
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+  static void send_cb(const esp_now_send_info_t *info,
+                      esp_now_send_status_t status);
+#else
   static void send_cb(const uint8_t *mac, esp_now_send_status_t status);
+#endif
 
   /**
    * ESP-NOW Protocol Structure:

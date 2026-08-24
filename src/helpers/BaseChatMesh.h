@@ -61,9 +61,23 @@ class BaseChatMesh : public mesh::Mesh {
 
   friend class ContactsIterator;
 
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  enum {
+    CONTACT_PSRAM_FALLBACK_REGULAR_SLOTS =
+        MAX_CONTACTS < 16 ? MAX_CONTACTS : 16,
+    CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS =
+        MAX_ANON_CONTACTS + CONTACT_PSRAM_FALLBACK_REGULAR_SLOTS
+  };
+  ContactInfo* contacts;
+  ContactInfo contacts_fallback[CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS];
+  int* sort_array;
+  int sort_array_fallback[CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS];
+  int contact_capacity;
+#else
   ContactInfo contacts[MAX_CONTACTS+MAX_ANON_CONTACTS];
-  int num_contacts;
   int sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
+#endif
+  int num_contacts;
   int matching_peer_indexes[MAX_SEARCH_RESULTS];
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
@@ -81,6 +95,11 @@ protected:
   BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
       : mesh::Mesh(radio, ms, rng, rtc, mgr, tables)
   {
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+    contacts = contacts_fallback;
+    sort_array = sort_array_fallback;
+    contact_capacity = CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS;
+#endif
     resetContacts();
 
   #ifdef MAX_GROUP_CHANNELS
@@ -93,6 +112,7 @@ protected:
   }
 
   void bootstrapRTCfromContacts();
+  bool initializeContactStorage();
 
   void resetContacts() {
     memset(contacts, 0, sizeof(contacts[0])*MAX_ANON_CONTACTS);   // set all to have type = ADV_TYPE_NONE(0)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Tests for motalib - run with the meshcore venv:
+Tests for motalib - run with the pipx-managed detools environment:
 
-    ./meshcore/bin/python tools/mota/test_mota.py
+    "$(pipx environment --value PIPX_LOCAL_VENVS)/detools/bin/python" tools/mota/test_mota.py
 
 (Also pytest-compatible: functions are named test_*.)
 """
@@ -89,7 +89,7 @@ def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
     matrix = build.split("run_logging_matrix_build_targets()", 1)[1]
     matrix = matrix.split("run_build_targets()", 1)[0]
     assert 'is_companion_radio_full_target "$target"' in matrix
-    assert "nRF52 Full already provides logging on its second USB port" in matrix
+    assert "can add a dedicated logging USB port" in matrix
 
 
 def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
@@ -110,7 +110,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     redundant = build.split("is_redundant_bulk_build_target()", 1)[1]
     redundant = redundant.split("resolve_logging_matrix_firmwares()", 1)[0]
     assert "is_runtime_setting_alias_target" in redundant
-    assert "is_nrf52_companion_transport_replaced_by_full" in redundant
+    assert "is_companion_transport_replaced_by_full" in redundant
 
     logging_matrix = build.split("resolve_logging_matrix_firmwares()", 1)[1]
     logging_matrix = logging_matrix.split("resolve_companion_firmwares()", 1)[0]
@@ -123,17 +123,175 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "-DMOTA_TARGET_ID=0" in full
     assert "-UOTA_FLASH_STORE" in full
     assert "-UOTA_SD_STORE" in full
+    assert "-UWEBCONFIG_DISABLED" in full
     assert "-DCFG_TUD_CDC=2" in full
     assert "-DMESH_DUAL_CDC_LOGGING=1" in full
     assert "-DMESH_DEBUG=1" in full
     assert "-DMESH_PACKET_LOGGING=1" in full
 
+    esp32_dual = build.split(
+        "is_esp32_dual_cdc_companion_radio_full_target()", 1
+    )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
+    assert "heltec_v4_2_v4_3_companion_radio_full_femon" in esp32_dual
+    assert "rak_3112_companion_radio_full" not in esp32_dual
+    assert "heltec_rc32_companion_radio_full" not in esp32_dual
+    assert "heltec_rc32_without_display_companion_radio_full" not in esp32_dual
+
+    for relative, section, next_section in (
+        (
+            "variants/rak3112/platformio.ini",
+            "[env:RAK_3112_companion_radio_full]",
+            "[env:RAK_3112_sensor]",
+        ),
+        (
+            "variants/heltec_rc32/platformio.ini",
+            "[env:heltec_rc32_without_display_companion_radio_full]",
+            "[env:heltec_rc32_without_display_sensor]",
+        ),
+        (
+            "variants/heltec_rc32/platformio.ini",
+            "[env:heltec_rc32_companion_radio_full]",
+            "[env:heltec_rc32_sensor]",
+        ),
+    ):
+        variant = (root / relative).read_text(encoding="utf-8")
+        profile = variant.split(section, 1)[1].split(next_section, 1)[0]
+        assert "esp32_s3_dual_cdc_full" not in profile
+
     usb_logging = (root / "src/helpers/UsbLogging.cpp").read_text(
         encoding="utf-8"
     )
     assert "Adafruit_USBD_CDC dedicated_usb_logging_port" in usb_logging
+    assert "new (dedicated_usb_logging_port_storage)" in usb_logging
+    assert "USBCDC(1)" in usb_logging
+    assert "dedicated_usb_logging_port->enableReboot(false)" in usb_logging
+    assert "return result == ESP_OK && value != 0" in usb_logging
     assert "TinyUSBDevice.detach()" in usb_logging
     assert "return dedicated_usb_logging_port" in usb_logging
+    assert "return *dedicated_usb_logging_port" in usb_logging
+    assert "return null_usb_logging_stream" in usb_logging
+
+    companion = (root / "examples/companion_radio/MyMesh.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "defined(COMPANION_RADIO_FULL) && defined(MESH_DUAL_CDC_LOGGING)" in companion
+    assert "_prefs.usb_logging_enabled = 0" in companion
+    assert 'strcmp(value, "on reboot") == 0' in companion
+    assert 'strcmp(value, "off reboot") == 0' in companion
+    assert "reboot required to change USB interfaces" in companion
+    assert "rebooting to change USB interfaces" in companion
+    assert "mesh::saveUsbLoggingBootPreference(enabled)" in companion
+
+
+def test_full_companion_wireless_startup_and_psram_contacts_are_resilient():
+    root = Path(__file__).resolve().parents[2]
+    main = (root / "examples/companion_radio/main.cpp").read_text(
+        encoding="utf-8"
+    )
+    setup = main.split("void setup()", 1)[1]
+    assert setup.index("startCompanionBluetooth();") < setup.index("WiFi.onEvent")
+    assert "if (!bluetooth_interface.begin(" in main
+    assert "interface_manager.removeInterface(&bluetooth_interface)" in main
+    assert "Bluetooth initialization failed; retrying in 5 seconds" in main
+
+    esp_ble = (root / "src/helpers/esp32/SerialBLEInterface.cpp").read_text(
+        encoding="utf-8"
+    )
+    nrf_ble = (root / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert 'extern "C" bool bleInUse(void)' in esp_ble
+    assert "bool SerialBLEInterface::begin(" in esp_ble
+    assert "Arduino-ESP32 2.x Bluedroid exposes a void init()" in esp_ble
+    assert "if (pServer == NULL)" in esp_ble
+    assert "if (pService == NULL)" in esp_ble
+    assert "if (pTxCharacteristic == NULL)" in esp_ble
+    assert "if (pRxCharacteristic == NULL)" in esp_ble
+    assert "bool SerialBLEInterface::begin(" in nrf_ble
+    assert "if (!Bluefruit.begin())" in nrf_ble
+
+    contacts_header = (root / "src/helpers/BaseChatMesh.h").read_text(
+        encoding="utf-8"
+    )
+    contacts_source = (root / "src/helpers/BaseChatMesh.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "CONTACT_PSRAM_FALLBACK_REGULAR_SLOTS" in contacts_header
+    assert "ContactInfo* contacts" in contacts_header
+    assert "int* sort_array" in contacts_header
+    assert "heap_caps_calloc" in contacts_source
+    assert "MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in contacts_source
+    assert "contact_capacity = requested_capacity" in contacts_source
+    assert setup.index("the_mesh.begin(") < setup.index("startCompanionBluetooth();")
+    companion = (root / "examples/companion_radio/MyMesh.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert companion.index("initializeContactStorage();") < companion.index(
+        "initializeOfflineQueue();"
+    )
+
+
+def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
+    root = Path(__file__).resolve().parents[2]
+    project = (root / "platformio.ini").read_text(encoding="utf-8")
+    shared = project.split("[esp32_s3_full]", 1)[1].split(
+        "\n[", 1
+    )[0]
+    assert "board_build.flash_mode = dio" in shared
+
+    dual_cdc = project.split("[esp32_s3_dual_cdc_full]", 1)[1].split(
+        "\n[", 1
+    )[0]
+    assert (
+        "board_build.flash_mode = ${esp32_s3_full.board_build.flash_mode}"
+        in dual_cdc
+    )
+    assert "esp32-core-3.3.11.tar.xz" in dual_cdc
+    assert "esp32-core-3.3.11-libs.tar.xz" in dual_cdc
+
+    build = (root / "build.sh").read_text(encoding="utf-8")
+    framework_preflight = build.split(
+        "prepare_esp32_dual_cdc_framework()", 1
+    )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
+    assert "is_esp32_dual_cdc_companion_radio_full_target" in framework_preflight
+    assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
+    build_call = build.split('print_build_flags "$env_name"', 1)[1].split(
+        "restore_platformio_build_flags", 1
+    )[0]
+    assert 'prepare_esp32_dual_cdc_framework "$env_name" "$pio_env_name"' in build_call
+    assert 'if [ "$build_status" -eq 0 ]; then' in build_call
+    assert 'flock "$platformio_package_lock_fd"' in build_call
+    assert 'flock -u "$platformio_package_lock_fd"' in build_call
+
+    s3_full_variant_dirs = {
+        "heltec_rc32",
+        "heltec_tracker_v2",
+        "heltec_v4",
+        "heltec_v4_r8",
+        "lilygo_tbeam_1w",
+        "meshnology_w12",
+        "nibble_screen_connect",
+        "nibble_zero_connect",
+        "rak3112",
+        "station_g2",
+        "station_g3_esp32",
+        "xiao_s3_wio",
+    }
+    profile_count = 0
+    for variant_dir in sorted(s3_full_variant_dirs):
+        path = root / "variants" / variant_dir / "platformio.ini"
+        content = path.read_text(encoding="utf-8")
+        for section in content.split("\n["):
+            header = section.split("]", 1)[0].lower()
+            if "companion_radio_full" not in header:
+                continue
+            profile_count += 1
+            assert (
+                "board_build.flash_mode = "
+                "${esp32_s3_full.board_build.flash_mode}"
+            ) in section, f"ESP32-S3 Full profile lacks shared DIO mode: {path}"
+
+    assert profile_count == 17
 
 
 def test_release_catalog_resolves_canonical_runtime_aliases():
@@ -146,10 +304,23 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     provider = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(provider)
 
+    assert provider.ESP32_DUAL_CDC_FULL_RE.match(
+        "heltec_v4_2_v4_3_companion_radio_full_femon"
+    )
+    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
+        "RAK_3112_companion_radio_full"
+    )
+    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
+        "heltec_rc32_companion_radio_full"
+    )
+    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
+        "heltec_rc32_without_display_companion_radio_full"
+    )
+
     release_files = {
         "RAK_4631_companion_radio_full": [Path("rak-full.zip")],
         "Heltec_t096_companion_radio_ble_femon": [Path("t096.zip")],
-        "heltec_v4_companion_radio_ble": [Path("v4.bin")],
+        "heltec_v4_2_v4_3_companion_radio_full_femon": [Path("v4.bin")],
         "Station_G2_repeater_observer_mqtt-full-usb-wifi-ota": [
             Path("g2.bin")
         ],
@@ -165,7 +336,13 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     ) == ("Heltec_t096_companion_radio_ble_femon", False)
     assert provider.resolve_release_identity(
         "heltec_v4_3_companion_radio_ble_femoff", release_files
-    ) == ("heltec_v4_companion_radio_ble", False)
+    ) == ("heltec_v4_2_v4_3_companion_radio_full_femon", False)
+    assert provider.resolve_release_identity(
+        "heltec_v4_companion_radio_usb-logging", release_files
+    ) == ("heltec_v4_2_v4_3_companion_radio_full_femon", False)
+    assert provider.resolve_release_identity(
+        "heltec_v4_companion_radio_wifi_femon", release_files
+    ) == ("heltec_v4_2_v4_3_companion_radio_full_femon", False)
     assert provider.resolve_release_identity(
         "Station_G2_logging_repeater-logging", release_files
     ) == ("Station_G2_repeater_observer_mqtt-full-usb-wifi-ota", True)
@@ -177,6 +354,31 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
         "Station_G2_companion_radio_usb", release_files
     ) == ("Station_G2_companion_radio_usb", False)
 
+    # When the canonical release contains only the qualified Full image, every
+    # ordinary attached transport and the old USB-logging identity resolve to
+    # it. An unqualified USB-UART bridge must never receive that substitution.
+    g2_full_only = {
+        "Station_G2_companion_radio_full": [Path("g2-full.bin")],
+        "ThinkNode_M2_companion_radio_full": [Path("m2-full.bin")],
+    }
+    for old_identity in (
+        "Station_G2_companion_radio_usb",
+        "Station_G2_companion_radio_ble",
+        "Station_G2_companion_radio_wifi",
+        "Station_G2_companion_radio_usb-logging",
+    ):
+        assert provider.resolve_release_identity(
+            old_identity, g2_full_only
+        ) == ("Station_G2_companion_radio_full", False)
+    try:
+        provider.resolve_release_identity(
+            "ThinkNode_M2_companion_radio_usb", g2_full_only
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("USB-UART bridge was incorrectly mapped to Full")
+
     dual_notes = provider.normalize_nrf52_full_companion_metadata(
         {"title": "Companion USB", "subTitle": "USB logging"},
         "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
@@ -184,6 +386,15 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     assert "interface 00" in dual_notes
     assert "interface 02" in dual_notes
     assert "Input received on interface 02 is ignored" in dual_notes
+
+    v4_notes = provider.normalize_esp32_dual_cdc_full_companion_metadata(
+        {"title": "Companion USB", "subTitle": "USB logging"},
+        "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
+    )
+    assert "interface 00" in v4_notes
+    assert "interface 02" in v4_notes
+    assert "cannot reboot the board" in v4_notes
+    assert "ordinary Wi-Fi" in v4_notes
 
     legacy = {
         "role": "companionBle",

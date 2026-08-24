@@ -16,7 +16,12 @@
 namespace UserGpioPinPolicy {
 
 inline bool isFirmwareReserved(uint8_t pin) {
-  static const int32_t reserved[] = {
+  // RadioLib 7 represents its disconnected-pin sentinel as unsigned
+  // 0xFFFFFFFF. Use a signed type wide enough for that value as well as the
+  // board definitions that use -1, then reject both forms with the 0..63
+  // range check below. A 32-bit signed initializer is a narrowing error under
+  // the GCC 14 toolchain used by Arduino-ESP32 3.x.
+  static const int64_t reserved[] = {
     -1,
 
     // LoRa radio, RF switches, FEMs, and activity indicators.

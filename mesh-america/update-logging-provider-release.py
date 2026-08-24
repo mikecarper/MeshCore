@@ -140,10 +140,12 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "selected non-logging utilities. Unified expanded-partition FULL builds "
             "provide USB packet logging and direct WiFi MQTT in one image with a "
             "persistent off/USB/WiFi/both selector. Host software can consume the "
-            "USB serial log and publish it separately. nRF52 Full Companion uses "
-            "separate USB interfaces for Companion traffic and plaintext logging, "
-            "replacing its older separate USB-logging image. Open Release "
-            "notes for role, hardware, installation, and partition requirements."
+            "USB serial log and publish it separately. Dual-CDC Full Companion "
+            "defaults to its single framed USB interface; enabling logging and "
+            "rebooting adds a separate plaintext interface, replacing older "
+            "USB-logging images on nRF52 and qualified native-USB ESP32-S3. "
+            "Open Release notes for role, hardware, installation, and partition "
+            "requirements."
         )
 
     entry_count = 0
@@ -275,6 +277,14 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     for identity in identities
                 ):
                     notes = common.normalize_nrf52_full_companion_metadata(
+                        firmware, notes
+                    )
+                elif device_type == "esp32" and any(
+                    common.ESP32_DUAL_CDC_FULL_RE.match(identity)
+                    is not None
+                    for identity in identities
+                ):
+                    notes = common.normalize_esp32_dual_cdc_full_companion_metadata(
                         firmware, notes
                     )
             if any("-logging" in identity.lower() for identity in identities):

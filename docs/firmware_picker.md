@@ -168,12 +168,22 @@ next reboot or power cycle. An explicit administrator `start webconfig` remains
 available as an override. A saved SSID switches to the normal indefinite
 reconnect behavior instead.
 
-Current nRF52 Full Companion profiles also use one binary for normal attached
-Companion use and USB packet logging. One USB cable exposes interface `00` for
-Binary Companion, terminal, and mOTA source traffic, plus interface `02` for
-plaintext logging. The picker therefore omits the older separate nRF52 USB,
-BLE, and USB-logging Companion choices when the matching Full artifact exists.
-Use `set usb.logging off|on` to persist the second port's output state.
+Current dual-CDC Full Companion profiles also use one binary for normal
+attached Companion use and USB packet logging. This includes nRF52 and
+qualified native-USB ESP32-S3 Full images. Fresh installs default to logging off and expose only
+interface `00` for Binary Companion, terminal, and mOTA source traffic. Enabling
+logging and rebooting adds interface `02` for plaintext logs. The picker
+therefore omits older separate USB, BLE, ordinary WiFi, and USB-logging
+Companion choices when the matching Full artifact exists. Use
+`set usb.logging on reboot` or `set usb.logging off reboot` to persist the
+choice and apply the corresponding USB interface count.
+
+Qualified ESP32-S3 hardware currently includes Heltec V4, T-Beam 1W, Station
+G2/G3, XIAO S3 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero
+Connect layouts. The base Heltec V4 profile has completed live two-interface,
+ROM-flashing, and logging-off one-interface validation. RAK3112 and Heltec RC32
+retain separate transport and logging images pending hardware validation, as do
+Heltec V3/WSL3, ThinkNode M2/M5/M7/M9, classic ESP32, and ESP32-C3 targets.
 
 ## Installation methods
 
@@ -210,8 +220,10 @@ saving, controllable FEM receive gain, and radio-chip receive gain are saved
 settings rather than separate recommended firmware files. Do not substitute a
 similarly named physical target.
 
-For nRF52 hardware with a Full Companion image, the picker recommends that one
-normal image instead of separate USB, BLE, and USB-logging images. Full
-Companion provides both attached transports and a dedicated plaintext logging
-port without mixing logs into framed Companion traffic. Exact filename search
-still finds old aliases from earlier releases.
+For hardware with a dual-CDC Full Companion image, the picker recommends that
+one normal image instead of separate USB, BLE, ordinary WiFi, and USB-logging
+images. Full Companion provides the attached transports and a dedicated
+plaintext logging port when enabled without mixing logs into framed Companion
+traffic. Logging is off by default, so only the framed port appears until it is
+enabled and the node reboots.
+Exact filename search still finds old aliases from earlier releases.

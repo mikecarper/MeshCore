@@ -199,7 +199,7 @@ bool SerialBLEInterface::removeStoredBondForPeer(const char* cause) {
   return true;
 }
 
-void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
+bool SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
   instance = this;
 
   char charpin[20];
@@ -208,7 +208,11 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   // If we want to control BLE LED ourselves, uncomment this:
   // Bluefruit.autoConnLed(false);
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-  Bluefruit.begin();
+  if (!Bluefruit.begin()) {
+    instance = nullptr;
+    BLE_DEBUG_PRINTLN("Bluefruit.begin failed");
+    return false;
+  }
  
   char dev_name[32+16];
   if (strcmp(name, "@@MAC") == 0) {
@@ -275,6 +279,7 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
 
   Bluefruit.Advertising.restartOnDisconnect(true);
 
+  return true;
 }
 
 void SerialBLEInterface::clearBuffers() {

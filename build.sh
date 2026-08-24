@@ -70,7 +70,7 @@ FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
 # External programs invoked by this script:
-#   bash, cat, cp, date, find, git, grep, head, mkdir, mv, pgrep, pio,
+#   bash, cat, cp, date, find, flock, git, grep, head, mkdir, mv, pgrep, pio,
 #   python3, rm, sed, sleep, sort, wc
 # Keep this list in sync when adding or removing non-builtin command usage.
 
@@ -84,8 +84,8 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases remain available as explicit builds.
-  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. nRF52 Full Companion provides binary Companion and logging on separate USB ports.
-  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. nRF52 Full Companion replaces separate USB, BLE, and USB-logging artifacts by exposing Companion and logging on separate USB ports.
+  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. Supported Full Companion targets provide an optional dedicated logging USB port.
+  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. Dual-CDC Full Companion replaces separate USB, BLE, WiFi, and USB-logging artifacts where supported.
   build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
@@ -95,7 +95,7 @@ Commands:
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
-  get-companion-firmwares-to-build: List canonical attached companion targets for release automation; nRF52 uses Full Companion instead of separate USB/BLE artifacts.
+  get-companion-firmwares-to-build: List canonical attached companion targets for release automation; dual-CDC boards use Full Companion instead of separate transport artifacts.
   get-repeater-firmwares-to-build: List standard and specialized external-storage repeater targets for release automation.
   get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
@@ -505,7 +505,7 @@ prompt_for_build_mode() {
     "Build all canonical firmwares (legacy setting aliases remain direct-build only)"
     "Build the canonical release matrix with unified FULL ESP32 USB + WiFi output (plus logging fallbacks where WiFi is unavailable)"
     "Build all repeater firmwares"
-    "Build canonical companion firmwares (nRF52 Full replaces USB/BLE; power saving and FEM/RX gain are runtime configurable)"
+    "Build canonical companion firmwares (dual-CDC Full replaces separate transports; power saving and FEM/RX gain are runtime configurable)"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
     "Build FULL ESP32 firmwares (all features, USB logging, WiFi MQTT where available, and LoRa OTA)"
@@ -1479,13 +1479,14 @@ print_release_firmware_targets() {
     get-companion-firmwares-to-build)
       get_pio_envs_ending_with_string "_companion_radio_usb"
       get_pio_envs_ending_with_string "_companion_radio_ble"
-      # A generated nRF52 Full Companion supplies both attached transports and
-      # source-only serial mOTA in one image. It replaces the separate USB/BLE
-      # release artifacts without taking on a staging or self-install role.
+      # A dual-CDC Full Companion supplies every ordinary attached transport,
+      # a separate USB logging interface, and source-only mOTA in one image. It
+      # replaces separate transport releases without becoming an OTA target.
       local env_name
       for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
-        if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] \
-            && is_companion_radio_full_target "$env_name" \
+        if is_companion_radio_full_target "$env_name" \
+            && { is_nrf52_companion_radio_full_target "$env_name" \
+                 || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; } \
             && ! is_redundant_bulk_build_target "$env_name"; then
           printf '%s\n' "$env_name"
         fi
@@ -1972,11 +1973,12 @@ apply_debug_overrides() {
 disable_usb_logging_for_mqtt() {
   local env_name=$1
 
-  # ESP32 Full Companion has one serial stream, so plaintext diagnostics would
-  # corrupt its framed Companion traffic. nRF52 Full Companion has a dedicated
-  # second CDC interface and enables logging later in its profile overlay.
+  # Full Companion may enable diagnostics only when it has a dedicated second
+  # CDC interface. Plaintext on its primary framed stream corrupts Companion
+  # traffic.
   if is_companion_radio_full_target "$env_name"; then
-    if is_nrf52_companion_radio_full_target "$env_name"; then
+    if is_nrf52_companion_radio_full_target "$env_name" \
+        || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
       return 0
     fi
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
@@ -2030,6 +2032,44 @@ is_esp32_companion_radio_full_target() {
 is_nrf52_companion_radio_full_target() {
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] \
     && is_companion_radio_full_target "$1"
+}
+
+is_esp32_dual_cdc_companion_radio_full_target() {
+  is_esp32_companion_radio_full_target "$1" || return 1
+  case "${1,,}" in
+    lilygo_tbeam_1w_companion_radio_full|\
+    station_g2_companion_radio_full|\
+    station_g3_esp32_companion_radio_full|\
+    xiao_s3_wio_companion_radio_full|\
+    heltec_tracker_v2_companion_radio_full_femon|\
+    meshnology_w12_companion_radio_full|\
+    nibble_screen_connect_companion_radio_full_|\
+    nibble_zero_connect_companion_radio_full_|\
+    heltec_v4_2_v4_3_companion_radio_full_femon|\
+    heltec_v4_3_companion_radio_full_femoff|\
+    heltec_v4_tft_companion_radio_full_femon|\
+    heltec_v4_3_tft_companion_radio_full_femoff|\
+    heltec_v4_r8_companion_radio_full|\
+    heltec_v4_r8_tft_companion_radio_full)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+prepare_esp32_dual_cdc_framework() {
+  local env_name=$1
+  local pio_env_name=$2
+
+  is_esp32_dual_cdc_companion_radio_full_target "$env_name" || return 0
+
+  # PlatformIO's standard ESP32 platform and pioarduino publish incompatible
+  # Arduino 2.x/3.x cores under the same global package name. `pio run` restores
+  # the standard core automatically, but pioarduino can otherwise proceed with
+  # no matching framework after a standard build. Enforce this environment's
+  # explicit platform_packages pins before SCons starts.
+  echo "Ensuring Arduino-ESP32 3.3.11 dependencies for ${env_name}..."
+  pio pkg install -e "$pio_env_name"
 }
 
 requires_esp32_companion_full_ota_fallback() {
@@ -2485,9 +2525,10 @@ apply_companion_radio_full_profile() {
 
   # Every full Companion is a LoRa mOTA source, never an update destination.
   # Remove inherited staging/install stores before adding the platform's host
-  # folder transport.
-  append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
+  # folder transport. Full also restores WebConfig when a constrained legacy
+  # WiFi sibling disabled it only to fit its smaller application partition.
+  append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
     # CDC 0 starts as Binary Companion. `motatool serve --serial` switches it
@@ -2505,6 +2546,16 @@ apply_companion_radio_full_profile() {
       append_platformio_build_src_filter "+<helpers/nrf52/SerialBLEInterface.cpp>"
     fi
     return 0
+  fi
+
+  if is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
+    # Qualified ESP32-S3 boards route their data connector to the native USB
+    # peripheral. Arduino-ESP32 3.x supplies two real TinyUSB CDC ACM
+    # instances: CDC 0 carries framed Companion traffic and accepts the
+    # flashing reboot gesture; CDC 1 is a write-only plaintext diagnostics
+    # stream and cannot reboot the board.
+    append_platformio_build_unflags "-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=0"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
   fi
 
   # ESP32 keeps both source transports. TCP remains the normal unattended
@@ -2788,6 +2839,7 @@ build_firmware() {
   local had_platformio_build_src_filter=0
   local had_platformio_extra_scripts=0
   local build_status
+  local platformio_package_lock_fd=""
   local -a pio_run_args=()
 
   # Bash functions use dynamic scoping. These locals let one target be promoted
@@ -2928,6 +2980,27 @@ build_firmware() {
   fi
 
   print_build_flags "$env_name"
+  build_status=0
+  if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+    # Official ESP32 and pioarduino builds share global package names even
+    # though they require incompatible Arduino cores. Hold the lock through
+    # dependency selection and compilation so parallel profile workers cannot
+    # replace a framework while another ESP32 target is using it.
+    mkdir -p -- ".pio"
+    build_status=$?
+    if [ "$build_status" -eq 0 ]; then
+      exec {platformio_package_lock_fd}>".pio/esp32-platformio-packages.lock"
+      build_status=$?
+    fi
+    if [ "$build_status" -eq 0 ]; then
+      flock "$platformio_package_lock_fd"
+      build_status=$?
+    fi
+  fi
+  if [ "$build_status" -eq 0 ]; then
+    prepare_esp32_dual_cdc_framework "$env_name" "$pio_env_name"
+    build_status=$?
+  fi
   pio_run_args=(run -e "$pio_env_name")
   if [[ "${PIO_BUILD_JOBS_OVERRIDE:-}" =~ ^[1-9][0-9]*$ ]]; then
     pio_run_args+=(-j "$PIO_BUILD_JOBS_OVERRIDE")
@@ -2937,11 +3010,17 @@ build_firmware() {
     # merges in one SCons invocation instead of paying startup twice.
     pio_run_args+=(-t mergebin)
   fi
-  pio "${pio_run_args[@]}"
-  build_status=$?
+  if [ "$build_status" -eq 0 ]; then
+    pio "${pio_run_args[@]}"
+    build_status=$?
+  fi
   if [ "$build_status" -eq 0 ]; then
     collect_build_artifacts "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
     build_status=$?
+  fi
+  if [ -n "$platformio_package_lock_fd" ]; then
+    flock -u "$platformio_package_lock_fd"
+    exec {platformio_package_lock_fd}>&-
   fi
 
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
@@ -3048,8 +3127,64 @@ get_nrf52_full_companion_replacement() {
   printf '%s\n' "$full_env"
 }
 
-is_nrf52_companion_transport_replaced_by_full() {
-  get_nrf52_full_companion_replacement "$1" >/dev/null
+get_esp32_dual_cdc_full_companion_replacement() {
+  local source_env=$1
+  local env_name=${source_env,,}
+  local full_env=""
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
+  case "$env_name" in
+    *companion_radio_wifi_mqtt*) return 1 ;;
+    *companion_radio_usb*|*companion_radio_ble*|*companion_radio_wifi*) ;;
+    *) return 1 ;;
+  esac
+
+  # Full Companion includes USB, BLE, and ordinary WiFi Companion. Map legacy
+  # FEM-default aliases to the one runtime-configurable image for each physical
+  # V4 display/radio layout. Expansion-kit targets intentionally do not match:
+  # they have distinct sensor wiring and no corresponding Full recipe.
+  case "$env_name" in
+    heltec_v4_r8_tft_companion_radio_*)
+      full_env=heltec_v4_r8_tft_companion_radio_full
+      ;;
+    heltec_v4_r8_companion_radio_*)
+      full_env=heltec_v4_r8_companion_radio_full
+      ;;
+    heltec_v4_3_tft_companion_radio_*|heltec_v4_tft_companion_radio_*)
+      full_env=heltec_v4_tft_companion_radio_full_femon
+      ;;
+    heltec_v4_3_companion_radio_*|heltec_v4_companion_radio_*)
+      full_env=heltec_v4_2_v4_3_companion_radio_full_femon
+      ;;
+    *)
+      case "$env_name" in
+        *companion_radio_usb*)
+          full_env=${source_env/companion_radio_usb/companion_radio_full}
+          ;;
+        *companion_radio_ble*)
+          full_env=${source_env/companion_radio_ble/companion_radio_full}
+          ;;
+        *companion_radio_wifi*)
+          full_env=${source_env/companion_radio_wifi/companion_radio_full}
+          ;;
+        *)
+          return 1
+          ;;
+      esac
+      ;;
+  esac
+
+  is_esp32_dual_cdc_companion_radio_full_target "$full_env" || return 1
+  printf '%s\n' "$full_env"
+}
+
+get_full_companion_replacement() {
+  get_nrf52_full_companion_replacement "$1" 2>/dev/null \
+    || get_esp32_dual_cdc_full_companion_replacement "$1"
+}
+
+is_companion_transport_replaced_by_full() {
+  get_full_companion_replacement "$1" >/dev/null
 }
 
 is_runtime_setting_alias_target() {
@@ -3065,17 +3200,17 @@ is_runtime_setting_alias_target() {
 is_redundant_bulk_build_target() {
   # Keep every legacy name available to `build-firmware` and
   # `build-matching-firmwares`, but do not republish binaries that differ only
-  # by a saved/default setting or by an attached nRF52 transport already
-  # supplied by Full Companion.
+  # by a saved/default setting or by an attached transport already supplied by
+  # a dual-CDC Full Companion.
   if is_runtime_setting_alias_target "$1" \
-      || is_nrf52_companion_transport_replaced_by_full "$1"; then
+      || is_companion_transport_replaced_by_full "$1"; then
     return 0
   fi
   return 1
 }
 
 resolve_logging_matrix_firmwares() {
-  # nRF52 Full Companion replaces normal USB, BLE, and USB-logging artifacts.
+  # Dual-CDC Full Companion replaces normal transport and USB-logging artifacts.
   # It exposes framed Companion traffic and plaintext logging as separate CDC
   # interfaces over one physical USB connection.
   resolve_all_firmwares
@@ -3797,7 +3932,7 @@ run_logging_matrix_build_targets() {
     echo "Deferring ${full_profile_logging_skip_count} ESP32 target(s) to the unified FULL/fallback pass; their separate standard logging artifacts would be redundant."
   fi
   if [ "$full_companion_logging_skip_count" -gt 0 ]; then
-    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; nRF52 Full already provides logging on its second USB port, while ESP32 Full keeps its single USB stream protocol-safe."
+    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; supported Full images can add a dedicated logging USB port after it is enabled and rebooted, while other Full images keep their single USB stream protocol-safe."
   fi
 
   for target in "${logging_targets[@]}"; do

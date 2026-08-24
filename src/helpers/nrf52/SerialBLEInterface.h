@@ -76,7 +76,7 @@ public:
    * @param name  IN/OUT - a name for the device (combined with prefix). If "@@MAC", is modified and returned
    * @param pin_code   the BLE security pin
    */
-  void begin(const char* prefix, char* name, uint32_t pin_code);
+  bool begin(const char* prefix, char* name, uint32_t pin_code);
 
   void disconnect();
   void enable() override;

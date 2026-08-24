@@ -94,11 +94,13 @@ GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.
 
 ```
 get usb.logging
-set usb.logging {on|off}
+set usb.logging {on|off} [reboot]
 ```
 Shows or changes live USB debug and packet output in a Companion logging
-artifact. The setting lasts until reboot; logging starts on again at the next
-boot. Companion protocol frames and terminal replies remain enabled.
+artifact. The setting is persistent. Dual-CDC Full Companion defaults off;
+changing its USB interface count requires a reboot, and the optional exact
+`reboot` argument performs that reboot after sending the reply. Companion
+protocol frames and terminal replies remain enabled on interface `00`.
 
 ```
 get radio.rxps

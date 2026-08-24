@@ -3,6 +3,9 @@
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/RemoteCliTimeout.h>
 #include <Utils.h>
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
 
 #ifndef SERVER_RESPONSE_DELAY
   #define SERVER_RESPONSE_DELAY   300
@@ -17,6 +20,36 @@ bool BaseChatMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* p
 }
 bool BaseChatMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
   return sendFlood(pkt, delay_millis);
+}
+
+bool BaseChatMesh::initializeContactStorage() {
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  const int requested_capacity = MAX_CONTACTS + MAX_ANON_CONTACTS;
+  if (contact_capacity >= requested_capacity) return true;
+
+  ContactInfo* expanded_contacts = static_cast<ContactInfo*>(
+      heap_caps_calloc(requested_capacity, sizeof(ContactInfo),
+                       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  int* expanded_sort_array = static_cast<int*>(
+      heap_caps_calloc(requested_capacity, sizeof(int),
+                       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (expanded_contacts == NULL || expanded_sort_array == NULL) {
+    if (expanded_contacts != NULL) heap_caps_free(expanded_contacts);
+    if (expanded_sort_array != NULL) heap_caps_free(expanded_sort_array);
+    MESH_DEBUG_PRINTLN(
+        "BaseChatMesh: PSRAM contact allocation failed; using %d slots",
+        contact_capacity - MAX_ANON_CONTACTS);
+    return false;
+  }
+
+  memcpy(expanded_contacts, contacts, sizeof(ContactInfo) * num_contacts);
+  contacts = expanded_contacts;
+  sort_array = expanded_sort_array;
+  contact_capacity = requested_capacity;
+  MESH_DEBUG_PRINTLN("BaseChatMesh: allocated %d contact slots in PSRAM",
+                     MAX_CONTACTS);
+#endif
+  return true;
 }
 
 mesh::Packet* BaseChatMesh::createSelfAdvert(const char* name) {
@@ -86,7 +119,11 @@ ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
       return &contacts[oldest_idx];
     }
   } else {
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+    if (num_contacts < contact_capacity) {
+#else
     if (num_contacts < MAX_ANON_CONTACTS+MAX_CONTACTS) {
+#endif
       return &contacts[num_contacts++];
     } else if (shouldOverwriteWhenFull()) {
       // Find oldest non-favourite contact by oldest lastmod timestamp

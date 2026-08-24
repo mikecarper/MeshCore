@@ -53,12 +53,14 @@ reopening the controller while `motatool` owns the source port. The script
 rejects an attempt to use the same port for both.
 
 The USB ASCII switch (`+++MESHCORE-TERM-START`) is the local control path, not
-the mOTA data framing. On an nRF52 full Companion, the script uses that mode
+the mOTA data framing. On a dual-CDC full Companion, the script uses that mode
 briefly for `ota status` and TempRadio commands. It then closes the CLI and
 starts `motatool`, whose existing `ota folder on` preamble switches the same
-USB interface `00` into exclusive mOTA mode. Its separate USB interface `02`
-continues to provide plaintext logging and is not a controller or source port.
-On an ESP32 Full Companion with serial folder support,
+USB interface `00` into exclusive mOTA mode. If USB logging was enabled and the
+Full Companion rebooted, its separate interface `02` continues to provide
+plaintext logging and is not a controller or source port. With default logging
+off, interface `02` is not enumerated.
+On a native-USB ESP32-S3 Full Companion with serial folder support,
 `motatool --companion-terminal` keeps the ASCII session open
 while the same link carries framed folder requests. BLE remains available.
 

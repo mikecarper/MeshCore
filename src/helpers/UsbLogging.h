@@ -16,17 +16,24 @@ class Stream;
 
 namespace mesh {
 
-// Logging starts enabled on first boot. Roles with saved preferences restore
-// the persisted setting after their preferences are loaded.
+// Ordinary logging images start enabled. Dual-CDC Full Companion starts with
+// logging disabled and restores its saved choice after preferences load.
 bool isUsbLoggingEnabled();
 void setUsbLoggingEnabled(bool enabled);
 
+// ESP32 native USB starts before setup(), so its next-boot interface count is
+// mirrored outside the normal role preferences. Other platforms need no
+// mirror. Returns false only when that mirror could not be saved.
+bool saveUsbLoggingBootPreference(bool enabled);
+
 // Start the optional dedicated USB logging interface. Ordinary builds keep
-// using Serial. nRF52 Full Companion builds expose a second CDC ACM interface
-// so plaintext diagnostics never share the framed Companion stream.
+// using Serial. Supported Full Companion builds expose a second CDC ACM
+// interface so plaintext diagnostics never share the framed Companion stream.
 void beginUsbLoggingPort();
 Stream& usbLoggingPort();
 bool hasDedicatedUsbLoggingPort();
+bool isDedicatedUsbLoggingPortConfigured();
+bool usbLoggingInterfaceRestartRequired();
 
 }  // namespace mesh
 #endif

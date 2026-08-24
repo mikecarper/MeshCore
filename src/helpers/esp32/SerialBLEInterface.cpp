@@ -1,7 +1,21 @@
 #include "SerialBLEInterface.h"
 #include "../CompanionFrameQueue.h"
 #include "esp_mac.h"
+#if defined(CONFIG_BLUEDROID_ENABLED)
 #include "esp_gap_ble_api.h"
+#endif
+#if defined(CONFIG_NIMBLE_ENABLED)
+#include <host/ble_store.h>
+#endif
+
+// Arduino 3.x relies on a library constructor to mark BLE as used before
+// initArduino(), and that constructor ordering is not reliable with all link
+// layouts/LTO combinations. A strong override keeps the controller memory
+// available until SerialBLEInterface::begin(); Full Companion then reserves
+// BLE controller/host memory before starting WiFi.
+extern "C" bool bleInUse(void) {
+  return true;
+}
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -12,7 +26,7 @@
 
 #define ADVERT_RESTART_DELAY  1000   // millis
 
-void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
+bool SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
   _pin_code = pin_code;
 
   if (strcmp(name, "@@MAC") == 0) {
@@ -26,29 +40,73 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   sprintf(dev_name, "%s%s", prefix, name);
 
   // Create the BLE Device
+#if defined(CONFIG_NIMBLE_ENABLED)
+  if (!BLEDevice::init(dev_name)) {
+    BLE_DEBUG_PRINTLN("BLEDevice::init failed");
+    return false;
+  }
+#else
+  // Arduino-ESP32 2.x Bluedroid exposes a void init(). Its first observable
+  // failure is a null server below, which is handled without dereferencing it.
   BLEDevice::init(dev_name);
+#endif
   BLEDevice::setSecurityCallbacks(this);
   // ATT notifications consume three bytes of the negotiated MTU. Reserve
   // that overhead so a MAX_FRAME_SIZE protocol frame fits without truncation.
   BLEDevice::setMTU(MAX_FRAME_SIZE + 3);
 
   BLESecurity  sec;
+#if defined(CONFIG_NIMBLE_ENABLED)
+  sec.setPassKey(true, pin_code);
+  sec.setAuthenticationMode(true, true, true);
+#else
   sec.setStaticPIN(pin_code);
   sec.setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+#endif
 
   //BLEDevice::setPower(ESP_PWR_LVL_N8);
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
+  if (pServer == NULL) {
+    BLE_DEBUG_PRINTLN("BLEDevice::createServer failed");
+    BLEDevice::deinit(false);
+    return false;
+  }
   pServer->setCallbacks(this);
 
   // Create the BLE Service
   pService = pServer->createService(SERVICE_UUID);
+  if (pService == NULL) {
+    BLE_DEBUG_PRINTLN("BLEServer::createService failed");
+    BLEDevice::deinit(false);
+    pServer = NULL;
+    return false;
+  }
 
   // Create a BLE Characteristic
-  pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  uint32_t tx_properties = BLECharacteristic::PROPERTY_READ |
+                           BLECharacteristic::PROPERTY_NOTIFY;
+  uint32_t rx_properties = BLECharacteristic::PROPERTY_WRITE;
+#if defined(CONFIG_NIMBLE_ENABLED)
+  // NimBLE ignores setAccessPermissions(). Authentication requirements must
+  // be part of the characteristic properties instead.
+  tx_properties |= BLECharacteristic::PROPERTY_READ_AUTHEN;
+  rx_properties |= BLECharacteristic::PROPERTY_WRITE_AUTHEN;
+#endif
+  pTxCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_TX, tx_properties);
+  if (pTxCharacteristic == NULL) {
+    BLE_DEBUG_PRINTLN("BLEService::createCharacteristic(TX) failed");
+    BLEDevice::deinit(false);
+    pServer = NULL;
+    pService = NULL;
+    return false;
+  }
   pTxCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM);
   pTxCharacteristic->setCallbacks(this);
+#if !defined(CONFIG_NIMBLE_ENABLED)
+  // NimBLE creates and owns the 0x2902 descriptor automatically.
   pTxDescriptor = new BLE2902();
   // Make notification setup start/finish pairing before the client begins its
   // short device-info request timeout. The RX and TX characteristics already
@@ -57,12 +115,24 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   pTxDescriptor->setAccessPermissions(
       (esp_gatt_perm_t)(ESP_GATT_PERM_READ_ENC_MITM | ESP_GATT_PERM_WRITE_ENC_MITM));
   pTxCharacteristic->addDescriptor(pTxDescriptor);
+#endif
 
-  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_RX, rx_properties);
+  if (pRxCharacteristic == NULL) {
+    BLE_DEBUG_PRINTLN("BLEService::createCharacteristic(RX) failed");
+    BLEDevice::deinit(false);
+    pServer = NULL;
+    pService = NULL;
+    pTxCharacteristic = NULL;
+    pTxDescriptor = NULL;
+    return false;
+  }
   pRxCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENC_MITM);
   pRxCharacteristic->setCallbacks(this);
 
   pServer->getAdvertising()->addServiceUUID(SERVICE_UUID);
+  return true;
 }
 
 // -------- BLESecurityCallbacks methods
@@ -89,6 +159,34 @@ bool SerialBLEInterface::onSecurityRequest() {
   return true;  // allow
 }
 
+#if defined(CONFIG_NIMBLE_ENABLED)
+void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
+  const bool success = desc != NULL && desc->sec_state.encrypted &&
+                       desc->sec_state.authenticated;
+  if (success) {
+    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
+    deviceConnected = true;
+  } else {
+    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure");
+
+    if (desc != NULL) {
+      int remove_result = ble_store_util_delete_peer(&desc->peer_id_addr);
+      if (remove_result == 0) {
+        BLE_DEBUG_PRINTLN(" - SecurityCallback - Cleared failed peer bond");
+      } else {
+        BLE_DEBUG_PRINTLN(" - SecurityCallback - No peer bond cleared, err=%d",
+                          remove_result);
+      }
+    }
+
+    deviceConnected = false;
+    if (desc != NULL) {
+      pServer->disconnect(desc->conn_handle);
+    }
+    scheduleAdvertisingRestart((uint32_t)millis());
+  }
+}
+#else
 void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
   if (cmpl.success) {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
@@ -112,12 +210,35 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
     scheduleAdvertisingRestart((uint32_t)millis());
   }
 }
+#endif
 
 // -------- BLEServerCallbacks methods
 
 void SerialBLEInterface::onConnect(BLEServer* pServer) {
 }
 
+#if defined(CONFIG_NIMBLE_ENABLED)
+void SerialBLEInterface::onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) {
+  BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", desc->conn_handle,
+                    pServer->getPeerMTU(desc->conn_handle));
+  last_conn_id = desc->conn_handle;
+  deviceConnected = false;  // becomes usable only after authentication completes
+  oldDeviceConnected = false;
+  notifySucceeded = false;
+  notificationsEnabled.store(false, std::memory_order_release);
+  xQueueReset(recv_queue);
+  _tx_reset_pending.store(true, std::memory_order_release);
+  _adv_restart_pending = false;
+}
+
+void SerialBLEInterface::onMtuChanged(BLEServer* pServer,
+                                      ble_gap_conn_desc* desc,
+                                      uint16_t mtu) {
+  (void)pServer;
+  (void)desc;
+  BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", mtu);
+}
+#else
 void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
@@ -136,11 +257,13 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t 
 void SerialBLEInterface::onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
   BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", pServer->getPeerMTU(param->mtu.conn_id));
 }
+#endif
 
 void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   BLE_DEBUG_PRINTLN("onDisconnect()");
   deviceConnected = false;
   notifySucceeded = false;
+  notificationsEnabled.store(false, std::memory_order_release);
   xQueueReset(recv_queue);
   _tx_reset_pending.store(true, std::memory_order_release);
   if (pTxDescriptor != NULL) pTxDescriptor->setNotifications(false);
@@ -151,7 +274,15 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
 
 // -------- BLECharacteristicCallbacks methods
 
-void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) {
+#if defined(CONFIG_NIMBLE_ENABLED)
+void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic,
+                                 ble_gap_conn_desc* desc) {
+  (void)desc;
+#else
+void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic,
+                                 esp_ble_gatts_cb_param_t* param) {
+  (void)param;
+#endif
   if (_tx_disconnect_recovery.pending()) {
     BLE_DEBUG_PRINTLN("onWrite(): dropping frame while BLE reconnect is pending");
     return;
@@ -173,6 +304,19 @@ void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gat
   }
 }
 
+#if defined(CONFIG_NIMBLE_ENABLED)
+void SerialBLEInterface::onSubscribe(BLECharacteristic* pCharacteristic,
+                                     ble_gap_conn_desc* desc,
+                                     uint16_t subValue) {
+  (void)desc;
+  if (pCharacteristic == pTxCharacteristic) {
+    // NimBLE uses bit 0 for notification subscriptions.
+    notificationsEnabled.store((subValue & 0x0001u) != 0,
+                               std::memory_order_release);
+  }
+}
+#endif
+
 void SerialBLEInterface::onStatus(BLECharacteristic* pCharacteristic, Status status, uint32_t code) {
   (void)pCharacteristic;
   notifySucceeded = status == SUCCESS_NOTIFY;
@@ -188,6 +332,7 @@ void SerialBLEInterface::clearBuffers() {
   xQueueReset(recv_queue);
   send_queue_len = 0;
   notifySucceeded = false;
+  notificationsEnabled.store(false, std::memory_order_release);
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
   _tx_reset_pending.store(false, std::memory_order_release);
@@ -314,7 +459,13 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
                                BLE_WRITE_MIN_INTERVAL)    // space the writes apart
   ) {
     const uint16_t peer_mtu = pServer->getPeerMTU(last_conn_id);
-    const bool notifications_ready = pTxDescriptor != NULL && pTxDescriptor->getNotifications();
+#if defined(CONFIG_NIMBLE_ENABLED)
+    const bool notifications_ready =
+        notificationsEnabled.load(std::memory_order_acquire);
+#else
+    const bool notifications_ready =
+        pTxDescriptor != NULL && pTxDescriptor->getNotifications();
+#endif
     const bool frame_fits = peer_mtu > 3 && send_queue[0].len <= peer_mtu - 3;
     const bool delivery_required = mesh::companionFrameRequiresDelivery(
         send_queue[0].buf, send_queue[0].len);

@@ -11,6 +11,7 @@ firmware as an mOTA image.
 | USB Binary Companion | Yes | Yes |
 | BLE Binary Companion | Yes | Yes |
 | USB ASCII terminal | Yes | Yes |
+| Dedicated USB plaintext logging | Qualified native-USB ESP32-S3 profiles | Yes |
 | Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode |
 | WiFi Companion/WebConfig | Yes | No - nRF52840 has no WiFi |
 | LoRa self-update | No | No |
@@ -50,11 +51,12 @@ bash build.sh build-full-companion-firmwares \
 Canonical Companion bulk builds also omit legacy `_ps` and `_femoff` aliases.
 Power saving and controllable FEM receive gain are persisted runtime settings;
 the old names remain available through an explicit `build-firmware` command
-for compatibility. On nRF52, Full Companion replaces separate USB and BLE
-normal release artifacts whenever the exact board has both recipes. It also
-replaces the USB-only packet-logging artifact: one physical USB connection
-enumerates separate Companion and logging serial ports, so plaintext logs
-cannot corrupt binary frames. In WebConfig, use the
+for compatibility. Dual-CDC Full Companion replaces separate USB, BLE,
+ordinary WiFi, and USB-only packet-logging release artifacts whenever the
+exact board supports the combined profile. This includes nRF52 Full Companion
+and the qualified native-USB ESP32-S3 profiles listed below. One physical USB
+connection can enumerate separate Companion and logging serial ports, so
+plaintext logs cannot corrupt binary frames. In WebConfig, use the
 **FEM RX boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
 ```text
@@ -248,30 +250,61 @@ The terminal supports Companion chat commands, including `channels`,
 WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
 artifacts additionally provide `get/set usb.logging`; turning it off
 suppresses live USB diagnostics without disabling Companion frames or terminal
-replies. nRF52 Full Companion saves this setting and applies it only to its
-dedicated logging port.
+replies. Dual-CDC Full Companion saves this setting and applies it only to its
+dedicated logging port. It starts off on a fresh installation.
 
-### nRF52 dual USB serial ports
+### Dual USB serial ports
 
-Current nRF52 Full Companion firmware exposes two CDC ACM serial interfaces on
-one physical USB cable:
+Current nRF52 Full Companion and qualified native-USB ESP32-S3 Full Companion
+firmware can expose two CDC ACM serial interfaces on one physical USB cable:
 
 - USB interface `00` is the normal Binary Companion, text terminal, and serial
-  mOTA source port.
-- USB interface `02` is a write-only plaintext packet/debug logging port. Host
-  input on this interface is ignored and cannot invoke firmware commands.
+  mOTA source port. It is always present.
+- USB interface `02` is the optional write-only plaintext packet/debug logging
+  port. Host input on this interface is ignored and cannot invoke firmware
+  commands.
 
-On Linux these normally appear as two `/dev/ttyACM*` devices. Match the stable
+A fresh Full Companion starts with USB logging off and therefore enumerates
+only interface `00`. Use `set usb.logging on` to save logging on; the reply says
+that a reboot is required. Use `set usb.logging on reboot` to save it and have
+the node reboot automatically after the reply. The second interface appears
+after that reboot. Likewise, `set usb.logging off reboot` removes interface
+`02`. The optional `reboot` word is accepted only in these exact command forms
+and triggers a reboot only when the descriptor actually needs to change.
+
+These are Full Companion **text-terminal** commands. The superficially similar
+`meshcli ... get usb.logging` command uses the Binary Companion parameter
+registry and can report `Unknown var usb.logging`; it does not forward that
+line to the text terminal. Enter terminal mode on interface `00` with the
+`+++MESHCORE-TERM-START` token as described above, then issue the command.
+
+When logging is on, Linux normally shows two `/dev/ttyACM*` devices. Match the stable
 `/dev/serial/by-id/*-if00` and `*-if02` links, or use a udev rule matching
 `ID_USB_INTERFACE_NUM`, rather than assuming which tty number is assigned. On
 Windows they appear as two COM ports; identify them by USB interface instead of
-depending on a particular COM number. The bootloader may temporarily expose
-only its normal DFU serial interface while an update is active.
+depending on a particular COM number. The nRF52 bootloader temporarily exposes
+its normal DFU serial interface during an update. Qualified S3 boards
+temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.
+
+Qualified ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
+WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
+base Heltec V4 profile has completed live two-interface, ROM-flashing, and
+logging-off one-interface validation. RAK3112 and Heltec RC32 retain separate
+transport and logging images pending hardware validation. Boards whose
+connector terminates at an external USB-UART bridge also keep their
+transport-specific images: firmware cannot add a second USB interface to that
+bridge chip.
+
+Every ESP32-S3 Full Companion image uses DIO flash mode, including the RAK3112
+and RC32 profiles that do not expose dual CDC. The S3 ROM supports DIO while
+loading the software bootloader, and some flash configurations fail before the
+application starts when a merged image inherits QIO. DIO trades some maximum
+flash-read throughput for compatibility; it does not change a board's PSRAM
+type or any ordinary non-Full firmware profile.
 
 Point MeshCore Companion software, `meshcli`, and `motatool` at interface `00`.
-Point a plaintext reader or USB-connected MQTT service at interface `02`. Use
-`set usb.logging off|on` through the Companion terminal to persist whether the
-second port emits output.
+When enabled and rebooted, point a plaintext reader or USB-connected MQTT
+service at interface `02`.
 
 ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with `nc DEVICE_IP 5002`; no USB control token is needed. USB terminal mode and
