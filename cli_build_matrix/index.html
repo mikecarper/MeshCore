@@ -1460,8 +1460,8 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <td>Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image.</td>
 </tr>
 <tr>
-<td>nRF52 Full Companion</td>
-<td>Uses one physical USB connection with interface <code>00</code> for framed Companion/terminal/mOTA traffic and interface <code>02</code> for plaintext logging. It also provides BLE and source-only LoRa OTA. <code>get/set usb.logging</code> persistently gates only the logging interface.</td>
+<td>Dual-CDC Full Companion</td>
+<td>nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface <code>00</code> for framed Companion/terminal/mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
@@ -1484,19 +1484,25 @@ available from a canonical image:</p>
   replaced by their ordinary Station target. G2 boosted receive gain is the
   persisted <code>radio.rxgain on|off</code> setting; the G3 alias changed only the
   advertised default name.</li>
-<li>When an nRF52 board has a generated Full Companion, that one artifact
-  replaces its separate USB, BLE, and USB packet-logging Companion artifacts.
-  It provides BLE plus two USB CDC interfaces: interface <code>00</code> carries framed
-  Companion/terminal/mOTA traffic and interface <code>02</code> carries plaintext logs.
+<li>When a board has a dual-CDC Full Companion, that one artifact replaces its
+  separate USB, BLE, ordinary WiFi, and USB packet-logging Companion artifacts.
+  Current support includes nRF52 Full Companion plus qualified native-USB
+  ESP32-S3 Full targets: Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3 WIO,
+  Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. RAK3112
+  and Heltec RC32 keep separate transport and logging artifacts pending live
+  hardware validation.
+  It provides BLE plus an always-present interface <code>00</code> for framed
+  Companion/terminal/mOTA traffic. Enabling logging and rebooting adds
+  interface <code>02</code> for plaintext logs.
   Its LoRa OTA support is source-only: it can serve a host file to another node
   but has no staging store and cannot update itself over LoRa.</li>
 </ul>
 <p>The old aliases still work with <code>build-firmware</code> and
 <code>build-matching-firmwares</code>. Dedicated repeater LoRa OTA receiver images are not
 collapsed; they retain their exact storage, bootloader, role, and target
-identity contracts. ESP32 USB, BLE, WiFi, and Full Companion images also remain
-separate because Full changes partitions, RAM use, active transports, and power
-behavior.</p>
+identity contracts. ESP32 boards without the tested dual-CDC Full profile keep
+USB, BLE, WiFi, and Full Companion images separate because Full changes
+partitions, RAM use, active transports, and power behavior.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
 <p>The compact ESP32 CLI has been removed. MQTT observers and ESP-NOW bridges are
 automatically promoted to FULL builds with expanded partitions rather than

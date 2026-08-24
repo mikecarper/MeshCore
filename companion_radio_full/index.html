@@ -515,10 +515,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#nrf52-dual-usb-serial-ports" class="md-nav__link">
+  <a href="#dual-usb-serial-ports" class="md-nav__link">
     <span class="md-ellipsis">
       
-        nRF52 dual USB serial ports
+        Dual USB serial ports
       
     </span>
   </a>
@@ -1362,10 +1362,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#nrf52-dual-usb-serial-ports" class="md-nav__link">
+  <a href="#dual-usb-serial-ports" class="md-nav__link">
     <span class="md-ellipsis">
       
-        nRF52 dual USB serial ports
+        Dual USB serial ports
       
     </span>
   </a>
@@ -1494,6 +1494,11 @@ firmware as an mOTA image.</p>
 <td>Yes</td>
 </tr>
 <tr>
+<td>Dedicated USB plaintext logging</td>
+<td>Qualified native-USB ESP32-S3 profiles</td>
+<td>Yes</td>
+</tr>
+<tr>
 <td>Host-backed LoRa mOTA source</td>
 <td>WiFi TCP 5001</td>
 <td>Exclusive USB mode</td>
@@ -1535,11 +1540,12 @@ interactive menu item or run:</p>
 <p>Canonical Companion bulk builds also omit legacy <code>_ps</code> and <code>_femoff</code> aliases.
 Power saving and controllable FEM receive gain are persisted runtime settings;
 the old names remain available through an explicit <code>build-firmware</code> command
-for compatibility. On nRF52, Full Companion replaces separate USB and BLE
-normal release artifacts whenever the exact board has both recipes. It also
-replaces the USB-only packet-logging artifact: one physical USB connection
-enumerates separate Companion and logging serial ports, so plaintext logs
-cannot corrupt binary frames. In WebConfig, use the
+for compatibility. Dual-CDC Full Companion replaces separate USB, BLE,
+ordinary WiFi, and USB-only packet-logging release artifacts whenever the
+exact board supports the combined profile. This includes nRF52 Full Companion
+and the qualified native-USB ESP32-S3 profiles listed below. One physical USB
+connection can enumerate separate Companion and logging serial ports, so
+plaintext logs cannot corrupt binary frames. In WebConfig, use the
 <strong>FEM RX boost</strong> switch. From the text terminal (USB, or TCP 5002 on ESP32), use:</p>
 <pre><code class="language-text">get radio.rxgain
 set radio.rxgain off
@@ -1733,27 +1739,54 @@ is active; do not enter the start token again after it appears.</p>
 WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
 artifacts additionally provide <code>get/set usb.logging</code>; turning it off
 suppresses live USB diagnostics without disabling Companion frames or terminal
-replies. nRF52 Full Companion saves this setting and applies it only to its
-dedicated logging port.</p>
-<h3 id="nrf52-dual-usb-serial-ports">nRF52 dual USB serial ports</h3>
-<p>Current nRF52 Full Companion firmware exposes two CDC ACM serial interfaces on
-one physical USB cable:</p>
+replies. Dual-CDC Full Companion saves this setting and applies it only to its
+dedicated logging port. It starts off on a fresh installation.</p>
+<h3 id="dual-usb-serial-ports">Dual USB serial ports</h3>
+<p>Current nRF52 Full Companion and qualified native-USB ESP32-S3 Full Companion
+firmware can expose two CDC ACM serial interfaces on one physical USB cable:</p>
 <ul>
 <li>USB interface <code>00</code> is the normal Binary Companion, text terminal, and serial
-  mOTA source port.</li>
-<li>USB interface <code>02</code> is a write-only plaintext packet/debug logging port. Host
-  input on this interface is ignored and cannot invoke firmware commands.</li>
+  mOTA source port. It is always present.</li>
+<li>USB interface <code>02</code> is the optional write-only plaintext packet/debug logging
+  port. Host input on this interface is ignored and cannot invoke firmware
+  commands.</li>
 </ul>
-<p>On Linux these normally appear as two <code>/dev/ttyACM*</code> devices. Match the stable
+<p>A fresh Full Companion starts with USB logging off and therefore enumerates
+only interface <code>00</code>. Use <code>set usb.logging on</code> to save logging on; the reply says
+that a reboot is required. Use <code>set usb.logging on reboot</code> to save it and have
+the node reboot automatically after the reply. The second interface appears
+after that reboot. Likewise, <code>set usb.logging off reboot</code> removes interface
+<code>02</code>. The optional <code>reboot</code> word is accepted only in these exact command forms
+and triggers a reboot only when the descriptor actually needs to change.</p>
+<p>These are Full Companion <strong>text-terminal</strong> commands. The superficially similar
+<code>meshcli ... get usb.logging</code> command uses the Binary Companion parameter
+registry and can report <code>Unknown var usb.logging</code>; it does not forward that
+line to the text terminal. Enter terminal mode on interface <code>00</code> with the
+<code>+++MESHCORE-TERM-START</code> token as described above, then issue the command.</p>
+<p>When logging is on, Linux normally shows two <code>/dev/ttyACM*</code> devices. Match the stable
 <code>/dev/serial/by-id/*-if00</code> and <code>*-if02</code> links, or use a udev rule matching
 <code>ID_USB_INTERFACE_NUM</code>, rather than assuming which tty number is assigned. On
 Windows they appear as two COM ports; identify them by USB interface instead of
-depending on a particular COM number. The bootloader may temporarily expose
-only its normal DFU serial interface while an update is active.</p>
+depending on a particular COM number. The nRF52 bootloader temporarily exposes
+its normal DFU serial interface during an update. Qualified S3 boards
+temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.</p>
+<p>Qualified ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
+WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
+base Heltec V4 profile has completed live two-interface, ROM-flashing, and
+logging-off one-interface validation. RAK3112 and Heltec RC32 retain separate
+transport and logging images pending hardware validation. Boards whose
+connector terminates at an external USB-UART bridge also keep their
+transport-specific images: firmware cannot add a second USB interface to that
+bridge chip.</p>
+<p>Every ESP32-S3 Full Companion image uses DIO flash mode, including the RAK3112
+and RC32 profiles that do not expose dual CDC. The S3 ROM supports DIO while
+loading the software bootloader, and some flash configurations fail before the
+application starts when a merged image inherits QIO. DIO trades some maximum
+flash-read throughput for compatibility; it does not change a board's PSRAM
+type or any ordinary non-Full firmware profile.</p>
 <p>Point MeshCore Companion software, <code>meshcli</code>, and <code>motatool</code> at interface <code>00</code>.
-Point a plaintext reader or USB-connected MQTT service at interface <code>02</code>. Use
-<code>set usb.logging off|on</code> through the Companion terminal to persist whether the
-second port emits output.</p>
+When enabled and rebooted, point a plaintext reader or USB-connected MQTT
+service at interface <code>02</code>.</p>
 <p>ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with <code>nc DEVICE_IP 5002</code>; no USB control token is needed. USB terminal mode and
 the TCP terminal share recipient, login, command, trace, and display state, so

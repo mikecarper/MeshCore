@@ -381,10 +381,31 @@
         /(?:^|[_-])(?:ps|femoff)(?=$|[_-])/.test(lowerTarget));
   }
 
-  function omitNrf52TransportsReplacedByFull(profiles) {
+  function isDualCdcFullCompanion(profile) {
+    if (!profile || profile.role !== "companion" || profile.mode !== "full") {
+      return false;
+    }
+    if (profile.installKinds.includes("zip")) return true;
+    const target = String(profile.target || "").toLowerCase();
+    if (/^heltec_v4(?:_2_v4_3|_3)?(?:_r8)?(?:_tft)?_companion_radio_full(?:_|$)/
+      .test(target)) {
+      return true;
+    }
+    return [
+      "lilygo_tbeam_1w_companion_radio_full",
+      "station_g2_companion_radio_full",
+      "station_g3_esp32_companion_radio_full",
+      "xiao_s3_wio_companion_radio_full",
+      "heltec_tracker_v2_companion_radio_full_femon",
+      "meshnology_w12_companion_radio_full",
+      "nibble_screen_connect_companion_radio_full_",
+      "nibble_zero_connect_companion_radio_full_",
+    ].includes(target);
+  }
+
+  function omitTransportsReplacedByDualCdcFull(profiles) {
     const fullKeys = new Set((profiles || []).filter(function (profile) {
-      return profile.role === "companion" && profile.mode === "full" &&
-        profile.installKinds.includes("zip");
+      return isDualCdcFullCompanion(profile);
     }).map(function (profile) {
       return profile.hardware + "\n" + profile.variant;
     }));
@@ -392,20 +413,19 @@
     return (profiles || []).filter(function (profile) {
       const key = profile.hardware + "\n" + profile.variant;
       const replacedAttachedTransport = profile.role === "companion" &&
-        (profile.mode === "usb" || profile.mode === "ble");
+        (profile.mode === "usb" || profile.mode === "ble" ||
+          profile.mode === "wifi");
       return !(replacedAttachedTransport && fullKeys.has(key));
     });
   }
 
-  function applyNrf52FullCompanionCapabilities(profiles) {
+  function applyDualCdcFullCompanionCapabilities(profiles) {
     return (profiles || []).map(function (profile) {
-      const nativeNrf52Full = profile.role === "companion" &&
-        profile.mode === "full" && profile.installKinds.includes("zip");
-      if (!nativeNrf52Full) return profile;
+      if (!isDualCdcFullCompanion(profile)) return profile;
 
-      // Current nRF52 Full Companion images expose two CDC ACM interfaces:
-      // framed Companion traffic on interface 00 and plaintext logging on 02.
-      // The saved USB logging gate covers only the second interface.
+      // Supported Full Companion images always expose framed Companion traffic
+      // on interface 00. Logging defaults off; enabling it and rebooting adds
+      // the independent plaintext CDC interface 02.
       profile.logging = "usb-runtime";
       profile.loggingModes = ["none", "usb"];
       profile.dedicatedUsbLogging = true;
@@ -512,8 +532,8 @@
     }).filter(function (profile) {
       return !isHiddenLegacyProfile(profile);
     });
-    const profiles = omitNrf52TransportsReplacedByFull(
-      applyNrf52FullCompanionCapabilities(visibleProfiles)
+    const profiles = omitTransportsReplacedByDualCdcFull(
+      applyDualCdcFullCompanionCapabilities(visibleProfiles)
     ).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
@@ -712,11 +732,11 @@
       );
     } else if (profile.logging === "usb-runtime") {
       extra.push(
-        "Use get usb.logging and set usb.logging off|on to choose and save normal output-off or USB packet logging."
+        "Full Companion starts with USB logging off and only interface 00. Use get usb.logging, or set usb.logging on reboot to save logging on and reboot when needed; set usb.logging off reboot removes interface 02 again."
       );
       if (profile.dedicatedUsbLogging) {
         extra.push(
-          "This nRF52 Full Companion exposes two serial ports on one USB cable: interface 00 carries Companion/terminal/mOTA traffic and interface 02 carries plaintext logging. Match services by USB interface number instead of assuming tty or COM numbering."
+          "Interface 00 always carries Companion/terminal/mOTA traffic. After logging is enabled and the node reboots, interface 02 carries plaintext logs. Match services by USB interface number instead of assuming tty or COM numbering."
         );
       }
     }
@@ -757,7 +777,7 @@
     if (profile.dedicatedUsbLogging) {
       factRows.splice(3, 0, [
         "USB port split",
-        "Interface 00 Companion; interface 02 logging",
+        "Interface 00 always; interface 02 after logging on + reboot",
       ]);
     }
     replaceFacts(facts, factRows);
@@ -1086,10 +1106,15 @@
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
+    applyDualCdcFullCompanionCapabilities:
+      applyDualCdcFullCompanionCapabilities,
     applyNrf52FullCompanionCapabilities:
-      applyNrf52FullCompanionCapabilities,
+      applyDualCdcFullCompanionCapabilities,
     canonicalHardware: canonicalHardware,
-    omitNrf52TransportsReplacedByFull: omitNrf52TransportsReplacedByFull,
+    omitTransportsReplacedByDualCdcFull:
+      omitTransportsReplacedByDualCdcFull,
+    omitNrf52TransportsReplacedByFull:
+      omitTransportsReplacedByDualCdcFull,
     hardwareFamilyFor: hardwareFamilyFor,
     humanizeHardwareVariant: humanizeHardwareVariant,
     buildCatalog: buildCatalog,

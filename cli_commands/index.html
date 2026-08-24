@@ -5527,13 +5527,27 @@ emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
 <pre><code class="language-text">get usb.logging
 set usb.logging on
 set usb.logging off
+set usb.logging on reboot
+set usb.logging off reboot
 </code></pre>
 <p>These commands are compiled into logging artifacts and control their live USB
 debug and packet output. CommonCLI roles save the setting in <code>/com_prefs</code>, so
-it survives reboot; first boot defaults to on. nRF52 Full Companion applies the
-gate only to USB interface <code>02</code>, its dedicated plaintext logging port. USB
-interface <code>00</code> continues carrying Companion, terminal, and serial mOTA traffic.
-Turning USB logging off does not disable CLI replies or Companion protocol
+it survives reboot; their first boot defaults to on.</p>
+<p>On Full Companion these lines belong to its text terminal, not <code>meshcli</code>'s
+Binary <code>get/set</code> parameter namespace. Open interface <code>00</code>, send
+<code>+++MESHCORE-TERM-START</code>, and then issue the command. Running
+<code>meshcli ... get usb.logging</code> directly can instead return
+<code>Unknown var usb.logging</code> because that is a different protocol operation.</p>
+<p>Dual-CDC Full Companion instead defaults logging to off and enumerates only
+USB interface <code>00</code>, which carries Companion, terminal, and serial mOTA traffic.
+Enabling logging adds interface <code>02</code>, its dedicated plaintext logging port, on
+the next boot. Disabling it removes interface <code>02</code> on the next boot. A command
+without the optional <code>reboot</code> argument saves the choice and reports that a
+reboot is required when the USB interface count must change. The exact
+<code>set usb.logging on reboot</code> and <code>set usb.logging off reboot</code> forms save the
+choice, send their reply, and reboot one second later only when needed. This
+behavior includes nRF52 and qualified native-USB ESP32-S3 Full images.</p>
+<p>Turning USB logging off does not disable CLI replies or Companion protocol
 frames. It also does not change the node-storage capture controlled by <code>log
 start</code> and <code>log stop</code>.</p>
 <p>Unified ESP32 FULL builds add one saved selector for both output paths:</p>

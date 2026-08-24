@@ -1574,12 +1574,14 @@ computer -- MeshCore binary API --&gt; controller Companion -------------------+
 reopening the controller while <code>motatool</code> owns the source port. The script
 rejects an attempt to use the same port for both.</p>
 <p>The USB ASCII switch (<code>+++MESHCORE-TERM-START</code>) is the local control path, not
-the mOTA data framing. On an nRF52 full Companion, the script uses that mode
+the mOTA data framing. On a dual-CDC full Companion, the script uses that mode
 briefly for <code>ota status</code> and TempRadio commands. It then closes the CLI and
 starts <code>motatool</code>, whose existing <code>ota folder on</code> preamble switches the same
-USB interface <code>00</code> into exclusive mOTA mode. Its separate USB interface <code>02</code>
-continues to provide plaintext logging and is not a controller or source port.
-On an ESP32 Full Companion with serial folder support,
+USB interface <code>00</code> into exclusive mOTA mode. If USB logging was enabled and the
+Full Companion rebooted, its separate interface <code>02</code> continues to provide
+plaintext logging and is not a controller or source port. With default logging
+off, interface <code>02</code> is not enumerated.
+On a native-USB ESP32-S3 Full Companion with serial folder support,
 <code>motatool --companion-terminal</code> keeps the ASCII session open
 while the same link carries framed folder requests. BLE remains available.</p>
 <h2 id="destination-requirements">Destination requirements</h2>
