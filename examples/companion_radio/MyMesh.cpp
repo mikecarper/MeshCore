@@ -2,6 +2,7 @@
 
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/CompanionStatusResponse.h>
 #include <helpers/IdentityGeneration.h>
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
@@ -1163,12 +1164,18 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
       clearTerminalLogin();
     }
 #endif
-  } else if (len > 4 && // check for status response
-             pending_status &&
-             memcmp(&pending_status, contact.id.pub_key, 4) == 0 // legacy matching scheme
-                                                                 // FUTURE: tag == pending_status
-  ) {
+  } else if (mesh::companionStatusTagMatches(pending_status, tag)) {
     pending_status = 0;
+
+    // Do not expose a truncated or unrelated response as repeater statistics.
+    // The app parses at least 48 bytes and otherwise throws a RangeError.
+    if (!mesh::companionStatusResponseIsLongEnough(len)) {
+      MESH_DEBUG_PRINTLN(
+          "onContactResponse(), short status response: len=%u, expected>=%u",
+          (unsigned)len,
+          (unsigned)mesh::COMPANION_MIN_STATUS_RESPONSE_SIZE);
+      return;
+    }
 
     int i = 0;
     out_frame[i++] = PUSH_CODE_STATUS_RESPONSE;
@@ -3366,8 +3373,7 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
-        // FUTURE:  pending_status = tag;  // match this in onContactResponse()
-        memcpy(&pending_status, recipient->id.pub_key, 4); // legacy matching scheme
+        pending_status = tag; // match the reflected tag in onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
         memcpy(&out_frame[2], &tag, 4);
