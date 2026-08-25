@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <SPI.h>
 #include <Wire.h>
 
 #include "RAK3401Board.h"
@@ -51,71 +50,43 @@ void RAK3401Board::begin() {
   checkBootVoltage(&power_config);
 #endif
 
-  // Cold-start the switched auxiliary rail once. It powers the RAK13302 FEM
-  // and any fitted WisBlock peripherals, not the SX1262 core. Runtime radio
-  // retries must leave this rail up so GPS and sensors are not reset every
-  // minute.
+  // WB_IO2 controls the shared 3V3_S peripheral rail and the RAK13302 boost
+  // converter. Keep it enabled during normal operation. Cycling this rail as
+  // part of radio recovery also resets fitted GPS and sensor modules and does
+  // not provide a reliable reset of the SX1262 core.
+  pinMode(PIN_3V3_EN, OUTPUT);
+  digitalWrite(PIN_3V3_EN, HIGH);
+
+  // CSD and CPS are tied together on the RAK13302 and routed to IO3. Keep the
+  // FEM quiescent until the radio probe succeeds; enableRadioFrontend() then
+  // restores it for normal RX/TX operation.
   pinMode(SX126X_POWER_EN, OUTPUT);
   digitalWrite(SX126X_POWER_EN, LOW);
-  pinMode(PIN_3V3_EN, OUTPUT);
-  digitalWrite(PIN_3V3_EN, LOW);
-  delay(100);
-  digitalWrite(PIN_3V3_EN, HIGH);
-  delay(10);
-
-  recoverRadio();
 }
 
 bool RAK3401Board::recoverRadio() {
-  // The RAK13302 FEM/boost supply is on 3V3_S, but the SX1262 itself is on the
-  // unswitched 3V3 rail. A battery-backed radio can therefore remain asleep
-  // across MCU resets. Quiesce the frontend and bus first, then reset the
-  // radio and use Semtech's NSS/GET_STATUS wake sequence if BUSY is still
-  // asserted. Leave 3V3_S enabled here because it is shared with GPS/sensors
-  // and does not power-cycle the SX1262 core anyway.
+  // Quiesce the FEM, leave the shared peripheral rail and SPI controller
+  // alone, and pulse the SX1262's dedicated NRST pin. BUSY must fall after a
+  // physical reset before any SPI command is safe. Bounding that wait keeps a
+  // missing or disconnected RAK13302 from trapping RadioLib in initialization.
   pinMode(SX126X_POWER_EN, OUTPUT);
   digitalWrite(SX126X_POWER_EN, LOW);
 
-  if (radio_spi_initialized) {
-    SPI1.end();
-    radio_spi_initialized = false;
-  }
-
-  pinMode(P_LORA_RESET, OUTPUT);
-  digitalWrite(P_LORA_RESET, LOW);
-  pinMode(P_LORA_NSS, INPUT);
-  pinMode(P_LORA_SCLK, INPUT);
-  pinMode(P_LORA_MOSI, INPUT);
-  pinMode(P_LORA_MISO, INPUT);
-  pinMode(P_LORA_BUSY, INPUT);
-  pinMode(P_LORA_DIO_1, INPUT);
-
-  pinMode(PIN_3V3_EN, OUTPUT);
-  digitalWrite(PIN_3V3_EN, HIGH);
-  digitalWrite(P_LORA_RESET, HIGH);
-  delay(20);
-
-  SPI1.setPins(P_LORA_MISO, P_LORA_SCLK, P_LORA_MOSI);
-  SPI1.begin();
-  radio_spi_initialized = true;
   pinMode(P_LORA_NSS, OUTPUT);
   digitalWrite(P_LORA_NSS, HIGH);
   pinMode(P_LORA_BUSY, INPUT);
-  if (digitalRead(P_LORA_BUSY) == LOW) return true;
+  pinMode(P_LORA_RESET, OUTPUT);
+  digitalWrite(P_LORA_RESET, LOW);
+  // SX126x requires NRST low for at least 100 us. Keep the pulse explicit so
+  // recovery does not accidentally depend on how long GPIO setup happens to
+  // take in a particular Arduino core or optimization level.
+  delay(1);
+  digitalWrite(P_LORA_RESET, HIGH);
 
-  // SetSleep is exited by an NSS falling edge. Do not use RadioLib for this
-  // transaction: its normal pre-transfer BUSY wait is exactly what prevents
-  // a sleeping/stuck radio from receiving the wake command.
-  SPI1.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(P_LORA_NSS, LOW);
-  SPI1.transfer(0xC0);  // SX126x GET_STATUS
-  SPI1.transfer(0x00);  // NOP
-  digitalWrite(P_LORA_NSS, HIGH);
-  SPI1.endTransaction();
-
-  const uint32_t wake_started = millis();
+  const uint32_t reset_started = millis();
   while (digitalRead(P_LORA_BUSY) == HIGH) {
-    if (millis() - wake_started >= 1000) return false;
+    serviceWatchdog();
+    if (millis() - reset_started >= 100UL) return false;
     delay(1);
   }
   return true;

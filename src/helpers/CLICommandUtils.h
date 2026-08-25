@@ -554,5 +554,39 @@ inline bool parseDecimalStrict(const char* text, float& result) {
   return true;
 }
 
+// Parse a signed base-10 integer while rejecting empty input, overflow,
+// decimal/exponent syntax, and trailing junk.
+inline bool parseIntegerStrict(const char* text, int32_t& result) {
+  if (text == nullptr) return false;
+  while (*text == ' ' || *text == '\t') text++;
+
+  bool negative = false;
+  if (*text == '-' || *text == '+') {
+    negative = *text == '-';
+    text++;
+  }
+
+  const uint32_t limit = negative ? 0x80000000UL : 0x7FFFFFFFUL;
+  uint32_t value = 0;
+  bool saw_digit = false;
+  while (*text >= '0' && *text <= '9') {
+    const uint8_t digit = static_cast<uint8_t>(*text++ - '0');
+    if (value > (limit - digit) / 10UL) return false;
+    value = value * 10UL + digit;
+    saw_digit = true;
+  }
+
+  while (*text == ' ' || *text == '\t') text++;
+  if (!saw_digit || *text != 0) return false;
+  if (negative) {
+    result = value == 0x80000000UL
+        ? static_cast<int32_t>(-2147483647L - 1L)
+        : -static_cast<int32_t>(value);
+  } else {
+    result = static_cast<int32_t>(value);
+  }
+  return true;
+}
+
 }  // namespace cli
 }  // namespace mesh

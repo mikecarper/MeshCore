@@ -1511,8 +1511,8 @@ void MyMesh::dumpLogFile() {
   }
 }
 
-void MyMesh::setTxPower(int8_t power_dbm) {
-  radio_driver.setTxPower(power_dbm);
+bool MyMesh::setTxPower(int8_t power_dbm) {
+  return radio_driver.setTxPower(power_dbm);
 }
 
 bool MyMesh::setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) {

@@ -39,6 +39,22 @@ void RadioLibWrapper::begin() {
 #endif
   _radio->setPacketReceivedAction(setFlag);  // this is also SentComplete interrupt
   _radio->setPreambleLength(currentPreambleLength()); // longer preamble for lower SF improves reliability
+#if defined(LORA_FREQ) && defined(LORA_BW) && defined(LORA_SF)
+  if (!_params_valid) {
+  #ifdef LORA_CR
+    const uint8_t initial_cr = LORA_CR;
+  #else
+    const uint8_t initial_cr = 5;
+  #endif
+    cacheParams(LORA_FREQ, LORA_BW, LORA_SF, initial_cr);
+  }
+#endif
+#ifdef LORA_TX_POWER
+  if (!_dbm_valid) {
+    _cur_dbm = LORA_TX_POWER;
+    _dbm_valid = true;
+  }
+#endif
   state = STATE_IDLE;
 
   if (_board->getStartupReason() == BD_STARTUP_RX_PACKET) {  // received a LoRa packet (while in deep sleep)
@@ -69,13 +85,20 @@ uint32_t RadioLibWrapper::getRngSeed() {
   return _radio->random(0x7FFFFFFF);
 }
 
-void RadioLibWrapper::setTxPower(int8_t dbm) {
-  _cur_dbm = dbm;
-  _dbm_valid = true;
-#if defined(USE_LR2021)
-  idle();
-#endif
-  _radio->setOutputPower(dbm);
+bool RadioLibWrapper::setTxPower(int8_t dbm) {
+  const uint8_t resume_rx = beginReconfigure();
+  if (resume_rx > 1) return false;
+
+  const int16_t status = applyCachedTxPower(dbm);
+  if (status == RADIOLIB_ERR_NONE) {
+    _cur_dbm = dbm;
+    _dbm_valid = true;
+  } else {
+    MESH_DEBUG_PRINTLN("RadioLibWrapper: TX power %d rejected (%d)",
+                       (int)dbm, (int)status);
+  }
+  endReconfigure(resume_rx);
+  return status == RADIOLIB_ERR_NONE;
 }
 
 uint8_t RadioLibWrapper::beginReconfigure() {
@@ -117,7 +140,7 @@ bool RadioLibWrapper::restoreAfterDeepInit() {
         == RADIOLIB_ERR_NONE;
   }
   if (_dbm_valid) {
-    restored = _radio->setOutputPower(_cur_dbm) == RADIOLIB_ERR_NONE && restored;
+    restored = applyCachedTxPower(_cur_dbm) == RADIOLIB_ERR_NONE && restored;
   }
   if (_rx_boosted_gain_valid) {
     restored = applyRxBoostedGainMode(_cur_rx_boosted_gain) && restored;

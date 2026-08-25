@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/RadioLivenessTracker.h>
+#include <helpers/radiolib/LR2021Band.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 
 using mesh::RadioLivenessTracker;
@@ -53,6 +54,13 @@ TEST(RadioLivenessTracker, ElapsedTimeIsRolloverSafe) {
   tracker.begin(0xFFFFFF00UL);
   EXPECT_EQ(tracker.poll(0x000000FFUL, 512, 4096), RadioRecoveryAction::NONE);
   EXPECT_EQ(tracker.poll(0x00000100UL, 512, 4096), RadioRecoveryAction::SOFT);
+}
+
+TEST(LR2021Band, SelectsTheCorrectFrontEnd) {
+  EXPECT_FALSE(mesh::lr2021::isHighBand(1090.0f));
+  EXPECT_FALSE(mesh::lr2021::isHighBand(1500.0f));
+  EXPECT_TRUE(mesh::lr2021::isHighBand(1900.0f));
+  EXPECT_TRUE(mesh::lr2021::isHighBand(2400.0f));
 }
 
 int main(int argc, char** argv) {

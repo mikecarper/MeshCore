@@ -13,7 +13,6 @@
 
 class RAK3401Board : public NRF52BoardDCDC {
 protected:
-  bool radio_spi_initialized = false;
 #ifdef NRF52_POWER_MANAGEMENT
   void initiateShutdown(uint8_t reason) override;
 #endif
@@ -22,6 +21,12 @@ public:
   void begin();
   bool recoverRadio();
   void enableRadioFrontend();
+  bool supportsRadioHardReset() const override { return true; }
+  bool resetRadio() override { return recoverRadio(); }
+  bool finishRadioHardReset() override {
+    enableRadioFrontend();
+    return true;
+  }
 
   #define BATTERY_SAMPLES 8
 

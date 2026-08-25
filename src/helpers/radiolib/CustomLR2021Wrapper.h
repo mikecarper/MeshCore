@@ -8,6 +8,8 @@
 #define USE_LR2021
 #endif
 
+#include "RadioPowerLimits.h"
+
 #ifndef LR2021_RX_BOOST_LEVEL
 #define LR2021_RX_BOOST_LEVEL 7
 #endif
@@ -20,10 +22,18 @@ public:
 
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
-    bool success = ((CustomLR2021 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
-        && ((CustomLR2021 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
-        && ((CustomLR2021 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
-        && ((CustomLR2021 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
+    CustomLR2021* radio = (CustomLR2021 *)_radio;
+    if (!_board->prepareRadioFrequency(freq)) return false;
+    const int8_t requested_power = _dbm_valid ? _cur_dbm : LORA_TX_POWER;
+    const int8_t effective_power = mesh::clampLoRaTxPower(requested_power, freq);
+    // LR2021 selects its LF/HF PA from the cached frequency. Reapply power
+    // immediately after every live retune so a band crossing cannot retain the
+    // previous PA configuration.
+    bool success = radio->setFrequency(freq) == RADIOLIB_ERR_NONE
+        && radio->setOutputPower(effective_power) == RADIOLIB_ERR_NONE
+        && radio->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
+        && radio->setBandwidth(bw) == RADIOLIB_ERR_NONE
+        && radio->setCodingRate(cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf, bw)
         && applySideDetectorConfig(sf, bw);
     if (!success) return false;
@@ -32,6 +42,12 @@ protected:
     ((CustomLR2021 *)_radio)->setPreambleMillis(pm.preambleMillis);
     ((CustomLR2021 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
     return true;
+  }
+
+  int16_t applyCachedTxPower(int8_t dbm) override {
+    const float frequency = _params_valid
+        ? _cur_freq : ((CustomLR2021 *)_radio)->getFreqMHz();
+    return _radio->setOutputPower(mesh::clampLoRaTxPower(dbm, frequency));
   }
 
 public:
@@ -192,9 +208,11 @@ protected:
   }
 
   bool radioDeepInit() override {
-    return ((CustomLR2021 *)_radio)->std_init();
+    if (!prepareRadioHardReset()) return false;
+    if (!_board->prepareRadioFrequency(LORA_FREQ)) return false;
+    return ((CustomLR2021 *)_radio)->std_init() && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return true; }
+  bool supportsRadioDeepInit() const override { return supportsRadioHardResetPath(); }
 
   bool applyRxBoostedGainMode(bool en) override {
     return ((CustomLR2021 *)_radio)->setRxBoostedGainMode(en ? LR2021_RX_BOOST_LEVEL : 0)

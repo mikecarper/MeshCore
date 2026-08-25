@@ -5,6 +5,7 @@
 #include <helpers/TerminalCommandTracker.h>
 #include <helpers/TerminalDisplayFilter.h>
 #include <helpers/WiFiPowerSave.h>
+#include <helpers/radiolib/RadioPowerLimits.h>
 
 TEST(ContactListOrder, SortsFavoritesBeforeNewerNonFavorites) {
   EXPECT_LT(mesh::compareContactListOrder(0x01, 100, 0x00, 200), 0);
@@ -383,6 +384,43 @@ TEST(CLICommandUtils, RejectsNonDecimalOrOverflowValues) {
   EXPECT_FALSE(mesh::cli::parseDecimalStrict("1e3", value));
   EXPECT_FALSE(mesh::cli::parseDecimalStrict("4294967296", value));
   EXPECT_FLOAT_EQ(123.0f, value);
+}
+
+TEST(CLICommandUtils, ParsesSignedIntegersStrictly) {
+  int32_t value = 0;
+
+  EXPECT_TRUE(mesh::cli::parseIntegerStrict("22", value));
+  EXPECT_EQ(22, value);
+  EXPECT_TRUE(mesh::cli::parseIntegerStrict(" -9 ", value));
+  EXPECT_EQ(-9, value);
+  EXPECT_TRUE(mesh::cli::parseIntegerStrict("+12", value));
+  EXPECT_EQ(12, value);
+  EXPECT_TRUE(mesh::cli::parseIntegerStrict("-2147483648", value));
+  EXPECT_EQ(INT32_MIN, value);
+  EXPECT_TRUE(mesh::cli::parseIntegerStrict("2147483647", value));
+  EXPECT_EQ(INT32_MAX, value);
+}
+
+TEST(CLICommandUtils, RejectsInvalidOrOverflowingIntegers) {
+  int32_t value = 123;
+
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict(nullptr, value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("", value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("-", value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("1.0", value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("12dBm", value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("2147483648", value));
+  EXPECT_FALSE(mesh::cli::parseIntegerStrict("-2147483649", value));
+  EXPECT_EQ(123, value);
+}
+
+TEST(RadioPowerLimits, LeavesUnspecifiedBackendRangeToDriver) {
+  EXPECT_EQ(INT8_MIN, mesh::minLoRaTxPowerForFrequency(915.0f));
+  EXPECT_EQ(INT8_MAX, mesh::maxLoRaTxPowerForFrequency(915.0f));
+  EXPECT_TRUE(mesh::isLoRaTxPowerValid(INT8_MIN, 915.0f));
+  EXPECT_TRUE(mesh::isLoRaTxPowerValid(INT8_MAX, 915.0f));
+  EXPECT_FALSE(mesh::isLoRaTxPowerValid(128, 915.0f));
+  EXPECT_EQ(INT8_MAX, mesh::clampLoRaTxPower(200, 915.0f));
 }
 
 TEST(CLICommandUtils, ClassifiesStandaloneWiFiGetKeysExactly) {

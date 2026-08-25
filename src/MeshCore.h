@@ -102,6 +102,22 @@ public:
   virtual bool setLoRaFemLnaEnabled(bool enable) { return false; }
   virtual bool canControlLoRaFemLna() const { return false; }
   virtual bool isLoRaFemLnaEnabled() const { return false; }
+  // Board-level physical radio reset or power cycle. Most radios expose NRST
+  // directly and need no override. Boards that route reset through an I/O
+  // expander or a dedicated regulator use this hook so liveness recovery does
+  // not claim a hard reset that it cannot actually perform.
+  virtual bool supportsRadioHardReset() const { return false; }
+  virtual bool resetRadio() { return false; }
+  // Select board-level RF hardware for a carrier before the radio is
+  // configured. Dual-band boards use this to power the matching FEM rail.
+  virtual bool prepareRadioFrequency(float frequency) {
+    (void)frequency;
+    return true;
+  }
+  // Restore board-level hardware that must remain quiescent until the radio
+  // has been reinitialized, such as an external FEM enable. This runs only
+  // after a successful hard-reset reinitialization.
+  virtual bool finishRadioHardReset() { return true; }
   // Software-selectable external FEM transmit gain. This is not a PA power switch.
   virtual bool setLoRaFemPaGainEnabled(bool enable) { return false; }
   virtual bool canControlLoRaFemPaGain() const { return false; }

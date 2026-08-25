@@ -48,9 +48,10 @@ public:
 
 protected:
   bool radioDeepInit() override {
-    return ((CustomSX1268 *)_radio)->std_init();
+    if (!prepareRadioHardReset()) return false;
+    return ((CustomSX1268 *)_radio)->std_init() && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return true; }
+  bool supportsRadioDeepInit() const override { return supportsRadioHardResetPath(); }
 
 protected:
   bool applyRxBoostedGainMode(bool en) override {

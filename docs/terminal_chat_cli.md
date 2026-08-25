@@ -57,7 +57,9 @@ Set the LoRa frequency. Example:  set freq 915.8
 ```
 set tx {tx-power-dbm}
 ```
-Sets LoRa transmit power in dBm.
+Sets LoRa-chip transmit power in dBm. The firmware rejects values outside the
+radio/board limit; external-PA boards can have a lower input-power ceiling than
+the radio chip itself.
 
 ```
 set name {name}

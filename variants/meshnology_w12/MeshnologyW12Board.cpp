@@ -9,12 +9,10 @@ void MeshnologyW12Board::begin() {
     digitalWrite(PIN_ADC_CTRL, LOW); // Disable battery sense until required
 
     pinMode(P_LORA_LF_PA_POWER, OUTPUT);
-    digitalWrite(P_LORA_LF_PA_POWER, HIGH);   // PA_EN_M — power the GC1109 FEM
-
     pinMode(P_LORA_HF_PA_POWER, OUTPUT);
-    digitalWrite(P_LORA_HF_PA_POWER, LOW);   // PA_EN_G — disable the 2.4GHz FEM
-
-    delay(100); // give the GC1109 some time to start
+    digitalWrite(P_LORA_LF_PA_POWER, LOW);
+    digitalWrite(P_LORA_HF_PA_POWER, LOW);
+    prepareRadioFrequency(LORA_FREQ);
 
     periph_power.begin();
     esp_reset_reason_t reason = esp_reset_reason();
@@ -35,6 +33,23 @@ void MeshnologyW12Board::begin() {
 
   void MeshnologyW12Board::onAfterTransmit(void) {
     neopixelWrite(NEOPIXEL_LED, 0, 0, 0);   // turn TX neopixel off
+  }
+
+  bool MeshnologyW12Board::prepareRadioFrequency(float frequency) {
+    const bool high_band = mesh::lr2021::isHighBand(frequency);
+    if (radio_band_initialized && high_band == radio_high_band) return true;
+
+    // The W12 schematic connects PA_EN_M (GPIO4) to the GC1109 sub-GHz rail
+    // and PA_EN_G (GPIO3) to the RFX2402E 2.4 GHz rail. Keep only the selected
+    // FEM powered, and disable the old path before enabling the new one.
+    digitalWrite(P_LORA_LF_PA_POWER, LOW);
+    digitalWrite(P_LORA_HF_PA_POWER, LOW);
+    digitalWrite(high_band ? P_LORA_HF_PA_POWER : P_LORA_LF_PA_POWER, HIGH);
+    delay(100);
+
+    radio_high_band = high_band;
+    radio_band_initialized = true;
+    return true;
   }
 
   void MeshnologyW12Board::enterDeepSleep(uint32_t secs, int pin_wake_btn) {

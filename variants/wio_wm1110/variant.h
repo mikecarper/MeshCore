@@ -101,7 +101,7 @@
 
 // LR1110 specific settings
 #define LR11X0_DIO_AS_RF_SWITCH    true
-#define LR11X0_DIO3_TCXO_VOLTAGE   1.8
+#define LR11X0_DIO3_TCXO_VOLTAGE   1.6
 #define LR1110_GNSS_ANT_PIN        (37)         // P1.5
 
 // Pin aliases for LR1110 driver compatibility

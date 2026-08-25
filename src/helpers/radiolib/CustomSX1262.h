@@ -91,12 +91,6 @@ class CustomSX1262 : public SX1262 {
     #endif
   #endif
       int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo, useRegulatorLDO);
-      // if radio init fails with -707/-706, try again with tcxo voltage set to 0.0f
-      if (status == RADIOLIB_ERR_SPI_CMD_FAILED || status == RADIOLIB_ERR_SPI_CMD_INVALID) {
-        MESH_DEBUG_PRINTLN("SX1262 init failed with error %d, retrying with TCXO at 0.0V", status);
-        tcxo = 0.0f;
-        status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo, useRegulatorLDO);
-      }
       if (status != RADIOLIB_ERR_NONE) {
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);
@@ -105,8 +99,10 @@ class CustomSX1262 : public SX1262 {
 
       // RadioLib's default DIO3 TCXO delay is 5 ms and its RX duty-cycle
       // command adds another 1 ms for sleep/wake transitions. If begin()
-      // fell back to a crystal, only the fixed 1 ms transition remains.
-      _rxDutyCycleTransitionUs = tcxo > 0.0f ? 6000UL : 1000UL;
+      // fell back to a crystal, only the fixed 1 ms transition remains. Use
+      // RadioLib's resolved oscillator mode: it only falls back after reading
+      // the SX126x XOSC_START_ERR device flag, not for an arbitrary SPI error.
+      _rxDutyCycleTransitionUs = this->tcxoVoltage > 0.0f ? 6000UL : 1000UL;
     
       setCRC(1);
   
@@ -223,10 +219,10 @@ class CustomSX1262 : public SX1262 {
         return state;
       }
 
-      const unsigned long started = millis();
+      const RadioLibTime_t started = this->mod->hal->millis();
       while (isChipBusy()) {
-        yield();
-        if (millis() - started >= SX126X_TX_BUSY_TIMEOUT_MS) {
+        this->mod->hal->yield();
+        if (this->mod->hal->millis() - started >= SX126X_TX_BUSY_TIMEOUT_MS) {
           this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
           return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
         }

@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/radiolib/RadioPowerLimits.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <algorithm>
 #include <stdlib.h>  // for qsort()
@@ -4268,6 +4269,8 @@ void MyMesh::processScheduledRadioSettings() {
     // Keep level-derived RX duty-cycle windows synchronized with the newly
     // persisted SF/BW. Manual RX/sleep timings intentionally remain fixed.
     CommonCLI::recalculateRxPowerSavingFromLevel(&_prefs);
+    _prefs.tx_power_dbm = mesh::clampLoRaTxPower(
+        _prefs.tx_power_dbm, _prefs.freq);
     savePrefs();
     queueSavedRadioApply();
   }
@@ -4512,8 +4515,8 @@ void MyMesh::dumpLogFile() {
   }
 }
 
-void MyMesh::setTxPower(int8_t power_dbm) {
-  radio_driver.setTxPower(power_dbm);
+bool MyMesh::setTxPower(int8_t power_dbm) {
+  return radio_driver.setTxPower(power_dbm);
 }
 
 bool MyMesh::setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) {

@@ -295,6 +295,60 @@ transmitted. When safe, `RadioLibWrapper::resetAGC()` warm-sleeps the radio,
 returns the wrapper to idle so receive mode is re-armed, reapplies the cached RX
 boost setting, and starts a fresh noise-floor calibration.
 
+#### 3.7.1. Q: Can firmware recover an external radio whose BUSY pin is stuck high?
+**A:** Current firmware first attempts a non-destructive RX/AGC re-arm and then
+uses a physical radio reset when the board exposes one. A normal RadioLib
+reinitialization is not reported as a hard reset unless firmware can actually
+pulse NRST or cycle the radio's power rail.
+
+Most supported external-radio boards expose NRST directly. RAK3401 pulses its
+dedicated NRST while leaving the shared peripheral rail and SPI controller
+intact, and LilyGo T-Beam 1W can cycle the radio regulator. The generic Tenstar
+C3 target describes a user-wired radio and has no reset connection by default.
+For unattended recovery on that target, wire NRST to a free GPIO and override
+`P_LORA_RESET` with that GPIO in the build configuration.
+
+The SenseCAP T1000-E LR1110 path was hardware-qualified with 50 successful
+radio-only resets: 25 in continuous receive and 25 with RX power saving active.
+The saved radio tuple, TX power, RX gain, and RX power-saving configuration were
+restored after every reset, bidirectional LoRa status traffic still passed, and
+the nRF52840 uptime remained continuous.
+
+An integrated STM32WL radio has no independently resettable RF peripheral, so
+it intentionally remains on the bounded soft-recovery path. If its radio core
+cannot recover, resetting only the radio is electrically impossible; the MCU
+must be restarted.
+
+#### 3.7.2. Q: Does firmware automatically update LR1110 transceiver firmware?
+**A:** No. A transceiver update erases and rewrites the LR1110 itself, so it is
+not performed as a side effect of installing ordinary device firmware. Use the
+hardware vendor's physical-access maintenance procedure and verify the exact
+LR1110 and bootloader versions before changing them.
+
+Full remediation of
+[Semtech SEM-PSA-2026-001](https://www.semtech.com/company/security/security-bulletins/sem-psa-2026-001)
+requires LR1110 BL2 0x1001 as well as the applicable transceiver firmware. It
+is a separate two-stage maintenance procedure and is not performed
+automatically by MeshCore.
+
+#### 3.7.3. Q: How does firmware handle LR2021 low/high-band changes?
+**A:** Firmware first selects the board's matching RF path, retunes the radio,
+and then reapplies output power so the LR2021 selects the correct low- or
+high-frequency PA. It also uses the matching RF-switch mode when RX or TX is
+launched. LR2021 high-band output power is limited to 12 dBm; a lower
+board-specific limit still takes precedence.
+
+On Meshnology W12, the two external FEM supplies are mutually exclusive:
+GPIO4 powers the sub-GHz GC1109 path and GPIO3 powers the 2.4 GHz RFX2402E
+path. Both supplies are disabled before the selected one is enabled. Temporary
+radio settings preserve the saved TX power and safely clamp only the active
+band; returning to the saved settings restores its applicable power. A
+permanent frequency change clamps the saved TX power to the new band's limit.
+
+The external SX1262, SX1268, LLCC68, LR1110, and LR2021 drivers also bound the
+post-SetTx BUSY wait. A failed PA ramp therefore returns an error and can enter
+the physical-reset recovery path instead of hanging the node indefinitely.
+
 
 ### 3.8. Q: How do I make my repeater an observer on the mesh?
 **A:** The observer instruction is available here: <https://analyzer.letsmesh.net/observer/onboard>

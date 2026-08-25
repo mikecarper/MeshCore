@@ -131,9 +131,12 @@ protected:
   }
 
   bool radioDeepInit() override {
-    return _deep_init != NULL && _deep_init();
+    return _deep_init != NULL && prepareRadioHardReset() && _deep_init()
+        && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return _deep_init != NULL; }
+  bool supportsRadioDeepInit() const override {
+    return _deep_init != NULL && supportsRadioHardResetPath();
+  }
 
 public:
   uint8_t getSpreadingFactor() const override { return ((CustomLR1110 *)_radio)->getSpreadingFactor(); }

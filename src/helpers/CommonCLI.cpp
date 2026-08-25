@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
 #include "CLICommandUtils.h"
+#include "radiolib/RadioPowerLimits.h"
 #include "radiolib/LR2021SideDetectorConfig.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
@@ -1305,7 +1306,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
       memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
       _com_prefs_needs_upgrade = true;
     }
-    _prefs->tx_power_dbm = constrain(_prefs->tx_power_dbm, -9, 30);
+    _prefs->tx_power_dbm = mesh::clampLoRaTxPower(
+        _prefs->tx_power_dbm, _prefs->freq);
     _prefs->multi_acks = constrain(_prefs->multi_acks, 0, 1);
     _prefs->adc_multiplier = constrain(_prefs->adc_multiplier, 0.0f, 10.0f);
     _prefs->path_hash_mode = constrain(_prefs->path_hash_mode, 0, 2);   // NOTE: mode 3 reserved for future
@@ -3557,13 +3559,21 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->cr = cr;
       _prefs->freq = freq;
       _prefs->bw = bw;
+      const int8_t previous_power = _prefs->tx_power_dbm;
+      _prefs->tx_power_dbm = mesh::clampLoRaTxPower(
+          _prefs->tx_power_dbm, _prefs->freq);
       // Retune level-based RX powersaving to the new SF/BW. Persist only; the
       // radio itself is "reboot to apply", and begin() re-arms the timings then.
       recalcRxPowerSavingFromLevel(
           _prefs->rx_ps_level, _prefs->sf, _prefs->bw, _prefs->rx_ps_preamble, &_prefs->rx_ps_rx_us,
           &_prefs->rx_ps_sleep_us); // retune level-based timings to the loaded SF/BW
       _callbacks->savePrefs();
-      strcpy(reply, "OK - reboot to apply");
+      if (_prefs->tx_power_dbm != previous_power) {
+        sprintf(reply, "OK - reboot to apply; TX power limited to %d dBm",
+                (int)_prefs->tx_power_dbm);
+      } else {
+        strcpy(reply, "OK - reboot to apply");
+      }
       appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
     } else {
       strcpy(reply, "Error, invalid radio params");
@@ -3974,17 +3984,36 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     }
   } else if (memcmp(config, "tx ", 3) == 0) {
-    _prefs->tx_power_dbm = atoi(&config[3]);
-    savePrefs();
-    _callbacks->setTxPower(_prefs->tx_power_dbm);
-    strcpy(reply, "OK");
+    int32_t power = 0;
+    const int8_t minimum = mesh::minLoRaTxPowerForFrequency(_prefs->freq);
+    const int8_t maximum = mesh::maxLoRaTxPowerForFrequency(_prefs->freq);
+    if (!mesh::cli::parseIntegerStrict(&config[3], power)) {
+      strcpy(reply, "Error: invalid TX power");
+    } else if (!mesh::isLoRaTxPowerValid(power, _prefs->freq)) {
+      sprintf(reply, "Error: TX power range is %d to %d dBm",
+              (int)minimum, (int)maximum);
+    } else if (!_callbacks->setTxPower(static_cast<int8_t>(power))) {
+      strcpy(reply, "Error: radio busy or TX power rejected");
+    } else {
+      _prefs->tx_power_dbm = static_cast<int8_t>(power);
+      savePrefs();
+      strcpy(reply, "OK");
+    }
   } else if (sender_timestamp == 0 && memcmp(config, "freq ", 5) == 0) {
     float freq = 0.0f;
     if (mesh::cli::parseDecimalStrict(&config[5], freq)
         && freq >= 150.0f && freq <= 2500.0f) {
+      const int8_t previous_power = _prefs->tx_power_dbm;
       _prefs->freq = freq;
+      _prefs->tx_power_dbm = mesh::clampLoRaTxPower(
+          _prefs->tx_power_dbm, _prefs->freq);
       savePrefs();
-      strcpy(reply, "OK - reboot to apply");
+      if (_prefs->tx_power_dbm != previous_power) {
+        sprintf(reply, "OK - reboot to apply; TX power limited to %d dBm",
+                (int)_prefs->tx_power_dbm);
+      } else {
+        strcpy(reply, "OK - reboot to apply");
+      }
     } else {
       strcpy(reply, "Error, invalid frequency");
     }

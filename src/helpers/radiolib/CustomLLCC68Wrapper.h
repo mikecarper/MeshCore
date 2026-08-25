@@ -46,9 +46,10 @@ public:
 
 protected:
   bool radioDeepInit() override {
-    return ((CustomLLCC68 *)_radio)->std_init();
+    if (!prepareRadioHardReset()) return false;
+    return ((CustomLLCC68 *)_radio)->std_init() && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return true; }
+  bool supportsRadioDeepInit() const override { return supportsRadioHardResetPath(); }
 
 protected:
   bool applyRxBoostedGainMode(bool en) override {

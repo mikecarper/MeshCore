@@ -20,9 +20,9 @@ RAK3401Board board;
   #endif
 #endif
 
-// The external WisBlock radio has its own SPI interface in variant.h. Keep it
-// off the generic high-speed SPI/SPIM3 instance so other SPI consumers cannot
-// leave RadioLib talking on stale pins after a warm reset or recovery attempt.
+// The RAK13302 is wired to the second WisBlock SPI controller. Keep the same
+// controller instance for startup and watchdog recovery; resetting the radio
+// must not replace or tear down the SPI object used by its Module.
 RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, SPI1);
 
 WRAPPER_CLASS radio_driver(radio, board);
@@ -41,29 +41,30 @@ AutoDiscoverRTCClock rtc_clock(fallback_clock);
 static bool target_radio_available = false;
 
 bool radio_init() {
-  // BUSY is authoritative on SX126x. If reset plus a direct NSS wake cannot
-  // release it, do not enter RadioLib's much longer pre-transfer timeout; the
-  // application can remain manageable and retry this inexpensive probe later.
+  rtc_clock.begin(Wire);
+  // A successful physical reset proves that the external SX1262 can release
+  // BUSY before RadioLib is allowed to issue SPI commands. This also prevents
+  // a missing RAK13302 from turning an initialization retry into a watchdog
+  // reset loop.
   if (!board.recoverRadio()) {
     target_radio_available = false;
+    mesh::usbLoggingPort().println(
+        "ERROR: RAK13302 BUSY stayed high after reset; check module seating and power");
     return false;
   }
 
-  rtc_clock.begin(Wire);
   if (radio.std_init(&SPI1)) {
     target_radio_available = true;
     board.enableRadioFrontend();
     return true;
   }
 
-  // A warm MCU reset does not remove power from the external RAK13300/RAK13302
-  // SX1262. If its ordinary NRESET probe fails, perform a forced wake before
-  // letting the application apply its normal retry policy.
+  // Retry once after another physical reset. Keep the shared GPS/sensor rail
+  // and the SPI controller instance intact throughout recovery.
   if (!board.recoverRadio()) {
     target_radio_available = false;
     return false;
   }
-  rtc_clock.begin(Wire);
   if (!radio.std_init(&SPI1)) {
     target_radio_available = false;
     return false;

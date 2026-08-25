@@ -150,8 +150,13 @@ protected:
   }
 
   bool radioDeepInit() override {
-    // std_init() re-runs RadioLib begin(), which starts with a hardware reset
-    // via NRST - the only way out of a hard-locked chip (BUSY stuck high).
+    // A board hook takes precedence over direct NRST because it may also need
+    // to recover a regulator, SPI bus, or I/O expander. With neither mechanism
+    // available, do not report a normal re-init as a successful hard reset.
+    if (!prepareRadioHardReset()) return false;
+
+    // std_init() re-runs RadioLib begin(). It pulses a direct NRST itself;
+    // expander-reset boards enter here with the radio already reset.
     bool success = ((CustomSX1262 *)_radio)->std_init();
 #if defined(TBEAM_1W)
     // std_init() restores RadioLib's default RXEN table. Reapply the T-Beam
@@ -161,9 +166,11 @@ protected:
           _board->isLoRaFemLnaEnabled());
     }
 #endif
-    return success;
+    return success && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return true; }
+  bool supportsRadioDeepInit() const override {
+    return supportsRadioHardResetPath();
+  }
 
 protected:
   bool applyRxBoostedGainMode(bool en) override {

@@ -2,6 +2,11 @@
 
 #include <RadioLib.h>
 #include "MeshCore.h"
+#include "LR2021Band.h"
+
+#ifndef LR2021_TX_BUSY_TIMEOUT_MS
+#define LR2021_TX_BUSY_TIMEOUT_MS 1000UL
+#endif
 
 class CustomLR2021 : public LR2021 {
   uint32_t _preambleMillis = 66;
@@ -18,22 +23,28 @@ class CustomLR2021 : public LR2021 {
     }
   }
 
+  uint8_t rfSwitchRxMode() const {
+    return mesh::lr2021::isHighBand(freqMHz) ? LR2021::MODE_RX_HF : LR2021::MODE_RX;
+  }
+
+  uint8_t rfSwitchTxMode() const {
+    return mesh::lr2021::isHighBand(freqMHz) ? LR2021::MODE_TX_HF : LR2021::MODE_TX;
+  }
+
   public:
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
 
-    bool std_init(SPIClass* spi = NULL)
-    {
-
+    bool std_init(SPIClass* spi = NULL) {
   #ifdef LR2021_TCXO_VOLTAGE
-      float tcxo = LR2021_TCXO_VOLTAGE;
+      const float tcxo = LR2021_TCXO_VOLTAGE;
   #else
-      float tcxo = 1.6f;
+      const float tcxo = 1.6f;
   #endif
 
   #ifdef LORA_CR
-      uint8_t cr = LORA_CR;
+      const uint8_t cr = LORA_CR;
   #else
-      uint8_t cr = 5;
+      const uint8_t cr = 5;
   #endif
 
   #if defined(P_LORA_SCLK)
@@ -51,27 +62,25 @@ class CustomLR2021 : public LR2021 {
       if (spi) spi->begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI);
     #endif
   #endif
-      int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
-      // if radio init fails with -707/-706, try again with tcxo voltage set to 0.0f
-      if (status == RADIOLIB_ERR_SPI_CMD_FAILED || status == RADIOLIB_ERR_SPI_CMD_INVALID) {
-        tcxo = 0.0f;
-        status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
-      }
+      int16_t status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr,
+                             RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE,
+                             LORA_TX_POWER, 16, tcxo);
       if (status != RADIOLIB_ERR_NONE) {
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
 
-      setCRC(2);
-      explicitHeader();
+      status = setCRC(2);
+      if (status != RADIOLIB_ERR_NONE) return false;
+      status = explicitHeader();
+      if (status != RADIOLIB_ERR_NONE) return false;
 
     #ifdef LR2021_RX_BOOSTED_GAIN
       setRxBoostedGainMode(LR2021_RX_BOOSTED_GAIN);
     #endif
 
-      // LR2021::begin() performs a hardware reset. Preserve the board-specific
-      // DIO/FEM routing across watchdog and SPI-timeout recovery resets.
+      // begin() resets the radio, including its DIO-controlled RF routing.
       restoreRfSwitchTable();
 
       return true;  // success
@@ -107,6 +116,39 @@ class CustomLR2021 : public LR2021 {
 
     bool getRxBoostedGainMode() const { return _rx_boosted; }
     float getBandwidthKhz() const { return bandwidthKhz; }
+
+    int16_t launchMode() override {
+      const bool transmitting = this->stagedMode == RADIOLIB_RADIO_MODE_TX;
+      int16_t state;
+      if (this->stagedMode == RADIOLIB_RADIO_MODE_RX) {
+        this->mod->setRfSwitchState(rfSwitchRxMode());
+        state = this->setRx(this->rxTimeout);
+      } else if (transmitting) {
+        this->mod->setRfSwitchState(rfSwitchTxMode());
+        state = this->setTx(RADIOLIB_LR2021_TX_TIMEOUT_NONE);
+      } else {
+        return RADIOLIB_ERR_UNSUPPORTED;
+      }
+
+      if (state != RADIOLIB_ERR_NONE) {
+        this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+        return state;
+      }
+
+      if (transmitting) {
+        const RadioLibTime_t started = this->mod->hal->millis();
+        while (this->mod->hal->digitalRead(this->mod->getGpio())) {
+          this->mod->hal->yield();
+          if (this->mod->hal->millis() - started >= LR2021_TX_BUSY_TIMEOUT_MS) {
+            this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+            return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+          }
+        }
+      }
+
+      this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+      return RADIOLIB_ERR_NONE;
+    }
 
     bool isChipBusy() {
       uint32_t busy = this->mod->getGpio();

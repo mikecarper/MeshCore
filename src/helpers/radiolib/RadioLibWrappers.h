@@ -78,6 +78,22 @@ protected:
   unsigned long _nf_calib_deadline;   // abort window if the batch can't complete
   unsigned long _nf_sample_from;      // no samples before this (RX entry settle)
 
+  static constexpr bool hasDirectRadioResetPin() {
+#if defined(P_LORA_RESET)
+    return P_LORA_RESET != RADIOLIB_NC;
+#else
+    return false;
+#endif
+  }
+  bool prepareRadioHardReset() {
+    if (_board->supportsRadioHardReset()) return _board->resetRadio();
+    // A direct NRST is pulsed by the RadioLib begin() call that follows.
+    return hasDirectRadioResetPin();
+  }
+  bool supportsRadioHardResetPath() const {
+    return hasDirectRadioResetPin() || _board->supportsRadioHardReset();
+  }
+
   void idle() override;
   void startRecv() override;
   void rxPsWatchdogCheck();
@@ -107,6 +123,9 @@ protected:
   virtual bool radioDeepInit() { return false; }
   virtual bool supportsRadioDeepInit() const { return false; }
   virtual bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) = 0;
+  virtual int16_t applyCachedTxPower(int8_t dbm) {
+    return _radio->setOutputPower(dbm);
+  }
   virtual bool applyRxBoostedGainMode(bool) { return false; }
   // 0 = reconfigure from idle, 1 = resume RX afterwards, 2 = currently busy.
   uint8_t beginReconfigure();
@@ -165,7 +184,7 @@ public:
   bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
                  const uint32_t* rx_ps_timings = NULL);
   uint32_t getRngSeed();
-  void setTxPower(int8_t dbm);
+  bool setTxPower(int8_t dbm);
 
   virtual float getCurrentRSSI() =0;
   virtual uint8_t getSpreadingFactor() const { return LORA_SF; }

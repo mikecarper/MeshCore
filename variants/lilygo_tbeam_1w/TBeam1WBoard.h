@@ -20,7 +20,7 @@ class CustomSX1262Wrapper;
 //
 // Control signals:
 //   - LDO_EN (GPIO 40): HIGH enables LDO -> powers SX1262 + LNA
-//   - TCXO_EN (DIO3):   HIGH enables TCXO (set to 1.8V per Meshtastic)
+//   - TCXO_EN (DIO3):   3.0 V (XY16P35 specifies 2.85-3.15 V)
 //   - CTL (GPIO 21):    HIGH=RX (LNA on), LOW=TX (LNA off)
 //   - DIO2:             AUTO via SX126X_DIO2_AS_RF_SWITCH (TX path)
 //
@@ -44,6 +44,11 @@ public:
   const char* getManufacturerName() const override;
   void powerOff() override;
   void powerCycleRadio();
+  bool supportsRadioHardReset() const override { return true; }
+  bool resetRadio() override {
+    powerCycleRadio();
+    return true;
+  }
 
   void attachRadioDriver(CustomSX1262Wrapper* driver);
   bool setLoRaFemLnaEnabled(bool enable) override;

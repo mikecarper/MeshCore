@@ -672,13 +672,21 @@ minimum and return to it exactly when it is safe.
 - `set tx <dbm>`
 
 **Parameters:**
-- `dbm`: Power level in dBm (1-22)
+- `dbm`: Requested radio-chip power in dBm. The valid range depends on the
+  radio family, selected PA path, and any board-specific external-PA limit.
 
 **Set by build flag:** `LORA_TX_POWER`
 
 **Default:** Varies by board
 
 **Notes:** This setting only controls the power level of the LoRa chip. Some nodes have an additional power amplifier stage which increases the total output. Refer to the node's manual for the correct setting to use. **Setting a value too high may violate the laws in your country.**
+
+The command strictly rejects malformed values and saves the new preference
+only after the active radio driver accepts it. On LR2021, the chip range is
+`-9` to `22` dBm below 1500 MHz and `-19` to `12` dBm above 1500 MHz. A lower
+board-specific external-PA limit still takes precedence. A saved profile is
+clamped to the applicable limit when its frequency changes; temporary radio
+settings use a safe effective power without replacing the saved preference.
 
 ---
 

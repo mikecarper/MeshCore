@@ -2,6 +2,10 @@
 
 #include <RadioLib.h>
 
+#ifndef SX126X_TX_BUSY_TIMEOUT_MS
+#define SX126X_TX_BUSY_TIMEOUT_MS 1000UL
+#endif
+
 class CustomLLCC68 : public LLCC68 {
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
@@ -45,11 +49,6 @@ class CustomLLCC68 : public LLCC68 {
     #endif
   #endif
       int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
-      // if radio init fails with -707/-706, try again with tcxo voltage set to 0.0f
-      if (status == RADIOLIB_ERR_SPI_CMD_FAILED || status == RADIOLIB_ERR_SPI_CMD_INVALID) {
-        tcxo = 0.0f;
-        status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
-      }
       if (status != RADIOLIB_ERR_NONE) {
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);
@@ -79,6 +78,31 @@ class CustomLLCC68 : public LLCC68 {
 
     return true;  // success
   }
+
+    int16_t launchMode() override {
+      if (this->stagedMode != RADIOLIB_RADIO_MODE_TX) {
+        return LLCC68::launchMode();
+      }
+
+      this->mod->setRfSwitchState(this->txMode);
+      int16_t state = this->setTx(RADIOLIB_SX126X_TX_TIMEOUT_NONE);
+      if (state != RADIOLIB_ERR_NONE) {
+        this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+        return state;
+      }
+
+      const RadioLibTime_t started = this->mod->hal->millis();
+      while (this->mod->hal->digitalRead(this->mod->getGpio())) {
+        this->mod->hal->yield();
+        if (this->mod->hal->millis() - started >= SX126X_TX_BUSY_TIMEOUT_MS) {
+          this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+          return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+        }
+      }
+
+      this->stagedMode = RADIOLIB_RADIO_MODE_NONE;
+      return RADIOLIB_ERR_NONE;
+    }
 
     int16_t startReceive() override {
       return LLCC68::startReceive(

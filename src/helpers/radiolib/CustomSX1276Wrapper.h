@@ -45,7 +45,8 @@ protected:
   }
 
   bool radioDeepInit() override {
-    return ((CustomSX1276 *)_radio)->std_init();
+    if (!prepareRadioHardReset()) return false;
+    return ((CustomSX1276 *)_radio)->std_init() && _board->finishRadioHardReset();
   }
-  bool supportsRadioDeepInit() const override { return true; }
+  bool supportsRadioDeepInit() const override { return supportsRadioHardResetPath(); }
 };
