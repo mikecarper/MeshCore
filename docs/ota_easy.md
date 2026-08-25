@@ -47,6 +47,25 @@ reboots. Current full-parser firmware also accepts `normalradio`, which cancels 
 restores the saved tuple after replying on the current channel. This frequency is intended for North American
 configurations. Confirm that it is permitted in your location and change it when necessary.
 
+At SF5/BW250, an SX1262+TCXO destination can keep RXPS enabled only when it and
+every sender that can reach it (controller, source, and relays) follow the
+v1.17.1.5-or-newer adaptive-preamble contract. The qualified destination
+boundary is effective level 8, preamble 64 and `1252 / 6424 us`. For manual
+setup, save `set radio.rxps level 8 preamble 32` before entering TempRadio; the
+`32` is a conservative saved timing assumption and current firmware selects
+the real 64-symbol wire preamble when it retunes the temporary radio. For an
+older, unknown, or mixed-version path, use
+`set radio.rxps off` for the maintenance window. First record
+`get radio.rxps.config`; after `normalradio`, restore a reported level with
+`set radio.rxps level N preamble P` (omit `preamble P` when `P` is `0`). A
+legacy node returns only on/off and periods, which can be restored with
+`set radio.rxps RX_US SLEEP_US`. The scripted runner performs the version
+checks, temporary change, verification, and restoration automatically while
+preserving automatic retuning. SF5/BW500 is too fast for RXPS even with a
+64-symbol preamble, so current firmware selects 128 and uses the qualified
+level-8 `626 / 6398 us` timing when every participant supports the adaptive
+contract.
+
 ## Before you start
 
 Both paths require:

@@ -63,8 +63,6 @@ public:
    * \returns true if the radio accepted the coding rate.
   */
   virtual bool setCodingRate(uint8_t cr) { return false; }
-  virtual uint16_t getDefaultPreambleLength() const { return 0; }
-  virtual bool setPreambleLength(uint16_t len) { return false; }
 
   /**
    * \returns true if the previous 'startSendRaw()' completed successfully.
@@ -239,7 +237,6 @@ class Dispatcher {
 #else
   RadioLivenessTracker radio_liveness;
 #endif
-  uint16_t outbound_restore_preamble_len;
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
   unsigned long cad_busy_start;
@@ -280,7 +277,6 @@ protected:
     outbound_radio_retry_at = 0;
     outbound_radio_retry_pending = false;
     outbound_radio_retry_used = false;
-    outbound_restore_preamble_len = 0;
     outbound_restore_cr = 0;
     total_air_time = rx_air_time = 0;
     next_tx_time = ms.getMillis();

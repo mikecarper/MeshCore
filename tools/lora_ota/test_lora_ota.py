@@ -163,6 +163,130 @@ class FormatTests(unittest.TestCase):
         self.assertGreater(ota.parse_version("v1.10.0"), ota.parse_version("v1.9.9"))
         self.assertIsNone(ota.parse_version("release-one"))
 
+    def test_adaptive_preamble_tuples_require_current_participants(self) -> None:
+        for temp_values, expected_profile in (
+            ((909.95, 250.0, 5, 5, 120), ota.RxpsTempProfile(8, 64)),
+            ((909.95, 500.0, 6, 5, 120), ota.RxpsTempProfile(8, 64)),
+            ((909.95, 500.0, 5, 5, 120), ota.RxpsTempProfile(8, 128)),
+        ):
+            with self.subTest(temp_values=temp_values):
+                self.assertIsNone(
+                    ota.select_rxps_temp_profile(
+                        "v1.17.1.4",
+                        temp_values,
+                        all_participants_support_adaptive_preamble=True,
+                    )
+                )
+                self.assertIsNone(
+                    ota.select_rxps_temp_profile(
+                        "v1.17.1.5",
+                        temp_values,
+                        all_participants_support_adaptive_preamble=False,
+                    )
+                )
+                self.assertEqual(
+                    ota.select_rxps_temp_profile(
+                        "v1.17.1.5",
+                        temp_values,
+                        all_participants_support_adaptive_preamble=True,
+                    ),
+                    expected_profile,
+                )
+
+    def test_rxps_temp_profiles_cover_only_qualified_fast_tuples(self) -> None:
+        qualified = (
+            ((909.95, 500.0, 5, 5, 120), 8, 128),
+            ((909.95, 500.0, 6, 5, 120), 8, 64),
+            ((909.95, 500.0, 7, 5, 120), 7, 32),
+            ((909.95, 250.0, 6, 5, 120), 7, 32),
+            ((909.95, 125.0, 5, 5, 120), 7, 32),
+            ((909.95, 62.5, 5, 5, 120), 10, 16),
+        )
+        for values, level, preamble in qualified:
+            with self.subTest(values=values):
+                profile = ota.select_rxps_temp_profile(
+                    "v1.17.1.5",
+                    values,
+                    all_participants_support_adaptive_preamble=True,
+                )
+                self.assertIsNotNone(profile)
+                self.assertEqual(profile.boundary_level, level)
+                self.assertEqual(profile.boundary_preamble, preamble)
+
+        self.assertIsNone(
+            ota.select_rxps_temp_profile(
+                "v1.17.1.5",
+                (909.95, 500.0, 8, 5, 120),
+                all_participants_support_adaptive_preamble=True,
+            )
+        )
+
+    def test_unknown_participant_version_fails_closed(self) -> None:
+        current = ota.RXPS_ADAPTIVE_PREAMBLE_MIN_VERSION
+        self.assertTrue(
+            ota.participants_support_adaptive_preamble(
+                {"destination": current, "source": current}
+            )
+        )
+        self.assertFalse(
+            ota.participants_support_adaptive_preamble(
+                {"destination": current, "source": None}
+            )
+        )
+
+    def test_rxps_config_parser_keeps_legacy_compatibility(self) -> None:
+        self.assertEqual(
+            ota.parse_rxps_settings("> on,65625,60000", "remote"),
+            ota.RxpsSettings(True, 65625, 60000),
+        )
+        self.assertEqual(
+            ota.parse_rxps_settings(
+                "> on,level=8,preamble=16,rx=65625,sleep=60000",
+                "remote",
+            ),
+            ota.RxpsSettings(True, 65625, 60000, 8, 16),
+        )
+        with self.assertRaisesRegex(ota.OtaError, "RXPS state"):
+            ota.parse_rxps_settings("> on,31,60000", "remote")
+        self.assertEqual(
+            ota.parse_rxps_settings(
+                "> on,level=8,preamble=0,rx=626,sleep=6398",
+                "remote",
+            ),
+            ota.RxpsSettings(True, 626, 6398, 8, 0),
+        )
+        self.assertEqual(
+            ota.parse_rxps_settings(
+                "radio.rxps.config on,level=8,preamble=16,"
+                "rx=65625,sleep=60000",
+                "local",
+            ),
+            ota.RxpsSettings(True, 65625, 60000, 8, 16),
+        )
+
+    def test_rxps_reader_falls_back_to_legacy_query(self) -> None:
+        class LegacyController:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                if command == "get radio.rxps.config":
+                    return "Unknown command"
+                return "> on,65625,60000"
+
+        controller = LegacyController()
+        self.assertEqual(
+            ota.read_remote_rxps(controller, "remote"),
+            ota.RxpsSettings(True, 65625, 60000),
+        )
+        self.assertEqual(
+            controller.commands,
+            ["get radio.rxps.config", "get radio.rxps"],
+        )
+
     def test_temp_radio_accepts_only_cli_bandwidths(self) -> None:
         self.assertEqual(
             ota.parse_temp_radio("909.950,250,5,5,120"),
@@ -177,6 +301,34 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(generic.temp_radio, "909.950,250,5,5,120")
         self.assertEqual(chain.temp_radio, "909.950,250,5,5,120")
         self.assertFalse(chain.legacy_full_airtime)
+
+    def test_airtime_estimator_uses_forward_preamble_contract(self) -> None:
+        expected_preambles = (
+            (500.0, 7, 32),
+            (250.0, 6, 32),
+            (125.0, 5, 32),
+            (62.5, 5, 32),
+            (250.0, 5, 64),
+            (500.0, 6, 64),
+            (500.0, 5, 128),
+            (125.0, 9, 16),
+        )
+        for bandwidth, sf, preamble in expected_preambles:
+            with self.subTest(bandwidth=bandwidth, sf=sf):
+                self.assertEqual(
+                    ota.wire_preamble_symbols(bandwidth, sf),
+                    preamble,
+                )
+                self.assertEqual(
+                    ota.lora_airtime_seconds(184, bandwidth, sf, 5),
+                    ota.lora_airtime_seconds(
+                        184,
+                        bandwidth,
+                        sf,
+                        5,
+                        preamble_symbols=preamble,
+                    ),
+                )
 
     def test_rak_chain_full_airtime_is_explicit(self) -> None:
         args = rak_chain.build_parser().parse_args(["--legacy-full-airtime"])
@@ -1812,25 +1964,49 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
             self.rxps_enabled = True
             self.rxps_rx_us = 65625
             self.rxps_sleep_us = 60000
+            self.rxps_level = 8
+            self.rxps_preamble = 16
             self.powersaving_enabled = True
             self.rxdelay = "2.0"
             self.airtime_factor = "1.0"
             self.ota_hops = 3
             self.commands: list[str] = []
 
-        def remote_command(self, _target: str, command: str) -> str:
+        def remote_command(
+            self, _target: str, command: str, **_kwargs: object
+        ) -> str:
             self.commands.append(command)
-            if command == "get radio.rxps":
+            if command == "get radio.rxps.config":
                 state = "on" if self.rxps_enabled else "off"
-                return f"> {state},{self.rxps_rx_us},{self.rxps_sleep_us}"
+                return (
+                    f"> {state},level={self.rxps_level},"
+                    f"preamble={self.rxps_preamble},rx={self.rxps_rx_us},"
+                    f"sleep={self.rxps_sleep_us}"
+                )
             if command == "set radio.rxps off":
                 self.rxps_enabled = False
                 return f"OK - off,{self.rxps_rx_us},{self.rxps_sleep_us}"
+            if command.startswith("set radio.rxps level "):
+                parts = command.split()
+                level = int(parts[3])
+                preamble = int(parts[5]) if len(parts) == 6 else 0
+                self.rxps_enabled = True
+                self.rxps_level = level
+                self.rxps_preamble = preamble
+                if (level, preamble) == (8, 32):
+                    self.rxps_rx_us = 1252
+                    self.rxps_sleep_us = 6424
+                return (
+                    f"OK - level {level},on,{self.rxps_rx_us},"
+                    f"{self.rxps_sleep_us},preamble={preamble}"
+                )
             if command.startswith("set radio.rxps "):
                 _set, _key, rx_us, sleep_us = command.split()
                 self.rxps_enabled = True
                 self.rxps_rx_us = int(rx_us)
                 self.rxps_sleep_us = int(sleep_us)
+                self.rxps_level = 0
+                self.rxps_preamble = 0
                 return f"OK - on,{rx_us},{sleep_us}"
             if command == "powersaving":
                 return "on" if self.powersaving_enabled else "off"
@@ -1875,6 +2051,8 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
         self.assertTrue(controller.rxps_enabled)
         self.assertEqual(controller.rxps_rx_us, 65625)
         self.assertEqual(controller.rxps_sleep_us, 60000)
+        self.assertEqual(controller.rxps_level, 8)
+        self.assertEqual(controller.rxps_preamble, 16)
         self.assertTrue(controller.powersaving_enabled)
         self.assertEqual(controller.rxdelay, "2.0")
         self.assertEqual(controller.airtime_factor, "1.0")
@@ -1888,6 +2066,49 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
 
         self.assertEqual(controller.airtime_factor, "1.0")
         self.assertNotIn("set af 0", controller.commands)
+
+    def test_guardrails_keep_rxps_for_current_qualified_participants(self) -> None:
+        controller = self.Controller()
+        saved = rak_chain.read_target_transfer_settings(controller, "remote")
+
+        rak_chain.enforce_transfer_guardrails(
+            controller,
+            "remote",
+            saved=saved,
+            current_version="v1.17.1.5",
+            temp_values=(909.95, 250.0, 5, 5, 120),
+            all_participants_support_adaptive_preamble=True,
+        )
+
+        self.assertTrue(controller.rxps_enabled)
+        self.assertEqual(controller.rxps_rx_us, saved.rxps_rx_us)
+        self.assertEqual(controller.rxps_sleep_us, saved.rxps_sleep_us)
+        self.assertNotIn(
+            "set radio.rxps level 8 preamble 32", controller.commands
+        )
+        self.assertFalse(controller.powersaving_enabled)
+        self.assertEqual(controller.rxdelay, "0")
+
+    def test_guardrails_restore_saved_rxps_preference_on_resume(self) -> None:
+        controller = self.Controller()
+        saved = rak_chain.read_target_transfer_settings(controller, "remote")
+        controller.rxps_enabled = False
+
+        rak_chain.enforce_transfer_guardrails(
+            controller,
+            "remote",
+            saved=saved,
+            current_version="v1.17.1.5",
+            temp_values=(909.95, 250.0, 5, 5, 120),
+            all_participants_support_adaptive_preamble=True,
+        )
+
+        self.assertTrue(controller.rxps_enabled)
+        self.assertEqual(controller.rxps_level, saved.rxps_level)
+        self.assertEqual(controller.rxps_preamble, saved.rxps_preamble)
+        self.assertIn(
+            "set radio.rxps level 8 preamble 16", controller.commands
+        )
 
     def test_original_settings_are_persisted_for_resume(self) -> None:
         controller = self.Controller()

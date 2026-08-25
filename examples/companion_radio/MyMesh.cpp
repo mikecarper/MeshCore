@@ -4053,12 +4053,12 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
     preamble = 0;
     level_requested = true;
   } else if (sscanf(value, "%lu %lu %c", &parsed_rx, &parsed_sleep, &extra) == 2) {
-    if (parsed_rx < RX_POWERSAVING_MIN_PERIOD_US
+    if (parsed_rx < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
         || parsed_rx > RX_POWERSAVING_MAX_PERIOD_US
-        || parsed_sleep < RX_POWERSAVING_MIN_PERIOD_US
+        || parsed_sleep < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
         || parsed_sleep > RX_POWERSAVING_MAX_PERIOD_US) {
       snprintf(reply, 160, "Error: RX/SLEEP must be %lu-%lu us",
-               (unsigned long)RX_POWERSAVING_MIN_PERIOD_US,
+               (unsigned long)RX_POWERSAVING_MIN_MANUAL_PERIOD_US,
                (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
       return false;
     }
@@ -4086,7 +4086,7 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
       && (!isValidRxPowerSavingPeriod(rx_us)
           || !isValidRxPowerSavingPeriod(sleep_us))) {
     snprintf(reply, 160, "Error: RX/SLEEP must be %lu-%lu us",
-             (unsigned long)RX_POWERSAVING_MIN_PERIOD_US,
+             (unsigned long)RX_POWERSAVING_MIN_MANUAL_PERIOD_US,
              (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
     return false;
   }
@@ -4137,7 +4137,7 @@ void MyMesh::appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
   }
 
   const uint8_t requested_preamble = _prefs.rx_ps_preamble == 0
-      ? rxPowerSavingPreambleForSF(sf) : _prefs.rx_ps_preamble;
+      ? rxPowerSavingPreambleForParams(sf, bw) : _prefs.rx_ps_preamble;
   if (effective_level == _prefs.rx_ps_level
       && effective_preamble == requested_preamble) {
     return;
@@ -4990,6 +4990,18 @@ void MyMesh::handleTerminalCommand(char* command) {
     char reply[160];
     applyAndSavePowerSaving(command + 12, reply);
     terminalOutput().printf("  %s\r\n", reply);
+  } else if (strcmp(command, "get radio.rxps.config") == 0) {
+    if (!radio_driver.supportsRxPowerSaving()) {
+      terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
+    } else {
+      terminalOutput().printf(
+          "  radio.rxps.config %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
+          _prefs.rx_powersaving_enabled ? "on" : "off",
+          (unsigned)_prefs.rx_ps_level,
+          (unsigned)_prefs.rx_ps_preamble,
+          (unsigned long)_prefs.rx_ps_rx_us,
+          (unsigned long)_prefs.rx_ps_sleep_us);
+    }
   } else if (strcmp(command, "get radio.rxps") == 0) {
     if (!radio_driver.supportsRxPowerSaving()) {
       terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
@@ -5233,6 +5245,7 @@ void MyMesh::handleTerminalCommand(char* command) {
 #endif
 #endif
     terminalOutput().print("  get radio.rxps\r\n");
+    terminalOutput().print("  get radio.rxps.config\r\n");
     terminalOutput().print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
     terminalOutput().print("  get radio.rxgain\r\n");
     terminalOutput().print("  set radio.rxgain <on|off>\r\n");

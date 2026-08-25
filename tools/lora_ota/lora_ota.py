@@ -77,7 +77,17 @@ INSTALL_RECONCILE_WAIT_SECONDS = 20
 DEFAULT_RELAY_TX_DELAY = 0.3
 RELAY_TIMING_COMMANDS_PER_RELAY = 12
 RELAY_TIMING_RECOVERY_FILE = "relay-timing-settings.json"
+TARGET_RXPS_RECOVERY_FILE = "target-rxps-settings.json"
 MIN_MESHCLI_VERSION = (1, 6, 0)
+# v1.17.1.5 is the first release-version contract in which every packet,
+# including retries, uses the same tuple-selected physical preamble: normally
+# 32 symbols at SF5-SF8, then 64 or 128 only where each shorter choice cannot
+# make RXPS viable. Radio changes also safely retune a saved level-based RXPS
+# preference. Older or unparseable versions are deliberately treated as legacy.
+RXPS_ADAPTIVE_PREAMBLE_MIN_VERSION = 0x01110105
+RXPS_MIN_PERIOD_US = 32
+RXPS_MAX_PERIOD_US = 30_000_000
+RXPS_WIRE_TRANSITION_US = 6_000
 
 # This module is also imported by the pinned RAK3401 chain runner and by the
 # offline test suite. Keep diagnostics disabled until either CLI main enables
@@ -201,6 +211,21 @@ class RelayTimingSettings:
     txdelay: float
 
 
+@dataclass(frozen=True)
+class RxpsSettings:
+    enabled: bool
+    rx_us: int
+    sleep_us: int
+    level: int | None = None
+    preamble: int | None = None
+
+
+@dataclass(frozen=True)
+class RxpsTempProfile:
+    boundary_level: int
+    boundary_preamble: int
+
+
 def prompt_after_transmission_failure(
     label: str,
     error: TransmissionError,
@@ -318,15 +343,80 @@ def adaptive_poll_ceiling(baseline_seconds: float) -> float:
     return max(baseline_seconds, baseline_seconds * ADAPTIVE_POLL_MAX_FACTOR)
 
 
+def rxps_level_timings_us(
+    level: int,
+    bandwidth_khz: float,
+    spreading_factor: int,
+    preamble_symbols: int,
+) -> tuple[int, int]:
+    """Mirror MeshCore's level timing calculation for wire-preamble selection."""
+    symbol_us = (1000.0 * (1 << spreading_factor)) / bandwidth_khz
+    amount = (level - 1) / 9.0
+    rx_start_symbols = 12.0 if preamble_symbols == 16 else 16.0
+    sleep_start_symbols = 2.0 if preamble_symbols == 16 else 15.0
+    rx_symbols = rx_start_symbols + amount * (8.0 - rx_start_symbols)
+    sleep_edge_symbols = preamble_symbols + 4.25 - 8.0
+    sleep_symbols = sleep_start_symbols + amount * (
+        sleep_edge_symbols - sleep_start_symbols
+    )
+    rx_us = math.ceil(rx_symbols * symbol_us)
+    sleep_us = int(sleep_symbols * symbol_us)
+    if rx_us < RXPS_MIN_PERIOD_US or sleep_us < RXPS_MIN_PERIOD_US:
+        return RXPS_MIN_PERIOD_US, RXPS_MIN_PERIOD_US
+    return rx_us, sleep_us
+
+
+def preamble_supports_rxps(
+    bandwidth_khz: float,
+    spreading_factor: int,
+    preamble_symbols: int,
+) -> bool:
+    for level in range(1, 11):
+        rx_us, sleep_us = rxps_level_timings_us(
+            level, bandwidth_khz, spreading_factor, preamble_symbols
+        )
+        if (
+            RXPS_MIN_PERIOD_US <= rx_us <= RXPS_MAX_PERIOD_US
+            and RXPS_MIN_PERIOD_US <= sleep_us <= RXPS_MAX_PERIOD_US
+            and sleep_us > RXPS_WIRE_TRANSITION_US
+            and (rx_us * 8) // 125 != 0
+            and ((sleep_us - RXPS_WIRE_TRANSITION_US) * 8) // 125 != 0
+        ):
+            return True
+    return False
+
+
+def wire_preamble_symbols(
+    bandwidth_khz: float,
+    spreading_factor: int,
+) -> int:
+    """Return the deterministic MeshCore wire preamble for an SF/BW tuple."""
+    if spreading_factor > 8:
+        return 16
+    if spreading_factor < 5 or bandwidth_khz <= 0.0:
+        return 32
+    if preamble_supports_rxps(bandwidth_khz, spreading_factor, 32):
+        return 32
+    if preamble_supports_rxps(bandwidth_khz, spreading_factor, 64):
+        return 64
+    if preamble_supports_rxps(bandwidth_khz, spreading_factor, 128):
+        return 128
+    return 32
+
+
 def lora_airtime_seconds(
     payload_bytes: int,
     bandwidth_khz: float,
     spreading_factor: int,
     coding_rate: int,
     *,
-    preamble_symbols: int = 16,
+    preamble_symbols: int | None = None,
 ) -> float:
     """Estimate explicit-header LoRa airtime for one Mesh packet."""
+    if preamble_symbols is None:
+        preamble_symbols = wire_preamble_symbols(
+            bandwidth_khz, spreading_factor
+        )
     symbol_seconds = (2 ** spreading_factor) / (bandwidth_khz * 1000.0)
     low_data_rate = 1 if symbol_seconds >= 0.016 else 0
     numerator = (
@@ -436,6 +526,61 @@ def parse_version(value: str) -> int | None:
     if any(part > 0xFF for part in parts):
         return None
     return sum(part << shift for part, shift in zip(parts, (24, 16, 8, 0)))
+
+
+def select_rxps_temp_profile(
+    current_version: str | None,
+    temp_values: tuple[float, float, int, int, int],
+    *,
+    all_participants_support_adaptive_preamble: bool,
+) -> RxpsTempProfile | None:
+    """Return a qualified RXPS profile, or None when automation must use off.
+
+    The version boundary is intentional. Several historical builds reused the
+    same human version while carrying different RXPS implementations, so only
+    the first forward release contract and later are allowed to keep RXPS on.
+    """
+    version = parse_version(current_version) if current_version else None
+    if version is None or version < RXPS_ADAPTIVE_PREAMBLE_MIN_VERSION:
+        return None
+
+    _frequency, bandwidth, sf, _cr, _minutes = temp_values
+
+    def is_bandwidth(expected: float) -> bool:
+        return abs(bandwidth - expected) <= 0.001
+
+    # A tuple-selected long preamble relies on every possible sender following
+    # the same adaptive wire contract. A single legacy source, controller, or
+    # relay makes it unsafe even when the destination itself is current.
+    if (
+        (sf == 5 and is_bandwidth(250.0))
+        or (sf == 6 and is_bandwidth(500.0))
+    ):
+        if not all_participants_support_adaptive_preamble:
+            return None
+        return RxpsTempProfile(8, 64)
+
+    if sf == 5 and is_bandwidth(500.0):
+        if not all_participants_support_adaptive_preamble:
+            return None
+        return RxpsTempProfile(8, 128)
+
+    # These three tuples all have a 256 us symbol and were qualified with the
+    # same 32-symbol receive-window assumption. Since 32 is sufficient, current
+    # firmware keeps the normal 32-symbol wire preamble.
+    if (
+        (sf == 7 and is_bandwidth(500.0))
+        or (sf == 6 and is_bandwidth(250.0))
+        or (sf == 5 and is_bandwidth(125.0))
+    ):
+        return RxpsTempProfile(7, 32)
+
+    if sf == 5 and is_bandwidth(62.5):
+        return RxpsTempProfile(10, 16)
+
+    # Unknown tuples remain continuous-RX rather than extrapolating beyond
+    # qualified timing data.
+    return None
 
 
 def parse_hex_exact(value: str, size: int, label: str) -> bytes:
@@ -1556,6 +1701,17 @@ class Controller:
                 return public_key.lower()
         raise OtaError("meshcli did not return the controller public key")
 
+    def get_firmware_version(self) -> tuple[str, int]:
+        objects = self._run(["ver"], "read controller firmware version")
+        for value in reversed(objects):
+            version_text = value.get("ver")
+            if not isinstance(version_text, str):
+                continue
+            version = extract_reply_version(version_text)
+            if version is not None:
+                return version_text, version
+        raise OtaError("meshcli did not return the controller firmware version")
+
     def set_radio(self, settings: RadioSettings, label: str) -> None:
         command_error: OtaError | None = None
         try:
@@ -1973,6 +2129,82 @@ def preflight_source_cli(args: argparse.Namespace) -> None:
         )
 
 
+def read_lora_ota_participant_versions(
+    controller: Controller,
+    args: argparse.Namespace,
+    target: TargetInfo,
+) -> dict[str, int | None]:
+    """Read every version that can transmit during the maintenance window."""
+    versions: dict[str, int | None] = {
+        "destination": (
+            parse_version(target.current_version)
+            if target.current_version else None
+        )
+    }
+
+    try:
+        controller_text, controller_version = controller.get_firmware_version()
+        versions["controller"] = controller_version
+        print(f"[rxps] controller version {controller_text}")
+    except TransmissionStopped:
+        raise
+    except OtaError as exc:
+        versions["controller"] = None
+        print(f"[rxps] controller version unavailable: {exc}")
+
+    if getattr(args, "source_shares_controller", False):
+        versions["source"] = versions["controller"]
+        print("[rxps] source version is the shared controller version")
+    elif getattr(args, "source_already_temp", False) and not (
+        getattr(args, "source_cli_serial", None)
+        or getattr(args, "source_cli_tcp", None)
+    ):
+        versions["source"] = None
+        print("[rxps] source version unavailable (--source-already-temp)")
+    else:
+        try:
+            source_reply = source_cli_command(args, "ver")
+            source_version = extract_reply_version(source_reply)
+            versions["source"] = source_version
+            if source_version is None:
+                print("[rxps] source returned no parseable version")
+        except TransmissionStopped:
+            raise
+        except OtaError as exc:
+            versions["source"] = None
+            print(f"[rxps] source version unavailable: {exc}")
+
+    for relay_name, relay_password in getattr(args, "relay_values", []):
+        label = f"relay:{relay_name}"
+        try:
+            reply = controller.remote_command(
+                relay_name, "ver", password=relay_password
+            )
+            versions[label] = extract_reply_version(reply)
+            if versions[label] is None:
+                print(f"[rxps] {relay_name} returned no parseable version")
+        except TransmissionStopped:
+            raise
+        except OtaError as exc:
+            versions[label] = None
+            print(f"[rxps] {relay_name} version unavailable: {exc}")
+
+    for label, version in versions.items():
+        rendered = format_version(version) if version is not None else "unknown"
+        print(f"[rxps] participant {label}={rendered}")
+    return versions
+
+
+def participants_support_adaptive_preamble(
+    versions: dict[str, int | None],
+) -> bool:
+    return bool(versions) and all(
+        version is not None
+        and version >= RXPS_ADAPTIVE_PREAMBLE_MIN_VERSION
+        for version in versions.values()
+    )
+
+
 def verify_shared_source_identity(
     controller: Controller,
     args: argparse.Namespace,
@@ -2123,6 +2355,250 @@ def parse_relay(value: str, default_password: str) -> tuple[str, str]:
     return value, default_password
 
 
+def parse_rxps_settings(reply: str, label: str) -> RxpsSettings:
+    detailed = re.fullmatch(
+        r"\s*>?\s*(?:radio\.rxps(?:\.config)?\s+)?(on|off),level=(\d+),"
+        r"preamble=(\d+),rx=(\d+),sleep=(\d+)\s*",
+        reply,
+        re.IGNORECASE,
+    )
+    if detailed is not None:
+        level = int(detailed.group(2))
+        preamble = int(detailed.group(3))
+        rx_us = int(detailed.group(4))
+        sleep_us = int(detailed.group(5))
+        if (
+            level > 10
+            or preamble not in (0, 16, 32)
+            or not RXPS_MIN_PERIOD_US <= rx_us <= RXPS_MAX_PERIOD_US
+            or not RXPS_MIN_PERIOD_US <= sleep_us <= RXPS_MAX_PERIOD_US
+        ):
+            raise OtaError(f"could not read {label} RXPS config: {reply}")
+        return RxpsSettings(
+            enabled=detailed.group(1).lower() == "on",
+            rx_us=rx_us,
+            sleep_us=sleep_us,
+            level=level,
+            preamble=preamble,
+        )
+
+    match = re.fullmatch(
+        r"\s*>?\s*(?:radio\.rxps\s+)?(on|off),(\d+),(\d+)\s*",
+        reply,
+        re.IGNORECASE,
+    )
+    if match is None:
+        raise OtaError(f"could not read {label} RXPS state: {reply}")
+    rx_us = int(match.group(2))
+    sleep_us = int(match.group(3))
+    if (
+        not RXPS_MIN_PERIOD_US <= rx_us <= RXPS_MAX_PERIOD_US
+        or not RXPS_MIN_PERIOD_US <= sleep_us <= RXPS_MAX_PERIOD_US
+    ):
+        raise OtaError(f"could not read {label} RXPS state: {reply}")
+    return RxpsSettings(
+        enabled=match.group(1).lower() == "on",
+        rx_us=rx_us,
+        sleep_us=sleep_us,
+    )
+
+
+def read_remote_rxps(
+    controller: Controller,
+    target_name: str,
+    *,
+    password: str | None = None,
+) -> RxpsSettings:
+    try:
+        reply = controller.remote_command(
+            target_name, "get radio.rxps.config", password=password
+        )
+        return parse_rxps_settings(reply, target_name)
+    except TransmissionStopped:
+        raise
+    except OtaError as detailed_error:
+        # Old firmware does not expose the saved level metadata. Query the
+        # legacy form explicitly so its fixed periods can still be preserved.
+        try:
+            reply = controller.remote_command(
+                target_name, "get radio.rxps", password=password
+            )
+            return parse_rxps_settings(reply, target_name)
+        except TransmissionStopped:
+            raise
+        except OtaError as legacy_error:
+            raise OtaError(
+                f"could not read {target_name} RXPS state using current or "
+                f"legacy CLI: {legacy_error}"
+            ) from detailed_error
+
+
+def write_target_rxps_recovery(
+    work_dir: Path,
+    target_name: str,
+    saved: RxpsSettings,
+    profile: RxpsTempProfile | None,
+    participant_versions: dict[str, int | None],
+) -> Path:
+    path = work_dir / TARGET_RXPS_RECOVERY_FILE
+    payload = {
+        "target": target_name,
+        "rxps_enabled": saved.enabled,
+        "rxps_rx_us": saved.rx_us,
+        "rxps_sleep_us": saved.sleep_us,
+        "rxps_level": saved.level,
+        "rxps_preamble": saved.preamble,
+        "temporary_policy": (
+            "preserve saved level-based preference"
+            if profile else "set radio.rxps off"
+        ),
+        "participant_versions": {
+            label: format_version(version) if version is not None else None
+            for label, version in participant_versions.items()
+        },
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="ascii",
+    )
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+    return path
+
+
+def apply_remote_rxps_policy(
+    controller: Controller,
+    target_name: str,
+    saved: RxpsSettings,
+    profile: RxpsTempProfile | None,
+    *,
+    password: str | None = None,
+) -> bool:
+    if not saved.enabled:
+        print(f"[rxps] {target_name} was already off; leaving it off")
+        return False
+
+    if profile is not None and saved.level is not None and 1 <= saved.level <= 10:
+        current = read_remote_rxps(
+            controller, target_name, password=password
+        )
+        preference_matches = (
+            current.enabled
+            and current.level == saved.level
+            and current.preamble == saved.preamble
+        )
+        if not preference_matches:
+            if saved.preamble in (16, 32):
+                command = (
+                    f"set radio.rxps level {saved.level} "
+                    f"preamble {saved.preamble}"
+                )
+            else:
+                command = f"set radio.rxps level {saved.level}"
+            reply = controller.remote_command(
+                target_name, command, password=password
+            )
+            if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+                raise OtaError(
+                    f"{target_name} did not restore its saved RXPS "
+                    f"preference: {reply}"
+                )
+            current = read_remote_rxps(
+                controller, target_name, password=password
+            )
+            if (
+                not current.enabled
+                or current.level != saved.level
+                or current.preamble != saved.preamble
+            ):
+                raise OtaError(
+                    f"{target_name} saved RXPS preference did not read back"
+                )
+        print(
+            f"[rxps] {target_name} saved preference preserved; qualified "
+            f"boundary level {profile.boundary_level}, preamble "
+            f"{profile.boundary_preamble}"
+        )
+        return False
+
+    command = "set radio.rxps off"
+    reply = controller.remote_command(
+        target_name, command, password=password
+    )
+    expected_enabled = False
+    expected_word = "on" if expected_enabled else "off"
+    if re.search(rf"\b{expected_word}\b", reply, re.IGNORECASE) is None:
+        raise OtaError(
+            f"{target_name} did not apply temporary RXPS policy: {reply}"
+        )
+    verified = read_remote_rxps(
+        controller, target_name, password=password
+    )
+    if verified.enabled != expected_enabled:
+        raise OtaError(
+            f"{target_name} RXPS policy did not read back as {expected_word}"
+        )
+    print(f"[rxps] {target_name} temporarily off for this version/tuple")
+    return True
+
+
+def restore_remote_rxps(
+    controller: Controller,
+    target_name: str,
+    saved: RxpsSettings,
+    *,
+    password: str | None = None,
+) -> None:
+    current = read_remote_rxps(
+        controller, target_name, password=password
+    )
+    if saved.enabled:
+        if current != saved:
+            if saved.level is not None and 1 <= saved.level <= 10:
+                if saved.preamble in (16, 32):
+                    command = (
+                        f"set radio.rxps level {saved.level} "
+                        f"preamble {saved.preamble}"
+                    )
+                else:
+                    command = f"set radio.rxps level {saved.level}"
+            else:
+                command = f"set radio.rxps {saved.rx_us} {saved.sleep_us}"
+            reply = controller.remote_command(
+                target_name,
+                command,
+                password=password,
+            )
+            if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+                raise OtaError(f"{target_name} did not restore RXPS: {reply}")
+    elif current.enabled:
+        reply = controller.remote_command(
+            target_name, "set radio.rxps off", password=password
+        )
+        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+            raise OtaError(f"{target_name} did not restore RXPS-off: {reply}")
+
+    verified = read_remote_rxps(
+        controller, target_name, password=password
+    )
+    metadata_matches = (
+        saved.level is None
+        or (
+            verified.level == saved.level
+            and verified.preamble == saved.preamble
+        )
+    )
+    if (
+        verified.enabled != saved.enabled
+        or verified.rx_us != saved.rx_us
+        or verified.sleep_us != saved.sleep_us
+        or not metadata_matches
+    ):
+        raise OtaError(f"{target_name} RXPS settings did not restore exactly")
+    print(f"[rxps] {target_name} original RXPS settings restored")
+
+
 def parse_delay_reply(reply: str, label: str) -> float:
     match = re.fullmatch(r"\s*>\s*([0-9]+(?:\.[0-9]+)?)\s*", reply)
     if match is None:
@@ -2266,6 +2742,22 @@ def confirm_update(
     print(f"  update      : {package.version} {package.kind} hw={package.hw_id or '?'}")
     print(f"  mOTA id     : {package.manifest_id}")
     print(f"  TempRadio   : {args.temp_radio}")
+    saved_rxps = getattr(args, "target_rxps_saved", None)
+    rxps_profile = getattr(args, "target_rxps_profile", None)
+    if isinstance(saved_rxps, RxpsSettings) and saved_rxps.enabled:
+        if isinstance(rxps_profile, RxpsTempProfile):
+            print(
+                "  RXPS        : preserve saved level-based preference; "
+                f"qualified boundary level {rxps_profile.boundary_level}, "
+                f"preamble {rxps_profile.boundary_preamble}"
+            )
+        else:
+            print(
+                "  RXPS        : temporarily off (version/preamble gate); "
+                "restore original settings"
+            )
+    elif isinstance(saved_rxps, RxpsSettings):
+        print("  RXPS        : already off; unchanged")
     if args.relay:
         print(
             f"  relay timing: rxdelay 0, "
@@ -3411,6 +3903,8 @@ def main(
     seeder_attempted = False
     source_temp_owned = False
     target_temp_owned = False
+    target_rxps_saved: RxpsSettings | None = None
+    target_rxps_changed = False
     armed_relay_values: list[tuple[str, str]] = []
     relay_timing_settings: list[RelayTimingSettings] = []
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
@@ -3464,6 +3958,38 @@ def main(
             return 0
 
         assert controller is not None and original_radio is not None
+        participant_versions = read_lora_ota_participant_versions(
+            controller, args, target
+        )
+        all_participants_support_adaptive_preamble = (
+            participants_support_adaptive_preamble(
+                participant_versions
+            )
+        )
+        try:
+            target_rxps_saved = read_remote_rxps(controller, args.target)
+        except TransmissionStopped:
+            raise
+        except OtaError as exc:
+            raise OtaError(
+                "cannot safely preserve or disable destination RXPS because "
+                f"its current state is unavailable: {exc}"
+            ) from exc
+        target_rxps_profile = select_rxps_temp_profile(
+            target.current_version,
+            args.temp_values,
+            all_participants_support_adaptive_preamble=(
+                all_participants_support_adaptive_preamble
+            ),
+        )
+        if (
+            target_rxps_saved is None
+            or target_rxps_saved.level is None
+            or not 1 <= target_rxps_saved.level <= 10
+        ):
+            target_rxps_profile = None
+        args.target_rxps_saved = target_rxps_saved
+        args.target_rxps_profile = target_rxps_profile
         confirm_update(args, target, package)
         freq, bandwidth, sf, cr, _minutes = args.temp_values
         temp_command = f"tempradio {args.temp_radio}"
@@ -3471,6 +3997,26 @@ def main(
         temp_radio = RadioSettings(
             freq, bandwidth, sf, cr, original_radio.repeat
         )
+
+        if target_rxps_saved is not None and target_rxps_saved.enabled:
+            recovery_path = write_target_rxps_recovery(
+                work_dir,
+                args.target,
+                target_rxps_saved,
+                target_rxps_profile,
+                participant_versions,
+            )
+            print(f"[rxps] recovery settings: {recovery_path}")
+            # Arm cleanup before the mutating command. If the command reaches
+            # the node but its confirmation is lost, restoration must still
+            # run from the saved recovery record.
+            target_rxps_changed = target_rxps_profile is None
+            target_rxps_changed = apply_remote_rxps_policy(
+                controller,
+                args.target,
+                target_rxps_saved,
+                target_rxps_profile,
+            )
 
         # Move far nodes first while the controller is still on the normal
         # channel. Relays are supplied in farthest-to-nearest order. A target
@@ -3540,6 +4086,18 @@ def main(
                 if source_temp_owned:
                     shorten_source_temp_window(args)
                     source_temp_owned = False
+            if target_rxps_changed and target_rxps_saved is not None:
+                if args.leave_controller_radio:
+                    print(
+                        "[rxps] destination remains off while TempRadio is "
+                        "preserved; restore it from "
+                        f"{TARGET_RXPS_RECOVERY_FILE} after normalradio"
+                    )
+                else:
+                    restore_remote_rxps(
+                        controller, args.target, target_rxps_saved
+                    )
+                target_rxps_changed = False
             return 0
 
         install_confirmed = request_install(controller, args, package)
@@ -3591,6 +4149,11 @@ def main(
                 target.base_hash,
                 identity_reply,
             )
+            if target_rxps_changed and target_rxps_saved is not None:
+                restore_remote_rxps(
+                    controller, args.target, target_rxps_saved
+                )
+                target_rxps_changed = False
         finally:
             if args.leave_controller_radio:
                 controller.set_radio(
@@ -3671,6 +4234,28 @@ def main(
                                 f"lease: {exc}",
                                 file=sys.stderr,
                             )
+                    if target_rxps_changed and target_rxps_saved is not None:
+                        if args.leave_controller_radio:
+                            print(
+                                "WARNING: destination RXPS remains off while "
+                                "TempRadio is preserved; restore it from "
+                                f"{TARGET_RXPS_RECOVERY_FILE} after normalradio",
+                                file=sys.stderr,
+                            )
+                            target_rxps_changed = False
+                        else:
+                            try:
+                                restore_remote_rxps(
+                                    controller, args.target, target_rxps_saved
+                                )
+                                target_rxps_changed = False
+                            except (OtaError, OSError) as exc:
+                                print(
+                                    "WARNING: could not restore destination RXPS "
+                                    "on TempRadio; retrying after radio restore: "
+                                    f"{exc}",
+                                    file=sys.stderr,
+                                )
             if source_temp_owned and not args.leave_controller_radio:
                 shorten_source_temp_window(args, check=False)
             if (
@@ -3681,11 +4266,29 @@ def main(
             ):
                 try:
                     controller.set_radio(original_radio, "restore controller radio after failure")
+                    controller_changed = False
                     print("[controller] original radio restored")
                 except (OtaError, OSError) as exc:
                     print(
                         "CRITICAL: could not restore the controller radio. "
                         f"Restore it manually to {original_radio.meshcli_value()}: {exc}",
+                        file=sys.stderr,
+                    )
+            if (
+                target_rxps_changed
+                and target_rxps_saved is not None
+                and controller is not None
+                and not controller_changed
+            ):
+                try:
+                    restore_remote_rxps(
+                        controller, args.target, target_rxps_saved
+                    )
+                    target_rxps_changed = False
+                except (OtaError, OSError) as exc:
+                    print(
+                        "CRITICAL: could not restore destination RXPS; use "
+                        f"{TARGET_RXPS_RECOVERY_FILE}: {exc}",
                         file=sys.stderr,
                     )
         if work_dir is not None:

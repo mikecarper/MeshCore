@@ -26,10 +26,10 @@ protected:
         && ((CustomLR1110 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
-        && updatePreamble(sf);
+        && updatePreamble(sf, bw);
     if (!success) return false;
 
-    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForSF(sf));
+    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForParams(sf, bw));
     ((CustomLR1110 *)_radio)->setPreambleMillis(pm.preambleMillis);
     ((CustomLR1110 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
     return true;
@@ -60,7 +60,7 @@ public:
 
   void onSendFinished() override {
     RadioLibWrapper::onSendFinished();
-    _radio->setPreambleLength(preambleLengthForSF(getSpreadingFactor())); // overcomes weird issues with small and big pkts
+    _radio->setPreambleLength(currentPreambleLength()); // overcomes weird issues with small and big pkts
   }
 
   bool supportsRxPowerSaving() const override { return true; }

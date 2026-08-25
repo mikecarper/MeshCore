@@ -1464,13 +1464,6 @@ static uint8_t getRetryLogCodingRate(const mesh::Packet* packet, uint8_t default
   return default_cr;
 }
 
-static uint16_t getRetryLogPreambleLength(const mesh::Packet* packet, uint16_t default_preamble_len) {
-  if (packet != NULL && packet->tx_cr >= 4 && packet->tx_cr <= 8) {
-    return 32;
-  }
-  return default_preamble_len;
-}
-
 void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt,
                                 const uint8_t* target_hash, uint8_t target_hash_len, int16_t payload_type) {
 #if defined(PORTABLE_MQTT_OBSERVER)
@@ -1490,7 +1483,7 @@ void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, u
   }
   formatDirectRetryTarget(target_label, sizeof(target_label), target_hash, target_hash_len);
   uint8_t log_cr = getRetryLogCodingRate(packet, getDefaultTxCodingRate());
-  uint16_t log_preamble_len = getRetryLogPreambleLength(packet, radio_driver.getDefaultPreambleLength());
+  uint16_t log_preamble_len = rxPowerSavingPreambleForParams(active_sf, active_bw);
 
 #if MESH_DEBUG
   MESH_DEBUG_PRINTLN("direct retry %s attempt=%u delay=%lu type=%s route=%s target=%s cr=%u preamble_len=%u",
@@ -2115,7 +2108,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
     snprintf(heard_suffix, sizeof(heard_suffix), ", heard=%s", heard_log);
   }
   uint8_t log_cr = getRetryLogCodingRate(packet, getDefaultTxCodingRate());
-  uint16_t log_preamble_len = getRetryLogPreambleLength(packet, radio_driver.getDefaultPreambleLength());
+  uint16_t log_preamble_len = rxPowerSavingPreambleForParams(active_sf, active_bw);
 
   MESH_DEBUG_PRINTLN("flood retry %s (retry=%u, type=%d, route=%s, payload_len=%d, hop=%u, path=%s%s, %s=%lu, cr=%u, preamble_len=%u)",
                      event,
@@ -3777,7 +3770,8 @@ bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   uint32_t rx_us = _prefs.rx_ps_rx_us;
   uint32_t sleep_us = _prefs.rx_ps_sleep_us;
   if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0) {
-    uint32_t preamble = _prefs.rx_ps_preamble ? _prefs.rx_ps_preamble : (sf <= 8 ? 32UL : 16UL);
+    uint32_t preamble = _prefs.rx_ps_preamble
+        ? _prefs.rx_ps_preamble : rxPowerSavingPreambleForParams(sf, bw);
     if (!CommonCLI::calculateRxPowerSavingLevel(
           _prefs.rx_ps_level, sf, bw, preamble, &rx_us, &sleep_us)) return false;
   }

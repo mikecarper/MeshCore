@@ -24,11 +24,11 @@ protected:
         && ((CustomLR2021 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR2021 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
-        && updatePreamble(sf)
+        && updatePreamble(sf, bw)
         && applySideDetectorConfig(sf, bw);
     if (!success) return false;
 
-    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForSF(sf));
+    PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForParams(sf, bw));
     ((CustomLR2021 *)_radio)->setPreambleMillis(pm.preambleMillis);
     ((CustomLR2021 *)_radio)->setMaxPayloadMillis(pm.payloadMillis);
     return true;
@@ -171,7 +171,7 @@ public:
 
   void onSendFinished() override {
     RadioLibWrapper::onSendFinished();
-    _radio->setPreambleLength(preambleLengthForSF(getSpreadingFactor())); // overcomes weird issues with small and big pkts
+    _radio->setPreambleLength(currentPreambleLength()); // overcomes weird issues with small and big pkts
   }
 
   uint8_t getSpreadingFactor() const override { return ((CustomLR2021 *)_radio)->getSpreadingFactor(); }

@@ -218,6 +218,14 @@ tests use `hops 0`: `hops 1` makes the target echo each source response despite
 there being no intermediate relay, increasing half-duplex loss and legacy
 three-second retries.
 
+The exact compact chain never qualifies for fast RXPS: its bridge and endpoint
+versions predate the v1.17.1.5 adaptive-preamble contract. Keep RXPS off for
+this historical chain whether using SF5/BW250 or the faster direct-bench
+SF5/BW500 tuple. For a later update whose target, controller, source, and
+relays are all v1.17.1.5 or newer, use the generic LoRa OTA runner; it can
+retain RXPS at the qualified level-8/preamble-64 boundary for SF5/BW250 or the
+level-8/preamble-128 boundary for SF5/BW500.
+
 Put the source on the identical TempRadio tuple. If it is a binary-mode Full
 Companion, the current `motatool` can switch modes for the serving session:
 
@@ -369,8 +377,12 @@ predates the rescue command.
 
 Before the first mutation, the runner saves the destination's RXPS periods,
 CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
-the persistent work directory. It verifies `radio.rxps off`, `powersaving off`,
-and `rxdelay 0` after every bridge reboot, plus `af 0` when
+the persistent work directory. It reads the destination, controller, source,
+and relay versions before applying the same RXPS policy as the generic runner.
+The pinned historical chain therefore verifies `radio.rxps off` after every
+bridge reboot; a future all-v1.17.1.5-or-newer SF5/BW250 chain would instead
+keep RXPS on under the qualified level-8/preamble-64 boundary. It also verifies
+`powersaving off` and `rxdelay 0`, plus `af 0` when
 `--legacy-full-airtime` was explicitly selected. It restores every original
 value only after the exact endpoint is proven. An interrupted run deliberately
 leaves those transfer guardrails active; rerun the same command with the same

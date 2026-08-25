@@ -19,7 +19,7 @@ protected:
         && ((CustomSX1276 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomSX1276 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomSX1276 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
-        && updatePreamble(sf);
+        && updatePreamble(sf, bw);
   }
 
 public:

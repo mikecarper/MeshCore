@@ -104,46 +104,50 @@ protocol frames and terminal replies remain enabled on interface `00`.
 
 ```
 get radio.rxps
+get radio.rxps.config
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}
 ```
-Shows or changes LoRa receive duty cycling on supported radios. Fresh Cascade
+Shows or changes LoRa receive duty cycling on supported radios.
+`get radio.rxps.config` also reports the saved level and preamble assumption so
+automation can restore a level-based preference exactly. Fresh Cascade
 builds select level 8 with a 16-symbol timing assumption. The `preamble`
 argument controls the RXPS calculation; it does not change the physical wire
 preamble. A configured level is the minimum: when faster SF/BW settings shorten
 the timing window, firmware raises the effective level only as far as needed,
-up to level 10. For SF5-SF8 the normal build can then use the radio's actual
-32-symbol transmit preamble if no level is safe under the legacy 16-symbol
-assumption. The configured values remain unchanged, so every radio change
-recalculates from the saved minimum. A slower tuple returns to that exact level
-when it is safe; otherwise firmware keeps using the smallest safe effective
-level.
+up to level 10. Starting with v1.17.1.5, SF5-SF8 packets normally use a
+32-symbol physical preamble. Firmware selects 64, then 128, only when every
+shorter choice fails to enable RXPS at any level. The configured values remain
+unchanged, so every radio change recalculates from the saved minimum. A slower
+tuple returns to that exact level and the shortest viable wire preamble.
 
 If neither adjustment leaves enough time for the radio to wake, RXPS stays
 logically enabled but receives continuously instead of rejecting the radio
-setting or starting an invalid duty cycle. `get radio.rxps` reports this as
-`mode=continuous-fast` and reports any `effective-level` or
-`effective-preamble` adjustment. On SX1262 boards with a TCXO, SF5/BW125 works
-at effective level 7 with preamble 32; SF5/BW250 and SF5/BW500 use the
-continuous fallback. A later compatible SF/BW change resumes duty cycling
-without another RXPS command.
+setting or starting an invalid duty cycle. The Companion terminal's
+`get radio.rxps` reports this as `mode=continuous-fast` and reports any
+`effective-level` or `effective-preamble` adjustment;
+`get radio.rxps.config` reports the persisted preference. A later compatible
+SF/BW change resumes duty cycling without another RXPS command.
 
 For the SX1262+TCXO boards tested here, these fast combinations are the useful
 RXPS boundary profiles (CR does not change the RXPS preamble timing):
 
-| SF | BW (kHz) | Effective preamble | Minimum effective level | RX / sleep |
-|---:|---------:|-------------------:|------------------------:|-----------:|
-| 7 | 500 | 32 | 7 | 2731 / 6101 us |
-| 6 | 250 | 32 | 7 | 2731 / 6101 us |
-| 5 | 125 | 32 | 7 | 2731 / 6101 us |
-| 5 | 62.5 | 16 | 10 | 4096 / 6272 us |
+| SF | BW (kHz) | Wire preamble | Effective preamble | Minimum effective level | RX / sleep |
+|---:|---------:|--------------:|-------------------:|------------------------:|-----------:|
+| 7 | 500 | 32 | 32 | 7 | 2731 / 6101 us |
+| 6 | 250 | 32 | 32 | 7 | 2731 / 6101 us |
+| 5 | 125 | 32 | 32 | 7 | 2731 / 6101 us |
+| 5 | 250 | 64 | 64 | 8 | 1252 / 6424 us |
+| 6 | 500 | 64 | 64 | 8 | 1252 / 6424 us |
+| 5 | 500 | 128 | 128 | 8 | 626 / 6398 us |
+| 5 | 62.5 | 32 | 16 | 10 | 4096 / 6272 us |
 
-SF5/BW250 and SF5/BW500 remain too fast for a true TCXO duty cycle in the
-normal 32-symbol build, so they use `continuous-fast`. A controlled build with
-`-D LORA_FAST_PREAMBLE=64` changes the actual SF5-SF8 wire preamble. SF5/BW250
-then uses effective level 8 and `1252 / 6424 us`; that combination passed a
-16/16 on-air qualification at 909.950 MHz. SF5/BW500 still uses
-`continuous-fast`. Deploy a longer physical preamble consistently across all
-senders that may reach an RXPS receiver.
+The 64- and 128-symbol rows require the v1.17.1.5-or-newer adaptive-preamble
+contract on every sender that may reach the RXPS receiver. Cascade/USA builds
+on a Heltec V4 and WisMesh Tag (RAK4631 target) passed 16/16 packets in each
+direction at both SF5/BW250/64 and SF5/BW500/128, CR5, 909.950 MHz. An older
+sender makes a long-preamble timing window unsafe, so use continuous RX for a
+mixed deployment. Retry packets use the same physical preamble as other
+packets.
 
 ```
 get wifi.powersave
@@ -390,7 +394,7 @@ For example:
 
 ```text
 channels
-channel #rgdata Hello from Eugene 👋
+channel #rgdata Hello from Eugene
 channel 2 Another message
 show channels on
 ```

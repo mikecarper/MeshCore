@@ -261,7 +261,12 @@ infrastructure node can sleep when device power saving is enabled, so its WiFi
 services may be temporarily unavailable. RXPS only duty-cycles the LoRa
 receiver. Fresh Cascade-profile builds default to device power saving on,
 RXPS on at level 8 with a 16-symbol preamble, and WiFi modem power saving at
-`min` on every build that includes ESP32 WiFi.
+`min` on every build that includes ESP32 WiFi. The RXPS preamble value is a
+saved timing assumption, not the wire length: starting with v1.17.1.5,
+SF5-SF8 packets normally use a 32-symbol physical preamble. Firmware selects
+64 for the whole SF/BW tuple only when 32 cannot enable RXPS at any level and
+64 can (SF5/BW250 and SF6/BW500), then 128 only when neither shorter length
+works (SF5/BW500).
 
 When `ENABLE_OTA` is included, a WiFi companion also listens on:
 

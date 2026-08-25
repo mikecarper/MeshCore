@@ -38,8 +38,7 @@ void RadioLibWrapper::begin() {
   (void) mesh::initializeCC310Crypto();
 #endif
   _radio->setPacketReceivedAction(setFlag);  // this is also SentComplete interrupt
-  _preamble_sf = getSpreadingFactor();
-  _radio->setPreambleLength(preambleLengthForSF(_preamble_sf)); // longer preamble for lower SF improves reliability
+  _radio->setPreambleLength(currentPreambleLength()); // longer preamble for lower SF improves reliability
   state = STATE_IDLE;
 
   if (_board->getStartupReason() == BD_STARTUP_RX_PACKET) {  // received a LoRa packet (while in deep sleep)
@@ -114,8 +113,7 @@ bool RadioLibWrapper::restoreAfterDeepInit() {
   if (_params_valid) {
     restored = applyParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr);
   } else {
-    _preamble_sf = getSpreadingFactor();
-    restored = _radio->setPreambleLength(preambleLengthForSF(_preamble_sf))
+    restored = _radio->setPreambleLength(currentPreambleLength())
         == RADIOLIB_ERR_NONE;
   }
   if (_dbm_valid) {

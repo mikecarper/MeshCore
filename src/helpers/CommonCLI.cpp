@@ -450,7 +450,8 @@ static const char* retryPresetName(uint8_t preset) {
 
 bool CommonCLI::calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
                                             uint32_t* rx_us, uint32_t* sleep_us) {
-  if (level < 1 || level > 10 || (preamble != 16 && preamble != 32)) {
+  if (level < 1 || level > 10 || preamble > 0xFF
+      || !isRxPowerSavingPreamble((uint8_t)preamble)) {
     return false;
   }
   return calcRxPowerSavingLevelAtOrAbove(
@@ -482,7 +483,7 @@ static void appendRxPowerSavingAdjustmentNote(char* reply, const NodePrefs* pref
              (unsigned)prefs->rx_ps_level);
   } else {
     const uint8_t requested_preamble = prefs->rx_ps_preamble == 0
-        ? rxPowerSavingPreambleForSF(sf) : prefs->rx_ps_preamble;
+        ? rxPowerSavingPreambleForParams(sf, bw) : prefs->rx_ps_preamble;
     if (effective_level == prefs->rx_ps_level
         && effective_preamble == requested_preamble) {
       return;
@@ -3419,9 +3420,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     uint32_t rx_us = _prefs->rx_ps_rx_us;
     uint32_t sleep_us = _prefs->rx_ps_sleep_us;
     uint8_t level = 0;
-    uint8_t preamble = rxPowerSavingPreambleForSF(_prefs->sf);
+    uint8_t preamble = rxPowerSavingPreambleForParams(_prefs->sf, _prefs->bw);
     bool level_requested = false;
     bool preamble_overridden = false;
+    bool manual_timings_requested = false;
 
     ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
     rx_us = _prefs->rx_ps_rx_us;
@@ -3464,10 +3466,17 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         rx_us = _atoi(parts[0]);
         sleep_us = _atoi(parts[1]);
         enable = 1;
+        manual_timings_requested = true;
       } else {
         strcpy(reply, "ERROR: use off|on|conservative|balanced|level <1-10>|<rx_us> <sleep_us>");
         return;
       }
+    }
+
+    if (level_requested && preamble_overridden
+        && preamble != 16 && preamble != 32) {
+      strcpy(reply, "ERROR: level range is 1-10; preamble is 16 or 32");
+      return;
     }
 
     if (level_requested && !calculateRxPowerSavingLevel(level, _prefs->sf, _prefs->bw, preamble, &rx_us, &sleep_us)) {
@@ -3475,9 +3484,18 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       return;
     }
 
+    if (manual_timings_requested
+        && (rx_us < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
+            || sleep_us < RX_POWERSAVING_MIN_MANUAL_PERIOD_US)) {
+      sprintf(reply, "ERROR: range is %lu-%lu us",
+              (unsigned long)RX_POWERSAVING_MIN_MANUAL_PERIOD_US,
+              (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
+      return;
+    }
+
     if (!isValidRxPowerSavingPeriod(rx_us) || !isValidRxPowerSavingPeriod(sleep_us)) {
       sprintf(reply, "ERROR: range is %lu-%lu us",
-              (unsigned long)RX_POWERSAVING_MIN_PERIOD_US,
+              (unsigned long)RX_POWERSAVING_MIN_MANUAL_PERIOD_US,
               (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
       return;
     }
@@ -4248,6 +4266,14 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       sprintf(reply, "> %s", _callbacks->isRxPowerSavingRfRxDisabled() ? "on" : "off");
     }
+  } else if (strcmp(config, "radio.rxps.config") == 0) {
+    ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
+    sprintf(reply, "> %s,level=%u,preamble=%u,rx=%lu,sleep=%lu",
+            _prefs->rx_powersaving_enabled ? "on" : "off",
+            (unsigned)_prefs->rx_ps_level,
+            (unsigned)_prefs->rx_ps_preamble,
+            (unsigned long)_prefs->rx_ps_rx_us,
+            (unsigned long)_prefs->rx_ps_sleep_us);
   } else if (memcmp(config, "radio.rxps", 10) == 0) { // RX PowerSaving
     ensureRxPowerSavingDefaults(&_prefs->rx_ps_rx_us, &_prefs->rx_ps_sleep_us);
     sprintf(reply, "> %s,%lu,%lu", _prefs->rx_powersaving_enabled ? "on" : "off",

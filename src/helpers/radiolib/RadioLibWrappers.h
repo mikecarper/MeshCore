@@ -38,7 +38,6 @@ protected:
   int32_t _floor_sample_sum;
   unsigned long last_recv_millis;
   unsigned long last_radio_interrupt_millis;  // updated on any ISR event, even CRC errors
-  uint8_t _preamble_sf;
   bool _rx_ps_enabled;
   bool _rx_ps_armed;      // radio is currently in RX duty-cycle mode
   bool _rx_ps_continuous_fallback; // requested RXPS is receiving continuously for this tuple
@@ -120,7 +119,7 @@ protected:
 public:
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
       : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
-        _preamble_sf(0), _rx_ps_enabled(false), _rx_ps_armed(false),
+        _rx_ps_enabled(false), _rx_ps_armed(false),
         _rx_ps_continuous_fallback(false), _rx_hold_continuous(false),
         _rx_ps_rx_us(RX_PS_FALLBACK_RX_US), _rx_ps_sleep_us(RX_PS_FALLBACK_SLEEP_US),
         _wd_last_busy(false), _wd_stage(0), _wd_strikes(0), _startrx_fails(0), _wd_last_transition(0),
@@ -165,20 +164,21 @@ public:
                                            const uint32_t* rx_ps_timings = NULL) override;
   bool setParams(float freq, float bw, uint8_t sf, uint8_t cr,
                  const uint32_t* rx_ps_timings = NULL);
-  uint16_t getDefaultPreambleLength() const override { return preambleLengthForSF(_preamble_sf); }
-  bool setPreambleLength(uint16_t len) override { return _radio->setPreambleLength(len) == RADIOLIB_ERR_NONE; }
   uint32_t getRngSeed();
   void setTxPower(int8_t dbm);
 
   virtual float getCurrentRSSI() =0;
   virtual uint8_t getSpreadingFactor() const { return LORA_SF; }
-  static uint16_t preambleLengthForSF(uint8_t sf) {
-    return rxPowerSavingPreambleForSF(sf);
+  static uint16_t preambleLengthForParams(uint8_t sf, float bw) {
+    return rxPowerSavingPreambleForParams(sf, bw);
   }
-  bool updatePreamble(uint8_t sf) {
-    if (_radio->setPreambleLength(preambleLengthForSF(sf)) != RADIOLIB_ERR_NONE) return false;
-    _preamble_sf = sf;
-    return true;
+  uint16_t currentPreambleLength() const {
+    return _params_valid
+        ? preambleLengthForParams(_cur_sf, _cur_bw)
+        : preambleLengthForParams(getSpreadingFactor(), static_cast<float>(LORA_BW));
+  }
+  bool updatePreamble(uint8_t sf, float bw) {
+    return _radio->setPreambleLength(preambleLengthForParams(sf, bw)) == RADIOLIB_ERR_NONE;
   }
   PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols);
   virtual int16_t performChannelScan();

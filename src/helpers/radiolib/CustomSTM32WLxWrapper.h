@@ -15,7 +15,7 @@ protected:
         && ((CustomSTM32WLx *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomSTM32WLx *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomSTM32WLx *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
-        && updatePreamble(sf);
+        && updatePreamble(sf, bw);
   }
 
 public:

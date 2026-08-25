@@ -2230,7 +2230,7 @@ void MyMesh::loop() {
     bool timing_ok = true;
     if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0) {
       uint32_t preamble = _prefs.rx_ps_preamble ? _prefs.rx_ps_preamble
-                                                : (pending_sf <= 8 ? 32UL : 16UL);
+                                                : rxPowerSavingPreambleForParams(pending_sf, pending_bw);
       timing_ok = CommonCLI::calculateRxPowerSavingLevel(
           _prefs.rx_ps_level, pending_sf, pending_bw, preamble, &rx_us, &sleep_us);
     }

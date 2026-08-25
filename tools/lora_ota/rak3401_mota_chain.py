@@ -381,6 +381,8 @@ class TargetTransferSettings:
     rxps_enabled: bool
     rxps_rx_us: int
     rxps_sleep_us: int
+    rxps_level: int | None
+    rxps_preamble: int | None
     powersaving_enabled: bool
     rxdelay: str
     airtime_factor: str
@@ -890,14 +892,7 @@ def read_target_transfer_settings(
     controller: ota.Controller,
     target_name: str,
 ) -> TargetTransferSettings:
-    rxps_reply = controller.remote_command(target_name, "get radio.rxps")
-    rxps_match = re.fullmatch(
-        r"\s*>\s*(on|off),(\d+),(\d+)\s*",
-        rxps_reply,
-        re.IGNORECASE,
-    )
-    if rxps_match is None:
-        raise ota.OtaError(f"could not read destination RXPS state: {rxps_reply}")
+    rxps = ota.read_remote_rxps(controller, target_name)
 
     powersaving_reply = controller.remote_command(target_name, "powersaving")
     powersaving_match = re.fullmatch(
@@ -934,9 +929,11 @@ def read_target_transfer_settings(
         )
 
     return TargetTransferSettings(
-        rxps_enabled=rxps_match.group(1).lower() == "on",
-        rxps_rx_us=int(rxps_match.group(2)),
-        rxps_sleep_us=int(rxps_match.group(3)),
+        rxps_enabled=rxps.enabled,
+        rxps_rx_us=rxps.rx_us,
+        rxps_sleep_us=rxps.sleep_us,
+        rxps_level=rxps.level,
+        rxps_preamble=rxps.preamble,
         powersaving_enabled=powersaving_match.group(1).lower() == "on",
         rxdelay=rxdelay_match.group(1),
         airtime_factor=airtime_match.group(1),
@@ -966,10 +963,24 @@ def load_or_capture_transfer_settings(
                 saved["ota_hops"], int
             ):
                 raise TypeError("saved OTA hop reach must be a JSON integer")
+            for name in ("rxps_level", "rxps_preamble"):
+                value = saved.get(name)
+                if value is not None and (
+                    isinstance(value, bool) or not isinstance(value, int)
+                ):
+                    raise TypeError(f"saved {name} must be a JSON integer or null")
             settings = TargetTransferSettings(
                 rxps_enabled=saved["rxps_enabled"],
                 rxps_rx_us=int(saved["rxps_rx_us"]),
                 rxps_sleep_us=int(saved["rxps_sleep_us"]),
+                rxps_level=(
+                    int(saved["rxps_level"])
+                    if saved.get("rxps_level") is not None else None
+                ),
+                rxps_preamble=(
+                    int(saved["rxps_preamble"])
+                    if saved.get("rxps_preamble") is not None else None
+                ),
                 powersaving_enabled=saved["powersaving_enabled"],
                 rxdelay=str(saved["rxdelay"]),
                 airtime_factor=str(saved["airtime_factor"]),
@@ -981,6 +992,25 @@ def load_or_capture_transfer_settings(
                 raise ValueError("saved airtime factor is invalid")
             if not 0 <= settings.ota_hops <= 8:
                 raise ValueError("saved OTA hop reach is invalid")
+            if (
+                settings.rxps_level is not None
+                and not 0 <= settings.rxps_level <= 10
+            ):
+                raise ValueError("saved RXPS level is invalid")
+            if settings.rxps_preamble not in (None, 0, 16, 32):
+                raise ValueError("saved RXPS preamble is invalid")
+            if not (
+                ota.RXPS_MIN_PERIOD_US
+                <= settings.rxps_rx_us
+                <= ota.RXPS_MAX_PERIOD_US
+            ):
+                raise ValueError("saved RXPS receive period is invalid")
+            if not (
+                ota.RXPS_MIN_PERIOD_US
+                <= settings.rxps_sleep_us
+                <= ota.RXPS_MAX_PERIOD_US
+            ):
+                raise ValueError("saved RXPS sleep period is invalid")
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ota.OtaError(f"invalid saved transfer settings in {path}") from exc
         print(f"[guardrail] loaded original destination settings from {path}")
@@ -992,6 +1022,8 @@ def load_or_capture_transfer_settings(
         "rxps_enabled": settings.rxps_enabled,
         "rxps_rx_us": settings.rxps_rx_us,
         "rxps_sleep_us": settings.rxps_sleep_us,
+        "rxps_level": settings.rxps_level,
+        "rxps_preamble": settings.rxps_preamble,
         "powersaving_enabled": settings.powersaving_enabled,
         "rxdelay": settings.rxdelay,
         "airtime_factor": settings.airtime_factor,
@@ -1009,6 +1041,10 @@ def enforce_transfer_guardrails(
     controller: ota.Controller,
     target_name: str,
     *,
+    saved: TargetTransferSettings | None = None,
+    current_version: str | None = None,
+    temp_values: tuple[float, float, int, int, int] | None = None,
+    all_participants_support_adaptive_preamble: bool = False,
     legacy_full_airtime: bool = False,
 ) -> None:
     current = read_target_transfer_settings(controller, target_name)
@@ -1016,10 +1052,39 @@ def enforce_transfer_guardrails(
         reply = controller.remote_command(target_name, "powersaving off")
         if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
             raise ota.OtaError(f"target did not disable CPU power saving: {reply}")
-    if current.rxps_enabled:
+    rxps_requested = saved.rxps_enabled if saved is not None else current.rxps_enabled
+    rxps_profile = (
+        ota.select_rxps_temp_profile(
+            current_version,
+            temp_values,
+            all_participants_support_adaptive_preamble=(
+                all_participants_support_adaptive_preamble
+            ),
+        )
+        if rxps_requested and temp_values is not None
+        else None
+    )
+    saved_level = saved.rxps_level if saved is not None else current.rxps_level
+    if saved_level is None or not 1 <= saved_level <= 10:
+        rxps_profile = None
+    expected_rxps = rxps_requested and rxps_profile is not None
+    if rxps_requested:
+        ota.apply_remote_rxps_policy(
+            controller,
+            target_name,
+            ota.RxpsSettings(
+                True,
+                saved.rxps_rx_us if saved is not None else current.rxps_rx_us,
+                saved.rxps_sleep_us if saved is not None else current.rxps_sleep_us,
+                saved.rxps_level if saved is not None else current.rxps_level,
+                saved.rxps_preamble if saved is not None else current.rxps_preamble,
+            ),
+            rxps_profile,
+        )
+    elif current.rxps_enabled:
         reply = controller.remote_command(target_name, "set radio.rxps off")
         if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
-            raise ota.OtaError(f"target did not disable RXPS: {reply}")
+            raise ota.OtaError(f"target did not restore RXPS-off policy: {reply}")
     if abs(float(current.rxdelay)) > 0.0001:
         reply = controller.remote_command(target_name, "set rxdelay 0")
         if not reply.upper().startswith("OK"):
@@ -1032,7 +1097,7 @@ def enforce_transfer_guardrails(
     verified = read_target_transfer_settings(controller, target_name)
     if (
         verified.powersaving_enabled
-        or verified.rxps_enabled
+        or verified.rxps_enabled != expected_rxps
         or abs(float(verified.rxdelay)) > 0.0001
         or (
             legacy_full_airtime
@@ -1041,10 +1106,18 @@ def enforce_transfer_guardrails(
     ):
         raise ota.OtaError(
             "destination transfer guardrails did not read back as "
-            "powersaving=off, RXPS=off, rxdelay=0"
+            f"powersaving=off, RXPS={'on' if expected_rxps else 'off'}, rxdelay=0"
             + (", af=0" if legacy_full_airtime else "")
         )
-    detail = "RXPS off, rxdelay 0, CPU power saving off"
+    if rxps_profile is None:
+        rxps_detail = "RXPS off (version/preamble gate)"
+    else:
+        rxps_detail = (
+            f"RXPS on (qualified boundary level "
+            f"{rxps_profile.boundary_level}, preamble "
+            f"{rxps_profile.boundary_preamble})"
+        )
+    detail = f"{rxps_detail}, rxdelay 0, CPU power saving off"
     if legacy_full_airtime:
         detail += ", legacy airtime factor 0"
     print(f"[guardrail] destination verified: {detail}")
@@ -1061,22 +1134,18 @@ def restore_transfer_settings(
         if not reply.upper().startswith("OK"):
             raise ota.OtaError(f"target did not restore RX flood delay: {reply}")
 
-    if saved.rxps_enabled:
-        if (
-            not current.rxps_enabled
-            or current.rxps_rx_us != saved.rxps_rx_us
-            or current.rxps_sleep_us != saved.rxps_sleep_us
-        ):
-            reply = controller.remote_command(
-                target_name,
-                f"set radio.rxps {saved.rxps_rx_us} {saved.rxps_sleep_us}",
-            )
-            if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
-                raise ota.OtaError(f"target did not restore RXPS: {reply}")
-    elif current.rxps_enabled:
-        reply = controller.remote_command(target_name, "set radio.rxps off")
-        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
-            raise ota.OtaError(f"target did not restore RXPS-off state: {reply}")
+    ota.restore_remote_rxps(
+        controller,
+        target_name,
+        ota.RxpsSettings(
+            saved.rxps_enabled,
+            saved.rxps_rx_us,
+            saved.rxps_sleep_us,
+            saved.rxps_level,
+            saved.rxps_preamble,
+        ),
+    )
+    current = read_target_transfer_settings(controller, target_name)
 
     if abs(float(current.airtime_factor) - float(saved.airtime_factor)) > 0.0001:
         reply = controller.remote_command(
@@ -1105,6 +1174,13 @@ def restore_transfer_settings(
             and (
                 verified.rxps_rx_us != saved.rxps_rx_us
                 or verified.rxps_sleep_us != saved.rxps_sleep_us
+                or (
+                    saved.rxps_level is not None
+                    and (
+                        verified.rxps_level != saved.rxps_level
+                        or verified.rxps_preamble != saved.rxps_preamble
+                    )
+                )
             )
         )
     ):
@@ -1488,6 +1564,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         temp_values = ota.parse_temp_radio(args.temp_radio)
     except argparse.ArgumentTypeError as exc:
         parser.error(f"--temp-radio: {exc}")
+    args.temp_values = temp_values
     remote_setup_seconds = (1 + len(args.relay)) * args.reply_timeout
     required_seconds = (
         remote_setup_seconds
@@ -1543,8 +1620,8 @@ def confirm_chain(
         "then restore"
     )
     print(
-        "  guardrails  : save, disable RXPS/rxdelay/CPU sleep, restore all "
-        "settings at endpoint"
+        "  guardrails  : save settings; version-gate RXPS, disable rxdelay/CPU "
+        "sleep, restore all settings at endpoint"
     )
     if args.legacy_full_airtime:
         print(
@@ -1657,10 +1734,35 @@ def main(argv: list[str] | None = None) -> int:
         transfer_settings = load_or_capture_transfer_settings(
             controller, target_name, full_key, work_dir
         )
+        participant_args = source_namespace(args)
+        participant_args.relay_values = [
+            ota.parse_relay(value, password) for value in args.relay
+        ]
+        participant_versions = ota.read_lora_ota_participant_versions(
+            controller, participant_args, target
+        )
+
+        def all_current_participants_support_adaptive_preamble(
+            current_target: ota.TargetInfo,
+        ) -> bool:
+            participant_versions["destination"] = (
+                ota.parse_version(current_target.current_version)
+                if current_target.current_version else None
+            )
+            return ota.participants_support_adaptive_preamble(
+                participant_versions
+            )
+
         prepare_watchdog(controller, target_name)
         enforce_transfer_guardrails(
             controller,
             target_name,
+            saved=transfer_settings,
+            current_version=target.current_version,
+            temp_values=args.temp_values,
+            all_participants_support_adaptive_preamble=(
+                all_current_participants_support_adaptive_preamble(target)
+            ),
             legacy_full_airtime=args.legacy_full_airtime,
         )
         enforce_ota_hops(controller, target_name, args.ota_hops)
@@ -1682,6 +1784,12 @@ def main(argv: list[str] | None = None) -> int:
             enforce_transfer_guardrails(
                 controller,
                 target_name,
+                saved=transfer_settings,
+                current_version=target.current_version,
+                temp_values=args.temp_values,
+                all_participants_support_adaptive_preamble=(
+                    all_current_participants_support_adaptive_preamble(target)
+                ),
                 legacy_full_airtime=args.legacy_full_airtime,
             )
             enforce_ota_hops(controller, target_name, args.ota_hops)

@@ -24,6 +24,16 @@ tempradio 909.950,250,5,5,120
 
 Use the node's current permitted regional frequency in place of `909.950` when necessary.
 
+The scripted updater checks the firmware version of the receiver and every
+sender before deciding whether RX power saving can remain active. At
+SF5/BW250, an all-v1.17.1.5-or-newer path can use effective RXPS level 8 with
+the tuple-selected 64-symbol physical preamble. SF5/BW500 can use level 8 with
+128 symbols. Other fast tuples remain at the shortest viable preamble, normally
+32. A mixed, older, or unknown long-preamble path is put in continuous receive
+for the update, then the receiver's exact saved RXPS setting is restored. This
+preserves the RX benefit without risking missed packets from a legacy
+32-symbol sender.
+
 > **Can my node install the update?** Choose a release-table artifact explicitly labelled LoRa-OTA capable,
 > then confirm `ota self` and `ota status` expose install support; do not infer support from the filename alone.
 > LoRa OTA firmware is available for supported **ESP32** boards and nRF52 repeater targets. Every nRF52
