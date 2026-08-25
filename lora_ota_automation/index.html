@@ -803,6 +803,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="3. Check the destination once">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rxps-handling-during-tempradio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RXPS handling during TempRadio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1412,6 +1429,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="3. Check the destination once">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rxps-handling-during-tempradio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RXPS handling during TempRadio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1716,6 +1750,100 @@ the required capabilities, install the exact-board OTAFIX bootloader first.</p>
 North American example: choose a legal frequency supported by every
 participating radio and appropriate to your location. Older radios that do not
 support SF5 require a complete replacement tuple passed with <code>--temp-radio</code>.</p>
+<h3 id="rxps-handling-during-tempradio">RXPS handling during TempRadio</h3>
+<p>RXPS improves receive performance per unit of radio-on time, so the runner
+keeps the destination's saved RXPS preference enabled whenever the selected
+fast tuple has a qualified timing window. Before changing any radio, it reads
+<code>ver</code> from the destination, controller, source, and every named relay. It treats
+v1.17.1.5 as the first forward contract in which every SF5-SF8 transmission,
+including a retry, uses the same tuple-selected physical preamble: normally 32
+symbols, 64 only when 32 cannot enable RXPS, and 128 only when neither 32 nor
+64 can. A saved RXPS level is also safely retuned after a radio change. An
+older or unparseable destination version fails closed: the runner temporarily
+sends <code>set radio.rxps off</code> instead of assuming an ad-hoc build contains the
+timing fixes. Automation deliberately treats the version as a wire-format
+contract.</p>
+<p>For the default SF5/BW250 tuple, the runner keeps destination RXPS on only when
+the destination and every possible sender are v1.17.1.5 or newer. It does not
+overwrite an existing level-based preference. Current firmware retunes that
+preference against the tuple-selected 64-symbol wire preamble; the qualified boundary is
+effective level 8, preamble 64 (<code>1252 / 6424 us</code>). A manually configured node
+may save <code>set radio.rxps level 8 preamble 32</code> before entering TempRadio: when
+32 symbols cannot cover the TCXO transition, firmware safely selects the real
+64-symbol preamble. If the saved setting uses fixed manual timings, or even one
+participant is older or unknown, RXPS is temporarily off. This avoids the
+receive gap that a 32-symbol sender or an unretuned manual window would create.</p>
+<p>The complete qualified SX1262+TCXO policy is:</p>
+<table>
+<thead>
+<tr>
+<th>TempRadio SF/BW</th>
+<th>Saved reference setting</th>
+<th>Qualified boundary</th>
+<th>Automation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SF7/BW500</td>
+<td><code>level 7 preamble 32</code></td>
+<td>7 / 32</td>
+<td>RXPS on for a current destination</td>
+</tr>
+<tr>
+<td>SF6/BW250</td>
+<td><code>level 7 preamble 32</code></td>
+<td>7 / 32</td>
+<td>RXPS on for a current destination</td>
+</tr>
+<tr>
+<td>SF5/BW125</td>
+<td><code>level 7 preamble 32</code></td>
+<td>7 / 32</td>
+<td>RXPS on for a current destination</td>
+</tr>
+<tr>
+<td>SF5/BW250</td>
+<td><code>level 8 preamble 32</code></td>
+<td>8 / 64</td>
+<td>RXPS on only when every participant follows the 64-symbol contract</td>
+</tr>
+<tr>
+<td>SF6/BW500</td>
+<td><code>level 8 preamble 32</code></td>
+<td>8 / 64</td>
+<td>RXPS on only when every participant follows the adaptive-preamble contract</td>
+</tr>
+<tr>
+<td>SF5/BW500</td>
+<td><code>level 8 preamble 32</code></td>
+<td>8 / 128</td>
+<td>RXPS on only when every participant follows the adaptive-preamble contract</td>
+</tr>
+<tr>
+<td>SF5/BW62.5</td>
+<td><code>level 10 preamble 16</code></td>
+<td>10 / 16</td>
+<td>RXPS on for a current destination</td>
+</tr>
+<tr>
+<td>Unqualified tuple</td>
+<td>none</td>
+<td>continuous RX</td>
+<td>RXPS temporarily off</td>
+</tr>
+</tbody>
+</table>
+<p>If RXPS was already off, the runner leaves it off. Otherwise it writes the
+original level, preamble assumption, receive/sleep periods, and temporary
+decision to protected
+<code>target-rxps-settings.json</code> in the run's working directory, verifies the
+temporary state, and restores the exact original setting after the target is
+back on its normal radio. Current firmware exposes this complete state through
+<code>get radio.rxps.config</code>; a legacy reply has only on/off and periods, so the
+runner can restore those periods but cannot reconstruct an unreported saved
+level. A radio change later recalculates from a preserved saved minimum, so
+moving back to a slower tuple returns to the operator's saved level.</p>
 <h2 id="4-run-an-esp32-update">4. Run an ESP32 update</h2>
 <p>The ZIP can contain a compatible ready <code>.mota</code> or the exact board-and-role
 non-merged application <code>.bin</code>:</p>
@@ -1857,7 +1985,10 @@ well as individual ZIP members, are rejected above 64 MiB before being loaded.</
 <li><code>--no-install</code> downloads and verifies the image but leaves it staged. By
   default the runner then schedules the target, relays, and a script-configured
   source back to their normal radios. Combining it with
-  <code>--leave-controller-radio</code> deliberately preserves the TempRadio topology.</li>
+  <code>--leave-controller-radio</code> deliberately preserves the TempRadio topology.
+  If the version gate required RXPS off, it stays off while that topology is
+  preserved; use <code>target-rxps-settings.json</code> to restore it only after sending
+  <code>normalradio</code>.</li>
 <li><code>--allow-non-upgrade</code> deliberately permits the same or an older version.</li>
 <li><code>--replace-active-download</code> deliberately discards a different update already
   downloading or staged on the target. Without it, that update is preserved.</li>
@@ -1903,8 +2034,11 @@ the destination.</p>
    hashes, Merkle root, full-image hash where applicable, identity fields,
    signature, codec, base, and the firmware's 1024-byte maximum block size.
    Version-3 bootloader packages are refused before any target state changes.</li>
-<li>Save the controller's normal radio tuple and show the confirmation prompt.</li>
-<li>Start TempRadio on the target, then far-to-near relays, then the source;
+<li>Save the controller's normal radio tuple, read every participant's version,
+   save the destination's RXPS state, select the qualified RXPS policy, and
+   show the confirmation prompt.</li>
+<li>Apply and verify that RXPS policy, then start TempRadio on the target,
+   far-to-near relays, and the source;
    finally switch the controller to the same tuple and read it back. The runner
    rejects a TempRadio window that cannot cover setup, seeder startup,
    discovery, the transfer timeout, final polling, and install checks.</li>
@@ -1922,7 +2056,8 @@ the destination.</p>
    continues the 10-second probes through the mandatory relay-return window. A
    source supplied with <code>--source-already-temp</code> is never modified.
    <code>--leave-controller-radio</code> moves the controller back to TempRadio only after
-   this normal-channel verification.</li>
+   this normal-channel verification. Restore the destination's exact original
+   RXPS setting after normal-channel identity is proven.</li>
 </ol>
 <p>Remote replies are matched only after queued messages have been drained and
 only when they come from the intended contact and fit the command. A ready
@@ -1951,12 +2086,17 @@ return to their normal channel; the manifest-ID check resumes its partial
 download without replacing it.</p>
 <p>The working directory is retained and printed at exit. It contains the exact
 served mOTA, <code>motatool-serve.log</code>, extracted build inputs when needed, and
-<code>controller-radio.txt</code>. It contains no saved admin password.</p>
+<code>controller-radio.txt</code>. When the destination started with RXPS enabled it also
+contains protected <code>target-rxps-settings.json</code> for manual recovery. It contains
+no saved admin password.</p>
 <h2 id="interruption-and-recovery">Interruption and recovery</h2>
 <p>Ctrl-C stops the seeder, detaches its serial folder, makes one best-effort
 request to shorten a source TempRadio window started by the script, and attempts
 to restore the controller. The target and relays remain on TempRadio only until
 their bounded windows end; rebooting also restores their saved radio settings.
+A normal cleanup restores the destination's exact RXPS periods. If that remote
+restore cannot be confirmed, use <code>target-rxps-settings.json</code> after the target
+returns to its normal channel.
 A partial download remains safe. Once the target is reachable again (after its
 TempRadio window ends, or after putting the controller back on that tuple),
 rerunning the same package recognizes its manifest ID and resumes the existing

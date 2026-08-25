@@ -5673,15 +5673,16 @@ minimum and return to it exactly when it is safe.</p>
   accepted but will use continuous receive because no safe duty-cycle level is
   available. Returning to slower settings recalculates from the saved RXPS
   minimum.</p>
-<p>On SX1262+TCXO boards, the tested fast-setting boundaries are:</p>
+<p>On SX1262+TCXO boards, the fast-setting boundaries are:</p>
 <table>
 <thead>
 <tr>
 <th style="text-align: right;">SF</th>
 <th style="text-align: right;">BW (kHz)</th>
-<th style="text-align: right;">Effective preamble</th>
+<th style="text-align: right;">Wire preamble</th>
+<th style="text-align: right;">Effective timing preamble</th>
 <th style="text-align: right;">Minimum effective RXPS level</th>
-<th style="text-align: left;">Result</th>
+<th style="text-align: right;">RX / sleep</th>
 </tr>
 </thead>
 <tbody>
@@ -5689,45 +5690,77 @@ minimum and return to it exactly when it is safe.</p>
 <td style="text-align: right;">7</td>
 <td style="text-align: right;">500</td>
 <td style="text-align: right;">32</td>
+<td style="text-align: right;">32</td>
 <td style="text-align: right;">7</td>
-<td style="text-align: left;">RXPS duty cycling</td>
+<td style="text-align: right;">2731 / 6101 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
 <td style="text-align: right;">250</td>
 <td style="text-align: right;">32</td>
+<td style="text-align: right;">32</td>
 <td style="text-align: right;">7</td>
-<td style="text-align: left;">RXPS duty cycling</td>
+<td style="text-align: right;">2731 / 6101 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">125</td>
 <td style="text-align: right;">32</td>
+<td style="text-align: right;">32</td>
 <td style="text-align: right;">7</td>
-<td style="text-align: left;">RXPS duty cycling</td>
+<td style="text-align: right;">2731 / 6101 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">1252 / 6424 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">1252 / 6424 us</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">626 / 6398 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">62.5</td>
+<td style="text-align: right;">32</td>
 <td style="text-align: right;">16</td>
 <td style="text-align: right;">10</td>
-<td style="text-align: left;">RXPS duty cycling</td>
+<td style="text-align: right;">4096 / 6272 us</td>
 </tr>
 </tbody>
 </table>
 <p>SF7/BW500, SF6/BW250, and SF5/BW125 are timing-equivalent because each has a
-256 us LoRa symbol. SF5/BW250 and SF5/BW500 use <code>continuous-fast</code> even with
-preamble 32 in the normal build.</p>
-<p>The table's effective preamble is the length RXPS uses for its timing window.
-The radio's actual transmitted preamble is a firmware property, not a
-<code>radio.rxps</code> preference. Normal firmware transmits 32 symbols at SF5-SF8 and
-16 symbols at SF9-SF12. A controlled build can set
-<code>-D LORA_FAST_PREAMBLE=64</code>; this changes the actual SF5-SF8 wire preamble and
-lets SF5/BW250 duty-cycle at effective level 8 (<code>1252 / 6424 us</code>). That profile
-passed a 16/16 on-air qualification at 909.950 MHz. SF5/BW500 remains too fast.
-Use the 64-symbol option only when every possible sender to an RXPS receiver
-uses the longer preamble; treating a 32-symbol sender as if it sent 64 would
-create a receive gap.</p>
+256 us LoRa symbol. SF5/BW250 and SF6/BW500 have 128 us symbols; both need 64
+wire symbols to cover the 6 ms transition. SF5/BW500 has 64 us symbols and
+needs 128.</p>
+<p>The wire preamble is a firmware property, not a <code>radio.rxps</code> preference. The
+effective preamble is the conservative length RXPS uses for its timing window,
+which is why SF5/BW62.5 can retain a saved 16-symbol assumption while the radio
+transmits 32. Starting with v1.17.1.5, firmware tries 32 first at SF5-SF8, then
+64 and 128 only when each shorter length cannot enable RXPS at any level. It
+uses 16 at SF9-SF12. Every packet on a tuple, including retries, uses that
+tuple's selected length.</p>
+<p>Cascade/USA builds on a Heltec V4 and WisMesh Tag (RAK4631 target) passed 16/16
+packets in each direction at both SF5/BW250/64 and SF5/BW500/128, CR5,
+909.950 MHz. A 64- or 128-symbol timing window is safe only when every possible
+sender to the RXPS receiver follows the v1.17.1.5-or-newer adaptive-preamble
+contract; a shorter legacy sender would create a receive gap. LoRa OTA
+automation treats that version as the wire-format capability boundary.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-frequency">View or change this node's frequency</h4>
 <p><strong>Usage:</strong>
@@ -5756,6 +5789,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <h4 id="view-or-change-rx-duty-cycle-power-saving">View or change RX duty-cycle power saving</h4>
 <p><strong>Usage:</strong>
 - <code>get radio.rxps</code>
+- <code>get radio.rxps.config</code>
 - <code>get radio.rxps.rfrx_disabled</code>
 - <code>get rxps.wd</code>
 - <code>set radio.rxps.rfrx_disabled &lt;state&gt;</code>
@@ -5775,15 +5809,20 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>state</code>: <code>on</code> or <code>off</code>.</p>
 <p><strong>Notes:</strong>
 - <code>get rxps.wd</code> reports the RXPS watchdog's soft and hard recovery counts.
+- <code>get radio.rxps.config</code> adds the persisted level and preamble assumption to
+  the on/off and timing values. Deployment tools use it to restore a
+  level-based preference without converting it to fixed manual timings.
 - <code>radio.rxps.rfrx_disabled</code> is a runtime-only diagnostic setting and resets to <code>off</code> after reboot.
 - Its default <code>off</code> state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to <code>on</code> reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - <code>radio.rxps.rfrx_disabled</code> is supported only on SX1262 targets with a host-controlled RX enable pin.
 - <code>on</code> and <code>conservative</code> select level <code>1</code> with a 16-symbol preamble; <code>balanced</code> selects level <code>5</code> with a 16-symbol preamble.
 - Fresh Cascade-profile builds start with RXPS on at level <code>8</code> and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom <code>&lt;rx_us&gt; &lt;sleep_us&gt;</code> timings remain fixed.
-- <code>get radio.rxps</code> reports both the saved timing assumption and any effective
-  preamble/level selected for the current tuple. A 64-symbol effective preamble
-  appears only in a firmware build whose actual fast preamble is 64.
+- <code>get radio.rxps</code> keeps the legacy on/off, RX, and sleep reply. The new
+  <code>get radio.rxps.config</code> reply adds the saved level and preamble assumption.
+  Radio-change replies and the Full Companion terminal status report any
+  effective level/preamble adjustment. Effective preamble 64 or 128 appears
+  only when the active tuple's physical wire preamble has that length.
 - The selected mode is applied immediately, persisted, and restored after reboot.</p>
 <hr />
 <h4 id="view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards">View or change the LoRa FEM receive-path gain state on supported boards</h4>
@@ -7501,7 +7540,7 @@ set direct.retry.margin 10
 - Room-server and sensor firmware accept <code>on</code> or <code>off</code>; numeric SNR thresholds
   are repeater-only because those roles do not keep recent-repeater SNR data.
 - <code>off</code> disables per-packet retry CR overrides and uses the current radio CR.
-- Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
+- Retry packets may use a different coding rate, but they keep the radio's normal physical preamble.
 - Unknown repeaters start at <code>+3.00 dB</code> for adaptive CR selection.
 - A failed unknown repeater is seeded at <code>+2.75 dB</code>.
 - Each later failure lowers the SNR estimate by <code>0.25 dB</code>.</p>

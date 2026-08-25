@@ -1821,6 +1821,13 @@ and do not substitute a normal reboot for the one-time watchdog reset. Direct
 tests use <code>hops 0</code>: <code>hops 1</code> makes the target echo each source response despite
 there being no intermediate relay, increasing half-duplex loss and legacy
 three-second retries.</p>
+<p>The exact compact chain never qualifies for fast RXPS: its bridge and endpoint
+versions predate the v1.17.1.5 adaptive-preamble contract. Keep RXPS off for
+this historical chain whether using SF5/BW250 or the faster direct-bench
+SF5/BW500 tuple. For a later update whose target, controller, source, and
+relays are all v1.17.1.5 or newer, use the generic LoRa OTA runner; it can
+retain RXPS at the qualified level-8/preamble-64 boundary for SF5/BW250 or the
+level-8/preamble-128 boundary for SF5/BW500.</p>
 <p>Put the source on the identical TempRadio tuple. If it is a binary-mode Full
 Companion, the current <code>motatool</code> can switch modes for the serving session:</p>
 <pre><code class="language-bash">motatool serve \
@@ -2000,8 +2007,12 @@ completes still requires local USB recovery because the deployed start image
 predates the rescue command.</p>
 <p>Before the first mutation, the runner saves the destination's RXPS periods,
 CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
-the persistent work directory. It verifies <code>radio.rxps off</code>, <code>powersaving off</code>,
-and <code>rxdelay 0</code> after every bridge reboot, plus <code>af 0</code> when
+the persistent work directory. It reads the destination, controller, source,
+and relay versions before applying the same RXPS policy as the generic runner.
+The pinned historical chain therefore verifies <code>radio.rxps off</code> after every
+bridge reboot; a future all-v1.17.1.5-or-newer SF5/BW250 chain would instead
+keep RXPS on under the qualified level-8/preamble-64 boundary. It also verifies
+<code>powersaving off</code> and <code>rxdelay 0</code>, plus <code>af 0</code> when
 <code>--legacy-full-airtime</code> was explicitly selected. It restores every original
 value only after the exact endpoint is proven. An interrupted run deliberately
 leaves those transfer guardrails active; rerun the same command with the same
