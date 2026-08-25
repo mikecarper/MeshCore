@@ -1323,7 +1323,9 @@ opening that port from an app.</p>
 <p>Set the LoRa frequency. Example:  set freq 915.8</p>
 <pre><code>set tx {tx-power-dbm}
 </code></pre>
-<p>Sets LoRa transmit power in dBm.</p>
+<p>Sets LoRa-chip transmit power in dBm. The firmware rejects values outside the
+radio/board limit; external-PA boards can have a lower input-power ceiling than
+the radio chip itself.</p>
 <pre><code>set name {name}
 </code></pre>
 <p>Sets your advertisement name.</p>

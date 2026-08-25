@@ -5626,10 +5626,17 @@ minimum and return to it exactly when it is safe.</p>
 - <code>get tx</code>
 - <code>set tx &lt;dbm&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>dbm</code>: Power level in dBm (1-22)</p>
+- <code>dbm</code>: Requested radio-chip power in dBm. The valid range depends on the
+  radio family, selected PA path, and any board-specific external-PA limit.</p>
 <p><strong>Set by build flag:</strong> <code>LORA_TX_POWER</code></p>
 <p><strong>Default:</strong> Varies by board</p>
 <p><strong>Notes:</strong> This setting only controls the power level of the LoRa chip. Some nodes have an additional power amplifier stage which increases the total output. Refer to the node's manual for the correct setting to use. <strong>Setting a value too high may violate the laws in your country.</strong></p>
+<p>The command strictly rejects malformed values and saves the new preference
+only after the active radio driver accepts it. On LR2021, the chip range is
+<code>-9</code> to <code>22</code> dBm below 1500 MHz and <code>-19</code> to <code>12</code> dBm above 1500 MHz. A lower
+board-specific external-PA limit still takes precedence. A saved profile is
+clamped to the applicable limit when its frequency changes; temporary radio
+settings use a safe effective power without replacing the saved preference.</p>
 <hr />
 <h4 id="change-the-radio-parameters-for-a-set-duration">Change the radio parameters for a set duration</h4>
 <p><strong>Usage:</strong> 
