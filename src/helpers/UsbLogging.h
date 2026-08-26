@@ -12,11 +12,11 @@
 #endif
 
 #if defined(ARDUINO)
-class Stream;
+#include <Arduino.h>
 
 namespace mesh {
 
-// Ordinary logging images start enabled. Dual-CDC Full Companion starts with
+// Ordinary logging images start enabled. Every Full Companion starts with
 // logging disabled and restores its saved choice after preferences load.
 bool isUsbLoggingEnabled();
 void setUsbLoggingEnabled(bool enabled);
@@ -26,9 +26,8 @@ void setUsbLoggingEnabled(bool enabled);
 // mirror. Returns false only when that mirror could not be saved.
 bool saveUsbLoggingBootPreference(bool enabled);
 
-// Start the optional dedicated USB logging interface. Ordinary builds keep
-// using Serial. Supported Full Companion builds expose a second CDC ACM
-// interface so plaintext diagnostics never share the framed Companion stream.
+// Start the optional dedicated USB logging interface. Ordinary and single-TTY
+// builds use Serial; dual-CDC Full Companion builds use a second CDC ACM port.
 void beginUsbLoggingPort();
 Stream& usbLoggingPort();
 bool hasDedicatedUsbLoggingPort();

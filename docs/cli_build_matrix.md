@@ -66,13 +66,14 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.
 | Build/profile | Command availability |
 |---|---|
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest. |
-| Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist `get/set usb.logging`. ESP32 roles covered by unified FULL and nRF52 Companions covered by dual-CDC Full Companion are not duplicated here. |
+| Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist `get/set usb.logging`. Roles covered by a Full image with runtime logging are not duplicated here. |
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table. |
 | Internal-flash nRF52 repeater auto pair | `full-ota` retains the board's external-sensor drivers; `reduced-ota` omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured 4,808-byte flash cost. Both artifacts carry the same stable OTA target identity and are checked for `ota ...` and `retry.preset`; RAK artifacts also verify the retained monitor drivers. |
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
 | FULL ESP32 USB + WiFi | Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. `get/set logging.output off\|usb\|wifi\|both` selects and persists the active output paths. |
 | FULL ESP32 logging fallback | Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image. |
 | Dual-CDC Full Companion | nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface `00` for framed Companion/terminal/mOTA traffic. Enabling logging and rebooting adds interface `02` for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. `get/set usb.logging` persistently controls whether the logging interface is present. |
+| Single-TTY Full Companion | ESP32 Full images without dual CDC start with framed Companion on their one TTY. `set usb.logging on` switches it to an input-capable plaintext logging terminal; `set usb.logging off` replies and then restores framed Companion automatically. BLE, WiFi, and source-only LoRa OTA remain available. |
 | `no_external_sensors` | Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles also retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1. The legacy target suffix is retained for OTA identity compatibility. |
 
 `logging`, `OTA`, and `FULL` describe independent build features. Do not infer
@@ -92,16 +93,13 @@ available from a canonical image:
   replaced by their ordinary Station target. G2 boosted receive gain is the
   persisted `radio.rxgain on|off` setting; the G3 alias changed only the
   advertised default name.
-- When a board has a dual-CDC Full Companion, that one artifact replaces its
+- When a board has a Full Companion, that one artifact replaces its
   separate USB, BLE, ordinary WiFi, and USB packet-logging Companion artifacts.
-  Current support includes nRF52 Full Companion plus qualified native-USB
-  ESP32-S3 Full targets: Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3 WIO,
-  Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. RAK3112
-  and Heltec RC32 keep separate transport and logging artifacts pending live
-  hardware validation.
-  It provides BLE plus an always-present interface `00` for framed
-  Companion/terminal/mOTA traffic. Enabling logging and rebooting adds
-  interface `02` for plaintext logs.
+  It provides BLE and source-only LoRa OTA; ESP32 also provides ordinary WiFi.
+  Dual-CDC builds keep framed traffic on interface `00` and add logging on
+  interface `02` after a reboot. Single-TTY builds switch interface `00` into
+  an input-capable logging terminal and restore Binary Companion when that
+  terminal session ends.
   Its LoRa OTA support is source-only: it can serve a host file to another node
   but has no staging store and cannot update itself over LoRa.
   Installing an ESP32 Full Companion may require one merged-image erase/flash
@@ -113,9 +111,10 @@ available from a canonical image:
 The old aliases still work with `build-firmware` and
 `build-matching-firmwares`. Dedicated repeater LoRa OTA receiver images are not
 collapsed; they retain their exact storage, bootloader, role, and target
-identity contracts. ESP32 boards without the tested dual-CDC Full profile keep
-USB, BLE, WiFi, and Full Companion images separate because Full changes
-partitions, RAM use, active transports, and power behavior.
+identity contracts. Companion boards keep transport-specific canonical images
+only when no exact Full recipe has passed the combined flash/RAM qualification.
+Dual CDC is not required: a qualified single-TTY Full image safely makes Binary
+Companion and plaintext USB logging mutually exclusive.
 
 ## Complete CLI policy
 

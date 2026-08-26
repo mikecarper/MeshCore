@@ -168,22 +168,26 @@ next reboot or power cycle. An explicit administrator `start webconfig` remains
 available as an override. A saved SSID switches to the normal indefinite
 reconnect behavior instead.
 
-Current dual-CDC Full Companion profiles also use one binary for normal
-attached Companion use and USB packet logging. This includes nRF52 and
-qualified native-USB ESP32-S3 Full images. Fresh installs default to logging off and expose only
-interface `00` for Binary Companion, terminal, and mOTA source traffic. Enabling
-logging and rebooting adds interface `02` for plaintext logs. The picker
-therefore omits older separate USB, BLE, ordinary WiFi, and USB-logging
-Companion choices when the matching Full artifact exists. Use
-`set usb.logging on reboot` or `set usb.logging off reboot` to persist the
-choice and apply the corresponding USB interface count.
+Full Companion profiles use one binary for USB, BLE, ordinary Wi-Fi on ESP32,
+source-only LoRa OTA, and optional USB packet logging. The picker therefore
+omits separate attached-transport and USB-logging choices whenever the exact
+Full recipe exists. Fresh installs default to logging off.
 
-Qualified ESP32-S3 hardware currently includes Heltec V4, T-Beam 1W, Station
-G2/G3, XIAO S3 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero
-Connect layouts. The base Heltec V4 profile has completed live two-interface,
-ROM-flashing, and logging-off one-interface validation. RAK3112 and Heltec RC32
-retain separate transport and logging images pending hardware validation, as do
-Heltec V3/WSL3, ThinkNode M2/M5/M7/M9, classic ESP32, and ESP32-C3 targets.
+Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep Binary Companion
+on interface `00`; `set usb.logging on reboot` adds plaintext interface `02`.
+Single-TTY ESP32 builds instead use `set usb.logging on` to switch that TTY to
+an input-capable plaintext logging terminal. `set usb.logging off` stops the
+logs and returns the TTY to Binary Companion after its reply. BLE and Wi-Fi
+remain usable while the USB TTY is logging.
+
+The dual-CDC ESP32-S3 subset includes Heltec V4, T-Beam 1W, Station G2/G3,
+XIAO S3 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect
+layouts. Existing single-TTY Full recipes include RAK3112, Heltec RC32,
+Heltec V3/WSL3, ThinkNode M2/M5/M7/M9, Heltec V2, LilyGo T-LoRa V2.1.1.6,
+and XIAO C3. Additional qualified single-TTY ESP32 profiles include M5Stack
+Unit C6L, Heltec Wireless Tracker/Paper/E213/CT62, LilyGo T3S3
+SX1262/SX1276, T-Deck, TETH Elite, classic T-Beam SX1262/SX1276, T-Beam S3
+Supreme, Ebyte EoRa-S3, Meshadventurer SX1262/SX1268, and XIAO S3.
 
 ## Installation methods
 

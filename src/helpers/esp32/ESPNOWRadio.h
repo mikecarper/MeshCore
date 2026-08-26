@@ -59,7 +59,7 @@ public:
   bool isCalibratingNoiseFloor() const { return false; }
 
   uint32_t intID();
-  void setTxPower(uint8_t dbm);
+  bool setTxPower(int8_t dbm);
 };
 
 #if ESPNOW_DEBUG_LOGGING && ARDUINO

@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 
 // Bounded, clamping printf-append for the fixed-size CLI reply buffers used by
@@ -40,4 +41,9 @@ static inline void replyAppendf(char* buf, size_t bufsize, int* pos, const char*
   if (n < 0) return;
   *pos += n;
   if ((size_t)*pos >= bufsize) *pos = (int)bufsize - 1;  // clamp truncated append
+}
+
+static inline uint32_t mbedtlsErrorMagnitude(int32_t stack_err) {
+  return stack_err < 0 ? (uint32_t)(-(int64_t)stack_err)
+                       : (uint32_t)stack_err;
 }

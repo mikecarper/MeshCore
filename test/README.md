@@ -66,6 +66,9 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_power_management` | `src/helpers/PowerManagementUtils.h` | median filtering of a brownout outlier and valid-reading requirements for the boot lock |
 | `test_rx_power_saving` | `src/helpers/radiolib/RXPowerSaving.h` | level-derived timing, tuple-selected 32/64/128-symbol wire preambles, equivalent SF7/BW500, SF6/BW250, and SF5/BW125 profiles, SF5/BW250 and SF6/BW500 level-8/64 timing, SF5/BW500 level-8/128 timing, SF5/BW62.5 with a 16-symbol timing assumption, automatic retuning, and SX1262 TCXO timing thresholds |
 | `test_region_names` | `src/helpers/RegionNameUtils.h` | canonical public-region markers while preserving distinct private and differently named regions |
+| `test_datagram_payload_limits` | `src/helpers/DatagramPayloadLimits.h` | encrypted datagram plaintext ceilings, including the anonymous region-reply prefix and worst-case cipher padding |
+| `test_serial_packet_log` | `src/helpers/SerialPacketLog.h` | bounded USB packet logging and dropped-line reporting |
+| `test_alert_fault_policy` | `src/helpers/AlertFaultPolicy.h` | coherent WiFi/MQTT outage edges, durations, rate limits, and formatting |
 | `test_routing_policy` | `src/helpers/RoutingPolicy.h` | scoped/unscoped flood hop limits and selection of direct, path-return, mirrored-scope, default-scope, or unscoped replies |
 | `test_rs232_uart` | `src/helpers/bridges/RS232UartUtils.h` | stopping the active UART peripheral before reassigning its pins |
 | `test_security_session_timer` | `src/helpers/nrf52/SecuritySessionTimer.h` | two-minute security-session expiry, cancellation, restart, and `millis()` rollover |

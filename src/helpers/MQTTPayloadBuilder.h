@@ -76,6 +76,7 @@ public:
     uint32_t heard_secs_ago;
     const char* scopes;
     const char* status;
+    int rssi;  // dBm; non-negative means no measurement is available
     // True renders heard_secs_ago as JSON null, for a neighbour whose stored
     // stamp cannot yield an age. No default initializer: the struct stays an
     // aggregate for the device toolchain, and a zeroed tail means "age known",

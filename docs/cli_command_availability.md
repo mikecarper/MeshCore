@@ -72,7 +72,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data; other roles can return empty data | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial |
-| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; dual-CDC Full Companion adds/removes its second USB port after reboot | No | Yes | No |
+| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | No | Yes | No |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
@@ -235,7 +235,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial | Serial | Serial |
-| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; dual-CDC Full Companion adds/removes its second USB port after reboot | No | Yes | No | No | Yes |
+| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | No | Yes | No | No | Yes |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes | Yes | Yes |

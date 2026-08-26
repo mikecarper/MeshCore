@@ -137,6 +137,33 @@ TEST(MQTTConnectionPolicy, SyncedClockRenewsInvalidExpiredOrImminentTokens) {
   EXPECT_TRUE(Policy::tokenNeedsRenewal(true, expires + 1U, expires, 300U));
 }
 
+TEST(MQTTConnectionPolicy, JwtReconnectReusesOnlyProvenValidCredentials) {
+  const uint32_t now = 1735689600U;
+  const uint32_t usable_expiry =
+      now + Policy::kJwtReconnectSafetyMarginSecs + 1U;
+
+  EXPECT_TRUE(Policy::canReuseJwtForReconnect(
+      true, true, false, now, usable_expiry, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, true, false, now, Policy::kMinimumValidEpoch - 1U, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, true, false, now, 0U, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, true, false, now,
+      now + Policy::kJwtReconnectSafetyMarginSecs, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, false, false, now, usable_expiry, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      false, true, false, now, usable_expiry, 0));
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, true, true, now, usable_expiry, 0));
+
+  EXPECT_FALSE(Policy::canReuseJwtForReconnect(
+      true, true, false, now, now + 360U, 300U));
+  EXPECT_TRUE(Policy::canReuseJwtForReconnect(
+      true, true, false, now, now + 361U, 300U));
+}
+
 TEST(MQTTConnectionPolicy, RenewalThrottleHasExactBoundaryAndHandlesRollover) {
   EXPECT_FALSE(Policy::renewalAttemptAllowed(59999U, 0U));
   EXPECT_TRUE(Policy::renewalAttemptAllowed(60000U, 0U));
@@ -240,6 +267,48 @@ TEST(SlotActivation, DisabledAndOutOfRangeSlots) {
   EXPECT_EQ(SlotActivation::Disabled, Policy::classifySlotActivation(1, enabled, 3, 2));
   EXPECT_EQ(SlotActivation::Disabled, Policy::classifySlotActivation(-1, enabled, 3, 2));
   EXPECT_EQ(SlotActivation::Disabled, Policy::classifySlotActivation(0, nullptr, 3, 2));
+}
+
+using Policy::StaleTokenAction;
+
+TEST(StaleToken, ChoosesSafeLiveAndDisconnectedActions) {
+  EXPECT_EQ(StaleTokenAction::Bounce,
+            Policy::classifyStaleToken(true, true, true));
+  EXPECT_EQ(StaleTokenAction::KeepAlive,
+            Policy::classifyStaleToken(true, true, false));
+  EXPECT_EQ(StaleTokenAction::Reconnect,
+            Policy::classifyStaleToken(true, false, true));
+  EXPECT_EQ(StaleTokenAction::Reconnect,
+            Policy::classifyStaleToken(true, false, false));
+}
+
+TEST(StaleToken, FailedMintAlwaysDefers) {
+  EXPECT_EQ(StaleTokenAction::Defer,
+            Policy::classifyStaleToken(false, false, true));
+  EXPECT_EQ(StaleTokenAction::Defer,
+            Policy::classifyStaleToken(false, false, false));
+  EXPECT_EQ(StaleTokenAction::Defer,
+            Policy::classifyStaleToken(false, true, true));
+  EXPECT_EQ(StaleTokenAction::Defer,
+            Policy::classifyStaleToken(false, true, false));
+}
+
+using Policy::ClockSource;
+
+TEST(FallbackClock, PrefersSystemThenRtcAndRejectsInvalidSources) {
+  const uint32_t floor = 1767225600U;
+  const uint32_t old_time = 1715770351U;
+  const uint32_t plausible = 1786000000U;
+
+  EXPECT_EQ(ClockSource::System,
+            Policy::chooseFallbackClock(false, plausible, plausible - 900U,
+                                        floor));
+  EXPECT_EQ(ClockSource::Rtc,
+            Policy::chooseFallbackClock(false, old_time, plausible, floor));
+  EXPECT_EQ(ClockSource::None,
+            Policy::chooseFallbackClock(false, old_time, old_time, floor));
+  EXPECT_EQ(ClockSource::None,
+            Policy::chooseFallbackClock(true, plausible, plausible, floor));
 }
 
 int main(int argc, char** argv) {

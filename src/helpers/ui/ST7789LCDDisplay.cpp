@@ -36,11 +36,20 @@ ColorVal UIColor::corp_blue = 0x001A;
 
 bool ST7789LCDDisplay::begin() {
   if (!_isOn) {
-    if (_peripher_power) _peripher_power->claim();
+    if (_peripher_power) {
+      _peripher_power->claim();
+    #ifdef HELTEC_V4_R8_TFT
+      delay(100);
+    #endif
+    }
 
     if (PIN_TFT_LEDA_CTL != -1) {
       pinMode(PIN_TFT_LEDA_CTL, OUTPUT);
+    #ifdef HELTEC_V4_R8_TFT
+      digitalWrite(PIN_TFT_LEDA_CTL, !PIN_TFT_LEDA_CTL_ACTIVE);
+    #else
       digitalWrite(PIN_TFT_LEDA_CTL, HIGH);
+    #endif
     }
 
     // Im not sure if this is just a t-deck problem or not, if your display is slow try this.
@@ -57,7 +66,13 @@ bool ST7789LCDDisplay::begin() {
     display.setTextColor(ST77XX_WHITE);
     display.setTextSize(2 * DISPLAY_SCALE_X); 
     display.cp437(true); // Use full 256 char 'Code Page 437' font
-  
+
+  #ifdef HELTEC_V4_R8_TFT
+    if (PIN_TFT_LEDA_CTL != -1) {
+      digitalWrite(PIN_TFT_LEDA_CTL, PIN_TFT_LEDA_CTL_ACTIVE);
+    }
+  #endif
+
     _isOn = true;
   }
 
@@ -71,14 +86,20 @@ void ST7789LCDDisplay::turnOn() {
 void ST7789LCDDisplay::turnOff() {
   if (_isOn) {
     if (PIN_TFT_LEDA_CTL != -1) {
+    #ifdef HELTEC_V4_R8_TFT
+      digitalWrite(PIN_TFT_LEDA_CTL, !PIN_TFT_LEDA_CTL_ACTIVE);
+    #else
       digitalWrite(PIN_TFT_LEDA_CTL, HIGH);
+    #endif
     }
     if (PIN_TFT_RST != -1) {
       digitalWrite(PIN_TFT_RST, LOW);
     }
+  #ifndef HELTEC_V4_R8_TFT
     if (PIN_TFT_LEDA_CTL != -1) {
       digitalWrite(PIN_TFT_LEDA_CTL, LOW);
     }
+  #endif
     _isOn = false;
 
     if (_peripher_power) _peripher_power->release();

@@ -88,6 +88,13 @@ TEST(ReplyAppendf, NoWritePastBufferAcrossOverflowingChain) {
   EXPECT_EQ(c.buf()[c.logical - 1], '\0');  // still NUL-terminated
 }
 
+TEST(MbedtlsErrorMagnitude, NormalizesEitherSignAndInt32Min) {
+  EXPECT_EQ(0x7F00U, mbedtlsErrorMagnitude(0x7F00));
+  EXPECT_EQ(0x7F00U, mbedtlsErrorMagnitude(-0x7F00));
+  EXPECT_EQ(0U, mbedtlsErrorMagnitude(0));
+  EXPECT_EQ(2147483648U, mbedtlsErrorMagnitude(INT32_MIN));
+}
+
 TEST(ReplyAppendf, ExactFitBoundary) {
   char buf[11];  // room for exactly "0123456789" + NUL
   int pos = 0;

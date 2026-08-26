@@ -400,10 +400,58 @@ def normalize_esp32_dual_cdc_full_companion_metadata(
     return "\n\n".join(paragraphs)
 
 
-def release_identity_has_nrf52_package(
-    release_files: dict[str, list[Path]], identity: str
-) -> bool:
-    return any(path.suffix.lower() == ".zip" for path in release_files[identity])
+def normalize_esp32_single_tty_full_companion_metadata(
+    firmware: dict, notes: str
+) -> str:
+    """Describe an ESP32 Full Companion whose USB path has one TTY."""
+    firmware["title"] = "Full Companion"
+    firmware["subTitle"] = (
+        "USB Companion/logging + BLE + Wi-Fi + LoRa OTA source"
+    )
+    profile = (
+        "PROFILE - Single-TTY ESP32 Full Companion: the USB TTY defaults to "
+        "Binary Companion on a fresh install. BLE, Wi-Fi Companion on TCP "
+        "5000, WebConfig, TCP mOTA seeding on 5001, and the text terminal on "
+        "5002 remain available. Enter the USB text terminal and use set "
+        "usb.logging on to turn that TTY into an input-capable plaintext "
+        "packet/debug stream. Use set usb.logging off to stop diagnostics; "
+        "after its reply, the TTY returns to Binary Companion automatically. "
+        "The saved logging choice is restored at boot."
+    )
+    logging_use = (
+        "LOGGING USE - USB logging and Binary Companion deliberately do not "
+        "share the single TTY at the same time. While logging is on, the TTY "
+        "continues to accept text CLI commands, including set usb.logging "
+        "off. Use BLE or Wi-Fi Companion while the USB TTY is logging."
+    )
+    selection = (
+        "SELECTION - One Full image for this exact hardware layout replaces "
+        "separate USB, BLE, ordinary Wi-Fi, and USB-logging images."
+    )
+
+    paragraphs: list[str] = []
+    profile_added = False
+    selection_added = False
+    for paragraph in notes.split("\n\n"):
+        if paragraph.startswith("PROFILE "):
+            if not profile_added:
+                paragraphs.append(profile)
+                profile_added = True
+            continue
+        if paragraph.startswith("LOGGING USE "):
+            continue
+        if paragraph.startswith("SELECTION "):
+            if not selection_added:
+                paragraphs.append(selection)
+                selection_added = True
+            continue
+        paragraphs.append(paragraph)
+    if not profile_added:
+        paragraphs.append(profile)
+    if not selection_added:
+        paragraphs.append(selection)
+    paragraphs.append(logging_use)
+    return "\n\n".join(paragraphs)
 
 
 def canonical_full_identity_for_transport(identity: str) -> str | None:
@@ -421,16 +469,10 @@ def canonical_full_identity_for_transport(identity: str) -> str | None:
     return canonical_runtime_identity(full_identity)
 
 
-def release_identity_is_dual_cdc_full(
+def release_identity_is_full_companion(
     release_files: dict[str, list[Path]], identity: str
 ) -> bool:
-    return (
-        identity in release_files and
-        (
-            release_identity_has_nrf52_package(release_files, identity) or
-            ESP32_DUAL_CDC_FULL_RE.match(identity) is not None
-        )
-    )
+    return identity in release_files and "_companion_radio_full" in identity.lower()
 
 
 def resolve_release_identity(
@@ -441,25 +483,25 @@ def resolve_release_identity(
         if candidate in release_files:
             return candidate, False
 
-    # Dual-CDC Full Companion replaces the old USB-only logging artifact because
-    # its second CDC interface carries plaintext logs. Limit this fallback to a
-    # native nRF52 Full package or a qualified native-USB ESP32-S3 identity.
+    # Full Companion replaces the old USB-only logging artifact. Dual-CDC
+    # hardware uses its second interface; single-TTY hardware safely switches
+    # its primary port into an input-capable plaintext logging terminal.
     for candidate in candidates:
         if not candidate.endswith("-logging"):
             continue
         logging_base = candidate.removesuffix("-logging")
         full_identity = canonical_full_identity_for_transport(logging_base)
-        if full_identity is not None and release_identity_is_dual_cdc_full(
+        if full_identity is not None and release_identity_is_full_companion(
             release_files, full_identity
         ):
             return full_identity, False
 
-    # Canonical dual-CDC Full Companion replaces separate USB, BLE, and ordinary
-    # Wi-Fi artifacts. Other ESP32 transport-specific images remain separate.
-    # Full is source-only for LoRa OTA and needs no staging/self-install slot.
+    # Canonical Full Companion replaces separate USB, BLE, and ordinary Wi-Fi
+    # artifacts. Full is source-only for LoRa OTA and needs no target-side
+    # staging/self-install slot.
     for candidate in candidates:
         full_identity = canonical_full_identity_for_transport(candidate)
-        if full_identity is not None and release_identity_is_dual_cdc_full(
+        if full_identity is not None and release_identity_is_full_companion(
             release_files, full_identity
         ):
             return full_identity, False
@@ -733,12 +775,11 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "BW62.5 / CR5 preset. This catalog contains standard builds, Full "
             "Companion builds, lean LoRa-OTA builds, and expanded-partition FULL "
             "USB + Wi-Fi observer and ESP-NOW bridge builds. Unified observers "
-            "provide persistent off/USB/WiFi/both output selection. Dual-CDC Full "
-            "Companion replaces separate BLE, USB, ordinary Wi-Fi, and USB-logging "
-            "choices with one image. It defaults to one framed USB port; enabling "
-            "logging and rebooting adds the separate plaintext port. "
-            "This applies to nRF52 Full and qualified native-USB ESP32-S3 Full; "
-            "USB-UART bridge variants remain separate. Open Release notes for role, "
+            "provide persistent off/USB/WiFi/both output selection. Full Companion "
+            "replaces separate BLE, USB, ordinary Wi-Fi, and USB-logging choices "
+            "with one image. Dual-CDC builds can add a separate plaintext port; "
+            "single-TTY builds switch that port into an input-capable logging "
+            "terminal. Open Release notes for role, "
             "hardware, installation, and partition requirements."
         )
 
@@ -838,6 +879,13 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     for identity in resolved_identities
                 ):
                     notes = normalize_esp32_dual_cdc_full_companion_metadata(
+                        firmware, notes
+                    )
+                elif device_type == "esp32" and any(
+                    "companion_radio_full" in identity.lower()
+                    for identity in resolved_identities
+                ):
+                    notes = normalize_esp32_single_tty_full_companion_metadata(
                         firmware, notes
                     )
 

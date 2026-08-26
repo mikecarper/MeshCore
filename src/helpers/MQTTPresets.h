@@ -54,6 +54,14 @@ struct MQTTPresetDef {
 // Braces match topic placeholders ({device}/{iata}); never send this string to the broker.
 static const char MQTT_USERPASS_USERNAME_PUBKEY[] = "{pubkey}";
 
+// Most brokers enforce JWT expiration on a live connection and need a
+// proactive credential bounce. Waev keeps an established session alive, so
+// refreshing credentials in place avoids an unnecessary TLS handshake.
+static inline bool mqttPresetEnforcesTokenExp(const MQTTPresetDef* preset) {
+  if (!preset || !preset->name) return true;
+  return strcmp(preset->name, "waev") != 0;
+}
+
 static inline bool mqttPresetUsesDevicePubkeyUsername(const MQTTPresetDef* preset) {
   return preset && preset->auth_type == MQTT_AUTH_USERPASS &&
          preset->userpass_username &&

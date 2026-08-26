@@ -205,6 +205,7 @@ int MQTTMessageBuilder::buildPacketJSON(
   // Routing path (direct packets only): pass raw hop bytes to buildPacketMessage,
   // which emits them as an array of lowercase hex hop tokens.
   bool has_path = packet->isRouteDirect() && packet->getPathHashCount() > 0;
+  const bool has_rx_metrics = !is_tx && packet->getRSSI() < 0;
   
   return buildPacketMessage(
     doc,
@@ -215,8 +216,8 @@ int MQTTMessageBuilder::buildPacketJSON(
     packet_type, route_str,
     packet->payload_len,
     raw_hex,
-    12.5f, // SNR - using reasonable default
-    -65,   // RSSI - using reasonable default
+    has_rx_metrics ? packet->getSNR() : -999.0f,
+    has_rx_metrics ? packet->getRSSI() : -999,
     NAN,   // score - unknown on this reconstruction-less fallback path
     hash_str,
     has_path ? packet->path : nullptr,

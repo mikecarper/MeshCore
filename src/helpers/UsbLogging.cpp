@@ -34,7 +34,14 @@
 
 namespace mesh {
 
+#if defined(COMPANION_RADIO_FULL)
+// Full Companion owns its primary USB stream for framed traffic until saved
+// preferences are loaded. Starting disabled prevents early boot diagnostics
+// from corrupting that stream before single-TTY builds can enter terminal mode.
+static std::atomic<bool> usb_logging_enabled{false};
+#else
 static std::atomic<bool> usb_logging_enabled{true};
+#endif
 static std::atomic<bool> usb_logging_preference_known{false};
 
 class NullUsbLoggingStream : public Stream {
@@ -151,6 +158,7 @@ void beginUsbLoggingPort() {
   // A terminal opening or closing the diagnostics interface must never reboot
   // the node or put it into the ROM downloader.
   dedicated_usb_logging_port->enableReboot(false);
+  dedicated_usb_logging_port->setTxTimeoutMs(0);
   dedicated_usb_logging_port->begin(115200);
 #elif defined(MESH_NRF52_DUAL_CDC_LOGGING)
   dedicated_usb_logging_port.begin(115200);

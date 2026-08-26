@@ -55,6 +55,7 @@ public:
   uint16_t transport_codes[2];
   uint8_t path[MAX_PATH_SIZE];
   uint8_t payload[MAX_PACKET_PAYLOAD];
+  int16_t _rssi;  // dBm, captured with _snr when this packet is received
   int8_t _snr;
   uint8_t tx_cr;  // volatile local-only TX coding-rate override; not serialized
   uint8_t flood_retry_policy;  // volatile receive-policy result; not serialized
@@ -99,6 +100,7 @@ public:
   bool isMarkedDoNotRetransmit() const { return header == 0xFF; }
 
   float getSNR() const { return ((float)_snr) / 4.0f; }
+  int16_t getRSSI() const { return _rssi; }
 
   /**
    * \returns  the encoded/wire format length of this packet

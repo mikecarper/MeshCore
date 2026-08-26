@@ -89,7 +89,83 @@ def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
     matrix = build.split("run_logging_matrix_build_targets()", 1)[1]
     matrix = matrix.split("run_build_targets()", 1)[0]
     assert 'is_companion_radio_full_target "$target"' in matrix
-    assert "can add a dedicated logging USB port" in matrix
+    assert "input-capable single-TTY terminal" in matrix
+
+
+def test_espnow_tx_power_matches_cli_callback_contract():
+    root = Path(__file__).resolve().parents[2]
+    header = (root / "src/helpers/esp32/ESPNOWRadio.h").read_text(
+        encoding="utf-8"
+    )
+    implementation = (
+        root / "src/helpers/esp32/ESPNOWRadio.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "bool setTxPower(int8_t dbm);" in header
+    assert "bool ESPNOWRadio::setTxPower(int8_t dbm)" in implementation
+    assert "esp_wifi_set_max_tx_power(dbm * 4) == ESP_OK" in implementation
+
+
+def test_flash_constrained_stm32_repeaters_pin_the_size_qualified_toolchain():
+    root = Path(__file__).resolve().parents[2]
+    toolchain = "platformio/toolchain-gccarmnoneeabi@^1.140201.0"
+    profiles = (
+        ("variants/rak3x72/platformio.ini", "[env:RAK_3x72_repeater]"),
+        ("variants/tiny_relay/platformio.ini", "[env:Tiny_Relay_repeater]"),
+        (
+            "variants/wio-e5-mini/platformio.ini",
+            "[env:wio-e5-mini_repeater]",
+        ),
+        ("variants/wio-e5-dev/platformio.ini", "[env:wio-e5_repeater]"),
+        (
+            "variants/wio-e5-dev/platformio.ini",
+            "[env:wio-e5-repeater_bridge_rs232]",
+        ),
+    )
+
+    for path, section_name in profiles:
+        text = (root / path).read_text(encoding="utf-8")
+        section = text.split(section_name, 1)[1].split("\n[", 1)[0]
+        assert toolchain in section
+        assert "-fno-schedule-insns2" in section
+        assert "-Wl,--sort-section=alignment" in section
+        assert "-D MESH_PACKET_LOGGING_COMPACT=1" in section
+
+    dispatcher = (root / "src/Dispatcher.cpp").read_text(encoding="utf-8")
+    repeater = (
+        root / "examples/simple_repeater/MyMesh.cpp"
+    ).read_text(encoding="utf-8")
+    assert "#if MESH_PACKET_LOGGING_COMPACT" in dispatcher
+    assert "Utils::printHex(logging_port, raw, len);" in dispatcher
+    assert "!MESH_PACKET_LOGGING_COMPACT" in dispatcher
+    assert "#if MESH_PACKET_LOGGING_COMPACT" in repeater
+    assert "mesh::Utils::printHex(logging_port, raw, len);" in repeater
+
+
+def test_usb_companion_profiles_enable_the_usb_transport():
+    root = Path(__file__).resolve().parents[2]
+    profiles = (
+        (
+            "variants/heltec_e290/platformio.ini",
+            "[env:Heltec_E290_companion_usb]",
+            "[env:Heltec_E290_repeater]",
+        ),
+        (
+            "variants/meshnology_w12/platformio.ini",
+            "[env:meshnology_w12_companion_radio_usb]",
+            "[env:meshnology_w12_companion_radio_ble]",
+        ),
+        (
+            "variants/xiao_nrf52/platformio.ini",
+            "[env:solarxiao_30S_companion_radio_usb]",
+            "[env:solarxiao_33S_companion_radio_usb]",
+        ),
+    )
+
+    for relative, section, next_section in profiles:
+        variant = (root / relative).read_text(encoding="utf-8")
+        profile = variant.split(section, 1)[1].split(next_section, 1)[0]
+        assert "-D ENABLE_USB_INTERFACE" in profile
 
 
 def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
@@ -128,6 +204,21 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "-DMESH_DUAL_CDC_LOGGING=1" in full
     assert "-DMESH_DEBUG=1" in full
     assert "-DMESH_PACKET_LOGGING=1" in full
+    assert 'disable_debug_flags "$env_name"' in build
+    assert 'apply_debug_overrides "$env_name"' in build
+
+    debug_overrides = build.split("apply_debug_overrides()", 1)[1]
+    debug_overrides = debug_overrides.split(
+        "disable_usb_logging_for_mqtt()", 1
+    )[0]
+    assert "preserve_full_companion_logging" in debug_overrides
+    assert 'is_companion_radio_full_target "$env_name"' in debug_overrides
+    assert 'if [ "$preserve_full_companion_logging" -eq 0 ]' in debug_overrides
+
+    disable_debug = build.split("disable_debug_flags()", 1)[1]
+    disable_debug = disable_debug.split("apply_mqtt_bridge_override()", 1)[0]
+    assert 'is_companion_radio_full_target "$env_name"' in disable_debug
+    assert 'usb_logging_undefs=""' in disable_debug
 
     esp32_dual = build.split(
         "is_esp32_dual_cdc_companion_radio_full_target()", 1
@@ -178,14 +269,74 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
         root / "examples/companion_radio/CompanionFeatures.h"
     ).read_text(encoding="utf-8")
     assert "COMPANION_FEATURE_DEDICATED_USB_LOGGING" in companion_features
-    assert "defined(MESH_DUAL_CDC_LOGGING)" in companion
-    assert "defined(COMPANION_RADIO_FULL)" not in companion
+    assert "defined(COMPANION_RADIO_FULL)" in companion
     assert "_prefs.usb_logging_enabled = 0" in companion
     assert 'strcmp(value, "on reboot") == 0' in companion
     assert 'strcmp(value, "off reboot") == 0' in companion
     assert "reboot required to change USB interfaces" in companion
     assert "rebooting to change USB interfaces" in companion
     assert "mesh::saveUsbLoggingBootPreference(enabled)" in companion
+
+    companion_main = (
+        root / "examples/companion_radio/main.cpp"
+    ).read_text(encoding="utf-8")
+    assert "!mesh::hasDedicatedUsbLoggingPort()" in companion_main
+    assert "mesh::isUsbLoggingEnabled()" in companion_main
+    assert "enterUsbTerminalMode();" in companion_main
+
+    replacement = build.split(
+        "get_esp32_full_companion_replacement()", 1
+    )[1].split("get_full_companion_replacement()", 1)[0]
+    assert 'is_esp32_companion_radio_full_target "$full_env"' in replacement
+    assert "is_esp32_dual_cdc_companion_radio_full_target" not in replacement
+
+
+def test_measured_full_companion_promotions_are_exact_and_bounded():
+    root = Path(__file__).resolve().parents[2]
+    build = (root / "build.sh").read_text(encoding="utf-8")
+    qualified = build.split("# Some qualified boards historically", 1)[1]
+    qualified = qualified.split("\n  fi\n}\n\nget_pio_envs", 1)[0]
+
+    expected = [
+        "M5Stack_Unit_C6L_companion_radio_ble",
+        "Heltec_Wireless_Tracker_companion_radio_ble",
+        "LilyGo_T3S3_sx1276_companion_radio_ble",
+        "Heltec_ct62_companion_radio_ble",
+        "Meshadventurer_sx1262_companion_radio_ble",
+        "Meshadventurer_sx1268_companion_radio_ble",
+        "Heltec_Wireless_Paper_companion_radio_ble",
+        "Heltec_E213_companion_radio_ble",
+        "Xiao_S3_companion_radio_ble",
+        "LilyGo_TETH_Elite_sx1262_companion_radio_ble",
+        "LilyGo_T3S3_sx1262_companion_radio_ble",
+        "LilyGo_TDeck_companion_radio_ble",
+        "Ebyte_EoRa-S3_companion_radio_ble",
+        "Tbeam_SX1262_companion_radio_ble",
+        "Tbeam_SX1276_companion_radio_ble",
+        "T_Beam_S3_Supreme_SX1262_companion_radio_ble",
+        "GAT562_Mesh_Watch13_companion_radio_ble",
+        "LilyGo_T-Echo-Lite_companion_radio_ble",
+        "LilyGo_T_Impulse_Plus_companion_radio_ble",
+        "WioTrackerL1Eink_companion_radio_ble",
+    ]
+    listed = [
+        line.strip()
+        for line in qualified.splitlines()
+        if line.strip().endswith("_companion_radio_ble")
+    ]
+    assert listed == expected
+    assert 'PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"' in qualified
+
+    profile = build.split("apply_companion_radio_full_profile()", 1)[1]
+    profile = profile.split("apply_radio_overrides()", 1)[0]
+    assert "-DWIFI_SSID=" in profile
+    assert "+<helpers/esp32/SerialWifiInterface.cpp>" in profile
+    assert "meshadventurer_sx1262_companion_radio_full" in profile
+    assert "meshadventurer_sx1268_companion_radio_full" in profile
+    assert "-DMAX_CONTACTS=160" in profile
+    assert "-DMAX_GROUP_CHANNELS=30" in profile
+    assert "-DOFFLINE_QUEUE_SIZE=64" in profile
+    assert "160 contacts, 30 channels, and 64 queued frames" in profile
 
 
 def test_full_companion_wireless_startup_and_psram_contacts_are_resilient():
@@ -361,9 +512,9 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
         "Station_G2_companion_radio_usb", release_files
     ) == ("Station_G2_companion_radio_usb", False)
 
-    # When the canonical release contains only the qualified Full image, every
-    # ordinary attached transport and the old USB-logging identity resolve to
-    # it. An unqualified USB-UART bridge must never receive that substitution.
+    # When the canonical release contains only a Full image, every ordinary
+    # attached transport and the old USB-logging identity resolve to it. A
+    # single-TTY USB-UART board uses terminal mode for its logging stream.
     g2_full_only = {
         "Station_G2_companion_radio_full": [Path("g2-full.bin")],
         "ThinkNode_M2_companion_radio_full": [Path("m2-full.bin")],
@@ -377,14 +528,15 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
         assert provider.resolve_release_identity(
             old_identity, g2_full_only
         ) == ("Station_G2_companion_radio_full", False)
-    try:
-        provider.resolve_release_identity(
-            "ThinkNode_M2_companion_radio_usb", g2_full_only
-        )
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("USB-UART bridge was incorrectly mapped to Full")
+    for old_identity in (
+        "ThinkNode_M2_companion_radio_usb",
+        "ThinkNode_M2_companion_radio_ble",
+        "ThinkNode_M2_companion_radio_wifi",
+        "ThinkNode_M2_companion_radio_usb-logging",
+    ):
+        assert provider.resolve_release_identity(
+            old_identity, g2_full_only
+        ) == ("ThinkNode_M2_companion_radio_full", False)
 
     dual_notes = provider.normalize_nrf52_full_companion_metadata(
         {"title": "Companion USB", "subTitle": "USB logging"},
@@ -402,6 +554,14 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     assert "interface 02" in v4_notes
     assert "cannot reboot the board" in v4_notes
     assert "ordinary Wi-Fi" in v4_notes
+
+    single_tty_notes = provider.normalize_esp32_single_tty_full_companion_metadata(
+        {"title": "Companion USB", "subTitle": "USB logging"},
+        "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
+    )
+    assert "input-capable plaintext" in single_tty_notes
+    assert "set usb.logging off" in single_tty_notes
+    assert "do not share the single TTY" in single_tty_notes
 
     legacy = {
         "role": "companionBle",

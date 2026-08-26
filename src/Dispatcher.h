@@ -382,9 +382,9 @@ public:
 
 private:
 #if MESH_PACKET_LOGGING
-  void logPacketStart(const char* direction, const Packet* packet, int len)
-      __attribute__((noinline));
-  void logPacketEnd(const Packet* packet) __attribute__((noinline));
+  void logPacketLine(const char* direction, const Packet* packet, int len,
+                     bool include_rx_metrics, float score,
+                     uint32_t air_time) __attribute__((noinline));
 #endif
   void checkRecv();
   void checkSend();

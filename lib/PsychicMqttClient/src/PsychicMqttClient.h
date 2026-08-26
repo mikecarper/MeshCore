@@ -368,6 +368,12 @@ public:
      */
     void disconnect();
 
+    /** Close the transport while retaining the esp-mqtt client task. */
+    void softDisconnect(unsigned long timeout_ms = 5000);
+
+    /** True after a successful start and before a stop. */
+    bool isStarted() const { return _started; }
+
     /**
      * @brief Forcefully stops the MQTT client and disconnects from the server.
      * This does not trigger the onDisconnect callbacks.
@@ -478,6 +484,7 @@ private:
     bool _connected = false;
     bool _stopMqttClient = false;
     bool _config_dirty = true;
+    bool _started = false;
 
     // Runtime cap on the esp-mqtt outbox for QoS 0 async publishes (bytes).
     // 0 = disabled. Enforced in publish(); not an esp-mqtt config field.

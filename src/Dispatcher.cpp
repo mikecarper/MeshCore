@@ -2,6 +2,7 @@
 
 #if MESH_PACKET_LOGGING
   #include <Arduino.h>
+  #include <helpers/SerialPacketLog.h>
 #endif
 
 #include <math.h>
@@ -165,8 +166,14 @@ bool Dispatcher::startOutboundTransmit() {
 
 #if MESH_PACKET_LOGGING
   if (isUsbLoggingEnabled()) {
-    logPacketStart("TX", outbound, len);
-    logPacketEnd(outbound);
+#if MESH_PACKET_LOGGING_COMPACT
+    SerialLogLine<> line;
+    line.printf("T");
+    line.hex(raw, len);
+    line.flush(usbLoggingPort(), false);
+#else
+    logPacketLine("TX", outbound, len, false, 0.0f, 0);
+#endif
   }
 #endif
   return true;
@@ -207,26 +214,31 @@ uint32_t Dispatcher::getCADFailMaxDuration() const {
 }
 
 #if MESH_PACKET_LOGGING
-void Dispatcher::logPacketStart(const char* direction, const Packet* packet, int len) {
-  Stream& logging_port = usbLoggingPort();
-  logging_port.print(getLogDateTime());
-  logging_port.printf(": %s, len=%d (type=%d, route=%s, payload_len=%d)",
-                      direction, len, packet->getPayloadType(),
-                      packet->isRouteDirect() ? "D" : "F",
-                      packet->payload_len);
-}
+void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
+                               int len, bool include_rx_metrics, float score,
+                               uint32_t air_time) {
+  SerialLogLine<256> line;
+  line.printf("%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              getLogDateTime(), direction, len, packet->getPayloadType(),
+              packet->isRouteDirect() ? "D" : "F", packet->payload_len);
+  if (include_rx_metrics) {
+    line.printf(" SNR=%d RSSI=%d score=%d time=%u", (int)packet->getSNR(),
+                (int)packet->getRSSI(), (int)(score * 1000),
+                (unsigned)air_time);
+    uint8_t packet_hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(packet_hash);
+    line.printf(" hash=");
+    line.hex(packet_hash, MAX_HASH_SIZE);
+  }
 
-void Dispatcher::logPacketEnd(const Packet* packet) {
   const uint8_t type = packet->getPayloadType();
   if (packet->payload_len >= 2
       && (type == PAYLOAD_TYPE_PATH || type == PAYLOAD_TYPE_REQ
           || type == PAYLOAD_TYPE_RESPONSE || type == PAYLOAD_TYPE_TXT_MSG)) {
-    usbLoggingPort().printf(" [%02X -> %02X]\n",
-                            (uint32_t)packet->payload[1],
-                            (uint32_t)packet->payload[0]);
-  } else {
-    usbLoggingPort().write((uint8_t)'\n');
+    line.printf(" [%02X -> %02X]", (uint32_t)packet->payload[1],
+                (uint32_t)packet->payload[0]);
   }
+  line.flush(usbLoggingPort());
 }
 #endif
 
@@ -567,6 +579,7 @@ void Dispatcher::checkRecv() {
       } else {
         if (tryParsePacket(pkt, raw, len)) {
           pkt->_snr = snr * 4.0f;
+          pkt->_rssi = (int16_t)rssi;
           score = _radio->packetScore(snr, len);
           air_time = _radio->getEstAirtimeFor(len);
           rx_air_time += air_time;
@@ -580,19 +593,9 @@ void Dispatcher::checkRecv() {
     }
   }
   if (pkt) {
-    #if MESH_PACKET_LOGGING
+    #if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT
     if (isUsbLoggingEnabled()) {
-      logPacketStart("RX", pkt, pkt->getRawLength());
-      Stream& logging_port = usbLoggingPort();
-      logging_port.printf(" SNR=%d RSSI=%d score=%d time=%d",
-                          (int)pkt->getSNR(), (int)rssi,
-                          (int)(score * 1000), air_time);
-
-      static uint8_t packet_hash[MAX_HASH_SIZE];
-      pkt->calculatePacketHash(packet_hash);
-      logging_port.print(" hash=");
-      mesh::Utils::printHex(logging_port, packet_hash, MAX_HASH_SIZE);
-      logPacketEnd(pkt);
+      logPacketLine("RX", pkt, pkt->getRawLength(), true, score, air_time);
     }
     #endif
     logRx(pkt, pkt->getRawLength(), score);   // hook for custom logging
@@ -724,6 +727,7 @@ Packet* Dispatcher::obtainNewPacket() {
     _err_flags |= ERR_EVENT_FULL;
   } else {
     pkt->payload_len = pkt->path_len = 0;
+    pkt->_rssi = 0;
     pkt->_snr = 0;
     pkt->tx_cr = 0;
     pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;

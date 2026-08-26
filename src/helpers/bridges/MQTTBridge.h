@@ -13,6 +13,7 @@
 #include "helpers/MQTTPacketFilter.h"
 #include "helpers/MQTTPresets.h"
 #include "helpers/MQTTLifecycle.h"
+#include "helpers/AlertFaultPolicy.h"
 #include <atomic>
 
 #ifdef WITH_SNMP
@@ -233,6 +234,10 @@ private:
   // Pending slot reconfigure: set from CLI (Core 1), processed by MQTT task (Core 0)
   volatile bool _slot_reconfigure_pending[RUNTIME_MQTT_SLOTS];
 
+  // A broker refusal can invalidate an otherwise clock-valid JWT. The event
+  // callback sets this byte and the bridge task consumes it.
+  volatile bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS];
+
   // Pending on-connect status publish: set from the onConnect callback (which
   // runs on the esp-mqtt event task, NOT this bridge task), consumed by the MQTT
   // task (Core 0). publishStatusToSlot() touches the shared status doc/buffer/
@@ -416,10 +421,19 @@ private:
   unsigned long _last_wifi_check;
   wl_status_t _last_wifi_status;
   bool _wifi_status_initialized;
-  unsigned long _wifi_disconnected_time;  // 0 when connected
+  std::atomic<uint64_t> _wifi_outage_bits;
   unsigned long _last_wifi_reconnect_attempt;
   uint8_t _wifi_reconnect_backoff_attempt;  // 0..5 -> 15s, 30s, 60s, 120s, 300s; reset on connect
   unsigned long _last_slot_reconnect_ms;   // guards against concurrent TLS handshakes (15 s inter-slot gap)
+
+  AlertFaultPolicy::OutageSnapshot wifiOutage() const {
+    return AlertFaultPolicy::unpackOutageSnapshot(
+        _wifi_outage_bits.load(std::memory_order_acquire));
+  }
+  void setWifiOutage(AlertFaultPolicy::OutageSnapshot snapshot) {
+    _wifi_outage_bits.store(AlertFaultPolicy::packOutageSnapshot(snapshot),
+                            std::memory_order_release);
+  }
 
   // Optional pointers for collecting stats internally (set by mesh if available)
   mesh::Dispatcher* _dispatcher;  // For air times and errors
@@ -449,7 +463,7 @@ private:
   bool ensureSlotClient(int index);    // Allocate this slot's persistent client + callbacks on first use
   bool ensureSlotAuthToken(int index); // Allocate this slot's JWT token buffer on first token creation
   void releaseSlotAuthToken(int index);// Free the token buffer (only with the client -- see MQTTSlot)
-  void destroySlotClients();           // Delete all persistent clients (shutdown only)
+  void destroySlotClients(bool force = false);
   bool setupSlot(int index);           // Configure and connect the slot; false = not activated
   // Single definition of "this slot holds one of the _max_active_slots positions":
   // it is enabled and has been through a successful setupSlot(). Startup, the
@@ -457,7 +471,8 @@ private:
   // exceeded by one route while another enforces it.
   int activatedSlotCount() const;
   bool canActivateSlot(int index) const;
-  void teardownSlot(int index);        // Disconnect the slot's client (keeps the object alive)
+  void teardownSlot(int index, bool force = false);
+  void reconnectSlotClient(int index);
   void maintainSlotConnections();      // Maintain all slot connections (token renewal, reconnect)
   void maintainSlotConnection(int index, unsigned long now_millis, unsigned long current_time, bool time_synced, bool& reconnect_attempted, bool& teardown_attempted);
   bool createSlotAuthToken(int index); // Create/renew JWT token for a slot
@@ -649,6 +664,10 @@ public:
   bool canFlashAfterStop() const { return _lifecycle.mayBeginFlash(); }
 
   static unsigned long getWifiConnectedAtMillis();
+
+  AlertFaultPolicy::OutageSnapshot getWifiOutageSnapshot() const {
+    return wifiOutage();
+  }
 
   /**
    * Per-slot outage accessors used by AlertReporter to detect prolonged

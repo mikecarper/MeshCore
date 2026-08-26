@@ -121,9 +121,6 @@ int MQTTPayloadBuilder::buildPacketMessage(
   snprintf(len_str, sizeof(len_str), "%d", len);
   snprintf(packet_type_str, sizeof(packet_type_str), "%d", packet_type);
   snprintf(payload_len_str, sizeof(payload_len_str), "%d", payload_len);
-  StrHelper::ftoaFixed(snr_str, sizeof(snr_str), snr, 1);
-  snprintf(rssi_str, sizeof(rssi_str), "%d", rssi);
-
   root["timestamp"] = timestamp;
   root["hash"] = hash;
   root["origin"] = origin;
@@ -139,8 +136,14 @@ int MQTTPayloadBuilder::buildPacketMessage(
   root["origin_id"] = origin_id;
 
   if (direction && strcmp(direction, "rx") == 0) {
-    root["SNR"] = snr_str;
-    root["RSSI"] = rssi_str;
+    if (snr > -900.0f) {
+      StrHelper::ftoaFixed(snr_str, sizeof(snr_str), snr, 1);
+      root["SNR"] = snr_str;
+    }
+    if (rssi > -900) {
+      snprintf(rssi_str, sizeof(rssi_str), "%d", rssi);
+      root["RSSI"] = rssi_str;
+    }
     if (!isnan(score)) {
       snprintf(score_str, sizeof(score_str), "%d", static_cast<int>(score * 1000));
       root["score"] = score_str;
@@ -222,6 +225,9 @@ static void addNeighborsMessageEntry(
   JsonObject nb = arr.add<JsonObject>();
   nb["pubkey"] = neighbor.pubkey_hex;
   nb["snr"] = neighbor.snr;
+  if (neighbor.rssi < 0) {
+    nb["rssi"] = neighbor.rssi;
+  }
   if (neighbor.heard_unknown) {
     nb["heard_secs_ago"] = nullptr;  // age unknown, not zero
   } else {

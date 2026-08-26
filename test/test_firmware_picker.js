@@ -179,12 +179,15 @@ assert.strictEqual(v4Full.dedicatedUsbLogging, true);
         { installKinds: ["bin"] }
       );
     });
-    const classified = picker.applyDualCdcFullCompanionCapabilities(candidates);
-    assert.strictEqual(classified[0].logging, "none");
+    const classified = picker.applyFullCompanionCapabilities(candidates);
+    assert.strictEqual(classified[0].logging, "usb-runtime");
+    assert.deepStrictEqual(classified[0].loggingModes, ["none", "usb"]);
     assert.strictEqual(classified[0].dedicatedUsbLogging, undefined);
-    assert.strictEqual(
-      picker.omitTransportsReplacedByDualCdcFull(classified).length,
-      candidates.length
+    assert.deepStrictEqual(
+      picker.omitTransportsReplacedByFull(classified).map(function (item) {
+        return item.target;
+      }),
+      [hardware + "_companion_radio_full"]
     );
   }
 );

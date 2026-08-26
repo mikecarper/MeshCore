@@ -131,6 +131,9 @@ struct NeighbourInfo {
   uint32_t advert_timestamp;
   uint32_t heard_timestamp;
   int8_t snr; // multiplied by 4, user should divide to get float value
+#if defined(WITH_MQTT_NEIGHBORS)
+  int16_t rssi; // dBm from the last packet heard from this neighbour
+#endif
 };
 
 #ifndef FIRMWARE_BUILD_DATE
@@ -539,6 +542,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     mesh::Identity id;       // immutable snapshot: neighbour table can change mid-pass
     uint32_t heard_timestamp;
     int8_t snr;              // multiplied by 4
+    int16_t rssi;            // dBm from the last packet heard from this neighbour
     uint32_t tag;            // anon-regions request tag we're waiting on
     char scopes[96];         // scope names from the response
     uint8_t status;          // NeighborDiscoverStatus
@@ -569,8 +573,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool startNeighborDiscover(char* reply);
   void loopNeighborDiscover();
   void finishNeighborDiscover();
-  bool handleNeighborDiscoverResponse(int overlay_idx, const uint8_t* data, size_t len);
-  void touchNeighbourHeard(const mesh::Identity& id, uint32_t heard_timestamp);
+  bool handleNeighborDiscoverResponse(int overlay_idx, const uint8_t* data,
+                                      size_t len, float snr, int16_t rssi);
+  void touchNeighbourHeard(const mesh::Identity& id, uint32_t heard_timestamp,
+                           float snr, int16_t rssi);
   void getLocalScopes(char* buf, size_t len);
   // Overlay peer indices are offset by this base so onPeerDataRecv can tell a
   // discovery response apart from a normal ACL-client index.
@@ -606,7 +612,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   bool handleClientPathCommand(ClientInfo* sender, char* command, char* reply);
   bool formatFloodRetryHeard(char* dest, size_t dest_len, const mesh::Packet* packet) const;
-  void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
+  void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr,
+                    int16_t rssi);
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
   uint8_t handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   uint8_t handleAnonOwnerReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);

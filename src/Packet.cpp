@@ -8,6 +8,8 @@ Packet::Packet() {
   header = 0;
   path_len = 0;
   payload_len = 0;
+  _rssi = 0;
+  _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
 }
@@ -68,6 +70,8 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
   if (src == NULL || len < 2) return false;   // header + path_len
 
   uint8_t i = 0;
+  _rssi = 0;
+  _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
   header = src[i++];

@@ -403,9 +403,14 @@
     ].includes(target);
   }
 
-  function omitTransportsReplacedByDualCdcFull(profiles) {
+  function isFullCompanion(profile) {
+    return Boolean(profile && profile.role === "companion" &&
+      profile.mode === "full");
+  }
+
+  function omitTransportsReplacedByFull(profiles) {
     const fullKeys = new Set((profiles || []).filter(function (profile) {
-      return isDualCdcFullCompanion(profile);
+      return isFullCompanion(profile);
     }).map(function (profile) {
       return profile.hardware + "\n" + profile.variant;
     }));
@@ -419,16 +424,18 @@
     });
   }
 
-  function applyDualCdcFullCompanionCapabilities(profiles) {
+  function applyFullCompanionCapabilities(profiles) {
     return (profiles || []).map(function (profile) {
-      if (!isDualCdcFullCompanion(profile)) return profile;
+      if (!isFullCompanion(profile)) return profile;
 
-      // Supported Full Companion images always expose framed Companion traffic
-      // on interface 00. Logging defaults off; enabling it and rebooting adds
-      // the independent plaintext CDC interface 02.
+      // Every Full Companion has a runtime USB logging mode. Dual-CDC targets
+      // add an independent plaintext interface after reboot; single-TTY
+      // targets switch their existing port between framed and plaintext modes.
       profile.logging = "usb-runtime";
       profile.loggingModes = ["none", "usb"];
-      profile.dedicatedUsbLogging = true;
+      if (isDualCdcFullCompanion(profile)) {
+        profile.dedicatedUsbLogging = true;
+      }
       return profile;
     });
   }
@@ -532,8 +539,8 @@
     }).filter(function (profile) {
       return !isHiddenLegacyProfile(profile);
     });
-    const profiles = omitTransportsReplacedByDualCdcFull(
-      applyDualCdcFullCompanionCapabilities(visibleProfiles)
+    const profiles = omitTransportsReplacedByFull(
+      applyFullCompanionCapabilities(visibleProfiles)
     ).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
@@ -731,12 +738,16 @@
         "With no saved SSID, the setup AP stays available for 30 minutes after each boot, then Wi-Fi powers off automatically until reboot or an explicit start webconfig command. A configured Wi-Fi mode keeps reconnecting instead."
       );
     } else if (profile.logging === "usb-runtime") {
-      extra.push(
-        "Full Companion starts with USB logging off and only interface 00. Use get usb.logging, or set usb.logging on reboot to save logging on and reboot when needed; set usb.logging off reboot removes interface 02 again."
-      );
       if (profile.dedicatedUsbLogging) {
         extra.push(
+          "Full Companion starts with USB logging off and only interface 00. Use get usb.logging, or set usb.logging on reboot to add interface 02; set usb.logging off reboot removes it again."
+        );
+        extra.push(
           "Interface 00 always carries Companion/terminal/mOTA traffic. After logging is enabled and the node reboots, interface 02 carries plaintext logs. Match services by USB interface number instead of assuming tty or COM numbering."
+        );
+      } else {
+        extra.push(
+          "Full Companion starts with USB logging off and Binary Companion on its single TTY. Enter the text terminal and use set usb.logging on for plaintext logs; that TTY still accepts set usb.logging off and automatically returns to Binary Companion after the reply."
         );
       }
     }
@@ -1106,15 +1117,16 @@
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
-    applyDualCdcFullCompanionCapabilities:
-      applyDualCdcFullCompanionCapabilities,
+    applyFullCompanionCapabilities: applyFullCompanionCapabilities,
+    applyDualCdcFullCompanionCapabilities: applyFullCompanionCapabilities,
     applyNrf52FullCompanionCapabilities:
-      applyDualCdcFullCompanionCapabilities,
+      applyFullCompanionCapabilities,
     canonicalHardware: canonicalHardware,
+    omitTransportsReplacedByFull: omitTransportsReplacedByFull,
     omitTransportsReplacedByDualCdcFull:
-      omitTransportsReplacedByDualCdcFull,
+      omitTransportsReplacedByFull,
     omitNrf52TransportsReplacedByFull:
-      omitTransportsReplacedByDualCdcFull,
+      omitTransportsReplacedByFull,
     hardwareFamilyFor: hardwareFamilyFor,
     humanizeHardwareVariant: humanizeHardwareVariant,
     buildCatalog: buildCatalog,

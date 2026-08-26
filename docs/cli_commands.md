@@ -594,9 +594,10 @@ set usb.logging on reboot
 set usb.logging off reboot
 ```
 
-These commands are compiled into logging artifacts and control their live USB
-debug and packet output. CommonCLI roles save the setting in `/com_prefs`, so
-it survives reboot; their first boot defaults to on.
+These commands are compiled into logging artifacts and every Full Companion.
+They control live USB debug and packet output. CommonCLI roles save the setting
+in `/com_prefs`, so it survives reboot; their first boot defaults to on. Full
+Companion starts off on a fresh installation.
 
 On Full Companion these lines belong to its text terminal, not `meshcli`'s
 Binary `get/set` parameter namespace. Open interface `00`, send
@@ -612,11 +613,18 @@ without the optional `reboot` argument saves the choice and reports that a
 reboot is required when the USB interface count must change. The exact
 `set usb.logging on reboot` and `set usb.logging off reboot` forms save the
 choice, send their reply, and reboot one second later only when needed. This
-behavior includes nRF52 and qualified native-USB ESP32-S3 Full images.
+behavior includes nRF52 and dual-CDC native-USB ESP32-S3 Full images.
 
-Turning USB logging off does not disable CLI replies or Companion protocol
-frames. It also does not change the node-storage capture controlled by `log
-start` and `log stop`.
+On a single-TTY ESP32 Full Companion, enter the USB text terminal and use
+`set usb.logging on` to turn that TTY into a logging-repeater-style plaintext
+stream. It remains an input-capable CLI, so `set usb.logging off` works on the
+same TTY and automatically restores Binary Companion after its reply. No
+reboot is needed because the USB interface count does not change.
+
+Turning USB logging off does not disable CLI replies. Dual-CDC builds keep
+Companion frames active on interface `00`; single-TTY builds resume frames when
+their terminal session ends. This setting does not change the node-storage
+capture controlled by `log start` and `log stop`.
 
 Unified ESP32 FULL builds add one saved selector for both output paths:
 

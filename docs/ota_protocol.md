@@ -112,13 +112,12 @@ The "reconstructed image" referenced by the manifest is the full `BODY || EndF` 
 
 ### ESP32 application-slot profiles
 
-ESP32 companion firmware is exempt from the portable-slot limit. USB and WiFi companion artifacts retain
-LoRa OTA and carry `-ota-` in their filenames so they can seed a host folder over serial or TCP; they keep
-their target partition table rather than using the FULL profile. A small set of high-capacity, non-PSRAM classic ESP32
-companions cannot combine their configured contact, group-channel, and offline-queue capacities with LoRa
-OTA in internal DRAM. Their normal artifacts remain unchanged, and option 3 emits a
-`-full-logging-ota-` fallback with 100 contacts, 8 group channels, a 16-frame offline queue, and a saved
-USB-logging on/off gate. MQTT
+ESP32 Companion firmware is exempt from the portable-slot limit. When an exact
+Full recipe exists, one expanded-partition image supplies USB, BLE, WiFi,
+source-only LoRa OTA, and persistent USB logging instead of separate transport
+artifacts. A small set of high-capacity, non-PSRAM classic ESP32 companions use
+100 contacts, 8 group channels, and a 16-frame offline queue in that combined
+image to preserve internal-DRAM headroom. MQTT
 observers and ESP-NOW bridges always use FULL builds because fitting them into the legacy slot would require
 removing CLI and role features. Except for those FULL roles and the ESP32-C6 case below, non-companion ESP32
 artifacts, including room, sensor, and repeater roles, must fit the legacy slot from `0x10000` up to

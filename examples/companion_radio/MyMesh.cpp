@@ -1273,8 +1273,8 @@ void MyMesh::onControlDataRecv(mesh::Packet *packet) {
   }
   int i = 0;
   out_frame[i++] = PUSH_CODE_CONTROL_DATA;
-  out_frame[i++] = (int8_t)(_radio->getLastSNR() * 4);
-  out_frame[i++] = (int8_t)(_radio->getLastRSSI());
+  out_frame[i++] = (int8_t)(packet->getSNR() * 4);
+  out_frame[i++] = (int8_t)packet->getRSSI();
   out_frame[i++] = packet->path_len;
   memcpy(&out_frame[i], packet->payload, packet->payload_len);
   i += packet->payload_len;
@@ -1293,8 +1293,8 @@ void MyMesh::onRawDataRecv(mesh::Packet *packet) {
   }
   int i = 0;
   out_frame[i++] = PUSH_CODE_RAW_DATA;
-  out_frame[i++] = (int8_t)(_radio->getLastSNR() * 4);
-  out_frame[i++] = (int8_t)(_radio->getLastRSSI());
+  out_frame[i++] = (int8_t)(packet->getSNR() * 4);
+  out_frame[i++] = (int8_t)packet->getRSSI();
   out_frame[i++] = 0xFF; // reserved (possibly path_len in future)
   memcpy(&out_frame[i], packet->payload, packet->payload_len);
   i += packet->payload_len;
@@ -1477,9 +1477,10 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
   memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
-#if defined(MESH_DUAL_CDC_LOGGING)
-  // Keep the primary CDC stream exclusively framed unless the owner opts in
-  // to the separate plaintext logging interface and reboots.
+#if defined(COMPANION_RADIO_FULL)
+  // Keep Full Companion's primary stream exclusively framed on a fresh
+  // install. Dual-CDC builds can add a diagnostics port; single-TTY builds
+  // switch the primary stream into the text terminal before emitting logs.
   _prefs.usb_logging_enabled = 0;
 #else
   _prefs.usb_logging_enabled = 1;

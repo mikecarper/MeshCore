@@ -80,8 +80,8 @@ uint32_t ESPNOWRadio::getRngSeed() {
   return millis() + intID();  // TODO: where to get some entropy?
 }
 
-void ESPNOWRadio::setTxPower(uint8_t dbm) {
-  esp_wifi_set_max_tx_power(dbm * 4);
+bool ESPNOWRadio::setTxPower(int8_t dbm) {
+  return esp_wifi_set_max_tx_power(dbm * 4) == ESP_OK;
 }
 
 uint32_t ESPNOWRadio::intID() {

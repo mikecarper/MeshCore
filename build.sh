@@ -100,8 +100,8 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases remain available as explicit builds.
-  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. Supported Full Companion targets provide an optional dedicated logging USB port.
-  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. Dual-CDC Full Companion replaces separate USB, BLE, WiFi, and USB-logging artifacts where supported.
+  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. Full Companion targets provide runtime USB logging through a dedicated port or an input-capable single-TTY terminal.
+  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. Full Companion replaces separate USB, BLE, WiFi, and USB-logging artifacts where an exact combined recipe exists.
   build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
@@ -403,6 +403,79 @@ for section, options in data:
         continue
       fi
 
+      SUPPORTED_PIO_ENVS+=("$full_env")
+      PIO_ENV_PLATFORM_BY_NAME["$full_env"]="NRF52_PLATFORM"
+      PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$full_env"]=0
+      PIO_ENV_OTA_BY_NAME["$full_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_QSPI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+    done
+
+    # Some qualified boards historically published only BLE, or BLE plus USB,
+    # even though the same recipe has enough flash and RAM for every Companion
+    # transport on that platform. Build these measured profiles from the BLE
+    # recipe so the radio, display, GPS, and sensor wiring stays exact. ESP32
+    # adds USB and WiFi below; nRF52 adds native USB. Legacy transport names
+    # remain explicit-build aliases and canonical releases use the Full target.
+    local -a qualified_esp32_full_companion_bases=(
+      M5Stack_Unit_C6L_companion_radio_ble
+      Heltec_Wireless_Tracker_companion_radio_ble
+      LilyGo_T3S3_sx1276_companion_radio_ble
+      Heltec_ct62_companion_radio_ble
+      Meshadventurer_sx1262_companion_radio_ble
+      Meshadventurer_sx1268_companion_radio_ble
+      Heltec_Wireless_Paper_companion_radio_ble
+      Heltec_E213_companion_radio_ble
+      Xiao_S3_companion_radio_ble
+      LilyGo_TETH_Elite_sx1262_companion_radio_ble
+      LilyGo_T3S3_sx1262_companion_radio_ble
+      LilyGo_TDeck_companion_radio_ble
+      Ebyte_EoRa-S3_companion_radio_ble
+      Tbeam_SX1262_companion_radio_ble
+      Tbeam_SX1276_companion_radio_ble
+      T_Beam_S3_Supreme_SX1262_companion_radio_ble
+    )
+    local -a qualified_nrf52_full_companion_bases=(
+      GAT562_Mesh_Watch13_companion_radio_ble
+      LilyGo_T-Echo-Lite_companion_radio_ble
+      LilyGo_T_Impulse_Plus_companion_radio_ble
+      WioTrackerL1Eink_companion_radio_ble
+    )
+
+    for env_name in "${qualified_esp32_full_companion_bases[@]}"; do
+      full_env=${env_name/companion_radio_ble/companion_radio_full}
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ]; then
+        continue
+      fi
+      if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "ESP32_PLATFORM" ]; then
+        echo "Qualified Full Companion base is missing or not ESP32: ${env_name}" >&2
+        return 1
+      fi
+      SUPPORTED_PIO_ENVS+=("$full_env")
+      PIO_ENV_PLATFORM_BY_NAME["$full_env"]="ESP32_PLATFORM"
+      PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$full_env"]=0
+      PIO_ENV_OTA_BY_NAME["$full_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_QSPI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+    done
+
+    for env_name in "${qualified_nrf52_full_companion_bases[@]}"; do
+      full_env=${env_name/companion_radio_ble/companion_radio_full}
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ]; then
+        continue
+      fi
+      if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ]; then
+        echo "Qualified Full Companion base is missing or not nRF52: ${env_name}" >&2
+        return 1
+      fi
       SUPPORTED_PIO_ENVS+=("$full_env")
       PIO_ENV_PLATFORM_BY_NAME["$full_env"]="NRF52_PLATFORM"
       PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
@@ -1605,14 +1678,13 @@ print_release_firmware_targets() {
     get-companion-firmwares-to-build)
       get_pio_envs_ending_with_string "_companion_radio_usb"
       get_pio_envs_ending_with_string "_companion_radio_ble"
-      # A dual-CDC Full Companion supplies every ordinary attached transport,
-      # a separate USB logging interface, and source-only mOTA in one image. It
-      # replaces separate transport releases without becoming an OTA target.
+      # Full Companion supplies every ordinary attached transport and
+      # source-only mOTA in one image. Dual-CDC boards use a separate logging
+      # port; single-TTY boards switch that port between Binary Companion and
+      # an input-capable plaintext logging terminal.
       local env_name
       for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
         if is_companion_radio_full_target "$env_name" \
-            && { is_nrf52_companion_radio_full_target "$env_name" \
-                 || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; } \
             && ! is_redundant_bulk_build_target "$env_name"; then
           printf '%s\n' "$env_name"
         fi
@@ -2067,8 +2139,19 @@ normalize_resolved_targets_for_mqtt() {
 }
 
 disable_debug_flags() {
+  local env_name=${1:-}
+  local usb_logging_undefs="-UMESH_DEBUG -UMESH_PACKET_LOGGING"
+
+  # Full Companion always carries diagnostics behind its saved runtime gate.
+  # PlatformIO groups -U flags after -D flags, so emitting these undefines here
+  # would override apply_companion_radio_full_profile() regardless of the
+  # apparent order in PLATFORMIO_BUILD_FLAGS.
+  if [ -n "$env_name" ] && is_companion_radio_full_target "$env_name"; then
+    usb_logging_undefs=""
+  fi
+
   if [ "$DISABLE_DEBUG" == "1" ]; then
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -DCFG_DEBUG=0 -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} ${usb_logging_undefs} -UBLE_DEBUG_LOGGING -UWIFI_DEBUG_LOGGING -UBRIDGE_DEBUG -UGPS_NMEA_DEBUG -UCORE_DEBUG_LEVEL -UESPNOW_DEBUG_LOGGING -UDEBUG_RP2040_WIRE -UDEBUG_RP2040_SPI -UDEBUG_RP2040_CORE -UDEBUG_RP2040_PORT -URADIOLIB_DEBUG_SPI -DCFG_DEBUG=0 -URADIOLIB_DEBUG_BASIC -URADIOLIB_DEBUG_PROTOCOL"
   fi
 }
 
@@ -2084,12 +2167,21 @@ apply_mqtt_bridge_override() {
 }
 
 apply_debug_overrides() {
+  local env_name=${1:-}
+  local preserve_full_companion_logging=0
+
+  if [ -n "$env_name" ] && is_companion_radio_full_target "$env_name"; then
+    preserve_full_companion_logging=1
+  fi
+
   case "${MESHDEBUG_OVERRIDE,,}" in
     on)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_DEBUG=1"
       ;;
     off)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG"
+      if [ "$preserve_full_companion_logging" -eq 0 ]; then
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG"
+      fi
       ;;
   esac
 
@@ -2098,7 +2190,9 @@ apply_debug_overrides() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_PACKET_LOGGING=1"
       ;;
     off)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_PACKET_LOGGING"
+      if [ "$preserve_full_companion_logging" -eq 0 ]; then
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_PACKET_LOGGING"
+      fi
       ;;
   esac
 
@@ -2112,15 +2206,10 @@ apply_debug_overrides() {
 disable_usb_logging_for_mqtt() {
   local env_name=$1
 
-  # Full Companion may enable diagnostics only when it has a dedicated second
-  # CDC interface. Plaintext on its primary framed stream corrupts Companion
-  # traffic.
+  # Full Companion always compiles diagnostics behind a saved runtime gate.
+  # Dual-CDC boards write them to CDC 1. Single-TTY boards first switch CDC 0
+  # into an input-capable terminal so plaintext cannot mix with framed traffic.
   if is_companion_radio_full_target "$env_name"; then
-    if is_nrf52_companion_radio_full_target "$env_name" \
-        || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
-      return 0
-    fi
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG -UMESH_PACKET_LOGGING -UMQTT_DEBUG -UMQTT_MEMORY_DEBUG"
     return 0
   fi
 
@@ -2217,7 +2306,7 @@ requires_esp32_companion_full_ota_fallback() {
   # internal DRAM. Keep their ordinary high-capacity image unchanged and emit
   # a separately named FULL OTA image with measured-safe capacities.
   case "${1,,}" in
-    heltec_v2_companion_radio_wifi|lilygo_tlora_v2_1_1_6_companion_radio_wifi|meshadventurer_sx1262_companion_radio_usb|meshadventurer_sx1268_companion_radio_usb) return 0 ;;
+    heltec_v2_companion_radio_wifi|lilygo_tlora_v2_1_1_6_companion_radio_wifi) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -2451,6 +2540,7 @@ declare_build_capability_contract() {
     record_build_expectation "companion.usb" "+++MESHCORE-TERM-START"
     record_build_expectation "companion.bluetooth" \
       "Companion: starting Bluetooth"
+    record_build_expectation "companion.usb_logging" "get usb.logging"
     if is_nrf52_companion_radio_full_target "$env_name" \
         || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
       record_build_expectation "companion.dedicated_usb_logging" \
@@ -2885,7 +2975,7 @@ apply_companion_radio_full_profile() {
   # folder transport. Full also restores WebConfig when a constrained legacy
   # WiFi sibling disabled it only to fit its smaller application partition.
   append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
     # CDC 0 starts as Binary Companion. `motatool serve --serial` switches it
@@ -2920,19 +3010,43 @@ apply_companion_radio_full_profile() {
   # mode when WiFi is unavailable and serve the same folder protocol there.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1"
 
+  # Qualified BLE-based Full recipes did not previously need WiFi credentials.
+  # Supply the same first-boot setup placeholders used by ordinary WiFi
+  # Companion recipes; saved credentials and WebConfig replace them at runtime.
+  if ! pio_env_option_contains "$pio_env_name" build_flags "WIFI_SSID"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_SSID='\"WIFI_SSID\"' -DWIFI_PWD='\"Password\"'"
+  fi
+
   # BLE + WiFi exhaust internal DRAM on these high-capacity ESP32 recipes. Use
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi
   # companion builds.
-  if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
-    append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
-    record_build_reduction \
-      "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
+  case "${env_name,,}" in
+    meshadventurer_sx1262_companion_radio_full|\
+    meshadventurer_sx1268_companion_radio_full)
+      append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=64"
+      record_build_reduction \
+        "companion.capacity limited to 160 contacts, 30 channels, and 64 queued frames by measured internal DRAM"
+      ;;
+    *)
+      if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
+        append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
+        record_build_reduction \
+          "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
+      fi
+      ;;
+  esac
+
+  # A few BLE recipes list only their BLE implementation instead of the full
+  # ESP32 helper directory. Add the WiFi transport explicitly in that case.
+  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/*.cpp" \
+      && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/SerialWifiInterface.cpp"; then
+    append_platformio_build_src_filter "+<helpers/esp32/SerialWifiInterface.cpp>"
   fi
 
-  # A few WiFi recipes list only their WiFi implementation instead of the
-  # helpers/esp32 wildcard used by newer boards. Add the BLE implementation
-  # explicitly when the inherited source filter does not already include it.
+  # WiFi recipes can have the inverse narrow filter. Preserve the existing
+  # guard so both kinds of synthesized Full target receive both transports.
   if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/*.cpp" \
       && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/SerialBLEInterface.cpp"; then
     append_platformio_build_src_filter "+<helpers/esp32/SerialBLEInterface.cpp>"
@@ -3371,8 +3485,8 @@ build_firmware() {
   fi
 
   export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
-  disable_debug_flags
-  apply_debug_overrides
+  disable_debug_flags "$env_name"
+  apply_debug_overrides "$env_name"
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
@@ -3564,7 +3678,7 @@ get_nrf52_full_companion_replacement() {
   printf '%s\n' "$full_env"
 }
 
-get_esp32_dual_cdc_full_companion_replacement() {
+get_esp32_full_companion_replacement() {
   local source_env=$1
   local env_name=${source_env,,}
   local full_env=""
@@ -3611,13 +3725,13 @@ get_esp32_dual_cdc_full_companion_replacement() {
       ;;
   esac
 
-  is_esp32_dual_cdc_companion_radio_full_target "$full_env" || return 1
+  is_esp32_companion_radio_full_target "$full_env" || return 1
   printf '%s\n' "$full_env"
 }
 
 get_full_companion_replacement() {
   get_nrf52_full_companion_replacement "$1" 2>/dev/null \
-    || get_esp32_dual_cdc_full_companion_replacement "$1"
+    || get_esp32_full_companion_replacement "$1"
 }
 
 is_companion_transport_replaced_by_full() {
@@ -3647,9 +3761,9 @@ is_redundant_bulk_build_target() {
 }
 
 resolve_logging_matrix_firmwares() {
-  # Dual-CDC Full Companion replaces normal transport and USB-logging artifacts.
-  # It exposes framed Companion traffic and plaintext logging as separate CDC
-  # interfaces over one physical USB connection.
+  # Full Companion replaces normal transport and USB-logging artifacts. It
+  # either exposes separate framed/logging CDC interfaces or safely switches a
+  # single TTY between Binary Companion and the plaintext logging terminal.
   resolve_all_firmwares
 }
 
@@ -4477,7 +4591,7 @@ run_logging_matrix_build_targets() {
     echo "Deferring ${full_profile_logging_skip_count} ESP32 target(s) to the unified FULL/fallback pass; their separate standard logging artifacts would be redundant."
   fi
   if [ "$full_companion_logging_skip_count" -gt 0 ]; then
-    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; supported Full images can add a dedicated logging USB port after it is enabled and rebooted, while other Full images keep their single USB stream protocol-safe."
+    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; each Full image provides persistent runtime logging through either a dedicated CDC port or its input-capable single-TTY terminal."
   fi
 
   for target in "${logging_targets[@]}"; do

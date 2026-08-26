@@ -18,11 +18,22 @@ firmware as an mOTA image.
 
 ## Build and install
 
-The target is synthesized by `build.sh` only when matching transport recipes
-exist for the exact board variant:
+The target is synthesized by `build.sh` only for an exact board recipe that has
+passed the combined-transport size check:
 
-- ESP32 requires matching WiFi, USB, and BLE Companion environments.
-- nRF52 requires matching USB and BLE Companion environments.
+- The normal automatic path requires matching WiFi, USB, and BLE recipes on
+  ESP32, or matching USB and BLE recipes on nRF52.
+- A measured qualification list also promotes an exact BLE recipe when the
+  same board can safely add its platform's remaining transports. It never
+  substitutes the pin map or peripherals from another board.
+
+The measured ESP32 additions are M5Stack Unit C6L, Heltec Wireless Tracker,
+Wireless Paper, E213, and CT62; LilyGo T3S3 SX1262/SX1276, T-Deck, TETH Elite,
+classic T-Beam SX1262/SX1276, and T-Beam S3 Supreme; Ebyte EoRa-S3;
+Meshadventurer SX1262/SX1268; and XIAO S3. The measured nRF52 additions are
+GAT562 Mesh Watch13, LilyGo T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker
+L1 E-Ink. Their old transport-specific names remain available for explicit
+compatibility builds, but the Full image is the canonical release artifact.
 
 List the available targets:
 
@@ -51,12 +62,10 @@ bash build.sh build-full-companion-firmwares \
 Canonical Companion bulk builds also omit legacy `_ps` and `_femoff` aliases.
 Power saving and controllable FEM receive gain are persisted runtime settings;
 the old names remain available through an explicit `build-firmware` command
-for compatibility. Dual-CDC Full Companion replaces separate USB, BLE,
-ordinary WiFi, and USB-only packet-logging release artifacts whenever the
-exact board supports the combined profile. This includes nRF52 Full Companion
-and the qualified native-USB ESP32-S3 profiles listed below. One physical USB
-connection can enumerate separate Companion and logging serial ports, so
-plaintext logs cannot corrupt binary frames. In WebConfig, use the
+for compatibility. Full Companion replaces separate USB, BLE, ordinary WiFi,
+and USB-only packet-logging release artifacts whenever the exact board supports
+the combined profile. Dual-CDC builds separate framed traffic and logs;
+single-TTY builds make those modes mutually exclusive. In WebConfig, use the
 **FEM RX boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
 ```text
@@ -176,7 +185,11 @@ flash because this source-only role does not install updates into a second app
 slot. Flash the generated `-merged.bin` when first installing this partition
 layout. Other boards with 8 MB or more retain dual application partitions.
 Heltec V2 and TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline
-queue in this combined profile because of internal DRAM limits.
+queue in this combined profile because of internal DRAM limits. Meshadventurer
+SX1262 and SX1268 retain 160 contacts, use 30 group channels, and use a
+64-frame queue. That is the smallest measured reduction which cleared their
+classic ESP32 internal-DRAM link limit; their ordinary transport-specific
+images retain 160 contacts, 40 channels, and 128 queued frames.
 
 Full Companions normally retain 256 pending Companion message frames. ESP32
 boards with configured PSRAM retain 512 and allocate that queue from PSRAM
@@ -268,11 +281,21 @@ The terminal supports Companion chat commands, including `channels`,
 `login <admin-password>` and `cmd <remote-command>`, and routed
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
 `normalradio` controls. ESP32 builds also provide local
-WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Logging
-artifacts additionally provide `get/set usb.logging`; turning it off
-suppresses live USB diagnostics without disabling Companion frames or terminal
-replies. Dual-CDC Full Companion saves this setting and applies it only to its
-dedicated logging port. It starts off on a fresh installation.
+WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Every
+Full Companion provides persistent `get/set usb.logging` and starts with
+logging off on a fresh installation.
+
+### Single USB serial port
+
+On an ESP32 Full Companion without dual CDC, interface `00` has two exclusive
+modes. It starts as framed Binary Companion. Enter its text terminal with
+`+++MESHCORE-TERM-START`, then run `set usb.logging on`; the same TTY emits
+plaintext packet/debug logs and continues accepting CLI commands, including
+`set usb.logging off`. Turning it off sends the command reply and then returns
+that TTY to Binary Companion automatically, including on USB-UART bridges that
+cannot detect a cable disconnect. A saved logging-on preference boots directly
+into this input-capable logging terminal. BLE and Wi-Fi Companion remain
+available while USB is logging.
 
 ### Dual USB serial ports
 
@@ -307,14 +330,13 @@ depending on a particular COM number. The nRF52 bootloader temporarily exposes
 its normal DFU serial interface during an update. Qualified S3 boards
 temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.
 
-Qualified ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
+Dual-CDC ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
 base Heltec V4 profile has completed live two-interface, ROM-flashing, and
-logging-off one-interface validation. RAK3112 and Heltec RC32 retain separate
-transport and logging images pending hardware validation. Boards whose
-connector terminates at an external USB-UART bridge also keep their
-transport-specific images: firmware cannot add a second USB interface to that
-bridge chip.
+logging-off one-interface validation. Full recipes with only one usable TTY
+still replace separate transport images; they use the exclusive terminal/log
+mode above because firmware cannot add a second interface to a USB-UART bridge
+or a single-port USB peripheral.
 
 Every ESP32-S3 Full Companion image uses DIO flash mode, including the RAK3112
 and RC32 profiles that do not expose dual CDC. The S3 ROM supports DIO while

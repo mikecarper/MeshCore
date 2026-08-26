@@ -2,6 +2,9 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 #include "CompanionWiFi.h"
+#if MESH_PACKET_LOGGING
+  #include <helpers/SerialPacketLog.h>
+#endif
 
 #ifdef ESP32_PLATFORM
 #include "esp_bt.h"
@@ -291,6 +294,7 @@ static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
 static size_t usb_terminal_line_len = 0;
 static bool usb_terminal_discard_line = false;
 static bool usb_terminal_disconnect_armed = false;
+static bool usb_logging_terminal_mode = false;
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
 static bool usb_mota_mode = false;
 static char usb_mota_line[32];
@@ -345,7 +349,13 @@ static void enterUsbTerminalMode() {
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
   usb_terminal_disconnect_armed = isUsbTerminalDataConnected();
+  usb_logging_terminal_mode = false;
   the_mesh.enterTerminalMode();
+}
+
+static void enterUsbLoggingTerminalMode() {
+  enterUsbTerminalMode();
+  usb_logging_terminal_mode = true;
 }
 
 static void leaveUsbTerminalMode(bool acknowledge) {
@@ -357,6 +367,7 @@ static void leaveUsbTerminalMode(bool acknowledge) {
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
   usb_terminal_disconnect_armed = false;
+  usb_logging_terminal_mode = false;
 }
 
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
@@ -446,6 +457,26 @@ static void serviceUsbTerminal() {
     return;
   }
 #endif
+  // A saved logging-on preference makes the one available TTY behave like a
+  // logging repeater: plaintext diagnostics plus an input-capable CLI. Put the
+  // Companion interface into passthrough before it can mix framed traffic with
+  // logs. `set usb.logging off` remains available here and returns this TTY to
+  // Binary Companion after its command reply, even on USB-UART bridges that
+  // cannot detect a host disconnect.
+#if defined(COMPANION_RADIO_FULL)
+  if (!mesh::hasDedicatedUsbLoggingPort()) {
+    if (mesh::isUsbLoggingEnabled()) {
+      if (!the_mesh.isTerminalMode()) {
+        enterUsbLoggingTerminalMode();
+        return;
+      }
+      usb_logging_terminal_mode = true;
+    } else if (usb_logging_terminal_mode && the_mesh.isTerminalMode()) {
+      leaveUsbTerminalMode(true);
+      return;
+    }
+  }
+#endif
   if (!the_mesh.isTerminalMode()) {
     if (usb_serial_interface.takeControlSequence()) {
       enterUsbTerminalMode();
@@ -491,6 +522,13 @@ static void serviceUsbTerminal() {
       Serial.print("\r\n");
       the_mesh.handleTerminalCommand(usb_terminal_line);
       clearUsbTerminalLine();
+#if defined(COMPANION_RADIO_FULL)
+      if (usb_logging_terminal_mode
+          && !mesh::isUsbLoggingEnabled()) {
+        leaveUsbTerminalMode(true);
+        return;
+      }
+#endif
       Serial.print("> ");
       return; // service at most one command per mesh loop
     }
@@ -1025,6 +1063,9 @@ void halt() {
 
 void setup() {
   Serial.begin(115200);
+#if MESH_PACKET_LOGGING
+  mesh::serialLogBegin();
+#endif
   mesh::beginUsbLoggingPort();
   board.begin();
 
@@ -1238,6 +1279,14 @@ void setup() {
   usb_serial_interface.setConnectedCheck([]() { return (bool)Serial; });
 #endif
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
+#if defined(COMPANION_RADIO_FULL)
+  if (!mesh::hasDedicatedUsbLoggingPort()
+      && mesh::isUsbLoggingEnabled()) {
+    // Apply a saved single-TTY logging preference before the dispatcher can
+    // emit its first framed Companion response on this interface.
+    enterUsbLoggingTerminalMode();
+  }
+#endif
 #endif
 
 // add ethernet interface

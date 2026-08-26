@@ -1,6 +1,9 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/IdentityGeneration.h>
+#if MESH_PACKET_LOGGING
+  #include <helpers/SerialPacketLog.h>
+#endif
 
 #include "MyMesh.h"
 
@@ -37,6 +40,9 @@ unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled)
 
 void setup() {
   Serial.begin(115200);
+#if MESH_PACKET_LOGGING
+  mesh::serialLogBegin();
+#endif
   delay(1000);
 
   board.begin();

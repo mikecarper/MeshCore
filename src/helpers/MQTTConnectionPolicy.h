@@ -17,6 +17,7 @@ static const uint8_t kMaxFailuresAtMaxBackoff = 3;
 static const uint32_t kDefaultJwtLifetimeSecs = 86400UL;
 static const uint32_t kMaxJwtStaggerSecs = 300UL;
 static const uint32_t kMinimumValidEpoch = 1000000000UL;
+static const uint32_t kJwtReconnectSafetyMarginSecs = 60UL;
 static const uint32_t kJwtClockThreshold = 1735689600UL; // 2025-01-01 UTC
 // A wall clock at or past this instant was set from a real source (NTP or an
 // admin); anything earlier is the firmware's unset-clock default (1715770351,
@@ -157,6 +158,23 @@ static inline bool tokenNeedsRenewal(bool time_synced, uint32_t current_time,
   return current_time >= token_expires_at - renewal_buffer_secs;
 }
 
+// Reuse credentials only when their validity is known to outlast the next
+// handshake. Uncertain credentials are refreshed before reconnecting.
+static inline bool canReuseJwtForReconnect(bool time_synced, bool has_token,
+                                           bool force_mint,
+                                           uint32_t current_time,
+                                           uint32_t token_expires_at,
+                                           uint32_t renewal_buffer_secs) {
+  const uint32_t floor_secs =
+      renewal_buffer_secs > UINT32_MAX - kJwtReconnectSafetyMarginSecs
+          ? UINT32_MAX
+          : renewal_buffer_secs + kJwtReconnectSafetyMarginSecs;
+  return time_synced && has_token && !force_mint &&
+         token_expires_at >= kMinimumValidEpoch &&
+         current_time < token_expires_at &&
+         (token_expires_at - current_time) > floor_secs;
+}
+
 static inline bool renewalAttemptAllowed(uint32_t now, uint32_t last_attempt) {
   return elapsedMs(now, last_attempt) >= kRenewalThrottleMs;
 }
@@ -194,6 +212,42 @@ static inline SlotActivation classifySlotActivation(int slot, const bool* enable
   }
   return (rank <= max_active) ? SlotActivation::Connects
                               : SlotActivation::OverActiveCap;
+}
+
+enum class StaleTokenAction : uint8_t {
+  Defer,
+  Reconnect,
+  Bounce,
+  KeepAlive,
+};
+
+// A failed mint must not reconnect with credentials that a clock correction
+// just invalidated. A live session only needs a bounce when its broker enforces
+// token expiration on the existing connection.
+static inline StaleTokenAction classifyStaleToken(bool minted, bool connected,
+                                                  bool broker_enforces_exp) {
+  if (!minted) return StaleTokenAction::Defer;
+  if (!connected) return StaleTokenAction::Reconnect;
+  return broker_enforces_exp ? StaleTokenAction::Bounce
+                             : StaleTokenAction::KeepAlive;
+}
+
+enum class ClockSource : uint8_t {
+  None,
+  System,
+  Rtc,
+};
+
+// Prefer a plausible system clock, then an RTC. Server validation may not use
+// a local clock as evidence that the requested NTP host answered.
+static inline ClockSource chooseFallbackClock(bool validating_server,
+                                              uint32_t system_time,
+                                              uint32_t rtc_time,
+                                              uint32_t min_valid_epoch) {
+  if (validating_server) return ClockSource::None;
+  if (system_time >= min_valid_epoch) return ClockSource::System;
+  if (rtc_time >= min_valid_epoch) return ClockSource::Rtc;
+  return ClockSource::None;
 }
 
 } // namespace MQTTConnectionPolicy
