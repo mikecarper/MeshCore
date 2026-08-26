@@ -1848,7 +1848,9 @@ table. The evaluator is fixed firmware, but every row is data, so an
 authenticated operator can add, replace, inspect, or delete a row without an
 OTA or reboot. Existing <code>flood.filter</code> commands remain compatible. Only FPF6
 and FPF7 files are accepted; FPF1-FPF5 files are rejected and filtering fails
-open. A row saved by the extended engine uses FPF7.</p>
+open. A row saved by the extended engine uses FPF7.
+Older firmware cannot preserve an FPF7 table containing the packed <code>retry</code>
+action or one-byte <code>hash:XX</code> matcher; remove those rows before downgrading.</p>
 <p>The former <code>flood.channel.block</code> table is now represented by ordinary FPF7
 rows. On a generalized repeater, an existing FCB2 file is imported once into
 free FPF7 slots and then removed. For example, an old <code>#wardriving h=4</code> row
@@ -1894,12 +1896,19 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   <code>flood.filter</code>. The positional form remains accepted.</li>
 <li><code>hops=</code> accepts <code>all</code>, <code>N</code>, <code>N+</code>, or <code>N-M</code>. The positional form remains
   accepted. Received hops over 3 are written as <code>hops=4+</code>.</li>
-<li><code>channel=*|public|#name|128-bit-key|256-bit-key</code> optionally narrows by
+<li><code>channel=*|public|#name|hash:XX|128-bit-key|256-bit-key</code> optionally narrows by
   channel. <code>channel=*</code> is an unconstrained wildcard: it performs no channel
   authentication and matches every payload selected by <code>type=</code>. Thus
   <code>type=any channel=*</code> means every flood payload type. <code>public</code>, <code>#name</code>, and
   raw keys authenticate one channel and narrow the row to <code>GRP_TXT</code> or
-  <code>GRP_DATA</code>.</li>
+  <code>GRP_DATA</code>. <code>hash:XX</code> compares only the visible one-byte group-channel hash.
+  <code>short:XX</code> and a bare two-digit byte are aliases; saved output uses
+  <code>hash:XX</code>. This matcher is unauthenticated, has a 1-in-256 collision space,
+  and can be selected by a sender, so prefer an exact name or key when known.
+  <code>hash:11</code> is not an alias for Public: it includes Public and every <code>0x11</code>
+  collision, while <code>public</code> verifies and decrypts with the Public key. This is
+  channel authentication, not sender authentication: the group MAC is two
+  bytes and the Public key is shared.</li>
 <li><code>prefix=</code> is a source-path prefix containing one to three comma-separated
   pbyte IDs. Every ID must use the packet's pbyte width: 2, 4, or 6 hex
   characters for 1-, 2-, or 3-byte paths. Order matters and matching begins at
@@ -1931,6 +1940,12 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   every other forwarding gate, including moderation, accepts the packet. It is
   not keyed per sender; use <code>flood.moderation</code> when a group-text rate must be
   tied to an exact display name.</li>
+<li><code>retry</code> allows a matching received flood to start the configured retry
+  sequence. <code>retry=on</code>, <code>retry=allow</code>, and <code>action=retry</code> are aliases. If the
+  table has no active <code>retry</code> rows, global retry behavior is unchanged. If it
+  has one or more, those rows are a retry allow-list: at least one must remain
+  in the ordered, stop-truncated match set. The action may accompany rewrite,
+  rate, or stop, but not <code>drop</code>; its compact flag is <code>f=r</code>.</li>
 <li><code>priority=0-255</code> controls processing order. Higher values run first; lower
   slot number breaks ties. <code>pri=</code> is the compact alias.</li>
 <li><code>stop</code> (or <code>action=stop</code>) applies this row and prevents lower-order FPF7 rows
@@ -1939,7 +1954,14 @@ independent and the highest-order matching scope or region rewrite wins.</p>
 <p>When several rows use the same channel key, authentication is performed once
 for that packet and reused by those rows. This cache lives only for the current
 receive evaluation; it is not persisted and never stores plaintext or a
-password.</p>
+password. A <code>hash:XX</code> row deliberately skips authentication and uses only the
+one visible byte.</p>
+<p>The global retry controls remain hard gates. A <code>retry</code> row does not override a
+zero <code>flood.retry.count</code>, path/type attempt caps, disabled forwarding,
+<code>flood.retry.advert</code>, a drop verdict, or any other forwarding rejection.
+<code>flood.retry.bridge</code> independently chooses ordinary retry or bridge-bucket
+completion for an allowed packet. The selector applies to received floods;
+locally originated floods retain the normal global behavior.</p>
 <p>The exact requested examples are:</p>
 <pre><code class="language-text"># If #rgdata arrives unscoped with more than 3 received hops, add
 # the regionless #BlackHole86 scope.
@@ -1954,6 +1976,15 @@ set flood.rule.4 type=any prefix=860C rate=10/min
 # Keep authenticated #rgdata at two hops or less out of lower-priority FPF7
 # rules. Hard gates and separate tables still apply.
 set flood.rule.5 type=grp_data hops=0-2 channel=#rgdata priority=200 stop
+
+# Retry received Public and #hamradio floods, using bridge completion.
+# Once these rows exist, other received floods are not retried.
+set flood.retry.bridge on
+set flood.rule.6 type=any channel=public retry
+set flood.rule.7 type=any channel=#hamradio retry
+
+# Fall back to an unauthenticated one-byte match if only the visible hash is known.
+set flood.rule.8 type=any channel=hash:A7 retry
 
 get flood.rule.2
 get flood.rule.3
@@ -2006,8 +2037,9 @@ Omitting the hop expression means <code>all</code> (<code>0-63</code>).</p>
 several maximum-length names would exceed one CLI reply, it switches to a
 non-truncating compact spelling that <code>set</code> also accepts: <code>c=</code> is <code>channel=</code>,
 <code>p=</code> is <code>prefix=</code>, <code>i=*|n|s|a|u|s:&lt;scope&gt;|r:&lt;region&gt;</code> represents <code>in=</code>, <code>q=N</code>
-is <code>rate=N/min</code>, and <code>f=st</code> combines slow timing (<code>s</code>) and temporary-radio
-suspension (<code>t</code>). The fallback prints packet type numerically.</p>
+is <code>rate=N/min</code>, and <code>f=str</code> combines slow timing (<code>s</code>), temporary-radio
+suspension (<code>t</code>), and retry allowance (<code>r</code>). The fallback prints packet type
+numerically.</p>
 <p>A legacy row without <code>scope=</code> is the existing drop action. On extended builds,
 an explicit <code>drop</code> has the same result, while <code>rate=</code> by itself creates a
 rate-only row. A row with <code>scope=</code> adds transport scope to an unscoped packet

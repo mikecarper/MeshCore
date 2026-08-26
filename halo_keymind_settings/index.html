@@ -1604,9 +1604,9 @@ set flood.retry.ignore none
 </tr>
 <tr>
 <td><code>flood.rule</code></td>
-<td>Live alias for extended <code>flood.filter</code> on rule-engine repeaters and FULL ESP32 room servers. A row can AND packet type, hop range, optional channel authentication, ordered 1/2/3-byte pbyte source prefix, and original scope/region conditions, then drop, rewrite to a direct scope or configured region, enforce a per-row rate, and/or stop lower-priority FPF7 rules. <code>channel=*</code> means no channel condition and <code>type=any channel=*</code> matches every flood payload type. <code>scope=BlackHole86</code> directly derives a regionless sink scope; <code>region=BlackHole86</code> would require a configured flood-allowed region. All rows match the original receive-time packet; higher <code>priority</code> runs first and lower slot breaks a tie. Repeated rows with one channel key share a per-packet authentication result. Persistent FPF7 stores canonical region names, so region ID reorder or reuse cannot retarget a rule. A missing saved region makes its <code>region=</code> rewrite and paired <code>stop</code> inert until the name returns, allowing lower safety rows to run. Fixed 240 KB STM32WL profiles keep FPF6 and do not expose this alias; partition sizes are unchanged.</td>
-<td><code>get flood.rule[.n]</code>, <code>set flood.rule[.n] type=&lt;type&gt; [hops=...] [channel=...] [prefix=...] [in=...] &lt;drop|scope=...|region=...|rate=N/min|stop&gt; [priority=0-255]</code>, <code>del flood.rule.&lt;n&gt;|all</code></td>
-<td><code>set flood.rule.2 type=grp_data hops=4+ channel=#rgdata in=none scope=BlackHole86</code></td>
+<td>Live alias for extended <code>flood.filter</code> on rule-engine repeaters and FULL ESP32 room servers. A row can AND packet type, hop range, optional channel match, ordered 1/2/3-byte pbyte source prefix, and original scope/region conditions, then drop, rewrite to a direct scope or configured region, enforce a per-row rate, allow flood retry, and/or stop lower-priority FPF7 rules. <code>channel=*</code> means no channel condition; <code>public</code>, <code>#name</code>, and keys authenticate; <code>hash:XX</code> is an unauthenticated one-byte fallback with collision/spoof risk. With no <code>retry</code> rows, global retry behavior is unchanged; once any exists, matching <code>retry</code> rows allow-list received floods while the global retry gates and <code>flood.retry.bridge</code> algorithm still apply. <code>scope=BlackHole86</code> directly derives a regionless sink scope; <code>region=BlackHole86</code> would require a configured flood-allowed region. All rows match the original receive-time packet; higher <code>priority</code> runs first and lower slot breaks a tie. Repeated rows with one channel key share a per-packet authentication result. Persistent FPF7 stores canonical region names, so region ID reorder or reuse cannot retarget a rule. A missing saved region makes its <code>region=</code> rewrite and paired <code>stop</code> inert until the name returns, allowing lower safety rows to run. Fixed 240 KB STM32WL profiles keep FPF6 and do not expose this alias; partition sizes are unchanged.</td>
+<td><code>get flood.rule[.n]</code>, <code>set flood.rule[.n] type=&lt;type&gt; [hops=...] [channel=...] [prefix=...] [in=...] &lt;drop|scope=...|region=...|rate=N/min|retry|stop&gt; [priority=0-255]</code>, <code>del flood.rule.&lt;n&gt;|all</code></td>
+<td><code>set flood.rule.2 type=any channel=#hamradio retry</code></td>
 </tr>
 <tr>
 <td><code>flood.moderation</code></td>
@@ -1968,6 +1968,15 @@ the bucket rules below instead.</p>
 </tr>
 </tbody>
 </table>
+<p>Extended <code>flood.rule</code> rows can select which received floods may use these
+settings. For example, enable bridge completion only for Public and
+<code>#hamradio</code> with <code>set flood.rule type=any channel=public retry</code> and a second
+row using <code>channel=#hamradio</code>. Adding the first active <code>retry</code> row changes
+received retry selection into an allow-list; deleting the last restores the
+legacy global selection. <code>channel=hash:XX</code> is available when only the visible
+one-byte hash is known, but it is not authenticated and is collision-prone.
+For example, <code>hash:11</code> includes Public and any other packet using <code>0x11</code>;
+<code>channel=public</code> alone performs the Public-key MAC/decrypt check.</p>
 <p>Bridge buckets may also be reused as passive <code>flood.channel.scope</code>
 path selectors with <code>path=bucket:&lt;1-6&gt;</code>. This does not require
 <code>flood.retry.bridge</code> to be enabled and does not depend on recent-repeater

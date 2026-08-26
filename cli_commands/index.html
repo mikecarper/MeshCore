@@ -6676,7 +6676,7 @@ worked moderation examples, see <a href="../flood_filtering/">Flood Filtering an
 <p><strong>Usage:</strong>
 - <code>get flood.rule</code>
 - <code>get flood.rule.&lt;n&gt;</code>
-- <code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code>
+- <code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|retry|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code>
 - <code>del flood.rule.&lt;n&gt;</code>
 - <code>del flood.rule all</code>
 - <code>get flood.filter</code>
@@ -6710,11 +6710,21 @@ compile this table.</p>
   - <code>all</code>: Match every received hop count (<code>0-63</code>).
   - <code>0+</code>, <code>all</code>, and an omitted hop expression are equivalent. The CLI displays
     the saved range as <code>all</code>.
-- <code>channel=*|public|#name|128-bit-key|256-bit-key</code>: Optional channel match.
+- <code>channel=*|public|#name|hash:XX|128-bit-key|256-bit-key</code>: Optional channel match.
   <code>channel=*</code> means no channel condition at all, so the row matches everything
   selected by <code>type=</code> (including all flood payload types with <code>type=any</code>). It
   does not authenticate a packet. <code>public</code>, <code>#name</code>, and raw keys authenticate
   one channel and therefore narrow the row to <code>GRP_TXT</code>/<code>GRP_DATA</code>.
+  <code>hash:XX</code> matches only the visible one-byte group-channel hash; <code>short:XX</code>
+  and a bare two-digit byte are accepted aliases and are displayed as
+  <code>hash:XX</code>. This form is deliberately unauthenticated. It can collide with
+  another channel once in 256 hash values, and a sender can choose the byte,
+  so use an exact channel name or key whenever it is available. In particular,
+  <code>channel=hash:11</code> does not mean Public: it matches Public plus every collision
+  or deliberately selected <code>0x11</code> value. <code>channel=public</code> performs the deeper
+  MAC/decrypt check with the Public channel key. That distinguishes an ordinary
+  <code>0x11</code> collision, but it is channel authentication rather than sender
+  authentication: the group MAC is two bytes and the Public key is shared.
 - <code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
   pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
   1-, 2-, or 3-byte pbyte width. <code>path=&lt;prefix&gt;</code> is an alias.
@@ -6734,6 +6744,14 @@ compile this table.</p>
 - <code>rate=N/min</code>: Per-node, per-row fixed one-minute forwarding limit. It can be
   the only action or accompany <code>scope=</code>/<code>region=</code>. Counters are charged only
   for packets that pass all forwarding gates.
+- <code>retry</code>, <code>retry=on</code>, <code>retry=allow</code>, or <code>action=retry</code>: Allow a matching
+  received flood packet to enter the configured flood-retry sequence. With no
+  active <code>retry</code> rows, retry eligibility remains backward compatible and is
+  controlled by the global retry settings. Once any active <code>retry</code> row exists,
+  the matching rows become a retry allow-list: a received flood must match at
+  least one surviving <code>retry</code> row. <code>flood.retry.bridge</code> still selects ordinary
+  or bridge-bucket completion for the allowed packet. This action can accompany
+  rewrite, rate, or stop, but not <code>drop</code>; compact syntax uses <code>f=r</code>.
 - <code>priority=0-255</code>: Optional processing order. Higher values run first and
   lower slot number breaks a tie. The default is <code>0</code>; <code>pri=</code> is an alias.
 - <code>stop</code> or <code>action=stop</code>: Apply this matching row, then stop lower-order FPF7
@@ -6874,6 +6892,12 @@ happens before region enforcement and is trusted even
 when its name is absent from the local region list. It does not bypass
 <code>repeat</code>, <code>flood.max</code>, other drop rows, loop detection, or
 moderation.</p>
+<p>Retry selection uses that same ordered, stop-truncated match set. With at least
+one active <code>retry</code> row, a received flood starts a retry sequence only when one
+of those matching rows includes <code>retry</code>. This selector cannot override
+<code>flood.retry.count</code>, path/type attempt caps, <code>flood.retry.advert</code>, disabled
+forwarding, a drop decision, or any other hard forwarding gate. Locally
+originated floods retain the normal global retry behavior.</p>
 <p>With <code>require=region</code>, a failed check makes that scope row ineligible. It leaves
 the packet unchanged and does not set the filter-scope trust bypass, so an
 unknown or denied incoming region is rejected normally unless another
@@ -6903,7 +6927,22 @@ normal payload types can also use the temporary channel. Other rows remain in
 force. A malformed persisted table fails open (no general rules are applied).</p>
 <p>Within one receive evaluation, rows that use the same channel key share one
 authentication result. The cache is discarded after that packet and stores
-neither plaintext nor passwords; different keys are authenticated separately.</p>
+neither plaintext nor passwords; different keys are authenticated separately.
+Raw <code>hash:XX</code> rows skip this authentication and compare only the one visible
+byte.</p>
+<p><strong>Per-channel retry examples:</strong></p>
+<pre><code class="language-text"># Use bridge-bucket retry only for authenticated Public and #hamradio traffic.
+set flood.retry.bridge on
+set flood.rule.2 type=any channel=public retry
+set flood.rule.3 type=any channel=#hamradio retry
+
+# If the channel key/name is unavailable, select visible channel hash A7.
+# This is an unauthenticated 1-byte hint, not a channel identity.
+set flood.rule.4 type=any channel=hash:A7 retry
+</code></pre>
+<p>Deleting or replacing the last active <code>retry</code> row restores the legacy global
+retry eligibility. Firmware that predates the <code>retry</code>/<code>hash:XX</code> FPF7 extension
+cannot preserve tables containing those rows; remove them before downgrading.</p>
 <p><strong>Default row:</strong> Repeater firmware and FULL ESP32 room-server firmware seed a
 new flood-filter table with
 <code>ota all suspend=tempradio</code> in slot 1. This blocks repeated LoRa OTA (<code>0x0C</code>)
@@ -6931,9 +6970,9 @@ action, timing, rate, and temporary-radio suspension.</p>
 numbered form automatically switches to a non-truncating compact spelling.
 The compact aliases are also accepted by <code>set</code>: <code>c=</code> means <code>channel=</code>, <code>p=</code>
 means <code>prefix=</code>, <code>i=*|n|s|a|u|s:&lt;scope&gt;|r:&lt;region&gt;</code> means the corresponding
-<code>in=</code> condition, <code>q=N</code> means <code>rate=N/min</code>, <code>pri=N</code> means priority, and <code>f=st</code>
-combines slow timing
-(<code>s</code>) with temporary-radio suspension (<code>t</code>). Packet type is shown numerically
+<code>in=</code> condition, <code>q=N</code> means <code>rate=N/min</code>, <code>pri=N</code> means priority, and <code>f=str</code>
+combines slow timing (<code>s</code>), temporary-radio suspension (<code>t</code>), and retry
+allowance (<code>r</code>). Packet type is shown numerically
 in that fallback. Normal-sized rows keep the descriptive spelling above.</p>
 <p>On generalized repeaters, filter rows, scope-rewrite rows, the shared
 blacklist, and <code>flood.channel.data</code> compatibility state are committed in one
