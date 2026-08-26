@@ -7817,7 +7817,9 @@ sleep, this command schedules a sync and wakes it; after <code>gps off</code>, i
   - <code>none</code>: don't include location in adverts
   - <code>share</code>: share gps location (from SensorManager)
   - <code>prefs</code>: location stored in node's lat and lon settings</p>
-<p><strong>Default:</strong> <code>prefs</code></p>
+<p><strong>Default:</strong> <code>prefs</code> on every repeater, room-server, and sensor build that uses
+the common advert policy. A previously saved <code>none</code>, <code>share</code>, or <code>prefs</code> choice
+still overrides the first-boot default after an update.</p>
 <hr />
 <h3 id="sensors-when-sensor-support-is-compiled-in">Sensors (When sensor support is compiled in)</h3>
 <h4 id="view-or-change-telemetry-access-mode">View or change telemetry access mode</h4>
