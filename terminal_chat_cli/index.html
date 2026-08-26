@@ -1357,11 +1357,12 @@ GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.</p>
 <pre><code>get usb.logging
 set usb.logging {on|off} [reboot]
 </code></pre>
-<p>Shows or changes live USB debug and packet output in a Companion logging
-artifact. The setting is persistent. Dual-CDC Full Companion defaults off;
-changing its USB interface count requires a reboot, and the optional exact
-<code>reboot</code> argument performs that reboot after sending the reply. Companion
-protocol frames and terminal replies remain enabled on interface <code>00</code>.</p>
+<p>Shows or changes persistent live USB debug and packet output in a Companion
+logging artifact or Full Companion. Full starts off on a fresh install.
+Dual-CDC Full changes its interface count after a reboot and keeps Companion on
+interface <code>00</code>. Single-TTY Full needs no reboot: logging uses the active text
+terminal, which continues accepting <code>set usb.logging off</code> and automatically
+restores Binary Companion after that reply.</p>
 <pre><code>get radio.rxps
 get radio.rxps.config
 set radio.rxps {off|on|level 1-10 [preamble 16|32]|rx_us sleep_us}

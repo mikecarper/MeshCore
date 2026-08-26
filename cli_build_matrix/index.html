@@ -1503,7 +1503,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Standard logging</td>
-<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist <code>get/set usb.logging</code>. ESP32 roles covered by unified FULL and nRF52 Companions covered by dual-CDC Full Companion are not duplicated here.</td>
+<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist <code>get/set usb.logging</code>. Roles covered by a Full image with runtime logging are not duplicated here.</td>
 </tr>
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
@@ -1530,6 +1530,10 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <td>nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface <code>00</code> for framed Companion/terminal/mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
 </tr>
 <tr>
+<td>Single-TTY Full Companion</td>
+<td>ESP32 Full images without dual CDC start with framed Companion on their one TTY. <code>set usb.logging on</code> switches it to an input-capable plaintext logging terminal; <code>set usb.logging off</code> replies and then restores framed Companion automatically. BLE, WiFi, and source-only LoRa OTA remain available.</td>
+</tr>
+<tr>
 <td><code>no_external_sensors</code></td>
 <td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles also retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1. The legacy target suffix is retained for OTA identity compatibility.</td>
 </tr>
@@ -1550,16 +1554,13 @@ available from a canonical image:</p>
   replaced by their ordinary Station target. G2 boosted receive gain is the
   persisted <code>radio.rxgain on|off</code> setting; the G3 alias changed only the
   advertised default name.</li>
-<li>When a board has a dual-CDC Full Companion, that one artifact replaces its
+<li>When a board has a Full Companion, that one artifact replaces its
   separate USB, BLE, ordinary WiFi, and USB packet-logging Companion artifacts.
-  Current support includes nRF52 Full Companion plus qualified native-USB
-  ESP32-S3 Full targets: Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3 WIO,
-  Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. RAK3112
-  and Heltec RC32 keep separate transport and logging artifacts pending live
-  hardware validation.
-  It provides BLE plus an always-present interface <code>00</code> for framed
-  Companion/terminal/mOTA traffic. Enabling logging and rebooting adds
-  interface <code>02</code> for plaintext logs.
+  It provides BLE and source-only LoRa OTA; ESP32 also provides ordinary WiFi.
+  Dual-CDC builds keep framed traffic on interface <code>00</code> and add logging on
+  interface <code>02</code> after a reboot. Single-TTY builds switch interface <code>00</code> into
+  an input-capable logging terminal and restore Binary Companion when that
+  terminal session ends.
   Its LoRa OTA support is source-only: it can serve a host file to another node
   but has no staging store and cannot update itself over LoRa.
   Installing an ESP32 Full Companion may require one merged-image erase/flash
@@ -1571,9 +1572,10 @@ available from a canonical image:</p>
 <p>The old aliases still work with <code>build-firmware</code> and
 <code>build-matching-firmwares</code>. Dedicated repeater LoRa OTA receiver images are not
 collapsed; they retain their exact storage, bootloader, role, and target
-identity contracts. ESP32 boards without the tested dual-CDC Full profile keep
-USB, BLE, WiFi, and Full Companion images separate because Full changes
-partitions, RAM use, active transports, and power behavior.</p>
+identity contracts. Companion boards keep transport-specific canonical images
+only when no exact Full recipe has passed the combined flash/RAM qualification.
+Dual CDC is not required: a qualified single-TTY Full image safely makes Binary
+Companion and plaintext USB logging mutually exclusive.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
 <p>The compact ESP32 CLI has been removed. <code>retry.preset</code> is a checked invariant
 for every repeater and room-server artifact, not a FULL-only command. MQTT

@@ -5630,9 +5630,10 @@ set usb.logging off
 set usb.logging on reboot
 set usb.logging off reboot
 </code></pre>
-<p>These commands are compiled into logging artifacts and control their live USB
-debug and packet output. CommonCLI roles save the setting in <code>/com_prefs</code>, so
-it survives reboot; their first boot defaults to on.</p>
+<p>These commands are compiled into logging artifacts and every Full Companion.
+They control live USB debug and packet output. CommonCLI roles save the setting
+in <code>/com_prefs</code>, so it survives reboot; their first boot defaults to on. Full
+Companion starts off on a fresh installation.</p>
 <p>On Full Companion these lines belong to its text terminal, not <code>meshcli</code>'s
 Binary <code>get/set</code> parameter namespace. Open interface <code>00</code>, send
 <code>+++MESHCORE-TERM-START</code>, and then issue the command. Running
@@ -5646,10 +5647,16 @@ without the optional <code>reboot</code> argument saves the choice and reports t
 reboot is required when the USB interface count must change. The exact
 <code>set usb.logging on reboot</code> and <code>set usb.logging off reboot</code> forms save the
 choice, send their reply, and reboot one second later only when needed. This
-behavior includes nRF52 and qualified native-USB ESP32-S3 Full images.</p>
-<p>Turning USB logging off does not disable CLI replies or Companion protocol
-frames. It also does not change the node-storage capture controlled by <code>log
-start</code> and <code>log stop</code>.</p>
+behavior includes nRF52 and dual-CDC native-USB ESP32-S3 Full images.</p>
+<p>On a single-TTY ESP32 Full Companion, enter the USB text terminal and use
+<code>set usb.logging on</code> to turn that TTY into a logging-repeater-style plaintext
+stream. It remains an input-capable CLI, so <code>set usb.logging off</code> works on the
+same TTY and automatically restores Binary Companion after its reply. No
+reboot is needed because the USB interface count does not change.</p>
+<p>Turning USB logging off does not disable CLI replies. Dual-CDC builds keep
+Companion frames active on interface <code>00</code>; single-TTY builds resume frames when
+their terminal session ends. This setting does not change the node-storage
+capture controlled by <code>log start</code> and <code>log stop</code>.</p>
 <p>Unified ESP32 FULL builds add one saved selector for both output paths:</p>
 <pre><code class="language-text">get logging.output
 set logging.output off

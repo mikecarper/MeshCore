@@ -1324,6 +1324,10 @@ A reboot clears it.</p>
 <td style="text-align: right;">128</td>
 </tr>
 <tr>
+<td>Meshadventurer Full Companion</td>
+<td style="text-align: right;">64</td>
+</tr>
+<tr>
 <td>Constrained Full ESP32 fallback</td>
 <td style="text-align: right;">16</td>
 </tr>
@@ -1332,7 +1336,10 @@ A reboot clears it.</p>
 <p>An explicit target <code>OFFLINE_QUEUE_SIZE</code> overrides the platform default. The
 Heltec V2 and TLora V2 Full Companion profiles, for example, use 16 frames so
 their combined WiFi, BLE, and LoRa mOTA image retains enough internal DRAM.
-Standard, logging, MQTT, and Cascade build overlays retain the selected target
+Meshadventurer SX1262 and SX1268 Full Companion use 64 frames together with 160
+contacts and 30 group channels; their ordinary transport-specific images keep
+128 frames and 40 channels.</p>
+<p>Standard, logging, MQTT, and Cascade build overlays retain the selected target
 capacity; they do not silently shrink the queue.</p>
 <p>Each queue slot currently costs 177 bytes. A 256-frame queue reserves 45,312
 bytes, while a 512-frame queue reserves 90,624 bytes. There is no 256-frame
