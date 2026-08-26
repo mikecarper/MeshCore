@@ -632,11 +632,18 @@
     return Math.ceil(bytes);
   }
 
+  function channelMatcherSpecificity(rule) {
+    if (!rule.channel) return 0;
+    return rule.channel.startsWith("hash:") ? 1 : 2;
+  }
+
   function sortedRules(rules) {
     return rules.slice().sort((left, right) => {
       const phase = PHASE_ORDER[left.phase] - PHASE_ORDER[right.phase];
       if (phase !== 0) return phase;
       if (left.priority !== right.priority) return right.priority - left.priority;
+      const specificity = channelMatcherSpecificity(right) - channelMatcherSpecificity(left);
+      if (specificity !== 0) return specificity;
       if (left.id < right.id) return -1;
       if (left.id > right.id) return 1;
       return 0;
@@ -694,7 +701,8 @@
       format: POLICY_FORMAT,
       version: POLICY_VERSION,
       status: "design-preview",
-      evaluation: "phase, descending priority, stable rule ID; immutable receive-time matches",
+      evaluation: "phase, descending priority, channel specificity, stable rule ID; "
+        + "immutable receive-time matches",
       rules: sortedRules(rules.map(normalizeRule)),
     };
   }

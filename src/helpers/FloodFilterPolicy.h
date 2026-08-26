@@ -64,6 +64,15 @@ inline bool channelRequiresAuthentication(uint8_t key_len) {
       || key_len == CHANNEL_KEY_256_LEN;
 }
 
+// Numeric rule priority remains the primary ordering control. At an equal
+// priority, prefer a narrower channel identity so an authenticated exception
+// can stop a colliding raw-hash rule regardless of their slot order.
+inline uint8_t channelMatcherSpecificity(uint8_t key_len) {
+  if (channelRequiresAuthentication(key_len)) return 2;
+  if (channelHashOnly(key_len)) return 1;
+  return 0;
+}
+
 inline uint8_t encodeStoredRuleChannel(uint8_t key_len,
                                        bool retry_on_match) {
   return (uint8_t)(key_len
@@ -381,27 +390,41 @@ inline bool sameChannelKey(uint8_t left_len, const uint8_t left[],
 
 template<typename RuleMask>
 inline int nextOrderedRule(RuleMask match_mask, RuleMask visited_mask,
-                           const uint8_t priorities[], uint8_t count) {
+                           const uint8_t priorities[],
+                           const uint8_t specificities[], uint8_t count) {
   if (priorities == NULL || count > sizeof(RuleMask) * 8U) return -1;
   int best = -1;
   for (uint8_t i = 0; i < count; i++) {
     RuleMask bit = (RuleMask)1U << i;
     if ((match_mask & bit) == 0 || (visited_mask & bit) != 0) continue;
-    if (best < 0 || priorities[i] > priorities[best]) best = i;
+    if (best < 0 || priorities[i] > priorities[best]
+        || (priorities[i] == priorities[best]
+            && specificities != NULL
+            && specificities[i] > specificities[best])) {
+      best = i;
+    }
   }
   return best;
 }
 
 template<typename RuleMask>
+inline int nextOrderedRule(RuleMask match_mask, RuleMask visited_mask,
+                           const uint8_t priorities[], uint8_t count) {
+  return nextOrderedRule(match_mask, visited_mask, priorities, NULL, count);
+}
+
+template<typename RuleMask>
 inline RuleMask truncateRulesAtStop(RuleMask match_mask,
                                     const uint8_t priorities[],
+                                    const uint8_t specificities[],
                                     const uint8_t stop_flags[],
                                     uint8_t count) {
   if (stop_flags == NULL) return match_mask;
   RuleMask effective = 0;
   RuleMask visited = 0;
   while (true) {
-    int index = nextOrderedRule(match_mask, visited, priorities, count);
+    int index = nextOrderedRule(
+        match_mask, visited, priorities, specificities, count);
     if (index < 0) break;
     RuleMask bit = (RuleMask)1U << index;
     visited |= bit;
@@ -409,6 +432,15 @@ inline RuleMask truncateRulesAtStop(RuleMask match_mask,
     if (stop_flags[index] != 0) break;
   }
   return effective;
+}
+
+template<typename RuleMask>
+inline RuleMask truncateRulesAtStop(RuleMask match_mask,
+                                    const uint8_t priorities[],
+                                    const uint8_t stop_flags[],
+                                    uint8_t count) {
+  return truncateRulesAtStop(
+      match_mask, priorities, NULL, stop_flags, count);
 }
 
 inline bool stopActionApplies(bool stop_on_match, bool has_region_target,

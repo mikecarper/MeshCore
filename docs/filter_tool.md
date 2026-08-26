@@ -394,7 +394,8 @@ in the simulator below. The examples draw from
       </div>
       <p class="filter-field-help">
         Rules match the same immutable packet facts. Ordering is phase, then
-        descending priority, then stable rule ID. Drop decisions are sticky.
+        descending priority, then authenticated channel, raw hash, or wildcard
+        specificity, then stable rule ID. Drop decisions are sticky.
       </p>
       <div class="filter-empty-state" data-role="empty-policy">
         Add a rule or load an example to start exploring.
@@ -626,7 +627,10 @@ The simulator uses these rules:
 1. Only flood retransmission enters the policy. Direct routing and local packet
    delivery remain outside it.
 2. Every matcher reads the same immutable receive-time packet facts.
-3. Rules run by phase, descending priority, then stable rule ID.
+3. Rules run by phase and descending numeric priority. At an equal priority,
+   authenticated channel matches run before raw one-byte hash matches, which
+   run before wildcard channel matches; stable rule ID breaks the remaining
+   tie. An explicitly higher numeric priority overrides channel specificity.
 4. A drop decision is sticky and cannot be undone by a later rule.
 5. The first matching scope, timing, queue, and retry action in execution order
    wins.

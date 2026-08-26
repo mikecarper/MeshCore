@@ -867,11 +867,14 @@ bool FloodRuleEngine::authenticateChannel(
 int FloodRuleEngine::nextMatch(uint32_t match_mask,
                                uint32_t visited_mask) const {
   uint8_t priorities[RULE_SLOTS];
+  uint8_t specificities[RULE_SLOTS];
   for (int i = 0; i < RULE_SLOTS; i++) {
     priorities[i] = _entries[i].priority;
+    specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
+        _entries[i].channel_key_len);
   }
   return FloodFilterPolicy::nextOrderedRule(
-      match_mask, visited_mask, priorities, RULE_SLOTS);
+      match_mask, visited_mask, priorities, specificities, RULE_SLOTS);
 }
 
 bool FloodRuleEngine::resolveTargetRegion(
@@ -891,10 +894,13 @@ bool FloodRuleEngine::resolveTargetRegion(
 
 uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) {
   uint8_t priorities[RULE_SLOTS];
+  uint8_t specificities[RULE_SLOTS];
   uint8_t stop_flags[RULE_SLOTS];
   for (int i = 0; i < RULE_SLOTS; i++) {
     priorities[i] = _entries[i].priority;
     const Entry& entry = _entries[i];
+    specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
+        entry.channel_key_len);
     bool region_usable = true;
     if (entry.target_region_name[0] != 0) {
       TransportKey scope;
@@ -907,7 +913,7 @@ uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) {
         region_usable) ? 1 : 0;
   }
   return FloodFilterPolicy::truncateRulesAtStop(
-      match_mask, priorities, stop_flags, RULE_SLOTS);
+      match_mask, priorities, specificities, stop_flags, RULE_SLOTS);
 }
 
 uint32_t FloodRuleEngine::evaluate(

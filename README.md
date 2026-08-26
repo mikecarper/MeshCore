@@ -112,6 +112,11 @@ To run unit tests, run the following command:
 pio test --environment native --verbose
 ```
 
+Run only one PlatformIO process in a checkout at a time. Do not overlap
+`pio test`, `pio run`, uploads, cleans, or scripts that invoke PlatformIO, even
+for different environments: they share and may clean `.pio/build`, which can
+interrupt another build and produce misleading failures.
+
 ## Road-Map / To-Do
 
 There are a number of fairly major features in the pipeline, with no particular time-frames attached yet. In very rough chronological order:

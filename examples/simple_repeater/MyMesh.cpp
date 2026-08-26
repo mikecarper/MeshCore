@@ -6362,11 +6362,15 @@ bool MyMesh::floodPacketFilterAllowsRetry(uint64_t match_mask) const {
 int MyMesh::nextFloodPacketFilterMatch(uint64_t match_mask,
                                        uint64_t visited_mask) const {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
+  uint8_t specificities[FLOOD_PACKET_FILTER_SLOTS];
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     priorities[i] = flood_packet_filters[i].priority;
+    specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
+        flood_packet_filters[i].channel_key_len);
   }
   return FloodFilterPolicy::nextOrderedRule(
-      match_mask, visited_mask, priorities, FLOOD_PACKET_FILTER_SLOTS);
+      match_mask, visited_mask, priorities, specificities,
+      FLOOD_PACKET_FILTER_SLOTS);
 }
 
 bool MyMesh::resolveFloodPacketFilterTargetRegion(
@@ -6386,10 +6390,13 @@ bool MyMesh::resolveFloodPacketFilterTargetRegion(
 
 uint64_t MyMesh::applyFloodPacketFilterStop(uint64_t match_mask) {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
+  uint8_t specificities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t stop_flags[FLOOD_PACKET_FILTER_SLOTS];
   for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
     priorities[i] = flood_packet_filters[i].priority;
     const auto& entry = flood_packet_filters[i];
+    specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
+        entry.channel_key_len);
     bool region_usable = true;
     if (entry.target_region_name[0] != 0) {
       TransportKey scope;
@@ -6402,7 +6409,8 @@ uint64_t MyMesh::applyFloodPacketFilterStop(uint64_t match_mask) {
         region_usable) ? 1 : 0;
   }
   return FloodFilterPolicy::truncateRulesAtStop(
-      match_mask, priorities, stop_flags, FLOOD_PACKET_FILTER_SLOTS);
+      match_mask, priorities, specificities, stop_flags,
+      FLOOD_PACKET_FILTER_SLOTS);
 }
 
 uint64_t MyMesh::evaluateFloodPacketFilterMatches(

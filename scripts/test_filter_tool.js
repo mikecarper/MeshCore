@@ -219,16 +219,22 @@ test("loads the playground policy examples", () => {
   );
 });
 
-test("orders by phase, descending priority, and stable ASCII ID", () => {
+test("orders by phase, priority, channel specificity, and stable ASCII ID", () => {
   const definitions = [
     "policy set z-last phase=forward owner=filter priority=20 when route=flood type=any hops=all do tag=z",
     "policy set rewrite-first phase=rewrite owner=scope priority=1 when route=flood type=any hops=all do scope=#x",
     "policy set b-middle phase=forward owner=filter priority=30 when route=flood type=any hops=all do tag=b",
     "policy set A-first phase=forward owner=filter priority=20 when route=flood type=any hops=all do tag=a",
+    "policy set hash-middle phase=forward owner=filter priority=20 when route=flood "
+      + "type=grp_txt hops=all channel=hash:11 do tag=hash",
+    "policy set exact-first phase=forward owner=filter priority=20 when route=flood "
+      + "type=grp_txt hops=all channel=public do tag=exact",
+    "policy set hash-override phase=forward owner=filter priority=21 when route=flood "
+      + "type=grp_txt hops=all channel=hash:11 do tag=override",
   ];
   assert.deepStrictEqual(
     tool.sortedRules(definitions.map(tool.parseDefinition)).map((rule) => rule.id),
-    ["rewrite-first", "b-middle", "A-first", "z-last"]
+    ["rewrite-first", "b-middle", "hash-override", "exact-first", "hash-middle", "A-first", "z-last"]
   );
 });
 

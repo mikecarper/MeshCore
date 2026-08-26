@@ -375,6 +375,59 @@ TEST(FloodRuleOrder, HighestPriorityWinsAndSlotBreaksTies) {
                    matches, visited, priorities, 4));
 }
 
+TEST(FloodRuleOrder, ExactChannelBeatsHashAndWildcardAtEqualPriority) {
+  const uint8_t priorities[] = {40, 40, 40};
+  const uint8_t specificities[] = {
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN),
+    FloodFilterPolicy::channelMatcherSpecificity(0),
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_KEY_128_LEN),
+  };
+  uint32_t visited = 0;
+
+  int first = FloodFilterPolicy::nextOrderedRule(
+      (uint32_t)0x07, visited, priorities, specificities, 3);
+  ASSERT_EQ(2, first);
+  visited |= (uint32_t)1U << first;
+  int second = FloodFilterPolicy::nextOrderedRule(
+      (uint32_t)0x07, visited, priorities, specificities, 3);
+  ASSERT_EQ(0, second);
+  visited |= (uint32_t)1U << second;
+  EXPECT_EQ(1, FloodFilterPolicy::nextOrderedRule(
+                   (uint32_t)0x07, visited, priorities,
+                   specificities, 3));
+}
+
+TEST(FloodRuleOrder, ExplicitPriorityOverridesChannelSpecificity) {
+  const uint8_t priorities[] = {41, 40};
+  const uint8_t specificities[] = {
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN),
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_KEY_128_LEN),
+  };
+
+  EXPECT_EQ(0, FloodFilterPolicy::nextOrderedRule(
+                   (uint32_t)0x03, (uint32_t)0, priorities,
+                   specificities, 2));
+}
+
+TEST(FloodRuleOrder, ExactStopProtectsCollisionFromEarlierHashSlot) {
+  const uint8_t priorities[] = {0, 0};
+  const uint8_t specificities[] = {
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN),
+    FloodFilterPolicy::channelMatcherSpecificity(
+        FloodFilterPolicy::CHANNEL_KEY_128_LEN),
+  };
+  const uint8_t stop_flags[] = {0, 1};
+
+  EXPECT_EQ(0x02U, FloodFilterPolicy::truncateRulesAtStop(
+                       (uint32_t)0x03, priorities, specificities,
+                       stop_flags, 2));
+}
+
 TEST(FloodRuleOrder, StopRemovesOnlyLowerOrderedMatches) {
   const uint8_t priorities[] = {10, 30, 20, 5};
   const uint8_t stop_flags[] = {0, 0, 1, 0};
