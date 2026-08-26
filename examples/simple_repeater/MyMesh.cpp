@@ -3319,7 +3319,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   // GPS defaults
   _prefs.gps_enabled = 0;
   _prefs.gps_interval = 0;
-  _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
+  _prefs.advert_loc_policy = DEFAULT_ADVERT_LOC_POLICY;
 
   // MQTT/WiFi/timezone/radio_watchdog defaults live in /mqtt_prefs now (see applyMQTTDefaults).
 

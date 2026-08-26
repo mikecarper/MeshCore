@@ -192,6 +192,26 @@ TEST(ConfigSerializer, LoadSerial_IgnoreUnknowns) {
     EXPECT_TRUE(match);
 }
 
+TEST(NodePrefs, AdvertLocationDefaultsToStoredPrefs) {
+    NodePrefs prefs;
+    EXPECT_EQ(ADVERT_LOC_PREFS, prefs.advert_loc_policy);
+    EXPECT_EQ(ADVERT_LOC_PREFS, DEFAULT_ADVERT_LOC_POLICY);
+
+    // An explicit privacy choice remains persistent and is not replaced by
+    // the first-boot default when preferences are loaded.
+    prefs.advert_loc_policy = ADVERT_LOC_NONE;
+    MockPrintStream output;
+    ASSERT_TRUE(prefs.saveSerial(output));
+
+    std::string serialised(reinterpret_cast<const char*>(output.getBytes()),
+                           output.getLength());
+    MockInputStream input(serialised.c_str());
+    NodePrefs loaded;
+    ASSERT_EQ(ADVERT_LOC_PREFS, loaded.advert_loc_policy);
+    ASSERT_TRUE(loaded.loadSerial(input));
+    EXPECT_EQ(ADVERT_LOC_NONE, loaded.advert_loc_policy);
+}
+
 TEST(NodePrefs, FemGainSettingsRoundTrip) {
     NodePrefs saved;
     saved.radio_fem_rxgain = 0;

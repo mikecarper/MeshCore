@@ -3239,7 +3239,9 @@ sleep, this command schedules a sync and wakes it; after `gps off`, it reports
   - `share`: share gps location (from SensorManager)
   - `prefs`: location stored in node's lat and lon settings
 
-**Default:** `prefs`
+**Default:** `prefs` on every repeater, room-server, and sensor build that uses
+the common advert policy. A previously saved `none`, `share`, or `prefs` choice
+still overrides the first-boot default after an update.
 
 ---
 

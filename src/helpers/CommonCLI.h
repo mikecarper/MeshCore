@@ -29,6 +29,8 @@
 #define ADVERT_LOC_SHARE      1
 #define ADVERT_LOC_PREFS      2
 
+static constexpr uint8_t DEFAULT_ADVERT_LOC_POLICY = ADVERT_LOC_PREFS;
+
 #define LOOP_DETECT_OFF       0
 #define LOOP_DETECT_MINIMAL   1
 #define LOOP_DETECT_MODERATE  2
@@ -149,7 +151,7 @@ public:
   // Gps settings
   uint8_t gps_enabled = 0;
   uint32_t gps_interval = 0; // seconds; 0 uses the 1-second default
-  uint8_t advert_loc_policy = 0;
+  uint8_t advert_loc_policy = DEFAULT_ADVERT_LOC_POLICY;
   uint32_t discovery_mod_timestamp = 0;
   float adc_multiplier = 0;
   char owner_info[120] = {};

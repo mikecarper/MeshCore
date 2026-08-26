@@ -1212,7 +1212,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   // GPS defaults
   _prefs.gps_enabled = 0;
   _prefs.gps_interval = 0;
-  _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
+  _prefs.advert_loc_policy = DEFAULT_ADVERT_LOC_POLICY;
 
 #if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LR1110) \
     || defined(USE_LR2021) || defined(SX126X_RX_BOOSTED_GAIN) \

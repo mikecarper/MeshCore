@@ -119,6 +119,10 @@ Policies:
 - `share`: use the live/shared sensor manager location
 - `prefs`: use the stored node latitude and longitude preferences
 
+`prefs` is the first-boot default for every repeater, room-server, and sensor
+build. Firmware updates retain an explicitly saved policy from the existing
+preferences filesystem.
+
 Telemetry GPS can be fresh while advert location is fixed or disabled, depending
 on this policy.
 
