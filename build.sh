@@ -1728,6 +1728,19 @@ is_lora_ota_no_external_sensors_target() {
   [[ "$target_lc" == *lora_ota_no_external_sensors ]]
 }
 
+is_rak_i2c_voltage_monitor_ota_target() {
+  local target_lc=${1,,}
+
+  case "$target_lc" in
+    rak_3401_*lora_ota_no_external_sensors|rak_4631_*lora_ota_no_external_sensors)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 filter_out_lora_ota_only_targets() {
   local target
 
@@ -2408,6 +2421,13 @@ declare_build_capability_contract() {
     record_build_expectation "ota.cli" "OTA: status"
   fi
 
+  if is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
+    record_build_expectation "sensor.ina219" "INA219"
+    record_build_expectation "sensor.ina226" "INA226"
+    record_build_expectation "sensor.ina260" "INA260"
+    record_build_expectation "sensor.ina3221" "INA3221"
+  fi
+
   if [ "$env_platform" = "ESP32_PLATFORM" ] \
       && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ] \
       && ! is_esp32_companion_build "$env_name"; then
@@ -2600,6 +2620,12 @@ apply_nrf52_size_profile() {
 
 apply_lora_ota_no_external_sensors_profile() {
   local env_name=$1
+  local omitted_sensor_flags="ENV_INCLUDE_AHTX0 ENV_INCLUDE_BME280 ENV_INCLUDE_BMP280 ENV_INCLUDE_SHTC3 ENV_INCLUDE_SHT4X ENV_INCLUDE_LPS22HB ENV_INCLUDE_MLX90614 ENV_INCLUDE_VL53L0X ENV_INCLUDE_BME680 ENV_INCLUDE_BMP085 ENV_INCLUDE_RAK12035 ENV_INCLUDE_BME680_BSEC"
+  local voltage_monitor_flags="ENV_INCLUDE_INA3221 ENV_INCLUDE_INA219 ENV_INCLUDE_INA226 ENV_INCLUDE_INA260"
+  local flag
+  local omit_unflags=""
+  local omit_overrides=""
+  local retain_overrides=""
 
   if [ "$SKIP_DECLARED_REDUCTIONS" = "1" ]; then
     return 0
@@ -2610,13 +2636,32 @@ apply_lora_ota_no_external_sensors_profile() {
   fi
 
   # The explicit LoRa-OTA sibling additionally drops optional external sensors.
-  # Its ordinary sibling remains sensor-enabled.
+  # RAK3401/RAK4631 keep the compact INA voltage/current monitor set because it
+  # costs less than 5 KiB and covers their most common external telemetry use.
+  # The ordinary sibling remains fully sensor-enabled.
   # Keep board-integrated GPS support. Several target implementations require
   # their location provider even when optional external I2C sensors are absent.
-  append_platformio_build_unflags "-DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENV_INCLUDE_AHTX0 -UENV_INCLUDE_BME280 -UENV_INCLUDE_BMP280 -UENV_INCLUDE_SHTC3 -UENV_INCLUDE_SHT4X -UENV_INCLUDE_LPS22HB -UENV_INCLUDE_INA3221 -UENV_INCLUDE_INA219 -UENV_INCLUDE_INA226 -UENV_INCLUDE_INA260 -UENV_INCLUDE_MLX90614 -UENV_INCLUDE_VL53L0X -UENV_INCLUDE_BME680 -UENV_INCLUDE_BMP085 -UENV_INCLUDE_RAK12035 -UENV_INCLUDE_BME680_BSEC"
-  record_build_reduction \
-    "sensors.external omitted by the explicitly named no_external_sensors target"
+  if ! is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
+    omitted_sensor_flags+=" ${voltage_monitor_flags}"
+  fi
+  for flag in $omitted_sensor_flags; do
+    omit_unflags+=" -D${flag}=1"
+    omit_overrides+=" -U${flag}"
+  done
+  append_platformio_build_unflags "$omit_unflags"
+
+  if is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
+    for flag in $voltage_monitor_flags; do
+      retain_overrides+=" -D${flag}=1"
+    done
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS}${omit_overrides}${retain_overrides}"
+    record_build_reduction \
+      "sensors.external omitted except INA219/INA226/INA260/INA3221 I2C voltage monitors"
+  else
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS}${omit_overrides}"
+    record_build_reduction \
+      "sensors.external omitted by the explicitly named no_external_sensors target"
+  fi
 }
 
 append_platformio_build_unflags() {

@@ -87,10 +87,11 @@ overlapping window.
 `build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52 repeater
 targets that need a smaller internal update workspace. Those siblings omit optional external I2C
 environmental sensors while retaining board-native features such as displays, buttons, battery monitoring,
-and GPS where the target uses the GPS-preserving lean profile. The RAK3401 OTA
-repeater retains RAK12501 support in sensor slot A; slot D conflicts with the
-RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS except
-for its Serial1 RS232 bridge, which uses the same UART. Selected nRF52 boards with matched external
+and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
+retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers add 4,808
+bytes over the otherwise reduced image. The RAK3401 OTA repeater retains RAK12501 support in sensor slot A;
+slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS except for
+its Serial1 RS232 bridge, which uses the same UART. Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
@@ -106,7 +107,7 @@ For one explicitly selected internal-flash nRF52 repeater, the default
 `--build-profile auto` run emits two install-capable choices. The
 `*-full-ota-*` artifact retains external sensors, while the
 `*_lora_ota_no_external_sensors-reduced-ota-*` artifact trades only those
-optional drivers for more delta-staging space. They retain the same OTA target
+optional drivers not explicitly retained by the board profile for more delta-staging space. They retain the same OTA target
 identity so update tooling does not confuse the optimization choice with a
 different board. QSPI- and SD-backed repeaters emit only the complete choice
 unless a measured size failure requires a fallback.
@@ -273,7 +274,8 @@ running application. The hash check in the next step proves that it is the right
 
 On RAK4631 repeaters, use the
 `RAK_4631_repeater_lora_ota_no_external_sensors` environment. It retains built-in battery monitoring but
-omits optional external environmental sensor packages so the delta fits the safe in-place workspace.
+omits optional external environmental sensor packages so the delta fits the safe in-place workspace. INA219,
+INA226, INA260, and INA3221 I2C voltage/current monitors remain supported despite the legacy target name.
 If the device has a RAK15001 installed in sensor slot C and the matching
 RAK15001 OTAFIX bootloader, use
 `RAK_4631_repeater_rak15001_slot_c_lora_ota` instead. That target retains the

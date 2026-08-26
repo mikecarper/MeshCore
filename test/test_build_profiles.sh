@@ -111,4 +111,42 @@ run_auto_two_pass_build nrf_repeater_lora_ota_no_external_sensors >/dev/null
 [[ "${calls[1]}" == *:standard:0: ]] \
   || fail "reduced nRF52 artifact did not use the reduced target name"
 
+is_rak_i2c_voltage_monitor_ota_target \
+  RAK_3401_repeater_lora_ota_no_external_sensors \
+  || fail "RAK3401 reduced OTA target did not retain voltage monitors"
+is_rak_i2c_voltage_monitor_ota_target \
+  RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors \
+  || fail "RAK4631 reduced OTA target did not retain voltage monitors"
+if is_rak_i2c_voltage_monitor_ota_target \
+    Heltec_t114_repeater_lora_ota_no_external_sensors; then
+  fail "non-RAK reduced OTA target incorrectly retained voltage monitors"
+fi
+
+verify_reduced_sensor_flags() {
+  local env_name=$1
+  local expect_ina=$2
+  local PLATFORMIO_BUILD_FLAGS=""
+  local PLATFORMIO_BUILD_UNFLAGS=""
+  local -a BUILD_REDUCTIONS=()
+
+  PIO_ENV_OTA_BY_NAME[$env_name]=1
+  apply_lora_ota_no_external_sensors_profile "$env_name"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *-UENV_INCLUDE_BME280* ]] \
+    || fail "$env_name did not omit environmental sensors"
+  if [ "$expect_ina" = 1 ]; then
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *-DENV_INCLUDE_INA219=1* ]] \
+      || fail "$env_name did not retain INA monitor support"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *-UENV_INCLUDE_INA219* ]] \
+      || fail "$env_name both retained and omitted INA monitor support"
+  else
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *-UENV_INCLUDE_INA219* ]] \
+      || fail "$env_name incorrectly retained INA monitor support"
+  fi
+}
+
+verify_reduced_sensor_flags \
+  RAK_3401_repeater_lora_ota_no_external_sensors 1
+verify_reduced_sensor_flags \
+  Heltec_t114_repeater_lora_ota_no_external_sensors 0
+
 echo "test_build_profiles: OK"

@@ -443,7 +443,7 @@ def test_ota_target_generation_honors_explicit_disable():
     assert "RAK_3401_repeater_lora_ota_no_external_sensors" in release_aliases()
 
 
-def test_rak_nrf52_ota_profiles_keep_gps_where_uart_is_available():
+def test_rak_nrf52_ota_profiles_keep_ina_and_gps_where_uart_is_available():
     root = Path(__file__).resolve().parents[2]
 
     def env_section(path, name):
@@ -463,15 +463,17 @@ def test_rak_nrf52_ota_profiles_keep_gps_where_uart_is_available():
         ),
     )
     for profile in gps_profiles:
-        assert "${nrf52_no_external_sensors_keep_gps.build_flags}" in profile
-        assert "${nrf52_no_external_sensors_keep_gps.lib_deps}" in profile
+        assert "${nrf52_reduced_sensors_keep_ina_gps.build_flags}" in profile
+        assert "${nrf52_reduced_sensors_keep_ina_gps.lib_deps}" in profile
         assert "SparkFun u-blox GNSS Arduino Library" in profile
 
     serial1_bridge = env_section(
         rak4631_path,
         "RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors",
     )
-    assert "${nrf52_no_external_sensors.build_flags}" in serial1_bridge
+    assert "${nrf52_reduced_sensors_keep_ina.build_flags}" in serial1_bridge
+    assert "${nrf52_reduced_sensors_keep_ina.lib_deps}" in serial1_bridge
+    assert "SparkFun u-blox GNSS Arduino Library" not in serial1_bridge
     assert "WITH_RS232_BRIDGE=Serial1" in serial1_bridge
 
 
