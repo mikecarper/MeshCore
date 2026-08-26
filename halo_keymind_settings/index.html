@@ -1543,10 +1543,10 @@ set flood.retry.ignore none
 </thead>
 <tbody>
 <tr>
-<td><code>telemetry.temp</code>, <code>telemetry.volt</code>, <code>telemetry.gps</code></td>
-<td>Records 30-minute MCU temperature and battery samples for seven days. GPS-capable builds retain GPS separately for authenticated paging. <code>telemetry.tx</code> sends one temperature RAW_CUSTOM packet and one voltage packet over a configured direct path, on a persistent 1-30 day schedule (default two days) or immediately for testing; GPS is never included. Scheduled packets contain 165 points. History resets on reboot.</td>
-<td><code>get telemetry.temp [page]</code>, <code>get telemetry.volt [page]</code>, <code>get telemetry.gps [page]</code>, <code>set telemetry.gps &lt;1-30&gt;</code>, <code>get telemetry.tx</code>, <code>set telemetry.tx &lt;off|direct|path&gt;</code>, <code>set telemetry.tx schedule &lt;off|1-30d&gt;</code>, <code>send telemetry.tx now</code></td>
-<td><code>set telemetry.tx A1B2,C3D4</code></td>
+<td><code>telemetry.temp</code>, <code>telemetry.volt</code>, <code>telemetry.volt.i2c</code>, <code>telemetry.gps</code></td>
+<td>Repeater and room builds record 30-minute MCU temperature and battery samples for seven days. Detected INA voltage channels retain four days at 0.02 V resolution through 655.34 V; all-zero channels are omitted as disconnected. GPS-capable builds retain GPS separately. Repeater <code>telemetry.tx</code> sends temperature, battery, and per-channel I2C RAW_CUSTOM packets over a configured direct path on a persistent 1-30 day schedule (default two days) or immediately for testing; GPS is never included. History resets on reboot.</td>
+<td><code>get telemetry.temp [page]</code>, <code>get telemetry.volt [page]</code>, <code>get telemetry.volt.i2c [channel [page]]</code>, <code>get telemetry.gps [page]</code>, <code>set telemetry.gps &lt;1-30&gt;</code>, <code>get telemetry.tx</code>, <code>set telemetry.tx &lt;off|direct|path&gt;</code>, <code>set telemetry.tx schedule &lt;off|1-30d&gt;</code>, <code>send telemetry.tx now</code></td>
+<td><code>get telemetry.volt.i2c 2 1</code></td>
 </tr>
 <tr>
 <td><code>battery.alert</code></td>

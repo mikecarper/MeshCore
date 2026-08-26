@@ -1211,16 +1211,27 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#external-i2c-voltage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External I2C voltage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#legacy-cli-replies" class="md-nav__link">
+  <a href="#cli-history-pages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Legacy CLI replies
+        CLI history pages
       
     </span>
   </a>
@@ -1355,16 +1366,27 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#external-i2c-voltage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External I2C voltage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#legacy-cli-replies" class="md-nav__link">
+  <a href="#cli-history-pages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Legacy CLI replies
+        CLI history pages
       
     </span>
   </a>
@@ -1410,10 +1432,12 @@
 <h1 id="telemetry-decoder">Telemetry decoder</h1>
 <p>Paste raw hexadecimal packet data copied from the
 <a href="https://analyzer.letsmesh.net/packets">Let's Mesh packet analyzer</a> to decode a
-repeater's scheduled temperature or battery-voltage snapshot. The decoder also
-accepts the payload hex without its MeshCore packet header. Decoding happens
-entirely in this browser; pasted data is not uploaded or sent anywhere.</p>
-<p>The <strong>Repeater ID</strong> in the result is the first eight bytes of the sending
+repeater's scheduled temperature, battery-voltage, or external I2C-voltage
+snapshot. The decoder also accepts the payload hex without its MeshCore packet
+header and the Base64 pages returned by repeater or room-server CLI commands.
+Decoding happens entirely in this browser; pasted data is not uploaded or sent
+anywhere.</p>
+<p>The <strong>Source ID</strong> in a raw-packet result is the first eight bytes of the sending
 repeater's public key. Match that 16-character hex value against the public-key
 prefix recorded for your repeaters. It comes from the telemetry payload itself,
 so it is available even when only the payload was copied.</p>
@@ -1433,16 +1457,21 @@ route but use it only for manual tests, turn off the schedule before sending:</p
 <pre><code class="language-text">set telemetry.tx schedule off
 send telemetry.tx now
 </code></pre>
-<p>The <code>send telemetry.tx now</code> command queues one <code>TTB1</code> temperature packet and
-one <code>TVB1</code> voltage packet containing all currently available samples, up to 165
-per packet. There is no temperature-only CLI command. The command requires at
-least one collected sample and works even when the automatic schedule is off.</p>
+<p>The <code>send telemetry.tx now</code> command queues one <code>TTB1</code> temperature packet, one
+<code>TVB1</code> battery-voltage packet, and <code>IVB1</code> chunks for every connected I2C voltage
+channel. <code>TTB1</code> and <code>TVB1</code> carry up to 165 samples. Each <code>IVB1</code> carries 64, so a
+full 192-point/four-day channel takes three packets. Channels whose retained
+history is entirely zero are treated as disconnected and are not sent. The
+command requires at least one collected base sample and works even when the
+automatic schedule is off.</p>
 <h2 id="decode-a-packet">Decode a packet</h2>
 <div class="telemetry-tool" data-telemetry-decoder>
   <div class="telemetry-examples" aria-label="Load an example reply">
     <strong>Try an analyzer example:</strong>
     <button type="button" data-telemetry-example="packetTemperature">Temperature packet</button>
     <button type="button" data-telemetry-example="packetVoltage">Voltage packet</button>
+    <button type="button" data-telemetry-example="packetExternalVoltage">I2C voltage packet</button>
+    <button type="button" data-telemetry-example="externalVoltage">I2C voltage CLI page</button>
   </div>
 
   <label for="telemetry-reply-input">Raw packet or payload hex</label>
@@ -1456,8 +1485,9 @@ least one collected sample and works even when the automatic schedule is off.</p
   ></textarea>
   <p class="telemetry-tool-help" id="telemetry-input-help">
     Spaces, line breaks, colons, dashes, a leading <code>0x</code>, and a quoted
-    JSON field are accepted. Legacy CLI Base64 replies are also auto-detected.
-    Press Ctrl/Command+Enter to decode.
+    JSON field are accepted. CLI Base64 replies are also auto-detected. Paste
+    multiple compatible packet or reply lines together to merge them by
+    timestamp before downloading one CSV. Press Ctrl/Command+Enter to decode.
   </p>
 
   <div class="telemetry-actions">
@@ -1498,8 +1528,11 @@ finds and validates the payload automatically.</p>
 <h3 id="battery-voltage">Battery voltage</h3>
 <pre><code class="language-text">3E00545642311122334455667788800092651E000800010264C8FEFFDC
 </code></pre>
-<p>Both examples identify the source as repeater ID <code>1122334455667788</code>.</p>
-<h2 id="legacy-cli-replies">Legacy CLI replies</h2>
+<h3 id="external-i2c-voltage">External I2C voltage</h3>
+<pre><code class="language-text">3E00495642311122334455667788800092651E00020800000004019026927109C427107FFF
+</code></pre>
+<p>All three examples identify the source as <code>1122334455667788</code>.</p>
+<h2 id="cli-history-pages">CLI history pages</h2>
 <p>The same page continues to decode the padded Base64 returned by these
 administrator commands:</p>
 <table>
@@ -1525,6 +1558,12 @@ administrator commands:</p>
 <td>48 (24 hours)</td>
 </tr>
 <tr>
+<td>I2C voltage</td>
+<td><code>get telemetry.volt.i2c 2</code></td>
+<td><code>get telemetry.volt.i2c 2 4</code></td>
+<td>48 (24 hours)</td>
+</tr>
+<tr>
 <td>GPS position</td>
 <td><code>get telemetry.gps</code></td>
 <td><code>get telemetry.gps 2</code></td>
@@ -1537,17 +1576,32 @@ example:</p>
 <pre><code class="language-text">get telemetry.volt 1
 &gt; EkDUcWoeMAAB5+bl5eTj4uLh4ODf3t7d3Nvb2tnZ2NfX1tXU1NPS0tHQ0M/Ozc3My8vKycnI/w==
 </code></pre>
+<p>Run <code>get telemetry.volt.i2c</code> without a channel first to list connected
+channels. For each channel, collect pages <code>1</code> through <code>4</code>. Paste all four reply
+lines into the decoder at once; it merges their timestamps into one 192-point,
+four-day table and downloads them as one CSV. The same merging works for the
+three <code>IVB1</code> analyzer packets from a full channel. Inputs must have the same
+telemetry type, source, LPP channel, and sample interval.</p>
+<p>An INA3221 exposes its three enabled hardware inputs as three consecutive LPP
+channels. When it is the only external sensor these are normally <code>2</code>, <code>3</code>, and
+<code>4</code>, in hardware-input order. Other sensors can shift the numbers, so copy the
+IDs reported by <code>get telemetry.volt.i2c</code> rather than assuming them.</p>
 <h2 id="reading-the-table">Reading the table</h2>
 <ul>
 <li>Timestamps default to UTC. Select <strong>Show browser-local time</strong> to convert
   them for display and CSV export.</li>
-<li><code>TTB1</code> means a raw temperature snapshot and <code>TVB1</code> means a raw voltage
-  snapshot. The input summary also reports the MeshCore route and path-hop
-  count when a complete packet was pasted.</li>
+<li><code>TTB1</code> means a raw temperature snapshot, <code>TVB1</code> a raw battery-voltage
+  snapshot, and <code>IVB1</code> a packed external I2C-voltage chunk. The input summary
+  also reports the MeshCore route and path-hop count when a complete packet was
+  pasted.</li>
 <li>Temperature preserves exact whole degrees from <code>-50 C</code> through <code>+77 C</code>, plus
   missing, below-range, and above-range states.</li>
 <li>Voltage preserves hundredths of a volt from <code>1.88 V</code> through <code>4.40 V</code>, plus
   missing and out-of-range states.</li>
+<li>External I2C voltage uses a 15-bit code at <code>0.02 V</code> resolution. Code <code>0</code> is
+  missing/disconnected; codes <code>1</code> through <code>32767</code> cover <code>0.02 V</code> through
+  <code>655.34 V</code>. The LPP channel remains part of every page and raw chunk so
+  multiple monitor inputs cannot be mixed accidentally.</li>
 <li>GPS positions are reconstructed from signed 10-meter differentials. A zero
   differential after the page origin is inherently ambiguous: it can represent
   an unchanged fix, movement below the encoded resolution, or no fix. The table
@@ -1556,9 +1610,8 @@ example:</p>
   range, so positions after that point can be less accurate.</li>
 </ul>
 <p>GPS history remains available through the administrator CLI, but <code>telemetry.tx</code>
-never puts GPS in RAW_CUSTOM packets. Therefore analyzer hex decoding supports
-only temperature and voltage; location data cannot be recovered through this
-page.</p>
+never puts GPS in RAW_CUSTOM packets. Location data therefore must come from a
+CLI Base64 page rather than analyzer hex.</p>
 <p>For the byte-level layouts, see
 <a href="../cli_commands/#read-repeater-telemetry-history">Read repeater telemetry history</a>.</p>
 

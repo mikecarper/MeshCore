@@ -4,10 +4,15 @@
   const TYPE_TEMPERATURE = 0x11;
   const TYPE_VOLTAGE = 0x12;
   const TYPE_GPS = 0x13;
+  const TYPE_EXTERNAL_VOLTAGE = 0x14;
   const BINARY_TEMPERATURE_MAGIC = "TTB1";
   const BINARY_VOLTAGE_MAGIC = "TVB1";
+  const BINARY_EXTERNAL_VOLTAGE_MAGIC = "IVB1";
   const BINARY_HEADER_SIZE = 19;
   const BINARY_MAX_SAMPLES = 165;
+  const BINARY_EXTERNAL_HEADER_SIZE = 20;
+  const BINARY_EXTERNAL_MAX_SAMPLES = 64;
+  const EXTERNAL_VOLTAGE_BITS = 15;
   const PAYLOAD_TYPE_RAW_CUSTOM = 0x0f;
   const METERS_PER_DEGREE = 111320;
   const DEGREES_TO_RADIANS = Math.PI / 180;
@@ -23,6 +28,12 @@
       command: "send telemetry.tx now",
       reply: "3E00545642311122334455667788800092651E000800010264C8FEFFDC",
     }),
+    packetExternalVoltage: Object.freeze({
+      label: "Analyzer I²C voltage packet",
+      command: "send telemetry.tx now",
+      reply:
+        "3E00495642311122334455667788800092651E00020800000004019026927109C427107FFF",
+    }),
     temperature: Object.freeze({
       label: "Temperature example",
       command: "get telemetry.temp",
@@ -34,6 +45,12 @@
       command: "get telemetry.volt",
       reply:
         "> EkDUcWoeMAAB5+bl5eTj4uLh4ODf3t7d3Nvb2tnZ2NfX1tXU1NPS0tHQ0M/Ozc3My8vKycnI/w==",
+    }),
+    externalVoltage: Object.freeze({
+      label: "I²C voltage example",
+      command: "get telemetry.volt.i2c 2",
+      reply:
+        "> FIAAkmUeMAIAAAAEE0gfcD8AfkD9AfsD+Af0D/Af8EAAgEEBAgMECAgUEDAgcEEAgkEFAgsEGAg0EHAg8EIAhEEJAhMEKAhUELAhcEMAhkENAhsEOAh0EPAh8EQAiEERf/8=",
     }),
     gps: Object.freeze({
       label: "GPS example",
@@ -87,6 +104,16 @@
       throw new TelemetryDecodeError("The reply is not valid standard padded Base64.");
     }
     return text;
+  }
+
+  function extractBase64Payloads(input) {
+    if (typeof input !== "string") return [extractBase64(input)];
+    const replies = input
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^>\s*[A-Za-z0-9+/]+={0,2}$/.test(line))
+      .map((line) => line.replace(/^>\s*/, ""));
+    return replies.length === 0 ? [extractBase64(input)] : replies;
   }
 
   function base64ToBytes(encoded) {
@@ -166,7 +193,9 @@
       if (firstValid === null) firstValid = bytes;
       for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
         const magic = asciiAt(bytes, offset, 4);
-        if (magic === BINARY_TEMPERATURE_MAGIC || magic === BINARY_VOLTAGE_MAGIC) {
+        if (magic === BINARY_TEMPERATURE_MAGIC
+            || magic === BINARY_VOLTAGE_MAGIC
+            || magic === BINARY_EXTERNAL_VOLTAGE_MAGIC) {
           return bytes;
         }
       }
@@ -174,7 +203,7 @@
 
     if (firstValid) {
       throw new TelemetryDecodeError(
-        "Hex was found, but it does not contain TTB1 temperature or TVB1 voltage telemetry."
+        "Hex was found, but it does not contain TTB1, TVB1, or IVB1 telemetry."
       );
     }
     throw new TelemetryDecodeError(
@@ -276,21 +305,28 @@
   }
 
   function decodeBinarySnapshot(bytes, offset) {
-    if (bytes.length - offset < BINARY_HEADER_SIZE) {
+    const magic = asciiAt(bytes, offset, 4);
+    const externalVoltage = magic === BINARY_EXTERNAL_VOLTAGE_MAGIC;
+    const headerSize = externalVoltage
+      ? BINARY_EXTERNAL_HEADER_SIZE : BINARY_HEADER_SIZE;
+    const maximumSamples = externalVoltage
+      ? BINARY_EXTERNAL_MAX_SAMPLES : BINARY_MAX_SAMPLES;
+    if (bytes.length - offset < headerSize) {
       throw new TelemetryDecodeError("The binary telemetry header is incomplete.");
     }
-    const magic = asciiAt(bytes, offset, 4);
-    const count = bytes[offset + 18];
+    const count = bytes[offset + (externalVoltage ? 19 : 18)];
     const intervalMinutes = bytes[offset + 16] | (bytes[offset + 17] << 8);
-    if (count < 1 || count > BINARY_MAX_SAMPLES) {
+    if (count < 1 || count > maximumSamples) {
       throw new TelemetryDecodeError(
-        `Binary telemetry sample count ${count} is outside the supported 1-${BINARY_MAX_SAMPLES} range.`
+        `Binary telemetry sample count ${count} is outside the supported 1-${maximumSamples} range.`
       );
     }
     if (intervalMinutes === 0) {
       throw new TelemetryDecodeError("Binary telemetry sample interval cannot be zero.");
     }
-    const payloadLength = BINARY_HEADER_SIZE + count;
+    const dataLength = externalVoltage
+      ? Math.ceil((count * EXTERNAL_VOLTAGE_BITS) / 8) : count;
+    const payloadLength = headerSize + dataLength;
     if (bytes.length - offset < payloadLength) {
       throw new TelemetryDecodeError(
         `Binary telemetry declares ${count} samples but ${payloadLength - (bytes.length - offset)} payload bytes are missing.`
@@ -309,10 +345,15 @@
       inputByteLength: bytes.length,
       trailingBytes: bytes.length - offset - payloadLength,
       packet: decodePacketEnvelope(bytes, offset),
+      channel: externalVoltage ? bytes[offset + 18] : null,
     };
     const rows = [];
     for (let index = 0; index < count; index += 1) {
-      const rawCode = bytes[offset + BINARY_HEADER_SIZE + index];
+      const rawCode = externalVoltage
+        ? readPackedBits(bytes, offset + headerSize,
+                         index * EXTERNAL_VOLTAGE_BITS,
+                         EXTERNAL_VOLTAGE_BITS)
+        : bytes[offset + headerSize + index];
       if (magic === BINARY_TEMPERATURE_MAGIC) {
         let status = "Value";
         let valueC = null;
@@ -329,7 +370,7 @@
           rawCode,
           valueC,
         });
-      } else {
+      } else if (magic === BINARY_VOLTAGE_MAGIC) {
         let status = "Value";
         let millivolts = null;
         if (rawCode === 0) status = "Missing";
@@ -342,6 +383,14 @@
           status,
           rawCode,
           millivolts,
+        });
+      } else {
+        rows.push({
+          index,
+          epoch: sampleEpoch(header, index),
+          status: rawCode === 0 ? "Missing" : "Value",
+          rawCode,
+          millivolts: rawCode === 0 ? null : rawCode * 20,
         });
       }
     }
@@ -358,10 +407,19 @@
         && rows.some((row) => row.status === "Reserved code")) {
       warnings.push("One or more temperature samples use a reserved code and may be corrupt.");
     }
+    let kind = "voltage";
+    let label = "Battery voltage";
+    if (magic === BINARY_TEMPERATURE_MAGIC) {
+      kind = "temperature";
+      label = "Temperature";
+    } else if (externalVoltage) {
+      kind = "external-voltage";
+      label = `I²C voltage channel ${header.channel}`;
+    }
     return {
       ...header,
-      kind: magic === BINARY_TEMPERATURE_MAGIC ? "temperature" : "voltage",
-      label: magic === BINARY_TEMPERATURE_MAGIC ? "Temperature" : "Battery voltage",
+      kind,
+      label,
       rows,
       warnings,
     };
@@ -373,7 +431,9 @@
     let lastError = null;
     for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
       const magic = asciiAt(bytes, offset, 4);
-      if (magic !== BINARY_TEMPERATURE_MAGIC && magic !== BINARY_VOLTAGE_MAGIC) continue;
+      if (magic !== BINARY_TEMPERATURE_MAGIC
+          && magic !== BINARY_VOLTAGE_MAGIC
+          && magic !== BINARY_EXTERNAL_VOLTAGE_MAGIC) continue;
       try {
         decodedCandidates.push(decodeBinarySnapshot(bytes, offset));
       } catch (error) {
@@ -465,6 +525,42 @@
       ...header,
       kind: "voltage",
       label: "Battery voltage",
+      rows,
+      warnings: [],
+    };
+  }
+
+  function decodeExternalVoltage(bytes, header) {
+    const headerSize = 8;
+    const dataBytes = Math.ceil(
+      (header.count * EXTERNAL_VOLTAGE_BITS) / 8
+    );
+    assertLength(bytes, headerSize + dataBytes, "I²C voltage");
+    const channel = bytes[7];
+    if (channel === 0) {
+      throw new TelemetryDecodeError("I²C voltage channel cannot be zero.");
+    }
+
+    const rows = [];
+    for (let index = 0; index < header.count; index += 1) {
+      const rawCode = readPackedBits(
+        bytes, headerSize, index * EXTERNAL_VOLTAGE_BITS,
+        EXTERNAL_VOLTAGE_BITS
+      );
+      rows.push({
+        index,
+        epoch: sampleEpoch(header, index),
+        status: rawCode === 0 ? "Missing" : "Value",
+        rawCode,
+        millivolts: rawCode === 0 ? null : rawCode * 20,
+      });
+    }
+
+    return {
+      ...header,
+      channel,
+      kind: "external-voltage",
+      label: `I²C voltage channel ${channel}`,
       rows,
       warnings: [],
     };
@@ -589,19 +685,7 @@
     };
   }
 
-  function decodeTelemetry(input) {
-    const compactHex = typeof input === "string"
-      ? input.replace(/^```(?:text|json)?\s*/i, "")
-        .replace(/```\s*$/, "")
-        .replace(/0x/gi, "")
-        .replace(/[\s:,_-]/g, "")
-        .replace(/^['"]|['",;]$/g, "")
-      : "";
-    if ((/^[0-9a-f]+$/i.test(compactHex) && compactHex.length % 2 === 0)
-        || /54544231|54564231/i.test(String(input))) {
-      return decodeRawTelemetryHex(input);
-    }
-    const encoded = extractBase64(input);
+  function decodeBase64Telemetry(encoded) {
     const bytes = base64ToBytes(encoded);
     if (bytes.length === 0) {
       throw new TelemetryDecodeError("The Base64 payload decoded to zero bytes.");
@@ -615,13 +699,89 @@
       decoded = decodeVoltage(bytes, header);
     } else if (header.typeCode === TYPE_GPS) {
       decoded = decodeGps(bytes, header);
+    } else if (header.typeCode === TYPE_EXTERNAL_VOLTAGE) {
+      decoded = decodeExternalVoltage(bytes, header);
     } else {
       throw new TelemetryDecodeError(
-        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11, 0x12, or 0x13.`
+        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11, 0x12, 0x13, or 0x14.`
       );
     }
     decoded.encoded = encoded;
     return decoded;
+  }
+
+  function mergeDecodedTelemetry(decodedItems) {
+    if (decodedItems.length === 1) return decodedItems[0];
+    const first = decodedItems[0];
+    decodedItems.slice(1).forEach((item) => {
+      const sameSource = (item.sourceId || null) === (first.sourceId || null);
+      const sameChannel = (item.channel || null) === (first.channel || null);
+      if (item.kind !== first.kind || item.typeCode !== first.typeCode
+          || item.intervalMinutes !== first.intervalMinutes
+          || !sameSource || !sameChannel) {
+        throw new TelemetryDecodeError(
+          "Multiple telemetry replies must use the same type, source, channel, and interval."
+        );
+      }
+    });
+
+    const rowsByEpoch = new Map();
+    decodedItems.forEach((item) => {
+      item.rows.forEach((row) => rowsByEpoch.set(row.epoch, row));
+    });
+    const rows = Array.from(rowsByEpoch.values())
+      .sort((left, right) => left.epoch - right.epoch)
+      .map((row, index) => ({ ...row, index }));
+    if (rows.length === 0) {
+      throw new TelemetryDecodeError("The telemetry replies contain no samples.");
+    }
+
+    return {
+      ...first,
+      firstEpoch: rows[0].epoch,
+      count: rows.length,
+      byteLength: decodedItems.reduce(
+        (total, item) => total + item.byteLength, 0
+      ),
+      format: "merged",
+      pageCount: decodedItems.length,
+      packet: null,
+      payloadOffset: 0,
+      trailingBytes: 0,
+      rows,
+      warnings: Array.from(new Set(
+        decodedItems.flatMap((item) => item.warnings || [])
+      )),
+      encoded: decodedItems.map((item) => item.encoded).join("\n"),
+    };
+  }
+
+  function decodeTelemetry(input) {
+    const rawLines = typeof input === "string"
+      ? input.split(/\r?\n/).filter(
+        (line) => /54544231|54564231|49564231/i.test(line)
+      )
+      : [];
+    if (rawLines.length > 1) {
+      return mergeDecodedTelemetry(
+        rawLines.map((line) => decodeRawTelemetryHex(line))
+      );
+    }
+
+    const compactHex = typeof input === "string"
+      ? input.replace(/^```(?:text|json)?\s*/i, "")
+        .replace(/```\s*$/, "")
+        .replace(/0x/gi, "")
+        .replace(/[\s:,_-]/g, "")
+        .replace(/^['"]|['",;]$/g, "")
+      : "";
+    if ((/^[0-9a-f]+$/i.test(compactHex) && compactHex.length % 2 === 0)
+        || /54544231|54564231|49564231/i.test(String(input))) {
+      return decodeRawTelemetryHex(input);
+    }
+    return mergeDecodedTelemetry(
+      extractBase64Payloads(input).map(decodeBase64Telemetry)
+    );
   }
 
   function timestampText(epoch, localTime) {
@@ -651,7 +811,7 @@
           timestampHeader,
           "Status",
           "Temperature",
-          decoded.format === "binary" ? "Raw code" : "Raw status/code",
+          decoded.sourceId ? "Raw code" : "Raw status/code",
         ],
         rows: decoded.rows.map((row) => ({
           muted: row.status === "Missing",
@@ -694,6 +854,29 @@
       };
     }
 
+    if (decoded.kind === "external-voltage") {
+      return {
+        headers: [
+          "#",
+          timestampHeader,
+          "Status",
+          `I²C voltage (channel ${decoded.channel})`,
+          "Raw code",
+        ],
+        rows: decoded.rows.map((row) => ({
+          muted: row.status === "Missing",
+          values: [
+            row.index + 1,
+            timestampText(row.epoch, localTime),
+            row.status,
+            row.millivolts === null
+              ? "—" : `${(row.millivolts / 1000).toFixed(2)} V`,
+            row.rawCode,
+          ],
+        })),
+      };
+    }
+
     return {
       headers: [
         "#",
@@ -720,11 +903,12 @@
   }
 
   function summaryItems(decoded, localTime) {
-    const lastEpoch = sampleEpoch(decoded, decoded.count - 1);
+    const lastEpoch = decoded.rows.length === 0
+      ? decoded.firstEpoch : decoded.rows[decoded.rows.length - 1].epoch;
     const items = [
       [
         "Payload",
-        decoded.format === "binary"
+        typeof decoded.typeCode === "string"
           ? `${decoded.label} (${decoded.typeCode})`
           : `${decoded.label} (0x${decoded.typeCode.toString(16)})`,
       ],
@@ -734,11 +918,19 @@
       ["Last sample", timestampText(lastEpoch, localTime)],
       ["Decoded size", `${decoded.byteLength} bytes`],
     ];
-    if (decoded.format === "binary") {
-      items.splice(1, 0, ["Repeater ID", decoded.sourceId]);
+    if (decoded.pageCount) {
+      items.splice(2, 0, ["Merged inputs", String(decoded.pageCount)]);
+    }
+    if (decoded.channel) {
+      items.splice(1, 0, ["LPP channel", String(decoded.channel)]);
+    }
+    if (decoded.sourceId) {
+      items.splice(1, 0, ["Source ID", decoded.sourceId]);
       items.push([
         "Input",
-        decoded.packet
+        decoded.pageCount
+          ? `${decoded.pageCount} merged telemetry packets`
+          : decoded.packet
           ? `MeshCore ${decoded.packet.routeName}, ${decoded.packet.hopCount} path hops`
           : decoded.payloadOffset === 0
             ? "Telemetry payload hex"
@@ -901,7 +1093,8 @@
       const link = document.createElement("a");
       link.href = url;
       const sourcePart = current.sourceId ? `${current.sourceId.toLowerCase()}-` : "";
-      link.download = `meshcore-telemetry-${sourcePart}${current.kind}.csv`;
+      const channelPart = current.channel ? `-ch${current.channel}` : "";
+      link.download = `meshcore-telemetry-${sourcePart}${current.kind}${channelPart}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -922,6 +1115,8 @@
     decodeRawTelemetryHex,
     extractHexBytes,
     extractBase64,
+    extractBase64Payloads,
+    mergeDecodedTelemetry,
     tableModel,
     modelToCsv,
   });

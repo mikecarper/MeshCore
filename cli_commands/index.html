@@ -688,10 +688,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#read-repeater-telemetry-history" class="md-nav__link">
+  <a href="#read-repeater-and-room-server-telemetry-history" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Read repeater telemetry history
+        Read repeater and room-server telemetry history
       
     </span>
   </a>
@@ -3378,10 +3378,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#read-repeater-telemetry-history" class="md-nav__link">
+  <a href="#read-repeater-and-room-server-telemetry-history" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Read repeater telemetry history
+        Read repeater and room-server telemetry history
       
     </span>
   </a>
@@ -5268,18 +5268,21 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <p><strong>Usage:</strong> <code>stats-packets</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
 <hr />
-<h3 id="read-repeater-telemetry-history">Read repeater telemetry history</h3>
-<p>Repeater firmware records one UTC-aligned sample every 30 minutes. Temperature
-and battery voltage retain 336 samples (seven rolling days). GPS-capable builds
-retain three GPS days by default and request a seven-day default at startup.
-Builds without a GPS provider omit the GPS history commands to conserve flash.
-The history and any runtime retention change are held in RAM and reset after a
-reboot.</p>
-<p>The feature is omitted from flash-constrained STM32 repeater images.</p>
+<p><a id="read-repeater-telemetry-history"></a></p>
+<h3 id="read-repeater-and-room-server-telemetry-history">Read repeater and room-server telemetry history</h3>
+<p>Repeater and room-server firmware record one UTC-aligned sample every 30
+minutes. Temperature and battery voltage retain 336 samples (seven rolling
+days). Each detected INA219, INA226, INA260, or INA3221 voltage channel retains
+192 samples (four rolling days). GPS-capable builds retain three GPS days by
+default; repeaters request a seven-day default at startup. Builds without a GPS
+provider omit the GPS history commands to conserve flash. All history and any
+runtime retention change are held in RAM and reset after a reboot.</p>
+<p>The feature is omitted from flash-constrained STM32 repeater and room images.</p>
 <p><strong>Usage:</strong></p>
 <ul>
 <li><code>get telemetry.temp [page]</code></li>
 <li><code>get telemetry.volt [page]</code></li>
+<li><code>get telemetry.volt.i2c [channel [page]]</code></li>
 <li><code>get telemetry.gps [page]</code></li>
 <li><code>set telemetry.gps &lt;days&gt;</code></li>
 <li><code>get telemetry.tx</code></li>
@@ -5293,6 +5296,16 @@ reboot.</p>
   24 hours and accept <code>1</code>-<code>7</code>. GPS pages each hold 12 hours and accept <code>1</code>
   through twice the current GPS retention in days. Omitting the page selects
   page <code>1</code>.</li>
+<li><code>channel</code>: Cayenne LPP channel assigned to an external voltage monitor.
+  <code>get telemetry.volt.i2c</code> lists channels that have at least one non-zero
+  sample. Supplying a channel returns 48 points (24 hours) per page; pages
+  <code>1</code>-<code>4</code> cover all four days. A detected input whose complete retained history
+  is zero is treated as disconnected and is omitted until it reports a
+  non-zero voltage. An INA3221 contributes three consecutive entries, in
+  hardware-input order. If it is the only detected external sensor these are
+  normally LPP channels <code>2</code>, <code>3</code>, and <code>4</code>; always use the no-argument command
+  as the authoritative list because earlier detected sensors shift the LPP
+  numbers.</li>
 <li><code>days</code>: Requested GPS retention from <code>1</code> through <code>30</code> days. Retention above
   three days uses heap memory. The allocator reduces the requested value as
   needed to leave at least 2048 bytes free and replies with the days and pages
@@ -5305,10 +5318,15 @@ reboot.</p>
 <li><code>schedule</code>: Automatic interval in whole days. The default is <code>2d</code>; <code>off</code>
   retains the configured direct path for manual test sends.</li>
 </ul>
-<p>Local serial and remote administrator CLI sessions can read the history.
-Collection uses the MCU temperature, battery voltage, and an already-valid
-onboard GPS fix. It does not wake GPS, so an off, sleeping, or unfixed GPS
-produces a missing location sample without changing its power-saving schedule.</p>
+<p>Local serial and remote administrator CLI sessions can read the history on
+both roles. Collection uses the MCU temperature, battery voltage, external I2C
+voltage monitors, and an already-valid onboard GPS fix. It does not wake GPS,
+so an off, sleeping, or unfixed GPS produces a missing location sample without
+changing its power-saving schedule.</p>
+<p>External voltage history allocates 360 bytes for each detected monitor channel
+(1,080 bytes for all three INA3221 inputs). The allocation reserves all
+detected inputs so a sensor connected later can start recording, but all-zero
+inputs are omitted from command replies and LoRa transmission.</p>
 <p>Replies contain <code>&gt;</code> followed by standard padded Base64. After decoding, all
 multi-byte integers are little-endian. Packed fields are written most
 significant bit first, oldest sample first.</p>
@@ -5319,18 +5337,21 @@ the data.</p>
 across reboots. Configuring <code>direct</code> or a routed path enables the default <code>2d</code>
 schedule; <code>set telemetry.tx schedule</code> changes it from one through 30 days or
 turns it off. An automatic run waits until 165 half-hour positions are
-available, then sends one maximum-size temperature packet and one maximum-size
-voltage packet. GPS is never included in this raw transmission. The history
-remains boot-local, so the first scheduled pair after a reboot needs about
-82.5 hours to fill. On the default two-day interval, each 82.5-hour packet
-overlaps the previous packet by 34.5 hours. A queue failure is retried after
-30 minutes only for the packet that did not queue; successfully queued packets
-are not duplicated.</p>
-<p><code>send telemetry.tx now</code> is an administrator-only test action. It immediately
-queues one temperature and one voltage direct packet over the configured path,
-using all currently available positions up to 165. It works while the schedule
-is off and does not move the next scheduled send time. RAW_CUSTOM direct
-packets do not enter the normal encrypted direct-message retry mechanism.</p>
+available, then sends one maximum-size temperature packet, one maximum-size
+battery-voltage packet, and up to three <code>IVB1</code> packets for every populated I2C
+voltage channel. GPS is never included in this raw transmission. The history
+remains boot-local, so the first scheduled run after a reboot needs about 82.5
+hours to fill. On the default two-day interval, each 82.5-hour temperature or
+battery packet overlaps its predecessor by 34.5 hours. Packets are paced two
+seconds apart. A queue failure is retried after 30 minutes only for the packet
+that did not queue; successfully queued packets are not duplicated.</p>
+<p><code>send telemetry.tx now</code> is an administrator-only test action. It queues
+temperature and battery-voltage snapshots plus the available I2C voltage
+chunks over the configured path. It uses all currently available base
+positions up to 165 and all available I2C positions up to 192 per populated
+channel. It works while the schedule is off and does not move the next
+scheduled send time. RAW_CUSTOM direct packets do not enter the normal
+encrypted direct-message retry mechanism.</p>
 <p>Full snapshots are 184-byte RAW_CUSTOM payloads. Manual tests can be shorter
 while history fills. Both formats are binary, not Base64 and not encrypted:</p>
 <table>
@@ -5371,6 +5392,48 @@ while history fills. Both formats are binary, not Base64 and not encrypted:</p>
 for above <code>+77 C</code>. Codes <code>3</code> through <code>130</code> represent exact whole degrees from
 <code>-50 C</code> through <code>+77 C</code>; decode them as <code>code - 53</code>. Voltage codes use the
 same encoding as the paged voltage payload documented below.</p>
+<p>External voltage snapshots use a separate packed layout. A full four-day
+channel takes three 140-byte <code>IVB1</code> payloads of 64 points each:</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code>-<code>3</code></td>
+<td>ASCII magic <code>IVB1</code></td>
+</tr>
+<tr>
+<td><code>4</code>-<code>11</code></td>
+<td>First eight bytes of the source public key</td>
+</tr>
+<tr>
+<td><code>12</code>-<code>15</code></td>
+<td>First sample UTC epoch, unsigned 32-bit little-endian</td>
+</tr>
+<tr>
+<td><code>16</code>-<code>17</code></td>
+<td>Sample interval in minutes, unsigned 16-bit little-endian (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>18</code></td>
+<td>Cayenne LPP voltage channel</td>
+</tr>
+<tr>
+<td><code>19</code></td>
+<td>Sample count (<code>1</code>-<code>64</code>)</td>
+</tr>
+<tr>
+<td><code>20</code> onward</td>
+<td>Oldest-to-newest packed 15-bit voltage codes</td>
+</tr>
+</tbody>
+</table>
+<p>Code <code>0</code> means missing or disconnected. Codes <code>1</code>-<code>32767</code> represent <code>0.02 V</code>
+through <code>655.34 V</code> in <code>0.02 V</code> steps; decode millivolts as <code>code * 20</code>.</p>
 <p>Match bytes <code>4</code>-<code>11</code> to the first 16 hex characters of the repeater public key
 shown by its advert or <code>get public.key</code>. This compact identifier is useful for
 association but is not authenticated and can be spoofed. An MQTT observer can
@@ -5452,6 +5515,42 @@ fractional temperature is stored or transmitted.</p>
 <p>Voltage codes reserve <code>0</code> for no reading, <code>1</code> for below <code>1.88 V</code>, and <code>255</code>
 for above <code>4.40 V</code>. Codes <code>2</code>-<code>254</code> represent <code>1.88 V</code> through <code>4.40 V</code> in
 <code>0.01 V</code> steps; decode millivolts as <code>1880 + (code - 2) * 10</code>.</p>
+<p>External I2C voltage payload (<code>0x14</code>, 98 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Format/type <code>0x14</code></td>
+</tr>
+<tr>
+<td><code>1</code>-<code>4</code></td>
+<td>First sample UTC epoch, unsigned 32-bit</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Sample interval in minutes (<code>30</code>)</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Sample count (<code>48</code>)</td>
+</tr>
+<tr>
+<td><code>7</code></td>
+<td>Cayenne LPP voltage channel</td>
+</tr>
+<tr>
+<td><code>8</code>-<code>97</code></td>
+<td>48 packed 15-bit voltage codes</td>
+</tr>
+</tbody>
+</table>
+<p>The codes have the same <code>0.02 V</code> through <code>655.34 V</code> meaning as <code>IVB1</code>.</p>
 <p>GPS payload (<code>0x13</code>, 101 bytes):</p>
 <table>
 <thead>
