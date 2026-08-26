@@ -489,6 +489,10 @@ uint32_t MyMesh::getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t 
 
 bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
   if (_prefs.disable_fwd || _prefs.flood_retry_attempts == 0) return false;
+  if (packet != NULL
+      && packet->flood_retry_policy == mesh::FLOOD_RETRY_POLICY_DENY) {
+    return false;
+  }
   return packet == NULL || packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
       || _prefs.flood_retry_advert_enabled;
 }
@@ -569,6 +573,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   bool fast_track_scope_change = false;
   recv_pkt_regionless_scope_set = false;
   recv_pkt_rule_match_mask = 0;
+  pkt->flood_retry_policy = mesh::FLOOD_RETRY_POLICY_DEFAULT;
   if (pkt->isRouteFlood()) {
     bool incoming_region_allowed = false;
     RegionEntry* incoming_region = NULL;
@@ -581,6 +586,12 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     }
     recv_pkt_rule_match_mask = flood_rules.evaluate(
         pkt, isTempRadioActive(), incoming_region_allowed, incoming_region);
+    if (flood_rules.hasRetryRules()) {
+      pkt->flood_retry_policy = flood_rules.allowsRetry(
+          recv_pkt_rule_match_mask)
+          ? mesh::FLOOD_RETRY_POLICY_ALLOW
+          : mesh::FLOOD_RETRY_POLICY_DENY;
+    }
     bool scope_set = false;
     scope_changed = flood_rules.applyScope(
         pkt, recv_pkt_rule_match_mask, scope_set, fast_track_scope_change);

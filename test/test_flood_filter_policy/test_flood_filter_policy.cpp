@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <Utils.h>
 #include <helpers/FloodFilterPolicy.h>
 #include <helpers/RegionNameUtils.h>
 
@@ -36,6 +37,100 @@ TEST(FloodFilterPersistence, EmptyForwardPhaseSerializesNoRows) {
 TEST(FloodFilterPersistence, OldFullCountRemainsLoadCompatible) {
   EXPECT_TRUE(FloodFilterPolicy::forwardPersistenceCountSupported(63, 63));
   EXPECT_FALSE(FloodFilterPolicy::forwardPersistenceCountSupported(64, 63));
+}
+
+TEST(FloodRuleChannel, StoredRetryFlagPreservesTheChannelMatcher) {
+  uint8_t key_len = 0;
+  bool retry = false;
+  uint8_t stored = FloodFilterPolicy::encodeStoredRuleChannel(16, true);
+
+  EXPECT_TRUE(FloodFilterPolicy::decodeStoredRuleChannel(
+      stored, key_len, retry));
+  EXPECT_EQ(16, key_len);
+  EXPECT_TRUE(retry);
+
+  stored = FloodFilterPolicy::encodeStoredRuleChannel(
+      FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN, false);
+  EXPECT_TRUE(FloodFilterPolicy::decodeStoredRuleChannel(
+      stored, key_len, retry));
+  EXPECT_EQ(FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN, key_len);
+  EXPECT_FALSE(retry);
+}
+
+TEST(FloodRuleChannel, StoredReservedFlagAndUnknownLengthsAreRejected) {
+  uint8_t key_len = 0;
+  bool retry = false;
+
+  EXPECT_FALSE(FloodFilterPolicy::decodeStoredRuleChannel(
+      FloodFilterPolicy::STORED_RULE_RESERVED_FLAG, key_len, retry));
+  EXPECT_FALSE(FloodFilterPolicy::decodeStoredRuleChannel(
+      2, key_len, retry));
+}
+
+TEST(FloodRuleChannel, ParsesCanonicalAliasAndBareHashMatchers) {
+  uint8_t channel_hash = 0;
+
+  EXPECT_TRUE(FloodFilterPolicy::parseChannelHashMatcher(
+      "hash:A5", channel_hash));
+  EXPECT_EQ(0xA5, channel_hash);
+  EXPECT_TRUE(FloodFilterPolicy::parseChannelHashMatcher(
+      "SHORT:0c", channel_hash));
+  EXPECT_EQ(0x0C, channel_hash);
+  EXPECT_TRUE(FloodFilterPolicy::parseChannelHashMatcher(
+      "7F", channel_hash));
+  EXPECT_EQ(0x7F, channel_hash);
+  EXPECT_FALSE(FloodFilterPolicy::parseChannelHashMatcher(
+      "hash:7", channel_hash));
+  EXPECT_FALSE(FloodFilterPolicy::parseChannelHashMatcher(
+      "hash:700", channel_hash));
+  EXPECT_FALSE(FloodFilterPolicy::parseChannelHashMatcher(
+      "hash:GG", channel_hash));
+}
+
+TEST(FloodRuleChannel, HashOnlyMatchersDoNotRequestAuthentication) {
+  EXPECT_TRUE(FloodFilterPolicy::channelHashOnly(1));
+  EXPECT_FALSE(FloodFilterPolicy::channelRequiresAuthentication(1));
+  EXPECT_TRUE(FloodFilterPolicy::channelRequiresAuthentication(16));
+  EXPECT_TRUE(FloodFilterPolicy::channelRequiresAuthentication(32));
+}
+
+TEST(FloodRuleChannel, Hash11DoesNotAliasTheAuthenticatedPublicChannel) {
+  static const uint8_t public_channel_key[PUB_KEY_SIZE] = {
+    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
+    0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
+  };
+  static const uint8_t colliding_channel_key[PUB_KEY_SIZE] = {
+    0x0b
+  };
+  uint8_t public_channel_hash = 0;
+  mesh::Utils::sha256(&public_channel_hash, sizeof(public_channel_hash),
+                      public_channel_key, CIPHER_KEY_SIZE);
+  uint8_t colliding_channel_hash = 0;
+  mesh::Utils::sha256(&colliding_channel_hash,
+                      sizeof(colliding_channel_hash),
+                      colliding_channel_key, CIPHER_KEY_SIZE);
+
+  uint8_t channel_hash = 0;
+  ASSERT_TRUE(FloodFilterPolicy::parseChannelHashMatcher(
+      "11", channel_hash));
+
+  EXPECT_EQ(0x11, public_channel_hash);
+  EXPECT_EQ(public_channel_hash, colliding_channel_hash);
+  EXPECT_EQ(0x11, channel_hash);
+  EXPECT_TRUE(FloodFilterPolicy::channelHashOnly(
+      FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN));
+  EXPECT_FALSE(FloodFilterPolicy::channelRequiresAuthentication(
+      FloodFilterPolicy::CHANNEL_HASH_ONLY_LEN));
+  EXPECT_TRUE(FloodFilterPolicy::channelRequiresAuthentication(
+      FloodFilterPolicy::CHANNEL_KEY_128_LEN));
+
+  uint8_t plaintext[CIPHER_BLOCK_SIZE] = { 0x42 };
+  uint8_t framed[CIPHER_MAC_SIZE + CIPHER_BLOCK_SIZE] = {};
+  uint8_t recovered[CIPHER_BLOCK_SIZE] = {};
+  ASSERT_EQ((int)sizeof(framed), mesh::Utils::encryptThenMAC(
+      colliding_channel_key, framed, plaintext, sizeof(plaintext)));
+  EXPECT_EQ(0, mesh::Utils::MACThenDecrypt(
+      public_channel_key, recovered, framed, sizeof(framed)));
 }
 
 static mesh::Packet makeFloodPacket(uint8_t hash_size,

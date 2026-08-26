@@ -127,6 +127,25 @@ TEST(MQTTWireScratch, ZeroPayloadPacketSerializesAndRoundTrips) {
   EXPECT_EQ(0, restored.payload_len);
 }
 
+TEST(MQTTWireScratch, FloodRetryPolicyIsLocalOnlyAndCopiesWithThePacket) {
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_FLOOD;
+  packet.path_len = 0;
+  packet.payload_len = 0;
+  packet.flood_retry_policy = mesh::FLOOD_RETRY_POLICY_ALLOW;
+
+  mesh::Packet retry = packet;
+  EXPECT_EQ(mesh::FLOOD_RETRY_POLICY_ALLOW, retry.flood_retry_policy);
+
+  uint8_t wire[MAX_TRANS_UNIT] = {0};
+  uint8_t wire_len = packet.writeTo(wire);
+  mesh::Packet received;
+  received.flood_retry_policy = mesh::FLOOD_RETRY_POLICY_DENY;
+  ASSERT_TRUE(received.readFrom(wire, wire_len));
+  EXPECT_EQ(mesh::FLOOD_RETRY_POLICY_DEFAULT,
+            received.flood_retry_policy);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

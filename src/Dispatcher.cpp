@@ -494,6 +494,7 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
   int i = 0;
 
   pkt->tx_cr = 0;
+  pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
   pkt->header = raw[i++];
   if (pkt->getPayloadVer() > PAYLOAD_VER_1) {
     MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): unsupported packet version", getLogDateTime());
@@ -725,6 +726,7 @@ Packet* Dispatcher::obtainNewPacket() {
     pkt->payload_len = pkt->path_len = 0;
     pkt->_snr = 0;
     pkt->tx_cr = 0;
+    pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
   }
   return pkt;
 }

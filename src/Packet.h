@@ -4,6 +4,12 @@
 
 namespace mesh {
 
+enum FloodRetryPolicy : uint8_t {
+  FLOOD_RETRY_POLICY_DEFAULT = 0,
+  FLOOD_RETRY_POLICY_DENY = 1,
+  FLOOD_RETRY_POLICY_ALLOW = 2,
+};
+
 // Packet::header values
 #define PH_ROUTE_MASK     0x03   // 2-bits
 #define PH_TYPE_SHIFT        2
@@ -51,6 +57,7 @@ public:
   uint8_t payload[MAX_PACKET_PAYLOAD];
   int8_t _snr;
   uint8_t tx_cr;  // volatile local-only TX coding-rate override; not serialized
+  uint8_t flood_retry_policy;  // volatile receive-policy result; not serialized
 
   /**
    * \brief calculate the hash of payload + type

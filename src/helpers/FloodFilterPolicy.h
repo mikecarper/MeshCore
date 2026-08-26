@@ -22,6 +22,15 @@ static constexpr uint8_t SCOPE_PATH_BLACKLIST = 1;
 static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_BASE = 2;
 static constexpr uint8_t SCOPE_PATH_BRIDGE_BUCKET_COUNT = 6;
 static constexpr uint8_t SCOPE_PATH_INVALID_BUCKET = 0xFF;
+// FPF7 reserves the high bit of its stored channel-length byte for rule
+// actions. The low six bits retain the channel matcher representation, so the
+// row stays byte-compatible between generalized repeater and room engines.
+static constexpr uint8_t STORED_RULE_RETRY_FLAG = 0x80;
+static constexpr uint8_t STORED_RULE_RESERVED_FLAG = 0x40;
+static constexpr uint8_t STORED_RULE_CHANNEL_LEN_MASK = 0x3F;
+static constexpr uint8_t CHANNEL_HASH_ONLY_LEN = 1;
+static constexpr uint8_t CHANNEL_KEY_128_LEN = 16;
+static constexpr uint8_t CHANNEL_KEY_256_LEN = 32;
 
 enum RuleIncomingScope : uint8_t {
   RULE_IN_ANY = 0,
@@ -39,6 +48,72 @@ enum ChannelScopeGate {
   CHANNEL_SCOPE_REQUIRED_ALLOWED,
   CHANNEL_SCOPE_REQUIRED_REJECTED,
 };
+
+inline bool channelKeyLengthSupported(uint8_t key_len) {
+  return key_len == 0 || key_len == CHANNEL_HASH_ONLY_LEN
+      || key_len == CHANNEL_KEY_128_LEN
+      || key_len == CHANNEL_KEY_256_LEN;
+}
+
+inline bool channelHashOnly(uint8_t key_len) {
+  return key_len == CHANNEL_HASH_ONLY_LEN;
+}
+
+inline bool channelRequiresAuthentication(uint8_t key_len) {
+  return key_len == CHANNEL_KEY_128_LEN
+      || key_len == CHANNEL_KEY_256_LEN;
+}
+
+inline uint8_t encodeStoredRuleChannel(uint8_t key_len,
+                                       bool retry_on_match) {
+  return (uint8_t)(key_len
+      | (retry_on_match ? STORED_RULE_RETRY_FLAG : 0));
+}
+
+inline bool decodeStoredRuleChannel(uint8_t stored, uint8_t& key_len,
+                                    bool& retry_on_match) {
+  if ((stored & STORED_RULE_RESERVED_FLAG) != 0) return false;
+  key_len = stored & STORED_RULE_CHANNEL_LEN_MASK;
+  retry_on_match = (stored & STORED_RULE_RETRY_FLAG) != 0;
+  return channelKeyLengthSupported(key_len);
+}
+
+inline int channelHashNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+inline bool channelHashPrefixEqual(const char* text, const char* prefix) {
+  if (text == NULL || prefix == NULL) return false;
+  while (*prefix != 0) {
+    char left = *text++;
+    char right = *prefix++;
+    if (left >= 'A' && left <= 'Z') left += 'a' - 'A';
+    if (right >= 'A' && right <= 'Z') right += 'a' - 'A';
+    if (left != right) return false;
+  }
+  return true;
+}
+
+// Accept an explicit hash:XX spelling, the short:XX alias, or a bare byte.
+// Callers always format the canonical spelling as hash:XX.
+inline bool parseChannelHashMatcher(const char* text, uint8_t& channel_hash) {
+  if (text == NULL) return false;
+  const char* hex = text;
+  if (channelHashPrefixEqual(text, "hash:")) {
+    hex += 5;
+  } else if (channelHashPrefixEqual(text, "short:")) {
+    hex += 6;
+  }
+  if (hex[0] == 0 || hex[1] == 0 || hex[2] != 0) return false;
+  int high = channelHashNibble(hex[0]);
+  int low = channelHashNibble(hex[1]);
+  if (high < 0 || low < 0) return false;
+  channel_hash = (uint8_t)((high << 4) | low);
+  return true;
+}
 
 // Persist only through the highest occupied forward-rule slot.  The on-disk
 // formats are dense, so inactive holes before that slot must remain present,

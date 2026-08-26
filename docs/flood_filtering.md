@@ -286,6 +286,8 @@ authenticated operator can add, replace, inspect, or delete a row without an
 OTA or reboot. Existing `flood.filter` commands remain compatible. Only FPF6
 and FPF7 files are accepted; FPF1-FPF5 files are rejected and filtering fails
 open. A row saved by the extended engine uses FPF7.
+Older firmware cannot preserve an FPF7 table containing the packed `retry`
+action or one-byte `hash:XX` matcher; remove those rows before downgrading.
 
 The former `flood.channel.block` table is now represented by ordinary FPF7
 rows. On a generalized repeater, an existing FCB2 file is imported once into
@@ -340,12 +342,19 @@ Match fields:
   `flood.filter`. The positional form remains accepted.
 - `hops=` accepts `all`, `N`, `N+`, or `N-M`. The positional form remains
   accepted. Received hops over 3 are written as `hops=4+`.
-- `channel=*|public|#name|128-bit-key|256-bit-key` optionally narrows by
+- `channel=*|public|#name|hash:XX|128-bit-key|256-bit-key` optionally narrows by
   channel. `channel=*` is an unconstrained wildcard: it performs no channel
   authentication and matches every payload selected by `type=`. Thus
   `type=any channel=*` means every flood payload type. `public`, `#name`, and
   raw keys authenticate one channel and narrow the row to `GRP_TXT` or
-  `GRP_DATA`.
+  `GRP_DATA`. `hash:XX` compares only the visible one-byte group-channel hash.
+  `short:XX` and a bare two-digit byte are aliases; saved output uses
+  `hash:XX`. This matcher is unauthenticated, has a 1-in-256 collision space,
+  and can be selected by a sender, so prefer an exact name or key when known.
+  `hash:11` is not an alias for Public: it includes Public and every `0x11`
+  collision, while `public` verifies and decrypts with the Public key. This is
+  channel authentication, not sender authentication: the group MAC is two
+  bytes and the Public key is shared.
 - `prefix=` is a source-path prefix containing one to three comma-separated
   pbyte IDs. Every ID must use the packet's pbyte width: 2, 4, or 6 hex
   characters for 1-, 2-, or 3-byte paths. Order matters and matching begins at
@@ -377,6 +386,12 @@ Actions:
   every other forwarding gate, including moderation, accepts the packet. It is
   not keyed per sender; use `flood.moderation` when a group-text rate must be
   tied to an exact display name.
+- `retry` allows a matching received flood to start the configured retry
+  sequence. `retry=on`, `retry=allow`, and `action=retry` are aliases. If the
+  table has no active `retry` rows, global retry behavior is unchanged. If it
+  has one or more, those rows are a retry allow-list: at least one must remain
+  in the ordered, stop-truncated match set. The action may accompany rewrite,
+  rate, or stop, but not `drop`; its compact flag is `f=r`.
 - `priority=0-255` controls processing order. Higher values run first; lower
   slot number breaks ties. `pri=` is the compact alias.
 - `stop` (or `action=stop`) applies this row and prevents lower-order FPF7 rows
@@ -385,7 +400,15 @@ Actions:
 When several rows use the same channel key, authentication is performed once
 for that packet and reused by those rows. This cache lives only for the current
 receive evaluation; it is not persisted and never stores plaintext or a
-password.
+password. A `hash:XX` row deliberately skips authentication and uses only the
+one visible byte.
+
+The global retry controls remain hard gates. A `retry` row does not override a
+zero `flood.retry.count`, path/type attempt caps, disabled forwarding,
+`flood.retry.advert`, a drop verdict, or any other forwarding rejection.
+`flood.retry.bridge` independently chooses ordinary retry or bridge-bucket
+completion for an allowed packet. The selector applies to received floods;
+locally originated floods retain the normal global behavior.
 
 The exact requested examples are:
 
@@ -403,6 +426,15 @@ set flood.rule.4 type=any prefix=860C rate=10/min
 # Keep authenticated #rgdata at two hops or less out of lower-priority FPF7
 # rules. Hard gates and separate tables still apply.
 set flood.rule.5 type=grp_data hops=0-2 channel=#rgdata priority=200 stop
+
+# Retry received Public and #hamradio floods, using bridge completion.
+# Once these rows exist, other received floods are not retried.
+set flood.retry.bridge on
+set flood.rule.6 type=any channel=public retry
+set flood.rule.7 type=any channel=#hamradio retry
+
+# Fall back to an unauthenticated one-byte match if only the visible hash is known.
+set flood.rule.8 type=any channel=hash:A7 retry
 
 get flood.rule.2
 get flood.rule.3
@@ -467,8 +499,9 @@ Numbered `get` normally uses the long field names. If a rule containing
 several maximum-length names would exceed one CLI reply, it switches to a
 non-truncating compact spelling that `set` also accepts: `c=` is `channel=`,
 `p=` is `prefix=`, `i=*|n|s|a|u|s:<scope>|r:<region>` represents `in=`, `q=N`
-is `rate=N/min`, and `f=st` combines slow timing (`s`) and temporary-radio
-suspension (`t`). The fallback prints packet type numerically.
+is `rate=N/min`, and `f=str` combines slow timing (`s`), temporary-radio
+suspension (`t`), and retry allowance (`r`). The fallback prints packet type
+numerically.
 
 A legacy row without `scope=` is the existing drop action. On extended builds,
 an explicit `drop` has the same result, while `rate=` by itself creates a

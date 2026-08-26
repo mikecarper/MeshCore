@@ -34,6 +34,8 @@ public:
                    uint32_t now_millis) const;
   void commitRates(const mesh::Packet* packet, uint32_t match_mask,
                    uint32_t now_millis);
+  bool hasRetryRules() const;
+  bool allowsRetry(uint32_t match_mask) const;
 
   bool handleCommand(const char* command, char* reply);
 
@@ -62,6 +64,7 @@ private:
     uint16_t rate_per_minute;
     uint8_t priority;
     bool stop_on_match;
+    bool retry_on_match;
     uint32_t rate_window_started;
     uint16_t rate_window_count;
     bool rate_window_active;

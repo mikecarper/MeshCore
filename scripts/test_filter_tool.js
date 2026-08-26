@@ -104,6 +104,23 @@ test("treats channel star as no channel condition", () => {
   assert.doesNotMatch(tool.buildDefinition(rule), /channel=/);
 });
 
+test("canonicalizes and matches one-byte channel hash selectors", () => {
+  const definition = "policy set short-channel phase=forward owner=filter priority=1 when route=flood type=grp_data hops=all channel=short:a7 do tag=seen";
+  const rule = tool.parseDefinition(definition);
+  assert.strictEqual(rule.channel, "hash:A7");
+  assert.match(tool.buildDefinition(rule), /channel=hash:A7/);
+  assert.strictEqual(tool.matchRule(rule, packet({ channel: "A7" })).matched, true);
+  assert.strictEqual(tool.matchRule(rule, packet({ channel: "hash:A8" })).matched, false);
+  assert.ok(tool.ruleWarnings(rule).some((warning) => /unauthenticated/.test(warning)));
+});
+
+test("extracts a visible group channel hash from raw packets", () => {
+  const decoded = tool.decodeRawPacketHex("15 00 A7 00 00");
+  assert.strictEqual(decoded.type, "grp_txt");
+  assert.strictEqual(decoded.channelHash, "hash:A7");
+  assert.ok(decoded.notes.some((note) => /hash:XX rule/.test(note)));
+});
+
 test("keeps a payload class and path bucket in one rule", () => {
   const definition = "policy set other-bucket phase=rewrite owner=scope priority=130 when route=flood type=class:other hops=all path=bucket:2 do scope=#BlackHole86 timing=slow";
   const rule = tool.parseDefinition(definition);

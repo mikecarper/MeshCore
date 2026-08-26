@@ -9,6 +9,7 @@ Packet::Packet() {
   path_len = 0;
   payload_len = 0;
   tx_cr = 0;
+  flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
 }
 
 bool Packet::isValidPathLen(uint8_t path_len) {
@@ -68,6 +69,7 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
 
   uint8_t i = 0;
   tx_cr = 0;
+  flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
   header = src[i++];
   if (getPayloadVer() > PAYLOAD_VER_1) return false;
 

@@ -361,6 +361,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint16_t rate_per_minute;
     uint8_t priority;
     bool stop_on_match;
+    bool retry_on_match;
     uint32_t rate_window_started;
     uint16_t rate_window_count;
     bool rate_window_active;
@@ -677,6 +678,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool authenticateFloodPacketFilterChannel(
       const FloodPacketFilterEntry& entry,
       const mesh::Packet* packet) const;
+  bool hasFloodPacketFilterRetryRules() const;
+  bool floodPacketFilterAllowsRetry(uint64_t match_mask) const;
   int nextFloodPacketFilterMatch(uint64_t match_mask,
                                  uint64_t visited_mask) const;
   bool resolveFloodPacketFilterTargetRegion(

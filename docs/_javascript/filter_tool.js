@@ -143,6 +143,8 @@
     }
     if (channel === "*") return "";
     if (channel.toLowerCase() === "public") return "public";
+    const hashMatch = channel.match(/^(?:(?:hash|short):)?([0-9a-fA-F]{2})$/i);
+    if (hashMatch) return `hash:${hashMatch[1].toUpperCase()}`;
     if (channel[0] === "#") {
       if (channel.length < 2 || channel.length > 31 || /\s/.test(channel)) {
         throw new FilterToolError("A hashtag channel must be 1-30 non-space characters after #.");
@@ -150,7 +152,7 @@
       return channel;
     }
     if (/^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{64})$/.test(channel)) return channel.toUpperCase();
-    throw new FilterToolError("Channel must be *, public, #channel, or a 128/256-bit hexadecimal key.");
+    throw new FilterToolError("Channel must be *, public, #channel, hash:XX, or a 128/256-bit hexadecimal key.");
   }
 
   function normalizeScopeName(value) {
@@ -526,6 +528,7 @@
   function channelDescription(channel) {
     if (channel === "public") return "the Public channel";
     if (channel.startsWith("#")) return `the ${channel} channel`;
+    if (channel.startsWith("hash:")) return `unauthenticated channel hash ${channel.slice(5)}`;
     return `channel key ${channel.slice(0, 8)}...`;
   }
 
@@ -597,6 +600,7 @@
     }
     if (rule.type === "class:other") warnings.push("class:other intentionally includes current and future types outside group and login classes, including OTA.");
     if (rule.channel && rule.type === "any") warnings.push("A channel condition narrows type=any to group text/data packets on that channel.");
+    if (rule.channel.startsWith("hash:")) warnings.push("A one-byte channel hash is unauthenticated, collision-prone, and sender-selectable; it is never promoted to a known channel identity (hash:11 is not Public). A name or key checks the channel MAC but does not authenticate an individual sender.");
     if (rule.sender) warnings.push("Displayed sender names are spoofable and are moderation signals, not identities.");
     if (rule.pathKind !== "none") warnings.push("Pbyte and path-table matches use truncated routing hints, not authenticated identities.");
     if (rule.pathKind.startsWith("bucket:")) warnings.push("The selected bucket must exist on the target node; the policy stores a reference, not its IDs.");
@@ -610,7 +614,7 @@
     const rule = normalizeRule(input);
     let bytes = 12;
     bytes += 3 + 3 + 3;
-    if (rule.channel) bytes += 3 + (rule.channel.length === 32 || rule.channel.length === 64 ? rule.channel.length / 2 : rule.channel.length);
+    if (rule.channel) bytes += 3 + (rule.channel.startsWith("hash:") ? 1 : rule.channel.length === 32 || rule.channel.length === 64 ? rule.channel.length / 2 : rule.channel.length);
     if (rule.incoming !== "any") bytes += 3 + rule.incoming.length;
     if (rule.pathKind === "prefix") bytes += 4 + rule.pathPrefix.replace(/,/g, "").length / 2;
     else if (rule.pathKind !== "none") bytes += 3;
@@ -892,8 +896,11 @@
     if (transportCodes.length) {
       notes.push("Transport codes are on the wire, but a local region/scope table is required to resolve their names and allow status.");
     }
+    const channelHash = GROUP_TYPES.includes(type) && payload.length > 0
+      ? `hash:${bytesToHex(payload, 0, 1)}`
+      : "";
     if (GROUP_TYPES.includes(type)) {
-      notes.push("A raw channel hash alone is insufficient to identify a channel; the matching channel key is required.");
+      notes.push("The visible one-byte channel hash can drive an unauthenticated hash:XX rule; a matching channel key is still required to identify and authenticate the channel.");
     }
     if (["req", "response", "txt_msg", "path", "grp_txt", "grp_data", "anon_req"].includes(type)) {
       notes.push("Encrypted content, including a displayed sender, cannot be recovered without the appropriate key.");
@@ -924,6 +931,7 @@
       pathHex: bytesToHex(pathBytes),
       payloadLength: payload.length,
       payloadHex: bytesToHex(payload),
+      channelHash,
       payloadFields: envelope.fields,
       notes,
     };
@@ -1560,7 +1568,7 @@
       packetField("type").value = decoded.type;
       packetField("hops").value = String(decoded.hops);
       packetField("path").value = decoded.pathIds.join(",");
-      packetField("channel").value = "";
+      packetField("channel").value = decoded.channelHash;
       packetField("scope-status").value = decoded.routeCode === 0 ? "unknown" : "none";
       packetField("scope-name").value = "";
       packetField("region-name").value = "";
