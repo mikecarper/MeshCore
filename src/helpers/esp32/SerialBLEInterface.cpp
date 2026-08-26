@@ -26,18 +26,27 @@ extern "C" bool bleInUse(void) {
 
 #define ADVERT_RESTART_DELAY  1000   // millis
 
-bool SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
+bool SerialBLEInterface::begin(const char* prefix, const char* name, uint32_t pin_code) {
   _pin_code = pin_code;
 
+  char resolved_name[32];
+  const char* suffix = name;
   if (strcmp(name, "@@MAC") == 0) {
     uint8_t addr[8];
     memset(addr, 0, sizeof(addr));
     esp_efuse_mac_get_default(addr);
-    sprintf(name, "%02X%02X%02X%02X%02X%02X",    // modify (IN-OUT param)
-          addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+    snprintf(resolved_name, sizeof(resolved_name),
+             "%02X%02X%02X%02X%02X%02X",
+             addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+    suffix = resolved_name;
   }
   char dev_name[32+16];
-  sprintf(dev_name, "%s%s", prefix, name);
+  const int dev_name_len = snprintf(dev_name, sizeof(dev_name), "%s%s",
+                                    prefix, suffix);
+  if (dev_name_len < 0 || dev_name_len >= (int)sizeof(dev_name)) {
+    BLE_DEBUG_PRINTLN("Bluetooth device name is too long");
+    return false;
+  }
 
   // Create the BLE Device
 #if defined(CONFIG_NIMBLE_ENABLED)

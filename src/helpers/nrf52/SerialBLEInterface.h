@@ -73,10 +73,10 @@ public:
   /**
    * init the BLE interface.
    * @param prefix   a prefix for the device name
-   * @param name  IN/OUT - a name for the device (combined with prefix). If "@@MAC", is modified and returned
+   * @param name  a name for the device (combined with prefix); "@@MAC" uses the hardware address
    * @param pin_code   the BLE security pin
    */
-  bool begin(const char* prefix, char* name, uint32_t pin_code);
+  bool begin(const char* prefix, const char* name, uint32_t pin_code);
 
   void disconnect();
   void enable() override;

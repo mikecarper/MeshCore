@@ -982,8 +982,13 @@ void halt() {
       scheduleCompanionBluetoothRetry();
       return;
     }
-    if (!bluetooth_interface.begin(BLE_NAME_PREFIX,
-                                   the_mesh.getNodePrefs()->node_name,
+    CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
+    const bool custom_bluetooth_name =
+        mesh::companion::hasCustomBluetoothName(prefs->bluetooth_name);
+    if (!bluetooth_interface.begin(custom_bluetooth_name ? "" : BLE_NAME_PREFIX,
+                                   custom_bluetooth_name
+                                       ? prefs->bluetooth_name
+                                       : prefs->node_name,
                                    the_mesh.getBLEPin())) {
       interface_manager.removeInterface(&bluetooth_interface);
       mesh::usbLoggingPort().println(

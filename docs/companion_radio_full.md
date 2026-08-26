@@ -226,6 +226,14 @@ saved BLE PIN, display builds generate a new PIN at boot; builds without a
 physical display use `123456`. A PIN saved through the Companion protocol takes
 effect after reboot.
 
+The Bluetooth device name is independently configurable. In the text terminal,
+use `get bluetooth.name` and `set bluetooth.name <name>`; use
+`set bluetooth.name default` to restore `MeshCore-<node name>`. The WebConfig
+Node card exposes the same optional field on Bluetooth-capable ESP32 builds.
+Custom names replace the complete Bluetooth label rather than inheriting the
+prefix, accept up to 31 valid UTF-8 bytes, and take effect after reboot. This
+does not change the node's mesh advertisement name.
+
 ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
 Expose them only on a trusted LAN or temporary setup network. See
 [WiFi setup](./WiFi.md) for credential setup and reconnect behavior.

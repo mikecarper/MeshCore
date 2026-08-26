@@ -18,7 +18,7 @@
 // separately, see wcIsAdminPasswordKey below.
 static const char* const WC_ALLOWED_SET_KEYS[] = {
   // NodePrefs (radio / node)
-  "name", "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
+  "name", "bluetooth.name", "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
   "cad", "radio.rxgain", "radio.fem.rxgain", "radio.rxps", "powersaving",
   "repeat",
   "advert.interval", "flood.advert.interval",

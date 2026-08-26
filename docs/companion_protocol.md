@@ -221,6 +221,7 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x42` / `0x43` | `CMD_GET_RADIO_FEM_RXGAIN` / `CMD_SET_RADIO_FEM_RXGAIN` | Read or set FEM receive gain. |
 | `0x44` / `0x45` | `CMD_GET_RADIO_RXGAIN` / `CMD_SET_RADIO_RXGAIN` | Read or set the radio chip's boosted receive-gain mode. |
 | `0x46` / `0x47` | `CMD_GET_WIFI_POWER_SAVE` / `CMD_SET_WIFI_POWER_SAVE` | Read or set ESP32 Companion WiFi modem sleep. |
+| `0x48` / `0x49` | `CMD_GET_BLUETOOTH_NAME` / `CMD_SET_BLUETOOTH_NAME` | Read or set the independent Bluetooth device name. |
 
 The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.
@@ -259,6 +260,18 @@ coexistence requires modem sleep. A storage failure also returns
 `ERR_CODE_BAD_STATE`. If an already-saved mode cannot be applied to the active
 WiFi driver, SET still returns `RESP_CODE_OK` and the mode is applied on the
 next connection. Device `powersaving` does not overwrite this setting.
+
+The Bluetooth-name pair is available on Companion builds regardless of the
+currently selected transport, so a host can configure a BLE-capable image over
+USB or TCP before rebooting into it. `CMD_GET_BLUETOOTH_NAME` has no body and
+replies with `RESP_CODE_OK`, a one-byte mode (`0` for the default name, `1` for
+a custom name), then the effective UTF-8 device name without a terminator.
+`CMD_SET_BLUETOOTH_NAME` is followed by zero to 31 UTF-8 bytes. A non-empty
+body stores that exact complete Bluetooth name; a zero-length body clears the
+override and restores `MeshCore-<advert name>`. A successful SET replies with
+`RESP_CODE_OK`, and the new label takes effect after reboot. Embedded NULs,
+control characters, malformed UTF-8, or oversized values return
+`ERR_CODE_ILLEGAL_ARG`; a storage failure returns `ERR_CODE_BAD_STATE`.
 
 ### 1. App Start
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <cstdint> // For uint8_t, uint32_t
+#include "BluetoothName.h"
 
 #define TELEM_MODE_DENY            0
 #define TELEM_MODE_ALLOW_FLAGS     1     // use contact.flags
@@ -54,6 +55,8 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t wifi_enabled;           // Companion WiFi radio and services
   uint8_t powersaving_policy_version; // one-time default migration marker
   uint8_t usb_logging_enabled;    // live USB packet/debug output
+  char bluetooth_name[mesh::companion::BLUETOOTH_NAME_SIZE];
+                                  // exact BLE name; empty uses BLE_NAME_PREFIX + node_name
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

@@ -8,6 +8,7 @@
 
 TEST(WebConfigKeys, AllowsKnownScalarKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("name"));
+  EXPECT_TRUE(wcIsAllowedSetKey("bluetooth.name"));
   EXPECT_TRUE(wcIsAllowedSetKey("radio"));
   EXPECT_TRUE(wcIsAllowedSetKey("radio.rxps"));
   EXPECT_TRUE(wcIsAllowedSetKey("powersaving"));

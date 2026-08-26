@@ -96,6 +96,47 @@ TEST(CompanionNodePrefs, UsbLoggingStateIsIndependentFromTransports) {
   EXPECT_EQ(1, prefs.powersaving_enabled);
 }
 
+TEST(CompanionNodePrefs, BluetoothNameOverrideIsIndependentFromNodeName) {
+  CompanionNodePrefs prefs = {};
+  strcpy(prefs.node_name, "RidgeNode");
+  strcpy(prefs.bluetooth_name, "Workshop Companion");
+
+  char effective[64];
+  mesh::companion::formatBluetoothName(
+      effective, sizeof(effective), prefs.bluetooth_name, "MeshCore-",
+      prefs.node_name);
+  EXPECT_STREQ("Workshop Companion", effective);
+
+  strcpy(prefs.bluetooth_name, "default");
+  mesh::companion::formatBluetoothName(
+      effective, sizeof(effective), prefs.bluetooth_name, "MeshCore-",
+      prefs.node_name);
+  EXPECT_STREQ("default", effective);
+
+  prefs.bluetooth_name[0] = 0;
+  mesh::companion::formatBluetoothName(
+      effective, sizeof(effective), prefs.bluetooth_name, "MeshCore-",
+      prefs.node_name);
+  EXPECT_STREQ("MeshCore-RidgeNode", effective);
+}
+
+TEST(CompanionNodePrefs, BluetoothNameRequiresBoundedValidUtf8) {
+  EXPECT_TRUE(mesh::companion::isValidBluetoothName("Field Unit 4"));
+  EXPECT_TRUE(mesh::companion::isValidBluetoothName(
+      "Field Unit \xF0\x9F\x93\xA1"));
+  EXPECT_FALSE(mesh::companion::isValidBluetoothName(""));
+  EXPECT_FALSE(mesh::companion::isValidBluetoothName("   "));
+  EXPECT_FALSE(mesh::companion::isValidBluetoothName("bad\nname"));
+
+  char too_long[mesh::companion::BLUETOOTH_NAME_SIZE + 1];
+  memset(too_long, 'A', sizeof(too_long));
+  too_long[sizeof(too_long) - 1] = 0;
+  EXPECT_FALSE(mesh::companion::isValidBluetoothName(too_long));
+
+  const char malformed[] = {'A', static_cast<char>(0x80), 0};
+  EXPECT_FALSE(mesh::companion::isValidBluetoothName(malformed));
+}
+
 TEST(CompanionNodePrefs, MigratesRegressedPowerSavingDefaultOnce) {
   CompanionNodePrefs prefs = {};
   prefs.powersaving_enabled = 0;

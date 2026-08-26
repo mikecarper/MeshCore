@@ -20,8 +20,8 @@
 #include <helpers/ESP32TrueRandom.h>
 #endif
 
-#ifdef ENABLE_USB_INTERFACE
 #include <helpers/CLICommandUtils.h>
+#ifdef ENABLE_USB_INTERFACE
 #include <helpers/TracePathHelpers.h>
 #endif
 
@@ -122,6 +122,8 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_SET_RADIO_RXGAIN          69
 #define CMD_GET_WIFI_POWER_SAVE       70
 #define CMD_SET_WIFI_POWER_SAVE       71
+#define CMD_GET_BLUETOOTH_NAME        72
+#define CMD_SET_BLUETOOTH_NAME        73
 
 #if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
 static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
@@ -1474,6 +1476,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_enabled = 1;
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
+  memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
 #if defined(MESH_DUAL_CDC_LOGGING)
   // Keep the primary CDC stream exclusively framed unless the owner opts in
   // to the separate plaintext logging interface and reboots.
@@ -1552,6 +1555,18 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   const bool power_saving_default_migrated =
       migrateCompanionPowerSavingDefault(_prefs);
 
+  _prefs.node_name[sizeof(_prefs.node_name) - 1] = 0;
+  const bool bluetooth_name_had_terminator =
+      memchr(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name)) != NULL;
+  _prefs.bluetooth_name[sizeof(_prefs.bluetooth_name) - 1] = 0;
+  const bool bluetooth_name_repaired =
+      !bluetooth_name_had_terminator
+      || (_prefs.bluetooth_name[0] != 0
+          && !mesh::companion::isValidBluetoothName(_prefs.bluetooth_name));
+  if (bluetooth_name_repaired) {
+    memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
+  }
+
   // sanitise bad pref values
   _prefs.rx_delay_base = constrain(_prefs.rx_delay_base, 0, 20.0f);
   _prefs.airtime_factor = constrain(_prefs.airtime_factor, 0, 9.0f);
@@ -1585,7 +1600,7 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
-  if (power_saving_default_migrated) {
+  if (power_saving_default_migrated || bluetooth_name_repaired) {
     _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
   }
 #if MESH_USB_LOGGING_AVAILABLE
@@ -1847,6 +1862,38 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+
+  if (strcmp(command, "get bluetooth.name") == 0
+      || strcmp(command, "get ble.name") == 0) {
+    formatBluetoothNameStatus(reply, reply_size);
+    return true;
+  }
+
+  const char* bluetooth_name_value = NULL;
+  if (strncmp(command, "set bluetooth.name", 18) == 0
+      && (command[18] == 0 || command[18] == ' '
+          || command[18] == '\t')) {
+    bluetooth_name_value = command + 18;
+  } else if (strncmp(command, "set ble.name", 12) == 0
+             && (command[12] == 0 || command[12] == ' '
+                 || command[12] == '\t')) {
+    bluetooth_name_value = command + 12;
+  }
+  if (bluetooth_name_value != NULL) {
+    while (*bluetooth_name_value == ' ' || *bluetooth_name_value == '\t') {
+      bluetooth_name_value++;
+    }
+    if (bluetooth_name_value[0] == 0) {
+      snprintf(reply, reply_size,
+               "Error: use set bluetooth.name <name|default>");
+    } else {
+      const bool clear_override = strcmp(bluetooth_name_value, "default") == 0
+          || strcmp(bluetooth_name_value, "clear") == 0;
+      applyAndSaveBluetoothName(clear_override ? "" : bluetooth_name_value,
+                                reply, reply_size);
+    }
+    return true;
+  }
 
 #if defined(ESP32) && defined(WIFI_SSID)
 #ifdef WITH_WEBCONFIG
@@ -2221,6 +2268,8 @@ static bool wcCopyValue(char* dest, size_t dest_size, const char* value) {
 void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   memset(&s, 0, sizeof(s));
   wcCopyValue(s.name, sizeof(s.name), _prefs.node_name);
+  wcCopyValue(s.bluetooth_name, sizeof(s.bluetooth_name),
+              _prefs.bluetooth_name);
   s.lat = sensors.node_lat;
   s.lon = sensors.node_lon;
   s.freq = _prefs.freq;
@@ -2241,6 +2290,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
       | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_POWER_SAVING;
+#ifdef BLE_PIN_CODE
+  s.capabilities |= WebConfigServer::CAP_BLUETOOTH_NAME;
+#endif
 #if defined(ESP32) && defined(WIFI_SSID)
   s.capabilities |= WebConfigServer::CAP_WIFI_POWER_SAVE;
 #endif
@@ -2342,6 +2394,11 @@ void MyMesh::onConfigBatchEnd() {
 
 void MyMesh::execCommand(char* cmd, char* reply) {
   reply[0] = 0;
+  if (cmd && (strcmp(cmd, "get bluetooth.name") == 0
+              || strcmp(cmd, "get ble.name") == 0)) {
+    formatBluetoothNameStatus(reply, 160);
+    return;
+  }
 #if defined(ESP32) && defined(WIFI_SSID)
   if (cmd && strcmp(cmd, "get wifi.powersave") == 0) {
     formatWiFiPowerSaving(reply, 160);
@@ -2368,6 +2425,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       savePrefs();
       strcpy(reply, "OK");
     }
+    return;
+  }
+  if (strcmp(key, "bluetooth.name") == 0) {
+    applyAndSaveBluetoothName(value, reply, 160);
     return;
   }
   if (strcmp(key, "lat") == 0 || strcmp(key, "lon") == 0) {
@@ -3738,6 +3799,31 @@ void MyMesh::handleCmdFrame(size_t len) {
 #else
     writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
 #endif
+  } else if (cmd_frame[0] == CMD_GET_BLUETOOTH_NAME) {
+    out_frame[0] = RESP_CODE_OK;
+    out_frame[1] = mesh::companion::hasCustomBluetoothName(
+        _prefs.bluetooth_name) ? 1 : 0;
+    char* effective_name = reinterpret_cast<char*>(&out_frame[2]);
+    mesh::companion::formatBluetoothName(
+        effective_name, MAX_FRAME_SIZE - 1, _prefs.bluetooth_name,
+        BLE_NAME_PREFIX, _prefs.node_name);
+    _serial->writeFrame(out_frame, 2 + strlen(effective_name));
+  } else if (cmd_frame[0] == CMD_SET_BLUETOOTH_NAME) {
+    const size_t name_len = len - 1;
+    if (name_len > mesh::companion::BLUETOOTH_NAME_MAX_BYTES
+        || memchr(&cmd_frame[1], 0, name_len) != NULL) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      char name[mesh::companion::BLUETOOTH_NAME_SIZE] = {0};
+      if (name_len != 0) memcpy(name, &cmd_frame[1], name_len);
+      if (name_len != 0 && !mesh::companion::isValidBluetoothName(name)) {
+        writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      } else if (!saveBluetoothNameOverride(name)) {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+      } else {
+        writeOKFrame();
+      }
+    }
   } else if (cmd_frame[0] == CMD_GET_ADVERT_PATH && len >= PUB_KEY_SIZE+2) {
     // FUTURE use:  uint8_t reserved = cmd_frame[1];
     uint8_t *pub_key = &cmd_frame[2];
@@ -3969,6 +4055,62 @@ bool MyMesh::applyAndSaveRxBoostedGain(bool enabled) {
   _prefs.rx_boosted_gain = enabled ? 1 : 0;
   savePrefs();
   return true;
+}
+
+bool MyMesh::saveBluetoothNameOverride(const char* name) {
+  if (name == NULL) return false;
+
+  char previous[sizeof(_prefs.bluetooth_name)];
+  memcpy(previous, _prefs.bluetooth_name, sizeof(previous));
+  memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
+  if (name[0] != 0) {
+    StrHelper::strncpy(_prefs.bluetooth_name, name,
+                       sizeof(_prefs.bluetooth_name));
+  }
+
+  if (savePrefs()) return true;
+  memcpy(_prefs.bluetooth_name, previous, sizeof(_prefs.bluetooth_name));
+  return false;
+}
+
+bool MyMesh::applyAndSaveBluetoothName(const char* value, char* reply,
+                                       size_t reply_size) {
+  if (reply == NULL || reply_size == 0) return false;
+
+  const bool use_default = value == NULL || value[0] == 0;
+  if (!use_default && !mesh::companion::isValidBluetoothName(value)) {
+    snprintf(reply, reply_size,
+             "Error: Bluetooth name must be 1-%u valid UTF-8 bytes without control characters",
+             (unsigned)mesh::companion::BLUETOOTH_NAME_MAX_BYTES);
+    return false;
+  }
+
+  if (!saveBluetoothNameOverride(use_default ? "" : value)) {
+    snprintf(reply, reply_size, "Error: Bluetooth name save failed");
+    return false;
+  }
+
+  if (use_default) {
+    snprintf(reply, reply_size,
+             "OK - Bluetooth name follows %s<node name>; reboot required",
+             BLE_NAME_PREFIX);
+  } else {
+    snprintf(reply, reply_size,
+             "OK - Bluetooth name saved as '%s'; reboot required", value);
+  }
+  return true;
+}
+
+void MyMesh::formatBluetoothNameStatus(char* reply, size_t reply_size) const {
+  if (reply == NULL || reply_size == 0) return;
+
+  char effective_name[64];
+  mesh::companion::formatBluetoothName(
+      effective_name, sizeof(effective_name), _prefs.bluetooth_name,
+      BLE_NAME_PREFIX, _prefs.node_name);
+  snprintf(reply, reply_size, "> %s (%s)", effective_name,
+           mesh::companion::hasCustomBluetoothName(_prefs.bluetooth_name)
+               ? "custom" : "default from node name");
 }
 
 bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
@@ -5276,6 +5418,8 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "help") == 0) {
     terminalOutput().print("Commands:\r\n");
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    terminalOutput().print("  get bluetooth.name\r\n");
+    terminalOutput().print("  set bluetooth.name <name|default>\r\n");
     terminalOutput().print("  powersaving [on|off]\r\n");
 #if MESH_USB_LOGGING_AVAILABLE
     terminalOutput().print("  get usb.logging\r\n");

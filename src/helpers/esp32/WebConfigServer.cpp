@@ -1512,6 +1512,7 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     static const char* const LOOP_MODES[] = { "off", "minimal", "moderate", "strict" };
     radio["loop_detect"] = LOOP_MODES[node.loop_detect <= 3 ? node.loop_detect : 0];
     radio["name"] = (const char*)node.name;
+    radio["bluetooth_name"] = (const char*)node.bluetooth_name;
     radio["lat"] = node.lat;
     radio["lon"] = node.lon;
     radio["advert_interval"] = node.advert_interval;

@@ -67,6 +67,15 @@ set name {name}
 Sets your advertisement name.
 
 ```
+get bluetooth.name
+set bluetooth.name {name|default}
+```
+Shows or changes the complete Bluetooth device name without changing the mesh
+advertisement identity. A custom name may contain spaces and is limited to 31
+valid UTF-8 bytes. `default` restores `MeshCore-<node name>`. The saved change
+takes effect after reboot. `get ble.name` and `set ble.name` are short aliases.
+
+```
 set lat {latitude}
 ```
 Sets your advertisement map latitude. (decimal degrees)

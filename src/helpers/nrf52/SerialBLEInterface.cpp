@@ -199,7 +199,7 @@ bool SerialBLEInterface::removeStoredBondForPeer(const char* cause) {
   return true;
 }
 
-bool SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code) {
+bool SerialBLEInterface::begin(const char* prefix, const char* name, uint32_t pin_code) {
   instance = this;
 
   char charpin[20];
@@ -214,15 +214,26 @@ bool SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
     return false;
   }
  
-  char dev_name[32+16];
+  char resolved_name[32];
+  const char* suffix = name;
   if (strcmp(name, "@@MAC") == 0) {
     ble_gap_addr_t addr;
     if (sd_ble_gap_addr_get(&addr) == NRF_SUCCESS) {
-      sprintf(name, "%02X%02X%02X%02X%02X%02X",    // modify (IN-OUT param)
-          addr.addr[5], addr.addr[4], addr.addr[3], addr.addr[2], addr.addr[1], addr.addr[0]);
+      snprintf(resolved_name, sizeof(resolved_name),
+               "%02X%02X%02X%02X%02X%02X",
+               addr.addr[5], addr.addr[4], addr.addr[3], addr.addr[2],
+               addr.addr[1], addr.addr[0]);
+      suffix = resolved_name;
     }
   }
-  sprintf(dev_name, "%s%s", prefix, name);
+  char dev_name[32+16];
+  const int dev_name_len = snprintf(dev_name, sizeof(dev_name), "%s%s",
+                                    prefix, suffix);
+  if (dev_name_len < 0 || dev_name_len >= (int)sizeof(dev_name)) {
+    instance = nullptr;
+    BLE_DEBUG_PRINTLN("Bluetooth device name is too long");
+    return false;
+  }
 
   // Connection interval units: 1.25ms, supervision timeout units: 10ms
   ble_gap_conn_params_t ppcp_params;

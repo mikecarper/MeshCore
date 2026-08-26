@@ -72,6 +72,7 @@ public:
     CAP_FEM_RX_GAIN = 1UL << 11,
     CAP_RX_POWER_SAVING = 1UL << 12,
     CAP_POWER_SAVING = 1UL << 13,
+    CAP_BLUETOOTH_NAME = 1UL << 14,
     CAP_DELAYS = CAP_RX_DELAY | CAP_TX_DELAY,
   };
 
@@ -80,6 +81,7 @@ public:
   // assumes their member offsets match.
   struct NodeSnapshot {
     char name[32];
+    char bluetooth_name[32];       // empty = transport's default device name
     char admin_password[32];       // empty = trusted LAN/no login prompt
     double lat;
     double lon;
