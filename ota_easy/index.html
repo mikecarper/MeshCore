@@ -1769,6 +1769,14 @@ install an update themselves. ESP32
 ota</code>), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32
 repeaters do not currently have a safe self-apply path, but current repeater
 firmware can still relay OTA packets opaquely during TempRadio.</p>
+<p>For one explicitly selected internal-flash nRF52 repeater, the default
+<code>--build-profile auto</code> run emits two install-capable choices. The
+<code>*-full-ota-*</code> artifact retains external sensors, while the
+<code>*_lora_ota_no_external_sensors-reduced-ota-*</code> artifact trades only those
+optional drivers for more delta-staging space. They retain the same OTA target
+identity so update tooling does not confuse the optimization choice with a
+different board. QSPI- and SD-backed repeaters emit only the complete choice
+unless a measured size failure requires a fallback.</p>
 <p>nRF52 <code>-ota-</code> siblings are compiled with size optimization instead of the Adafruit platform's default
 speed optimization. This prevents the retained software Ed25519 fallback from expanding beyond the fixed
 in-place workspace; CC310 hardware crypto, hardware RNG mixing, telemetry history, and board-native features

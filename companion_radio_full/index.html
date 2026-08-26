@@ -1625,6 +1625,15 @@ display, GPS, and LoRa continue to operate. Press BOOT again to restore WiFi,
 including the saved station or setup-AP mode. On boot, BLE starts two seconds
 after WiFi/WebConfig so their peak startup allocations do not overlap.</p>
 <p>Artifacts are written to <code>out/</code> by default.</p>
+<p>Full Companion behavior is selected with independent capability macros for
+TempRadio, the OTA CLI, the TCP terminal, USB folder seeding, and memory
+diagnostics. The legacy <code>COMPANION_RADIO_FULL</code> flag remains an input for older
+target recipes, but application behavior no longer uses that umbrella as an
+unrelated compile guard. In particular, ESP32 WiFi/WebConfig terminal controls
+are compiled from their actual WiFi/WebConfig capability, and BLE is always
+started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
+fragmentation. The build's capability sidecar verifies the Full controls after
+linking.</p>
 <p>On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
 so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
 Companion uses that same LilyGo factory-compatible boot layout on its 16 MB

@@ -346,6 +346,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#selecting-a-build-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting a build profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#role-comes-first" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1283,6 +1294,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#selecting-a-build-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting a build profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#role-comes-first" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1385,6 +1407,46 @@
 page describes the commands intentionally omitted or limited by build profile.
 The <a href="../cli_command_availability/">CLI Command Availability Matrix</a> expands this
 summary into separate nRF52 and ESP32 command tables.</p>
+<h2 id="selecting-a-build-profile">Selecting a build profile</h2>
+<p>The runtime settings profile and the feature profile are separate switches:</p>
+<pre><code class="language-bash">bash build.sh build-firmware RAK_3401_repeater \
+  --profile cascade \
+  --build-profile auto
+</code></pre>
+<p><code>--profile default|cascade</code> selects saved-setting defaults. It does not select
+which code is linked. <code>--build-profile auto|standard|full</code> controls features
+and partition policy:</p>
+<table>
+<thead>
+<tr>
+<th>Selection</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A measured flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
+</tr>
+<tr>
+<td><code>standard</code></td>
+<td>Immediately uses the deployed/portable partition contract and its documented reductions. This is useful when the operator already knows the expanded or complete image is unsuitable.</td>
+</tr>
+<tr>
+<td><code>full</code></td>
+<td>Requires a qualified ESP32 expanded-partition target (or an explicitly named Full Companion). Install a matching merged image when this changes the partition table.</td>
+</tr>
+</tbody>
+</table>
+<p>Successful builds also emit
+<code>&lt;firmware&gt;.capabilities.json</code>. The sidecar records the effective profile,
+logical OTA target, actual PlatformIO base, artifact name target, promised
+capabilities, and every reduction selected by the script. The build
+fails if a promised linked marker is absent. Current invariants include
+<code>retry.preset</code> for repeater/room-server roles, WebConfig for the Indicator and
+ESP32 Full Companion, TempRadio/mOTA controls for Full Companion, and the
+advanced flood-rule engine for Full room servers. Resume mode will not accept
+an old or failed artifact without a verified sidecar.</p>
 <h2 id="role-comes-first">Role comes first</h2>
 <table>
 <thead>
@@ -1437,7 +1499,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <tbody>
 <tr>
 <td>Standard non-MQTT repeater or room server</td>
-<td>Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable.</td>
+<td>Keeps the normal role CLI. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest.</td>
 </tr>
 <tr>
 <td>Standard logging</td>
@@ -1446,6 +1508,10 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
 <td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table.</td>
+</tr>
+<tr>
+<td>Internal-flash nRF52 repeater auto pair</td>
+<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits only the declared external sensors to leave additional internal-flash staging room. Both carry the same stable OTA target identity and both are checked for <code>ota ...</code> and <code>retry.preset</code>.</td>
 </tr>
 <tr>
 <td>ESP32 MQTT observer or ESP-NOW bridge</td>
@@ -1504,7 +1570,9 @@ identity contracts. ESP32 boards without the tested dual-CDC Full profile keep
 USB, BLE, WiFi, and Full Companion images separate because Full changes
 partitions, RAM use, active transports, and power behavior.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
-<p>The compact ESP32 CLI has been removed. MQTT observers and ESP-NOW bridges are
+<p>The compact ESP32 CLI has been removed. <code>retry.preset</code> is a checked invariant
+for every repeater and room-server artifact, not a FULL-only command. MQTT
+observers and ESP-NOW bridges are
 automatically promoted to FULL builds with expanded partitions rather than
 dropping administration commands. This keeps <code>tempradio</code>, LoRa OTA, power
 saving, RXPS, logging, statistics, sensor, ACL, routing, and advanced radio
@@ -1549,7 +1617,9 @@ does not exist on that target:</p>
 <li><code>uf2reset</code> applies only to nRF52.</li>
 </ul>
 <p>When diagnosing an unavailable command, check the role first, then the filename
-profile, and finally the target's compiled hardware features.</p>
+profile, then the target's compiled hardware features and its adjacent
+<code>.capabilities.json</code> file. A current artifact that promises the command but
+does not contain its linked marker is rejected during the build.</p>
 
 
 
