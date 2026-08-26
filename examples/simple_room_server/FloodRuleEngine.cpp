@@ -1,6 +1,6 @@
 #include "FloodRuleEngine.h"
 
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 
 #include <stddef.h>
 #include <string.h>

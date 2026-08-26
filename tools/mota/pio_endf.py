@@ -27,6 +27,41 @@ sys.path.insert(0, os.path.join(env["PROJECT_DIR"], "tools", "mota"))  # noqa: F
 import motalib as ml
 
 
+def _apply_forced_lora_ota_overlay() -> None:
+    """Resolve a legacy trailing ``-UENABLE_OTA`` for release overlays.
+
+    A few feature-rich nRF52 repeater environments are intentionally non-OTA
+    and carry a final compiler undefine. PlatformIO can remove normal ``-D``
+    entries through ``build_unflags``, but it leaves that ``-U`` after all
+    newly supplied defines. The release builder opts into this correction only
+    when it is deliberately producing the complete OTA variant.
+    """
+    if os.environ.get("MESHCORE_FORCE_LORA_OTA") != "1":
+        return
+
+    import re
+
+    defines = []
+    enable_seen = False
+    for item in env.get("CPPDEFINES", []):  # noqa: F821
+        name = item[0] if isinstance(item, (list, tuple)) else item
+        if name == "DISABLE_LORA_OTA":
+            continue
+        if name == "ENABLE_OTA":
+            if enable_seen:
+                continue
+            enable_seen = True
+        defines.append(item)
+    if not enable_seen:
+        defines.append(("ENABLE_OTA", 1))
+    env.Replace(CPPDEFINES=defines)  # noqa: F821
+
+    cppdef_flags = str(env.get("_CPPDEFFLAGS", ""))  # noqa: F821
+    cppdef_flags = re.sub(r"(?:^|\s)-U\s*ENABLE_OTA(?=\s|$)", " ", cppdef_flags)
+    env.Replace(_CPPDEFFLAGS=" ".join(cppdef_flags.split()))  # noqa: F821
+    print("LoRa OTA overlay: removed legacy -UENABLE_OTA and enabled the OTA command surface")
+
+
 def _ota_enabled() -> bool:
     disabled = False
     enabled = False
@@ -238,6 +273,8 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
           f"stage=0x{stage_ceiling:X} "
           f"target={ident.target_id:#010x} hw='{ident.hw_id}' fw={ident.fw_version:#010x})")
 
+
+_apply_forced_lora_ota_overlay()
 
 if _ota_enabled():
     if _is_nrf52():

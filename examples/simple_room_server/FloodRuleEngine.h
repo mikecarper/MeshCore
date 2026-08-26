@@ -1,6 +1,8 @@
 #pragma once
 
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#include "RoomServerFeatures.h"
+
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 
 #include <Arduino.h>
 #include <Mesh.h>

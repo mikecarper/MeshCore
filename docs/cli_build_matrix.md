@@ -12,6 +12,36 @@ page describes the commands intentionally omitted or limited by build profile.
 The [CLI Command Availability Matrix](cli_command_availability.md) expands this
 summary into separate nRF52 and ESP32 command tables.
 
+## Selecting a build profile
+
+The runtime settings profile and the feature profile are separate switches:
+
+```bash
+bash build.sh build-firmware RAK_3401_repeater \
+  --profile cascade \
+  --build-profile auto
+```
+
+`--profile default|cascade` selects saved-setting defaults. It does not select
+which code is linked. `--build-profile auto|standard|full` controls features
+and partition policy:
+
+| Selection | Behavior |
+| --- | --- |
+| `auto` | For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A measured flash/partition overflow starts the standard `no_external_sensors` LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract. |
+| `standard` | Immediately uses the deployed/portable partition contract and its documented reductions. This is useful when the operator already knows the expanded or complete image is unsuitable. |
+| `full` | Requires a qualified ESP32 expanded-partition target (or an explicitly named Full Companion). Install a matching merged image when this changes the partition table. |
+
+Successful builds also emit
+`<firmware>.capabilities.json`. The sidecar records the effective profile,
+logical OTA target, actual PlatformIO base, artifact name target, promised
+capabilities, and every reduction selected by the script. The build
+fails if a promised linked marker is absent. Current invariants include
+`retry.preset` for repeater/room-server roles, WebConfig for the Indicator and
+ESP32 Full Companion, TempRadio/mOTA controls for Full Companion, and the
+advanced flood-rule engine for Full room servers. Resume mode will not accept
+an old or failed artifact without a verified sidecar.
+
 ## Role comes first
 
 | Role | Text administration CLI |
@@ -35,9 +65,10 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.
 
 | Build/profile | Command availability |
 |---|---|
-| Standard non-MQTT repeater or room server | Keeps the normal role CLI. Size-constrained ESP32 artifacts can omit WebConfig and browser WiFi OTA, so their WebConfig/WiFi commands are unavailable. |
+| Standard non-MQTT repeater or room server | Keeps the normal role CLI. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest. |
 | Standard logging | Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist `get/set usb.logging`. ESP32 roles covered by unified FULL and nRF52 Companions covered by dual-CDC Full Companion are not duplicated here. |
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table. |
+| Internal-flash nRF52 repeater auto pair | `full-ota` retains the board's external-sensor drivers; `reduced-ota` omits only the declared external sensors to leave additional internal-flash staging room. Both carry the same stable OTA target identity and both are checked for `ota ...` and `retry.preset`. |
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
 | FULL ESP32 USB + WiFi | Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. `get/set logging.output off\|usb\|wifi\|both` selects and persists the active output paths. |
 | FULL ESP32 logging fallback | Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image. |
@@ -83,7 +114,9 @@ partitions, RAM use, active transports, and power behavior.
 
 ## Complete CLI policy
 
-The compact ESP32 CLI has been removed. MQTT observers and ESP-NOW bridges are
+The compact ESP32 CLI has been removed. `retry.preset` is a checked invariant
+for every repeater and room-server artifact, not a FULL-only command. MQTT
+observers and ESP-NOW bridges are
 automatically promoted to FULL builds with expanded partitions rather than
 dropping administration commands. This keeps `tempradio`, LoRa OTA, power
 saving, RXPS, logging, statistics, sensor, ACL, routing, and advanced radio
@@ -140,4 +173,6 @@ does not exist on that target:
 - `uf2reset` applies only to nRF52.
 
 When diagnosing an unavailable command, check the role first, then the filename
-profile, and finally the target's compiled hardware features.
+profile, then the target's compiled hardware features and its adjacent
+`.capabilities.json` file. A current artifact that promises the command but
+does not contain its linked marker is rejected during the build.

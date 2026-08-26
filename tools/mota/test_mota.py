@@ -174,7 +174,12 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     companion = (root / "examples/companion_radio/MyMesh.cpp").read_text(
         encoding="utf-8"
     )
-    assert "defined(COMPANION_RADIO_FULL) && defined(MESH_DUAL_CDC_LOGGING)" in companion
+    companion_features = (
+        root / "examples/companion_radio/CompanionFeatures.h"
+    ).read_text(encoding="utf-8")
+    assert "COMPANION_FEATURE_DEDICATED_USB_LOGGING" in companion_features
+    assert "defined(MESH_DUAL_CDC_LOGGING)" in companion
+    assert "defined(COMPANION_RADIO_FULL)" not in companion
     assert "_prefs.usb_logging_enabled = 0" in companion
     assert 'strcmp(value, "on reboot") == 0' in companion
     assert 'strcmp(value, "off reboot") == 0' in companion
@@ -255,7 +260,9 @@ def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
     )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
     assert "is_esp32_dual_cdc_companion_radio_full_target" in framework_preflight
     assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
-    build_call = build.split('print_build_flags "$env_name"', 1)[1].split(
+    build_call = build.split(
+        'print_build_flags "$pio_env_name" "$env_name"', 1
+    )[1].split(
         "restore_platformio_build_flags", 1
     )[0]
     assert 'prepare_esp32_dual_cdc_framework "$env_name" "$pio_env_name"' in build_call

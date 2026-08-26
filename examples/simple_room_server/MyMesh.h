@@ -2,6 +2,7 @@
 
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include "RoomServerFeatures.h"
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
@@ -139,7 +140,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   NodePrefs _prefs;
   TransportKeyStore key_store;
   RegionMap region_map, temp_map;
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   FloodRuleEngine flood_rules;
   uint32_t recv_pkt_rule_match_mask;
   bool recv_pkt_regionless_scope_set;
@@ -255,7 +256,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   mesh::Packet* createSelfAdvert();
   File openAppend(const char* fname);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   bool evaluateFloodRuleTiming(const mesh::Packet* packet,
                                bool& fast_track);
   bool isLooped(const mesh::Packet* packet,
@@ -278,7 +279,7 @@ protected:
   void logTxFail(mesh::Packet* pkt, int len) override;
 
   int calcRxDelay(float score, uint32_t air_time) const override;
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   int calcRxDelayForPacket(const mesh::Packet* packet, float score,
                            uint32_t air_time) override;
 #endif

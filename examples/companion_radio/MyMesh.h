@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Mesh.h>
 #include "AbstractUITask.h"
+#include "CompanionFeatures.h"
 
 /*------------ Frame Protocol --------------*/
 #define FIRMWARE_VER_CODE 13
@@ -80,8 +81,8 @@
 #ifndef OFFLINE_QUEUE_SIZE
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
 #define OFFLINE_QUEUE_SIZE 512
-#elif defined(COMPANION_RADIO_FULL) || defined(ESP32_PLATFORM) \
-    || defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
+#elif defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM) \
+    || defined(RP2040_PLATFORM)
 #define OFFLINE_QUEUE_SIZE 256
 #else
 #define OFFLINE_QUEUE_SIZE 16
@@ -169,7 +170,7 @@ public:
   void exitTerminalMode();
   bool isTerminalMode() const { return _terminal_mode; }
   void handleTerminalCommand(char* command);
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
   bool enterNetworkTerminalMode(Stream& output);
   void exitNetworkTerminalMode(Stream& output);
   bool isNetworkTerminalMode(const Stream& output) const;
@@ -184,7 +185,7 @@ public:
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
 protected:
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   bool isTempRadioActive() const override {
     return _temp_radio_applied && _temp_radio_revert_at != 0
         && !millisHasNowPassed(_temp_radio_revert_at);
@@ -357,7 +358,7 @@ private:
   void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat);
   void cancelPendingRadioParamApply();
   void servicePendingRadioParamApply();
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   bool scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
                          uint32_t timeout_mins, char* reply, size_t reply_size);
   void scheduleNormalRadio(char* reply, size_t reply_size);
@@ -435,7 +436,7 @@ private:
 #if MESH_USB_LOGGING_AVAILABLE
   unsigned long _usb_logging_reboot_at;
 #endif
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   unsigned long _temp_radio_set_at;
   unsigned long _temp_radio_revert_at;
   unsigned long _temp_radio_retry_at;

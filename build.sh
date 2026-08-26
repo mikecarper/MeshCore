@@ -9,6 +9,7 @@ declare -A PIO_ENV_OTA_BY_NAME=()
 declare -A PIO_ENV_SD_OTA_BY_NAME=()
 declare -A PIO_ENV_QSPI_OTA_BY_NAME=()
 declare -A PIO_ENV_BUILD_BASE_BY_NAME=()
+declare -A PIO_ENV_COMPLETE_OTA_BASE_BY_NAME=()
 declare -A PIO_ENV_FULL_BUILD_BY_NAME=()
 declare -A PIO_ENV_FULL_WIFI_OTA_BY_NAME=()
 PIO_CONFIG_JSON=""
@@ -22,6 +23,16 @@ MQTT_DEBUG_OVERRIDE=""
 FIRMWARE_FILENAME_INFIX=""
 ESP32_FULL_BUILD=0
 SINGLE_TARGET_FULL_BUILD=0
+AUTO_PREFER_FULL_BUILD=0
+AUTO_COMPLETE_FIRST_PASS=0
+AUTO_REDUCED_FALLBACK_TARGET=""
+AUTO_PUBLISH_REDUCED_SECOND_PASS=0
+SKIP_DECLARED_REDUCTIONS=0
+COMPLETE_OTA_FIRST_PASS=0
+FIRMWARE_OUTPUT_ENV_NAME=""
+BUILD_PROFILE_OVERRIDE="${BUILD_PROFILE_OVERRIDE:-auto}"
+BUILD_PROFILE_EXPLICIT=0
+BUILD_PROFILE_EFFECTIVE="auto"
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 USA_CASCADIA_RADIO_TITLE="USA Cascadia"
 USA_CASCADIA_FALLBACK_FREQ="910.525"
@@ -76,7 +87,7 @@ FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
 # External programs invoked by this script:
 #   bash, cat, cp, date, find, flock, git, grep, head, mkdir, mv, pgrep, pio,
-#   python3, rm, sed, sleep, sort, wc
+#   python3, rm, sed, sleep, sort, tee, wc
 # Keep this list in sync when adding or removing non-builtin command usage.
 
 global_usage() {
@@ -107,13 +118,18 @@ Commands:
 Options:
   --firmware-version <version>: Firmware version to embed.
   --radio-preset <name|number>: Override the USA Cascadia radio default. Stable names are usa-cascadia and target; legacy menu numbers remain accepted.
-  --profile <default|cascade>: Override the default Cascade firmware settings profile.
+  --profile <default|cascade>: Override runtime settings embedded in the firmware (not its feature set).
+  --build-profile <auto|standard|full>: Select feature/partition policy. Auto first builds complete LoRa-OTA-capable firmware. A measured size failure triggers the reduced recipe; internal-flash nRF52 repeaters also publish the reduced image for extra delta-staging headroom. Standard applies declared portable-image reductions immediately; full requires the expanded ESP32 recipe.
+  --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
 
 Examples:
-Build firmware for the "RAK_4631_repeater" device target
-$ bash build.sh build-firmware RAK_4631_repeater
+Build firmware for the "RAK_4631_repeater" device target. Auto first builds
+the complete LoRa OTA recipe, then also publishes the reduced
+no-external-sensors receiver because this nRF52 repeater stages deltas in
+internal flash.
+$ bash build.sh build-firmware RAK_4631_repeater --build-profile auto
 
 Run without arguments to choose an interactive build action/target, an optional
 FULL-everything profile for supported ESP32 Option 1 targets, debug options,
@@ -304,6 +320,7 @@ for section, options in data:
         solarxiao_30s_repeater|solarxiao_33s_repeater) continue ;;
       esac
       ota_env="${env_name%_}_lora_ota_no_external_sensors"
+      PIO_ENV_COMPLETE_OTA_BASE_BY_NAME["$ota_env"]="$env_name"
       if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$ota_env]+x}" ]; then
         continue
       fi
@@ -581,13 +598,16 @@ prompt_for_build_mode() {
 
 prompt_for_single_target_build_profile() {
   SINGLE_TARGET_FULL_BUILD=0
+  BUILD_PROFILE_OVERRIDE="auto"
+  BUILD_PROFILE_EXPLICIT=1
   if ! supports_esp32_full_build "$SELECTED_TARGET"; then
-    echo "Selected target uses its standard build profile; FULL everything is available only for supported ESP32 targets."
+    echo "Using the smart auto profile in the target's current partition; expanded FULL is unavailable for this target."
     return 0
   fi
 
   local options=(
-    "Standard/custom build"
+    "Auto (keep target capabilities and enforce the current partition)"
+    "Standard portable image (allow documented legacy-slot reductions)"
     "FULL everything (all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, expanded dual-OTA partitions)"
   )
 
@@ -602,10 +622,17 @@ prompt_for_single_target_build_profile() {
 
     case "$MENU_CHOICE" in
       1)
-        echo "Using the standard/custom single-target build."
+        BUILD_PROFILE_OVERRIDE="auto"
+        echo "Using auto: target capabilities are kept and checked against the current partition."
         return 0
         ;;
       2)
+        BUILD_PROFILE_OVERRIDE="standard"
+        echo "Using standard: documented portable-image reductions may be applied."
+        return 0
+        ;;
+      3)
+        BUILD_PROFILE_OVERRIDE="full"
         SINGLE_TARGET_FULL_BUILD=1
         echo "Using FULL everything: all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, and expanded dual-OTA partitions."
         return 0
@@ -740,7 +767,7 @@ parse_cli_options() {
         RADIO_PRESET_SELECTION=$2
         shift 2
         ;;
-      --profile)
+      --profile|--settings-profile)
         if [ $# -lt 2 ]; then echo "$1 requires a value"; return 1; fi
         case "${2,,}" in
           default) FIRMWARE_PROFILE_OVERRIDE="" ;;
@@ -748,6 +775,30 @@ parse_cli_options() {
           *) echo "Invalid profile: $2 (use default or cascade)"; return 1 ;;
         esac
         shift 2
+        ;;
+      --build-profile)
+        if [ $# -lt 2 ] || [ -z "$2" ]; then echo "$1 requires a value"; return 1; fi
+        case "${2,,}" in
+          auto|standard|full) BUILD_PROFILE_OVERRIDE="${2,,}" ;;
+          *) echo "Invalid build profile: $2 (use auto, standard, or full)"; return 1 ;;
+        esac
+        BUILD_PROFILE_EXPLICIT=1
+        shift 2
+        ;;
+      --auto)
+        BUILD_PROFILE_OVERRIDE="auto"
+        BUILD_PROFILE_EXPLICIT=1
+        shift
+        ;;
+      --standard)
+        BUILD_PROFILE_OVERRIDE="standard"
+        BUILD_PROFILE_EXPLICIT=1
+        shift
+        ;;
+      --full)
+        BUILD_PROFILE_OVERRIDE="full"
+        BUILD_PROFILE_EXPLICIT=1
+        shift
         ;;
       --skip-kiss)
         KISS_MODE_OVERRIDE="skip"
@@ -2196,6 +2247,33 @@ is_repeater_role_target() {
   esac
 }
 
+is_room_server_role_target() {
+  case "${1,,}" in
+    *room_server*|*room_svr*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+get_reduced_lora_ota_target() {
+  local target=$1
+  local candidate
+
+  if is_lora_ota_only_target "$target"; then
+    echo "$target"
+    return 0
+  fi
+  if ! is_repeater_role_target "$target"; then
+    return 1
+  fi
+
+  candidate="${target%_}_lora_ota_no_external_sensors"
+  if is_supported_build_env "$candidate"; then
+    echo "$candidate"
+    return 0
+  fi
+  return 1
+}
+
 is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
@@ -2301,10 +2379,78 @@ requires_esp32_full_cli_profile() {
          || [[ "${env_name,,}" == *bridge_espnow* ]]; }
 }
 
+record_build_capability() {
+  BUILD_CAPABILITIES+=("$1")
+}
+
+record_build_reduction() {
+  BUILD_REDUCTIONS+=("$1")
+}
+
+record_build_expectation() {
+  BUILD_EXPECTATIONS+=("$1=$2")
+}
+
+declare_build_capability_contract() {
+  local env_name=$1
+  local env_platform=$2
+  local env_name_lc=${env_name,,}
+  local pio_env_name
+
+  record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
+
+  if is_repeater_role_target "$env_name" \
+      || is_room_server_role_target "$env_name"; then
+    record_build_expectation "cli.retry_preset" "retry.preset"
+  fi
+
+  if is_lora_ota_build "$env_name"; then
+    record_build_expectation "ota.cli" "OTA: status"
+  fi
+
+  if [ "$env_platform" = "ESP32_PLATFORM" ] \
+      && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ] \
+      && ! is_esp32_companion_build "$env_name"; then
+    pio_env_name=$(get_pio_build_env "$env_name")
+    if pio_env_option_contains "$pio_env_name" build_flags "ADMIN_PASSWORD"; then
+      record_build_expectation "web.webconfig" "start webconfig"
+    fi
+  fi
+
+  if is_room_server_role_target "$env_name" \
+      && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ]; then
+    record_build_expectation "room.flood_rule_engine" "flood.rule"
+  fi
+
+  if is_companion_radio_full_target "$env_name"; then
+    record_build_expectation "companion.temp_radio" "tempradio"
+    record_build_expectation "companion.ota_cli" "ota folder"
+    if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+      record_build_expectation "companion.network_terminal" \
+        "Full Companion terminal listening"
+      record_build_expectation "web.webconfig" "start webconfig"
+    else
+      record_build_expectation "companion.usb_mota_source" "ota folder on"
+    fi
+  elif [ "$env_platform" = "ESP32_PLATFORM" ] \
+      && is_esp32_companion_build "$env_name" \
+      && is_lora_ota_build "$env_name"; then
+    record_build_expectation "companion.temp_radio" "ERR usage: tempradio"
+    record_build_expectation "companion.ota_cli" "OTA: status"
+  fi
+
+  case "$env_name_lc" in
+    *sensecapindicator*lora*comp*wifi*)
+      record_build_expectation "web.webconfig" "start webconfig"
+      ;;
+  esac
+}
+
 apply_esp32_lora_ota_size_profile() {
   local env_name=$1
 
-  if [ "$ESP32_FULL_BUILD" = "1" ] || ! requires_esp32_portable_app_slot "$env_name"; then
+  if [ "$BUILD_PROFILE_FOR_TARGET" != "standard" ] \
+      || ! requires_esp32_portable_app_slot "$env_name"; then
     return 0
   fi
 
@@ -2318,6 +2464,8 @@ apply_esp32_lora_ota_size_profile() {
   # Keep ENV_INCLUDE_GPS for boards with onboard GPS; their target sensor
   # managers require that support.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWEBCONFIG_DISABLED=1"
+  record_build_reduction \
+    "web.webconfig omitted to preserve the legacy portable ESP32 app slot"
   if is_lora_ota_only_target "$env_name"; then
     # The no-external-sensors image is also the self-updatable field image. Keep
     # manual browser OTA available on every ESP32 family through the compact
@@ -2327,9 +2475,12 @@ apply_esp32_lora_ota_size_profile() {
     # dropping WiFi OTA, LoRa OTA, USB seeding, or CLI commands.
     append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8 -fexceptions"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS} -fno-exceptions"
+    record_build_capability "web.lightweight_browser_ota"
   else
     append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -ULIGHTWEIGHT_WIFI_OTA -DDISABLE_WIFI_OTA=1"
+    record_build_reduction \
+      "web.browser_ota omitted because this portable radio role does not otherwise require WiFi"
   fi
 
 }
@@ -2374,7 +2525,10 @@ apply_esp32_full_size_profile() {
   # The FULL artifact uses expanded dual-OTA slots, so restore features that
   # target or legacy-slot profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1 -DMESHCORE_ESP32_FULL_PROFILE=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
+  if is_room_server_role_target "$env_name"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_ENABLE_ROOM_FLOOD_RULE_ENGINE=1"
+  fi
 
   # Keep ordinary builds at their board-defined neighbor capacity. FULL builds
   # normally use the largest table supported by the one-byte neighbor discovery
@@ -2414,6 +2568,8 @@ apply_repeater_neighbor_capacity() {
   if requires_dram_limited_neighbors "$env_name"; then
     max_neighbours=$DRAM_LIMITED_MAX_NEIGHBOURS
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=8 -DMAX_NEIGHBOURS=254"
+    record_build_reduction \
+      "mesh.neighbors limited to ${DRAM_LIMITED_MAX_NEIGHBOURS} by measured RAM/flash capacity"
   else
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=8 -DMAX_NEIGHBOURS=50"
   fi
@@ -2445,6 +2601,9 @@ apply_nrf52_size_profile() {
 apply_lora_ota_no_external_sensors_profile() {
   local env_name=$1
 
+  if [ "$SKIP_DECLARED_REDUCTIONS" = "1" ]; then
+    return 0
+  fi
   if ! is_lora_ota_build "$env_name" \
       || ! is_lora_ota_no_external_sensors_target "$env_name"; then
     return 0
@@ -2456,6 +2615,8 @@ apply_lora_ota_no_external_sensors_profile() {
   # their location provider even when optional external I2C sensors are absent.
   append_platformio_build_unflags "-DENV_INCLUDE_AHTX0=1 -DENV_INCLUDE_BME280=1 -DENV_INCLUDE_BMP280=1 -DENV_INCLUDE_SHTC3=1 -DENV_INCLUDE_SHT4X=1 -DENV_INCLUDE_LPS22HB=1 -DENV_INCLUDE_INA3221=1 -DENV_INCLUDE_INA219=1 -DENV_INCLUDE_INA226=1 -DENV_INCLUDE_INA260=1 -DENV_INCLUDE_MLX90614=1 -DENV_INCLUDE_VL53L0X=1 -DENV_INCLUDE_BME680=1 -DENV_INCLUDE_BMP085=1 -DENV_INCLUDE_RAK12035=1 -DENV_INCLUDE_BME680_BSEC=1"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENV_INCLUDE_AHTX0 -UENV_INCLUDE_BME280 -UENV_INCLUDE_BMP280 -UENV_INCLUDE_SHTC3 -UENV_INCLUDE_SHT4X -UENV_INCLUDE_LPS22HB -UENV_INCLUDE_INA3221 -UENV_INCLUDE_INA219 -UENV_INCLUDE_INA226 -UENV_INCLUDE_INA260 -UENV_INCLUDE_MLX90614 -UENV_INCLUDE_VL53L0X -UENV_INCLUDE_BME680 -UENV_INCLUDE_BMP085 -UENV_INCLUDE_RAK12035 -UENV_INCLUDE_BME680_BSEC"
+  record_build_reduction \
+    "sensors.external omitted by the explicitly named no_external_sensors target"
 }
 
 append_platformio_build_unflags() {
@@ -2544,6 +2705,17 @@ apply_nrf52_lora_ota_build_recipe() {
     append_platformio_extra_script "post:tools/mota/pio_endf.py"
   fi
 
+  # A few feature-rich legacy environments deliberately end their own flags
+  # with -UENABLE_OTA. PlatformIO build_unflags cannot remove a trailing -U,
+  # so a pre-script must make the intentional OTA overlay authoritative for
+  # both compilation and the EndF geometry hook.
+  if pio_env_option_contains "$pio_env_name" build_flags "-UENABLE_OTA"; then
+    export MESHCORE_FORCE_LORA_OTA=1
+    append_platformio_extra_script "pre:scripts/force_lora_ota.py"
+  else
+    unset MESHCORE_FORCE_LORA_OTA
+  fi
+
   if supports_nrf52_internal_bootloader_update "$env_name"; then
     export MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE=1
   else
@@ -2586,9 +2758,49 @@ apply_lora_ota_override() {
       append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_FOLDER_SERIAL"
     fi
+    if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] \
+        && is_esp32_companion_build "$env_name"; then
+      # Do not link an OTA manager into a Companion while compiling out the
+      # terminal controls needed to operate it over LoRa.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1"
+    fi
   else
     append_platformio_build_unflags "-DENABLE_OTA=1"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UENABLE_OTA"
+  fi
+}
+
+apply_logical_ota_tuning_flags() {
+  local logical_env_name=$1
+  local pio_env_name=$2
+  local ota_flags
+
+  if [ "$logical_env_name" = "$pio_env_name" ]; then
+    return 0
+  fi
+
+  ota_flags=$(python3 -c '
+import json
+import sys
+
+logical_env = sys.argv[1]
+data = json.load(sys.stdin)
+for section, options in data:
+    if section != f"env:{logical_env}":
+        continue
+    for key, value in options:
+        if key != "build_flags":
+            continue
+        values = value if isinstance(value, list) else [str(value)]
+        for item in values:
+            flag = str(item).strip()
+            if flag.startswith("-D OTA_") or flag.startswith("-DOTA_"):
+                print(flag)
+    break
+' "$logical_env_name" <<<"$PIO_CONFIG_JSON")
+
+  if [ -n "$ota_flags" ]; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} ${ota_flags}"
   fi
 }
 
@@ -2603,7 +2815,7 @@ apply_companion_radio_full_profile() {
   # folder transport. Full also restores WebConfig when a constrained legacy
   # WiFi sibling disabled it only to fit its smaller application partition.
   append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456"
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
     # CDC 0 starts as Binary Companion. `motatool serve --serial` switches it
@@ -2611,7 +2823,7 @@ apply_companion_radio_full_profile() {
     # preamble. CDC 1 is a write-only plaintext packet/debug logging stream;
     # BLE remains an independent Companion link.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
     if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
       append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
@@ -2630,13 +2842,13 @@ apply_companion_radio_full_profile() {
     # flashing reboot gesture; CDC 1 is a write-only plaintext diagnostics
     # stream and cannot reboot the board.
     append_platformio_build_unflags "-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=0"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
   fi
 
   # ESP32 keeps both source transports. TCP remains the normal unattended
   # path; a host may explicitly hold the native USB port in Companion terminal
   # mode when WiFi is unavailable and serve the same folder protocol there.
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1"
 
   # BLE + WiFi exhaust internal DRAM on these high-capacity ESP32 recipes. Use
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi
@@ -2670,9 +2882,14 @@ apply_firmware_profile_overrides() {
 }
 
 print_build_flags() {
-  local env_name=$1
+  local pio_env_name=$1
+  local logical_env_name=${2:-$pio_env_name}
 
-  echo "Build flags for ${env_name}:"
+  if [ "$logical_env_name" = "$pio_env_name" ]; then
+    echo "Build flags for ${logical_env_name}:"
+  else
+    echo "Build flags for ${logical_env_name} (PlatformIO base ${pio_env_name}):"
+  fi
   python3 -c '
 import json
 import os
@@ -2709,7 +2926,7 @@ def print_flags(title, flags):
 print_flags("platformio.ini build_flags", config_flags)
 print_flags("PLATFORMIO_BUILD_FLAGS", env_flags)
 print_flags("PLATFORMIO_BUILD_UNFLAGS", env_unflags)
-' "$env_name" <<<"$PIO_CONFIG_JSON"
+' "$pio_env_name" <<<"$PIO_CONFIG_JSON"
 }
 
 copy_build_output() {
@@ -2724,6 +2941,36 @@ copy_build_output() {
   cp -- "$source_path" "$output_path"
 }
 
+write_build_capability_manifest() {
+  local env_name=$1
+  local env_platform=$2
+  local pio_env_name=$3
+  local firmware_filename=$4
+  local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
+  local -a checker_args=(
+    --image "${build_output_dir}/firmware.elf"
+    --output "${OUTPUT_DIR}/${firmware_filename}.capabilities.json"
+    --target "$env_name"
+    --artifact-target "${FIRMWARE_OUTPUT_ENV_NAME:-$env_name}"
+    --platformio-env "$pio_env_name"
+    --platform "$env_platform"
+    --build-profile "$BUILD_PROFILE_FOR_TARGET"
+  )
+  local item
+
+  for item in "${BUILD_CAPABILITIES[@]}"; do
+    checker_args+=(--capability "$item")
+  done
+  for item in "${BUILD_REDUCTIONS[@]}"; do
+    checker_args+=(--reduction "$item")
+  done
+  for item in "${BUILD_EXPECTATIONS[@]}"; do
+    checker_args+=(--expect "$item")
+  done
+
+  python3 scripts/check_firmware_capabilities.py "${checker_args[@]}"
+}
+
 collect_esp32_artifacts() {
   local env_name=$1
   local pio_env_name=$2
@@ -2735,11 +2982,18 @@ collect_esp32_artifacts() {
   )
   local partsig_name=$env_name
 
-  if [ "$ESP32_FULL_BUILD" != "1" ] && requires_esp32_portable_size_ceiling "$env_name"; then
+  if [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
+      && requires_esp32_portable_size_ceiling "$env_name"; then
     size_check_args+=("$ESP32_LORA_OTA_APP_LIMIT")
   fi
 
-  python3 scripts/check_esp32_app_size.py "${size_check_args[@]}" || return $?
+  python3 scripts/check_esp32_app_size.py "${size_check_args[@]}"
+  local size_status=$?
+  if [ "$size_status" -eq 1 ]; then
+    return 42
+  elif [ "$size_status" -ne 0 ]; then
+    return "$size_status"
+  fi
   copy_build_output "${build_output_dir}/firmware.bin" "${OUTPUT_DIR}/${firmware_filename}.bin" || return $?
   copy_build_output "${build_output_dir}/firmware-merged.bin" "${OUTPUT_DIR}/${firmware_filename}-merged.bin" || return $?
 
@@ -2797,6 +3051,10 @@ build_artifacts_exist() {
   local env_platform=$1
   local firmware_filename=$2
 
+  output_artifact_exists "${firmware_filename}.capabilities.json" || return 1
+  grep -q '"verified": true' \
+    "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" || return 1
+
   case "$env_platform" in
     ESP32_PLATFORM)
       output_artifact_exists "${firmware_filename}.bin" \
@@ -2829,22 +3087,25 @@ collect_build_artifacts() {
   # collector after the main firmware build succeeds.
   case "$env_platform" in
     ESP32_PLATFORM)
-      collect_esp32_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
+      collect_esp32_artifacts "$env_name" "$pio_env_name" "$firmware_filename" || return $?
       ;;
     NRF52_PLATFORM)
-      collect_nrf52_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
+      collect_nrf52_artifacts "$env_name" "$pio_env_name" "$firmware_filename" || return $?
       ;;
     STM32_PLATFORM)
-      collect_stm32_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
+      collect_stm32_artifacts "$env_name" "$pio_env_name" "$firmware_filename" || return $?
       ;;
     RP2040_PLATFORM)
-      collect_rp2040_artifacts "$env_name" "$pio_env_name" "$firmware_filename"
+      collect_rp2040_artifacts "$env_name" "$pio_env_name" "$firmware_filename" || return $?
       ;;
     *)
       echo "Unsupported or unknown platform for env: $env_name"
       return 1
       ;;
   esac
+
+  write_build_capability_manifest \
+    "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
 }
 
 get_firmware_filename() {
@@ -2908,7 +3169,6 @@ build_firmware() {
   local original_platformio_build_unflags
   local original_platformio_build_src_filter
   local original_platformio_extra_scripts
-  local target_extra_scripts
   local had_platformio_build_flags=0
   local had_platformio_build_unflags=0
   local had_platformio_build_src_filter=0
@@ -2916,6 +3176,10 @@ build_firmware() {
   local build_status
   local platformio_package_lock_fd=""
   local -a pio_run_args=()
+  local -a BUILD_CAPABILITIES=()
+  local -a BUILD_REDUCTIONS=()
+  local -a BUILD_EXPECTATIONS=()
+  local BUILD_PROFILE_FOR_TARGET=$BUILD_PROFILE_EFFECTIVE
 
   # Bash functions use dynamic scoping. These locals let one target be promoted
   # to FULL without changing the profile selected for later targets in the same
@@ -2931,9 +3195,19 @@ build_firmware() {
     return 1
   fi
   pio_env_name=$(get_pio_build_env "$env_name")
+  if [ "$COMPLETE_OTA_FIRST_PASS" = "1" ] \
+      && [ -n "${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$env_name]+x}" ]; then
+    pio_env_name=${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$env_name]}
+    echo "Complete OTA pass uses feature-rich base environment ${pio_env_name} with stable target identity ${env_name}."
+  fi
 
   if [ "$ESP32_FULL_BUILD" != "1" ] \
       && requires_esp32_full_cli_profile "$env_name"; then
+    if [ "$BUILD_PROFILE_EXPLICIT" = "1" ] \
+        && [ "${BUILD_PROFILE_OVERRIDE,,}" = "standard" ]; then
+      echo "Target ${env_name} requires the expanded FULL profile to retain its complete CLI; refusing an explicit standard build."
+      return 1
+    fi
     ESP32_FULL_BUILD=1
     if [ "$FIRMWARE_FILENAME_INFIX" = "logging" ]; then
       FIRMWARE_FILENAME_INFIX="full-logging"
@@ -2942,6 +3216,12 @@ build_firmware() {
     fi
     echo "Promoting ${env_name} to FULL so the complete CLI is retained."
   fi
+
+  if [ "$ESP32_FULL_BUILD" = "1" ] \
+      || is_companion_radio_full_target "$env_name"; then
+    BUILD_PROFILE_FOR_TARGET="full"
+  fi
+  echo "Effective feature profile for ${env_name}: ${BUILD_PROFILE_FOR_TARGET}"
 
   commit_hash=$(git rev-parse --short HEAD)
   firmware_build_date=$(date -u '+%d-%b-%Y')
@@ -2958,7 +3238,8 @@ build_firmware() {
   fi
 
   firmware_version_string="${firmware_version}-${commit_hash}"
-  firmware_filename=$(get_firmware_filename "$env_name" "$firmware_version_string")
+  firmware_filename=$(get_firmware_filename \
+    "${FIRMWARE_OUTPUT_ENV_NAME:-$env_name}" "$firmware_version_string")
 
   # OTA target id = sha2-256:4(env_name) as a little-endian uint32 (matches tools/mota target_id_for_env
   # and the device's MainBoard::getOtaTargetId()). Only OTA-enabled profiles receive this identifier.
@@ -3023,6 +3304,7 @@ build_firmware() {
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
   apply_lora_ota_override "$env_name"
+  apply_logical_ota_tuning_flags "$env_name" "$pio_env_name"
   apply_companion_radio_full_profile "$env_name" "$pio_env_name"
   apply_nrf52_lora_ota_build_recipe "$env_name" "$pio_env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
@@ -3033,6 +3315,7 @@ build_firmware() {
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
+  declare_build_capability_contract "$env_name" "$env_platform"
 
   if [ "$ESP32_FULL_BUILD" = "1" ] || is_esp32_companion_radio_full_target "$env_name"; then
     export MESHCORE_ESP32_FULL_BUILD=1
@@ -3041,20 +3324,16 @@ build_firmware() {
     else
       unset MESHCORE_COMPANION_RADIO_FULL
     fi
-    target_extra_scripts=$original_platformio_extra_scripts
-    if [[ "$target_extra_scripts" != *"scripts/esp32_full_partition.py"* ]]; then
-      if [ -n "$target_extra_scripts" ]; then
-        target_extra_scripts+=$'\n'
-      fi
-      target_extra_scripts+="pre:scripts/esp32_full_partition.py"
+    if ! pio_env_option_contains "$pio_env_name" extra_scripts \
+        "scripts/esp32_full_partition.py"; then
+      append_platformio_extra_script "pre:scripts/esp32_full_partition.py"
     fi
-    export PLATFORMIO_EXTRA_SCRIPTS="$target_extra_scripts"
   else
     unset MESHCORE_ESP32_FULL_BUILD
     unset MESHCORE_COMPANION_RADIO_FULL
   fi
 
-  print_build_flags "$env_name"
+  print_build_flags "$pio_env_name" "$env_name"
   build_status=0
   if [ "$env_platform" = "ESP32_PLATFORM" ]; then
     # Official ESP32 and pioarduino builds share global package names even
@@ -3086,8 +3365,17 @@ build_firmware() {
     pio_run_args+=(-t mergebin)
   fi
   if [ "$build_status" -eq 0 ]; then
-    pio "${pio_run_args[@]}"
-    build_status=$?
+    local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
+    local build_output_log="${build_output_dir}/.meshcore-build-output.log"
+    mkdir -p -- "$build_output_dir"
+    pio "${pio_run_args[@]}" 2>&1 | tee "$build_output_log"
+    build_status=${PIPESTATUS[0]}
+    if [ "$build_status" -ne 0 ] \
+        && grep -Eiq \
+          'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
+          "$build_output_log"; then
+      build_status=42
+    fi
   fi
   if [ "$build_status" -eq 0 ]; then
     collect_build_artifacts "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
@@ -3102,6 +3390,7 @@ build_firmware() {
   unset MESHCORE_ESP32_FULL_BUILD
   unset MESHCORE_COMPANION_RADIO_FULL
   unset MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE
+  unset MESHCORE_FORCE_LORA_OTA
   if [ "$had_platformio_build_unflags" -eq 1 ]; then
     export PLATFORMIO_BUILD_UNFLAGS="$original_platformio_build_unflags"
   else
@@ -3509,6 +3798,114 @@ resolve_command_targets() {
     )
     echo "Bulk target start order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform (best effort with parallel workers)."
   fi
+}
+
+configure_effective_build_profile() {
+  local command_name=$1
+  local target=""
+  local reduced_target=""
+
+  if [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ]; then
+    target=${RESOLVED_BUILD_TARGETS[0]}
+  fi
+
+  AUTO_PREFER_FULL_BUILD=0
+  AUTO_COMPLETE_FIRST_PASS=0
+  AUTO_REDUCED_FALLBACK_TARGET=""
+  AUTO_PUBLISH_REDUCED_SECOND_PASS=0
+
+  case "${BUILD_PROFILE_OVERRIDE,,}" in
+    auto|standard|full) ;;
+    *)
+      echo "Invalid build profile: ${BUILD_PROFILE_OVERRIDE} (use auto, standard, or full)"
+      return 1
+      ;;
+  esac
+
+  if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
+    BUILD_PROFILE_EFFECTIVE="full"
+  elif is_automatic_profile_command "$command_name"; then
+    if [ "$BUILD_PROFILE_EXPLICIT" = "1" ] \
+        && [ "${BUILD_PROFILE_OVERRIDE,,}" != "auto" ]; then
+      echo "${command_name} manages standard and FULL profiles itself; do not combine it with --build-profile ${BUILD_PROFILE_OVERRIDE}."
+      return 1
+    fi
+    BUILD_PROFILE_EFFECTIVE="standard"
+  else
+    case "${BUILD_PROFILE_OVERRIDE,,}" in
+      auto)
+        if [ "$command_name" = "build-firmware" ] \
+            && [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ]; then
+          if is_companion_radio_full_target "$target"; then
+            BUILD_PROFILE_EFFECTIVE="full"
+          elif supports_esp32_full_build "$target"; then
+            BUILD_PROFILE_EFFECTIVE="full"
+            AUTO_PREFER_FULL_BUILD=1
+            AUTO_REDUCED_FALLBACK_TARGET=$(get_reduced_lora_ota_target "$target" || true)
+          elif is_lora_ota_no_external_sensors_target "$target"; then
+            # An explicitly selected reduced target means exactly what its
+            # name says; do not silently put omitted sensors back into it.
+            BUILD_PROFILE_EFFECTIVE="standard"
+          elif reduced_target=$(get_reduced_lora_ota_target "$target"); then
+            RESOLVED_BUILD_TARGETS[0]=$reduced_target
+            BUILD_PROFILE_EFFECTIVE="auto"
+            AUTO_COMPLETE_FIRST_PASS=1
+            AUTO_REDUCED_FALLBACK_TARGET=$reduced_target
+            if [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = "NRF52_PLATFORM" ] \
+                && [ "${PIO_ENV_SD_OTA_BY_NAME[$reduced_target]:-0}" = "0" ] \
+                && [ "${PIO_ENV_QSPI_OTA_BY_NAME[$reduced_target]:-0}" = "0" ]; then
+              AUTO_PUBLISH_REDUCED_SECOND_PASS=1
+            fi
+            echo "Auto pass 1 selected: complete LoRa OTA for ${reduced_target}; reductions are deferred unless it is too large."
+          else
+            # Companion and non-repeater targets without an expanded recipe
+            # keep every capability declared by their target and are checked
+            # against the current partition.
+            BUILD_PROFILE_EFFECTIVE="auto"
+          fi
+        else
+          # Canonical and matching builds are release-oriented. Preserve their
+          # deployed partition contract unless FULL was explicitly requested.
+          BUILD_PROFILE_EFFECTIVE="standard"
+        fi
+        ;;
+      standard)
+        BUILD_PROFILE_EFFECTIVE="standard"
+        ;;
+      full)
+        if [ "$command_name" != "build-firmware" ] \
+            || [ "${#RESOLVED_BUILD_TARGETS[@]}" -ne 1 ]; then
+          echo "--build-profile full requires exactly one build-firmware target; use a build-full-* command for a matrix."
+          return 1
+        fi
+        if is_companion_radio_full_target "$target"; then
+          BUILD_PROFILE_EFFECTIVE="full"
+        elif supports_esp32_full_build "$target"; then
+          BUILD_PROFILE_EFFECTIVE="full"
+          SINGLE_TARGET_FULL_BUILD=1
+        else
+          echo "Target ${target} has no expanded FULL partition profile. Use --build-profile auto or standard."
+          return 1
+        fi
+        ;;
+    esac
+  fi
+
+  case "$BUILD_PROFILE_EFFECTIVE" in
+    auto)
+      echo "Build profile: auto (keep target capabilities; enforce its current partition)."
+      ;;
+    standard)
+      echo "Build profile: standard (preserve the portable/deployed partition contract; documented reductions may apply)."
+      ;;
+    full)
+      if [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = "ESP32_PLATFORM" ]; then
+        echo "Build profile: full (expanded partition; a matching merged image is required when the partition table changes)."
+      else
+        echo "Build profile: full (feature-complete named target in its existing application layout)."
+      fi
+      ;;
+  esac
 }
 
 prepare_output_dir() {
@@ -4103,8 +4500,104 @@ validate_command() {
   esac
 }
 
+run_auto_two_pass_build() {
+  local target=$1
+  local fallback_target=$AUTO_REDUCED_FALLBACK_TARGET
+  local original_esp32_full_build=$ESP32_FULL_BUILD
+  local original_build_profile_effective=$BUILD_PROFILE_EFFECTIVE
+  local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local original_skip_declared_reductions=$SKIP_DECLARED_REDUCTIONS
+  local original_complete_ota_first_pass=$COMPLETE_OTA_FIRST_PASS
+  local original_firmware_output_env_name=$FIRMWARE_OUTPUT_ENV_NAME
+  local build_status=0
+
+  if [ "$AUTO_PREFER_FULL_BUILD" = "1" ]; then
+    ESP32_FULL_BUILD=1
+    BUILD_PROFILE_EFFECTIVE="full"
+    FIRMWARE_FILENAME_INFIX="full"
+    SKIP_DECLARED_REDUCTIONS=0
+    COMPLETE_OTA_FIRST_PASS=0
+    FIRMWARE_OUTPUT_ENV_NAME=""
+    echo "Auto pass 1/2: building the complete expanded-partition profile for ${target}."
+  else
+    ESP32_FULL_BUILD=0
+    BUILD_PROFILE_EFFECTIVE="auto"
+    FIRMWARE_FILENAME_INFIX="full-ota"
+    SKIP_DECLARED_REDUCTIONS=1
+    COMPLETE_OTA_FIRST_PASS=1
+    if [ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = "1" ]; then
+      FIRMWARE_OUTPUT_ENV_NAME=${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$target]:-${target%_lora_ota_no_external_sensors}}
+    else
+      FIRMWARE_OUTPUT_ENV_NAME=""
+    fi
+    echo "Auto pass 1/2: building complete LoRa OTA for ${target} without declared feature reductions."
+  fi
+
+  if build_firmware "$target"; then
+    build_status=0
+  else
+    build_status=$?
+  fi
+
+  if [ "$build_status" -eq 42 ]; then
+    if [ -z "$fallback_target" ]; then
+      echo "The complete image is too large and ${target} has no supported reduced LoRa OTA recipe."
+      build_status=1
+    else
+      echo "Auto pass 1 exceeded measured flash/partition capacity; pass 2 is rebuilding ${fallback_target} with the standard reduced LoRa OTA recipe."
+      ESP32_FULL_BUILD=0
+      BUILD_PROFILE_EFFECTIVE="standard"
+      FIRMWARE_FILENAME_INFIX="reduced-ota"
+      SKIP_DECLARED_REDUCTIONS=0
+      COMPLETE_OTA_FIRST_PASS=0
+      FIRMWARE_OUTPUT_ENV_NAME=""
+      if build_firmware "$fallback_target"; then
+        build_status=0
+      else
+        build_status=$?
+      fi
+      if [ "$build_status" -eq 0 ]; then
+        echo "Auto pass 2 succeeded: ${fallback_target} (reduced LoRa OTA)."
+      fi
+    fi
+  elif [ "$build_status" -ne 0 ]; then
+    echo "Auto pass 1 failed for a non-size reason; refusing to hide the compiler or capability failure with a reduced build."
+  elif [ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = "1" ] \
+      && [ -n "$fallback_target" ]; then
+    echo "Auto pass 1 succeeded. Internal-flash nRF52 repeater policy also publishes a reduced LoRa OTA image with more delta-staging headroom."
+    ESP32_FULL_BUILD=0
+    BUILD_PROFILE_EFFECTIVE="standard"
+    FIRMWARE_FILENAME_INFIX="reduced-ota"
+    SKIP_DECLARED_REDUCTIONS=0
+    COMPLETE_OTA_FIRST_PASS=0
+    FIRMWARE_OUTPUT_ENV_NAME=""
+    if build_firmware "$fallback_target"; then
+      build_status=0
+      echo "Auto pass 2 succeeded: ${fallback_target} (reduced LoRa OTA)."
+    else
+      build_status=$?
+    fi
+  else
+    echo "Auto pass 1 succeeded; no reductions were needed."
+  fi
+
+  ESP32_FULL_BUILD=$original_esp32_full_build
+  BUILD_PROFILE_EFFECTIVE=$original_build_profile_effective
+  FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
+  SKIP_DECLARED_REDUCTIONS=$original_skip_declared_reductions
+  COMPLETE_OTA_FIRST_PASS=$original_complete_ota_first_pass
+  FIRMWARE_OUTPUT_ENV_NAME=$original_firmware_output_env_name
+  return "$build_status"
+}
+
 run_command() {
   # All build commands share execution after validation resolves their target list.
+  if [ "$AUTO_PREFER_FULL_BUILD" = "1" ] \
+      || [ "$AUTO_COMPLETE_FIRST_PASS" = "1" ]; then
+    run_auto_two_pass_build "${RESOLVED_BUILD_TARGETS[0]}"
+    return $?
+  fi
+
   if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
     run_full_esp32_build_targets "all" "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
@@ -4213,6 +4706,9 @@ main() {
     if ! normalize_resolved_targets_for_mqtt "$1"; then
       exit 1
     fi
+  fi
+  if ! configure_effective_build_profile "$1"; then
+    exit 1
   fi
 
   refresh_firmware_version_tags

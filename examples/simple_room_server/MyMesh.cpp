@@ -1,7 +1,7 @@
 #include "MyMesh.h"
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 #include <helpers/FloodFilterPolicy.h>
 #endif
 #include <helpers/radiolib/RXPowerSaving.h>
@@ -371,7 +371,7 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
 }
 
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 bool MyMesh::evaluateFloodRuleTiming(const mesh::Packet* packet,
                                      bool& fast_track) {
   fast_track = false;
@@ -530,14 +530,14 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
                                       _prefs.flood_max_advert)) {
       return false;
     }
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
     if (flood_rules.shouldBlock(packet, recv_pkt_rule_match_mask,
                                 _ms->getMillis())) {
       return false;
     }
 #endif
   }
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   if (packet->isRouteFlood()) {
     if (recv_pkt_region == NULL && !recv_pkt_regionless_scope_set) {
       MESH_DEBUG_PRINTLN(
@@ -564,7 +564,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
 }
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   bool scope_changed = false;
   bool fast_track_scope_change = false;
   recv_pkt_regionless_scope_set = false;
@@ -599,7 +599,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     recv_pkt_region = NULL;
   }
   mesh::DispatcherAction action = Mesh::onRecvPacket(pkt);
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   if (scope_changed && action != ACTION_RELEASE
       && action != ACTION_MANUAL_HOLD) {
     if (fast_track_scope_change) {
@@ -1155,7 +1155,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
   recv_pkt_region = NULL;
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   recv_pkt_rule_match_mask = 0;
   recv_pkt_regionless_scope_set = false;
 #endif
@@ -1261,7 +1261,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   acl.load(_fs, self_id);
   region_map.load(_fs);
   _clock_sync.begin(_fs);
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   flood_rules.begin(_fs, &region_map);
 #endif
 
@@ -2115,7 +2115,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       snprintf(reply, MAX_POST_TEXT_LEN, "OK");
     }
   }
-#if defined(MESHCORE_ESP32_FULL_PROFILE)
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   else if (flood_rules.handleCommand(command, reply)) {
     // handled by the FULL-profile persistent flood rule engine
   }

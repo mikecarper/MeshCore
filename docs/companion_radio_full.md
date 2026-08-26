@@ -156,6 +156,16 @@ after WiFi/WebConfig so their peak startup allocations do not overlap.
 
 Artifacts are written to `out/` by default.
 
+Full Companion behavior is selected with independent capability macros for
+TempRadio, the OTA CLI, the TCP terminal, USB folder seeding, and memory
+diagnostics. The legacy `COMPANION_RADIO_FULL` flag remains an input for older
+target recipes, but application behavior no longer uses that umbrella as an
+unrelated compile guard. In particular, ESP32 WiFi/WebConfig terminal controls
+are compiled from their actual WiFi/WebConfig capability, and BLE is always
+started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
+fragmentation. The build's capability sidecar verifies the Full controls after
+linking.
+
 On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
 so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
 Companion uses that same LilyGo factory-compatible boot layout on its 16 MB

@@ -19,7 +19,7 @@
 #else
 #define COMPANION_BT_MODEM_SLEEP_AVAILABLE 0
 #endif
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
 #include <esp_heap_caps.h>
 #endif
 #endif
@@ -80,7 +80,7 @@ MultiSerialInterface interface_manager;
   #include <helpers/CLICommandUtils.h>
   static const char USB_TERMINAL_START_TOKEN[] = "+++MESHCORE-TERM-START";
   static const char USB_TERMINAL_STOP_TOKEN[] = "+++MESHCORE-TERM-STOP";
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
   // motatool sends this command automatically when `serve --serial` opens the
   // port. In Binary mode it is an exact, idle-parser control sequence that
   // hands USB ownership to the host-backed mOTA source.
@@ -291,7 +291,7 @@ static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
 static size_t usb_terminal_line_len = 0;
 static bool usb_terminal_discard_line = false;
 static bool usb_terminal_disconnect_armed = false;
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
 static bool usb_mota_mode = false;
 static char usb_mota_line[32];
 static size_t usb_mota_line_len = 0;
@@ -359,7 +359,7 @@ static void leaveUsbTerminalMode(bool acknowledge) {
   usb_terminal_disconnect_armed = false;
 }
 
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
 static void resetUsbMotaMode() {
   usb_mota_mode = false;
   usb_mota_line_len = 0;
@@ -440,7 +440,7 @@ static void serviceUsbMota() {
 #endif
 
 static void serviceUsbTerminal() {
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
   if (usb_mota_mode) {
     serviceUsbMota();
     return;
@@ -449,7 +449,7 @@ static void serviceUsbTerminal() {
   if (!the_mesh.isTerminalMode()) {
     if (usb_serial_interface.takeControlSequence()) {
       enterUsbTerminalMode();
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
     } else if (usb_serial_interface.takeSecondaryControlSequence()) {
       enterUsbMotaMode();
 #endif
@@ -746,7 +746,7 @@ void halt() {
 
   static void ota_console_start() {
     ota_console_server.begin();
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
     WIFI_DEBUG_PRINTLN("Full Companion terminal listening on :%d  (nc <ip> %d)",
                        OTA_CONSOLE_TCP_PORT, OTA_CONSOLE_TCP_PORT);
 #else
@@ -756,7 +756,7 @@ void halt() {
   }
 
   static void ota_console_stop() {
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
     the_mesh.exitNetworkTerminalMode(ota_console_client);
 #endif
     if (ota_console_client) ota_console_client.stop();
@@ -767,7 +767,7 @@ void halt() {
 
   static void ota_console_loop() {
     if (!ota_console_client || !ota_console_client.connected()) {
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
       the_mesh.exitNetworkTerminalMode(ota_console_client);
 #endif
       WiFiClient c = ota_console_server.available();
@@ -775,7 +775,7 @@ void halt() {
         ota_console_client = c;
         ota_console_clear_line();
         ota_console_discard_line = false;
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
         if (!the_mesh.enterNetworkTerminalMode(ota_console_client)) {
           ota_console_client.print(
               "ERROR: USB currently owns the Full Companion terminal\r\n");
@@ -787,7 +787,7 @@ void halt() {
       }
       return;
     }
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
     if (!the_mesh.isNetworkTerminalMode(ota_console_client)) {
       ota_console_client.print(
           "\r\nERROR: terminal ownership moved to USB; closing\r\n");
@@ -809,7 +809,7 @@ void halt() {
       if (ch == '\r' || ch == '\n') {
         if (ota_console_len == 0) continue;                            // ignore blanks / the CRLF pair
         ota_console_line[ota_console_len] = 0;
-#if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
         if (strcmp(ota_console_line, "disconnect") == 0) {
           ota_console_client.print("  OK - disconnecting\r\n");
           the_mesh.exitNetworkTerminalMode(ota_console_client);
@@ -1007,7 +1007,7 @@ void halt() {
   }
 #endif
 
-#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+#if defined(ESP32_PLATFORM) && COMPANION_FEATURE_MEMORY_DIAGNOSTICS
   static void logFullCompanionMemory(const char* stage) {
     mesh::usbLoggingPort().printf(
         "Full Companion memory %s: heap=%u largest_internal=%u psram_free=%u/%u offline_queue=%d\r\n",
@@ -1152,15 +1152,14 @@ void setup() {
   loadCompanionWiFiCredentials();
 #endif
 
-#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+#if defined(ESP32_PLATFORM) && COMPANION_FEATURE_MEMORY_DIAGNOSTICS
   logFullCompanionMemory("before interfaces");
 #endif
 
 // NimBLE must reserve its internal controller/host memory before WiFi starts
 // its AP and WebConfig services. Starting WiFi first can leave plenty of total
 // heap but no internal block large enough for nimble_port_init().
-#if defined(BLE_PIN_CODE) && defined(ESP32) \
-    && defined(COMPANION_RADIO_FULL) && defined(WIFI_SSID)
+#if defined(BLE_PIN_CODE) && defined(ESP32) && defined(WIFI_SSID)
   startCompanionBluetooth();
 #endif
 
@@ -1189,22 +1188,21 @@ void setup() {
   }
 #endif
 
-#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+#if defined(ESP32_PLATFORM) && COMPANION_FEATURE_MEMORY_DIAGNOSTICS
   logFullCompanionMemory("after WiFi start");
 #endif
 
-// Full ESP32 WiFi+BLE companions started BLE above so its controller memory
-// could not be fragmented by WiFi. Other BLE companions start here.
+// ESP32 WiFi+BLE companions started BLE above so its controller memory could
+// not be fragmented by WiFi. Other BLE companions start here.
 #if defined(BLE_PIN_CODE)
-  #if !(defined(ESP32) && defined(COMPANION_RADIO_FULL) \
-        && defined(WIFI_SSID))
+  #if !(defined(ESP32) && defined(WIFI_SSID))
     startCompanionBluetooth();
   #endif
 #endif
 
 // add usb interface
 #if defined(ENABLE_USB_INTERFACE)
-#if defined(NRF52_PLATFORM) && defined(COMPANION_RADIO_FULL) && defined(OTA_FOLDER_SERIAL)
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
   usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN, USB_MOTA_START_TOKEN);
 #else
   usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN);

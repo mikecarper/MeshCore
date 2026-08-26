@@ -6,8 +6,9 @@
 #include <new>
 
 #if defined(MESH_DUAL_CDC_LOGGING)
-  #if !defined(COMPANION_RADIO_FULL)
-    #error "MESH_DUAL_CDC_LOGGING is only supported by Full Companion"
+  #if !defined(COMPANION_FEATURE_DEDICATED_USB_LOGGING) || \
+      !COMPANION_FEATURE_DEDICATED_USB_LOGGING
+    #error "MESH_DUAL_CDC_LOGGING requires its dedicated Companion capability"
   #endif
   #if defined(NRF52_PLATFORM)
     #define MESH_NRF52_DUAL_CDC_LOGGING 1

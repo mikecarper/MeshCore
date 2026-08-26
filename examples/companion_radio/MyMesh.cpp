@@ -25,7 +25,7 @@
 #include <helpers/TracePathHelpers.h>
 #endif
 
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_OTA_CLI
 #include <helpers/ota/OtaCli.h>
 #endif
 
@@ -430,7 +430,7 @@ float MyMesh::getAirtimeBudgetFactor() const {
   // TempRadio is a short-lived, explicitly coordinated OTA channel. Let its
   // primary transfer use the full dispatcher budget; the persisted public
   // channel duty factor becomes authoritative again as soon as TempRadio ends.
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   if (isTempRadioActive()) return 0.0f;
 #endif
   return _prefs.airtime_factor;
@@ -1413,7 +1413,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
 #if MESH_USB_LOGGING_AVAILABLE
   _usb_logging_reboot_at = 0;
 #endif
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   _temp_radio_set_at = 0;
   _temp_radio_revert_at = 0;
   _temp_radio_retry_at = 0;
@@ -1474,7 +1474,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_enabled = 1;
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
-#if defined(COMPANION_RADIO_FULL) && defined(MESH_DUAL_CDC_LOGGING)
+#if defined(MESH_DUAL_CDC_LOGGING)
   // Keep the primary CDC stream exclusively framed unless the owner opts in
   // to the separate plaintext logging interface and reboots.
   _prefs.usb_logging_enabled = 0;
@@ -1800,7 +1800,7 @@ void MyMesh::servicePendingRadioParamApply() {
   }
 }
 
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
 static bool isFullCompanionBandwidth(float bw) {
   static const float supported[] = {
     7.8f, 10.4f, 15.6f, 20.8f, 31.25f, 41.7f,
@@ -2005,7 +2005,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 #endif
 
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_OTA_CLI
+#if COMPANION_FEATURE_TEMP_RADIO
   if (strcmp(command, "tempradio") == 0) {
     if (_temp_radio_set_at) {
       snprintf(reply, reply_size, "TempRadio pending: %.3f,%.2f,%u,%u",
@@ -2048,7 +2049,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     scheduleNormalRadio(reply, reply_size);
     return true;
   }
+#endif
 
+#if COMPANION_FEATURE_OTA_CLI
   if (strncmp(command, "ota", 3) == 0
       && (command[3] == 0 || command[3] == ' ')) {
     char ota_reply[160] = {0};
@@ -2057,11 +2060,12 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 #endif
+#endif
 
   return false;
 }
 
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
 void MyMesh::serviceTempRadio() {
   const unsigned long now = _ms->getMillis();
   const bool retry_ready = !_temp_radio_retry_at
@@ -3149,7 +3153,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       return;
     }
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
     if (isTempRadioActive() || _temp_radio_set_at != 0
         || _temp_radio_revert_at != 0) {
       writeErrFrame(ERR_CODE_BAD_STATE);
@@ -4217,7 +4221,7 @@ void MyMesh::resetTerminalSession() {
 
 void MyMesh::printTerminalBanner(bool show_binary_stop) {
   Stream& output = terminalOutput();
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_NETWORK_TERMINAL
   output.print("\r\n===== MeshCore Full Companion Terminal =====\r\n\r\n");
 #else
   output.print("\r\n===== MeshCore Companion Terminal =====\r\n\r\n");
@@ -4247,7 +4251,7 @@ void MyMesh::exitTerminalMode() {
   if (_terminal_output == &Serial) _terminal_output = NULL;
 }
 
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_NETWORK_TERMINAL
 bool MyMesh::enterNetworkTerminalMode(Stream& output) {
   if (_terminal_mode) return false;
   _terminal_output = &output;
@@ -5059,7 +5063,7 @@ void MyMesh::handleTerminalCommand(char* command) {
       uint32_t effective_sleep_us = _prefs.rx_ps_sleep_us;
       uint8_t active_sf = _prefs.sf;
       float active_bw = _prefs.bw;
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
       if (isTempRadioActive()) {
         active_sf = _temp_radio_sf;
         active_bw = _temp_radio_bw;
@@ -5318,10 +5322,14 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  public <text>\r\n");
     terminalOutput().print("  channels\r\n");
     terminalOutput().print("  channel <name-or-slot> <text>\r\n");
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_OTA_CLI
+#if COMPANION_FEATURE_TEMP_RADIO
     terminalOutput().print("  tempradio [freq,bw,sf,cr,minutes]\r\n");
     terminalOutput().print("  normalradio\r\n");
+#endif
+#if COMPANION_FEATURE_OTA_CLI
     terminalOutput().print("  ota {status|ls|announce|folder|config|...}\r\n");
+#endif
 #endif
     terminalOutput().print("  ver\r\n");
     if (_terminal_mode) {
@@ -5555,7 +5563,7 @@ void MyMesh::loop() {
     return;
   }
 #endif
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
   serviceTempRadio();
 #endif
   BaseChatMesh::loop();
@@ -5568,7 +5576,7 @@ void MyMesh::loop() {
   serviceTerminalTrace();
 #endif
   if (!command_radio_apply_pending && saved_radio_apply_pending && !hasOutbound()
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
       && !_temp_radio_applied && _temp_radio_set_at == 0
       && _temp_radio_revert_at == 0
 #endif
@@ -5647,7 +5655,7 @@ bool MyMesh::hasPendingWork() const {
       || (dirty_contacts_expiry != 0 && millisHasNowPassed(dirty_contacts_expiry))
       || (emergency_client_repeat_packet != NULL
           && millisHasNowPassed(emergency_client_repeat_send_at))
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_TEMP_RADIO
       || (_temp_radio_set_at != 0 && millisHasNowPassed(_temp_radio_set_at))
       || (_temp_radio_revert_at != 0 && millisHasNowPassed(_temp_radio_revert_at))
       || (_temp_radio_retry_at != 0 && millisHasNowPassed(_temp_radio_retry_at))
