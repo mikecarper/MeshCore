@@ -1329,6 +1329,13 @@ the radio chip itself.</p>
 <pre><code>set name {name}
 </code></pre>
 <p>Sets your advertisement name.</p>
+<pre><code>get bluetooth.name
+set bluetooth.name {name|default}
+</code></pre>
+<p>Shows or changes the complete Bluetooth device name without changing the mesh
+advertisement identity. A custom name may contain spaces and is limited to 31
+valid UTF-8 bytes. <code>default</code> restores <code>MeshCore-&lt;node name&gt;</code>. The saved change
+takes effect after reboot. <code>get ble.name</code> and <code>set ble.name</code> are short aliases.</p>
 <pre><code>set lat {latitude}
 </code></pre>
 <p>Sets your advertisement map latitude. (decimal degrees)</p>

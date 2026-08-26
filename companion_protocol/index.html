@@ -2814,6 +2814,11 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <td><code>CMD_GET_WIFI_POWER_SAVE</code> / <code>CMD_SET_WIFI_POWER_SAVE</code></td>
 <td>Read or set ESP32 Companion WiFi modem sleep.</td>
 </tr>
+<tr>
+<td><code>0x48</code> / <code>0x49</code></td>
+<td><code>CMD_GET_BLUETOOTH_NAME</code> / <code>CMD_SET_BLUETOOTH_NAME</code></td>
+<td>Read or set the independent Bluetooth device name.</td>
+</tr>
 </tbody>
 </table>
 <p>The sections below detail the most common frames. Refer to the source named
@@ -2865,6 +2870,17 @@ coexistence requires modem sleep. A storage failure also returns
 <code>ERR_CODE_BAD_STATE</code>. If an already-saved mode cannot be applied to the active
 WiFi driver, SET still returns <code>RESP_CODE_OK</code> and the mode is applied on the
 next connection. Device <code>powersaving</code> does not overwrite this setting.</p>
+<p>The Bluetooth-name pair is available on Companion builds regardless of the
+currently selected transport, so a host can configure a BLE-capable image over
+USB or TCP before rebooting into it. <code>CMD_GET_BLUETOOTH_NAME</code> has no body and
+replies with <code>RESP_CODE_OK</code>, a one-byte mode (<code>0</code> for the default name, <code>1</code> for
+a custom name), then the effective UTF-8 device name without a terminator.
+<code>CMD_SET_BLUETOOTH_NAME</code> is followed by zero to 31 UTF-8 bytes. A non-empty
+body stores that exact complete Bluetooth name; a zero-length body clears the
+override and restores <code>MeshCore-&lt;advert name&gt;</code>. A successful SET replies with
+<code>RESP_CODE_OK</code>, and the new label takes effect after reboot. Embedded NULs,
+control characters, malformed UTF-8, or oversized values return
+<code>ERR_CODE_ILLEGAL_ARG</code>; a storage failure returns <code>ERR_CODE_BAD_STATE</code>.</p>
 <h3 id="1-app-start">1. App Start</h3>
 <p><strong>Purpose</strong>: Initialize communication with the device. Must be sent first after connection.</p>
 <p><strong>Command Format</strong>:</p>
