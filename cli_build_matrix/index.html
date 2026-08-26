@@ -1511,7 +1511,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Internal-flash nRF52 repeater auto pair</td>
-<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits only the declared external sensors to leave additional internal-flash staging room. Both carry the same stable OTA target identity and both are checked for <code>ota ...</code> and <code>retry.preset</code>.</td>
+<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured 4,808-byte flash cost. Both artifacts carry the same stable OTA target identity and are checked for <code>ota ...</code> and <code>retry.preset</code>; RAK artifacts also verify the retained monitor drivers.</td>
 </tr>
 <tr>
 <td>ESP32 MQTT observer or ESP-NOW bridge</td>
@@ -1531,7 +1531,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
-<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1.</td>
+<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles also retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1. The legacy target suffix is retained for OTA identity compatibility.</td>
 </tr>
 </tbody>
 </table>
