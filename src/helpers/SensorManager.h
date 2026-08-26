@@ -65,6 +65,12 @@ protected:
 #endif
 
 public:
+  struct VoltageSensorReading {
+    uint8_t channel;
+    float voltage;
+    bool valid;
+  };
+
   double node_lat, node_lon;  // modify these, if you want to affect Advert location
   double node_altitude;       // altitude in meters
   bool powersaving_enabled;   // powersaving mode
@@ -73,6 +79,18 @@ public:
   virtual bool i2c_probe(TwoWire& wire, uint8_t addr) { return false; }
   virtual bool begin() { return false; }
   virtual bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { return false; }
+  virtual uint8_t getVoltageSensorChannels(uint8_t channels[],
+                                           uint8_t capacity) const {
+    (void)channels;
+    (void)capacity;
+    return 0;
+  }
+  virtual uint8_t queryVoltageSensors(VoltageSensorReading readings[],
+                                      uint8_t capacity) {
+    (void)readings;
+    (void)capacity;
+    return 0;
+  }
   virtual void loop() { }
   virtual void setTelemetryLocationAccessAvailable(bool available);
   virtual int getNumSettings() const { return 0; }

@@ -2415,6 +2415,9 @@ declare_build_capability_contract() {
   if is_repeater_role_target "$env_name" \
       || is_room_server_role_target "$env_name"; then
     record_build_expectation "cli.retry_preset" "retry.preset"
+    if [ "$env_platform" != "STM32_PLATFORM" ]; then
+      record_build_expectation "telemetry.history" "telemetry.volt.i2c"
+    fi
   fi
 
   if is_lora_ota_build "$env_name"; then

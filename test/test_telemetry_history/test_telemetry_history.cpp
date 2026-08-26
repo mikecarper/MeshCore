@@ -3,9 +3,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
+#include <helpers/ExternalVoltageHistory.h>
 #include <helpers/TelemetryHistory.h>
 
 namespace {
@@ -429,6 +431,155 @@ TEST(TelemetryHistory, ValidatesRetentionAndPagingArguments) {
   EXPECT_FALSE(history.formatPageReply(mesh::TelemetryHistory::SERIES_GPS,
                                        "1 extra", reply, sizeof(reply)));
   EXPECT_NE(nullptr, strstr(reply, "get telemetry.gps"));
+}
+
+TEST(ExternalVoltageHistory, QuantizesFullLppRangeAtTwentyMillivolts) {
+  using mesh::ExternalVoltageHistory;
+
+  EXPECT_EQ(0, ExternalVoltageHistory::encodeVoltage(0.0f));
+  EXPECT_EQ(0, ExternalVoltageHistory::encodeVoltage(-1.0f));
+  EXPECT_EQ(0, ExternalVoltageHistory::encodeVoltage(
+                   std::numeric_limits<float>::quiet_NaN()));
+  EXPECT_EQ(0, ExternalVoltageHistory::encodeVoltage(12.0f, false));
+  EXPECT_EQ(1, ExternalVoltageHistory::encodeVoltage(0.02f));
+  EXPECT_EQ(617, ExternalVoltageHistory::encodeVoltage(12.34f));
+  EXPECT_EQ(32767, ExternalVoltageHistory::encodeVoltage(655.34f));
+  EXPECT_EQ(32767, ExternalVoltageHistory::encodeVoltage(700.0f));
+  EXPECT_EQ(12340U, ExternalVoltageHistory::decodeMillivolts(617));
+  EXPECT_EQ(655340U,
+            ExternalVoltageHistory::decodeMillivolts(32767));
+}
+
+TEST(ExternalVoltageHistory, OmitsChannelsWhoseHistoryIsEntirelyZero) {
+  using mesh::ExternalVoltageHistory;
+  ExternalVoltageHistory history;
+  const uint8_t channels[] = {2, 3, 3};
+  ASSERT_TRUE(history.configure(channels, sizeof(channels)));
+  EXPECT_EQ(2, history.channelCount());
+  EXPECT_EQ(2U * ExternalVoltageHistory::BYTES_PER_CHANNEL,
+            history.storageBytes());
+
+  ExternalVoltageHistory::Reading readings[] = {
+      {2, 0.0f, true}, {3, 0.0f, true}};
+  history.record(1800000000U, readings, 2);
+  EXPECT_EQ(0, history.populatedChannelCount());
+
+  char reply[160];
+  EXPECT_FALSE(history.formatPageReply("", reply, sizeof(reply)));
+  EXPECT_STREQ("Err - no connected I2C voltage channels", reply);
+
+  readings[1].voltage = 24.0f;
+  history.record(1800000000U + ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+                 readings, 2);
+  EXPECT_EQ(1, history.populatedChannelCount());
+  EXPECT_EQ(3, history.populatedChannelAt(0));
+  EXPECT_FALSE(history.channelHasValue(2));
+  EXPECT_TRUE(history.channelHasValue(3));
+  EXPECT_TRUE(history.formatPageReply("", reply, sizeof(reply)));
+  EXPECT_NE(nullptr, strstr(reply, "channels=3"));
+
+  readings[1].voltage = 0.0f;
+  for (uint32_t sample = 0;
+       sample < ExternalVoltageHistory::RETENTION_SAMPLES; sample++) {
+    history.record(
+        1800000000U
+            + (sample + 2U)
+                * ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+        readings, 2);
+  }
+  EXPECT_EQ(ExternalVoltageHistory::RETENTION_SAMPLES,
+            history.sampleCount());
+  EXPECT_EQ(0, history.populatedChannelCount());
+  EXPECT_FALSE(history.channelHasValue(3));
+  EXPECT_FALSE(history.formatPageReply("", reply, sizeof(reply)));
+  EXPECT_STREQ("Err - no connected I2C voltage channels", reply);
+}
+
+TEST(ExternalVoltageHistory, RetainsFourDaysAndFormatsMultiChannelPages) {
+  using mesh::ExternalVoltageHistory;
+  ExternalVoltageHistory history;
+  const uint8_t channels[] = {2, 7};
+  ASSERT_TRUE(history.configure(channels, sizeof(channels)));
+  const uint32_t first_bucket = 100000U;
+
+  for (uint32_t sample = 0;
+       sample <= ExternalVoltageHistory::RETENTION_SAMPLES; sample++) {
+    ExternalVoltageHistory::Reading readings[] = {
+        {2, (float)(sample + 1U) * 0.02f, true},
+        {7, (float)(sample + 101U) * 0.02f, true}};
+    history.record((first_bucket + sample)
+                       * ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+                   readings, 2);
+  }
+
+  EXPECT_EQ(ExternalVoltageHistory::RETENTION_SAMPLES,
+            history.sampleCount());
+  EXPECT_EQ(2, history.populatedChannelCount());
+  char reply[160];
+  ASSERT_TRUE(history.formatPageReply("2 4", reply, sizeof(reply)));
+  const std::vector<uint8_t> payload = decodeReply(reply);
+  ASSERT_EQ(ExternalVoltageHistory::PAGE_HEADER_SIZE
+                + ExternalVoltageHistory::PAGE_DATA_SIZE,
+            payload.size());
+  EXPECT_EQ(ExternalVoltageHistory::PAGE_PAYLOAD_TYPE_V1, payload[0]);
+  EXPECT_EQ((first_bucket + 1U)
+                * ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+            uint32LE(&payload[1]));
+  EXPECT_EQ(30, payload[5]);
+  EXPECT_EQ(48, payload[6]);
+  EXPECT_EQ(2, payload[7]);
+  size_t bit_offset = 0;
+  EXPECT_EQ(2U, readBits(&payload[ExternalVoltageHistory::PAGE_HEADER_SIZE],
+                         bit_offset, ExternalVoltageHistory::SAMPLE_BITS));
+
+  ASSERT_TRUE(history.formatPageReply("7 1", reply, sizeof(reply)));
+  const std::vector<uint8_t> newest = decodeReply(reply);
+  bit_offset = 0;
+  EXPECT_EQ(246U,
+            readBits(&newest[ExternalVoltageHistory::PAGE_HEADER_SIZE],
+                     bit_offset, ExternalVoltageHistory::SAMPLE_BITS));
+}
+
+TEST(ExternalVoltageHistory, FormatsThreeRawChunksPerFullChannel) {
+  using mesh::ExternalVoltageHistory;
+  ExternalVoltageHistory history;
+  const uint8_t channels[] = {2, 7};
+  ASSERT_TRUE(history.configure(channels, sizeof(channels)));
+  const uint32_t first_bucket = 200000U;
+  for (uint32_t sample = 0;
+       sample < ExternalVoltageHistory::RETENTION_SAMPLES; sample++) {
+    ExternalVoltageHistory::Reading readings[] = {
+        {2, (float)(sample + 1U) * 0.02f, true},
+        {7, 0.0f, true}};
+    history.record((first_bucket + sample)
+                       * ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+                   readings, 2);
+  }
+
+  EXPECT_EQ(3, history.binaryChunkCount());
+  const uint8_t source_id[ExternalVoltageHistory::BINARY_SOURCE_ID_SIZE] = {
+      0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF};
+  uint8_t payload[ExternalVoltageHistory::BINARY_PAYLOAD_SIZE];
+  for (uint8_t chunk = 0; chunk < 3; chunk++) {
+    ASSERT_EQ(sizeof(payload), history.formatBinarySnapshot(
+                                   source_id, 2, chunk,
+                                   payload, sizeof(payload)));
+    EXPECT_EQ(0, memcmp(payload, "IVB1", 4));
+    EXPECT_EQ(0, memcmp(&payload[4], source_id, sizeof(source_id)));
+    EXPECT_EQ((first_bucket + (uint32_t)chunk * 64U)
+                  * ExternalVoltageHistory::SAMPLE_INTERVAL_SECONDS,
+              uint32LE(&payload[12]));
+    EXPECT_EQ(30, uint16LE(&payload[16]));
+    EXPECT_EQ(2, payload[18]);
+    EXPECT_EQ(64, payload[19]);
+    size_t bit_offset = 0;
+    EXPECT_EQ(1U + (uint32_t)chunk * 64U,
+              readBits(&payload[ExternalVoltageHistory::BINARY_HEADER_SIZE],
+                       bit_offset, ExternalVoltageHistory::SAMPLE_BITS));
+  }
+
+  EXPECT_EQ(0U, history.formatBinarySnapshot(
+                    source_id, 7, 0, payload, sizeof(payload)));
 }
 
 int main(int argc, char** argv) {

@@ -35,6 +35,28 @@
 #include <RTClib.h>
 #include <target.h>
 
+#ifndef MESH_ENABLE_TELEMETRY_HISTORY
+  // LoRa-E5-class STM32 room images do not have enough flash for history.
+  #if defined(STM32_PLATFORM)
+    #define MESH_ENABLE_TELEMETRY_HISTORY 0
+  #else
+    #define MESH_ENABLE_TELEMETRY_HISTORY 1
+  #endif
+#endif
+
+#ifndef MESH_ENABLE_TELEMETRY_GPS_HISTORY
+  #if ENV_INCLUDE_GPS == 1
+    #define MESH_ENABLE_TELEMETRY_GPS_HISTORY 1
+  #else
+    #define MESH_ENABLE_TELEMETRY_GPS_HISTORY 0
+  #endif
+#endif
+
+#if MESH_ENABLE_TELEMETRY_HISTORY
+#include <helpers/ExternalVoltageHistory.h>
+#include <helpers/TelemetryHistory.h>
+#endif
+
 #ifdef WITH_MQTT_BRIDGE
 #include "helpers/bridges/MQTTBridge.h"
 #define WITH_BRIDGE
@@ -161,6 +183,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   int next_post_idx;
   PostInfo posts[MAX_UNSYNCED_POSTS];   // cyclic queue
   CayenneLPP telemetry;
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  mesh::TelemetryHistory telemetry_history;
+  mesh::ExternalVoltageHistory external_voltage_history;
+#endif
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
   TransportKey default_scope;
@@ -339,6 +365,10 @@ protected:
 #endif
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  bool handleTelemetryHistoryCommand(const char* command, char* reply);
+  void sampleTelemetryHistory();
+#endif
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);

@@ -68,7 +68,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`stats-radio`](cli_commands.md#stats-radio) | Local serial | Serial | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial |
 | Statistics | [`stats-packets`](cli_commands.md#stats-packets) | Local serial | Serial | Serial | Serial |
-| Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes |
+| Statistics | [`get telemetry.temp/volt/volt.i2c`; optional GPS history](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater or room server; I2C command requires a detected voltage monitor; GPS requires a provider; remote access requires administrator | Yes | Yes | Yes |
+| Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data; other roles can return empty data | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial |
 | Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; dual-CDC Full Companion adds/removes its second USB port after reboot | No | Yes | No |
@@ -230,7 +231,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`stats-radio`](cli_commands.md#stats-radio) | Local serial | Serial | Serial | Serial | Serial | Serial |
 | Statistics | [`stats-radio-diag`](#stats-radio-diag) | Local serial | Serial | Serial | Serial | Serial | Serial |
 | Statistics | [`stats-packets`](cli_commands.md#stats-packets) | Local serial | Serial | Serial | Serial | Serial | Serial |
-| Statistics | [`get telemetry.temp/volt`; optional GPS history; `get/set telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS commands require a GPS provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes |
+| Statistics | [`get telemetry.temp/volt/volt.i2c`; optional GPS history](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater or room server; I2C command requires a detected voltage monitor; GPS requires a provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes |
+| Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial | Serial | Serial |
 | Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; dual-CDC Full Companion adds/removes its second USB port after reboot | No | Yes | No | No | Yes |

@@ -99,6 +99,7 @@
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/StatsFormatHelper.h>
 #if MESH_ENABLE_TELEMETRY_HISTORY
+#include <helpers/ExternalVoltageHistory.h>
 #include <helpers/TelemetryHistory.h>
 #endif
 #include <helpers/TxtDataHelpers.h>
@@ -457,12 +458,17 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   CayenneLPP telemetry;
 #if MESH_ENABLE_TELEMETRY_HISTORY
   mesh::TelemetryHistory telemetry_history;
+  mesh::ExternalVoltageHistory external_voltage_history;
   bool telemetry_history_tx_enabled;
   uint8_t telemetry_history_tx_path[MAX_PATH_SIZE];
   uint8_t telemetry_history_tx_path_len;
   uint8_t telemetry_history_tx_interval_days;
   uint8_t telemetry_history_tx_pending;
+  bool telemetry_history_tx_manual;
+  uint8_t telemetry_history_tx_external_channel;
+  uint8_t telemetry_history_tx_external_chunk;
   uint64_t telemetry_history_next_tx_uptime;
+  uint64_t telemetry_history_tx_resume_uptime;
 #endif
   unsigned long _ota_update_at = 0;  // deferred `ota update` fire time (0 = none scheduled)
   float active_bw;  // live BW, including temporary radio overrides
@@ -628,6 +634,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool saveTelemetryHistoryTxPrefs();
   void serviceTelemetryHistoryTx();
   bool sendTelemetryHistorySnapshot(mesh::TelemetryHistory::Series series);
+  bool sendExternalVoltageHistorySnapshot(uint8_t channel_index,
+                                          uint8_t chunk_index);
   void formatTelemetryHistoryTxStatus(char* reply, size_t reply_size) const;
 #endif
   void sendSelfAdvertisementNow(uint32_t delay_millis, bool flood);

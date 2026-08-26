@@ -421,6 +421,16 @@ static void query_ina3221(uint8_t ch, uint8_t sub_ch, CayenneLPP& lpp) {
     }
   }
 }
+static bool query_ina3221_voltage(uint8_t sub_ch, float& voltage) {
+  uint8_t seen = 0;
+  for (int i = 0; i < TELEM_INA3221_NUM_CHANNELS; i++) {
+    if (!INA3221.isChannelEnabled(i)) continue;
+    if (seen++ != sub_ch) continue;
+    voltage = INA3221.getBusVoltage(i);
+    return isfinite(voltage);
+  }
+  return false;
+}
 #endif
 
 #if ENV_INCLUDE_INA219
@@ -433,6 +443,10 @@ static void query_ina219(uint8_t ch, uint8_t, CayenneLPP& lpp) {
   lpp.addCurrent(ch, INA219.getCurrent_mA() / 1000.0f);
   lpp.addPower(ch, INA219.getPower_mW() / 1000.0f);
 }
+static bool query_ina219_voltage(uint8_t, float& voltage) {
+  voltage = INA219.getBusVoltage_V();
+  return INA219.success() && isfinite(voltage);
+}
 #endif
 
 #if ENV_INCLUDE_INA260
@@ -443,6 +457,10 @@ static void query_ina260(uint8_t ch, uint8_t, CayenneLPP& lpp) {
   lpp.addVoltage(ch, INA260.readBusVoltage() / 1000.0f);
   lpp.addCurrent(ch, INA260.readCurrent() / 1000.0f);
   lpp.addPower(ch, INA260.readPower() / 1000.0f);
+}
+static bool query_ina260_voltage(uint8_t, float& voltage) {
+  voltage = INA260.readBusVoltage() / 1000.0f;
+  return isfinite(voltage);
 }
 #endif
 
@@ -457,6 +475,10 @@ static void query_ina226(uint8_t ch, uint8_t, CayenneLPP& lpp) {
   lpp.addVoltage(ch, INA226.getBusVoltage());
   lpp.addCurrent(ch, INA226.getCurrent_mA() / 1000.0f);
   lpp.addPower(ch, INA226.getPower_mW() / 1000.0f);
+}
+static bool query_ina226_voltage(uint8_t, float& voltage) {
+  voltage = INA226.getBusVoltage();
+  return isfinite(voltage);
 }
 #endif
 
@@ -600,64 +622,69 @@ struct SensorDef {
   const char* name;
   uint8_t   (*init)(TwoWire* wire, uint8_t address);
   void      (*query)(uint8_t channel, uint8_t sub_channel, CayenneLPP& telemetry);
+  bool      (*query_voltage)(uint8_t sub_channel, float& voltage);
 };
 
 #define TELEM_BOSCH_ALT_ADDR(addr) ((uint8_t)((addr) == 0x76 ? 0x77 : 0x76))
 
 static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_AHTX0
-  { TELEM_AHTX_ADDRESS,    "AHT10/AHT20", init_ahtx0,    query_ahtx0    },
+  { TELEM_AHTX_ADDRESS,    "AHT10/AHT20", init_ahtx0,    query_ahtx0,    NULL },
 #endif
 #ifdef ENV_INCLUDE_BME680
-  { TELEM_BME680_ADDRESS,                       "BME680",       init_bme680,      query_bme680      },
-  { TELEM_BOSCH_ALT_ADDR(TELEM_BME680_ADDRESS), "BME680",       init_bme680,      query_bme680      },
+  { TELEM_BME680_ADDRESS,                       "BME680",       init_bme680,      query_bme680,      NULL },
+  { TELEM_BOSCH_ALT_ADDR(TELEM_BME680_ADDRESS), "BME680",       init_bme680,      query_bme680,      NULL },
 #endif
 #if ENV_INCLUDE_BME680_BSEC
-  { TELEM_BME680_ADDRESS,                       "BME680+BSEC",  init_bme680_bsec, query_bme680_bsec },
-  { TELEM_BOSCH_ALT_ADDR(TELEM_BME680_ADDRESS), "BME680+BSEC",  init_bme680_bsec, query_bme680_bsec },
+  { TELEM_BME680_ADDRESS,                       "BME680+BSEC",  init_bme680_bsec, query_bme680_bsec, NULL },
+  { TELEM_BOSCH_ALT_ADDR(TELEM_BME680_ADDRESS), "BME680+BSEC",  init_bme680_bsec, query_bme680_bsec, NULL },
 #endif
 #if ENV_INCLUDE_BME280
-  { TELEM_BME280_ADDRESS,                       "BME280",       init_bme280,      query_bme280      },
-  { TELEM_BOSCH_ALT_ADDR(TELEM_BME280_ADDRESS), "BME280",       init_bme280,      query_bme280      },
+  { TELEM_BME280_ADDRESS,                       "BME280",       init_bme280,      query_bme280,      NULL },
+  { TELEM_BOSCH_ALT_ADDR(TELEM_BME280_ADDRESS), "BME280",       init_bme280,      query_bme280,      NULL },
 #endif
 #if ENV_INCLUDE_BMP280
-  { TELEM_BMP280_ADDRESS,                       "BMP280",       init_bmp280,      query_bmp280      },
-  { TELEM_BOSCH_ALT_ADDR(TELEM_BMP280_ADDRESS), "BMP280",       init_bmp280,      query_bmp280      },
+  { TELEM_BMP280_ADDRESS,                       "BMP280",       init_bmp280,      query_bmp280,      NULL },
+  { TELEM_BOSCH_ALT_ADDR(TELEM_BMP280_ADDRESS), "BMP280",       init_bmp280,      query_bmp280,      NULL },
 #endif
 #if ENV_INCLUDE_SHTC3
-  { 0x70,                  "SHTC3",        init_shtc3,    query_shtc3    },
+  { 0x70,                  "SHTC3",        init_shtc3,    query_shtc3,    NULL },
 #endif
 #if ENV_INCLUDE_SHT4X
-  { TELEM_SHT4X_ADDRESS,   "SHT4X",        init_sht4x,    query_sht4x    },
+  { TELEM_SHT4X_ADDRESS,   "SHT4X",        init_sht4x,    query_sht4x,    NULL },
 #endif
 #if ENV_INCLUDE_LPS22HB
-  { 0x5C,                  "LPS22HB",      init_lps22hb,  query_lps22hb  },
+  { 0x5C,                  "LPS22HB",      init_lps22hb,  query_lps22hb,  NULL },
 #endif
 #if ENV_INCLUDE_INA3221
-  { TELEM_INA3221_ADDRESS, "INA3221",      init_ina3221,  query_ina3221  },
+  { TELEM_INA3221_ADDRESS, "INA3221",      init_ina3221,  query_ina3221,
+    query_ina3221_voltage },
 #endif
 #if ENV_INCLUDE_INA219
-  { TELEM_INA219_ADDRESS,  "INA219",       init_ina219,   query_ina219   },
+  { TELEM_INA219_ADDRESS,  "INA219",       init_ina219,   query_ina219,
+    query_ina219_voltage },
 #endif
 #if ENV_INCLUDE_INA260
-  { TELEM_INA260_ADDRESS,  "INA260",       init_ina260,   query_ina260   },
+  { TELEM_INA260_ADDRESS,  "INA260",       init_ina260,   query_ina260,
+    query_ina260_voltage },
 #endif
 #if ENV_INCLUDE_INA226
-  { TELEM_INA226_ADDRESS,  "INA226",       init_ina226,   query_ina226   },
+  { TELEM_INA226_ADDRESS,  "INA226",       init_ina226,   query_ina226,
+    query_ina226_voltage },
 #endif
 #if ENV_INCLUDE_MLX90614
-  { TELEM_MLX90614_ADDRESS,"MLX90614",     init_mlx90614, query_mlx90614 },
+  { TELEM_MLX90614_ADDRESS,"MLX90614",     init_mlx90614, query_mlx90614, NULL },
 #endif
 #if ENV_INCLUDE_VL53L0X
-  { TELEM_VL53L0X_ADDRESS, "VL53L0X",      init_vl53l0x,  query_vl53l0x  },
+  { TELEM_VL53L0X_ADDRESS, "VL53L0X",      init_vl53l0x,  query_vl53l0x,  NULL },
 #endif
 #ifdef ENV_INCLUDE_BMP085
-  { 0x77,                  "BMP085",       init_bmp085,   query_bmp085   },
+  { 0x77,                  "BMP085",       init_bmp085,   query_bmp085,   NULL },
 #endif
 #if ENV_INCLUDE_RAK12035
-  { TELEM_RAK12035_ADDRESS,"RAK12035",     init_rak12035, query_rak12035 },
+  { TELEM_RAK12035_ADDRESS,"RAK12035",     init_rak12035, query_rak12035, NULL },
 #endif
-  { 0, nullptr, nullptr, nullptr }  // sentinel - keeps the array non-empty
+  { 0, nullptr, nullptr, nullptr, nullptr }  // sentinel keeps array non-empty
 };
 
 #undef TELEM_BOSCH_ALT_ADDR
@@ -722,7 +749,9 @@ bool EnvironmentSensorManager::begin() {
     MESH_DEBUG_PRINTLN("Found %s at address: %02X", def.name, def.address);
     detected[def.address] = false;  // consumed; later entries must not re-claim this device
     for (uint8_t sub = 0; sub < n && _active_sensor_count < MAX_ACTIVE_SENSORS; sub++) {
-      _active_sensors[_active_sensor_count++] = { def.query, sub };
+      _active_sensors[_active_sensor_count++] = {
+        def.query, def.query_voltage, sub
+      };
     }
   }
 
@@ -752,7 +781,34 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
   return true;
 }
 
+uint8_t EnvironmentSensorManager::getVoltageSensorChannels(
+    uint8_t channels[], uint8_t capacity) const {
+  uint8_t count = 0;
+  for (int i = 0; i < _active_sensor_count; i++) {
+    if (_active_sensors[i].query_voltage == NULL) continue;
+    if (count < capacity && channels != NULL) {
+      channels[count] = (uint8_t)(TELEM_CHANNEL_SELF + 1 + i);
+    }
+    count++;
+  }
+  return count < capacity ? count : capacity;
+}
 
+uint8_t EnvironmentSensorManager::queryVoltageSensors(
+    VoltageSensorReading readings[], uint8_t capacity) {
+  uint8_t count = 0;
+  for (int i = 0; i < _active_sensor_count && count < capacity; i++) {
+    const ActiveSensor& sensor = _active_sensors[i];
+    if (sensor.query_voltage == NULL) continue;
+    VoltageSensorReading& reading = readings[count++];
+    reading.channel = (uint8_t)(TELEM_CHANNEL_SELF + 1 + i);
+    reading.voltage = 0.0f;
+    reading.valid = sensor.query_voltage(sensor.sub_channel,
+                                         reading.voltage)
+        && isfinite(reading.voltage);
+  }
+  return count;
+}
 int EnvironmentSensorManager::getNumSettings() const {
   int settings = 0;
   #if ENV_INCLUDE_GPS

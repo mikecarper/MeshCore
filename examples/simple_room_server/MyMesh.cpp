@@ -1378,6 +1378,20 @@ void MyMesh::begin(FILESYSTEM *fs) {
     Serial.println(wc_reply);
   }
 #endif
+
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  uint8_t voltage_channels[mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  const uint8_t voltage_channel_count = sensors.getVoltageSensorChannels(
+      voltage_channels, mesh::ExternalVoltageHistory::MAX_CHANNELS);
+  if (!external_voltage_history.configure(voltage_channels,
+                                          voltage_channel_count)) {
+    MESH_DEBUG_PRINTLN("I2C voltage history allocation failed");
+  } else if (voltage_channel_count != 0) {
+    MESH_DEBUG_PRINTLN("I2C voltage history: %u channels, %u bytes",
+                       (unsigned)external_voltage_history.channelCount(),
+                       (unsigned)external_voltage_history.storageBytes());
+  }
+#endif
 }
 
 bool MyMesh::applySavedRadioParams() {
@@ -1977,6 +1991,103 @@ void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
 }
 #endif
 
+#if MESH_ENABLE_TELEMETRY_HISTORY
+bool MyMesh::handleTelemetryHistoryCommand(const char* command, char* reply) {
+  static const char temperature_command[] = "get telemetry.temp";
+  static const char battery_command[] = "get telemetry.volt";
+  static const char external_voltage_command[] =
+      "get telemetry.volt.i2c";
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
+  static const char gps_command[] = "get telemetry.gps";
+#endif
+
+  if (strncmp(command, external_voltage_command,
+              sizeof(external_voltage_command) - 1U) == 0
+      && (command[sizeof(external_voltage_command) - 1U] == 0
+          || command[sizeof(external_voltage_command) - 1U] == ' ')) {
+    external_voltage_history.formatPageReply(
+        command + sizeof(external_voltage_command) - 1U, reply, 160);
+    return true;
+  }
+
+  const char* args = NULL;
+  mesh::TelemetryHistory::Series series =
+      mesh::TelemetryHistory::SERIES_TEMPERATURE;
+  if (strncmp(command, temperature_command,
+              sizeof(temperature_command) - 1U) == 0
+      && (command[sizeof(temperature_command) - 1U] == 0
+          || command[sizeof(temperature_command) - 1U] == ' ')) {
+    args = command + sizeof(temperature_command) - 1U;
+  } else if (strncmp(command, battery_command,
+                     sizeof(battery_command) - 1U) == 0
+      && (command[sizeof(battery_command) - 1U] == 0
+          || command[sizeof(battery_command) - 1U] == ' ')) {
+    series = mesh::TelemetryHistory::SERIES_VOLTAGE;
+    args = command + sizeof(battery_command) - 1U;
+#if MESH_ENABLE_TELEMETRY_GPS_HISTORY
+  } else if (strncmp(command, gps_command, sizeof(gps_command) - 1U) == 0
+      && (command[sizeof(gps_command) - 1U] == 0
+          || command[sizeof(gps_command) - 1U] == ' ')) {
+    series = mesh::TelemetryHistory::SERIES_GPS;
+    args = command + sizeof(gps_command) - 1U;
+#endif
+  }
+
+  if (args == NULL) return false;
+  telemetry_history.formatPageReply(series, args, reply, 160);
+  return true;
+}
+
+void MyMesh::sampleTelemetryHistory() {
+  const uint32_t now = getRTCClock()->getCurrentTime();
+  if (!telemetry_history.sampleDue(now)) return;
+
+  int32_t latitude_e7 = 0;
+  int32_t longitude_e7 = 0;
+  bool gps_valid = false;
+#if ENV_INCLUDE_GPS == 1
+  LocationProvider* location = sensors.getLocationProvider();
+  if (location != NULL && location->isEnabled() && location->isValid()) {
+    const long latitude_e6 = location->getLatitude();
+    const long longitude_e6 = location->getLongitude();
+    if (latitude_e6 >= -90000000L && latitude_e6 <= 90000000L
+        && longitude_e6 >= -180000000L
+        && longitude_e6 <= 180000000L) {
+      latitude_e7 = (int32_t)((int64_t)latitude_e6 * 10);
+      longitude_e7 = (int32_t)((int64_t)longitude_e6 * 10);
+      gps_valid = latitude_e7 != 0 || longitude_e7 != 0;
+    }
+  }
+#endif
+
+  const float measured_temperature = _cli.getBoard()->getMCUTemperature();
+  const bool temperature_valid = isfinite(measured_temperature);
+  int16_t temperature_c = 0;
+  if (temperature_valid) {
+    if (measured_temperature < -32768.0f) temperature_c = INT16_MIN;
+    else if (measured_temperature > 32767.0f) temperature_c = INT16_MAX;
+    else temperature_c = (int16_t)lroundf(measured_temperature);
+  }
+
+  telemetry_history.record(now, temperature_c, temperature_valid,
+                           _cli.getBoard()->getBattMilliVolts(),
+                           latitude_e7, longitude_e7, gps_valid);
+
+  SensorManager::VoltageSensorReading sensor_readings[
+      mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  const uint8_t reading_count = sensors.queryVoltageSensors(
+      sensor_readings, mesh::ExternalVoltageHistory::MAX_CHANNELS);
+  mesh::ExternalVoltageHistory::Reading history_readings[
+      mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  for (uint8_t i = 0; i < reading_count; i++) {
+    history_readings[i].channel = sensor_readings[i].channel;
+    history_readings[i].voltage = sensor_readings[i].voltage;
+    history_readings[i].valid = sensor_readings[i].valid;
+  }
+  external_voltage_history.record(now, history_readings, reading_count);
+}
+#endif
+
 
 void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply,
                            int gpio_client_index,
@@ -2041,6 +2152,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
   }
 
   mesh::cli::normalizeCommandVerb(command);
+
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  if (handleTelemetryHistoryCommand(command, reply)) return;
+#endif
 
   // handle ACL related commands
   if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
@@ -2148,6 +2263,9 @@ void MyMesh::loop() {
   mesh::Mesh::loop();
   _cli.loop();
   _clock_sync.loop();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  sampleTelemetryHistory();
+#endif
 #ifdef WITH_MQTT_BRIDGE
   // bridge.loop() is now handled by FreeRTOS task on Core 0 - no need to call it here
 #endif

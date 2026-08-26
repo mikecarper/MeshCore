@@ -170,10 +170,12 @@ static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
 #define TELEMETRY_HISTORY_TX_PREFS_FILE "/telemetry_tx"
 static const uint64_t TELEMETRY_HISTORY_TX_RETRY_MILLIS =
     30ULL * 60ULL * 1000ULL;
+static const uint64_t TELEMETRY_HISTORY_TX_PACKET_SPACING_MILLIS = 2000ULL;
 static const uint8_t TELEMETRY_HISTORY_TX_DEFAULT_DAYS = 2U;
 static const uint8_t TELEMETRY_HISTORY_TX_MAX_DAYS = 30U;
 static const uint8_t TELEMETRY_HISTORY_TX_TEMPERATURE = 1U;
 static const uint8_t TELEMETRY_HISTORY_TX_VOLTAGE = 2U;
+static const uint8_t TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE = 4U;
 #endif
 
 #define CLOCK_SYNC_VALID_YEARS 10
@@ -3229,7 +3231,11 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
   telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
   telemetry_history_tx_pending = 0;
+  telemetry_history_tx_manual = false;
+  telemetry_history_tx_external_channel = 0;
+  telemetry_history_tx_external_chunk = 0;
   telemetry_history_next_tx_uptime = 0;
+  telemetry_history_tx_resume_uptime = 0;
 #endif
 
 #if MAX_NEIGHBOURS
@@ -3526,6 +3532,20 @@ void MyMesh::begin(FILESYSTEM *fs) {
     MESH_DEBUG_PRINTLN("Telemetry GPS retention: %u days", (unsigned)gps_days);
   }
 #endif
+#endif
+
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  uint8_t voltage_channels[mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  const uint8_t voltage_channel_count = sensors.getVoltageSensorChannels(
+      voltage_channels, mesh::ExternalVoltageHistory::MAX_CHANNELS);
+  if (!external_voltage_history.configure(voltage_channels,
+                                          voltage_channel_count)) {
+    MESH_DEBUG_PRINTLN("I2C voltage history allocation failed");
+  } else if (voltage_channel_count != 0) {
+    MESH_DEBUG_PRINTLN("I2C voltage history: %u channels, %u bytes",
+                       (unsigned)external_voltage_history.channelCount(),
+                       (unsigned)external_voltage_history.storageBytes());
+  }
 #endif
 }
 
@@ -10539,6 +10559,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       mesh::TelemetryHistory::SERIES_TEMPERATURE;
   static const char telemetry_temp_command[] = "get telemetry.temp";
   static const char telemetry_volt_command[] = "get telemetry.volt";
+  static const char telemetry_i2c_volt_command[] =
+      "get telemetry.volt.i2c";
 #if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   static const char telemetry_gps_command[] = "get telemetry.gps";
   static const char telemetry_gps_set_command[] = "set telemetry.gps";
@@ -10560,26 +10582,38 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       strcpy(reply, "Err - configure telemetry.tx direct or path first");
       return;
     }
+    if (telemetry_history_tx_pending != 0) {
+      strcpy(reply, "OK - telemetry.tx already queued");
+      return;
+    }
     if (telemetry_history.voltageSampleCount() == 0) {
       strcpy(reply, "Err - telemetry history is empty");
       return;
     }
-    const bool temperature_queued = sendTelemetryHistorySnapshot(
-        mesh::TelemetryHistory::SERIES_TEMPERATURE);
-    const bool voltage_queued = sendTelemetryHistorySnapshot(
-        mesh::TelemetryHistory::SERIES_VOLTAGE);
-    if (temperature_queued && voltage_queued) {
-      const uint16_t available = telemetry_history.voltageSampleCount();
-      const unsigned sent = available < mesh::TelemetryHistory::BINARY_MAX_SAMPLES
-          ? (unsigned)available
-          : (unsigned)mesh::TelemetryHistory::BINARY_MAX_SAMPLES;
-      snprintf(reply, 160, "OK - telemetry.tx queued temp=%u volt=%u",
-               sent, sent);
-    } else {
-      snprintf(reply, 160, "Err - telemetry.tx queue temp=%s volt=%s",
-               temperature_queued ? "yes" : "no",
-               voltage_queued ? "yes" : "no");
+    telemetry_history_tx_pending = TELEMETRY_HISTORY_TX_TEMPERATURE
+        | TELEMETRY_HISTORY_TX_VOLTAGE;
+    const uint8_t external_channels =
+        external_voltage_history.populatedChannelCount();
+    if (external_channels != 0) {
+      telemetry_history_tx_pending |= TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE;
     }
+    if (!telemetry_history_tx_manual) {
+      telemetry_history_tx_resume_uptime = telemetry_history_next_tx_uptime;
+    }
+    telemetry_history_tx_manual = true;
+    telemetry_history_tx_external_channel = 0;
+    telemetry_history_tx_external_chunk = 0;
+    telemetry_history_next_tx_uptime = 0;
+
+    const uint16_t available = telemetry_history.voltageSampleCount();
+    const unsigned sent = available < mesh::TelemetryHistory::BINARY_MAX_SAMPLES
+        ? (unsigned)available
+        : (unsigned)mesh::TelemetryHistory::BINARY_MAX_SAMPLES;
+    const unsigned external_packets = (unsigned)external_channels
+        * external_voltage_history.binaryChunkCount();
+    snprintf(reply, 160,
+             "OK - telemetry.tx queued temp=%u volt=%u i2c=%u/%u",
+             sent, sent, (unsigned)external_channels, external_packets);
     return;
   }
 
@@ -10629,16 +10663,30 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     const bool previous_enabled = telemetry_history_tx_enabled;
     const uint8_t previous_days = telemetry_history_tx_interval_days;
     const uint8_t previous_pending = telemetry_history_tx_pending;
+    const bool previous_manual = telemetry_history_tx_manual;
+    const uint8_t previous_external_channel =
+        telemetry_history_tx_external_channel;
+    const uint8_t previous_external_chunk =
+        telemetry_history_tx_external_chunk;
     const uint64_t previous_next_tx = telemetry_history_next_tx_uptime;
+    const uint64_t previous_resume_tx = telemetry_history_tx_resume_uptime;
     telemetry_history_tx_enabled = enable;
     if (enable) telemetry_history_tx_interval_days = (uint8_t)days;
     telemetry_history_tx_pending = 0;
+    telemetry_history_tx_manual = false;
+    telemetry_history_tx_external_channel = 0;
+    telemetry_history_tx_external_chunk = 0;
     telemetry_history_next_tx_uptime = 0;
+    telemetry_history_tx_resume_uptime = 0;
     if (!saveTelemetryHistoryTxPrefs()) {
       telemetry_history_tx_enabled = previous_enabled;
       telemetry_history_tx_interval_days = previous_days;
       telemetry_history_tx_pending = previous_pending;
+      telemetry_history_tx_manual = previous_manual;
+      telemetry_history_tx_external_channel = previous_external_channel;
+      telemetry_history_tx_external_chunk = previous_external_chunk;
       telemetry_history_next_tx_uptime = previous_next_tx;
+      telemetry_history_tx_resume_uptime = previous_resume_tx;
       strcpy(reply, "Err - unable to save telemetry.tx schedule");
     } else if (enable) {
       snprintf(reply, 160, "OK - telemetry.tx schedule=%ud", (unsigned)days);
@@ -10668,14 +10716,24 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     const bool previous_enabled = telemetry_history_tx_enabled;
     const uint8_t previous_path_len = telemetry_history_tx_path_len;
     const uint8_t previous_pending = telemetry_history_tx_pending;
+    const bool previous_manual = telemetry_history_tx_manual;
+    const uint8_t previous_external_channel =
+        telemetry_history_tx_external_channel;
+    const uint8_t previous_external_chunk =
+        telemetry_history_tx_external_chunk;
     const uint64_t previous_next_tx = telemetry_history_next_tx_uptime;
+    const uint64_t previous_resume_tx = telemetry_history_tx_resume_uptime;
     uint8_t previous_path[MAX_PATH_SIZE];
     memcpy(previous_path, telemetry_history_tx_path, sizeof(previous_path));
 
     if (strcmp(spec, "off") == 0) {
       telemetry_history_tx_enabled = false;
       telemetry_history_tx_pending = 0;
+      telemetry_history_tx_manual = false;
+      telemetry_history_tx_external_channel = 0;
+      telemetry_history_tx_external_chunk = 0;
       telemetry_history_next_tx_uptime = 0;
+      telemetry_history_tx_resume_uptime = 0;
     } else {
       uint8_t path[MAX_PATH_SIZE];
       uint8_t path_len = OUT_PATH_UNKNOWN;
@@ -10690,7 +10748,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       telemetry_history_tx_enabled = true;
       telemetry_history_tx_path_len = path_len;
       telemetry_history_tx_pending = 0;
+      telemetry_history_tx_manual = false;
+      telemetry_history_tx_external_channel = 0;
+      telemetry_history_tx_external_chunk = 0;
       telemetry_history_next_tx_uptime = 0;
+      telemetry_history_tx_resume_uptime = 0;
       memset(telemetry_history_tx_path, 0,
              sizeof(telemetry_history_tx_path));
       if ((path_len & 63U) != 0) {
@@ -10702,7 +10764,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       telemetry_history_tx_enabled = previous_enabled;
       telemetry_history_tx_path_len = previous_path_len;
       telemetry_history_tx_pending = previous_pending;
+      telemetry_history_tx_manual = previous_manual;
+      telemetry_history_tx_external_channel = previous_external_channel;
+      telemetry_history_tx_external_chunk = previous_external_chunk;
       telemetry_history_next_tx_uptime = previous_next_tx;
+      telemetry_history_tx_resume_uptime = previous_resume_tx;
       memcpy(telemetry_history_tx_path, previous_path,
              sizeof(telemetry_history_tx_path));
       strcpy(reply, "Err - unable to save telemetry.tx");
@@ -10740,6 +10806,20 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     return;
   }
 #endif
+
+  if (strncmp(command, telemetry_i2c_volt_command,
+              sizeof(telemetry_i2c_volt_command) - 1U) == 0
+      && (command[sizeof(telemetry_i2c_volt_command) - 1U] == 0
+          || command[sizeof(telemetry_i2c_volt_command) - 1U] == ' ')) {
+    if (sender != NULL && !sender->isAdmin()) {
+      strcpy(reply, "Err - not permitted");
+    } else {
+      external_voltage_history.formatPageReply(
+          command + sizeof(telemetry_i2c_volt_command) - 1U,
+          reply, 160);
+    }
+    return;
+  }
 
   if (strncmp(command, telemetry_temp_command,
               sizeof(telemetry_temp_command) - 1U) == 0
@@ -11255,7 +11335,11 @@ void MyMesh::loadTelemetryHistoryTxPrefs() {
   telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
   telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
   telemetry_history_tx_pending = 0;
+  telemetry_history_tx_manual = false;
+  telemetry_history_tx_external_channel = 0;
+  telemetry_history_tx_external_chunk = 0;
   telemetry_history_next_tx_uptime = 0;
+  telemetry_history_tx_resume_uptime = 0;
 
   if (_fs == NULL || !_fs->exists(TELEMETRY_HISTORY_TX_PREFS_FILE)) return;
   File file = openFloodSettingsRead(_fs, TELEMETRY_HISTORY_TX_PREFS_FILE);
@@ -11321,10 +11405,12 @@ void MyMesh::formatTelemetryHistoryTxStatus(char* reply,
   formatPathReply(telemetry_history_tx_path,
                   telemetry_history_tx_path_len,
                   path_reply, sizeof(path_reply));
-  snprintf(reply, reply_size, "> %s%ud id=%s p=%s",
+  snprintf(reply, reply_size, "> %s%ud id=%s i2c=%u p=%s",
            telemetry_history_tx_enabled ? "on " : "off ",
            (unsigned)telemetry_history_tx_interval_days,
-           source_id, path_reply[0] == '>' && path_reply[1] == ' '
+           source_id,
+           (unsigned)external_voltage_history.populatedChannelCount(),
+           path_reply[0] == '>' && path_reply[1] == ' '
                ? path_reply + 2 : path_reply);
 }
 
@@ -11344,13 +11430,26 @@ bool MyMesh::sendTelemetryHistorySnapshot(
                     telemetry_history_tx_path_len);
 }
 
-void MyMesh::serviceTelemetryHistoryTx() {
-  if (!telemetry_history_tx_enabled
-      || telemetry_history.voltageSampleCount()
-             < mesh::TelemetryHistory::BINARY_MAX_SAMPLES) {
-    return;
+bool MyMesh::sendExternalVoltageHistorySnapshot(uint8_t channel_index,
+                                                uint8_t chunk_index) {
+  const uint8_t channel =
+      external_voltage_history.populatedChannelAt(channel_index);
+  if (channel == 0) return false;
+
+  uint8_t payload[mesh::ExternalVoltageHistory::BINARY_PAYLOAD_SIZE];
+  const size_t payload_len = external_voltage_history.formatBinarySnapshot(
+      self_id.pub_key, channel, chunk_index, payload, sizeof(payload));
+  if (payload_len <= mesh::ExternalVoltageHistory::BINARY_HEADER_SIZE) {
+    return false;
   }
 
+  mesh::Packet* packet = createRawData(payload, payload_len);
+  if (packet == NULL) return false;
+  return sendDirect(packet, telemetry_history_tx_path,
+                    telemetry_history_tx_path_len);
+}
+
+void MyMesh::serviceTelemetryHistoryTx() {
   const uint64_t current_uptime_millis =
       uptime_millis + (uint32_t)(millis() - last_millis);
   if (telemetry_history_next_tx_uptime != 0
@@ -11359,28 +11458,86 @@ void MyMesh::serviceTelemetryHistoryTx() {
   }
 
   if (telemetry_history_tx_pending == 0) {
+    if (!telemetry_history_tx_enabled
+        || telemetry_history.voltageSampleCount()
+               < mesh::TelemetryHistory::BINARY_MAX_SAMPLES) {
+      return;
+    }
+    telemetry_history_tx_manual = false;
+    telemetry_history_tx_resume_uptime = 0;
     telemetry_history_tx_pending = TELEMETRY_HISTORY_TX_TEMPERATURE
         | TELEMETRY_HISTORY_TX_VOLTAGE;
+    if (external_voltage_history.populatedChannelCount() != 0) {
+      telemetry_history_tx_pending |= TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE;
+    }
+    telemetry_history_tx_external_channel = 0;
+    telemetry_history_tx_external_chunk = 0;
   }
-  if ((telemetry_history_tx_pending & TELEMETRY_HISTORY_TX_TEMPERATURE) != 0
-      && sendTelemetryHistorySnapshot(
-          mesh::TelemetryHistory::SERIES_TEMPERATURE)) {
-    telemetry_history_tx_pending &=
-        (uint8_t)~TELEMETRY_HISTORY_TX_TEMPERATURE;
+
+  bool sent = false;
+  if ((telemetry_history_tx_pending & TELEMETRY_HISTORY_TX_TEMPERATURE) != 0) {
+    sent = sendTelemetryHistorySnapshot(
+        mesh::TelemetryHistory::SERIES_TEMPERATURE);
+    if (sent) {
+      telemetry_history_tx_pending &=
+          (uint8_t)~TELEMETRY_HISTORY_TX_TEMPERATURE;
+    }
+  } else if ((telemetry_history_tx_pending
+              & TELEMETRY_HISTORY_TX_VOLTAGE) != 0) {
+    sent = sendTelemetryHistorySnapshot(
+        mesh::TelemetryHistory::SERIES_VOLTAGE);
+    if (sent) {
+      telemetry_history_tx_pending &=
+          (uint8_t)~TELEMETRY_HISTORY_TX_VOLTAGE;
+    }
+  } else if ((telemetry_history_tx_pending
+              & TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE) != 0) {
+    const uint8_t channel_count =
+        external_voltage_history.populatedChannelCount();
+    const uint8_t chunk_count = external_voltage_history.binaryChunkCount();
+    if (telemetry_history_tx_external_channel >= channel_count
+        || chunk_count == 0) {
+      telemetry_history_tx_pending &=
+          (uint8_t)~TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE;
+    } else {
+      sent = sendExternalVoltageHistorySnapshot(
+          telemetry_history_tx_external_channel,
+          telemetry_history_tx_external_chunk);
+      if (sent) {
+        telemetry_history_tx_external_chunk++;
+        if (telemetry_history_tx_external_chunk >= chunk_count) {
+          telemetry_history_tx_external_chunk = 0;
+          telemetry_history_tx_external_channel++;
+        }
+        if (telemetry_history_tx_external_channel >= channel_count) {
+          telemetry_history_tx_pending &=
+              (uint8_t)~TELEMETRY_HISTORY_TX_EXTERNAL_VOLTAGE;
+        }
+      }
+    }
   }
-  if ((telemetry_history_tx_pending & TELEMETRY_HISTORY_TX_VOLTAGE) != 0
-      && sendTelemetryHistorySnapshot(mesh::TelemetryHistory::SERIES_VOLTAGE)) {
-    telemetry_history_tx_pending &= (uint8_t)~TELEMETRY_HISTORY_TX_VOLTAGE;
+
+  if (!sent && telemetry_history_tx_pending != 0) {
+    telemetry_history_next_tx_uptime =
+        current_uptime_millis + TELEMETRY_HISTORY_TX_RETRY_MILLIS;
+    return;
   }
 
   if (telemetry_history_tx_pending == 0) {
-    telemetry_history_next_tx_uptime =
-        current_uptime_millis
-        + (uint64_t)telemetry_history_tx_interval_days
-            * 24ULL * 60ULL * 60ULL * 1000ULL;
+    if (telemetry_history_tx_manual) {
+      telemetry_history_next_tx_uptime = telemetry_history_tx_resume_uptime;
+      telemetry_history_tx_manual = false;
+      telemetry_history_tx_resume_uptime = 0;
+    } else {
+      telemetry_history_next_tx_uptime = telemetry_history_tx_enabled
+          ? current_uptime_millis
+              + (uint64_t)telemetry_history_tx_interval_days
+                  * 24ULL * 60ULL * 60ULL * 1000ULL
+          : 0;
+    }
   } else {
     telemetry_history_next_tx_uptime =
-        current_uptime_millis + TELEMETRY_HISTORY_TX_RETRY_MILLIS;
+        current_uptime_millis + TELEMETRY_HISTORY_TX_PACKET_SPACING_MILLIS;
   }
 }
 
@@ -11417,6 +11574,19 @@ void MyMesh::sampleTelemetryHistory() {
   telemetry_history.record(now, temperature_c, temperature_valid,
                            _cli.getBoard()->getBattMilliVolts(),
                            latitude_e7, longitude_e7, gps_valid);
+
+  SensorManager::VoltageSensorReading sensor_readings[
+      mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  const uint8_t reading_count = sensors.queryVoltageSensors(
+      sensor_readings, mesh::ExternalVoltageHistory::MAX_CHANNELS);
+  mesh::ExternalVoltageHistory::Reading history_readings[
+      mesh::ExternalVoltageHistory::MAX_CHANNELS];
+  for (uint8_t i = 0; i < reading_count; i++) {
+    history_readings[i].channel = sensor_readings[i].channel;
+    history_readings[i].voltage = sensor_readings[i].voltage;
+    history_readings[i].valid = sensor_readings[i].valid;
+  }
+  external_voltage_history.record(now, history_readings, reading_count);
 }
 #endif
 

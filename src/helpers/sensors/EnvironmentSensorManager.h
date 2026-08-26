@@ -12,6 +12,7 @@ protected:
   // Sub-channel is 0 for all single-output sensors.
   struct ActiveSensor {
     void    (*query)(uint8_t channel, uint8_t sub_channel, CayenneLPP& telemetry);
+    bool    (*query_voltage)(uint8_t sub_channel, float& voltage);
     uint8_t   sub_channel;
   };
 
@@ -48,6 +49,10 @@ public:
   bool i2c_probe(TwoWire& wire, uint8_t addr) override;
   bool begin() override;
   bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
+  uint8_t getVoltageSensorChannels(uint8_t channels[],
+                                   uint8_t capacity) const override;
+  uint8_t queryVoltageSensors(VoltageSensorReading readings[],
+                              uint8_t capacity) override;
   #if ENV_INCLUDE_GPS || defined(ENV_INCLUDE_BME680_BSEC)
   void loop() override;
   #endif
