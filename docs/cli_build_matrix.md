@@ -104,6 +104,11 @@ available from a canonical image:
   interface `02` for plaintext logs.
   Its LoRa OTA support is source-only: it can serve a host file to another node
   but has no staging store and cannot update itself over LoRa.
+  Installing an ESP32 Full Companion may require one merged-image erase/flash
+  to adopt its expanded partition table. Once migrated, later Full Companion
+  releases use normal app updates. The transport-specific non-Full images stay
+  available as explicit build targets, but are not canonical release artifacts
+  when the qualified Full image fits.
 
 The old aliases still work with `build-firmware` and
 `build-matching-firmwares`. Dedicated repeater LoRa OTA receiver images are not

@@ -2448,9 +2448,19 @@ declare_build_capability_contract() {
   if is_companion_radio_full_target "$env_name"; then
     record_build_expectation "companion.temp_radio" "tempradio"
     record_build_expectation "companion.ota_cli" "ota folder"
+    record_build_expectation "companion.usb" "+++MESHCORE-TERM-START"
+    record_build_expectation "companion.bluetooth" \
+      "Companion: starting Bluetooth"
+    if is_nrf52_companion_radio_full_target "$env_name" \
+        || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
+      record_build_expectation "companion.dedicated_usb_logging" \
+        "get usb.logging"
+    fi
     if [ "$env_platform" = "ESP32_PLATFORM" ]; then
       record_build_expectation "companion.network_terminal" \
-        "Full Companion terminal listening"
+        "USB currently owns the Full Companion terminal"
+      record_build_expectation "companion.wifi_ota_seeder" \
+        "OTA seeder listening on :"
       record_build_expectation "web.webconfig" "start webconfig"
     else
       record_build_expectation "companion.usb_mota_source" "ota folder on"
@@ -2729,6 +2739,29 @@ append_platformio_extra_script() {
   export PLATFORMIO_EXTRA_SCRIPTS
 }
 
+apply_lora_ota_flag_order_fix() {
+  local env_name=$1
+  local pio_env_name=$2
+
+  if ! is_lora_ota_build "$env_name" \
+      && ! is_companion_radio_full_target "$env_name"; then
+    unset MESHCORE_FORCE_LORA_OTA
+    return 0
+  fi
+
+  # A few legacy recipes deliberately finish with -UENABLE_OTA. PlatformIO
+  # retains that raw undefine after externally supplied definitions, so an OTA
+  # overlay can otherwise advertise its controls while compiling out the
+  # protocol implementation. Remove the legacy undefine before flags are
+  # parsed for every OTA overlay, not just for one platform or role.
+  if pio_env_option_contains "$pio_env_name" build_flags "-UENABLE_OTA"; then
+    export MESHCORE_FORCE_LORA_OTA=1
+    append_platformio_extra_script "pre:scripts/force_lora_ota.py"
+  else
+    unset MESHCORE_FORCE_LORA_OTA
+  fi
+}
+
 apply_nrf52_lora_ota_build_recipe() {
   local env_name=$1
   local pio_env_name=$2
@@ -2751,17 +2784,6 @@ apply_nrf52_lora_ota_build_recipe() {
   fi
   if ! pio_env_option_contains "$pio_env_name" extra_scripts "tools/mota/pio_endf.py"; then
     append_platformio_extra_script "post:tools/mota/pio_endf.py"
-  fi
-
-  # A few feature-rich legacy environments deliberately end their own flags
-  # with -UENABLE_OTA. PlatformIO build_unflags cannot remove a trailing -U,
-  # so a pre-script must make the intentional OTA overlay authoritative for
-  # both compilation and the EndF geometry hook.
-  if pio_env_option_contains "$pio_env_name" build_flags "-UENABLE_OTA"; then
-    export MESHCORE_FORCE_LORA_OTA=1
-    append_platformio_extra_script "pre:scripts/force_lora_ota.py"
-  else
-    unset MESHCORE_FORCE_LORA_OTA
   fi
 
   if supports_nrf52_internal_bootloader_update "$env_name"; then
@@ -2904,6 +2926,8 @@ apply_companion_radio_full_profile() {
   if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
     append_platformio_build_unflags "-DMAX_CONTACTS=350 -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=256 -DOFFLINE_QUEUE_SIZE=128"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=8 -DOFFLINE_QUEUE_SIZE=16"
+    record_build_reduction \
+      "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
   fi
 
   # A few WiFi recipes list only their WiFi implementation instead of the
@@ -3354,6 +3378,7 @@ build_firmware() {
   apply_lora_ota_override "$env_name"
   apply_logical_ota_tuning_flags "$env_name" "$pio_env_name"
   apply_companion_radio_full_profile "$env_name" "$pio_env_name"
+  apply_lora_ota_flag_order_fix "$env_name" "$pio_env_name"
   apply_nrf52_lora_ota_build_recipe "$env_name" "$pio_env_name"
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_constrained_companion_size_profile "$env_name"

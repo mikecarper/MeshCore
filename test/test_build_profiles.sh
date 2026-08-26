@@ -149,4 +149,84 @@ verify_reduced_sensor_flags \
 verify_reduced_sensor_flags \
   Heltec_t114_repeater_lora_ota_no_external_sensors 0
 
+# A qualified Full Companion is the one canonical release artifact for its
+# board. The individual USB/BLE transports remain explicitly buildable, but
+# must not be republished beside the Full image.
+SUPPORTED_PIO_ENVS=(
+  Station_G2_companion_radio_usb
+  Station_G2_companion_radio_ble
+  Station_G2_companion_radio_wifi
+  Station_G2_companion_radio_full
+)
+for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+  PIO_ENV_PLATFORM_BY_NAME[$env_name]=ESP32_PLATFORM
+  PIO_ENV_BOARD_BY_NAME[$env_name]=station-g2
+done
+mapfile -t companion_release_targets < <(
+  print_release_firmware_targets get-companion-firmwares-to-build
+)
+[ "${#companion_release_targets[@]}" -eq 1 ] \
+  || fail "Station G2 release did not collapse transports to one Full Companion"
+[ "${companion_release_targets[0]}" = Station_G2_companion_radio_full ] \
+  || fail "Station G2 release selected a non-Full Companion artifact"
+
+# A WiFi base's final -UENABLE_OTA must not win over the Full Companion's
+# source-only OTA overlay. That mismatch compiles out both the TCP terminal and
+# seeder while still leaving a superficially valid binary.
+pio_env_option_contains() {
+  [ "$2" = build_flags ] && [ "$3" = -UENABLE_OTA ]
+}
+PLATFORMIO_BUILD_FLAGS=""
+PLATFORMIO_BUILD_UNFLAGS=""
+PLATFORMIO_EXTRA_SCRIPTS=""
+unset MESHCORE_FORCE_LORA_OTA
+apply_companion_radio_full_profile \
+  Station_G2_companion_radio_full Station_G2_companion_radio_wifi
+apply_lora_ota_flag_order_fix \
+  Station_G2_companion_radio_full Station_G2_companion_radio_wifi
+[ "${MESHCORE_FORCE_LORA_OTA:-}" = 1 ] \
+  || fail "ESP32 Full Companion did not force its OTA source overlay"
+[[ "$PLATFORMIO_EXTRA_SCRIPTS" == *"pre:scripts/force_lora_ota.py"* ]] \
+  || fail "ESP32 Full Companion did not install the OTA flag-order fix"
+
+# The same protection applies to explicitly requested standalone OTA
+# transports even though the canonical release publishes the Full replacement.
+PIO_ENV_OTA_BY_NAME[Station_G2_companion_radio_wifi]=1
+PLATFORMIO_EXTRA_SCRIPTS=""
+unset MESHCORE_FORCE_LORA_OTA
+apply_lora_ota_flag_order_fix \
+  Station_G2_companion_radio_wifi Station_G2_companion_radio_wifi
+[ "${MESHCORE_FORCE_LORA_OTA:-}" = 1 ] \
+  || fail "standalone ESP32 OTA Companion did not force its OTA overlay"
+[[ "$PLATFORMIO_EXTRA_SCRIPTS" == *"pre:scripts/force_lora_ota.py"* ]] \
+  || fail "standalone ESP32 OTA Companion omitted the OTA flag-order fix"
+
+# Full capability contracts must use functional strings that survive release
+# builds with optional debug logging disabled.
+BUILD_PROFILE_FOR_TARGET=full
+BUILD_CAPABILITIES=()
+BUILD_REDUCTIONS=()
+BUILD_EXPECTATIONS=()
+declare_build_capability_contract \
+  Station_G2_companion_radio_full ESP32_PLATFORM
+expectations=" ${BUILD_EXPECTATIONS[*]} "
+[[ "$expectations" == *"companion.network_terminal=USB currently owns the Full Companion terminal"* ]] \
+  || fail "ESP32 Full contract uses no stable network-terminal evidence"
+[[ "$expectations" == *"companion.wifi_ota_seeder=OTA seeder listening on :"* ]] \
+  || fail "ESP32 Full contract omitted the WiFi seeder"
+[[ "$expectations" != *"Full Companion terminal listening"* ]] \
+  || fail "ESP32 Full contract still depends on optional debug logging"
+
+PIO_ENV_PLATFORM_BY_NAME[RAK_3401_companion_radio_full]=NRF52_PLATFORM
+BUILD_CAPABILITIES=()
+BUILD_REDUCTIONS=()
+BUILD_EXPECTATIONS=()
+declare_build_capability_contract \
+  RAK_3401_companion_radio_full NRF52_PLATFORM
+expectations=" ${BUILD_EXPECTATIONS[*]} "
+[[ "$expectations" == *"companion.usb_mota_source=ota folder on"* ]] \
+  || fail "nRF52 Full contract omitted USB folder seeding"
+[[ "$expectations" != *"companion.network_terminal="* ]] \
+  || fail "nRF52 Full contract promised an ESP32-only network terminal"
+
 echo "test_build_profiles: OK"

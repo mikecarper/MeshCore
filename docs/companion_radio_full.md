@@ -163,8 +163,11 @@ target recipes, but application behavior no longer uses that umbrella as an
 unrelated compile guard. In particular, ESP32 WiFi/WebConfig terminal controls
 are compiled from their actual WiFi/WebConfig capability, and BLE is always
 started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
-fragmentation. The build's capability sidecar verifies the Full controls after
-linking.
+fragmentation. Compile-time prerequisite checks reject inconsistent feature
+flags. After linking, the capability sidecar verifies USB, BLE, the OTA CLI,
+TempRadio, and each platform's host-folder transport; it also verifies the TCP
+terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging whenever
+the board uses dual CDC.
 
 On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
 so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
