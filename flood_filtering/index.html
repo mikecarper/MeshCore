@@ -1882,8 +1882,10 @@ del flood.rule all
 <p>The command must be entered on one line. Match fields in one row are ANDed.
 Every row is matched against the same immutable packet state captured on
 receive, before any rule rewrites its scope. Matching rows are then processed
-by descending <code>priority</code>; lower slot number wins a priority tie. Priority
-defaults to <code>0</code>.</p>
+by descending numeric <code>priority</code>. At an equal numeric priority, authenticated
+channel matches run before raw <code>hash:XX</code> matches, raw hashes run before
+<code>channel=*</code>, and lower slot number breaks the remaining tie. Priority defaults
+to <code>0</code>; an explicitly higher numeric priority overrides specificity.</p>
 <p>The first matching <code>stop</code> row ends the FPF7 forward phase after that row. Higher-order
 matches and the stop row still apply; lower-order matches do not. A stop-only
 row is therefore an exception to lower-priority FPF7 rows. It cannot undo a
@@ -1946,8 +1948,9 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   has one or more, those rows are a retry allow-list: at least one must remain
   in the ordered, stop-truncated match set. The action may accompany rewrite,
   rate, or stop, but not <code>drop</code>; its compact flag is <code>f=r</code>.</li>
-<li><code>priority=0-255</code> controls processing order. Higher values run first; lower
-  slot number breaks ties. <code>pri=</code> is the compact alias.</li>
+<li><code>priority=0-255</code> controls the primary processing order. Higher values run
+  first. Equal values use automatic channel specificity (authenticated, then
+  raw hash, then wildcard) before slot order. <code>pri=</code> is the compact alias.</li>
 <li><code>stop</code> (or <code>action=stop</code>) applies this row and prevents lower-order FPF7 rows
   from acting. It can stand alone or accompany drop, rewrite, or rate.</li>
 </ul>
@@ -1994,14 +1997,16 @@ get flood.rule.4
 Public unless an earlier exact-channel rule stops it. This standalone example
 preserves authenticated Public while dropping other packets that use the same
 visible byte:</p>
-<pre><code class="language-text">set flood.rule.2 type=any channel=public retry stop priority=200
-set flood.rule.3 type=any channel=hash:11 drop priority=100
+<pre><code class="language-text">set flood.rule.2 type=any channel=public retry stop
+set flood.rule.3 type=any channel=hash:11 drop
 </code></pre>
 <p>The Public rule's MAC/decrypt check must succeed before its <code>stop</code> applies. A
-colliding channel misses that rule and reaches the lower-priority hash drop.
-Without <code>stop</code>, both rows match Public and the sticky drop wins. Remove <code>retry</code>
-from the Public row if the exemption should not also opt Public into flood
-retry.</p>
+colliding channel misses that rule and reaches the hash drop. With equal
+numeric priorities, authenticated-channel specificity automatically puts the
+Public rule first regardless of slot order. Without <code>stop</code>, both rows match
+Public and the sticky drop wins. Remove <code>retry</code> from the Public row if the
+exemption should not also opt Public into flood retry. An explicitly higher
+numeric priority on the hash rule remains an operator override.</p>
 <p>The 240 KB STM32WL profiles keep <code>MESH_ENABLE_FLOOD_RULE_ENGINE=0</code> and retain
 the persistent compact FPF6 <code>flood.filter</code> and blacklist syntax below. They
 still perform filtering, but omit the generalized <code>flood.rule</code> parser and
@@ -2066,8 +2071,9 @@ the wildcard region. If the check fails, that row is skipped, the filter does
 not grant a region bypass, and the unchanged packet is allowed to fail
 normal region enforcement. Other independently configured scope rows still
 apply in their normal order.</p>
-<p>When multiple scope or region rows match, the highest-priority row wins; lower
-slot number breaks a priority tie.
+<p>When multiple scope or region rows match, the highest numeric-priority row
+wins. Equal priorities use authenticated channel, raw hash, then wildcard
+specificity before the slot-number tie-break.
 Rewrite rows do not approve a packet: any matching drop row and every remaining forwarding gate can
 still reject it. A filter-assigned scope is trusted without local region-list
 validation, but <code>repeat</code>, <code>flood.max</code>, loop detection, and
@@ -2369,8 +2375,9 @@ other words, the controls combine as deny rules:</p>
    channel's ordinary fallback, then adds or replaces the scope from either a
    configured region or a direct <code>scope=&lt;name&gt;</code> target.</li>
 <li>All extended <code>flood.rule</code> match fields are evaluated against the same
-   original incoming packet. Matches are ordered by descending priority and
-   then ascending slot. The first matching <code>stop</code> row removes every later FPF7
+   original incoming packet. Matches are ordered by descending numeric
+   priority, then authenticated/raw-hash/wildcard channel specificity, then
+   ascending slot. The first matching <code>stop</code> row removes every later FPF7
    match. The highest-order remaining <code>scope=</code> or <code>region=</code> row may replace the
    channel-scope result; a direct scope does not require a region-list entry.</li>
 <li><code>repeat</code> and <code>flood.max*</code> are checked.</li>

@@ -6752,8 +6752,11 @@ compile this table.</p>
   least one surviving <code>retry</code> row. <code>flood.retry.bridge</code> still selects ordinary
   or bridge-bucket completion for the allowed packet. This action can accompany
   rewrite, rate, or stop, but not <code>drop</code>; compact syntax uses <code>f=r</code>.
-- <code>priority=0-255</code>: Optional processing order. Higher values run first and
-  lower slot number breaks a tie. The default is <code>0</code>; <code>pri=</code> is an alias.
+- <code>priority=0-255</code>: Optional primary processing order. Higher values run first.
+  At the same numeric priority, authenticated channel matches run before raw
+  <code>hash:XX</code> matches, which run before <code>channel=*</code>; lower slot number breaks the
+  remaining tie. The default is <code>0</code>; <code>pri=</code> is an alias. An explicitly higher
+  numeric priority still overrides this automatic specificity ordering.
 - <code>stop</code> or <code>action=stop</code>: Apply this matching row, then stop lower-order FPF7
   rows from processing. It can stand alone or accompany drop, rewrite, or
   rate. A stop-only row acts as an exception to lower-priority FPF7 rules.
@@ -6878,9 +6881,11 @@ compile this table.</p>
 are never affected.</p>
 <p><strong>Behavior:</strong> Match fields within one row are ANDed. Every FPF7 row is matched
 against the same immutable receive-time packet, before any rule changes its
-scope. Matching rows are processed in descending <code>priority</code>, with lower slot
-number winning a tie. The first matching <code>stop</code> row is included and all
-lower-order FPF7 matches are discarded. A stop cannot undo an earlier drop or
+scope. Matching rows are processed in descending <code>priority</code>. At equal numeric
+priority, authenticated channel matches precede raw hashes, which precede an
+unrestricted channel matcher; lower slot wins after that. The first matching
+<code>stop</code> row is included and all lower-order FPF7 matches are discarded. A stop
+cannot undo an earlier drop or
 bypass hard forwarding gates or the other policy phases. A row with
 <code>path=blacklist</code> must meet the path condition as well as its other conditions;
 blacklist IDs can occur anywhere in the received path and their configured
@@ -6945,14 +6950,17 @@ Public. To exempt authenticated Public while dropping other packets that carry
 the same visible byte, put the exact Public rule first and stop lower-priority
 rules after it:</p>
 <pre><code class="language-text"># Retry and preserve authenticated Public; drop other channel-hash 11 packets.
-set flood.rule.2 type=any channel=public retry stop priority=200
-set flood.rule.3 type=any channel=hash:11 drop priority=100
+set flood.rule.2 type=any channel=public retry stop
+set flood.rule.3 type=any channel=hash:11 drop
 </code></pre>
 <p>The Public row matches only after its MAC/decrypt check succeeds. A colliding
-channel therefore misses that <code>stop</code> and reaches the raw-hash drop row. Without
-the higher-priority <code>stop</code>, both rows match Public and the sticky <code>drop</code> action
-wins. Omit <code>retry</code> from the Public row when only the forwarding exemption is
-wanted.</p>
+channel therefore misses that <code>stop</code> and reaches the raw-hash drop row. Both
+rows use the default numeric priority, but authenticated-channel specificity
+automatically orders Public first even if its slot number is higher. Without
+<code>stop</code>, both rows match Public and the sticky <code>drop</code> action wins. Omit <code>retry</code>
+from the Public row when only the forwarding exemption is wanted. An operator
+can deliberately reverse this order by assigning the hash row a higher numeric
+<code>priority</code>.</p>
 <p>Deleting or replacing the last active <code>retry</code> row restores the legacy global
 retry eligibility. Firmware that predates the <code>retry</code>/<code>hash:XX</code> FPF7 extension
 cannot preserve tables containing those rows; remove them before downgrading.</p>
