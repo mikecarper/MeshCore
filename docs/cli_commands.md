@@ -2158,6 +2158,23 @@ set flood.rule.3 type=any channel=#hamradio retry
 set flood.rule.4 type=any channel=hash:A7 retry
 ```
 
+Because Public's visible hash is `0x11`, a bare `hash:11 drop` row also matches
+Public. To exempt authenticated Public while dropping other packets that carry
+the same visible byte, put the exact Public rule first and stop lower-priority
+rules after it:
+
+```text
+# Retry and preserve authenticated Public; drop other channel-hash 11 packets.
+set flood.rule.2 type=any channel=public retry stop priority=200
+set flood.rule.3 type=any channel=hash:11 drop priority=100
+```
+
+The Public row matches only after its MAC/decrypt check succeeds. A colliding
+channel therefore misses that `stop` and reaches the raw-hash drop row. Without
+the higher-priority `stop`, both rows match Public and the sticky `drop` action
+wins. Omit `retry` from the Public row when only the forwarding exemption is
+wanted.
+
 Deleting or replacing the last active `retry` row restores the legacy global
 retry eligibility. Firmware that predates the `retry`/`hash:XX` FPF7 extension
 cannot preserve tables containing those rows; remove them before downgrading.

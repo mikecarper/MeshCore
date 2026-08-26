@@ -441,6 +441,22 @@ get flood.rule.3
 get flood.rule.4
 ```
 
+Public's visible channel hash is `0x11`, so a `hash:11 drop` row also matches
+Public unless an earlier exact-channel rule stops it. This standalone example
+preserves authenticated Public while dropping other packets that use the same
+visible byte:
+
+```text
+set flood.rule.2 type=any channel=public retry stop priority=200
+set flood.rule.3 type=any channel=hash:11 drop priority=100
+```
+
+The Public rule's MAC/decrypt check must succeed before its `stop` applies. A
+colliding channel misses that rule and reaches the lower-priority hash drop.
+Without `stop`, both rows match Public and the sticky drop wins. Remove `retry`
+from the Public row if the exemption should not also opt Public into flood
+retry.
+
 The 240 KB STM32WL profiles keep `MESH_ENABLE_FLOOD_RULE_ENGINE=0` and retain
 the persistent compact FPF6 `flood.filter` and blacklist syntax below. They
 still perform filtering, but omit the generalized `flood.rule` parser and
