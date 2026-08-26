@@ -30,12 +30,13 @@ protected:
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;
   int16_t _noise_floor, _threshold;
+  int32_t _noise_floor_centi_dbm;
   float _last_rssi, _last_snr;
   bool _cad_enabled;
   bool _noise_floor_valid;
   bool _nf_refresh_requested;
   uint16_t _num_floor_samples;
-  int32_t _floor_sample_sum;
+  int32_t _floor_sample_sum_centi_dbm;
   unsigned long last_recv_millis;
   unsigned long last_radio_interrupt_millis;  // updated on any ISR event, even CRC errors
   bool _rx_ps_enabled;
@@ -203,6 +204,9 @@ public:
   virtual int16_t performChannelScan();
 
   int getNoiseFloor() const override { return _noise_floor; }
+  float getNoiseFloorDbm() const override {
+    return _noise_floor_centi_dbm / 100.0f;
+  }
   void triggerNoiseFloorCalibrate(int threshold) override;
   void recalibrateNoiseFloor() override;
   void setCADEnabled(bool enable) override { _cad_enabled = enable; }

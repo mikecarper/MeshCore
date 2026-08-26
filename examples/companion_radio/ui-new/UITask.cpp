@@ -18,6 +18,9 @@
 #ifndef USB_MESSAGE_PREVIEW_MILLIS
   #define USB_MESSAGE_PREVIEW_MILLIS 15000UL
 #endif
+#ifndef UI_RADIO_REFRESH_MILLIS
+  #define UI_RADIO_REFRESH_MILLIS 2000UL
+#endif
 #ifndef BLE_PAIRING_DISPLAY_MILLIS
   #define BLE_PAIRING_DISPLAY_MILLIS 120000UL
 #endif
@@ -126,7 +129,7 @@ class HomeScreen : public UIScreen {
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 
 
-  void renderBatteryIndicator(DisplayDriver& display, uint16_t batteryMilliVolts) {
+  int renderBatteryIndicator(DisplayDriver& display, uint16_t batteryMilliVolts) {
     // Convert millivolts to percentage
 #ifndef BATT_MIN_MILLIVOLTS
   #define BATT_MIN_MILLIVOLTS 3000
@@ -136,14 +139,19 @@ class HomeScreen : public UIScreen {
 #endif
     const int minMilliVolts = BATT_MIN_MILLIVOLTS;
     const int maxMilliVolts = BATT_MAX_MILLIVOLTS;
-    int batteryPercentage = ((batteryMilliVolts - minMilliVolts) * 100) / (maxMilliVolts - minMilliVolts);
+    const bool showBattery = batteryMilliVolts != 0;
+    int batteryPercentage = showBattery
+      ? ((batteryMilliVolts - minMilliVolts) * 100) / (maxMilliVolts - minMilliVolts)
+      : 0;
     if (batteryPercentage < 0) batteryPercentage = 0; // Clamp to 0%
     if (batteryPercentage > 100) batteryPercentage = 100; // Clamp to 100%
 
     // battery icon
     int iconWidth = 24;
     int iconHeight = 10;
-    int iconX = display.width() - iconWidth - 5; // Position the icon near the top-right corner
+    int iconX = showBattery
+      ? display.width() - iconWidth - 5
+      : display.width() - 5;
     int iconY = 0;
     display.setColor(UIColor::title_txt);
 
@@ -178,25 +186,28 @@ class HomeScreen : public UIScreen {
 #ifdef PIN_BUZZER
     if (muted) statusWidth += 9;
 #endif
-    display.setCursor(iconX - statusWidth - uptimeWidth - spaceWidth, iconY);
+    int statusStartX = iconX - statusWidth - uptimeWidth - spaceWidth;
+    display.setCursor(statusStartX, iconY);
     display.print(uptime);
 
-    // battery outline
-    display.drawRect(iconX, iconY, iconWidth, iconHeight);
+    if (showBattery) {
+      // battery outline
+      display.drawRect(iconX, iconY, iconWidth, iconHeight);
 
-    // battery "cap"
-    display.fillRect(iconX + iconWidth, iconY + (iconHeight / 4), 3, iconHeight / 2);
+      // battery "cap"
+      display.fillRect(iconX + iconWidth, iconY + (iconHeight / 4), 3, iconHeight / 2);
 
-    // fill the battery based on the percentage
-    int fillWidth = (batteryPercentage * (iconWidth - 4)) / 100;
-    display.fillRect(iconX + 2, iconY + 2, fillWidth, iconHeight - 4);
+      // fill the battery based on the percentage
+      int fillWidth = (batteryPercentage * (iconWidth - 4)) / 100;
+      display.fillRect(iconX + 2, iconY + 2, fillWidth, iconHeight - 4);
+    }
 
     // Show external power beside the battery. Most boards have no
     // charge-complete signal, so use a high percentage band for the plug.
     if (charging) {
       static constexpr int BATT_FULL_PCT = 95;
       const uint8_t* symbol =
-        batteryPercentage >= BATT_FULL_PCT ? plug_icon : charging_icon;
+        !showBattery || batteryPercentage >= BATT_FULL_PCT ? plug_icon : charging_icon;
       display.setColor(UIColor::title_txt);
       display.drawXbm(iconX - 9, iconY + 1, symbol, 8, 8);
     }
@@ -208,6 +219,8 @@ class HomeScreen : public UIScreen {
       display.drawXbm(iconX - (charging ? 18 : 9), iconY + 1, muted_icon, 8, 8);
     }
 #endif
+
+    return statusStartX;
   }
 
   CayenneLPP sensors_lpp;
@@ -255,16 +268,18 @@ public:
     display.setColor(UIColor::title_bkg);
     display.fillRect(0, 0, display.width(), 12);
     char tmp[80];
-    // node name
+    // status indicators
     display.setTextSize(1);
     display.setColor(UIColor::title_txt);
+    int statusStartX = renderBatteryIndicator(display, _task->getBattMilliVolts());
+
+    // node name
     char filtered_name[sizeof(_node_prefs->node_name)];
     display.translateUTF8ToBlocks(filtered_name, _node_prefs->node_name, sizeof(filtered_name));
-    display.setCursor(0, 2);
-    display.print(filtered_name);
-
-    // battery voltage
-    renderBatteryIndicator(display, _task->getBattMilliVolts());
+    int availableNameWidth = statusStartX - 2;
+    if (availableNameWidth > 0) {
+      display.drawTextEllipsized(0, 2, availableNameWidth, filtered_name);
+    }
 
     // curr page indicator
     if (UIColor::title_bkg == UIColor::window_bkg) {
@@ -285,8 +300,12 @@ public:
     if (_page == HomePage::FIRST) {
       display.setColor(UIColor::primary_txt);
       display.setTextSize(2);
-      sprintf(tmp, "MSG: %d", _task->getMsgCount());
+      sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
       display.drawTextCentered(display.width() / 2, 22, tmp);
+      display.setTextSize(1);
+      display.setColor(UIColor::secondary_txt);
+      display.drawTextCentered(display.width() / 2, 43,
+                               "tap center: inbox");
       
       #ifdef UI_SHOW_CLOCK
       display.setTextSize(3);
@@ -371,7 +390,12 @@ public:
       sprintf(tmp, "TX: %ddBm", _node_prefs->tx_power_dbm);
       display.print(tmp);
       display.setCursor(0, 53);
-      sprintf(tmp, "Noise floor: %d", radio_driver.getNoiseFloor());
+      float noise_floor = radio_driver.getNoiseFloorDbm();
+      if (noise_floor == 0.0f) {
+        strcpy(tmp, "Noise floor: measuring");
+      } else {
+        snprintf(tmp, sizeof(tmp), "Noise floor: %.1f", noise_floor);
+      }
       display.print(tmp);
     } else if (_page == HomePage::BLUETOOTH) {
       display.setColor(UIColor::corp_blue);
@@ -522,7 +546,7 @@ public:
       }
 #endif
     }
-    return 5000;   // next render after 5000 ms
+    return _page == HomePage::RADIO ? UI_RADIO_REFRESH_MILLIS : 5000;
   }
 
   bool handleInput(char c) override {
@@ -543,6 +567,10 @@ public:
       } else {
         _task->enableBluetooth();
       }
+      return true;
+    }
+    if (c == KEY_ENTER && _page == HomePage::FIRST) {
+      _task->showMessages();
       return true;
     }
     if (c == KEY_ENTER && _page == HomePage::ADVERT) {
@@ -585,42 +613,184 @@ class MsgPreviewScreen : public UIScreen {
   UITask* _task;
   mesh::RTCClock* _rtc;
 
+  static constexpr int CHANNEL_FILTER_ALL = -2;
+  static constexpr int CHANNEL_FILTER_DIRECT = -1;
+
   struct MsgEntry {
     uint32_t timestamp;
+    int channel_idx;
+    char channel_name[32];
     char origin[62];
     char msg[UI_MSG_PREVIEW_SIZE];
   };
   #define MAX_UNREAD_MSGS   32
   int num_unread;
+  int view_offset;
+  int channel_filter;
   int head = MAX_UNREAD_MSGS - 1; // index of latest unread message
   MsgEntry unread[MAX_UNREAD_MSGS];
 
-public:
-  MsgPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) { num_unread = 0; }
+  bool matchesFilter(const MsgEntry& entry) const {
+    return channel_filter == CHANNEL_FILTER_ALL
+        || entry.channel_idx == channel_filter;
+  }
 
-  void addPreview(uint8_t path_len, const char* from_name, const char* msg) {
+  int filteredCount() const {
+    int count = 0;
+    for (int age = 0; age < num_unread; ++age) {
+      int index = (head + MAX_UNREAD_MSGS - age) % MAX_UNREAD_MSGS;
+      if (matchesFilter(unread[index])) ++count;
+    }
+    return count;
+  }
+
+  const MsgEntry* filteredEntry(int offset) const {
+    int match = 0;
+    for (int age = 0; age < num_unread; ++age) {
+      int index = (head + MAX_UNREAD_MSGS - age) % MAX_UNREAD_MSGS;
+      if (!matchesFilter(unread[index])) continue;
+      if (match++ == offset) return &unread[index];
+    }
+    return nullptr;
+  }
+
+  int buildChannelFilters(int* filters, int capacity) const {
+    int count = 0;
+    if (count < capacity) filters[count++] = CHANNEL_FILTER_ALL;
+    for (int channel_idx = 0;
+         channel_idx < MAX_GROUP_CHANNELS && count < capacity;
+         ++channel_idx) {
+      ChannelDetails details;
+      if (the_mesh.getChannel(channel_idx, details)
+          && details.name[0] != 0) {
+        filters[count++] = channel_idx;
+      }
+    }
+    if (count < capacity) filters[count++] = CHANNEL_FILTER_DIRECT;
+    return count;
+  }
+
+  void cycleChannelFilter(int direction) {
+    int filters[MAX_GROUP_CHANNELS + 2];
+    int count = buildChannelFilters(
+        filters, sizeof(filters) / sizeof(filters[0]));
+    if (count == 0) return;
+
+    int selected = 0;
+    while (selected < count && filters[selected] != channel_filter) {
+      ++selected;
+    }
+    if (selected == count) selected = 0;
+    selected = (selected + direction + count) % count;
+    channel_filter = filters[selected];
+    view_offset = 0;
+  }
+
+  void channelFilterLabel(char* label, size_t size) const {
+    if (channel_filter == CHANNEL_FILTER_ALL) {
+      StrHelper::strncpy(label, "All channels", size);
+      return;
+    }
+    if (channel_filter == CHANNEL_FILTER_DIRECT) {
+      StrHelper::strncpy(label, "Direct", size);
+      return;
+    }
+
+    ChannelDetails details;
+    if (the_mesh.getChannel(channel_filter, details)
+        && details.name[0] != 0) {
+      snprintf(label, size, "Ch %d %s", channel_filter, details.name);
+      return;
+    }
+    for (int age = 0; age < num_unread; ++age) {
+      int index = (head + MAX_UNREAD_MSGS - age) % MAX_UNREAD_MSGS;
+      if (unread[index].channel_idx == channel_filter
+          && unread[index].channel_name[0] != 0) {
+        snprintf(label, size, "Ch %d %s", channel_filter,
+                 unread[index].channel_name);
+        return;
+      }
+    }
+    snprintf(label, size, "Ch %d", channel_filter);
+  }
+
+  void renderChannelFilter(DisplayDriver& display) const {
+    const int bar_height = 24;
+    const int bar_y = display.height() - bar_height;
+    display.setColor(UIColor::window_bkg);
+    display.fillRect(0, bar_y, display.width(), bar_height);
+    display.setColor(UIColor::corp_blue);
+    display.drawRect(0, bar_y, display.width(), 1);
+
+    char channel[48];
+    channelFilterLabel(channel, sizeof(channel));
+    display.setTextSize(1);
+    const int text_y = bar_y + 8;
+    display.setCursor(8, text_y);
+    display.print("<");
+    display.drawTextCentered(display.width() / 2, text_y, channel);
+    display.setCursor(display.width() - display.getTextWidth(">") - 8,
+                      text_y);
+    display.print(">");
+  }
+
+public:
+  MsgPreviewScreen(UITask* task, mesh::RTCClock* rtc)
+      : _task(task), _rtc(rtc), num_unread(0), view_offset(0),
+        channel_filter(CHANNEL_FILTER_ALL) {}
+
+  bool hasMessages() const { return num_unread > 0; }
+  int messageCount() const { return num_unread; }
+
+  void clear() {
+    num_unread = 0;
+    view_offset = 0;
+    channel_filter = CHANNEL_FILTER_ALL;
+  }
+
+  void addPreview(uint8_t path_len, const char* from_name, const char* msg,
+                  int channel_idx, const char* channel_name) {
     head = (head + 1) % MAX_UNREAD_MSGS;
     if (num_unread < MAX_UNREAD_MSGS) num_unread++;
+    view_offset = 0;
+    channel_filter = channel_idx;
 
     auto p = &unread[head];
     p->timestamp = _rtc->getCurrentTime();
+    p->channel_idx = channel_idx;
+    StrHelper::strncpy(p->channel_name,
+                       channel_name == nullptr ? "" : channel_name,
+                       sizeof(p->channel_name));
     if (path_len == 0xFF) {
-      sprintf(p->origin, "(D) %s:", from_name);
+      snprintf(p->origin, sizeof(p->origin), "%s [direct]:", from_name);
     } else {
-      sprintf(p->origin, "(%d) %s:", (uint32_t) path_len, from_name);
+      snprintf(p->origin, sizeof(p->origin), "%s [%uh]:", from_name,
+               (unsigned int)path_len);
     }
     StrHelper::strncpy(p->msg, msg, sizeof(p->msg));
   }
 
   int render(DisplayDriver& display) override {
-    char tmp[16];
+    char tmp[24];
+    int filtered_count = filteredCount();
+    if (view_offset >= filtered_count) view_offset = 0;
     display.setCursor(0, 0);
     display.setTextSize(1);
     display.setColor(UIColor::corp_blue);
-    sprintf(tmp, "Unread: %d", num_unread);
+    snprintf(tmp, sizeof(tmp), "Message %d/%d",
+             filtered_count == 0 ? 0 : view_offset + 1, filtered_count);
     display.print(tmp);
 
-    auto p = &unread[head];
+    const MsgEntry* p = filteredEntry(view_offset);
+
+    if (p == nullptr) {
+      display.drawRect(0, 11, display.width(), 1);
+      display.setColor(UIColor::secondary_txt);
+      display.drawTextCentered(display.width() / 2, 40,
+                               "No buffered messages");
+      renderChannelFilter(display);
+      return 5000;
+    }
 
     int secs = _rtc->getCurrentTime() - p->timestamp;
     if (secs < 60) {
@@ -647,6 +817,8 @@ public:
     display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
     display.printWordWrap(filtered_msg, display.width());
 
+    renderChannelFilter(display);
+
 #if AUTO_OFF_MILLIS==0 // probably e-ink
     return 10000; // 10 s
 #else
@@ -656,15 +828,22 @@ public:
 
   bool handleInput(char c) override {
     if (c == KEY_NEXT || c == KEY_RIGHT) {
-      head = (head + MAX_UNREAD_MSGS - 1) % MAX_UNREAD_MSGS;
-      num_unread--;
-      if (num_unread == 0) {
-        _task->gotoHomeScreen();
-      }
+      if (view_offset + 1 < filteredCount()) ++view_offset;
+      return true;
+    }
+    if (c == KEY_PREV || c == KEY_LEFT) {
+      if (view_offset > 0) --view_offset;
+      return true;
+    }
+    if (c == KEY_DOWN) {
+      cycleChannelFilter(1);
+      return true;
+    }
+    if (c == KEY_UP) {
+      cycleChannelFilter(-1);
       return true;
     }
     if (c == KEY_ENTER) {
-      num_unread = 0;  // clear unread queue
       _task->gotoHomeScreen();
       return true;
     }
@@ -727,6 +906,14 @@ void UITask::showAlert(const char* text, int duration_millis) {
   _alert_expiry = millis() + duration_millis;
 }
 
+void UITask::showMessages() {
+  setCurrScreen(msg_preview);
+}
+
+int UITask::getPreviewCount() const {
+  return static_cast<const MsgPreviewScreen*>(msg_preview)->messageCount();
+}
+
 void UITask::notify(UIEventType t) {
 #if defined(PIN_BUZZER)
 switch(t){
@@ -763,14 +950,20 @@ void UITask::msgRead(int msgcount) {
     _deferred_msg_preview = false;
     const bool holding_usb_preview = curr == msg_preview && _msg_preview_until != 0
         && static_cast<int32_t>(millis() - _msg_preview_until) < 0;
-    if (!holding_usb_preview) gotoHomeScreen();
+    if (!holding_usb_preview) {
+      static_cast<MsgPreviewScreen*>(msg_preview)->clear();
+      gotoHomeScreen();
+    }
   }
 }
 
-void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) {
+void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
+                    int msgcount, int channel_idx,
+                    const char* channel_name) {
   _msgcount = msgcount;
 
-  ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
+  ((MsgPreviewScreen *)msg_preview)
+      ->addPreview(path_len, from_name, text, channel_idx, channel_name);
   if (isPairingScreenActive()) {
     // Keep the PIN visible, but retain the preview so it can be shown after
     // pairing completes or the pairing display window expires.
@@ -781,7 +974,8 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
 
   // A connected app drains the offline queue almost immediately, which calls
   // msgRead(0). While attached to a computer, retain the actual message screen
-  // for 15 seconds even though the app has already consumed the message.
+  // for the configured preview interval even though the app has already
+  // consumed the message.
   _msg_preview_until = _board->isUsbHostConnected()
       ? millis() + USB_MESSAGE_PREVIEW_MILLIS
       : 0;
@@ -955,11 +1149,17 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_NEXT);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-    c = handleLongPress(KEY_ENTER);
+    c = (_display != NULL && !_display->isOn())
+        ? checkDisplayOn(KEY_ENTER)
+        : handleLongPress(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
-    c = handleDoubleClick(KEY_PREV);
+    c = (_display != NULL && !_display->isOn())
+        ? checkDisplayOn(KEY_ENTER)
+        : handleDoubleClick(KEY_PREV);
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
-    c = handleTripleClick(KEY_SELECT);
+    c = (_display != NULL && !_display->isOn())
+        ? checkDisplayOn(KEY_ENTER)
+        : handleTripleClick(KEY_SELECT);
   }
   #endif  
 #endif
@@ -986,6 +1186,39 @@ void UITask::loop() {
       c = handleTripleClick(KEY_SELECT);
     }
     _analogue_pin_read_millis = millis();
+  }
+#endif
+#ifdef HAS_TOUCH
+  if (_display != NULL
+      && (int32_t)(millis() - next_touch_check) >= 0) {
+    next_touch_check = millis() + 25;
+    int touch_x = -1;
+    int touch_y = -1;
+    const bool touched = _display->getTouch(&touch_x, &touch_y);
+    const mesh::ui::TouchAction action = touch_input.update(
+        touched, touch_x, touch_y, _display->width(), _display->height(),
+        curr == msg_preview);
+    if (c == 0) {
+      switch (action) {
+        case mesh::ui::TouchAction::Previous:
+          c = checkDisplayOn(KEY_PREV);
+          break;
+        case mesh::ui::TouchAction::Next:
+          c = checkDisplayOn(KEY_NEXT);
+          break;
+        case mesh::ui::TouchAction::Select:
+          c = checkDisplayOn(KEY_ENTER);
+          break;
+        case mesh::ui::TouchAction::VerticalPrevious:
+          c = checkDisplayOn(KEY_UP);
+          break;
+        case mesh::ui::TouchAction::VerticalNext:
+          c = checkDisplayOn(KEY_DOWN);
+          break;
+        case mesh::ui::TouchAction::None:
+          break;
+      }
+    }
   }
 #endif
 #if defined(BACKLIGHT_BTN)
@@ -1021,10 +1254,11 @@ void UITask::loop() {
 
   if (curr) curr->poll();
 
-  if (curr == msg_preview && _msgcount == 0 && _msg_preview_until != 0
+  if (_msgcount == 0 && _msg_preview_until != 0
       && static_cast<int32_t>(millis() - _msg_preview_until) >= 0) {
     _msg_preview_until = 0;
-    gotoHomeScreen();
+    static_cast<MsgPreviewScreen*>(msg_preview)->clear();
+    if (curr == msg_preview) gotoHomeScreen();
   }
 
   if (_display != NULL && _display->isOn()) {

@@ -62,6 +62,7 @@ void RadioLibWrapper::begin() {
   }
 
   _noise_floor = 0;
+  _noise_floor_centi_dbm = 0;
   _noise_floor_valid = false;
   _threshold = 0;
   _cad_enabled = false;
@@ -71,7 +72,7 @@ void RadioLibWrapper::begin() {
 
   // start average out some samples
   _num_floor_samples = 0;
-  _floor_sample_sum = 0;
+  _floor_sample_sum_centi_dbm = 0;
   _nf_calib_active = false;
   _nf_last_calib = 0;
   _nf_sample_from = 0;
@@ -232,7 +233,7 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
   _nf_refresh_requested = true;
   _nf_last_calib = 0;
   _num_floor_samples = 0;
-  _floor_sample_sum = 0;
+  _floor_sample_sum_centi_dbm = 0;
 
   const unsigned long now = millis();
   _nf_sample_from = now + NF_CALIB_SETTLE_MS;
@@ -251,7 +252,7 @@ void RadioLibWrapper::requestNoiseFloorRefresh() {
   if (_nf_refresh_requested) return;
   _nf_refresh_requested = true;
   _num_floor_samples = 0;
-  _floor_sample_sum = 0;
+  _floor_sample_sum_centi_dbm = 0;
   _nf_calib_deadline = 0;  // starts when continuous RX is actually available
 }
 
@@ -425,7 +426,7 @@ void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
     _nf_calib_deadline = now + NF_CALIB_TIMEOUT_MS;
     _nf_sample_from = now + NF_CALIB_SETTLE_MS;
     _num_floor_samples = 0;   // start a fresh batch for this window
-    _floor_sample_sum = 0;
+    _floor_sample_sum_centi_dbm = 0;
     if (!isPacketPendingOrReceiving()) {
       requestRestartRecv();   // startReceiveMode() selects continuous RX
     }
@@ -463,22 +464,29 @@ void RadioLibWrapper::loop() {
     _nf_calib_deadline = now + NF_CONTINUOUS_TIMEOUT_MS;
   }
   if (_nf_refresh_requested && _num_floor_samples >= NUM_NOISE_FLOOR_SAMPLES
-      && _floor_sample_sum != 0) {
-    int16_t sampled_floor = _floor_sample_sum / NUM_NOISE_FLOOR_SAMPLES;
-    if (sampled_floor < -120) {
-      sampled_floor = -120;    // clamp to lower bound of -120dBi
+      && _floor_sample_sum_centi_dbm != 0) {
+    int32_t sampled_floor_centi_dbm =
+        _floor_sample_sum_centi_dbm / NUM_NOISE_FLOOR_SAMPLES;
+    if (sampled_floor_centi_dbm < -12000) {
+      sampled_floor_centi_dbm = -12000;
     }
     if (_noise_floor_valid) {
       // Favor the fresh high-rate batch while retaining a small amount of
-      // history: 25% previous floor + 75% newly sampled floor. Round the
-      // negative dBm result to the nearest integer instead of toward zero.
-      int32_t weighted_floor = (int32_t)_noise_floor + 3L * sampled_floor;
-      _noise_floor = weighted_floor < 0 ? (weighted_floor - 2) / 4
-                                        : (weighted_floor + 2) / 4;
+      // history: 25% previous floor + 75% newly sampled floor.
+      int32_t weighted_floor = _noise_floor_centi_dbm
+          + 3L * sampled_floor_centi_dbm;
+      _noise_floor_centi_dbm = weighted_floor < 0
+          ? (weighted_floor - 2) / 4
+          : (weighted_floor + 2) / 4;
     } else {
-      _noise_floor = sampled_floor;
+      _noise_floor_centi_dbm = sampled_floor_centi_dbm;
     }
-    _floor_sample_sum = 0;
+    // Preserve the existing whole-dB API and wire formats while exposing the
+    // fractional 64-sample mean to local displays.
+    _noise_floor = _noise_floor_centi_dbm < 0
+        ? (_noise_floor_centi_dbm - 50) / 100
+        : (_noise_floor_centi_dbm + 50) / 100;
+    _floor_sample_sum_centi_dbm = 0;
     _noise_floor_valid = true;
     _nf_refresh_requested = false;
     _nf_last_calib = now;
@@ -503,7 +511,7 @@ void RadioLibWrapper::loop() {
     _nf_last_calib = now;
     _nf_calib_deadline = 0;
     _num_floor_samples = 0;
-    _floor_sample_sum = 0;
+    _floor_sample_sum_centi_dbm = 0;
   }
 
   if (_nf_refresh_requested && state == STATE_RX
@@ -516,13 +524,15 @@ void RadioLibWrapper::loop() {
     if (!_rx_ps_armed
         && !(_nf_sample_from != 0 && (long)(now - _nf_sample_from) < 0)
         && !isReceivingPacket()) {
-      int rssi = getCurrentRSSI();
-      if (!_noise_floor_valid || rssi < _noise_floor + SAMPLING_THRESHOLD) {
+      float rssi = getCurrentRSSI();
+      if (!_noise_floor_valid
+          || rssi < getNoiseFloorDbm() + SAMPLING_THRESHOLD) {
         // With no valid baseline (startup, AGC reset, or gain change), seed
         // unconditionally. Otherwise reject likely traffic above the current
         // floor plus the sampling margin.
         _num_floor_samples++;
-        _floor_sample_sum += rssi;
+        _floor_sample_sum_centi_dbm +=
+            static_cast<int32_t>(rssi * 100.0f);
       }
     }
   }

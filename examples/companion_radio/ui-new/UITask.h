@@ -7,6 +7,9 @@
 #include <helpers/MultiSerialInterface.h>
 #include <Arduino.h>
 #include <helpers/sensors/LPPDataHelpers.h>
+#ifdef HAS_TOUCH
+  #include <helpers/ui/TouchInput.h>
+#endif
 
 #ifndef LED_STATE_ON
   #define LED_STATE_ON 1
@@ -41,6 +44,22 @@ class UITask : public AbstractUITask {
   int _msgcount;
   unsigned long ui_started_at, next_batt_chck;
   int next_backlight_btn_check = 0;
+#ifdef HAS_TOUCH
+  #ifndef TOUCH_CENTER_ZONE_PERCENT
+    #define TOUCH_CENTER_ZONE_PERCENT 34
+  #endif
+  #if defined(TOUCH_REVERSE_SWIPE) \
+      && defined(TOUCH_SEPARATE_VERTICAL_SWIPES)
+  mesh::ui::TouchInput touch_input{true, true, TOUCH_CENTER_ZONE_PERCENT};
+  #elif defined(TOUCH_REVERSE_SWIPE)
+  mesh::ui::TouchInput touch_input{true, false, TOUCH_CENTER_ZONE_PERCENT};
+  #elif defined(TOUCH_SEPARATE_VERTICAL_SWIPES)
+  mesh::ui::TouchInput touch_input{false, true, TOUCH_CENTER_ZONE_PERCENT};
+  #else
+  mesh::ui::TouchInput touch_input{false, false, TOUCH_CENTER_ZONE_PERCENT};
+  #endif
+  unsigned long next_touch_check = 0;
+#endif
 #ifdef PIN_STATUS_LED
   int led_state = 0;
   int next_led_change = 0;
@@ -83,8 +102,10 @@ public:
   void serviceWiFiToggleButton();
 
   void gotoHomeScreen() { setCurrScreen(home); }
+  void showMessages();
   void showAlert(const char* text, int duration_millis);
   int  getMsgCount() const { return _msgcount; }
+  int getPreviewCount() const;
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;
 
@@ -103,7 +124,9 @@ public:
 
   // from AbstractUITask
   void msgRead(int msgcount) override;
-  void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) override;
+  void newMsg(uint8_t path_len, const char* from_name, const char* text,
+              int msgcount, int channel_idx = -1,
+              const char* channel_name = nullptr) override;
   void notify(UIEventType t = UIEventType::none) override;
   void loop() override;
 

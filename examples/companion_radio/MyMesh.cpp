@@ -847,8 +847,25 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
 }
 
 bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
-  return _prefs.isRepeatEn();
+  if (!_prefs.isRepeatEn()) return false;
+#ifdef COMPANION_MESH_CLOCK_SYNC
+  _clock_sync.observeAcceptedFlood(packet);
+#endif
+  return true;
 }
+
+#ifdef COMPANION_MESH_CLOCK_SYNC
+void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
+                          uint32_t timestamp, const uint8_t* app_data,
+                          size_t app_data_len) {
+  BaseChatMesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
+  _clock_sync.observeVerifiedAdvert(packet, id, timestamp);
+}
+
+void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+  _clock_sync.observeGroupPacket(packet);
+}
+#endif
 
 bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
   if (packet == NULL) return false;
@@ -982,7 +999,13 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   if (getChannel(channel_idx, channel_details)) {
     channel_name = channel_details.name;
   }
-  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
+  char channel_label[64];
+  snprintf(channel_label, sizeof(channel_label), "Ch %u %s",
+           (unsigned int)channel_idx, channel_name);
+  if (_ui) {
+    _ui->newMsg(path_len, channel_label, text, offline_queue_len,
+                channel_idx, channel_name);
+  }
 #endif
 
   if (pkt->isRouteFlood() && is_emergency_channel) {
@@ -1357,6 +1380,10 @@ void MyMesh::onSendTimeout() {
 
 MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store, AbstractUITask* ui)
     : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
+#ifdef COMPANION_MESH_CLOCK_SYNC
+      _clock_sync(radio, _clock_sync_millis, rtc, _clock_sync_acl, sensors,
+                  _prefs.airtime_factor),
+#endif
       _serial(NULL), telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
   _iter_started = false;
   _cli_rescue = false;
@@ -1606,6 +1633,12 @@ void MyMesh::begin(bool has_display, bool radio_available) {
     _store->saveChannels(this);
   }
 
+#ifdef COMPANION_MESH_CLOCK_SYNC
+  // Fixed fallback policy for this Companion build. A successful host time
+  // update below suppresses mesh correction for the remainder of the boot.
+  _clock_sync.begin(nullptr);
+#endif
+
   configureRadioFromPrefs();
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
@@ -1808,9 +1841,10 @@ void MyMesh::scheduleNormalRadio(char* reply, size_t reply_size) {
   _temp_radio_failures = 0;
   snprintf(reply, reply_size, "OK - normal radio restore scheduled");
 }
+#endif
 
-bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
-                                  size_t reply_size) {
+bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
+                                       size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
 
@@ -1971,6 +2005,7 @@ bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
   }
 #endif
 
+#if defined(COMPANION_RADIO_FULL)
   if (strcmp(command, "tempradio") == 0) {
     if (_temp_radio_set_at) {
       snprintf(reply, reply_size, "TempRadio pending: %.3f,%.2f,%u,%u",
@@ -2021,10 +2056,12 @@ bool MyMesh::handleFullOtaCommand(const char* command, char* reply,
     snprintf(reply, reply_size, "%s", ota_reply);
     return true;
   }
+#endif
 
   return false;
 }
 
+#if defined(COMPANION_RADIO_FULL)
 void MyMesh::serviceTempRadio() {
   const unsigned long now = _ms->getMillis();
   const bool retry_ready = !_temp_radio_retry_at
@@ -2964,6 +3001,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t curr = getRTCClock()->getCurrentTime();
     if (secs >= curr) {
       getRTCClock()->setCurrentTime(secs);
+#ifdef COMPANION_MESH_CLOCK_SYNC
+      _clock_sync.onManualClockSet();
+#endif
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -4753,13 +4793,11 @@ void MyMesh::handleTerminalCommand(char* command) {
   if (*command == 0) return;
   mesh::cli::normalizeCommandVerb(command);
 
-#if defined(COMPANION_RADIO_FULL)
-  char full_reply[160];
-  if (handleFullOtaCommand(command, full_reply, sizeof(full_reply))) {
-    terminalOutput().printf("  %s\r\n", full_reply);
+  char local_reply[160];
+  if (handleLocalControlCommand(command, local_reply, sizeof(local_reply))) {
+    terminalOutput().printf("  %s\r\n", local_reply);
     return;
   }
-#endif
 
   mesh::cli::TerminalChannelMessage channel_message;
   const mesh::cli::TerminalChannelCommandMatch channel_match =
@@ -4869,6 +4907,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     uint32_t current = getRTCClock()->getCurrentTime();
     if (timestamp >= current) {
       getRTCClock()->setCurrentTime(timestamp);
+#ifdef COMPANION_MESH_CLOCK_SYNC
+      _clock_sync.onManualClockSet();
+#endif
       terminalOutput().print("  OK - clock set\r\n");
     } else {
       terminalOutput().print("  ERROR: clock cannot go backwards\r\n");
@@ -5518,6 +5559,9 @@ void MyMesh::loop() {
   serviceTempRadio();
 #endif
   BaseChatMesh::loop();
+#ifdef COMPANION_MESH_CLOCK_SYNC
+  _clock_sync.loop();
+#endif
 #ifdef ENABLE_USB_INTERFACE
   serviceTerminalLogin();
   serviceTerminalCommand();

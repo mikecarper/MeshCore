@@ -691,12 +691,17 @@ bool EnvironmentSensorManager::begin() {
   MESH_DEBUG_PRINTLN("Second I2C initialized on pins SDA: %d SCL: %d", ENV_PIN_SDA, ENV_PIN_SCL);
   #endif
 
+  _active_sensor_count = 0;
+  // Avoid touching a shared I2C bus when no environmental drivers were built.
+  if (SENSOR_TABLE_SIZE == 0) {
+    return true;
+  }
+
   // Scan the I2C bus before touching any sensor library.
   bool detected[128] = {};
   scanI2CBus(TELEM_WIRE, detected);
 
   // Walk the sensor table and initialize only detected devices.
-  _active_sensor_count = 0;
   for (size_t i = 0; i < SENSOR_TABLE_SIZE && _active_sensor_count < MAX_ACTIVE_SENSORS; i++) {
     const SensorDef& def = SENSOR_TABLE[i];
     // One static driver instance per type: an alternate address is a fallback, not a second device.

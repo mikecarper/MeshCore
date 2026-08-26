@@ -156,7 +156,11 @@ void UITask::clearMsgPreview() {
   _need_refresh = true;
 }
 
-void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) {
+void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
+                    int msgcount, int channel_idx,
+                    const char* channel_name) {
+  (void)channel_idx;
+  (void)channel_name;
   _msgcount = msgcount;
 
 #ifdef HAS_DRV2605

@@ -47,6 +47,11 @@
 #include <helpers/TerminalDisplayFilter.h>
 #include <target.h>
 
+#ifdef COMPANION_MESH_CLOCK_SYNC
+#include <helpers/ClientACL.h>
+#include <helpers/MeshClockSync.h>
+#endif
+
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
 #ifndef LORA_FREQ
@@ -171,11 +176,10 @@ public:
 #endif
 #endif
 
-#if defined(COMPANION_RADIO_FULL)
-  // Local-only control surface shared by the USB terminal and WiFi port 5002.
-  // Supports bounded TempRadio windows plus the serve-only `ota ...` CLI.
-  bool handleFullOtaCommand(const char* command, char* reply, size_t reply_size);
-#endif
+  // Local control shared by every USB terminal. ESP32 WiFi companions expose
+  // setup/status commands here; Full builds add TempRadio and OTA commands.
+  bool handleLocalControlCommand(const char* command, char* reply,
+                                 size_t reply_size);
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
@@ -200,6 +204,12 @@ protected:
   bool filterRecvFloodPacket(mesh::Packet* packet) override;
   bool allowPacketForward(const mesh::Packet* packet) override;
   bool allowFloodRetry(const mesh::Packet* packet) const override;
+#ifdef COMPANION_MESH_CLOCK_SYNC
+  void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
+                    uint32_t timestamp, const uint8_t* app_data,
+                    size_t app_data_len) override;
+  void onGroupPacketRecv(mesh::Packet* packet) override;
+#endif
 
   bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis);
   bool sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis=0) override;
@@ -362,6 +372,11 @@ private:
 
   DataStore* _store;
   CompanionNodePrefs _prefs;
+#ifdef COMPANION_MESH_CLOCK_SYNC
+  ArduinoMillis _clock_sync_millis;
+  ClientACL _clock_sync_acl;
+  mesh::MeshClockSync _clock_sync;
+#endif
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   MQTTPrefs _mqtt_prefs;
   MQTTBridge* _mqtt_bridge;

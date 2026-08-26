@@ -1,6 +1,9 @@
 #pragma once
 
 #include <helpers/ui/LGFXDisplay.h>
+#include "IndicatorFontClient.h"
+#include "IndicatorTouch.h"
+#include <driver/gpio.h>
 
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
@@ -13,7 +16,7 @@ class LGFX : public lgfx::LGFX_Device
   lgfx::Panel_ST7701 _panel_instance;
   lgfx::Bus_RGB _bus_instance;
   lgfx::Light_PWM _light_instance;
-  lgfx::Touch_FT5x06 _touch_instance;
+  IndicatorTouch _touch_instance;
 
 public:
   const uint16_t screenWidth = 480;
@@ -37,7 +40,8 @@ public:
 
     {
         auto cfg = _panel_instance.config_detail();
-        cfg.pin_cs = 4 | IO_EXPANDER;
+        // Chip-select is driven through the board's I2C expander below.
+        cfg.pin_cs = GPIO_NUM_NC;
         cfg.pin_sclk = 41;
         cfg.pin_mosi = 48;
         cfg.use_psram = 1;
@@ -105,8 +109,8 @@ public:
         cfg.y_max = 479;
         cfg.pin_int = GPIO_NUM_NC;
         cfg.pin_rst = GPIO_NUM_NC;
-        cfg.bus_shared = true;
-        cfg.offset_rotation = 0;
+        cfg.bus_shared = false;
+        cfg.offset_rotation = 2;
 
         cfg.i2c_port = 0;
         cfg.i2c_addr = 0x48;
@@ -123,6 +127,131 @@ public:
 
 class SCIndicatorDisplay : public LGFXDisplay {
   LGFX disp;
+  uint8_t expander_address = 0;
+  uint16_t expander_output = 0;
+
+  static constexpr gpio_num_t BACKLIGHT_PIN = GPIO_NUM_45;
+  static constexpr uint8_t I2C_PORT = 0;
+  static constexpr uint32_t I2C_FREQUENCY = 400000;
+  static constexpr uint8_t EXPANDER_OUTPUT_REGISTER = 0x02;
+  static constexpr uint8_t EXPANDER_CONFIG_REGISTER = 0x06;
+  static constexpr uint16_t PANEL_CS_MASK = 1U << 4;
+  static constexpr uint16_t PANEL_RESET_MASK = 1U << 5;
+  static constexpr uint16_t TOUCH_INTERRUPT_MASK = 1U << 6;
+  static constexpr uint16_t TOUCH_RESET_MASK = 1U << 7;
+
+  static void setBacklight(bool enabled) {
+    // Detach any stale LEDC routing before changing the level. Reasserting a
+    // plain GPIO level makes wake reliable even if a previous image left the
+    // backlight PWM channel stopped or assigned elsewhere.
+    gpio_reset_pin(BACKLIGHT_PIN);
+    gpio_set_direction(BACKLIGHT_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(BACKLIGHT_PIN, enabled ? 1 : 0);
+  }
+
+  static bool readExpanderRegister(uint8_t address, uint8_t reg,
+                                   uint16_t& value) {
+    uint8_t data[2];
+    if (!lgfx::i2c::readRegister(I2C_PORT, address, reg, data, sizeof(data),
+                                 I2C_FREQUENCY)
+             .has_value()) {
+      return false;
+    }
+    value = data[0];
+    value |= static_cast<uint16_t>(data[1]) << 8;
+    return true;
+  }
+
+  static bool writeExpanderRegister(uint8_t address, uint8_t reg,
+                                    uint16_t value) {
+    uint8_t data[] = {
+        reg,
+        static_cast<uint8_t>(value),
+        static_cast<uint8_t>(value >> 8),
+    };
+    return lgfx::i2c::transactionWrite(I2C_PORT, address, data, sizeof(data),
+                                       I2C_FREQUENCY)
+        .has_value();
+  }
+
+  bool prepareControllersAt(uint8_t address) {
+    uint16_t config;
+    if (!readExpanderRegister(address, EXPANDER_OUTPUT_REGISTER,
+                              expander_output)
+        || !readExpanderRegister(address, EXPANDER_CONFIG_REGISTER, config)) {
+      return false;
+    }
+
+    // Set safe output latches before changing pin directions. Keep LCD CS
+    // inactive while both controllers are held in reset.
+    expander_output |= PANEL_CS_MASK;
+    expander_output &= ~(PANEL_RESET_MASK | TOUCH_RESET_MASK);
+    if (!writeExpanderRegister(address, EXPANDER_OUTPUT_REGISTER,
+                               expander_output)) {
+      return false;
+    }
+
+    config &= ~(PANEL_CS_MASK | PANEL_RESET_MASK | TOUCH_RESET_MASK);
+    config |= TOUCH_INTERRUPT_MASK;
+    if (!writeExpanderRegister(address, EXPANDER_CONFIG_REGISTER, config)) {
+      return false;
+    }
+    delay(10);
+
+    expander_output |= PANEL_RESET_MASK | TOUCH_RESET_MASK;
+    if (!writeExpanderRegister(address, EXPANDER_OUTPUT_REGISTER,
+                               expander_output)) {
+      return false;
+    }
+    delay(120);
+
+    // Hold LCD CS active while the graphics driver emits the ST7701 init
+    // sequence over the shared clock and data pins.
+    expander_output &= ~PANEL_CS_MASK;
+    if (!writeExpanderRegister(address, EXPANDER_OUTPUT_REGISTER,
+                               expander_output)) {
+      return false;
+    }
+    expander_address = address;
+    return true;
+  }
+
+  bool prepareControllers() {
+    if (!lgfx::i2c::init(I2C_PORT, PIN_BOARD_SDA, PIN_BOARD_SCL).has_value()) {
+      return false;
+    }
+    return prepareControllersAt(0x20) || prepareControllersAt(0x39);
+  }
+
+  bool releasePanelChipSelect() {
+    if (expander_address == 0) return false;
+    expander_output |= PANEL_CS_MASK;
+    return writeExpanderRegister(expander_address, EXPANDER_OUTPUT_REGISTER,
+                                 expander_output);
+  }
+
 public:
   SCIndicatorDisplay() : LGFXDisplay(480, 480, disp) {}
+
+  bool begin() {
+    if (!prepareControllers()) return false;
+    const bool initialized = LGFXDisplay::begin();
+    const bool released = releasePanelChipSelect();
+    if (!initialized || !released) return false;
+    setBacklight(true);
+    size_t fontSize;
+    uint8_t* fontData = IndicatorFontClient::load(fontSize);
+    if (fontData != nullptr) installRuntimeFont(fontData, fontSize);
+    return true;
+  }
+
+  void turnOn() override {
+    setBacklight(true);
+    _isOn = true;
+  }
+
+  void turnOff() override {
+    setBacklight(false);
+    _isOn = false;
+  }
 };

@@ -419,6 +419,16 @@ receives their final reply.
 into a selected target; it does not change that target into another firmware
 role.
 
+This fork defaults every `build.sh` target to the USA Cascadia radio preset and
+the Cascade firmware profile. The script resolves the live `USA/Canada` entry
+by name, so its changing number in the downloaded menu does not affect builds.
+If the preset service is unavailable, it falls back to
+`910.525 MHz / BW62.5 / SF7 / CR5`. Use
+`--radio-preset target --profile default` only when a build intentionally needs
+the target's original radio and profile defaults. `--radio-preset usa-cascadia`
+is the stable explicit name; legacy numbered choices remain accepted but their
+meaning can change when the service reorders or adds presets.
+
 | Build profile | WiFi/MQTT behavior |
 |---|---|
 | Standard | Uses the selected target's role. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile. |
@@ -461,7 +471,7 @@ Fresh Cascade-profile builds default to `min`; target-default builds use
 highest power use. `min` and `max` reduce power but may add latency or reduce
 reliability on busy nodes. A saved operator setting takes precedence on an
 upgrade. ESP32 WiFi Companions expose the same values in their WebConfig WiFi
-card. Full Companion also accepts the text commands from its USB terminal and
+card and USB text terminal. Full Companion also accepts the text commands from
 TCP port 5002. The normal binary Companion protocol can read or write the
 setting over USB, BLE, or TCP port 5000 without entering terminal mode. Full
 Companion rejects `none` because its simultaneous BLE transport requires WiFi
@@ -475,9 +485,9 @@ WiFi only, not LoRa transmit power.
 
 `get wifi.status`, `get wifi.ssid`, `get wifi.powersave`, and `get wifi.cli`
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
-builds with WebConfig. ESP32 WiFi Companions expose `wifi.powersave` through
-their role-specific interfaces described above; they do not expose the full
-infrastructure WiFi CLI family.
+builds with WebConfig. ESP32 WiFi Companions with WebConfig expose those
+commands, credential setters, and `start webconfig [ap]` through their USB text
+terminal; Full Companion additionally exposes that terminal on TCP port 5002.
 MQTT commands such as `get mqtt.status` and `set mqtt1.preset ...` still require
 an MQTT observer target. Unknown settings return `Error: unknown setting:
 <name>`. Older firmware that used the discontinued compact CLI can instead
@@ -518,5 +528,8 @@ Common causes are:
 - the wrong firmware role or an older compact-CLI build without WebConfig.
 
 For a WiFi companion, find its station IP in the router, connect the client to
-TCP port 5000, and use the setup AP if it cannot join the saved network. MQTT
-diagnostics apply only to a `wifi_mqtt` companion target.
+TCP port 5000, and use the open `MeshCore-Setup-XXXX` AP at
+`http://192.168.4.1/` if it cannot join the saved network. Current firmware
+normalizes both ESP32 WiFi interfaces to standard b/g/n before advertising the
+setup AP, including after an ESP-NOW image used its long-range protocol mode.
+MQTT diagnostics apply only to a `wifi_mqtt` companion target.

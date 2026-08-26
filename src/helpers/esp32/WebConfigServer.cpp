@@ -603,7 +603,22 @@ bool WebConfigServer::startSetupMode(char reply[]) {
 #else
     ap_ok = WiFi.softAP(_ap_ssid);
 #endif
-    if (ap_ok) break;
+    if (ap_ok) {
+      // ESP-NOW can leave the persistent AP protocol mask with the proprietary
+      // LR bit set. The driver then reports a healthy SoftAP, but ordinary
+      // phones and laptops cannot discover its beacon. A WiFi companion must
+      // advertise using the interoperable 2.4 GHz protocol set.
+      const esp_err_t ap_protocol_result = esp_wifi_set_protocol(
+          WIFI_IF_AP,
+          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+      const esp_err_t sta_protocol_result = esp_wifi_set_protocol(
+          WIFI_IF_STA,
+          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+      if (ap_protocol_result == ESP_OK && sta_protocol_result == ESP_OK) break;
+      Serial.printf("WebConfig protocol reset failed: AP=%d STA=%d\n",
+                    (int)ap_protocol_result, (int)sta_protocol_result);
+      ap_ok = false;
+    }
 
     Serial.printf(
         "WebConfig AP attempt %u failed: mode_ok=%d disconnect_ok=%d mode=%d heap=%u largest=%u\n",
@@ -677,6 +692,13 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   }
 
   WiFi.mode(WIFI_STA);
+  if (esp_wifi_set_protocol(
+          WIFI_IF_STA,
+          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+      != ESP_OK) {
+    strcpy(reply, "Err: failed to reset WiFi station protocol");
+    return false;
+  }
   WiFi.setAutoReconnect(true);
   _retry_saved_wifi_in_setup = false;
   _setup_reconnect_in_progress = false;

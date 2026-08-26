@@ -23,12 +23,17 @@ FIRMWARE_FILENAME_INFIX=""
 ESP32_FULL_BUILD=0
 SINGLE_TARGET_FULL_BUILD=0
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
-RADIO_SETTING_TITLE=""
-RADIO_FREQ_OVERRIDE=""
-RADIO_BW_OVERRIDE=""
-RADIO_SF_OVERRIDE=""
-RADIO_CR_OVERRIDE=""
-FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-}"
+USA_CASCADIA_RADIO_TITLE="USA Cascadia"
+USA_CASCADIA_FALLBACK_FREQ="910.525"
+USA_CASCADIA_FALLBACK_BW="62.5"
+USA_CASCADIA_FALLBACK_SF="7"
+USA_CASCADIA_FALLBACK_CR="5"
+RADIO_SETTING_TITLE="$USA_CASCADIA_RADIO_TITLE"
+RADIO_FREQ_OVERRIDE="$USA_CASCADIA_FALLBACK_FREQ"
+RADIO_BW_OVERRIDE="$USA_CASCADIA_FALLBACK_BW"
+RADIO_SF_OVERRIDE="$USA_CASCADIA_FALLBACK_SF"
+RADIO_CR_OVERRIDE="$USA_CASCADIA_FALLBACK_CR"
+FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-cascade}"
 BATCH_BUILD_MODE=0
 OPTION3_BUILD_WORKERS="${OPTION3_BUILD_WORKERS:-2}"
 OPTION3_PIO_JOBS="${OPTION3_PIO_JOBS:-8}"
@@ -101,8 +106,8 @@ Commands:
 
 Options:
   --firmware-version <version>: Firmware version to embed.
-  --radio-preset <number>: Use the numbered radio choice from the interactive menu (1 keeps target defaults).
-  --profile <default|cascade>: Select the firmware settings profile.
+  --radio-preset <name|number>: Override the USA Cascadia radio default. Stable names are usa-cascadia and target; legacy menu numbers remain accepted.
+  --profile <default|cascade>: Override the default Cascade firmware settings profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
 
@@ -114,6 +119,11 @@ Run without arguments to choose an interactive build action/target, an optional
 FULL-everything profile for supported ESP32 Option 1 targets, debug options,
 radio settings, firmware profile, and firmware version
 $ bash build.sh
+
+Builds default to the live USA/Canada preset by name and the Cascade firmware
+profile. If the preset service is offline, the radio fallback is 910.525 MHz /
+BW62.5 / SF7 / CR5. To intentionally use a target's own defaults instead:
+$ bash build.sh build-firmware RAK_4631_repeater --radio-preset target --profile default
 
 Build all firmwares for device targets containing the string "RAK_4631"
 $ bash build.sh build-matching-firmwares <build-match-spec>
@@ -672,11 +682,23 @@ clear_firmware_profile_overrides() {
 
 apply_cli_radio_preset() {
   local selection=$1
-  local preset_output row
+  local preset_output row title description freq bw sf cr
   local -a preset_rows=()
 
+  case "${selection,,}" in
+    usa|usa-canada|usa-cascadia|cascadia)
+      resolve_usa_cascadia_radio_default
+      return 0
+      ;;
+    default|target|target-defaults)
+      clear_radio_overrides
+      echo "Using target default radio settings."
+      return 0
+      ;;
+  esac
+
   if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ]; then
-    echo "Invalid --radio-preset value: ${selection}"
+    echo "Invalid --radio-preset value: ${selection} (use usa-cascadia, target, or a legacy menu number)"
     return 1
   fi
   clear_radio_overrides
@@ -698,7 +720,7 @@ apply_cli_radio_preset() {
   row=${preset_rows[$((selection - 2))]}
   IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
   set_radio_overrides "$title" "$freq" "$bw" "$sf" "$cr"
-  echo "Using radio setting ${selection}: ${RADIO_SETTING_TITLE} (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})"
+  echo "Using legacy numbered radio setting ${selection}: ${RADIO_SETTING_TITLE} (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})"
 }
 
 parse_cli_options() {
@@ -819,6 +841,43 @@ for entry in entries:
 PY
 }
 
+is_usa_cascadia_radio_title() {
+  local title=${1,,}
+
+  [[ "$title" == usa*canada* ]]
+}
+
+set_usa_cascadia_radio_fallback() {
+  set_radio_overrides \
+    "$USA_CASCADIA_RADIO_TITLE" \
+    "$USA_CASCADIA_FALLBACK_FREQ" \
+    "$USA_CASCADIA_FALLBACK_BW" \
+    "$USA_CASCADIA_FALLBACK_SF" \
+    "$USA_CASCADIA_FALLBACK_CR"
+}
+
+resolve_usa_cascadia_radio_default() {
+  local preset_output row title description freq bw sf cr
+
+  set_usa_cascadia_radio_fallback
+  if ! preset_output=$(fetch_suggested_radio_settings) || [ -z "$preset_output" ]; then
+    echo "USA Cascadia preset lookup unavailable; using offline fallback (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})."
+    return 0
+  fi
+
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
+    if is_usa_cascadia_radio_title "$title"; then
+      set_radio_overrides "$USA_CASCADIA_RADIO_TITLE" "$freq" "$bw" "$sf" "$cr"
+      echo "Resolved USA Cascadia by preset name '${title}': ${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE}."
+      return 0
+    fi
+  done <<< "$preset_output"
+
+  echo "USA/Canada preset not found; using offline USA Cascadia fallback (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})."
+}
+
 is_valid_custom_radio_bandwidth() {
   python3 - "$1" <<'PY'
 import sys
@@ -883,7 +942,15 @@ prompt_for_custom_radio_setting() {
 prompt_for_radio_build_settings() {
   local -a preset_rows=()
   local -a fetched_preset_rows=()
-  local -a options=("Keep target defaults (no radio override)")
+  local default_title=$RADIO_SETTING_TITLE
+  local default_freq=$RADIO_FREQ_OVERRIDE
+  local default_bw=$RADIO_BW_OVERRIDE
+  local default_sf=$RADIO_SF_OVERRIDE
+  local default_cr=$RADIO_CR_OVERRIDE
+  local -a options=(
+    "USA Cascadia (default): ${default_freq} MHz / SF${default_sf} / BW${default_bw} / CR${default_cr}"
+    "Keep target defaults (no radio override)"
+  )
   local row
   local title
   local description
@@ -896,14 +963,16 @@ prompt_for_radio_build_settings() {
   local custom_index
   local preset_output
 
-  clear_radio_overrides
-
   if preset_output=$(fetch_suggested_radio_settings); then
     if [ -n "$preset_output" ]; then
       mapfile -t fetched_preset_rows <<< "$preset_output"
     fi
     for row in "${fetched_preset_rows[@]}"; do
       if [ -z "$row" ]; then
+        continue
+      fi
+      IFS=$'\t' read -r title description freq bw sf cr <<< "$row"
+      if is_usa_cascadia_radio_title "$title"; then
         continue
       fi
       preset_rows+=("$row")
@@ -934,6 +1003,13 @@ prompt_for_radio_build_settings() {
 
     choice_index=$MENU_CHOICE
     if [ "$choice_index" -eq 1 ]; then
+      set_radio_overrides "$default_title" "$default_freq" "$default_bw" "$default_sf" "$default_cr"
+      echo "Using radio setting: ${RADIO_SETTING_TITLE} (${RADIO_FREQ_OVERRIDE}MHz / SF${RADIO_SF_OVERRIDE} / BW${RADIO_BW_OVERRIDE} / CR${RADIO_CR_OVERRIDE})"
+      return 0
+    fi
+
+    if [ "$choice_index" -eq 2 ]; then
+      clear_radio_overrides
       echo "Using target default radio settings."
       return 0
     fi
@@ -944,7 +1020,7 @@ prompt_for_radio_build_settings() {
       return 0
     fi
 
-    preset_index=$((choice_index - 2))
+    preset_index=$((choice_index - 3))
     if [ "$preset_index" -ge 0 ] && [ "$preset_index" -lt "${#preset_rows[@]}" ]; then
       IFS=$'\t' read -r title description freq bw sf cr <<< "${preset_rows[$preset_index]}"
       set_radio_overrides "$title" "$freq" "$bw" "$sf" "$cr"
@@ -956,11 +1032,9 @@ prompt_for_radio_build_settings() {
 
 prompt_for_firmware_profile_settings() {
   local -a options=(
+    "Cascade (default): power saving + RXPS on / WiFi power save=min / path.hash.mode=2 / loop.detect=minimal / cad=on / rxdelay=2 / agc.reset.interval=8 / advert.interval=0 / flood.advert.interval=83 / multi.acks=1 / companion.manual.add=1 / companion.autoadd=0"
     "Keep target defaults"
-    "Cascade: power saving + RXPS on / WiFi power save=min / path.hash.mode=2 / loop.detect=minimal / cad=on / rxdelay=2 / agc.reset.interval=8 / advert.interval=0 / flood.advert.interval=83 / multi.acks=1 / companion.manual.add=1 / companion.autoadd=0"
   )
-
-  clear_firmware_profile_overrides
 
   echo "Set firmware profile options:"
   while true; do
@@ -973,12 +1047,13 @@ prompt_for_firmware_profile_settings() {
 
     case "$MENU_CHOICE" in
       1)
-        echo "Using target default firmware profile settings."
+        set_firmware_profile_override "cascade"
+        echo "Using firmware profile: Cascade"
         return 0
         ;;
       2)
-        set_firmware_profile_override "cascade"
-        echo "Using firmware profile: Cascade"
+        clear_firmware_profile_overrides
+        echo "Using target default firmware profile settings."
         return 0
         ;;
     esac
@@ -4092,6 +4167,8 @@ main() {
     if ! apply_cli_radio_preset "$RADIO_PRESET_SELECTION"; then
       exit 1
     fi
+  else
+    resolve_usa_cascadia_radio_default
   fi
 
   if [ $# -eq 0 ]; then

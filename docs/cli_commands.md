@@ -252,11 +252,12 @@ take effect on the next connection. `get wifi.pwd` is intentionally unavailable
 so the standalone password is never returned by the CLI.
 
 ESP32 WiFi Companion WebConfig exposes the same `wifi.powersave` values in its
-WiFi card. Full Companion exposes the same role-specific text terminal over
-USB and TCP port 5002, including the standalone `wifi.ssid`, `wifi.status`,
-`wifi.powersave`, `wifi.cli`, and WebConfig command families. Credential
-writes reply before restarting the WiFi station, so a TCP client should expect
-to reconnect at the new address; USB password input is masked. Binary
+WiFi card. Every ESP32 WiFi Companion with WebConfig exposes the standalone
+`wifi.ssid`, `wifi.status`, `wifi.powersave`, `wifi.cli`, and WebConfig command
+families through its USB text terminal. Full Companion exposes the same
+role-specific terminal on TCP port 5002. Credential writes reply before
+restarting the WiFi station, so a TCP client should expect to reconnect at the
+new address; USB password input is masked. Binary
 Companion clients can use command bytes
 `0x46` and `0x47` over USB, BLE, or TCP port 5000 without the terminal-start
 token. WiFi-only Companions accept all three modes; Full Companion rejects

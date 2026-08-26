@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <Preferences.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <strings.h>
@@ -296,7 +297,15 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
 
   WiFi.mode(WIFI_AP_STA);
   if (!WiFi.softAPConfig(SETUP_IP, SETUP_IP, SETUP_MASK)
-      || !WiFi.softAP(impl->ap_name, nullptr)) {
+      || !WiFi.softAP(impl->ap_name, nullptr)
+      || esp_wifi_set_protocol(
+             WIFI_IF_AP,
+             WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+             != ESP_OK
+      || esp_wifi_set_protocol(
+             WIFI_IF_STA,
+             WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+             != ESP_OK) {
     WiFi.softAPdisconnect(true);
     return false;
   }

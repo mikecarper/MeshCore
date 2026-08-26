@@ -15,6 +15,14 @@ class DisplayDriver {
   int _w, _h;
 protected:
   DisplayDriver(int w, int h) { _w = w; _h = h; }
+
+  static size_t trimLastUTF8Codepoint(char* str, size_t length) {
+    if (length == 0) return 0;
+    size_t start = length - 1;
+    while (start > 0 && ((uint8_t)str[start] & 0xC0) == 0x80) --start;
+    str[start] = 0;
+    return start;
+  }
 public:
   //enum Color { DARK=0, LIGHT, RED, GREEN, BLUE, YELLOW, ORANGE }; // on b/w screen, colors will be !=0 synonym of light
 
@@ -37,6 +45,11 @@ public:
   virtual void drawRect(int x, int y, int w, int h) = 0;
   virtual void drawXbm(int x, int y, const uint8_t* bits, int w, int h) = 0;
   virtual uint16_t getTextWidth(const char* str) = 0;
+  virtual bool getTouch(int* x, int* y) {
+    (void)x;
+    (void)y;
+    return false;
+  }
   virtual void drawTextCentered(int mid_x, int y, const char* str) {   // helper method (override to optimise)
     int w = getTextWidth(str);
     setCursor(mid_x - w/2, y);
@@ -72,9 +85,16 @@ public:
   virtual void drawTextEllipsized(int x, int y, int max_width, const char* str) {
     char temp_str[256];  // reasonable buffer size
     size_t len = strlen(str);
-    if (len >= sizeof(temp_str)) len = sizeof(temp_str) - 1;
+    if (len >= sizeof(temp_str)) {
+      len = sizeof(temp_str) - 1;
+      // If the fixed buffer cuts through a UTF-8 sequence, omit that whole
+      // codepoint instead of passing malformed text to the display driver.
+      while (len > 0 && ((uint8_t)str[len] & 0xC0) == 0x80) --len;
+    }
     memcpy(temp_str, str, len);
     temp_str[len] = 0;
+
+    if (max_width <= 0) return;
     
     if (getTextWidth(temp_str) <= max_width) {
       setCursor(x, y);
@@ -95,12 +115,19 @@ public:
     }
     
     int ellipsis_width = getTextWidth(ellipsis);
-    int str_len = strlen(temp_str);
+    size_t ellipsis_len = strlen(ellipsis);
+    size_t str_len = strlen(temp_str);
     
-    while (str_len > 0 && getTextWidth(temp_str) > max_width - ellipsis_width) {
-      temp_str[--str_len] = 0;
+    while (str_len > 0
+           && (getTextWidth(temp_str) > max_width - ellipsis_width
+               || str_len + ellipsis_len >= sizeof(temp_str))) {
+      str_len = trimLastUTF8Codepoint(temp_str, str_len);
     }
-    strcat(temp_str, ellipsis);
+    if (ellipsis_width <= max_width) {
+      memcpy(temp_str + str_len, ellipsis, ellipsis_len + 1);
+    } else {
+      temp_str[0] = 0;
+    }
     
     setCursor(x, y);
     print(temp_str);

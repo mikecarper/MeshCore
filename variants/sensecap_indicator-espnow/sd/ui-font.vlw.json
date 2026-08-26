@@ -1,0 +1,37 @@
+{
+  "format": "MeshCore SD UI font 2",
+  "text_cell": [
+    18,
+    24
+  ],
+  "emoji_cell": [
+    12,
+    12
+  ],
+  "pixel_font": true,
+  "antialiasing": false,
+  "text_pixel_values": [
+    0,
+    255
+  ],
+  "emoji_encoding": {
+    "color": "RGB332",
+    "transparent_key": 227,
+    "alpha_threshold": 48
+  },
+  "text_source": "Noto Sans Mono Bold, binary-thresholded",
+  "text_native_scale": 3,
+  "unicode_emoji_version": "17.0",
+  "text_glyphs": 1357,
+  "emoji_glyphs": 3953,
+  "emoji_aliases": 5225,
+  "trie_bytes": 109080,
+  "color_atlas_bytes": 569244,
+  "font_bytes": 1302608,
+  "sha256": "61bce9662db314054e7bcfaa26147a28ad7b500b51baac4cae1caacce90b7421",
+  "sources": {
+    "NotoColorEmoji.ttf": "72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b",
+    "NotoSansMono-wdth-wght.ttf": "2cb2adb378a8f574213e23df697050b83c54c27df465a2015552740b2769a081",
+    "emoji-test-17.0.txt": "1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda"
+  }
+}

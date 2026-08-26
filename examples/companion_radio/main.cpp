@@ -370,7 +370,7 @@ static void resetUsbMotaMode() {
 
 static void leaveUsbMotaMode(bool acknowledge) {
   char reply[160] = {0};
-  the_mesh.handleFullOtaCommand("ota folder off", reply, sizeof(reply));
+  the_mesh.handleLocalControlCommand("ota folder off", reply, sizeof(reply));
   if (acknowledge) {
     Serial.print("\r\n");
     Serial.print(reply);
@@ -388,7 +388,7 @@ static void enterUsbMotaMode() {
   usb_mota_disconnect_armed = isUsbTerminalDataConnected();
 
   char reply[160] = {0};
-  if (!the_mesh.handleFullOtaCommand("ota folder on", reply, sizeof(reply))
+  if (!the_mesh.handleLocalControlCommand("ota folder on", reply, sizeof(reply))
       || strncmp(reply, "ERR", 3) == 0) {
     Serial.print("\r\n");
     Serial.print(reply[0] ? reply : "ERR could not enter mOTA seeder mode");

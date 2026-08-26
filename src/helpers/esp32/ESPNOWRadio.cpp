@@ -42,6 +42,10 @@ static void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 
 void ESPNOWRadio::init() {
   // Set device as a Wi-Fi Station
+  // ESP-NOW's LR protocol is local to this radio transport. Keeping WiFi
+  // driver writes in RAM prevents a later conventional WiFi image from
+  // inheriting the proprietary protocol bit through NVS.
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   // Long Range mode
   esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_LR);

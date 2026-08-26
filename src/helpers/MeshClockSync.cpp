@@ -19,14 +19,22 @@
 #ifndef FIRMWARE_BUILD_EPOCH
   #define FIRMWARE_BUILD_EPOCH 0UL
 #endif
+#ifndef MESH_CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT
+  #define MESH_CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT 9
+#endif
+#ifndef MESH_CLOCK_SYNC_STARTUP_DELAY_MILLIS
+  #define MESH_CLOCK_SYNC_STARTUP_DELAY_MILLIS (30ULL * 60ULL * 1000ULL)
+#endif
 
 namespace {
 
 constexpr char PREFS_FILE[] = "/clock_sync";
 constexpr uint8_t REQUIRED_SAMPLES_MIN = 3;
 constexpr uint8_t REQUIRED_SAMPLES_MAX = 16;
-constexpr uint8_t REQUIRED_SAMPLES_DEFAULT = 9;
-constexpr uint64_t STARTUP_DELAY_MILLIS = 30ULL * 60ULL * 1000ULL;
+constexpr uint8_t REQUIRED_SAMPLES_DEFAULT =
+    MESH_CLOCK_SYNC_REQUIRED_SAMPLES_DEFAULT;
+constexpr uint64_t STARTUP_DELAY_MILLIS =
+    MESH_CLOCK_SYNC_STARTUP_DELAY_MILLIS;
 constexpr uint64_t RETRY_INTERVAL_MILLIS = 30ULL * 60ULL * 1000ULL;
 constexpr uint64_t RESYNC_INTERVAL_MILLIS = 7ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
 constexpr uint32_t SAMPLE_MAX_AGE_MILLIS = 2UL * 60UL * 60UL * 1000UL;
@@ -34,6 +42,12 @@ constexpr uint32_t CONSENSUS_WINDOW_SECONDS = 600UL;
 constexpr uint32_t DRIFT_MIN_SECONDS = 30UL;
 constexpr uint32_t DRIFT_MAX_SECONDS = 86400UL;
 constexpr uint16_t VALID_YEARS = 10;
+
+static_assert(REQUIRED_SAMPLES_DEFAULT >= REQUIRED_SAMPLES_MIN
+                  && REQUIRED_SAMPLES_DEFAULT <= REQUIRED_SAMPLES_MAX,
+              "mesh clock-sync sample default is outside the supported range");
+static_assert(STARTUP_DELAY_MILLIS > 0,
+              "mesh clock-sync startup delay must be positive");
 
 // Public-channel AES key, zero-padded to the shared-secret buffer width used
 // by Utils::MACThenDecrypt().

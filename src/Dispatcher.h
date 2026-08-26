@@ -94,6 +94,9 @@ public:
   }
 
   virtual int getNoiseFloor() const { return 0; }
+  virtual float getNoiseFloorDbm() const {
+    return static_cast<float>(getNoiseFloor());
+  }
 
   virtual void triggerNoiseFloorCalibrate(int threshold) { }
 

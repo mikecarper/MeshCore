@@ -13,6 +13,10 @@
 
 #include "NodePrefs.h"
 
+#ifndef UI_USB_AUTO_OFF_MULTIPLIER
+  #define UI_USB_AUTO_OFF_MULTIPLIER 5UL
+#endif
+
 enum class UIEventType {
     none,
     contactMessage,
@@ -35,11 +39,14 @@ protected:
   bool isDisplayAutoOffDue(unsigned long configured_deadline,
                            unsigned long configured_timeout_millis) const {
     unsigned long deadline = configured_deadline;
+#if UI_USB_AUTO_OFF_MULTIPLIER > 1
     if (_board->isUsbHostConnected()) {
       // The configured deadline already includes the first timeout period.
-      // Add four more periods for a total of 5x while attached to a computer.
-      deadline += configured_timeout_millis * 4UL;
+      // Add the remaining periods while attached to a computer.
+      deadline += configured_timeout_millis
+          * (UI_USB_AUTO_OFF_MULTIPLIER - 1UL);
     }
+#endif
     return static_cast<int32_t>(millis() - deadline) > 0;
   }
 
@@ -59,7 +66,10 @@ public:
   void enableBluetooth() { _interfaceManager->enableBluetooth(); }
   void disableBluetooth() { _interfaceManager->disableBluetooth(); }
   virtual void msgRead(int msgcount) = 0;
-  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) = 0;
+  virtual void newMsg(uint8_t path_len, const char* from_name,
+                      const char* text, int msgcount,
+                      int channel_idx = -1,
+                      const char* channel_name = nullptr) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
   virtual void loop() = 0;
 };
