@@ -9,6 +9,69 @@ fail() {
   exit 1
 }
 
+# Full targets are synthesized from an ordinary transport environment. Check
+# the resolved PlatformIO configuration so board-specific display, GPS, input,
+# and BLE constraints cannot silently disappear through that inheritance.
+pio project config --json-output | python3 -c '
+import json
+import sys
+
+sections = {section: dict(options) for section, options in json.load(sys.stdin)}
+
+def option_text(env_name, option_name):
+    section = sections.get(f"env:{env_name}")
+    if section is None:
+        raise SystemExit(f"test_build_profiles: missing PlatformIO environment {env_name}")
+    value = section.get(option_name, [])
+    values = value if isinstance(value, list) else [value]
+    return "\n".join(str(item) for item in values)
+
+def require(env_name, option_name, needle):
+    if needle not in option_text(env_name, option_name):
+        raise SystemExit(
+            f"test_build_profiles: {env_name} {option_name} lost {needle}"
+        )
+
+def reject(env_name, option_name, needle):
+    if needle in option_text(env_name, option_name):
+        raise SystemExit(
+            f"test_build_profiles: {env_name} {option_name} unexpectedly contains {needle}"
+        )
+
+xiao_wifi = "Xiao_S3_WIO_companion_radio_wifi"
+require(xiao_wifi, "build_flags", "DISPLAY_CLASS=SSD1306Display")
+require(xiao_wifi, "build_src_filter", "helpers/ui/SSD1306Display.cpp")
+require(xiao_wifi, "build_src_filter", "examples/companion_radio/ui-new")
+require(xiao_wifi, "lib_deps", "Adafruit SSD1306")
+reject(xiao_wifi, "build_src_filter", "helpers/ui/NullDisplayDriver.cpp")
+
+m8_usb = "ThinkNode_M8_companion_radio_usb"
+require(m8_usb, "build_flags", "PIN_BUZZER=33")
+reject(m8_usb, "build_flags", "PIN_BUZZER=6")
+require(m8_usb, "build_flags", "ENV_INCLUDE_GPS=1")
+require(m8_usb, "lib_deps", "GxEPD2 @ 1.6.9")
+reject(m8_usb, "lib_deps", "GxEPD2 @ 1.6.2")
+
+require("ThinkNode_M5_companion_radio_wifi", "build_flags", "UI_RECENT_LIST_SIZE=9")
+
+for env_name in (
+    "t1000e_companion_radio_usb",
+    "MeshTracker_X1_companion_radio_usb",
+    "ThinkNode_M3_companion_radio_usb",
+):
+    require(env_name, "build_flags", "BLE_TX_POWER=0")
+
+for env_name in (
+    "WioTrackerL1_companion_radio_usb",
+    "WioTrackerL1_companion_radio_ble",
+):
+    require(env_name, "build_flags", "UI_NO_HIBERNATE")
+
+rak_usb = "RAK_3401_companion_radio_usb"
+require(rak_usb, "build_flags", "RAK_BOARD")
+require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
+'
+
 # Synthetic inventory: one ESP32 target qualified for expanded Full and one
 # nRF52 target which must attempt complete LoRa OTA in its current partition.
 SUPPORTED_PIO_ENVS=(
