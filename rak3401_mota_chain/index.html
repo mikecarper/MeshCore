@@ -583,6 +583,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1828,19 +1855,19 @@ SF5/BW500 tuple. For a later update whose target, controller, source, and
 relays are all v1.17.1.5 or newer, use the generic LoRa OTA runner; it can
 retain RXPS at the qualified level-8/preamble-64 boundary for SF5/BW250 or the
 level-8/preamble-128 boundary for SF5/BW500.</p>
-<p>Put the source on the identical TempRadio tuple. If it is a binary-mode Full
-Companion, the current <code>motatool</code> can switch modes for the serving session:</p>
+<p>Put the source on the identical TempRadio tuple. A current ASCII-first Full
+Companion recognizes <code>motatool</code>'s initial <code>ota folder on</code> line directly:</p>
 <pre><code class="language-bash">motatool serve \
   --dir ./motas \
   --serial /dev/ttyACM1 \
   --baud 115200 \
-  --companion-terminal \
   -v
 </code></pre>
-<p>Omit <code>--companion-terminal</code> for an ordinary text-console OTA source. Restart
-<code>motatool</code> for every step so the source emits a fresh catalog advert. Leave it
-running during the download and stop it with Ctrl-C only after the destination
-reports <code>ready to install</code>.</p>
+<p>The same command also works with older Full Companion firmware in binary mode,
+where the idle parser recognizes the identical preamble. Restart <code>motatool</code> for
+every step so the source emits a fresh catalog advert. Leave it running during
+the download and stop it with Ctrl-C only after the destination reports <code>ready
+to install</code>.</p>
 <h3 id="3-install-all-nine-packages-in-order">3. Install all nine packages in order</h3>
 <table>
 <thead>

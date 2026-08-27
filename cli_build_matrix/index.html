@@ -707,6 +707,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1527,11 +1554,11 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Dual-CDC Full Companion</td>
-<td>nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface <code>00</code> for framed Companion/terminal/mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
+<td>nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface <code>00</code>; it starts as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to framed Companion. The same interface also carries exclusive serial mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
 </tr>
 <tr>
 <td>Single-TTY Full Companion</td>
-<td>ESP32 Full images without dual CDC start with framed Companion on their one TTY. <code>set usb.logging on</code> switches it to an input-capable plaintext logging terminal; <code>set usb.logging off</code> replies and then restores framed Companion automatically. BLE, WiFi, and source-only LoRa OTA remain available.</td>
+<td>ESP32 Full images without dual CDC start with the ASCII terminal on their one TTY and automatically hand a complete <code>&lt;</code> frame to framed Companion. <code>set usb.logging on</code> switches it to an input-capable plaintext logging terminal; <code>set usb.logging off</code> replies and then restores framed Companion automatically. A saved logging-on setting starts directly in that logging terminal and disables automatic frame detection. BLE, WiFi, and source-only LoRa OTA remain available.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>

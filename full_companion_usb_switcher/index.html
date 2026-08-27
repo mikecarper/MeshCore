@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_nrf52_bootloader_update/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/full_companion_usb_switcher/">
       
       
-        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
+        <link rel="prev" href="../flood_filtering/">
       
       
-        <link rel="next" href="../ota_nrf52_qspi/">
+        <link rel="next" href="../gps_tracking/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>nRF52 bootloader updates over LoRa - MeshCore Docs</title>
+        <title>Full Companion USB CLI and binary switcher - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nrf52-bootloader-updates-over-lora" class="md-skip">
+        <a href="#full-companion-usb-cli-and-binary-switcher" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              nRF52 bootloader updates over LoRa
+              Full Companion USB CLI and binary switcher
             
           </span>
         </div>
@@ -580,10 +580,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -599,6 +626,186 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#wire-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wire formats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State transitions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-automatic-detection-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How automatic detection works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging-and-mota-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging and mOTA ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shortcomings-and-edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shortcomings and edge cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Shortcomings and edge cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It is startup selection, not per-connection negotiation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detection-works-only-at-an-empty-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detection works only at an empty prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-first-frame-has-a-one-second-deadline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The first frame has a one-second deadline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#framing-confirmation-is-not-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framing confirmation is not authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The terminal banner is best effort
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-and-binary-output-cannot-be-interleaved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Text and binary output cannot be interleaved
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-literal-leading-briefly-hides-the-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A literal leading &lt; briefly hides the prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -877,37 +1084,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    nRF52 bootloader updates over LoRa
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
         
   
   
@@ -923,81 +1103,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#storage-layouts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage layouts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-flash-target-inventory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal-flash target inventory
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#embedded-continuity-and-version-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedded continuity and version policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#explicit-install-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit install workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#failure-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Failure behavior
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1299,10 +1404,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#storage-layouts" class="md-nav__link">
+  <a href="#wire-formats" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Storage layouts
+        Wire formats
       
     </span>
   </a>
@@ -1310,10 +1415,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#internal-flash-target-inventory" class="md-nav__link">
+  <a href="#state-transitions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal-flash target inventory
+        State transitions
       
     </span>
   </a>
@@ -1321,10 +1426,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#embedded-continuity-and-version-policy" class="md-nav__link">
+  <a href="#how-automatic-detection-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Embedded continuity and version policy
+        How automatic detection works
       
     </span>
   </a>
@@ -1332,10 +1437,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#explicit-install-workflow" class="md-nav__link">
+  <a href="#manual-controls" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Explicit install workflow
+        Manual controls
       
     </span>
   </a>
@@ -1343,10 +1448,115 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#failure-behavior" class="md-nav__link">
+  <a href="#logging-and-mota-ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Failure behavior
+        Logging and mOTA ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shortcomings-and-edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shortcomings and edge cases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Shortcomings and edge cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It is startup selection, not per-connection negotiation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detection-works-only-at-an-empty-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detection works only at an empty prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-first-frame-has-a-one-second-deadline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The first frame has a one-second deadline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#framing-confirmation-is-not-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Framing confirmation is not authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The terminal banner is best effort
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-and-binary-output-cannot-be-interleaved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Text and binary output cannot be interleaved
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-literal-leading-briefly-hides-the-prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A literal leading &lt; briefly hides the prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
       
     </span>
   </a>
@@ -1370,7 +1580,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_nrf52_bootloader_update.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/full_companion_usb_switcher.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1378,291 +1588,215 @@
   
 
 
-<h1 id="nrf52-bootloader-updates-over-lora">nRF52 bootloader updates over LoRa</h1>
-<p>Selected nRF52840 repeater LoRa-OTA builds can replace their matching OTAFIX
-bootloader without replacing the running application. This is a privileged
-maintenance path, not a normal firmware update. A stock bootloader must first
-be replaced with the exact ABI-3 self-update-capable OTAFIX build over USB/BLE
-DFU or SWD. MeshTower SD also requires the BLM2 retained-auth version to be
-provisioned locally before either application or bootloader OTA.</p>
-<h2 id="storage-layouts">Storage layouts</h2>
+<h1 id="full-companion-usb-cli-and-binary-switcher">Full Companion USB CLI and binary switcher</h1>
+<p>Full Companion uses one primary USB serial interface for two incompatible wire
+formats:</p>
+<ul>
+<li>a human-readable ASCII command line;</li>
+<li>the framed Binary Companion protocol used by MeshCore apps and <code>meshcli</code>.</li>
+</ul>
+<p>The primary interface starts in the ASCII terminal after each boot. A Binary
+Companion client does not need to send a special mode command: its first valid
+frame automatically hands the interface to the binary parser.</p>
+<p>This automatic behavior is compiled only into <code>companion_radio_full</code> targets.
+Ordinary USB Companion builds continue to use the explicit
+<code>+++MESHCORE-TERM-START</code> and <code>+++MESHCORE-TERM-STOP</code> controls described in the
+<a href="../terminal_chat_cli/">Terminal Chat CLI guide</a>.</p>
+<h2 id="wire-formats">Wire formats</h2>
+<p>Host-to-device Binary Companion frames use this layout:</p>
+<pre><code class="language-text">'&lt;'  length-low  length-high  payload[length]
+</code></pre>
+<p>Device-to-host frames use the same little-endian length with a different
+marker:</p>
+<pre><code class="language-text">'&gt;'  length-low  length-high  payload[length]
+</code></pre>
+<p>For example, a representative two-byte device query is:</p>
+<pre><code class="language-text">3C 02 00 16 03
+</code></pre>
+<p>The ASCII terminal is line-oriented and accepts commands such as:</p>
+<pre><code class="language-text">get radio.cad
+set display.rotation 90
+reboot
+</code></pre>
+<p>Changing the configured baud rate does not select a mode. Use 115200 for
+compatibility even though native USB CDC hardware does not use UART timing.</p>
+<h2 id="state-transitions">State transitions</h2>
+<pre><code class="language-text">                         complete '&lt;' frame
+                 +--------------------------------+
+                 |                                v
+boot ------&gt; ASCII terminal                  Binary Companion
+                 ^                                |
+                 |                                | +++MESHCORE-TERM-START
+                 | incomplete '&lt;' probe           |
+                 | (one-second timeout)            |
+                 +--------------------------------+
+
+ASCII terminal -- +++MESHCORE-TERM-STOP ------&gt; Binary Companion
+ASCII terminal -- observable USB disconnect ---&gt; Binary Companion
+any mode ------- reboot ------------------------&gt; ASCII terminal
+</code></pre>
+<p>Serial mOTA and single-TTY logging add exclusive ownership states described
+below. BLE, WiFi, Ethernet, and hardware-serial Companion transports are not
+switched; they remain binary.</p>
+<h2 id="how-automatic-detection-works">How automatic detection works</h2>
+<ol>
+<li>Full Companion initializes the normal USB Binary Companion interface, then
+   gives its primary stream to the ASCII terminal before normal loop service
+   begins.</li>
+<li>While the prompt has no buffered input, the terminal peeks at the next byte.
+   It does not remove that byte.</li>
+<li>If the byte is <code>&lt;</code>, the terminal temporarily releases the stream and enables
+   the existing <code>ArduinoSerialInterface</code> frame parser.</li>
+<li>The parser consumes the original <code>&lt;</code>, the two-byte length, and the payload.
+   There is no second parser and no copied or synthetic frame.</li>
+<li>A monotonically increasing completed-frame counter confirms that the parser
+   received a complete frame. The interface then remains in Binary Companion
+   mode.</li>
+<li>If no complete frame arrives within one second, the parser state is reset
+   and the ASCII terminal prints a new banner and prompt.</li>
+</ol>
+<p>The switcher checks framing, not client identity. Any syntactically complete
+Binary Companion frame confirms binary mode; it does not require the first
+command to be <code>CMD_APP_START</code> or <code>CMD_DEVICE_QUERY</code>. Normal command validation
+still occurs after the frame parser returns the payload.</p>
+<p>The empty-prompt requirement prevents a literal <code>&lt;</code> in the middle of a command
+from silently changing modes. A literal <code>&lt;</code> typed as the first character does
+start a probe, but the terminal returns after the one-second timeout if no
+binary header and payload follow.</p>
+<h2 id="manual-controls">Manual controls</h2>
+<p>The original controls remain available.</p>
+<p>From Binary Companion, send this exact unframed line while the parser is idle:</p>
+<pre><code class="language-text">+++MESHCORE-TERM-START
+</code></pre>
+<p>Terminate it with CR or LF. The binary parser accepts control tokens only as
+complete delimiter-bounded lines; prefixes, suffixes, and partial tokens are
+ignored.</p>
+<p>From the ASCII terminal, send this exact sequence to return to binary mode:</p>
+<pre><code class="language-text">+++MESHCORE-TERM-STOP
+</code></pre>
+<p>The stop sequence takes effect as soon as its last byte arrives in ASCII mode.
+The start sequence is recognized only as a completed line while the binary
+parser is idle and is not examined inside a length-prefixed frame.</p>
+<p><code>meshcli</code> can normally connect directly after boot:</p>
+<pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
+</code></pre>
+<p>An explicit terminal start token is still useful when the device is already in
+binary mode:</p>
+<pre><code class="language-bash">picocom -b 115200 \
+  --imap spchex \
+  --initstring $'+++MESHCORE-TERM-START\r' \
+  /dev/ttyACM0
+</code></pre>
+<h2 id="logging-and-mota-ownership">Logging and mOTA ownership</h2>
+<p>The switcher never attempts to mix ASCII, framed Companion traffic, or binary
+mOTA traffic on the same stream.</p>
 <table>
 <thead>
 <tr>
-<th>Layout</th>
-<th style="text-align: right;">Application limit</th>
-<th style="text-align: right;">Staged boot package</th>
-<th style="text-align: right;">Work area</th>
-<th>Handoff / capability</th>
+<th>Situation</th>
+<th>Primary USB behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>XIAO-module raw QSPI</td>
-<td style="text-align: right;">below <code>0xE0000</code></td>
-<td style="text-align: right;">external QSPI offset 0</td>
-<td style="text-align: right;">dedicated internal <code>0xE0000..0xEA000</code> scratch</td>
-<td>source <code>0x51</code>, flags <code>0x0E</code></td>
+<td>Full Companion after boot</td>
+<td>ASCII; a complete <code>&lt;</code> frame switches to Binary Companion</td>
 </tr>
 <tr>
-<td>Qualified internal-flash target</td>
-<td style="text-align: right;">normal <code>0xED000</code> limit</td>
-<td style="text-align: right;">shared internal slot, exact start <code>0xE2000</code></td>
-<td style="text-align: right;">the same eleven-page slot; no second reservation</td>
-<td>source <code>0xED</code>, flags <code>0x0A</code></td>
+<td>Dual-CDC logging enabled</td>
+<td>Primary interface still follows the switcher; logs use the optional second interface</td>
 </tr>
 <tr>
-<td>MeshTower V2 microSD</td>
-<td style="text-align: right;">normal <code>0xED000</code> limit</td>
-<td style="text-align: right;">contiguous <code>/meshcore-ota.mota</code></td>
-<td style="text-align: right;">dynamic internal <code>0xE0000..0xEA000</code> scratch; live image must end by <code>0xE0000</code></td>
-<td>source <code>0x53</code>, flags <code>0x09</code></td>
+<td>Single-TTY logging enabled at boot</td>
+<td>Logging terminal owns primary USB; automatic <code>&lt;</code> detection is disabled</td>
+</tr>
+<tr>
+<td>nRF52 USB serial mOTA active</td>
+<td>mOTA owns primary USB; ASCII and Binary Companion are unavailable there</td>
+</tr>
+<tr>
+<td>BLE/WiFi/Ethernet/hardware serial</td>
+<td>Always Binary Companion and unaffected by the USB mode</td>
 </tr>
 </tbody>
 </table>
-<p>The exact SD target is
-<code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>. Its normal
-application FULL and delta updates continue to use the SD file without the
-bootloader-update scratch restriction. For a bootloader package only, both
-MeshCore and OTAFIX require a hash-valid live <code>EndF</code> proving the complete
-running image ends at or below <code>0xE0000</code>. If boot settings carry a nonzero app
-bank CRC, the recorded bank size must also cover that full EndF-inclusive
-image and stop by <code>0xE0000</code>; erased or explicitly CRC-disabled settings remain
-valid. OTAFIX then copies the verified 40
-KiB payload from SD into <code>0xE0000..0xEA000</code> and uses the MBR copy operation to
-replace <code>0xF4000..0xFE000</code>. The application linker remains at <code>0xED000</code>; a
-future application extending above <code>0xE0000</code> can still use application mOTA
-but must update its bootloader through local DFU/SWD.</p>
-<p>The removable SD authorization is fail-closed for both application and
-bootloader packages. MeshCore directly authenticates one exact signed
-manifest, requires the streamed copy to remain byte-identical, verifies all
-leaves/payload/image bytes, and computes a normalized full-container SHA-256 in
-that same pass (<code>APRV</code> bytes are treated as zero). After syncing <code>APRV</code>, it
-publishes a 72-byte <code>MOTASDA2</code> record in reset-retained RAM at <code>0x20006008</code>.
-That record binds purpose/format, first LBA, sector count, total length, card
-sector count, and the normalized digest. OTAFIX copies, validates, and clears
-the record before SD access. A card swap/mutation or a power cycle therefore
-fails closed; there is no general sector-1 ownership inference.</p>
-<p>For fmt3, MeshCore also writes and readback-verifies a 64-byte <code>MOTASDBL</code> token
-at <code>0xE0000</code>. That token contains the exact container length and the exact
-authenticated signed manifest <code>image_hash</code>. OTAFIX requires the same hash in
-the parsed manifest, streamed payload, and final scratch image. The page is
-consumed as scratch during success and is not permanently reserved.</p>
-<p>The first BLM2-capable MeshTower bootloader cannot be delivered to preview.12
-through the retained-RAM protocol that preview.12 predates. MeshCore does not
-write a raw-sector compatibility record because a blank sector is not proof of
-ownership. Upgrade preview.12 through USB/BLE DFU or SWD. Both fmt2 application
-and fmt3 bootloader OTA then require the installed BLM2 metadata to match the
-live SoftDevice/application layout; neither MeshCore nor OTAFIX uses sector 1.</p>
-<p>The internal path does not change the application linker or permanently set
-aside separate app-OTA, boot-package, and scratch regions. The ordinary
-bottom-aligned internal store holds one container at a time: either an
-application delta or a bootloader package.</p>
-<p>The exact bootloader container is 41,330 bytes: 365 bytes of signed mOTA
-metadata, a 40 KiB payload, and the five-byte trailer. Below the normal
-<code>0xED000</code> store ceiling it bottom-aligns at <code>0xE2000</code>. Admission requires a
-hash-valid live <code>EndF</code> proving the current application, including its trailer,
-ends at or before <code>0xE2000</code>. OTAFIX then reads each source window before
-erasing and compacts the payload forward in place to the page-aligned raw range
-<code>0xE2000..0xEC000</code>; it verifies every page and the whole image before asking the
-MBR to copy that image over <code>0xF4000..0xFE000</code>.</p>
-<p>An ordinary application delta can be smaller or larger than this eleven-page
-shape. It bottom-aligns dynamically below <code>0xED000</code> and may begin below
-<code>0xE2000</code>; its detools workspace must stop at its actual container start, while
-the reconstructed application must stop below <code>0xED000</code>. The two package kinds
-are mutually exclusive because they use the same store.</p>
-<p>For internal-self-update builds, an absent or corrupt live <code>EndF</code> disables
-<strong>all</strong> internal staging before the first erase. The older 608 KiB rescue
-estimate is unsafe when a normally linked application may extend to
-<code>0xED000</code>. Builds without this feature retain the legacy rescue behavior.</p>
-<h2 id="internal-flash-target-inventory">Internal-flash target inventory</h2>
-<p>The release builder consumes the allowlist in
-<code>tools/mota/nrf52_internal_bootloader_targets.txt</code>. Ten names are also literal
-PlatformIO environments and are enabled automatically when built directly.
-The other eleven are release aliases assembled from a base environment plus
-the lean OTA overlay; build them through <code>build.sh</code>, which passes the same
-allowlist decision to the common pre-build guard. These lean repeater/bridge
-targets have no OTA-owned SD/QSPI store and have an exact curated OTAFIX
-manifest identity:</p>
-<table>
-<thead>
-<tr>
-<th>Build target(s)</th>
-<th>Installed OTAFIX identity</th>
-<th style="text-align: right;">Boot target ID</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Heltec_tower_v2_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / TOWER_V2_OTA</code></td>
-<td style="text-align: right;"><code>1150F50E</code></td>
-</tr>
-<tr>
-<td>T096 lean repeater and RS232 bridge</td>
-<td><code>239A0071 / T096_DFU</code></td>
-<td style="text-align: right;"><code>42354C85</code></td>
-</tr>
-<tr>
-<td><code>Heltec_t1_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / T1_DFU</code></td>
-<td style="text-align: right;"><code>FC556FFC</code></td>
-</tr>
-<tr>
-<td>T114 display and without-display lean repeaters</td>
-<td><code>239A0071 / T114_DFU</code></td>
-<td style="text-align: right;"><code>0C3F2902</code></td>
-</tr>
-<tr>
-<td><code>Mesh_pocket_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / MESH_POCKET_OTA</code></td>
-<td style="text-align: right;"><code>059277F4</code></td>
-</tr>
-<tr>
-<td><code>KeepteenLT1_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00B3 / KeepteenLT1_OTA</code></td>
-<td style="text-align: right;"><code>DB2E7B51</code></td>
-</tr>
-<tr>
-<td><code>Minewsemi_me25ls01_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / MX25_DFU</code></td>
-<td style="text-align: right;"><code>026AA982</code></td>
-</tr>
-<tr>
-<td><code>ProMicro_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00B3 / PROM_DFU</code></td>
-<td style="text-align: right;"><code>AF79E8CC</code></td>
-</tr>
-<tr>
-<td><code>t1000e_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>28860057 / T1KE_DFU</code></td>
-<td style="text-align: right;"><code>E6F5F03F</code></td>
-</tr>
-<tr>
-<td><code>ThinkNode_M3_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00DA / TNM3_DFU</code></td>
-<td style="text-align: right;"><code>0CA41DB2</code></td>
-</tr>
-<tr>
-<td><code>RAK_3401_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / 3401_DFU</code></td>
-<td style="text-align: right;"><code>23818A80</code></td>
-</tr>
-<tr>
-<td>RAK4631 lean repeater and both lean RS232 bridges</td>
-<td><code>239A0029 / 4631_DFU</code></td>
-<td style="text-align: right;"><code>2D0DF000</code></td>
-</tr>
-<tr>
-<td>GAT562 30S/Tracker Pro/EVB Pro and R1Neo lean carrier aliases</td>
-<td><code>239A0029 / 4631_DFU</code></td>
-<td style="text-align: right;"><code>2D0DF000</code></td>
-</tr>
-<tr>
-<td><code>RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / RTAG_DFU</code></td>
-<td style="text-align: right;"><code>C72E9C9C</code></td>
-</tr>
-</tbody>
-</table>
-<p>Board IDs are not globally unique. For generic targets, the signed hardware ID
-is the exact NUL-padded 32-byte value
-<code>NRF_BL_&lt;BOARD_ID&gt;_&lt;DEVICE_NAME&gt;</code>. The wire target is the little-endian first
-four SHA-256 bytes of all 32 padded bytes. The installed and candidate embedded
-manifest pairs must match exactly. XIAO retains its deployed
-<code>XIAO_BL_28860044</code> / <code>XIAO_BL_28860045</code> identity and raw board-ID target.</p>
-<p>The Python reference builder and release tooling audit these boot targets for
-duplicates and collisions with application target IDs. Generic image parsing
-can inspect a future canonical identity, but signing/building a package fails
-until that exact identity is in the qualified inventory.</p>
-<h2 id="embedded-continuity-and-version-policy">Embedded continuity and version policy</h2>
-<p>Every remotely supplied successor retains the legacy 44-byte CRC-valid <code>BLMF</code>
-v1 record for identity continuity and diagnostics. Immediately after that
-record is a 32-byte <code>BLM2</code>/<code>SOFT</code> extension. The complete 76-byte envelope is
-fixed at the final raw-image offset <code>0x9FB4</code>; relocated candidates are refused,
-while installed legacy-v1 discovery remains a generic diagnostic scan. The extension carries the actual packed
-bootloader version, SoftDevice family and FWID, application base, layout ABI,
-and zero compatibility/reserved fields; the legacy whole-image CRC covers the
-extension too. Scanners first count CRC-valid 44-byte base manifests, then
-interpret continuity only after one base identity remains. A malformed claimed
-extension therefore cannot make a duplicate identity disappear, and a sole
-half-present extension is rejected rather than treated as legacy.</p>
-<p>MeshCore requires the candidate extension, exact equality between its embedded
-version and the signed outer mOTA version, and exact agreement with the running
-SoftDevice family/FWID/application layout. Qualified internal/QSPI paths may
-bootstrap a CRC-valid installed legacy-v1 image once; the SD path never does
-and requires local BLM2 provisioning. Once the installed bootloader has BLM2
-metadata, the candidate version must be strictly greater. Preview low bytes are <code>1..254</code>, a
-stable release uses <code>0xFF</code>, and low-byte zero or all-ones values are rejected.
-There is no remote rollback/migration override; intentional rollback uses
-USB/BLE DFU or SWD.</p>
-<p>The <code>no_external_sensors</code> profiles omit optional/add-on sensor packages to
-preserve flash headroom. A board recipe can retain GPS. The RAK3401 OTA
-repeater retains RAK12501 GPS in sensor slot A, and the RAK4631 OTA repeater
-retains GPS except where a Serial1 RS232 bridge owns the same UART.</p>
-<p>Boards with onboard external flash are not silently redirected to internal
-staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
-Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
-need a separately matched QSPI path where available. Full Companions, other
-SD/QSPI/ExtraFS roles, Ethernet roles, source-only roles, and unqualified
-full-sensor roles are excluded from the internal-flash inventory. The exact
-MeshTower V2 SD role above is separately qualified for its SD path.</p>
-<p>This internal layout is limited to nRF52840 devices with 1 MiB internal flash,
-the exact S140 v6/v7 map, and the 40 KiB boot region at
-<code>0xF4000..0xFE000</code>. nRF52833 and smaller nRF52 parts cannot provide that map
-plus a non-overlapping 41,330-byte live staging slot, so configuration fails
-closed instead of selecting smaller or overlapping geometry.</p>
-<h2 id="explicit-install-workflow">Explicit install workflow</h2>
-<p>Check the installed identity and capability marker:</p>
-<pre><code class="language-text">ota bootloader
-</code></pre>
-<p>The response must show a CRC-valid exact identity, ABI 3 or newer, both FULL
-and INPLACE application codecs (<code>codecs=0x5</code>), and exact flags <code>0x09</code> for
-MeshTower V2 SD, <code>0x0A</code> for internal shared storage, or <code>0x0E</code> for XIAO QSPI. A
-bootloader row is visible in <code>ota ls</code>, but it is never autofetched or
-autoinstalled. Fetch its exact MID, then explicitly arm it:</p>
-<pre><code class="language-text">ota pull &lt;MID8&gt; flash
-# wait for ota status to report the download ready
-ota bootloader
-ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
-</code></pre>
-<p>Copy both confirmation values from the second <code>ota bootloader</code> response.
-Ordinary <code>ota install</code> rejects a bootloader package; the bootloader command
-rejects an application package. The FULL-codec exception exists only for that
-manual bootloader MID. Ordinary application FULL remains disabled on an
-internal single-slot node, bootloader autofetch remains off, and a partial
-bootloader package is not automatically resumed after an application reboot.</p>
-<p>Before writing <code>APRV</code>, the application authenticates and authorizes the
-package: exact v3 geometry, trusted Ed25519 signer, signed/embedded identity,
-one unambiguous capability marker, embedded CRC, sane vectors, complete
-Merkle/payload/image hashes, storage-specific safe live placement, and the
-typed MID/hash confirmation. The manifest root and target inside the received
-manifest must also equal the MID/target that opened the fetch before any store
-is allocated. On SD, <code>APRV</code>, the retained geometry/container authorization,
-and the internal signed-image-hash token are published in that order before
-the reset trigger. OTAFIX consumes that application-written authorization and
-then
-independently rechecks the safety/integrity subset: strict v3 structure,
-canonical identity/capabilities, vectors, full payload SHA, embedded manifest
-CRC, the applicable live <code>EndF</code>/bank-settings no-overlap geometry, the SD token
-binding where applicable, scratch readback, and final
-copy hash. It does not re-run Ed25519, the signer allowlist, Merkle leaves/root,
-or the typed operator confirmation. Success is reported as <code>blup:C8</code>.</p>
-<h2 id="failure-behavior">Failure behavior</h2>
-<p>The feature fails closed when the MCU/map is wrong, required valid <code>EndF</code>
-headroom is insufficient, an unsupported external/ExtraFS role owns the target,
-the exact installed capability marker is absent or ambiguous, identity cannot be derived
-unambiguously, or any package check fails. Before the storage-specific
-scratch/copy step, the application and bootloader are unchanged. OTAFIX
-consumes the trigger and authorization before its first destructive action, so
-an interrupted operation cannot automatically retry a partly consumed
-package. On SD, the retained-RAM authorization is zero-consumed before media
-access; <code>APRV</code> and the fmt3 flash token may persist but are inert without a new
-explicit authenticated re-arm and reset trigger. No SD raw-sector handoff is
-created or consumed.
-Use USB/BLE DFU or SWD for initial provisioning and local recovery.</p>
-<p>For XIAO and ordinary external-QSPI details, see
-<a href="../ota_nrf52_qspi/">nRF52 repeater LoRa OTA with external QSPI</a>.</p>
+<p>On a single-TTY build, use <code>set usb.logging off</code> in its logging terminal before
+trying to use primary USB with an app. BLE and WiFi Companion transports remain
+available while primary USB is logging.</p>
+<p>On nRF52, serial <code>motatool</code> is also text-first. Its exact initial
+<code>ota folder on</code> line is recognized in either startup ASCII or Binary Companion
+mode. From ASCII, the firmware leaves terminal mode and directly enters
+exclusive mOTA ownership; from binary, the idle frame parser recognizes the
+same control sequence. The following mOTA request/reply frames therefore cannot
+be consumed by the ASCII line editor. <code>motatool serve --serial</code> can be the
+first client after boot and does not require a terminal token or disconnect
+workaround.</p>
+<p>Only the exact completed line selects mOTA from ASCII. Extra arguments,
+leading/trailing whitespace, or a partial line remain ordinary terminal input.</p>
+<h2 id="shortcomings-and-edge-cases">Shortcomings and edge cases</h2>
+<p>This mechanism is deliberately small and deterministic, but it is not a full
+protocol negotiation layer.</p>
+<h3 id="it-is-startup-selection-not-per-connection-negotiation">It is startup selection, not per-connection negotiation</h3>
+<p>After the first complete binary frame, the device stays in Binary Companion
+mode. Closing <code>meshcli</code> does not automatically restore ASCII. Use the terminal
+start token or reboot when an ASCII prompt is needed again.</p>
+<p>Conversely, closing an ASCII terminal on native USB normally changes the port
+to binary mode because the firmware can observe USB DTR/data disconnect. The
+next client therefore sees binary mode, not a new ASCII session. A USB-to-UART
+bridge often cannot report disconnect, so it can remain in ASCII until the stop
+token or a reboot.</p>
+<h3 id="detection-works-only-at-an-empty-prompt">Detection works only at an empty prompt</h3>
+<p>If part of an ASCII command is already buffered, an incoming <code>&lt;</code> is treated as
+ordinary terminal input. Clear or submit the line before starting a Binary
+Companion client. Only one process should have the serial port open.</p>
+<h3 id="the-first-frame-has-a-one-second-deadline">The first frame has a one-second deadline</h3>
+<p>The complete marker, length, and payload must arrive within the probe window.
+This is generous for local USB but may reject a heavily buffered serial proxy,
+a debugger that pauses the MCU, or a tool that writes the header and body with
+a long delay. A timed-out client can retry after the ASCII banner appears.</p>
+<h3 id="framing-confirmation-is-not-authentication">Framing confirmation is not authentication</h3>
+<p>Any complete length-prefixed frame selects binary mode, even if its command is
+unknown or malformed at the application layer. This is safe for stream
+separation but means a random complete frame can leave the device in binary
+mode until manually switched back.</p>
+<h3 id="the-terminal-banner-is-best-effort">The terminal banner is best effort</h3>
+<p>The firmware enters ASCII mode during boot, often before a host opens the CDC
+device. The banner may therefore be absent even though the terminal is ready;
+send a newline or a harmless <code>get</code> command rather than treating a missing
+banner as proof of binary mode.</p>
+<p>A host that remains connected across a reboot may receive ASCII banner and
+prompt bytes before the first binary response. Binary clients should discard
+leading bytes until a plausible <code>&gt;</code> frame marker and length are found, reject
+implausible lengths, and resynchronize. The ordinary open-after-boot path has
+been tested with <code>meshcli</code>, but third-party clients that assume byte zero is
+always <code>&gt;</code> may fail.</p>
+<h3 id="text-and-binary-output-cannot-be-interleaved">Text and binary output cannot be interleaved</h3>
+<p>Primary USB suppresses Binary Companion output while the terminal owns the
+stream. Packet/debug logging must use its dedicated CDC interface or the
+exclusive single-TTY logging mode. Writing diagnostic text directly to the
+primary binary stream will corrupt clients regardless of the switcher.</p>
+<h3 id="a-literal-leading-briefly-hides-the-prompt">A literal leading <code>&lt;</code> briefly hides the prompt</h3>
+<p>Typing <code>&lt;</code> as the first terminal character begins a binary probe. With no
+complete frame, the prompt returns after one second and the banner is printed
+again. There is currently no escape syntax for entering a literal leading <code>&lt;</code>;
+prefix it with another character if it is needed as command text.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>If <code>meshcli</code> cannot connect:</p>
+<ol>
+<li>close every terminal or logging reader using the primary interface;</li>
+<li>confirm that saved single-TTY logging is off;</li>
+<li>reboot and let <code>meshcli</code> be the first process to open the data interface;</li>
+<li>use the stable <code>/dev/serial/by-id/*-if00</code> path on Linux when available;</li>
+<li>if a prompt appears after one second, the client's first frame was not
+   completed inside the probe window.</li>
+</ol>
+<p>If an ASCII terminal shows no banner, press Enter and issue a harmless query
+such as <code>get radio.cad</code>. If binary bytes appear, send the exact terminal start
+token or reboot.</p>
+<p>The switch policy is implemented in
+<a href="../src/helpers/UsbAsciiBinarySwitch.h"><code>UsbAsciiBinarySwitch.h</code></a>, with stream
+ownership in <a href="../examples/companion_radio/main.cpp"><code>main.cpp</code></a> and framing in
+<a href="../src/helpers/ArduinoSerialInterface.cpp"><code>ArduinoSerialInterface.cpp</code></a>.</p>
 
 
 

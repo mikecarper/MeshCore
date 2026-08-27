@@ -583,6 +583,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1811,11 +1838,15 @@ source, confirm that its USB CLI accepts:</p>
 <p>If an older build reports that <code>OTA_FOLDER_SERIAL</code> is not compiled in, install a current <code>-ota-</code>,
 <code>-full-usb-wifi-ota-</code>, or applicable <code>-full-logging-ota-</code> build first. Do <strong>not</strong> use a KISS modem: KISS firmware is a TNC/KISS frame interface
 and does not provide the MeshCore CLI or the OTA-folder transport that <code>motatool serve</code> requires.</p>
-<p>An nRF52 <code>companion_radio_full</code> starts in USB Binary mode. Use
-<code>+++MESHCORE-TERM-START</code> for local TempRadio commands, then return with
-<code>+++MESHCORE-TERM-STOP</code>. When <code>motatool serve --serial</code> opens the port, its
-automatic <code>ota folder on</code> command selects exclusive mOTA mode; stopping the
-tool or disconnecting resets USB to Binary. BLE remains available throughout.
+<p>An nRF52 <code>companion_radio_full</code> starts in its USB ASCII terminal and
+automatically changes to Binary Companion when it receives a complete <code>&lt;</code>
+frame. It also recognizes <code>motatool</code>'s exact initial <code>ota folder on</code> line and
+enters exclusive mOTA mode directly, so <code>motatool serve --serial</code> can be the
+first client after boot. No terminal token or preliminary disconnect is
+required. Stopping the tool or disconnecting resets USB to Binary. BLE remains
+available throughout. See the
+<a href="../full_companion_usb_switcher/#logging-and-mota-ownership">Full Companion USB switcher guide</a>
+for the complete ownership transitions.
 Protocol v14 can instead take the catalog from a paired phone or Linux host
 over a separate encrypted BLE mOTA service while Binary Companion remains
 active. USB and BLE catalog sources are mutually exclusive. See the

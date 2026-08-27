@@ -685,6 +685,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1572,8 +1599,10 @@ logging. Select the saved mode with <code>set usb.logging off|on</code>; no <cod
 artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
 receiver images retain their protocol/partition contracts and do not inherit
 plaintext USB logging.</p>
-<p>Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep Binary Companion
-on interface <code>00</code>; <code>set usb.logging on reboot</code> adds plaintext interface <code>02</code>.
+<p>Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep the multi-role
+primary interface on <code>00</code>; it starts as an ASCII terminal and automatically
+hands a complete <code>&lt;</code> frame to Binary Companion. <code>set usb.logging on reboot</code>
+adds plaintext interface <code>02</code>.
 Single-TTY ESP32 builds instead use <code>set usb.logging on</code> to switch that TTY to
 an input-capable plaintext logging terminal. <code>set usb.logging off</code> stops the
 logs and returns the TTY to Binary Companion after its reply. BLE and Wi-Fi
@@ -1640,8 +1669,9 @@ similarly named physical target.</p>
 one normal image instead of separate USB, BLE, ordinary WiFi, and USB-logging
 images. Full Companion provides the attached transports and a dedicated
 plaintext logging port when enabled without mixing logs into framed Companion
-traffic. Logging is off by default, so only the framed port appears until it is
-enabled and the node reboots.
+traffic. Logging is off by default, so only primary interface <code>00</code> appears; it
+starts in ASCII and automatically changes to framed Companion when a complete
+<code>&lt;</code> frame arrives. Enabling logging and rebooting adds interface <code>02</code>.
 Exact filename search still finds old aliases from earlier releases.</p>
 
 

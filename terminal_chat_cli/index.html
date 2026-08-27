@@ -581,6 +581,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1286,17 +1313,20 @@
 <h1 id="terminal-chat-cli">Terminal Chat CLI</h1>
 <p>Below are the commands you can enter into the Terminal Chat clients:</p>
 <h2 id="companion-usb-mode">Companion USB mode</h2>
-<p>A Companion USB build starts in the normal binary Companion protocol at
-115200 baud. Use this command to switch the same USB connection into terminal
+<p>An ordinary Companion USB build starts in the normal binary Companion protocol
+at 115200 baud. Use this command to switch the same USB connection into terminal
 mode as soon as <code>picocom</code> opens it:</p>
 <pre><code class="language-sh">picocom --baud 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM0
 </code></pre>
-<p><code>--initstring</code> sends this exact terminal-start sequence automatically:</p>
+<p><code>--initstring</code> sends this exact terminal-start line automatically:</p>
 <pre><code>+++MESHCORE-TERM-START
 </code></pre>
+<p>The carriage return is required in Binary mode. Control tokens are recognized
+only as complete CR/LF-delimited lines, so the same text embedded in unrelated
+unframed input cannot switch modes accidentally.</p>
 <p>Binary Companion frames can contain terminal control bytes. The <code>spchex</code> input
 map renders those bytes as bracketed hexadecimal during the short transition
 instead of allowing them to change the local terminal's character set or
@@ -1317,6 +1347,11 @@ switch: native USB CDC devices ignore the requested baud, while USB-to-UART
 devices really change the UART timing and receive corrupt data. Binary mode is
 the framed Companion API used by apps and <code>meshcli</code>; close the terminal before
 opening that port from an app.</p>
+<p>Full Companion differs: its primary USB interface starts in ASCII after boot
+and automatically switches when it sees a complete <code>&lt;</code>-prefixed Companion
+frame at an empty prompt. The explicit start/stop tokens remain available. See
+<a href="../full_companion_usb_switcher/">Full Companion USB CLI and binary switcher</a>
+for the state machine and limitations.</p>
 <h2 id="commands">Commands</h2>
 <pre><code>set freq {frequency}
 </code></pre>

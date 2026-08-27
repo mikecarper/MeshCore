@@ -583,6 +583,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../gps_tracking/" class="md-nav__link">
         
   
@@ -1608,16 +1635,17 @@ computer -- MeshCore binary API --&gt; controller Companion -------------------+
 reopening the controller while <code>motatool</code> owns the source port. The script
 rejects an attempt to use the same port for both.</p>
 <p>The USB ASCII switch (<code>+++MESHCORE-TERM-START</code>) is the local control path, not
-the mOTA data framing. On a dual-CDC full Companion, the script uses that mode
-briefly for <code>ota status</code> and TempRadio commands. It then closes the CLI and
-starts <code>motatool</code>, whose existing <code>ota folder on</code> preamble switches the same
-USB interface <code>00</code> into exclusive mOTA mode. If USB logging was enabled and the
-Full Companion rebooted, its separate interface <code>02</code> continues to provide
-plaintext logging and is not a controller or source port. With default logging
-off, interface <code>02</code> is not enumerated.
-On a native-USB ESP32-S3 Full Companion with serial folder support,
-<code>motatool --companion-terminal</code> keeps the ASCII session open
-while the same link carries framed folder requests. BLE remains available.</p>
+the mOTA data framing. On an nRF52 dual-CDC Full Companion, the script uses
+that mode briefly for <code>ota status</code> and TempRadio commands. It then closes the
+CLI and starts <code>motatool</code>; the exact <code>ota folder on</code> preamble switches the same
+USB interface <code>00</code> into exclusive mOTA mode from either startup ASCII or
+Binary Companion mode. If USB logging was enabled and the Full Companion
+rebooted, its separate interface <code>02</code> continues to provide plaintext logging
+and is not a controller or source port. With default logging off, interface
+<code>02</code> is not enumerated. BLE remains available.</p>
+<p>ESP32 Full Companion normally uses its dedicated TCP seeder on port 5001.
+ESP32 builds that also retain serial folder support use the shared-console
+mOTA framing rather than the nRF52 exclusive USB ownership state.</p>
 <h2 id="destination-requirements">Destination requirements</h2>
 <table>
 <thead>
@@ -1713,7 +1741,7 @@ either link.</p>
 automatically:</p>
 <pre><code class="language-bash">picocom -b 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM1
 </code></pre>
 <p>Run <code>ota status</code>. It must report <code>OTA seeder</code>, <code>install:disabled</code>, and target
@@ -1954,6 +1982,12 @@ interface details.</p>
 <p>An nRF52 <code>companion_radio_full</code> uses one USB source port sequentially. The
 runner automatically wraps local control commands in the terminal tokens, and
 unmodified <code>motatool</code> switches that port into mOTA mode when seeding starts:</p>
+<p>The wrapper sends STOP, then START, before each command. This makes fallback
+independent of whether a prior raw probe left an unobservable USB-UART
+connection in ASCII or Binary mode. Seeder startup is reported only after the
+verbose device log contains its <code>COUNT</code> acknowledgement; an immediate device
+<code>ERR</code> or a missing acknowledgement fails during startup instead of surfacing
+later as a catalog timeout.</p>
 <pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.mota &quot;Remote Target&quot; \
   --controller-serial /dev/ttyACM0 \
   --source-serial /dev/ttyACM1
