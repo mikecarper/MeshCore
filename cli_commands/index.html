@@ -704,6 +704,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-display-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion display rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2151,6 +2162,17 @@
     <span class="md-ellipsis">
       
         View or change the speed of the bridge (RS-232 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-uart-used-by-the-bridge-rs-232-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the UART used by the bridge (RS-232 only)
       
     </span>
   </a>
@@ -3394,6 +3416,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-display-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion display rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4848,6 +4881,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-change-the-uart-used-by-the-bridge-rs-232-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the UART used by the bridge (RS-232 only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-channel-used-for-bridging-espnow-only" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5606,6 +5650,17 @@ When a page has no fixes, its origin is <code>0,0</code>, origin index is <code>
 differentials are <code>0,0</code>. Values outside <code>-8192</code> through <code>8191</code> are clipped and
 set flag bit 0.</p>
 <hr />
+<h2 id="set-companion-display-rotation">Set Companion display rotation</h2>
+<p>SSD1306 Full Companion builds support a persisted runtime orientation:</p>
+<pre><code class="language-text">get display.rotation
+set display.rotation 0
+set display.rotation 90
+set display.rotation 180
+set display.rotation 270
+</code></pre>
+<p>The values are clockwise degrees. <code>0</code> clears the override and restores the
+board's compiled default. Unsupported display drivers return an error.</p>
+<hr />
 <h2 id="logging">Logging</h2>
 <p>Builds compiled with <code>MESH_PACKET_LOGGING</code> emit one <code>RAW:</code> line for every
 received radio frame. Serial output uses backpressure: if a connected host
@@ -5617,8 +5672,9 @@ draining the serial port.</p>
 timing, hash, type, route, and payload information. Frames that cannot be
 decoded still emit their <code>RAW:</code> line. Transmitted packets emit the decoded TX
 summary.</p>
-<p>Ordinary <code>-logging-</code> artifacts keep packet logging separate from LoRa OTA.
-Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
+<p>Ordinary non-OTA artifacts compile packet logging into the canonical image and
+control its live USB output at runtime; no separate <code>-logging-</code> artifact is
+emitted. Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
 <code>-full-usb-wifi-ota-</code> artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A <code>-full-logging-ota-</code> artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
@@ -5630,10 +5686,11 @@ set usb.logging off
 set usb.logging on reboot
 set usb.logging off reboot
 </code></pre>
-<p>These commands are compiled into logging artifacts and every Full Companion.
-They control live USB debug and packet output. CommonCLI roles save the setting
-in <code>/com_prefs</code>, so it survives reboot; their first boot defaults to on. Full
-Companion starts off on a fresh installation.</p>
+<p>These commands are compiled into ordinary USB-loggable artifacts and every
+Full Companion. They control live USB debug and packet output. CommonCLI roles
+save the setting in <code>/com_prefs</code>, so it survives reboot; their first boot
+defaults to on. Full Companion and ordinary USB Companion start off on a fresh
+installation so diagnostics cannot corrupt framed traffic.</p>
 <p>On Full Companion these lines belong to its text terminal, not <code>meshcli</code>'s
 Binary <code>get/set</code> parameter namespace. Open interface <code>00</code>, send
 <code>+++MESHCORE-TERM-START</code>, and then issue the command. Running
@@ -7968,6 +8025,18 @@ non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
 <p><strong>Parameters:</strong>
 - <code>rate</code>: Baud rate (<code>9600</code>, <code>19200</code>, <code>38400</code>, <code>57600</code>, or <code>115200</code>)</p>
 <p><strong>Default:</strong> <code>115200</code></p>
+<hr />
+<h4 id="view-or-change-the-uart-used-by-the-bridge-rs-232-only">View or change the UART used by the bridge (RS-232 only)</h4>
+<p><strong>Usage:</strong>
+- <code>get bridge.uart</code>
+- <code>set bridge.uart &lt;port&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>port</code>: Hardware UART number compiled for the board. Most boards expose one
+  fixed UART. RAK4631 accepts <code>1</code> or <code>2</code>; UART 2 is the default so UART 1 can
+  remain available to GPS.</p>
+<p>The setting is persistent and restarts an enabled bridge immediately. Normal
+repeater artifacts start with <code>bridge.enabled off</code>; configure the UART and baud
+rate before running <code>set bridge.enabled on</code>.</p>
 <hr />
 <h4 id="view-or-change-the-channel-used-for-bridging-espnow-only">View or change the channel used for bridging (ESPNow only)</h4>
 <p><strong>Usage:</strong>

@@ -1688,9 +1688,9 @@ RAK12501 GPS while omitting the other optional environmental sensors. Install
 the GPS in sensor slot A. Slot D's reset/PPS lines conflict with the RAK13302
 radio's BUSY/DIO1 lines.</p>
 <p>The RAK4631 internal-flash OTA repeater likewise retains GPS. A RAK12501 can
-use sensor slot A or D; a RAK12500 can use slot A or C. The RAK4631 Serial1
-RS232 OTA bridge is the exception because the bridge owns the GPS UART. The
-Serial2 RS232 OTA bridge retains GPS on Serial1.</p>
+use sensor slot A or D; a RAK12500 can use slot A or C. Its runtime RS-232
+bridge defaults to Serial2 so GPS can retain Serial1. If you explicitly select
+Serial1 with <code>set bridge.uart 1</code>, turn GPS off before enabling the bridge.</p>
 <p>Selected nRF52 repeaters with dedicated external QSPI can now stage the
 complete package off-chip, so their normal full-sensor repeater build can
 install a full image or an in-place delta. The current matched families are
@@ -1956,13 +1956,16 @@ remote area.</p>
 <ol>
 <li>Put the firmware files (<code>.mota</code> files - see below) in a folder on the computer.</li>
 <li>Install the helper tool once - the standalone <code>motatool</code> CLI (<a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>) -
-   then point it at your node and the folder - over the node's <strong>USB serial</strong>, or over <strong>WiFi</strong> if it is
-   an ESP32 WiFi companion or FULL ESP32 node:
+   then point it at your node and the folder - over the node's <strong>USB serial</strong>, over <strong>WiFi</strong> if it is
+   an ESP32 WiFi companion or FULL ESP32 node, or over encrypted <strong>Bluetooth</strong> if it is an nRF52 Full Companion:
    <code>git clone https://github.com/vk496/motatool &amp;&amp; cargo install --path ./motatool
    # over USB serial:
    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
    # ...or over WiFi: the seeder is on dedicated TCP port 5001:
-   motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v</code>
+   motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v
+   # ...or over paired BLE to an nRF52 Full Companion (protocol v14):
+   python3 tools/ble_mota/ble_mota_seeder.py \
+     --device MeshCore-MyCompanion --dir ./my_firmware/</code>
    It answers the node's requests; your node then advertises those updates to neighbours, who can
    <code>ota get</code> them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
    Details: <a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>.)</li>

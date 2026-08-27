@@ -1469,8 +1469,8 @@ an old or failed artifact without a verified sidecar.</p>
 <td>Sensor command surface; it does not acquire the repeater administration tree</td>
 </tr>
 <tr>
-<td>Serial, USB, BLE, or WiFi companion</td>
-<td>Uses the companion protocol; any serial diagnostics are target-specific</td>
+<td>Full, serial, Ethernet, USB, BLE, or WiFi companion</td>
+<td>Uses the companion protocol; Full combines every qualified transport for that exact board</td>
 </tr>
 <tr>
 <td>KISS modem</td>
@@ -1499,11 +1499,11 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <tbody>
 <tr>
 <td>Standard non-MQTT repeater or room server</td>
-<td>Keeps the normal role CLI. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest.</td>
+<td>Keeps the normal role CLI and, where USB is a safe plaintext console, embeds debug/packet logging behind persistent <code>get/set usb.logging</code>. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest.</td>
 </tr>
 <tr>
-<td>Standard logging</td>
-<td>Logging does not remove commands by itself. It has the same CLI as the selected role/profile and adds compiled logging behavior. CommonCLI roles persist <code>get/set usb.logging</code>. Roles covered by a Full image with runtime logging are not duplicated here.</td>
+<td>Legacy standard logging</td>
+<td>No longer emitted separately. Its behavior is compiled into the ordinary artifact. Size-constrained STM32 targets embed packet logging without verbose <code>MESH_DEBUG</code>.</td>
 </tr>
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
@@ -1535,12 +1535,13 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
-<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery or routing commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles also retain their GPS commands and provider. The RAK4631 Serial1 RS232 bridge remains GPS-off because both features require Serial1. The legacy target suffix is retained for OTA identity compatibility.</td>
+<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery, routing, or runtime RS-232 commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider; RAK4631 defaults the bridge to UART 2 because GPS uses UART 1. Legacy target suffixes remain stable for OTA identity compatibility.</td>
 </tr>
 </tbody>
 </table>
-<p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features. Do not infer
-that a command is missing merely because <code>logging</code> appears in the filename.</p>
+<p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features in historical
+filenames. Current standard artifacts use no <code>-logging-</code> infix because their
+USB logging is runtime controlled.</p>
 <h2 id="canonical-bulk-build-policy">Canonical bulk-build policy</h2>
 <p>Bulk and release-matrix commands omit legacy names whose behavior is already
 available from a canonical image:</p>
@@ -1554,8 +1555,10 @@ available from a canonical image:</p>
   replaced by their ordinary Station target. G2 boosted receive gain is the
   persisted <code>radio.rxgain on|off</code> setting; the G3 alias changed only the
   advertised default name.</li>
-<li>When a board has a Full Companion, that one artifact replaces its
-  separate USB, BLE, ordinary WiFi, and USB packet-logging Companion artifacts.
+<li>
+<p>When a board has a Full Companion, that one artifact replaces its
+  separate USB, BLE, ordinary WiFi, hardware-serial, Ethernet Companion, and
+  USB packet-logging Companion artifacts.
   It provides BLE and source-only LoRa OTA; ESP32 also provides ordinary WiFi.
   Dual-CDC builds keep framed traffic on interface <code>00</code> and add logging on
   interface <code>02</code> after a reboot. Single-TTY builds switch interface <code>00</code> into
@@ -1567,7 +1570,21 @@ available from a canonical image:</p>
   to adopt its expanded partition table. Once migrated, later Full Companion
   releases use normal app updates. The transport-specific non-Full images stay
   available as explicit build targets, but are not canonical release artifacts
-  when the qualified Full image fits.</li>
+  when the qualified Full image fits.</p>
+</li>
+<li>
+<p>Standalone Terminal Chat is omitted when the same exact hardware has either
+  Full Companion or a USB Companion, because their local text terminal supplies
+  the same role. Heltec E290 and T190 similarly publish one combined USB + BLE
+  Companion. RAK4631 repeater and room-server Ethernet builds stay separate;
+  only the RAK4631 Ethernet Companion is folded into Full Companion.</p>
+</li>
+<li>Matching RS-232 bridge roles are compiled into the normal repeater and
+  selected at runtime with <code>bridge.enabled</code>, <code>bridge.baud</code>, and <code>bridge.uart</code>.
+  Historical bridge names remain directly buildable but are omitted from bulk
+  releases. Wio-E5 remains separate because its normal image has only 916
+  bytes free, while the combined image exceeds the fixed 240 KiB application
+  partition by 2,192 bytes.</li>
 </ul>
 <p>The old aliases still work with <code>build-firmware</code> and
 <code>build-matching-firmwares</code>. Dedicated repeater LoRa OTA receiver images are not

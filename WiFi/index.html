@@ -1930,11 +1930,11 @@ meaning can change when the service reorders or adds presets.</p>
 <tbody>
 <tr>
 <td>Standard</td>
-<td>Uses the selected target's role. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile.</td>
+<td>Uses the selected target's role. Where USB is a safe plaintext console, the same artifact embeds debug/packet logging behind persistent <code>get/set usb.logging</code>. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile.</td>
 </tr>
 <tr>
-<td>Logging</td>
-<td>Enables USB/debug packet logging and disables the MQTT bridge. CommonCLI roles persist <code>get/set usb.logging</code>; logging output itself is not a direct MQTT uplink.</td>
+<td>Legacy logging</td>
+<td>No separate artifact is emitted; USB logging is part of the ordinary image. Logging output itself is not a direct MQTT uplink.</td>
 </tr>
 <tr>
 <td>MQTT</td>
@@ -1960,9 +1960,9 @@ T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
 persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.</p>
 <p>The interactive Option 1 <strong>FULL everything</strong> choice and the standalone FULL
 command select the unified USB + WiFi image when a matching MQTT target exists;
-otherwise they select the logging fallback. The build matrix no longer emits a
-separate standard logging image or non-MQTT FULL twin for a role covered by the
-unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
+otherwise they select the logging fallback. The build matrix no longer emits
+any separate standard logging image, or a non-MQTT FULL twin for a role covered
+by the unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
 up to 254 neighbors, and expanded dual-OTA partitions. Target-specific
 internal-DRAM limits still apply.</p>
 <p>FULL images change the ESP32 partition layout. Flash the matching

@@ -1593,10 +1593,10 @@ KISS firmware uses framed KISS/TNC commands, and terminal-chat firmware has its
 own interface, so those build roles are not represented here.</p>
 <p>Build columns mean:</p>
 <ul>
-<li><strong>Standard</strong> - the ordinary non-MQTT artifact, without the <code>logging</code> or
-  explicit <code>ota</code> filename marker.</li>
-<li><strong>Logging</strong> - the ordinary non-MQTT <code>-logging-</code> artifact. Logging does not
-  remove commands by itself.</li>
+<li><strong>Standard</strong> - the ordinary non-MQTT artifact, without an explicit <code>ota</code>
+  filename marker. Safe plaintext-USB roles embed runtime USB logging.</li>
+<li><strong>Logging</strong> - the legacy <code>-logging-</code> profile, now represented by the same
+  ordinary artifact and retained as a comparison column only.</li>
 <li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. Its
   optional external-sensor drivers are removed, but onboard GPS is retained.</li>
 <li><strong>FULL unified</strong> - the expanded-partition ESP32 artifact with LoRa OTA, the
@@ -1868,8 +1868,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>Logging</td>
 <td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code>; unified FULL <code>get/set logging.output</code></a></td>
-<td>Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal</td>
-<td>No</td>
+<td>Ordinary safe-USB artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal</td>
+<td>Yes</td>
 <td>Yes</td>
 <td>No</td>
 </tr>
@@ -2524,6 +2524,14 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>Bridge</td>
 <td><a href="../cli_commands/#view-or-change-the-speed-of-the-bridge-rs-232-only"><code>get/set bridge.baud</code></a></td>
+<td>RS-232 bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-uart-used-by-the-bridge-rs-232-only"><code>get/set bridge.uart</code></a></td>
 <td>RS-232 bridge</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -3207,8 +3215,8 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>Logging</td>
 <td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.logging</code>; unified FULL <code>get/set logging.output</code></a></td>
-<td>Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal</td>
-<td>No</td>
+<td>Ordinary safe-USB artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal</td>
+<td>Yes</td>
 <td>Yes</td>
 <td>No</td>
 <td>No</td>
@@ -4027,6 +4035,16 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <tr>
 <td>Bridge</td>
 <td><a href="../cli_commands/#view-or-change-the-speed-of-the-bridge-rs-232-only"><code>get/set bridge.baud</code></a></td>
+<td>RS-232 bridge</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>Feature</td>
+<td>No</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Bridge</td>
+<td><a href="../cli_commands/#view-or-change-the-uart-used-by-the-bridge-rs-232-only"><code>get/set bridge.uart</code></a></td>
 <td>RS-232 bridge</td>
 <td>Feature</td>
 <td>Feature</td>

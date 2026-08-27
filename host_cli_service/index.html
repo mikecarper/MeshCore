@@ -1369,10 +1369,10 @@ cmd host run &lt;alias&gt; [arguments]
 example and is disabled unless the endpoint is started with <code>--allow-reboot</code>.
 Text such as <code>reboot now</code>, <code>cpu-temp; reboot</code>, and embedded newlines is not a
 command: the endpoint accepts only an exact allowlist match.</p>
-<p>The bridge is included in normal repeater firmware. The specialized Wio-E5
-RS232 bridge image omits it because the RS232 application already fills its
-fixed 240 KiB application partition; use the normal Wio-E5 repeater image when
-the USB/MQTT host service is needed.</p>
+<p>The bridge is included in normal repeater firmware except on Wio-E5. Its
+specialized RS232 bridge image omits the host service because the combined
+application exceeds the fixed 240 KiB partition; use the normal Wio-E5
+repeater image when the USB/MQTT host service is needed.</p>
 <h2 id="run-alongside-meshcoretomqtt">Run alongside meshcoretomqtt</h2>
 <p><code>meshcoretomqtt</code> must remain the only process that opens the repeater USB serial
 port. The endpoint communicates with it through the same MQTT broker, which can

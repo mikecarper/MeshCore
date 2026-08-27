@@ -1529,8 +1529,12 @@ from the published firmware assets.</p>
 </tbody>
 </table>
 <p>Connection and bridge choices depend on the selected role. Companion firmware
-may offer Full, Bluetooth, USB, Wi-Fi, serial, or Ethernet transports.
-Repeaters may offer standard, ESP-NOW bridge, RS-232 bridge, Ethernet, or MQTT
+may offer Full, combined USB + Bluetooth, Bluetooth, USB, Wi-Fi, serial, or
+Ethernet transports.
+Normal repeater firmware includes runtime-controlled RS-232 support where the
+board has room; use <code>set bridge.enabled on</code> after configuring <code>bridge.uart</code> and
+<code>bridge.baud</code>. The Wio-E5 remains the capacity exception and offers a separate
+RS-232 image. Repeaters may also offer separate ESP-NOW, Ethernet, or MQTT
 observer modes.</p>
 <h2 id="full-versus-standard">FULL versus standard</h2>
 <p>For a new installation, use the FULL / complete profile when it exists and the
@@ -1553,9 +1557,21 @@ next reboot or power cycle. An explicit administrator <code>start webconfig</cod
 available as an override. A saved SSID switches to the normal indefinite
 reconnect behavior instead.</p>
 <p>Full Companion profiles use one binary for USB, BLE, ordinary Wi-Fi on ESP32,
-source-only LoRa OTA, and optional USB packet logging. The picker therefore
-omits separate attached-transport and USB-logging choices whenever the exact
-Full recipe exists. Fresh installs default to logging off.</p>
+source-only LoRa OTA, Terminal Chat, optional USB packet logging, and any
+board-qualified serial or Ethernet Companion transport. Bulk builds therefore
+omit separate attached-transport, Terminal Chat, and USB-logging artifacts
+whenever the exact Full recipe exists. RAK4631 repeater and room-server
+Ethernet images remain separate roles. Fresh installs default to logging off.</p>
+<p>When Full Companion does not fit but a matching USB Companion does, that USB
+artifact also supplies Terminal Chat and replaces its standalone release image.
+Heltec E290 and T190 publish a combined USB + BLE Companion. SSD1306 Full
+Companion builds use <code>set display.rotation 90|180|270</code>; <code>0</code> restores the board
+default, so a separate rotated release image is not recommended.</p>
+<p>Ordinary non-OTA roles also use one artifact for normal operation and USB
+logging. Select the saved mode with <code>set usb.logging off|on</code>; no <code>-logging-</code>
+artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
+receiver images retain their protocol/partition contracts and do not inherit
+plaintext USB logging.</p>
 <p>Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep Binary Companion
 on interface <code>00</code>; <code>set usb.logging on reboot</code> adds plaintext interface <code>02</code>.
 Single-TTY ESP32 builds instead use <code>set usb.logging on</code> to switch that TTY to
