@@ -6,10 +6,18 @@
 #define RECV_STATE_LEN1_FOUND  2
 #define RECV_STATE_LEN2_FOUND  3
 
-void ArduinoSerialInterface::resetReceiveState() {
-  _state = RECV_STATE_IDLE;
+void ArduinoSerialInterface::resetControlSequenceState() {
   _controlSequencePos = 0;
   _secondaryControlSequencePos = 0;
+  _controlSequenceCandidate =
+      _controlSequence != nullptr && _controlSequence[0] != 0;
+  _secondaryControlSequenceCandidate =
+      _secondaryControlSequence != nullptr && _secondaryControlSequence[0] != 0;
+}
+
+void ArduinoSerialInterface::resetReceiveState() {
+  _state = RECV_STATE_IDLE;
+  resetControlSequenceState();
   _frame_len = 0;
   rx_len = 0;
   _last_rx_byte_ms = 0;
@@ -111,23 +119,33 @@ void ArduinoSerialInterface::serviceTransmit() {
   }
 }
 
-bool ArduinoSerialInterface::checkControlSequence(uint8_t c,
-                                                  const char* sequence,
-                                                  size_t& position,
-                                                  bool& received) {
-  if (sequence == nullptr || sequence[0] == 0) return false;
+bool ArduinoSerialInterface::checkControlLineByte(uint8_t c) {
+  if (c == '\r' || c == '\n') {
+    const bool primary = _controlSequenceCandidate
+        && _controlSequence[_controlSequencePos] == 0;
+    const bool secondary = _secondaryControlSequenceCandidate
+        && _secondaryControlSequence[_secondaryControlSequencePos] == 0;
+    resetControlSequenceState();
+    if (primary) _controlSequenceReceived = true;
+    if (secondary) _secondaryControlSequenceReceived = true;
+    return primary || secondary;
+  }
 
-  if (c == (uint8_t)sequence[position]) {
-    position++;
-    if (sequence[position] == 0) {
-      position = 0;
-      received = true;
-      return true;
+  if (_controlSequenceCandidate) {
+    if (_controlSequence[_controlSequencePos] != 0
+        && c == (uint8_t)_controlSequence[_controlSequencePos]) {
+      ++_controlSequencePos;
+    } else {
+      _controlSequenceCandidate = false;
     }
-  } else {
-    // Preserve a possible new match when this byte is also the first byte of
-    // the sequence (notably useful for sequences beginning with "+++").
-    position = c == (uint8_t)sequence[0] ? 1 : 0;
+  }
+  if (_secondaryControlSequenceCandidate) {
+    if (_secondaryControlSequence[_secondaryControlSequencePos] != 0
+        && c == (uint8_t)_secondaryControlSequence[_secondaryControlSequencePos]) {
+      ++_secondaryControlSequencePos;
+    } else {
+      _secondaryControlSequenceCandidate = false;
+    }
   }
   return false;
 }
@@ -235,11 +253,7 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
 
     switch (_state) {
       case RECV_STATE_IDLE:
-        if (checkControlSequence((uint8_t)c, _controlSequence,
-                                 _controlSequencePos, _controlSequenceReceived)
-            || checkControlSequence((uint8_t)c, _secondaryControlSequence,
-                                    _secondaryControlSequencePos,
-                                    _secondaryControlSequenceReceived)) {
+        if (checkControlLineByte((uint8_t)c)) {
           // Leave any following bytes buffered for the passthrough consumer.
           return 0;
         }
@@ -255,6 +269,7 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
         _frame_len |= ((uint16_t)c) << 8;   // MSB
         rx_len = 0;
         _state = _frame_len > 0 ? RECV_STATE_LEN2_FOUND : RECV_STATE_IDLE;
+        if (_state == RECV_STATE_IDLE) resetControlSequenceState();
         break;
       default:
         if (rx_len < MAX_FRAME_SIZE) {
@@ -265,7 +280,9 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
           if (_frame_len > MAX_FRAME_SIZE) _frame_len = MAX_FRAME_SIZE;    // truncate
           memcpy(dest, rx_buf, _frame_len);
           _state = RECV_STATE_IDLE;  // reset state, for next frame
+          resetControlSequenceState();
           _last_frame_ms = millis();   // a real client is talking to us
+          ++_completed_frame_count;
           _has_received_frame = true;
           return _frame_len;
         }

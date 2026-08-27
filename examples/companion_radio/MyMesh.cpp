@@ -6,6 +6,7 @@
 #include <helpers/IdentityGeneration.h>
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
+#include "helpers/radiolib/CadTiming.h"
 
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
 #include <esp_heap_caps.h>
@@ -192,6 +193,10 @@ static bool save_filter(const ContactInfo& c);
 #endif
 #ifndef DEFAULT_BUZZER_QUIET
 #define DEFAULT_BUZZER_QUIET 0
+#endif
+#ifndef DEFAULT_CAD_ENABLED
+// Preserve the tuned Companion behavior that preceded the runtime setting.
+#define DEFAULT_CAD_ENABLED 1
 #endif
 
 #ifndef EMERGENCY_CLIENT_REPEAT_HOLD_MS
@@ -439,7 +444,19 @@ float MyMesh::getAirtimeBudgetFactor() const {
 }
 
 bool MyMesh::getCADEnabled() const {
-  return true; // tuned branch behavior: hardware CAD before every companion TX
+  return _prefs.cad_enabled != 0;
+}
+
+uint32_t MyMesh::getCADFailRetryDelay() const {
+  return _prefs.cad_retry_delay_ms != 0
+      ? _prefs.cad_retry_delay_ms
+      : BaseChatMesh::getCADFailRetryDelay();
+}
+
+uint32_t MyMesh::getCADFailMaxDuration() const {
+  return _prefs.cad_max_duration_ms != 0
+      ? _prefs.cad_max_duration_ms
+      : mesh::Dispatcher::getCADFailMaxDuration();
 }
 
 int MyMesh::getInterferenceThreshold() const {
@@ -1477,6 +1494,10 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.wifi_enabled = 1;
   memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
   _prefs.display_rotation_degrees = 0;
+  _prefs.cad_enabled = DEFAULT_CAD_ENABLED ? 1 : 0;
+  _prefs.cad_scan_timeout_ms = 0;
+  _prefs.cad_retry_delay_ms = 0;
+  _prefs.cad_max_duration_ms = 0;
 #if defined(ENABLE_USB_INTERFACE)
   // Keep a USB Companion's primary stream exclusively framed on a fresh
   // install. Full dual-CDC builds can add a diagnostics port; single-TTY
@@ -1601,6 +1622,12 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   _prefs.powersaving_enabled = constrain(_prefs.powersaving_enabled, 0, 1);
   _prefs.wifi_enabled = constrain(_prefs.wifi_enabled, 0, 1);
   _prefs.usb_logging_enabled = constrain(_prefs.usb_logging_enabled, 0, 1);
+  _prefs.cad_enabled = constrain(_prefs.cad_enabled, 0, 1);
+  if (_prefs.cad_scan_timeout_ms != 0
+      && (_prefs.cad_scan_timeout_ms < mesh::CAD_SCAN_MIN_TIMEOUT_MS
+          || _prefs.cad_scan_timeout_ms > mesh::CAD_SCAN_MAX_TIMEOUT_MS)) {
+    _prefs.cad_scan_timeout_ms = 0;
+  }
   _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
     _prefs.rx_ps_preamble = 0;
@@ -1717,6 +1744,8 @@ void MyMesh::configureRadioFromPrefs() {
   }
 
   saved_radio_apply_pending = !applySavedRadioParams();
+  radio_driver.setCADScanTimeoutMillis(_prefs.cad_scan_timeout_ms);
+  _radio->setCADEnabled(_prefs.cad_enabled != 0);
   if (!saved_radio_apply_pending) {
     radio_driver.setTxPower(_prefs.tx_power_dbm);
     radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
@@ -1868,10 +1897,143 @@ void MyMesh::scheduleNormalRadio(char* reply, size_t reply_size) {
 }
 #endif
 
+static bool parseCadTimingMillis(const char* text, uint32_t minimum,
+                                 uint32_t maximum, uint16_t& result) {
+  if (strcmp(text, "auto") == 0 || strcmp(text, "0") == 0) {
+    result = 0;
+    return true;
+  }
+
+  char* end = NULL;
+  const unsigned long parsed = strtoul(text, &end, 10);
+  if (text[0] == 0 || end == NULL || *end != 0
+      || parsed < minimum || parsed > maximum) {
+    return false;
+  }
+  result = (uint16_t)parsed;
+  return true;
+}
+
+bool MyMesh::handleCadCommand(const char* command, char* reply,
+                              size_t reply_size) {
+  if (command == NULL || reply == NULL || reply_size == 0) return false;
+
+  if (strcmp(command, "get radio.cad") == 0
+      || strcmp(command, "get cad") == 0) {
+    char scan[32];
+    char retry[24];
+    char maximum[24];
+    if (_prefs.cad_scan_timeout_ms == 0) {
+      uint32_t effective = _radio_available
+          ? radio_driver.getCADScanTimeoutMillis() : 0;
+      if (effective == 0) {
+        effective = mesh::calculateCadScanTimeoutMillis(_prefs.sf, _prefs.bw);
+      }
+      snprintf(scan, sizeof(scan), "auto(%lu)", (unsigned long)effective);
+    } else {
+      snprintf(scan, sizeof(scan), "%u", (unsigned)_prefs.cad_scan_timeout_ms);
+    }
+    if (_prefs.cad_retry_delay_ms == 0) {
+      snprintf(retry, sizeof(retry), "auto");
+    } else {
+      snprintf(retry, sizeof(retry), "%u", (unsigned)_prefs.cad_retry_delay_ms);
+    }
+    if (_prefs.cad_max_duration_ms == 0) {
+      snprintf(maximum, sizeof(maximum), "auto");
+    } else {
+      snprintf(maximum, sizeof(maximum), "%u", (unsigned)_prefs.cad_max_duration_ms);
+    }
+    snprintf(reply, reply_size,
+             "radio.cad %s, scan=%s ms, retry=%s ms, max=%s ms",
+             _prefs.cad_enabled ? "on" : "off", scan, retry, maximum);
+    return true;
+  }
+
+  const char* value = NULL;
+  if (strncmp(command, "set radio.cad", 13) == 0
+      && (command[13] == 0 || command[13] == ' '
+          || command[13] == '\t')) {
+    value = command + 13;
+  } else if (strncmp(command, "set cad", 7) == 0
+             && (command[7] == 0 || command[7] == ' '
+                 || command[7] == '\t')) {
+    value = command + 7;
+  } else {
+    return false;
+  }
+  while (*value == ' ' || *value == '\t') value++;
+
+  if (strcmp(value, "on") == 0 || strcmp(value, "off") == 0) {
+    const uint8_t previous = _prefs.cad_enabled;
+    _prefs.cad_enabled = strcmp(value, "on") == 0 ? 1 : 0;
+    if (_radio_available) _radio->setCADEnabled(_prefs.cad_enabled != 0);
+    if (!savePrefs()) {
+      _prefs.cad_enabled = previous;
+      if (_radio_available) _radio->setCADEnabled(previous != 0);
+      snprintf(reply, reply_size, "Error: CAD changed but save failed");
+    } else {
+      snprintf(reply, reply_size, "OK - radio.cad %s", value);
+    }
+    return true;
+  }
+
+  if (strncmp(value, "timings", 7) == 0
+      && (value[7] == 0 || value[7] == ' ' || value[7] == '\t')) {
+    value += 7;
+    while (*value == ' ' || *value == '\t') value++;
+    char scan_text[16];
+    char retry_text[16];
+    char max_text[16];
+    char extra[2];
+    uint16_t scan_ms;
+    uint16_t retry_ms;
+    uint16_t max_ms;
+    const int fields = sscanf(value, "%15s %15s %15s %1s",
+                              scan_text, retry_text, max_text, extra);
+    if (fields != 3
+        || !parseCadTimingMillis(scan_text,
+              mesh::CAD_SCAN_MIN_TIMEOUT_MS,
+              mesh::CAD_SCAN_MAX_TIMEOUT_MS, scan_ms)
+        || !parseCadTimingMillis(retry_text, 1, 60000, retry_ms)
+        || !parseCadTimingMillis(max_text, 1, 60000, max_ms)) {
+      snprintf(reply, reply_size,
+               "Error: use set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>");
+      return true;
+    }
+
+    const uint16_t previous_scan = _prefs.cad_scan_timeout_ms;
+    const uint16_t previous_retry = _prefs.cad_retry_delay_ms;
+    const uint16_t previous_max = _prefs.cad_max_duration_ms;
+    if (_radio_available && !radio_driver.setCADScanTimeoutMillis(scan_ms)) {
+      snprintf(reply, reply_size, "Error: CAD scan timing is unsupported");
+      return true;
+    }
+    _prefs.cad_scan_timeout_ms = scan_ms;
+    _prefs.cad_retry_delay_ms = retry_ms;
+    _prefs.cad_max_duration_ms = max_ms;
+    if (!savePrefs()) {
+      _prefs.cad_scan_timeout_ms = previous_scan;
+      _prefs.cad_retry_delay_ms = previous_retry;
+      _prefs.cad_max_duration_ms = previous_max;
+      if (_radio_available) radio_driver.setCADScanTimeoutMillis(previous_scan);
+      snprintf(reply, reply_size, "Error: CAD timings changed but save failed");
+    } else {
+      snprintf(reply, reply_size, "OK - radio.cad timings saved");
+    }
+    return true;
+  }
+
+  snprintf(reply, reply_size,
+           "Error: use set radio.cad <on|off> or set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>");
+  return true;
+}
+
 bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+
+  if (handleCadCommand(command, reply, reply_size)) return true;
 
   if (strcmp(command, "get display.rotation") == 0) {
     if (_ui == NULL || !_ui->supportsDisplayRotation()) {
@@ -2453,6 +2615,7 @@ void MyMesh::onConfigBatchEnd() {
 
 void MyMesh::execCommand(char* cmd, char* reply) {
   reply[0] = 0;
+  if (handleCadCommand(cmd, reply, 160)) return;
   if (cmd && (strcmp(cmd, "get bluetooth.name") == 0
               || strcmp(cmd, "get ble.name") == 0)) {
     formatBluetoothNameStatus(reply, 160);
@@ -5311,8 +5474,9 @@ void MyMesh::handleTerminalCommand(char* command) {
 #if MESH_USB_LOGGING_AVAILABLE
   } else if (strcmp(command, "get usb.logging") == 0) {
     terminalOutput().printf(
-        "  usb.logging %s%s\r\n",
+        "  usb.logging %s; port: %s%s\r\n",
         mesh::isUsbLoggingEnabled() ? "on" : "off",
+        mesh::usbLoggingPortDescription(),
         mesh::usbLoggingInterfaceRestartRequired()
             ? " (reboot required to change USB interfaces)" : "");
 #endif
@@ -5584,6 +5748,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  get radio.rxps\r\n");
     terminalOutput().print("  get radio.rxps.config\r\n");
     terminalOutput().print("  set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n");
+    terminalOutput().print("  get radio.cad\r\n");
+    terminalOutput().print("  set radio.cad <on|off>\r\n");
+    terminalOutput().print("  set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>\r\n");
     terminalOutput().print("  get radio.rxgain\r\n");
     terminalOutput().print("  set radio.rxgain <on|off>\r\n");
     terminalOutput().print("  get radio.fem.rxgain\r\n");

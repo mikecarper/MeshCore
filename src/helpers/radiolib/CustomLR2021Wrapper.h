@@ -153,7 +153,7 @@ protected:
         break;
       }
       scan_result = performChannelScanWithTimeout(
-          mesh::calculateCadScanTimeoutMillis(scan_sfs[i], bw));
+          cadScanTimeoutMillis(scan_sfs[i], bw));
       // Each individual CAD can finish inside the helper's one-second service
       // cadence while the combined multi-SF pass still exceeds it.
       _board->serviceWatchdog();

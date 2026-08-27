@@ -7,6 +7,7 @@
 
 #include "helpers/ArduinoSerialInterface.h"
 #include "helpers/MultiSerialInterface.h"
+#include "helpers/UsbAsciiBinarySwitch.h"
 
 class BufferStream : public Stream {
 public:
@@ -32,6 +33,8 @@ public:
     input.pop_front();
     return value;
   }
+
+  int peek() override { return input.empty() ? -1 : input.front(); }
 
   size_t write(uint8_t value) override {
     return write(&value, 1);
@@ -247,7 +250,7 @@ TEST(SerialModeSwitch, RecognizesControlSequenceAcrossReads) {
   EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
   EXPECT_TRUE(interface.takeControlSequence());
   EXPECT_FALSE(interface.takeControlSequence());
-  EXPECT_EQ(stream.available(), 1); // trailing CR belongs to the terminal
+  EXPECT_EQ(stream.available(), 0); // delimiter is part of the control line
 }
 
 TEST(SerialModeSwitch, DoesNotScanInsideBinaryFrame) {
@@ -284,7 +287,7 @@ TEST(SerialModeSwitch, RecognizesSecondaryControlSequenceSeparately) {
   EXPECT_FALSE(interface.takeControlSequence());
   EXPECT_TRUE(interface.takeSecondaryControlSequence());
   EXPECT_FALSE(interface.takeSecondaryControlSequence());
-  EXPECT_EQ(stream.available(), 2); // trailing CRLF belongs to the seeder
+  EXPECT_EQ(stream.available(), 1); // CR is consumed; LF stays for the seeder
 }
 
 TEST(SerialModeSwitch, DoesNotScanSecondarySequenceInsideBinaryFrame) {
@@ -321,22 +324,46 @@ TEST(SerialModeSwitch, RecognizesControlSequenceAfterBinaryFrame) {
   EXPECT_EQ(frame[1], 0x5A);
   EXPECT_FALSE(interface.takeControlSequence());
 
+  stream.push("\r");
   EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
   EXPECT_TRUE(interface.takeControlSequence());
 }
 
-TEST(SerialModeSwitch, MismatchedPrefixDoesNotTrigger) {
+TEST(SerialModeSwitch, ControlSequenceRequiresAnExactBoundedLine) {
   BufferStream stream;
   ArduinoSerialInterface interface;
   interface.begin(stream, START_TOKEN);
   interface.enable();
   uint8_t frame[MAX_FRAME_SIZE] = {};
 
-  stream.push("+++MESHCORE-TERM-ST0P");
+  stream.push("prefix+++MESHCORE-TERM-START\r");
   EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
   EXPECT_FALSE(interface.takeControlSequence());
 
-  stream.push(START_TOKEN);
+  stream.push("+++MESHCORE-TERM-STARTsuffix\r");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_FALSE(interface.takeControlSequence());
+
+  stream.push("+++MESHCORE-TERM-ST0P\r");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_FALSE(interface.takeControlSequence());
+
+  stream.push("+++MESHCORE-TERM-START");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_FALSE(interface.takeControlSequence());
+  stream.push("\r");
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  EXPECT_TRUE(interface.takeControlSequence());
+}
+
+TEST(SerialModeSwitch, NewlineStartsAFreshControlLine) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream, START_TOKEN);
+  interface.enable();
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  stream.push("noise\r+++MESHCORE-TERM-START\n");
   EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
   EXPECT_TRUE(interface.takeControlSequence());
 }
@@ -361,6 +388,93 @@ TEST(SerialModeSwitch, PassthroughLeavesInputAndSuppressesBinaryOutput) {
   EXPECT_EQ(interface.writeFrame(payload, sizeof(payload)), sizeof(payload));
   ASSERT_EQ(stream.output.size(), 6u);
   EXPECT_EQ(stream.output[0], '>');
+}
+
+TEST(SerialModeSwitch, AsciiStartupHandsUntouchedFrameToBinaryParser) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream, START_TOKEN);
+  interface.enable();
+  interface.setPassthroughMode(true);
+  mesh::UsbBinaryStartupProbe probe;
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+
+  const uint8_t input[] = {'<', 2, 0, 0x16, 0x03};
+  stream.push(input, sizeof(input));
+  ASSERT_TRUE(probe.shouldStart(true, false, stream.peek()));
+  const uint32_t before = interface.getCompletedFrameCount();
+  interface.setPassthroughMode(false);
+  probe.start(50, before);
+
+  ASSERT_EQ(interface.checkRecvFrame(frame), 2u);
+  EXPECT_EQ(frame[0], 0x16); // CMD_DEVICE_QUERY
+  EXPECT_EQ(frame[1], 0x03);
+  EXPECT_EQ(probe.poll(50, interface.getCompletedFrameCount(), 50),
+            mesh::UsbBinaryStartupProbe::Result::BINARY_CONFIRMED);
+}
+
+TEST(SerialModeSwitch, AsciiStartupProbeRequiresAnEmptyPrompt) {
+  mesh::UsbBinaryStartupProbe probe;
+  EXPECT_TRUE(probe.shouldStart(true, false, '<'));
+  EXPECT_FALSE(probe.shouldStart(false, false, '<'));
+  EXPECT_FALSE(probe.shouldStart(true, true, '<'));
+  EXPECT_FALSE(probe.shouldStart(true, false, 'h'));
+  EXPECT_FALSE(probe.shouldStart(true, false, -1));
+}
+
+TEST(SerialModeSwitch, IncompleteBinaryProbeReturnsToAsciiAfterTimeout) {
+  mesh::UsbBinaryStartupProbe probe;
+  probe.start(0xFFFFFFF0u, 7);
+  EXPECT_EQ(probe.poll(0xFFFFFFF0u + 999u, 7),
+            mesh::UsbBinaryStartupProbe::Result::WAITING);
+  EXPECT_EQ(probe.poll(0xFFFFFFF0u + 1000u, 7),
+            mesh::UsbBinaryStartupProbe::Result::RETURN_TO_ASCII);
+  EXPECT_FALSE(probe.isActive());
+}
+
+TEST(SerialModeSwitch, BinaryProbeUsesTheFrameCompletionDeadline) {
+  mesh::UsbBinaryStartupProbe probe;
+  probe.start(100, 4);
+  EXPECT_EQ(probe.poll(1200, 5, 1099),
+            mesh::UsbBinaryStartupProbe::Result::BINARY_CONFIRMED);
+
+  probe.start(100, 5);
+  EXPECT_EQ(probe.poll(1100, 6, 1100),
+            mesh::UsbBinaryStartupProbe::Result::RETURN_TO_ASCII);
+}
+
+TEST(SerialModeSwitch, BinaryProbeTimeoutCheckHandlesMillisRollover) {
+  mesh::UsbBinaryStartupProbe probe;
+  probe.start(0xFFFFFFF0u, 1);
+  EXPECT_FALSE(probe.hasTimedOut(0xFFFFFFF0u + 999u));
+  EXPECT_TRUE(probe.hasTimedOut(0xFFFFFFF0u + 1000u));
+}
+
+TEST(SerialModeSwitch, TcpCanBorrowOnlyAnIdleUnopenedAsciiTerminal) {
+  mesh::UsbTcpTerminalHandoff handoff;
+  EXPECT_FALSE(handoff.begin(true, true, true, 10));
+  EXPECT_FALSE(handoff.begin(true, false, false, 10));
+  EXPECT_TRUE(handoff.begin(true, false, true, 10));
+  EXPECT_TRUE(handoff.isBorrowingAscii());
+  EXPECT_TRUE(handoff.shouldRestoreAscii(10));
+  EXPECT_FALSE(handoff.shouldRestoreAscii(10));
+}
+
+TEST(SerialModeSwitch, UsbBinaryActivityWinsDuringTcpBorrow) {
+  mesh::UsbTcpTerminalHandoff handoff;
+  ASSERT_TRUE(handoff.begin(true, false, true, 20));
+  EXPECT_FALSE(handoff.shouldRestoreAscii(21));
+
+  ASSERT_TRUE(handoff.begin(false, true, false, 21));
+  EXPECT_FALSE(handoff.isBorrowingAscii());
+  EXPECT_FALSE(handoff.shouldRestoreAscii(21));
+}
+
+TEST(SerialModeSwitch, FailedMotaRestoresOnlyItsAsciiOrigin) {
+  EXPECT_TRUE(mesh::shouldRestoreAsciiAfterMotaFailure(
+      mesh::UsbMotaEntryOrigin::ASCII));
+  EXPECT_FALSE(mesh::shouldRestoreAsciiAfterMotaFailure(
+      mesh::UsbMotaEntryOrigin::BINARY));
 }
 
 TEST(SerialFlowControl, KeepsAFrameQueuedUntilUsbHasSpace) {

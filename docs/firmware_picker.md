@@ -191,8 +191,10 @@ artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
 receiver images retain their protocol/partition contracts and do not inherit
 plaintext USB logging.
 
-Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep Binary Companion
-on interface `00`; `set usb.logging on reboot` adds plaintext interface `02`.
+Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep the multi-role
+primary interface on `00`; it starts as an ASCII terminal and automatically
+hands a complete `<` frame to Binary Companion. `set usb.logging on reboot`
+adds plaintext interface `02`.
 Single-TTY ESP32 builds instead use `set usb.logging on` to switch that TTY to
 an input-capable plaintext logging terminal. `set usb.logging off` stops the
 logs and returns the TTY to Binary Companion after its reply. BLE and Wi-Fi
@@ -246,6 +248,7 @@ For hardware with a dual-CDC Full Companion image, the picker recommends that
 one normal image instead of separate USB, BLE, ordinary WiFi, and USB-logging
 images. Full Companion provides the attached transports and a dedicated
 plaintext logging port when enabled without mixing logs into framed Companion
-traffic. Logging is off by default, so only the framed port appears until it is
-enabled and the node reboots.
+traffic. Logging is off by default, so only primary interface `00` appears; it
+starts in ASCII and automatically changes to framed Companion when a complete
+`<` frame arrives. Enabling logging and rebooting adds interface `02`.
 Exact filename search still finds old aliases from earlier releases.

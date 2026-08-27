@@ -20,6 +20,7 @@ Below are a few quick start guides.
 - [Companion Protocol](./companion_protocol.md)
 - [Companion Offline Message Queue](./companion_offline_queue.md)
 - [Full Companion: ESP32 and nRF52](./companion_radio_full.md)
+- [Full Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
 - [Packet Format](./packet_format.md)
 - [QR Codes](./qr_codes.md)
 

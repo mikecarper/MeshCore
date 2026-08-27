@@ -657,6 +657,24 @@ class SourceCliTests(unittest.TestCase):
             ],
         )
 
+    def test_serial_preflight_accepts_ascii_first_full_companion(self) -> None:
+        args = argparse.Namespace(
+            source_serial="/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp=None,
+        )
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            return_value="OTA seeder | install:disabled | target:00000000",
+        ) as source_command:
+            ota.preflight_source_cli(args)
+
+        self.assertFalse(args.source_companion_terminal)
+        source_command.assert_called_once_with(
+            args, "ota status", check=False
+        )
+
     def test_serial_companion_command_is_wrapped_in_terminal_tokens(self) -> None:
         args = argparse.Namespace(
             source_cli_serial=None,
@@ -679,13 +697,14 @@ class SourceCliTests(unittest.TestCase):
         wire_command = run.call_args.args[0][-1]
         self.assertEqual(
             wire_command,
+            "+++MESHCORE-TERM-STOP\r"
             "+++MESHCORE-TERM-START\r"
             "tempradio 909.95,250,5,5,120\r"
-            "+++MESHCORE-TERM-STOP",
+            "+++MESHCORE-TERM-STOP\r",
         )
         self.assertIn("OK - temp params", output)
 
-    def test_serial_companion_seeder_enters_terminal_mode(self) -> None:
+    def test_serial_companion_seeder_uses_direct_mota_preamble(self) -> None:
         args = argparse.Namespace(
             motatool="motatool",
             source_serial="/dev/source",
@@ -699,7 +718,86 @@ class SourceCliTests(unittest.TestCase):
             [
                 "motatool", "serve", "--dir", "/served", "-v",
                 "--serial", "/dev/source", "--baud", "115200",
-                "--companion-terminal",
+            ],
+        )
+
+    def test_seeder_readiness_requires_device_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            args = argparse.Namespace(
+                motatool="motatool",
+                source_serial="/dev/source",
+                source_tcp=None,
+                source_baud=115200,
+                seeder_start_wait=1.0,
+            )
+            seeder = ota.SeederProcess(args, Path("/served"), work_dir)
+            seeder.process = mock.MagicMock()
+            seeder.process.poll.return_value = None
+            seeder.log_path.write_text(
+                "[host] serving /served\n[dev] COUNT -> 3\n",
+                encoding="utf-8",
+            )
+
+            seeder._wait_until_attached()
+
+    def test_seeder_readiness_surfaces_device_attach_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            args = argparse.Namespace(
+                motatool="motatool",
+                source_serial="/dev/source",
+                source_tcp=None,
+                source_baud=115200,
+                seeder_start_wait=1.0,
+            )
+            seeder = ota.SeederProcess(args, Path("/served"), work_dir)
+            seeder.process = mock.MagicMock()
+            seeder.process.poll.return_value = None
+            seeder.log_path.write_text(
+                "[dev] ERR folder source unavailable\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(ota.OtaError, "rejected by the device"):
+                seeder._wait_until_attached()
+
+    def test_seeder_readiness_times_out_without_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            args = argparse.Namespace(
+                motatool="motatool",
+                source_serial="/dev/source",
+                source_tcp=None,
+                source_baud=115200,
+                seeder_start_wait=1.0,
+            )
+            seeder = ota.SeederProcess(args, Path("/served"), work_dir)
+            seeder.process = mock.MagicMock()
+            seeder.process.poll.return_value = None
+            seeder.log_path.write_text(
+                "[host] serving /served\n", encoding="utf-8"
+            )
+
+            with (
+                mock.patch.object(ota.time, "monotonic", side_effect=(10.0, 11.0)),
+                self.assertRaisesRegex(ota.OtaError, "device COUNT"),
+            ):
+                seeder._wait_until_attached()
+
+    def test_ascii_first_full_companion_seeder_uses_direct_preamble(self) -> None:
+        args = argparse.Namespace(
+            motatool="motatool",
+            source_serial="/dev/source",
+            source_tcp=None,
+            source_baud=115200,
+            source_companion_terminal=False,
+        )
+        seeder = ota.SeederProcess(args, Path("/served"), Path("/work"))
+        self.assertEqual(
+            seeder.command,
+            [
+                "motatool", "serve", "--dir", "/served", "-v",
+                "--serial", "/dev/source", "--baud", "115200",
             ],
         )
 

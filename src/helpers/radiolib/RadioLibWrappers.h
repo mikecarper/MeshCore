@@ -33,6 +33,7 @@ protected:
   int32_t _noise_floor_centi_dbm;
   float _last_rssi, _last_snr;
   bool _cad_enabled;
+  uint32_t _cad_scan_timeout_override_ms;
   bool _noise_floor_valid;
   bool _nf_refresh_requested;
   uint16_t _num_floor_samples;
@@ -107,10 +108,16 @@ protected:
   void cacheParams(float freq, float bw, uint8_t sf, uint8_t cr) {
     _cur_freq = freq; _cur_bw = bw; _cur_sf = sf; _cur_cr = cr; _params_valid = true;
   }
+  unsigned long cadScanTimeoutMillis(uint8_t sf, float bw) const {
+    if (_cad_scan_timeout_override_ms != 0) {
+      return _cad_scan_timeout_override_ms;
+    }
+    return mesh::calculateCadScanTimeoutMillis(sf, bw);
+  }
   unsigned long cadScanTimeoutMillis() const {
     const uint8_t sf = _params_valid ? _cur_sf : getSpreadingFactor();
     const float bw = _params_valid ? _cur_bw : static_cast<float>(LORA_BW);
-    return mesh::calculateCadScanTimeoutMillis(sf, bw);
+    return cadScanTimeoutMillis(sf, bw);
   }
   int16_t performChannelScanWithTimeout(unsigned long timeout_ms);
   virtual int startReceiveMode();
@@ -153,6 +160,7 @@ public:
           last_recv_millis = 0;
           last_radio_interrupt_millis = 0;
           _cad_enabled = false;
+          _cad_scan_timeout_override_ms = 0;
         }
 
   void begin() override;
@@ -210,6 +218,18 @@ public:
   void triggerNoiseFloorCalibrate(int threshold) override;
   void recalibrateNoiseFloor() override;
   void setCADEnabled(bool enable) override { _cad_enabled = enable; }
+  bool setCADScanTimeoutMillis(uint32_t timeout_ms) {
+    if (timeout_ms != 0
+        && (timeout_ms < mesh::CAD_SCAN_MIN_TIMEOUT_MS
+            || timeout_ms > mesh::CAD_SCAN_MAX_TIMEOUT_MS)) {
+      return false;
+    }
+    _cad_scan_timeout_override_ms = timeout_ms;
+    return true;
+  }
+  uint32_t getCADScanTimeoutMillis() const {
+    return cadScanTimeoutMillis();
+  }
   void resetAGC() override;
 
   void loop() override;

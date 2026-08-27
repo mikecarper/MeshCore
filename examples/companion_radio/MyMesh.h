@@ -198,6 +198,8 @@ protected:
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
+  uint32_t getCADFailRetryDelay() const override;
+  uint32_t getCADFailMaxDuration() const override;
 #ifdef WITH_MQTT_BRIDGE
   uint32_t getRadioWatchdogMillis() const override { return 0; }
 #endif
@@ -315,6 +317,7 @@ private:
   bool applyAndSaveFemRxGain(bool enabled);
   bool applyAndSaveFemTxGain(bool enabled);
   bool applyAndSaveRxBoostedGain(bool enabled);
+  bool handleCadCommand(const char* command, char* reply, size_t reply_size);
   bool saveBluetoothNameOverride(const char* name);
   bool applyAndSaveBluetoothName(const char* value, char* reply,
                                  size_t reply_size);

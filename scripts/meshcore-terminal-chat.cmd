@@ -177,7 +177,7 @@ function Enter-CompanionTerminalMode {
     param([Parameter(Mandatory)][System.IO.Ports.SerialPort]$Port)
 
     try { $Port.DiscardInBuffer() } catch { }
-    $Port.Write($script:StartToken)
+    $Port.Write($script:StartToken + "`r")
 
     # Do not render Binary Companion frames as console control characters while
     # the device changes modes. Start displaying once the text banner arrives.
@@ -367,7 +367,7 @@ function Start-TerminalSession {
                     for ($index = 0; $index -lt $lineCharacterCount; $index++) {
                         $port.Write([string][char]8)
                     }
-                    $port.Write($script:StopToken)
+                    $port.Write($script:StopToken + "`r")
                     Start-Sleep -Milliseconds 150
                 }
                 catch {

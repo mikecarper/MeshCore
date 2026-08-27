@@ -4,22 +4,26 @@ Below are the commands you can enter into the Terminal Chat clients:
 
 ## Companion USB mode
 
-A Companion USB build starts in the normal binary Companion protocol at
-115200 baud. Use this command to switch the same USB connection into terminal
+An ordinary Companion USB build starts in the normal binary Companion protocol
+at 115200 baud. Use this command to switch the same USB connection into terminal
 mode as soon as `picocom` opens it:
 
 ```sh
 picocom --baud 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM0
 ```
 
-`--initstring` sends this exact terminal-start sequence automatically:
+`--initstring` sends this exact terminal-start line automatically:
 
 ```
 +++MESHCORE-TERM-START
 ```
+
+The carriage return is required in Binary mode. Control tokens are recognized
+only as complete CR/LF-delimited lines, so the same text embedded in unrelated
+unframed input cannot switch modes accidentally.
 
 Binary Companion frames can contain terminal control bytes. The `spchex` input
 map renders those bytes as bracketed hexadecimal during the short transition
@@ -46,6 +50,12 @@ switch: native USB CDC devices ignore the requested baud, while USB-to-UART
 devices really change the UART timing and receive corrupt data. Binary mode is
 the framed Companion API used by apps and `meshcli`; close the terminal before
 opening that port from an app.
+
+Full Companion differs: its primary USB interface starts in ASCII after boot
+and automatically switches when it sees a complete `<`-prefixed Companion
+frame at an empty prompt. The explicit start/stop tokens remain available. See
+[Full Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
+for the state machine and limitations.
 
 ## Commands
 

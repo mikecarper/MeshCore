@@ -96,6 +96,28 @@ TEST(CompanionNodePrefs, UsbLoggingStateIsIndependentFromTransports) {
   EXPECT_EQ(1, prefs.powersaving_enabled);
 }
 
+TEST(CompanionNodePrefs, CadControlsAreIndependentAndDefaultable) {
+  CompanionNodePrefs prefs = {};
+  prefs.cad_enabled = 1;
+  prefs.cad_scan_timeout_ms = 350;
+  prefs.cad_retry_delay_ms = 75;
+  prefs.cad_max_duration_ms = 2500;
+
+  EXPECT_EQ(1, prefs.cad_enabled);
+  EXPECT_EQ(350, prefs.cad_scan_timeout_ms);
+  EXPECT_EQ(75, prefs.cad_retry_delay_ms);
+  EXPECT_EQ(2500, prefs.cad_max_duration_ms);
+
+  // Zero means use the existing SF/BW-derived or Dispatcher adaptive timing.
+  prefs.cad_scan_timeout_ms = 0;
+  prefs.cad_retry_delay_ms = 0;
+  prefs.cad_max_duration_ms = 0;
+  EXPECT_EQ(0, prefs.cad_scan_timeout_ms);
+  EXPECT_EQ(0, prefs.cad_retry_delay_ms);
+  EXPECT_EQ(0, prefs.cad_max_duration_ms);
+  EXPECT_EQ(1, prefs.cad_enabled);
+}
+
 TEST(CompanionNodePrefs, BluetoothNameOverrideIsIndependentFromNodeName) {
   CompanionNodePrefs prefs = {};
   strcpy(prefs.node_name, "RidgeNode");

@@ -226,22 +226,22 @@ relays are all v1.17.1.5 or newer, use the generic LoRa OTA runner; it can
 retain RXPS at the qualified level-8/preamble-64 boundary for SF5/BW250 or the
 level-8/preamble-128 boundary for SF5/BW500.
 
-Put the source on the identical TempRadio tuple. If it is a binary-mode Full
-Companion, the current `motatool` can switch modes for the serving session:
+Put the source on the identical TempRadio tuple. A current ASCII-first Full
+Companion recognizes `motatool`'s initial `ota folder on` line directly:
 
 ```bash
 motatool serve \
   --dir ./motas \
   --serial /dev/ttyACM1 \
   --baud 115200 \
-  --companion-terminal \
   -v
 ```
 
-Omit `--companion-terminal` for an ordinary text-console OTA source. Restart
-`motatool` for every step so the source emits a fresh catalog advert. Leave it
-running during the download and stop it with Ctrl-C only after the destination
-reports `ready to install`.
+The same command also works with older Full Companion firmware in binary mode,
+where the idle parser recognizes the identical preamble. Restart `motatool` for
+every step so the source emits a fresh catalog advert. Leave it running during
+the download and stop it with Ctrl-C only after the destination reports `ready
+to install`.
 
 ### 3. Install all nine packages in order
 

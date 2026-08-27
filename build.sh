@@ -182,7 +182,10 @@ Environment Variables:
                            If not set, build.sh first refreshes tags from upstream
                            when configured (otherwise origin), then derives a
                            default from the latest matching tag and appends "-dev".
-                           In interactive builds, this value is offered as the editable default.
+                           In interactive builds, an existing version detected in
+                           OUTPUT_DIR is offered in a use-or-edit menu. If no
+                           artifact version is found, the derived version is
+                           offered directly as the editable default.
                            A single custom version suffix found in existing OUTPUT_DIR
                            artifacts is carried forward after the new numeric version.
   DISABLE_DEBUG=1: Disables all debug logging flags (MESH_DEBUG, MESH_PACKET_LOGGING, etc.)
@@ -1586,6 +1589,77 @@ apply_output_firmware_version_suffix() {
   fi
 }
 
+extract_firmware_version_from_artifact_filename() {
+  local filename=${1##*/}
+  local stem
+  local version
+  local i
+  local -a filename_parts=()
+
+  case "$filename" in
+    *.capabilities.json)
+      stem=${filename%.capabilities.json}
+      ;;
+    *.bin|*.hex|*.uf2|*.zip)
+      stem=${filename%.*}
+      stem=${stem%-merged}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  # Every collected artifact ends in the source commit. Remove it first so a
+  # hyphenated prerelease/custom version can be returned intact.
+  if ! [[ "$stem" =~ ^(.+)-[[:xdigit:]]{7,40}$ ]]; then
+    return 1
+  fi
+  stem=${BASH_REMATCH[1]}
+
+  IFS='-' read -r -a filename_parts <<< "$stem"
+  for ((i = 0; i < ${#filename_parts[@]}; i++)); do
+    if [[ "${filename_parts[$i]}" =~ ^v?[0-9]+(\.[0-9]+){2,}$ ]] \
+        || { [ "${filename_parts[$i]}" = "$FALLBACK_VERSION_PREFIX" ] \
+          && [ $((i + 1)) -lt ${#filename_parts[@]} ] \
+          && [[ "${filename_parts[$((i + 1))]}" =~ ^[0-9]{4}$ ]]; }; then
+      local IFS='-'
+      version="${filename_parts[*]:$i}"
+      printf '%s\n' "$version"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+get_latest_output_firmware_version() {
+  local output_dir=${1:-$OUTPUT_DIR}
+  local artifact_filename
+  local _timestamp
+  local version
+
+  if ! [ -d "$output_dir" ]; then
+    return 1
+  fi
+
+  # Prefer the newest artifact when a resumed/partial build left more than one
+  # release in OUTPUT_DIR. Duplicate files from one build all resolve to the
+  # same version and are harmless.
+  while IFS=$'\t' read -r _timestamp artifact_filename; do
+    if version=$(extract_firmware_version_from_artifact_filename "$artifact_filename"); then
+      printf '%s\n' "$version"
+      return 0
+    fi
+  done < <(
+    find "$output_dir" -maxdepth 1 -type f \
+      \( -name '*.capabilities.json' -o -name '*.bin' -o -name '*.hex' \
+        -o -name '*.uf2' -o -name '*.zip' \) \
+      -printf '%T@\t%f\n' | sort -nr -k1,1
+  )
+
+  return 1
+}
+
 prompt_for_firmware_version() {
   local prompt_label=$1
   local result_var=$2
@@ -1606,9 +1680,44 @@ prompt_for_firmware_version() {
   printf -v "$result_var" '%s' "${entered_version:-$suggested_version}"
 }
 
+prompt_to_use_or_edit_output_version() {
+  local prompt_label=$1
+  local result_var=$2
+  local detected_version=$3
+  local edited_version
+  local options=(
+    "Use detected version: ${detected_version}"
+    "Edit firmware version"
+  )
+
+  echo "Detected firmware version in ${OUTPUT_DIR}: ${detected_version}"
+  while true; do
+    print_numbered_menu "${options[@]}"
+    prompt_menu_choice "Firmware version" "${#options[@]}"
+    case "$MENU_CHOICE" in
+      1)
+        printf -v "$result_var" '%s' "$detected_version"
+        echo "Using firmware version: ${detected_version}"
+        return 0
+        ;;
+      2)
+        prompt_for_firmware_version \
+          "$prompt_label" edited_version "$detected_version"
+        printf -v "$result_var" '%s' "$edited_version"
+        return 0
+        ;;
+      QUIT)
+        echo "Cancelled."
+        exit 1
+        ;;
+    esac
+  done
+}
+
 prompt_for_resolved_firmware_version() {
   local prompt_label
   local selected_version=${FIRMWARE_VERSION:-}
+  local output_version=""
 
   if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 0 ]; then
     return 0
@@ -1623,18 +1732,23 @@ prompt_for_resolved_firmware_version() {
     return 0
   fi
 
-  if [ -z "$selected_version" ]; then
-    selected_version=$(derive_default_firmware_version_for_targets "${RESOLVED_BUILD_TARGETS[@]}")
-    selected_version=$(apply_output_firmware_version_suffix "$selected_version")
-  fi
-
   if [ ${#RESOLVED_BUILD_TARGETS[@]} -eq 1 ]; then
     prompt_label="${RESOLVED_BUILD_TARGETS[0]}"
   else
     prompt_label="${#RESOLVED_BUILD_TARGETS[@]} build targets"
   fi
 
-  prompt_for_firmware_version "$prompt_label" selected_version "$selected_version"
+  if [ -z "$selected_version" ] \
+      && output_version=$(get_latest_output_firmware_version "$OUTPUT_DIR"); then
+    prompt_to_use_or_edit_output_version \
+      "$prompt_label" selected_version "$output_version"
+  else
+    if [ -z "$selected_version" ]; then
+      selected_version=$(derive_default_firmware_version_for_targets "${RESOLVED_BUILD_TARGETS[@]}")
+      selected_version=$(apply_output_firmware_version_suffix "$selected_version")
+    fi
+    prompt_for_firmware_version "$prompt_label" selected_version "$selected_version"
+  fi
   FIRMWARE_VERSION=$selected_version
   export FIRMWARE_VERSION
 }
@@ -2997,10 +3111,11 @@ apply_companion_radio_full_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
-    # CDC 0 starts as Binary Companion. `motatool serve --serial` switches it
-    # into an exclusive host-folder mode with its existing `ota folder on`
-    # preamble. CDC 1 is a write-only plaintext packet/debug logging stream;
-    # BLE remains an independent Companion link.
+    # CDC 0 starts as an ASCII CLI and automatically hands an incoming framed
+    # command to Binary Companion. `motatool serve --serial` switches it into
+    # an exclusive host-folder mode with its existing `ota folder on` preamble.
+    # CDC 1 is a write-only plaintext packet/debug logging stream; BLE remains
+    # an independent Companion link.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 

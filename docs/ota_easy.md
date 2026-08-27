@@ -152,11 +152,15 @@ If an older build reports that `OTA_FOLDER_SERIAL` is not compiled in, install a
 `-full-usb-wifi-ota-`, or applicable `-full-logging-ota-` build first. Do **not** use a KISS modem: KISS firmware is a TNC/KISS frame interface
 and does not provide the MeshCore CLI or the OTA-folder transport that `motatool serve` requires.
 
-An nRF52 `companion_radio_full` starts in USB Binary mode. Use
-`+++MESHCORE-TERM-START` for local TempRadio commands, then return with
-`+++MESHCORE-TERM-STOP`. When `motatool serve --serial` opens the port, its
-automatic `ota folder on` command selects exclusive mOTA mode; stopping the
-tool or disconnecting resets USB to Binary. BLE remains available throughout.
+An nRF52 `companion_radio_full` starts in its USB ASCII terminal and
+automatically changes to Binary Companion when it receives a complete `<`
+frame. It also recognizes `motatool`'s exact initial `ota folder on` line and
+enters exclusive mOTA mode directly, so `motatool serve --serial` can be the
+first client after boot. No terminal token or preliminary disconnect is
+required. Stopping the tool or disconnecting resets USB to Binary. BLE remains
+available throughout. See the
+[Full Companion USB switcher guide](./full_companion_usb_switcher.md#logging-and-mota-ownership)
+for the complete ownership transitions.
 Protocol v14 can instead take the catalog from a paired phone or Linux host
 over a separate encrypted BLE mOTA service while Binary Companion remains
 active. USB and BLE catalog sources are mutually exclusive. See the

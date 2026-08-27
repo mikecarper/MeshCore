@@ -58,6 +58,10 @@ struct CompanionNodePrefs {  // persisted to file
   char bluetooth_name[mesh::companion::BLUETOOTH_NAME_SIZE];
                                   // exact BLE name; empty uses BLE_NAME_PREFIX + node_name
   uint16_t display_rotation_degrees; // 0=board default; otherwise 90/180/270
+  uint8_t cad_enabled;               // hardware channel activity detection
+  uint16_t cad_scan_timeout_ms;      // 0=derive from SF/BW
+  uint16_t cad_retry_delay_ms;       // 0=Mesh adaptive default
+  uint16_t cad_max_duration_ms;      // 0=Dispatcher default
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

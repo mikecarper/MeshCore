@@ -59,6 +59,7 @@ static NullUsbLoggingStream null_usb_logging_stream;
 #if defined(MESH_DUAL_CDC_LOGGING)
 static bool dedicated_usb_logging_port_configured = false;
 static bool dedicated_usb_logging_port_started = false;
+static bool dedicated_usb_logging_port_connected = false;
 #if defined(MESH_NRF52_DUAL_CDC_LOGGING)
 static Adafruit_USBD_CDC dedicated_usb_logging_port;
 #elif defined(MESH_ESP32_DUAL_CDC_LOGGING)
@@ -162,6 +163,9 @@ void beginUsbLoggingPort() {
   dedicated_usb_logging_port->begin(115200);
 #elif defined(MESH_NRF52_DUAL_CDC_LOGGING)
   dedicated_usb_logging_port.begin(115200);
+  // `begin()` installs the core's generic "TinyUSB Serial" name. Replace it
+  // before (re-)enumeration so host USB tools can distinguish the log endpoint.
+  dedicated_usb_logging_port.setStringDescriptor("MeshCore Logging");
   dedicated_usb_logging_port_configured = true;
 #endif
   dedicated_usb_logging_port_started = true;
@@ -177,6 +181,28 @@ void beginUsbLoggingPort() {
     TinyUSBDevice.attach();
   }
 #endif
+#endif
+}
+
+void serviceUsbLoggingPort() {
+#if defined(MESH_DUAL_CDC_LOGGING)
+  bool connected = false;
+#if defined(MESH_NRF52_DUAL_CDC_LOGGING)
+  connected = dedicated_usb_logging_port_started
+      && dedicated_usb_logging_port.dtr();
+#elif defined(MESH_ESP32_DUAL_CDC_LOGGING)
+  connected = dedicated_usb_logging_port_started
+      && dedicated_usb_logging_port != nullptr
+      && (bool)*dedicated_usb_logging_port;
+#endif
+
+  if (connected && !dedicated_usb_logging_port_connected
+      && isUsbLoggingEnabled()) {
+    Stream& port = usbLoggingPort();
+    port.println("MeshCore USB logging port");
+    port.println("USB CDC 1; interface 02; Linux stable suffix: -if02");
+  }
+  dedicated_usb_logging_port_connected = connected;
 #endif
 }
 
@@ -220,6 +246,14 @@ bool usbLoggingInterfaceRestartRequired() {
   return dedicated_usb_logging_port_configured != isUsbLoggingEnabled();
 #else
   return false;
+#endif
+}
+
+const char* usbLoggingPortDescription() {
+#if defined(MESH_DUAL_CDC_LOGGING)
+  return "dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)";
+#else
+  return "primary USB serial port (tty/COM name is host-assigned)";
 #endif
 }
 

@@ -25,9 +25,12 @@ private:
   uint8_t _state;
   size_t _controlSequencePos;
   size_t _secondaryControlSequencePos;
+  bool _controlSequenceCandidate;
+  bool _secondaryControlSequenceCandidate;
   uint16_t _frame_len;
   uint16_t rx_len;
   uint32_t _last_frame_ms;
+  uint32_t _completed_frame_count;
   uint32_t _last_rx_byte_ms;
   bool _has_received_frame;
   Stream* _serial;
@@ -39,8 +42,8 @@ private:
   uint8_t _tx_queue_len;
   uint16_t _tx_offset;
 
-  bool checkControlSequence(uint8_t c, const char* sequence,
-                            size_t& position, bool& received);
+  void resetControlSequenceState();
+  bool checkControlLineByte(uint8_t c);
   void resetReceiveState();
   void serviceReceiveTimeout();
   void resetTransmitState();
@@ -52,8 +55,10 @@ public:
       : _isEnabled(false), _passthroughMode(false),
         _controlSequenceReceived(false), _secondaryControlSequenceReceived(false),
         _flow_ctl(false), _state(0), _controlSequencePos(0),
-        _secondaryControlSequencePos(0), _frame_len(0), rx_len(0),
-        _last_frame_ms(0), _last_rx_byte_ms(0), _has_received_frame(false),
+        _secondaryControlSequencePos(0), _controlSequenceCandidate(false),
+        _secondaryControlSequenceCandidate(false), _frame_len(0), rx_len(0),
+        _last_frame_ms(0), _completed_frame_count(0), _last_rx_byte_ms(0),
+        _has_received_frame(false),
         _serial(nullptr), _controlSequence(nullptr),
         _secondaryControlSequence(nullptr), _conn_check(nullptr),
         _tx_queue_len(0), _tx_offset(0) {}
@@ -67,6 +72,7 @@ public:
     _controlSequenceReceived = false;
     _secondaryControlSequenceReceived = false;
     _last_frame_ms = 0;
+    _completed_frame_count = 0;
     _has_received_frame = false;
     resetReceiveState();
     resetTransmitState();
@@ -93,6 +99,7 @@ public:
   // Useful as an activity-based connection check where no DTR state exists.
   uint32_t getLastFrameMillis() const { return _last_frame_ms; }
   bool hasReceivedFrame() const { return _has_received_frame; }
+  uint32_t getCompletedFrameCount() const { return _completed_frame_count; }
 
   // Optional: queue complete frames and drain one at a time according to the
   // stream's TX capacity, so short writes cannot discard or interleave bytes.

@@ -107,6 +107,11 @@ public:
 
   virtual void setCADEnabled(bool enable) { }
 
+  // LoRa wrappers shadow these with their configurable CAD timeout. Other
+  // transports (such as ESP-NOW) support only the automatic/default value.
+  bool setCADScanTimeoutMillis(uint32_t timeout_ms) { return timeout_ms == 0; }
+  uint32_t getCADScanTimeoutMillis() const { return 0; }
+
   virtual void resetAGC() { }
 
   virtual uint8_t getRadioState() const { return 0; }

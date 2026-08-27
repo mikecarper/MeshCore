@@ -233,7 +233,7 @@ itself.
 
 | Platform | Interface | Purpose |
 | --- | --- | --- |
-| Both | USB, 115200 baud | Binary Companion by default; terminal switch available |
+| Both | USB, 115200 baud | ASCII after boot; automatically switches on the first complete Binary Companion frame |
 | Both | BLE | Binary Companion; display builds show a random session PIN, while headless builds default to `123456` |
 | ESP32 | TCP 5000 | Binary Companion over WiFi |
 | ESP32 | HTTP 80 | Companion WebConfig and first-boot WiFi setup |
@@ -278,18 +278,29 @@ Expose them only on a trusted LAN or temporary setup network. See
 
 ## USB Binary and text terminal modes
 
-USB starts in Binary mode for MeshCore apps and `meshcli`:
+Full Companion USB starts in the ASCII terminal after boot. MeshCore apps and
+`meshcli` send a `<`-prefixed framed command, which automatically hands the
+untouched frame to the Binary Companion parser:
 
 ```bash
 meshcli -s /dev/ttyACM0 -b 115200 ver
 ```
 
-Open the port with the terminal start token sent automatically:
+The automatic probe runs only at an empty prompt. A complete frame confirms
+binary mode; an incomplete probe returns to ASCII after one second. Binary mode
+then remains selected until reboot or the explicit terminal start token. See
+[Full Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
+for the byte-level state machine, logging and mOTA ownership, recovery paths,
+and known limitations.
+
+Immediately after boot, an ordinary terminal can issue ASCII commands without
+a start token. If the device is already in Binary Companion mode, open the port
+with the terminal start token sent automatically:
 
 ```bash
 picocom -b 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM0
 ```
 
@@ -310,8 +321,9 @@ logging off on a fresh installation.
 ### Single USB serial port
 
 On an ESP32 Full Companion without dual CDC, interface `00` has two exclusive
-modes. It starts as framed Binary Companion. Enter its text terminal with
-`+++MESHCORE-TERM-START`, then run `set usb.logging on`; the same TTY emits
+modes. It starts as the ASCII terminal unless a saved logging-on preference
+boots directly into the logging terminal. If it is already binary, enter its
+text terminal with `+++MESHCORE-TERM-START`, then run `set usb.logging on`; the same TTY emits
 plaintext packet/debug logs and continues accepting CLI commands, including
 `set usb.logging off`. Turning it off sends the command reply and then returns
 that TTY to Binary Companion automatically, including on USB-UART bridges that
@@ -324,8 +336,9 @@ available while USB is logging.
 Current nRF52 Full Companion and qualified native-USB ESP32-S3 Full Companion
 firmware can expose two CDC ACM serial interfaces on one physical USB cable:
 
-- USB interface `00` is the normal Binary Companion, text terminal, and serial
-  mOTA source port. It is always present.
+- USB interface `00` is the primary Companion, text-terminal, and serial-mOTA
+  source port. It is always present, starts in ASCII after boot, and
+  automatically hands a complete `<` frame to Binary Companion.
 - USB interface `02` is the optional write-only plaintext packet/debug logging
   port. Host input on this interface is ignored and cannot invoke firmware
   commands.
@@ -352,6 +365,14 @@ depending on a particular COM number. The nRF52 bootloader temporarily exposes
 its normal DFU serial interface during an update. Qualified S3 boards
 temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.
 
+Opening the logging port prints `MeshCore USB logging port` followed by its
+portable identity, `USB CDC 1; interface 02; Linux stable suffix: -if02`.
+`get usb.logging` reports the same endpoint. Firmware cannot print the exact
+`/dev/ttyACM*` or `COM*` name because Linux, macOS, or Windows assigns that name
+after USB enumeration; use the `*-if02` link on Linux to obtain the exact path.
+For example, `readlink -f /dev/serial/by-id/*-if02` prints the host-assigned
+`/dev/ttyACM*` name.
+
 Dual-CDC ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
 base Heltec V4 profile has completed live two-interface, ROM-flashing, and
@@ -374,9 +395,14 @@ service at interface `02`.
 ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with `nc DEVICE_IP 5002`; no USB control token is needed. USB terminal mode and
 the TCP terminal share recipient, login, command, trace, and display state, so
-only one may own the terminal at a time. Entering USB terminal mode closes an
-active TCP terminal session. Disconnecting TCP clears pending terminal-only
-state without cancelling Binary Companion delivery or radio retries.
+only one may own the terminal at a time. The idle startup USB prompt yields to
+a TCP connection when no USB data client or partial command is present, and is
+restored when TCP disconnects. An active USB session rejects TCP; entering USB
+terminal mode later closes an active TCP session. On USB-Serial-JTAG and
+USB-to-UART hardware, the firmware cannot observe an idle host open, so actual
+buffered USB activity—not the physical cable alone—claims ownership.
+Disconnecting TCP clears pending terminal-only state without cancelling Binary
+Companion delivery or radio retries.
 
 Both terminal transports accept `reboot`. The reply is sent first and the
 device reboots one second later, so a script can distinguish an accepted reboot
@@ -453,27 +479,35 @@ Return to Binary mode with:
 +++MESHCORE-TERM-STOP
 ```
 
-Closing the USB data connection also resets the port to Binary mode. A
-different baud rate, including 57600, does not select ASCII mode.
+Closing an armed ASCII USB data connection also changes the port to Binary
+mode when the hardware can report disconnect. A USB-to-UART bridge may not be
+able to report this event. A different baud rate, including 57600, does not
+select ASCII mode.
 
 On an ESP32 Full Companion built with `OTA_FOLDER_SERIAL`, `motatool` can keep
-that terminal session open as an mOTA folder source when WiFi is unavailable:
+the shared serial console open as an mOTA folder source when WiFi is
+unavailable:
 
 ```sh
-motatool serve --serial /dev/ttyACM0 --companion-terminal --dir ./motas -v
+motatool serve --serial /dev/ttyACM0 --dir ./motas -v
 ```
 
-The explicit flag is required because an ESP32 Companion starts the same USB
-port in binary Companion mode. TCP port 5001 remains the preferred unattended
-source transport.
+The tool sends `ota folder on` through the text CLI, then uses the shared
+serial mOTA framing. This is separate from the nRF52 exclusive USB ownership
+mode described below. TCP port 5001 remains the preferred unattended source
+transport.
 
 ## nRF52 USB mOTA mode
 
 The nRF52 full target has a third, exclusive USB mode for the host folder.
-Unmodified `motatool serve --serial` already sends `ota folder on` when it
-opens the port. The Binary parser recognizes that exact idle control sequence,
-stops USB Binary traffic, and attaches the serial folder source. The sequence
-is not examined inside a framed Binary Companion packet.
+Unmodified `motatool serve --serial` sends `ota folder on` when it opens the
+port. The startup ASCII terminal recognizes that exact completed line, leaves
+terminal mode, and gives the stream directly to exclusive mOTA handling. If
+the port is already in Binary Companion mode, the idle binary parser recognizes
+the same control sequence. The sequence is not examined inside a framed Binary
+Companion packet. See the
+[switcher guide](./full_companion_usb_switcher.md#logging-and-mota-ownership)
+for the ownership transitions.
 
 While mOTA mode owns USB:
 
@@ -483,7 +517,8 @@ While mOTA mode owns USB:
 - `motatool` sending `ota folder off`, or disconnecting the USB data session,
   detaches the folder and restores Binary mode.
 
-No manual mode token or modified `motatool` build is required.
+No modified `motatool` build, terminal token, or preliminary mode change is
+required.
 
 ## nRF52 Bluetooth mOTA source
 
@@ -562,7 +597,7 @@ and close the terminal:
 ```bash
 picocom -b 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM1
 ```
 

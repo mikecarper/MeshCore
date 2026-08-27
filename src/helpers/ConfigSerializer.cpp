@@ -29,6 +29,34 @@ static bool is_value_char(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c == '-' || c == '.';
 }
 
+// ConfigSerializer writes floating-point preferences as fixed-point decimal
+// text, and its tokenizer intentionally accepts neither exponent notation nor
+// a leading '+'.  Parsing that small grammar locally avoids linking Newlib's
+// general-purpose strtod implementation (and its locale/bignum support) into
+// flash-constrained firmware.
+static double parse_fixed_decimal(const char* text) {
+  bool negative = false;
+  if (*text == '-') {
+    negative = true;
+    ++text;
+  }
+
+  double value = 0.0;
+  while (*text >= '0' && *text <= '9') {
+    value = value * 10.0 + (*text++ - '0');
+  }
+
+  if (*text == '.') {
+    double place = 0.1;
+    while (*++text >= '0' && *text <= '9') {
+      value += (*text - '0') * place;
+      place *= 0.1;
+    }
+  }
+
+  return negative ? -value : value;
+}
+
 #define EXPECT_OPEN_BRACE   0
 #define EXPECT_KEY          1
 #define EXPECT_VAL_OR_OBJ   2
@@ -290,7 +318,7 @@ void ConfigSerializer::def(const char* key, double& value) {
     }
   } else {
     if (_context->keyMatch(_depth, key)) {
-      value = atof(_context->getToken());
+      value = parse_fixed_decimal(_context->getToken());
     }
   }
 }
@@ -307,7 +335,7 @@ void ConfigSerializer::def(const char* key, float& value) {
     }
   } else {
     if (_context->keyMatch(_depth, key)) {
-      value = (float) atof(_context->getToken());
+      value = (float) parse_fixed_decimal(_context->getToken());
     }
   }
 }

@@ -12,6 +12,24 @@ fail() {
 [ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
   || fail "logging matrix permits concurrent PlatformIO target builds"
 
+# Interactive builds can carry the complete version from the newest artifact
+# in out/, while an empty directory falls through to the existing tag-derived
+# editable prompt.
+version_test_dir=$(mktemp -d)
+trap 'rm -rf -- "$version_test_dir"' EXIT
+touch "$version_test_dir/RAK_4631_repeater-v1.17.1-dev-1234abcd.uf2"
+[ "$(get_latest_output_firmware_version "$version_test_dir")" = v1.17.1-dev ] \
+  || fail "did not read a semantic firmware version from output"
+sleep 0.01
+touch "$version_test_dir/RAK_4631_repeater-full-ota-1.17.1.5-halo-keymind-cascade-dev-69ded9d6-merged.bin"
+[ "$(get_latest_output_firmware_version "$version_test_dir")" \
+    = 1.17.1.5-halo-keymind-cascade-dev ] \
+  || fail "did not prefer the newest custom firmware version from output"
+rm -f -- "$version_test_dir"/*
+if get_latest_output_firmware_version "$version_test_dir" >/dev/null; then
+  fail "empty output directory unexpectedly supplied a firmware version"
+fi
+
 # Full targets are synthesized from an ordinary transport environment. Check
 # the resolved PlatformIO configuration so board-specific display, GPS, input,
 # and BLE constraints cannot silently disappear through that inheritance.

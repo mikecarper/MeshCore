@@ -29,10 +29,15 @@ bool saveUsbLoggingBootPreference(bool enabled);
 // Start the optional dedicated USB logging interface. Ordinary and single-TTY
 // builds use Serial; dual-CDC Full Companion builds use a second CDC ACM port.
 void beginUsbLoggingPort();
+// Emit a short identity marker whenever a host opens the dedicated logging
+// endpoint. The device can report its USB interface, but the host alone chooses
+// names such as /dev/ttyACM1 or COM7.
+void serviceUsbLoggingPort();
 Stream& usbLoggingPort();
 bool hasDedicatedUsbLoggingPort();
 bool isDedicatedUsbLoggingPortConfigured();
 bool usbLoggingInterfaceRestartRequired();
+const char* usbLoggingPortDescription();
 
 }  // namespace mesh
 #endif

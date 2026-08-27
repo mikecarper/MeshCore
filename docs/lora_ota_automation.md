@@ -53,16 +53,18 @@ reopening the controller while `motatool` owns the source port. The script
 rejects an attempt to use the same port for both.
 
 The USB ASCII switch (`+++MESHCORE-TERM-START`) is the local control path, not
-the mOTA data framing. On a dual-CDC full Companion, the script uses that mode
-briefly for `ota status` and TempRadio commands. It then closes the CLI and
-starts `motatool`, whose existing `ota folder on` preamble switches the same
-USB interface `00` into exclusive mOTA mode. If USB logging was enabled and the
-Full Companion rebooted, its separate interface `02` continues to provide
-plaintext logging and is not a controller or source port. With default logging
-off, interface `02` is not enumerated.
-On a native-USB ESP32-S3 Full Companion with serial folder support,
-`motatool --companion-terminal` keeps the ASCII session open
-while the same link carries framed folder requests. BLE remains available.
+the mOTA data framing. On an nRF52 dual-CDC Full Companion, the script uses
+that mode briefly for `ota status` and TempRadio commands. It then closes the
+CLI and starts `motatool`; the exact `ota folder on` preamble switches the same
+USB interface `00` into exclusive mOTA mode from either startup ASCII or
+Binary Companion mode. If USB logging was enabled and the Full Companion
+rebooted, its separate interface `02` continues to provide plaintext logging
+and is not a controller or source port. With default logging off, interface
+`02` is not enumerated. BLE remains available.
+
+ESP32 Full Companion normally uses its dedicated TCP seeder on port 5001.
+ESP32 builds that also retain serial folder support use the shared-console
+mOTA framing rather than the nRF52 exclusive USB ownership state.
 
 ## Destination requirements
 
@@ -157,7 +159,7 @@ automatically:
 ```bash
 picocom -b 115200 \
   --imap spchex \
-  --initstring '+++MESHCORE-TERM-START' \
+  --initstring $'+++MESHCORE-TERM-START\r' \
   /dev/ttyACM1
 ```
 
@@ -408,6 +410,13 @@ interface details.
 An nRF52 `companion_radio_full` uses one USB source port sequentially. The
 runner automatically wraps local control commands in the terminal tokens, and
 unmodified `motatool` switches that port into mOTA mode when seeding starts:
+
+The wrapper sends STOP, then START, before each command. This makes fallback
+independent of whether a prior raw probe left an unobservable USB-UART
+connection in ASCII or Binary mode. Seeder startup is reported only after the
+verbose device log contains its `COUNT` acknowledgement; an immediate device
+`ERR` or a missing acknowledgement fails during startup instead of surfacing
+later as a catalog timeout.
 
 ```bash
 ./tools/lora_ota/lora_ota.sh ./release.mota "Remote Target" \

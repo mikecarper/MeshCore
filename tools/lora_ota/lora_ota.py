@@ -2054,12 +2054,15 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
             wire_command = command_text
             if getattr(args, "source_companion_terminal", False):
                 # meshcli raw mode keeps one serial open while writing this
-                # compound command. The full Companion consumes the start/stop
-                # tokens locally and runs the middle command in ASCII mode.
+                # compound command. STOP first makes this independent of the
+                # port's current state: ASCII consumes it and returns to
+                # Binary, while Binary ignores it as an ordinary bounded line.
+                # START can then enter ASCII deterministically.
                 wire_command = (
+                    f"{COMPANION_TERMINAL_STOP}\r"
                     f"{COMPANION_TERMINAL_START}\r"
                     f"{command_text}\r"
-                    f"{COMPANION_TERMINAL_STOP}"
+                    f"{COMPANION_TERMINAL_STOP}\r"
                 )
             command = [
                 args.meshcli,
@@ -2110,9 +2113,11 @@ def preflight_source_cli(args: argparse.Namespace) -> None:
 
     serial_port = args.source_cli_serial or args.source_serial
     if serial_port:
-        # Ordinary repeaters start in raw ASCII. A full Companion starts in
-        # Binary mode, so retry an invalid raw probe through its terminal
-        # control tokens and remember that transport for later TempRadio calls.
+        # Ordinary repeaters and current ASCII-first Full Companions answer the
+        # raw probe directly. Older or already-binary Full Companions need a
+        # terminal wrapper. Its STOP/START preamble is deliberately safe in
+        # either mode, so this fallback does not assume that closing the first
+        # raw probe caused an observable USB disconnect.
         args.source_companion_terminal = False
         output = source_cli_command(args, "ota status", check=False)
         if not valid_status(output):
@@ -2242,6 +2247,13 @@ def verify_shared_source_identity(
 
 
 class SeederProcess:
+    READY_PATTERN = re.compile(r"(?mi)^\s*\[dev\]\s+COUNT\s*->\s*\d+\b")
+    ATTACH_ERROR_PATTERN = re.compile(
+        r"(?mi)^\s*\[dev\].*\b(?:ERR|ERROR)\b|"
+        r"folder\s+(?:is\s+)?already\s+(?:owned|attached)|"
+        r"could not (?:attach|enter).*folder"
+    )
+
     def __init__(self, args: argparse.Namespace, served_dir: Path, work_dir: Path):
         self.args = args
         self.log_path = work_dir / "motatool-serve.log"
@@ -2253,8 +2265,6 @@ class SeederProcess:
                 "--serial", args.source_serial,
                 "--baud", str(args.source_baud),
             ])
-            if getattr(args, "source_companion_terminal", False):
-                command.append("--companion-terminal")
         else:
             command.extend(["--tcp", args.source_tcp])
         self.command = command
@@ -2276,9 +2286,8 @@ class SeederProcess:
         except FileNotFoundError as exc:
             self.log_file.close()
             raise OtaError(f"required command was not found: {self.args.motatool}") from exc
-        time.sleep(self.args.seeder_start_wait)
-        self.ensure_running("during startup")
-        print("[seeder] running")
+        self._wait_until_attached()
+        print("[seeder] running (device COUNT confirmed)")
 
     def _log_tail(self) -> str:
         if self.log_file is not None and not self.log_file.closed:
@@ -2299,6 +2308,27 @@ class SeederProcess:
                 f"motatool seeder exited with status {return_code}{suffix}:\n"
                 f"{self._log_tail()}"
             )
+
+    def _wait_until_attached(self) -> None:
+        deadline = time.monotonic() + self.args.seeder_start_wait
+        while True:
+            self.ensure_running("during startup")
+            detail = self._log_tail()
+            if self.ATTACH_ERROR_PATTERN.search(detail):
+                raise OtaError(
+                    "motatool seeder was rejected by the device while "
+                    f"attaching:\n{detail}"
+                )
+            if self.READY_PATTERN.search(detail):
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise OtaError(
+                    "motatool seeder did not receive the device COUNT "
+                    f"acknowledgement within {self.args.seeder_start_wait:g}s:\n"
+                    f"{detail}"
+                )
+            time.sleep(min(0.1, remaining))
 
     def payload_read_progress(self, package: MotaInfo) -> tuple[int, int, int]:
         """Return unique, total, and aggregate payload-block host reads.

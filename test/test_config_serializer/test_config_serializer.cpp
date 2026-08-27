@@ -81,6 +81,17 @@ class TestStruct : public ConfigSerializer {
     uint8_t flags;
 };
 
+class DecimalStruct : public ConfigSerializer {
+  protected:
+    void structure() override {
+        def("latitude", latitude);
+        def("frequency", frequency);
+    }
+  public:
+    double latitude = 0.0;
+    float frequency = 0.0f;
+};
+
 // ── saveSerial: basic ───────────────────────────────────────────────────────
 
 TEST(ConfigSerializer, SaveSerial_Basic) {
@@ -190,6 +201,31 @@ TEST(ConfigSerializer, LoadSerial_IgnoreUnknowns) {
     EXPECT_EQ(1, data.flags);   // flags should be unmodified
     bool match = strcmp("Scott", data.name) == 0;
     EXPECT_TRUE(match);
+}
+
+TEST(ConfigSerializer, LoadSerial_FixedDecimals) {
+    MockInputStream s("{latitude:-47.123456,frequency:910.5250}");
+    DecimalStruct data;
+
+    ASSERT_TRUE(data.loadSerial(s));
+    EXPECT_NEAR(-47.123456, data.latitude, 0.0000001);
+    EXPECT_NEAR(910.525f, data.frequency, 0.0001f);
+}
+
+TEST(ConfigSerializer, SaveAndLoadSerial_FixedDecimals) {
+    DecimalStruct saved;
+    saved.latitude = -12.345678;
+    saved.frequency = 62.5f;
+    MockPrintStream output;
+    ASSERT_TRUE(saved.saveSerial(output));
+
+    std::string encoded(reinterpret_cast<const char*>(output.getBytes()),
+                        output.getLength());
+    MockInputStream input(encoded.c_str());
+    DecimalStruct loaded;
+    ASSERT_TRUE(loaded.loadSerial(input));
+    EXPECT_NEAR(saved.latitude, loaded.latitude, 0.0000001);
+    EXPECT_NEAR(saved.frequency, loaded.frequency, 0.0001f);
 }
 
 TEST(NodePrefs, AdvertLocationDefaultsToStoredPrefs) {

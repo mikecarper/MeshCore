@@ -359,6 +359,25 @@ void DataStore::loadPrefsInt(const char *filename, CompanionNodePrefs& _prefs, d
                     >= (int)sizeof(_prefs.display_rotation_degrees)) {
                   file.read((uint8_t *)&_prefs.display_rotation_degrees,
                             sizeof(_prefs.display_rotation_degrees));
+                  if (file.available() >= (int)sizeof(_prefs.cad_enabled)) {
+                    file.read((uint8_t *)&_prefs.cad_enabled,
+                              sizeof(_prefs.cad_enabled));
+                    if (file.available()
+                        >= (int)sizeof(_prefs.cad_scan_timeout_ms)) {
+                      file.read((uint8_t *)&_prefs.cad_scan_timeout_ms,
+                                sizeof(_prefs.cad_scan_timeout_ms));
+                      if (file.available()
+                          >= (int)sizeof(_prefs.cad_retry_delay_ms)) {
+                        file.read((uint8_t *)&_prefs.cad_retry_delay_ms,
+                                  sizeof(_prefs.cad_retry_delay_ms));
+                        if (file.available()
+                            >= (int)sizeof(_prefs.cad_max_duration_ms)) {
+                          file.read((uint8_t *)&_prefs.cad_max_duration_ms,
+                                    sizeof(_prefs.cad_max_duration_ms));
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -443,6 +462,17 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                (uint8_t *)&_prefs.display_rotation_degrees,
                sizeof(_prefs.display_rotation_degrees))
                == sizeof(_prefs.display_rotation_degrees);
+    success = success && file.write((uint8_t *)&_prefs.cad_enabled,
+               sizeof(_prefs.cad_enabled)) == sizeof(_prefs.cad_enabled);
+    success = success && file.write((uint8_t *)&_prefs.cad_scan_timeout_ms,
+               sizeof(_prefs.cad_scan_timeout_ms))
+               == sizeof(_prefs.cad_scan_timeout_ms);
+    success = success && file.write((uint8_t *)&_prefs.cad_retry_delay_ms,
+               sizeof(_prefs.cad_retry_delay_ms))
+               == sizeof(_prefs.cad_retry_delay_ms);
+    success = success && file.write((uint8_t *)&_prefs.cad_max_duration_ms,
+               sizeof(_prefs.cad_max_duration_ms))
+               == sizeof(_prefs.cad_max_duration_ms);
 
 #if defined(NRF52_PLATFORM)
     success = file.commit(success);
