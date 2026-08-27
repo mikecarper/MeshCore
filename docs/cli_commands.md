@@ -562,6 +562,23 @@ set flag bit 0.
 
 ---
 
+## Set Companion display rotation
+
+SSD1306 Full Companion builds support a persisted runtime orientation:
+
+```text
+get display.rotation
+set display.rotation 0
+set display.rotation 90
+set display.rotation 180
+set display.rotation 270
+```
+
+The values are clockwise degrees. `0` clears the override and restores the
+board's compiled default. Unsupported display drivers return an error.
+
+---
+
 ## Logging
 
 Builds compiled with `MESH_PACKET_LOGGING` emit one `RAW:` line for every
@@ -576,8 +593,9 @@ timing, hash, type, route, and payload information. Frames that cannot be
 decoded still emit their `RAW:` line. Transmitted packets emit the decoded TX
 summary.
 
-Ordinary `-logging-` artifacts keep packet logging separate from LoRa OTA.
-Use the separately named `-ota-` artifact when LoRa OTA is required. A
+Ordinary non-OTA artifacts compile packet logging into the canonical image and
+control its live USB output at runtime; no separate `-logging-` artifact is
+emitted. Use the separately named `-ota-` artifact when LoRa OTA is required. A
 `-full-usb-wifi-ota-` artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A `-full-logging-ota-` artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.
@@ -594,10 +612,11 @@ set usb.logging on reboot
 set usb.logging off reboot
 ```
 
-These commands are compiled into logging artifacts and every Full Companion.
-They control live USB debug and packet output. CommonCLI roles save the setting
-in `/com_prefs`, so it survives reboot; their first boot defaults to on. Full
-Companion starts off on a fresh installation.
+These commands are compiled into ordinary USB-loggable artifacts and every
+Full Companion. They control live USB debug and packet output. CommonCLI roles
+save the setting in `/com_prefs`, so it survives reboot; their first boot
+defaults to on. Full Companion and ordinary USB Companion start off on a fresh
+installation so diagnostics cannot corrupt framed traffic.
 
 On Full Companion these lines belong to its text terminal, not `meshcli`'s
 Binary `get/set` parameter namespace. Open interface `00`, send
@@ -3443,6 +3462,22 @@ Requires WiFi connected and the MQTT bridge running.
 - `rate`: Baud rate (`9600`, `19200`, `38400`, `57600`, or `115200`)
 
 **Default:** `115200`
+
+---
+
+#### View or change the UART used by the bridge (RS-232 only)
+**Usage:**
+- `get bridge.uart`
+- `set bridge.uart <port>`
+
+**Parameters:**
+- `port`: Hardware UART number compiled for the board. Most boards expose one
+  fixed UART. RAK4631 accepts `1` or `2`; UART 2 is the default so UART 1 can
+  remain available to GPS.
+
+The setting is persistent and restarts an enabled bridge immediately. Normal
+repeater artifacts start with `bridge.enabled off`; configure the UART and baud
+rate before running `set bridge.enabled on`.
 
 ---
 

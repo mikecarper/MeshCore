@@ -355,6 +355,11 @@ void DataStore::loadPrefsInt(const char *filename, CompanionNodePrefs& _prefs, d
               if (file.available() >= (int)sizeof(_prefs.bluetooth_name)) {
                 file.read((uint8_t *)_prefs.bluetooth_name,
                           sizeof(_prefs.bluetooth_name));                                // 141
+                if (file.available()
+                    >= (int)sizeof(_prefs.display_rotation_degrees)) {
+                  file.read((uint8_t *)&_prefs.display_rotation_degrees,
+                            sizeof(_prefs.display_rotation_degrees));
+                }
               }
             }
           }
@@ -434,6 +439,10 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                == sizeof(_prefs.usb_logging_enabled);                                    // 140
     success = success && file.write((uint8_t *)_prefs.bluetooth_name,
                sizeof(_prefs.bluetooth_name)) == sizeof(_prefs.bluetooth_name);          // 141
+    success = success && file.write(
+               (uint8_t *)&_prefs.display_rotation_degrees,
+               sizeof(_prefs.display_rotation_degrees))
+               == sizeof(_prefs.display_rotation_degrees);
 
 #if defined(NRF52_PLATFORM)
     success = file.commit(success);

@@ -321,8 +321,17 @@ struct OtaContext {
     FOLDER_LINK_NONE = 0,
     FOLDER_LINK_SERIAL,
     FOLDER_LINK_TCP,
+    FOLDER_LINK_BLE,
   };
   FolderLink folderLink() const { return _folder_link; }
+  static const char* folderLinkName(FolderLink link) {
+    switch (link) {
+      case FOLDER_LINK_SERIAL: return "serial";
+      case FOLDER_LINK_TCP: return "tcp";
+      case FOLDER_LINK_BLE: return "ble";
+      default: return "none";
+    }
+  }
   bool folderSourceStats(uint16_t& offered, uint16_t& advertised) const {
     return manager.sourceStats(_folder_source, offered, advertised);
   }
@@ -337,7 +346,7 @@ struct OtaContext {
     }
     if (folder_active && _folder_link != link) {
       snprintf(msg, cap, "ERR folder already attached via %s",
-               _folder_link == FOLDER_LINK_TCP ? "tcp" : "serial");
+               folderLinkName(_folder_link));
       return false;
     }
     if (folder_active && _folder_source == source) {

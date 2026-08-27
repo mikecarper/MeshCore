@@ -1,5 +1,8 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#if MESH_PACKET_LOGGING
+  #include <helpers/SerialPacketLog.h>
+#endif
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
@@ -72,6 +75,7 @@ struct NodePrefs {  // persisted to file
   float freq;
   int8_t tx_power_dbm;
   uint8_t unused[3];
+  uint8_t usb_logging_enabled;
 };
 
 class MyMesh : public BaseChatMesh, ContactVisitor {
@@ -293,6 +297,7 @@ public:
     strcpy(_prefs.node_name, "NONAME");
     _prefs.freq = LORA_FREQ;
     _prefs.tx_power_dbm = LORA_TX_POWER;
+    _prefs.usb_logging_enabled = 1;
 
     command[0] = 0;
     curr_recipient = NULL;
@@ -356,6 +361,11 @@ public:
         file.close();
       }
     }
+
+#if MESH_USB_LOGGING_AVAILABLE
+    _prefs.usb_logging_enabled = constrain(_prefs.usb_logging_enabled, 0, 1);
+    mesh::setUsbLoggingEnabled(_prefs.usb_logging_enabled != 0);
+#endif
 
     loadContacts();
     _public = addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
@@ -493,9 +503,28 @@ public:
       }
     } else if (memcmp(command, "import ", 7) == 0) {
       importCard(&command[7]);
+    } else if (strcmp(command, "get usb.logging") == 0) {
+#if MESH_USB_LOGGING_AVAILABLE
+      Serial.printf("  usb.logging %s\n",
+                    mesh::isUsbLoggingEnabled() ? "on" : "off");
+#else
+      Serial.println("  ERROR: USB logging is unavailable");
+#endif
     } else if (memcmp(command, "set ", 4) == 0) {
       const char* config = &command[4];
-      if (memcmp(config, "af ", 3) == 0) {
+      if (strcmp(config, "usb.logging on") == 0
+          || strcmp(config, "usb.logging off") == 0) {
+#if MESH_USB_LOGGING_AVAILABLE
+        const bool enabled = strcmp(config, "usb.logging on") == 0;
+        _prefs.usb_logging_enabled = enabled ? 1 : 0;
+        mesh::setUsbLoggingEnabled(enabled);
+        savePrefs();
+        Serial.printf("  OK - USB logging %s (saved)\n",
+                      enabled ? "on" : "off");
+#else
+        Serial.println("  ERROR: USB logging is unavailable");
+#endif
+      } else if (memcmp(config, "af ", 3) == 0) {
         _prefs.airtime_factor = atof(&config[3]);
         savePrefs();
         Serial.println("  OK");
@@ -527,6 +556,8 @@ public:
     } else if (memcmp(command, "help", 4) == 0) {
       Serial.println("Commands:");
       Serial.println("   set {name|lat|lon|freq|tx|af} {value}");
+      Serial.println("   get usb.logging");
+      Serial.println("   set usb.logging {on|off}");
       Serial.println("   card");
       Serial.println("   import {biz card}");
       Serial.println("   clock");
@@ -578,6 +609,9 @@ void halt() {
 
 void setup() {
   Serial.begin(115200);
+#if MESH_PACKET_LOGGING
+  mesh::serialLogBegin();
+#endif
 
   board.begin();
 

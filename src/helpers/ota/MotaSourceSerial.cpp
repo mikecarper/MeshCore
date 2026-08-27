@@ -11,6 +11,7 @@ bool SerialMotaSource::readByteT(uint8_t& b) {
   while ((millis() - t0) < _to) {
     int c = _io.read();
     if (c >= 0) { b = (uint8_t)c; return true; }
+    delay(1);  // let BLE/WiFi callbacks deliver the response
   }
   return false;
 }
@@ -43,7 +44,7 @@ bool SerialMotaSource::txn(uint8_t op, const uint8_t* args, uint8_t arglen,
   uint8_t prev = 0;
   while ((millis() - t0) < _to) {
     int c = _io.read();
-    if (c < 0) continue;
+    if (c < 0) { delay(1); continue; }
     if (prev == MOTA_SEEDER_RSP_MAGIC0 && (uint8_t)c == MOTA_SEEDER_RSP_MAGIC1) { got = true; break; }
     prev = (uint8_t)c;
   }

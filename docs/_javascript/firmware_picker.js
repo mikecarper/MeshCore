@@ -53,6 +53,7 @@
     full: "Full Companion transports",
     ble: "Bluetooth LE",
     usb: "USB",
+    "usb-ble": "USB + Bluetooth LE",
     wifi: "Wi-Fi",
     serial: "Serial / UART",
     ethernet: "Ethernet",
@@ -109,6 +110,7 @@
     // Exact aliases of the unsuffixed Heltec V4 USB/BLE recipes.
     "heltec_v4_companion_radio_usb_femon",
     "heltec_v4_companion_radio_ble_femon",
+    "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_full",
   ]);
 
   let pickerInstanceCount = 0;
@@ -273,6 +275,7 @@
     const value = String(tail).toLowerCase().replace(/^[_-]+/, "");
     if (role === "companion") {
       if (/^full(?:$|[_-])/.test(value)) return "full";
+      if (/^usb_ble(?:$|[_-])/.test(value)) return "usb-ble";
       if (/^ble(?:$|[_-])/.test(value)) return "ble";
       if (/^usb(?:$|[_-])/.test(value)) return "usb";
       if (/^wifi(?:$|[_-])/.test(value)) return "wifi";
@@ -291,7 +294,7 @@
     let value = String(tail);
     if (role === "companion") {
       value = value.replace(
-        /^(?:full|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
+        /^(?:full|usb_ble|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
         " "
       );
       // Power saving and controllable FEM gain are persisted settings. Legacy
@@ -414,13 +417,69 @@
     }).map(function (profile) {
       return profile.hardware + "\n" + profile.variant;
     }));
+    const combinedUsbBleKeys = new Set((profiles || []).filter(
+      function (profile) {
+        return profile.role === "companion" && profile.mode === "usb-ble";
+      }
+    ).map(function (profile) {
+      return profile.hardware + "\n" + profile.variant;
+    }));
+    const terminalReplacementKeys = new Set((profiles || []).filter(
+      function (profile) {
+        return profile.role === "companion" &&
+          (profile.mode === "full" || profile.mode === "usb" ||
+            profile.mode === "usb-ble");
+      }
+    ).map(function (profile) {
+      return profile.hardware + "\n" + profile.variant;
+    }));
+    const targets = new Set((profiles || []).map(function (profile) {
+      return String(profile.target || "").toLowerCase();
+    }));
+    const mergedRs232Targets = {
+      heltec_t096_repeater_bridge_rs232: "heltec_t096_repeater",
+      heltec_t096_repeater_bridge_rs232_lora_ota_no_external_sensors:
+        "heltec_t096_repeater_lora_ota_no_external_sensors",
+      rak_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors:
+        "rak_4631_repeater_lora_ota_no_external_sensors",
+      rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors:
+        "rak_4631_repeater_lora_ota_no_external_sensors",
+      rak_4631_repeater_bridge_rs232_serial1: "rak_4631_repeater",
+      rak_4631_repeater_bridge_rs232_serial2: "rak_4631_repeater",
+      promicro_repeater_bridge_rs232_serial1: "promicro_repeater",
+      heltec_t114_without_display_repeater_bridge_rs232:
+        "heltec_t114_without_display_repeater",
+      heltec_t114_repeater_bridge_rs232: "heltec_t114_repeater",
+      rak_3112_repeater_bridge_rs232: "rak_3112_repeater",
+      rak_11310_repeater_bridge_rs232: "rak_11310_repeater",
+      waveshare_rp2040_lora_repeater_bridge_rs232:
+        "waveshare_rp2040_lora_repeater",
+      solarxiao_30s_repeater_bridge_rs232: "solarxiao_30s_repeater",
+      solarxiao_33s_repeater_bridge_rs232: "solarxiao_33s_repeater",
+      heltec_v3_repeater_bridge_rs232: "heltec_v3_repeater",
+      heltec_wsl3_repeater_bridge_rs232: "heltec_wsl3_repeater",
+      lilygo_tlora_v2_1_1_6_repeater_bridge_rs232:
+        "lilygo_tlora_v2_1_1_6_repeater",
+    };
 
     return (profiles || []).filter(function (profile) {
       const key = profile.hardware + "\n" + profile.variant;
       const replacedAttachedTransport = profile.role === "companion" &&
         (profile.mode === "usb" || profile.mode === "ble" ||
-          profile.mode === "wifi");
-      return !(replacedAttachedTransport && fullKeys.has(key));
+          profile.mode === "wifi" || profile.mode === "serial" ||
+          profile.mode === "ethernet" || profile.mode === "usb-ble");
+      const replacedByUsbBle = profile.role === "companion" &&
+        (profile.mode === "usb" || profile.mode === "ble") &&
+        combinedUsbBleKeys.has(key);
+      const replacedTerminal = profile.role === "terminal" &&
+        terminalReplacementKeys.has(key);
+      const rs232Replacement = mergedRs232Targets[
+        String(profile.target || "").toLowerCase()
+      ];
+      const replacedRs232 = Boolean(rs232Replacement &&
+        targets.has(rs232Replacement));
+      return !(replacedAttachedTransport && fullKeys.has(key)) &&
+        !replacedByUsbBle && !replacedTerminal && !replacedRs232;
     });
   }
 
@@ -436,6 +495,24 @@
       if (isDualCdcFullCompanion(profile)) {
         profile.dedicatedUsbLogging = true;
       }
+      return profile;
+    });
+  }
+
+  function applyMergedStandardUsbLoggingCapabilities(profiles) {
+    return (profiles || []).map(function (profile) {
+      const safeRole = [
+        "companion", "repeater", "room", "sensor", "terminal",
+      ].includes(profile.role);
+      const unsafeCompanionMode = profile.role === "companion" &&
+        (profile.mode === "ble" || profile.mode === "full");
+      if (profile.logging !== "none" || profile.ota !== "none" ||
+          !safeRole || unsafeCompanionMode) {
+        return profile;
+      }
+
+      profile.logging = "usb-runtime";
+      profile.loggingModes = ["none", "usb"];
       return profile;
     });
   }
@@ -539,8 +616,10 @@
     }).filter(function (profile) {
       return !isHiddenLegacyProfile(profile);
     });
-    const profiles = omitTransportsReplacedByFull(
-      applyFullCompanionCapabilities(visibleProfiles)
+    const profiles = applyMergedStandardUsbLoggingCapabilities(
+      omitTransportsReplacedByFull(
+        applyFullCompanionCapabilities(visibleProfiles)
+      )
     ).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
         numeric: true,
@@ -738,7 +817,11 @@
         "With no saved SSID, the setup AP stays available for 30 minutes after each boot, then Wi-Fi powers off automatically until reboot or an explicit start webconfig command. A configured Wi-Fi mode keeps reconnecting instead."
       );
     } else if (profile.logging === "usb-runtime") {
-      if (profile.dedicatedUsbLogging) {
+      if (!isFullCompanion(profile)) {
+        extra.push(
+          "This ordinary image includes USB logging. Use get usb.logging and set usb.logging off|on to select and save normal or logging operation."
+        );
+      } else if (profile.dedicatedUsbLogging) {
         extra.push(
           "Full Companion starts with USB logging off and only interface 00. Use get usb.logging, or set usb.logging on reboot to add interface 02; set usb.logging off reboot removes it again."
         );
@@ -1118,6 +1201,8 @@
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
     applyFullCompanionCapabilities: applyFullCompanionCapabilities,
+    applyMergedStandardUsbLoggingCapabilities:
+      applyMergedStandardUsbLoggingCapabilities,
     applyDualCdcFullCompanionCapabilities: applyFullCompanionCapabilities,
     applyNrf52FullCompanionCapabilities:
       applyFullCompanionCapabilities,

@@ -5,30 +5,28 @@
 
 #ifdef WITH_RS232_BRIDGE
 
-RS232Bridge::RS232Bridge(NodePrefs *prefs, Stream &serial, mesh::PacketManager *mgr, mesh::RTCClock *rtc)
-    : BridgeBase(prefs, mgr, rtc), _serial(&serial) {}
+RS232Bridge::RS232Bridge(NodePrefs *prefs, Stream &serial, int16_t rx_pin,
+                         int16_t tx_pin, mesh::PacketManager *mgr,
+                         mesh::RTCClock *rtc)
+    : BridgeBase(prefs, mgr, rtc), _serial(&serial), _rx_pin(rx_pin),
+      _tx_pin(tx_pin) {}
 
 void RS232Bridge::begin() {
   BRIDGE_DEBUG_PRINTLN("Initializing at %d baud...\n", _prefs->bridge_baud);
-#if !defined(WITH_RS232_BRIDGE_RX) || !defined(WITH_RS232_BRIDGE_TX)
-#error "WITH_RS232_BRIDGE_RX and WITH_RS232_BRIDGE_TX must be defined"
-#endif
-
 #if defined(ESP32)
-  ((HardwareSerial *)_serial)->setPins(WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX);
+  ((HardwareSerial *)_serial)->setPins(_rx_pin, _tx_pin);
 #elif defined(NRF52_PLATFORM)
   // Tested with RAK_4631 and T114
   // The Adafruit Uart object may already be active on its variant defaults.
   // Stop it before changing pins or the EasyDMA instance can retain the old
   // pin selection and silently receive nothing.
-  mesh::bridge::prepareNrfUart(*((Uart *)_serial),
-                               WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX);
+  mesh::bridge::prepareNrfUart(*((Uart *)_serial), _rx_pin, _tx_pin);
 #elif defined(RP2040_PLATFORM)
-  ((SerialUART *)_serial)->setRX(WITH_RS232_BRIDGE_RX);
-  ((SerialUART *)_serial)->setTX(WITH_RS232_BRIDGE_TX);
+  ((SerialUART *)_serial)->setRX(_rx_pin);
+  ((SerialUART *)_serial)->setTX(_tx_pin);
 #elif defined(STM32_PLATFORM)
-  ((HardwareSerial *)_serial)->setRx(WITH_RS232_BRIDGE_RX);
-  ((HardwareSerial *)_serial)->setTx(WITH_RS232_BRIDGE_TX);
+  ((HardwareSerial *)_serial)->setRx(_rx_pin);
+  ((HardwareSerial *)_serial)->setTx(_tx_pin);
 #else
 #error RS232Bridge was not tested on the current platform
 #endif

@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -2403,9 +2404,27 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
 class MotatoolIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.motatool = os.environ.get("MOTATOOL_TEST_BIN")
+        candidates = [
+            os.environ.get("MOTATOOL_TEST_BIN"),
+            shutil.which("motatool"),
+            str(
+                Path(__file__).resolve().parents[3]
+                / "motatool"
+                / "target"
+                / "release"
+                / "motatool"
+            ),
+        ]
+        cls.motatool = next(
+            (candidate for candidate in candidates
+             if candidate and Path(candidate).is_file()),
+            None,
+        )
         if not cls.motatool or not Path(cls.motatool).is_file():
-            raise unittest.SkipTest("set MOTATOOL_TEST_BIN to run motatool integration tests")
+            raise unittest.SkipTest(
+                "install/build motatool or set MOTATOOL_TEST_BIN to run "
+                "motatool integration tests"
+            )
         subprocess.run([cls.motatool, "--version"], check=True, capture_output=True)
 
     def test_raw_esp32_zip_becomes_full_mota(self) -> None:

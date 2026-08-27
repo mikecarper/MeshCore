@@ -21,10 +21,10 @@ example and is disabled unless the endpoint is started with `--allow-reboot`.
 Text such as `reboot now`, `cpu-temp; reboot`, and embedded newlines is not a
 command: the endpoint accepts only an exact allowlist match.
 
-The bridge is included in normal repeater firmware. The specialized Wio-E5
-RS232 bridge image omits it because the RS232 application already fills its
-fixed 240 KiB application partition; use the normal Wio-E5 repeater image when
-the USB/MQTT host service is needed.
+The bridge is included in normal repeater firmware except on Wio-E5. Its
+specialized RS232 bridge image omits the host service because the combined
+application exceeds the fixed 240 KiB partition; use the normal Wio-E5
+repeater image when the USB/MQTT host service is needed.
 
 ## Run alongside meshcoretomqtt
 

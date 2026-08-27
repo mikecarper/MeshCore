@@ -12,8 +12,10 @@ firmware as an mOTA image.
 | BLE Binary Companion | Yes | Yes |
 | USB ASCII terminal | Yes | Yes |
 | Dedicated USB plaintext logging | Qualified native-USB ESP32-S3 profiles | Yes |
-| Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode |
+| Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode or encrypted BLE |
 | WiFi Companion/WebConfig | Yes | No - nRF52840 has no WiFi |
+| Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
+| Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800 |
 | LoRa self-update | No | No |
 
 ## Build and install
@@ -63,8 +65,11 @@ Canonical Companion bulk builds also omit legacy `_ps` and `_femoff` aliases.
 Power saving and controllable FEM receive gain are persisted runtime settings;
 the old names remain available through an explicit `build-firmware` command
 for compatibility. Full Companion replaces separate USB, BLE, ordinary WiFi,
-and USB-only packet-logging release artifacts whenever the exact board supports
-the combined profile. Dual-CDC builds separate framed traffic and logs;
+hardware-serial, Ethernet Companion, Terminal Chat, and USB-only packet-logging
+release artifacts whenever the exact board supports those combined transports.
+Direct builds of the legacy targets remain available. RAK4631 repeater and room
+server Ethernet builds remain separate because they are different standalone
+roles, not Companion transports. Dual-CDC builds separate framed traffic and logs;
 single-TTY builds make those modes mutually exclusive. In WebConfig, use the
 **FEM RX boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
@@ -84,6 +89,22 @@ set radio.fem.txgain on
 commands control the external receive and transmit paths. The selected states
 are applied immediately and retained after reboot. FEM TX gain is reported as
 unsupported on boards without software-selectable PA gain.
+
+SSD1306 display builds also persist a runtime orientation. This replaces the
+separate rotated Full Companion release image:
+
+```text
+get display.rotation
+set display.rotation 90
+set display.rotation 180
+set display.rotation 270
+set display.rotation 0
+```
+
+`0` resets the screen to that board's compiled default orientation.
+
+Heltec E290 and T190 use one `usb_ble` Companion artifact for simultaneous USB
+and BLE rather than publishing separate USB-only and BLE-only images.
 
 Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
 with the **Device power saving** switch or from the text terminal:
@@ -219,6 +240,7 @@ itself.
 | ESP32 | TCP 5001 | Host `.mota` folder from `motatool serve --tcp` |
 | ESP32 | TCP 5002 | Full Companion text terminal; same role commands as the USB terminal |
 | nRF52 | USB mOTA mode | Host `.mota` folder from `motatool serve --serial` |
+| nRF52 | Encrypted BLE mOTA service | Paired phone/tablet/Linux host `.mota` catalog |
 
 Delivery-required replies are returned only to the interface which supplied the
 latest command. A contact-list stream keeps that route locked from
@@ -356,6 +378,10 @@ only one may own the terminal at a time. Entering USB terminal mode closes an
 active TCP terminal session. Disconnecting TCP clears pending terminal-only
 state without cancelling Binary Companion delivery or radio retries.
 
+Both terminal transports accept `reboot`. The reply is sent first and the
+device reboots one second later, so a script can distinguish an accepted reboot
+from an abruptly lost connection.
+
 Port 5002 is plaintext and has no device-local login gate. A remote-admin
 password entered with `login` is sent across the LAN connection as typed even
 though the terminal does not echo it. Use port 5002 only on a trusted LAN or a
@@ -459,6 +485,50 @@ While mOTA mode owns USB:
 
 No manual mode token or modified `motatool` build is required.
 
+## nRF52 Bluetooth mOTA source
+
+Protocol v14 also lets a phone, tablet, or Bluetooth-capable Linux host feed
+the `.mota` catalog to an nRF52 Full Companion. Normal Companion commands stay
+on the Nordic UART service. Firmware data uses a separate GATT service, so
+binary app traffic cannot be mistaken for a firmware block.
+
+The client must pair with the Companion PIN, subscribe to the mOTA Device
+Request characteristic, and send `CMD_BLE_MOTA_SOURCE` action `start` over the
+normal Binary Companion connection. The source is available only while that
+encrypted MITM-authenticated connection remains active. Disconnecting,
+unsubscribing, overflowing a frame, or receiving malformed data automatically
+detaches the catalog. USB and BLE source modes are mutually exclusive.
+
+The included Raspberry Pi reference client validates each `.mota` with
+`motatool`, schedules the local TempRadio window, serves until interrupted,
+then detaches and restores the normal radio tuple:
+
+```bash
+python3 tools/ble_mota/ble_mota_seeder.py \
+  --device MeshCore-MyCompanion \
+  --dir ./motas \
+  --local 'tempradio 909.950,250,5,5,120'
+```
+
+Prefer this relative `tempradio` form when the phone/Pi and radio clocks may
+disagree. It starts a duration on the Companion and does not compare their
+wall clocks. Use the absolute `tempradioat` scheduler only after synchronizing
+the participating nodes.
+
+Use `--pair` when the Linux host has not already bonded. BlueZ must have an
+agent capable of entering or confirming the six-digit PIN. Use `--source
+status` without `--dir` for a read-only channel/status check. The complete
+UUID, frame, action, and status definitions are in the
+[Companion protocol](./companion_protocol.md#bluetooth-lora-mota-source).
+
+This reference process stands in for the phone application. A mobile app can
+use the same sequence while retaining its normal contact and Repeater Admin
+UI: log in to the destination, put each required node on the same bounded
+TempRadio tuple, start the local Bluetooth catalog, then send the normal remote
+`ota ls`, `ota pull`, and `ota install` commands. The destination still checks
+container geometry, hardware identity, hashes, signature policy, and the
+OTAFIX bootloader before installation.
+
 ## Serve mOTA images manually
 
 First put the destination, required relays, controller, and source on the same
@@ -513,6 +583,10 @@ motatool serve --dir ./motas --serial /dev/ttyACM1 --baud 115200 -v
 Ctrl-C to detach the folder. Reopen the terminal and use `normalradio` if the
 source should return early; otherwise the saved radio settings return when the
 bounded window expires.
+
+As a cable-free alternative, keep the normal Companion BLE session open and
+run the Bluetooth reference client shown in the nRF52 Bluetooth section. Do
+not run the USB seeder at the same time.
 
 Both platforms intentionally refuse firmware installation commands such as:
 

@@ -25,6 +25,10 @@
 #define WITH_BRIDGE
 #endif
 
+#if defined(WITH_RS232_BRIDGE) && !defined(WITH_RS232_BRIDGE_UART)
+#define WITH_RS232_BRIDGE_UART 1
+#endif
+
 #define ADVERT_LOC_NONE       0
 #define ADVERT_LOC_SHARE      1
 #define ADVERT_LOC_PREFS      2
@@ -169,9 +173,12 @@ public:
   uint8_t extra_sf[4] = {};
   uint8_t radio_fem_txgain = 0; // LoRa FEM TX gain; persisted at /com_prefs offset 860
   // Runtime USB packet output gate. Appended at /com_prefs offset 861 so
-  // older images remain readable and logging builds keep their historical
-  // enabled-at-first-boot behavior.
+  // older images remain readable and merged standard builds keep the former
+  // logging artifact's enabled-at-first-boot behavior.
   uint8_t usb_logging_enabled = 1;
+  // Runtime UART choice for merged RS-232 repeater artifacts. Appended at
+  // /com_prefs offset 862; single-UART builds keep their compiled port here.
+  uint8_t bridge_uart = 0;
   uint8_t retry_preset = 0;
   uint8_t direct_retry_attempts = 0;
   uint16_t direct_retry_base_ms = 0;
@@ -267,6 +274,7 @@ private:
       def("delay", _parent->bridge_delay);
       def("src", _parent->bridge_pkt_src);
       def("baud", _parent->bridge_baud);
+      def("uart", _parent->bridge_uart);
       def("ch", _parent->bridge_channel);
       def("secret", _parent->bridge_secret, sizeof(_parent->bridge_secret));
       def("usb_log", _parent->usb_logging_enabled);

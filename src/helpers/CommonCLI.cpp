@@ -768,6 +768,11 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   _prefs->system_watchdog_enabled = 1;
   memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
   _prefs->usb_logging_enabled = 1;
+#ifdef WITH_RS232_BRIDGE
+  _prefs->bridge_uart = WITH_RS232_BRIDGE_UART;
+#else
+  _prefs->bridge_uart = 0;
+#endif
 
 #ifdef WITH_MQTT_BRIDGE
   bool node_prefs_needs_migration = false;
@@ -898,6 +903,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
   File file = fs->open(filename);
 #endif
   if (file) {
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+    bool has_runtime_bridge_uart = false;
+#endif
     // Every supported layout contains the fixed 290-byte common core. Reject
     // a truncated in-place write before it can leave strings unterminated or
     // feed partial radio values into startup. loadPrefs() rewrites the image.
@@ -1257,6 +1265,13 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
         if (file.available() >= (int)sizeof(_prefs->usb_logging_enabled)) {
           file.read((uint8_t *)&_prefs->usb_logging_enabled,
                     sizeof(_prefs->usb_logging_enabled));
+          if (file.available() >= (int)sizeof(_prefs->bridge_uart)) {
+            file.read((uint8_t *)&_prefs->bridge_uart,
+                      sizeof(_prefs->bridge_uart));
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+            has_runtime_bridge_uart = true;
+#endif
+          }
         }
       }
     } else if (file.available() > 0) {
@@ -1314,11 +1329,32 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->loop_detect = constrain(_prefs->loop_detect, 0, 3);          // LOOP_DETECT_OFF..LOOP_DETECT_STRICT
 
     // sanitise bad bridge pref values
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+    if (!has_runtime_bridge_uart) {
+      // Pre-merge normal repeaters persisted bridge_enabled=1 even though no
+      // bridge was compiled. Fail safe on the first merged boot instead of
+      // unexpectedly claiming a UART; the user can explicitly enable it.
+      _prefs->bridge_enabled = 0;
+      _com_prefs_needs_upgrade = true;
+    }
+#endif
     _prefs->bridge_enabled = constrain(_prefs->bridge_enabled, 0, 1);
     _prefs->bridge_delay = constrain(_prefs->bridge_delay, 0, 10000);
     _prefs->bridge_pkt_src = constrain(_prefs->bridge_pkt_src, 0, 1);
     _prefs->bridge_baud = constrain(_prefs->bridge_baud, 9600, BRIDGE_MAX_BAUD);
     _prefs->bridge_channel = constrain(_prefs->bridge_channel, 0, 14);
+#ifdef WITH_RS232_BRIDGE
+    if (_prefs->bridge_uart != WITH_RS232_BRIDGE_UART
+#ifdef WITH_RS232_BRIDGE_ALT
+        && _prefs->bridge_uart != WITH_RS232_BRIDGE_ALT_UART
+#endif
+    ) {
+      _prefs->bridge_uart = WITH_RS232_BRIDGE_UART;
+      _com_prefs_needs_upgrade = true;
+    }
+#else
+    _prefs->bridge_uart = 0;
+#endif
 
     _prefs->powersaving_enabled = constrain(_prefs->powersaving_enabled, 0, 1);
     _prefs->reboot_interval = constrain(_prefs->reboot_interval, 0, 255);
@@ -1538,6 +1574,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->extra_sf);                        // 856
   WRITE_COMMON_PREFS(&prefs->radio_fem_txgain);                // 860
   WRITE_COMMON_PREFS(&prefs->usb_logging_enabled);             // 861
+  WRITE_COMMON_PREFS(&prefs->bridge_uart);                     // 862
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1690,7 +1727,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)_prefs->extra_sf, sizeof(_prefs->extra_sf));                              // 856
     file.write((uint8_t *)&_prefs->radio_fem_txgain, sizeof(_prefs->radio_fem_txgain));             // 860
     file.write((uint8_t *)&_prefs->usb_logging_enabled, sizeof(_prefs->usb_logging_enabled));       // 861
-    // next: 862
+    file.write((uint8_t *)&_prefs->bridge_uart, sizeof(_prefs->bridge_uart));                       // 862
+    // next: 863
 
 #if defined(NRF52_PLATFORM)
     if (!file.commit()) {
@@ -2538,7 +2576,15 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "gps_interval must be 0..86400 seconds");
       } else if (!valid_gps_toggle) {
         strcpy(reply, "gps must be 0 or 1");
-      } else if (_sensors->setSettingValue(key, value)) {
+      }
+#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
+      else if (is_gps_toggle && strcmp(value, "1") == 0
+               && _prefs->bridge_enabled
+               && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
+        strcpy(reply, "turn the RS232 bridge off or select another UART first");
+      }
+#endif
+      else if (_sensors->setSettingValue(key, value)) {
         if (is_gps_interval) {
           _prefs->gps_interval = gps_interval;
           savePrefs();
@@ -2579,6 +2625,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       handleRegionCmd(command, reply);
 #if ENV_INCLUDE_GPS == 1
     } else if (memcmp(command, "gps on", 6) == 0) {
+#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
+      if (_prefs->bridge_enabled
+          && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
+        strcpy(reply, "turn the RS232 bridge off or select another UART first");
+      } else
+#endif
       if (_sensors->setSettingValue("gps", "1")) {
         _prefs->gps_enabled = 1;
         savePrefs();
@@ -4019,10 +4071,19 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #ifdef WITH_BRIDGE
   } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
-    _prefs->bridge_enabled = memcmp(&config[15], "on", 2) == 0;
-    _callbacks->setBridgeState(_prefs->bridge_enabled);
-    savePrefs();
-    strcpy(reply, "OK");
+    const bool enable = memcmp(&config[15], "on", 2) == 0;
+#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
+    if (enable && _prefs->gps_enabled
+        && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
+      strcpy(reply, "Error: turn GPS off or select another UART first");
+    } else
+#endif
+    {
+      _prefs->bridge_enabled = enable;
+      _callbacks->setBridgeState(_prefs->bridge_enabled);
+      savePrefs();
+      strcpy(reply, "OK");
+    }
   } else if (memcmp(config, "bridge.delay ", 13) == 0) {
     int delay = _atoi(&config[13]);
     if (delay >= 0 && delay <= 10000) {
@@ -4058,6 +4119,33 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     } else {
       sprintf(reply, "Error: baud rate must be between 9600-%d",BRIDGE_MAX_BAUD);
+    }
+  } else if (memcmp(config, "bridge.uart ", 12) == 0) {
+    const int uart = atoi(&config[12]);
+    const bool supported = uart == WITH_RS232_BRIDGE_UART
+#ifdef WITH_RS232_BRIDGE_ALT
+        || uart == WITH_RS232_BRIDGE_ALT_UART
+#endif
+        ;
+    if (!supported) {
+#ifdef WITH_RS232_BRIDGE_ALT
+      sprintf(reply, "Error: UART must be %d or %d",
+              WITH_RS232_BRIDGE_UART, WITH_RS232_BRIDGE_ALT_UART);
+#else
+      sprintf(reply, "Error: UART is fixed at %d", WITH_RS232_BRIDGE_UART);
+#endif
+    }
+#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
+    else if (uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART
+             && _prefs->gps_enabled && _prefs->bridge_enabled) {
+      strcpy(reply, "Error: turn GPS or the bridge off first");
+    }
+#endif
+    else {
+      _prefs->bridge_uart = (uint8_t)uart;
+      _callbacks->restartBridge();
+      savePrefs();
+      strcpy(reply, "OK");
     }
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
@@ -4453,6 +4541,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #ifdef WITH_RS232_BRIDGE
   } else if (memcmp(config, "bridge.baud", 11) == 0) {
     sprintf(reply, "> %d", (uint32_t)_prefs->bridge_baud);
+  } else if (memcmp(config, "bridge.uart", 11) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->bridge_uart);
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
   } else if (memcmp(config, "bridge.channel", 14) == 0) {

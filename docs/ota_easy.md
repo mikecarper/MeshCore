@@ -90,8 +90,9 @@ environmental sensors while retaining board-native features such as displays, bu
 and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
 retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers add 4,808
 bytes over the otherwise reduced image. The RAK3401 OTA repeater retains RAK12501 support in sensor slot A;
-slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS except for
-its Serial1 RS232 bridge, which uses the same UART. Selected nRF52 boards with matched external
+slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS and defaults
+its runtime RS-232 bridge to Serial2; Serial1 and GPS use the same UART and must not be enabled together.
+Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
@@ -156,6 +157,10 @@ An nRF52 `companion_radio_full` starts in USB Binary mode. Use
 `+++MESHCORE-TERM-STOP`. When `motatool serve --serial` opens the port, its
 automatic `ota folder on` command selects exclusive mOTA mode; stopping the
 tool or disconnecting resets USB to Binary. BLE remains available throughout.
+Protocol v14 can instead take the catalog from a paired phone or Linux host
+over a separate encrypted BLE mOTA service while Binary Companion remains
+active. USB and BLE catalog sources are mutually exclusive. See the
+[Full Companion Bluetooth source guide](./companion_radio_full.md#nrf52-bluetooth-mota-source).
 
 For an ESP32 WiFi companion or FULL ESP32 source with active WiFi, use its dedicated OTA seeder:
 
@@ -355,6 +360,16 @@ motatool serve --dir ./motas --serial /dev/ttyACM0 -v
 Replace `/dev/ttyACM0` with the USB serial device of the source companion selected above.
 `motatool` attaches the folder to the source, which advertises the update over LoRa while its temporary-radio
 window is active. KISS modem serial ports cannot be used here.
+
+For an nRF52 Full Companion and a Bluetooth-capable host, the equivalent
+cable-free source is:
+
+```bash
+python3 tools/ble_mota/ble_mota_seeder.py \
+  --device MeshCore-MyCompanion \
+  --dir ./motas \
+  --local 'tempradio 909.950,250,5,5,120'
+```
 
 Leave this command running until the destination finishes downloading.
 

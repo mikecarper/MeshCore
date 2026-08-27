@@ -854,6 +854,9 @@ public:
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
+  if (_display != NULL) {
+    _display->setRotationDegrees(node_prefs->display_rotation_degrees);
+  }
   _auto_off = millis() + AUTO_OFF_MILLIS;
 
 #if defined(PIN_USER_BTN)

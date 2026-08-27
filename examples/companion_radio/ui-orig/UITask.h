@@ -74,6 +74,12 @@ public:
   void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
 
   bool hasDisplay() const { return _display != NULL; }
+  bool supportsDisplayRotation() const override {
+    return _display != NULL && _display->supportsRotation();
+  }
+  bool setDisplayRotationDegrees(uint16_t degrees) override {
+    return _display != NULL && _display->setRotationDegrees(degrees);
+  }
   void clearMsgPreview();
 
   // from AbstractUITask

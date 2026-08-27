@@ -664,7 +664,7 @@ uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender
     memcpy(&reply_data[4], &now, 4);     // include our clock (for easy clock sync, and packet hash uniqueness)
     reply_data[8] = 0;  // features
 #ifdef WITH_RS232_BRIDGE
-    reply_data[8] |= 0x01;  // is bridge, type UART
+    if (_prefs.bridge_enabled) reply_data[8] |= 0x01;  // is bridge, type UART
 #elif WITH_ESPNOW_BRIDGE
     reply_data[8] |= 0x03;  // is bridge, type ESP-NOW
 #endif
@@ -3161,7 +3161,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 #if defined(WITH_MQTT_BRIDGE)
       , mqtt_bridge(nullptr)
 #elif defined(WITH_RS232_BRIDGE)
-      , bridge(&_prefs, WITH_RS232_BRIDGE, _mgr, &rtc)
+      , bridge(nullptr)
 #elif defined(WITH_ESPNOW_BRIDGE)
       , bridge(&_prefs, _mgr, &rtc)
 #endif
@@ -3335,11 +3335,21 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
                                &_prefs.rx_ps_sleep_us);
 
   // bridge defaults
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED) \
+    && !defined(RS232_BRIDGE_DEFAULT_ON)
+  _prefs.bridge_enabled = 0;    // normal repeater until explicitly enabled
+#else
   _prefs.bridge_enabled = 1;    // enabled
+#endif
   _prefs.bridge_delay   = 500;  // milliseconds
   _prefs.bridge_pkt_src = 1;    // logRx (RX packets)
   _prefs.bridge_baud = 115200;  // baud rate
   _prefs.bridge_channel = 1;    // channel 1
+#ifdef WITH_RS232_BRIDGE
+  _prefs.bridge_uart = WITH_RS232_BRIDGE_UART;
+#else
+  _prefs.bridge_uart = 0;
+#endif
 
   StrHelper::strncpy(_prefs.bridge_secret, "LVSITANOS", sizeof(_prefs.bridge_secret));
 
@@ -3470,6 +3480,11 @@ void MyMesh::begin(FILESYSTEM *fs) {
     node_info.repeat_when_nonzero = false;
     mqtt_bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
                                  getRTCClock(), &self_id);
+#endif
+#ifdef WITH_RS232_BRIDGE
+    if (!bridge) {
+      bridge = createRS232Bridge();
+    }
 #endif
     AbstractBridge* active_bridge = activeBridge();
     if (active_bridge) {

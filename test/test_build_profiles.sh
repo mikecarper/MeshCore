@@ -9,6 +9,9 @@ fail() {
   exit 1
 }
 
+[ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
+  || fail "logging matrix permits concurrent PlatformIO target builds"
+
 # Full targets are synthesized from an ordinary transport environment. Check
 # the resolved PlatformIO configuration so board-specific display, GPS, input,
 # and BLE constraints cannot silently disappear through that inheritance.
@@ -53,6 +56,45 @@ require(m8_usb, "lib_deps", "GxEPD2 @ 1.6.9")
 reject(m8_usb, "lib_deps", "GxEPD2 @ 1.6.2")
 
 require("ThinkNode_M5_companion_radio_wifi", "build_flags", "UI_RECENT_LIST_SIZE=9")
+require("ThinkNode_M5_companion_radio_full", "build_flags", "SERIAL_TX=43")
+require("ThinkNode_M2_companion_radio_full", "build_flags", "SERIAL_RX=44")
+require("Xiao_S3_WIO_companion_radio_full", "build_flags", "SERIAL_TX=D6")
+require("ThinkNode_M7_companion_radio_full", "build_flags", "ETHERNET_USE_CH390")
+require("ThinkNode_M7_companion_radio_full", "build_src_filter", "helpers/ethernet/ch390")
+require("ThinkNode_M7_companion_radio_full", "lib_deps", "ESP32-CH390")
+require("RAK_4631_companion_radio_full", "build_flags", "ETHERNET_USE_RAK13800")
+require("RAK_4631_companion_radio_full", "build_src_filter", "helpers/ethernet/RAK13800")
+require("RAK_4631_companion_radio_full", "lib_deps", "RAK13800-W5100S")
+require("Heltec_E290_companion_usb_ble", "build_flags", "ENABLE_USB_INTERFACE")
+require("Heltec_E290_companion_usb_ble", "build_flags", "BLE_PIN_CODE=123456")
+require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTERFACE")
+require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
+
+for env_name in (
+    "Heltec_t114_without_display_repeater",
+    "Heltec_t114_repeater",
+    "Heltec_t114_repeater_lora_ota_no_external_sensors",
+    "RAK_3112_repeater",
+    "RAK_11310_repeater",
+    "ProMicro_repeater",
+    "waveshare_rp2040_lora_repeater",
+    "solarxiao_30S_repeater",
+    "solarxiao_33S_repeater",
+    "Heltec_v3_repeater",
+    "Heltec_WSL3_repeater",
+    "Heltec_t096_repeater",
+    "Heltec_t096_repeater_lora_ota_no_external_sensors",
+    "RAK_4631_repeater",
+    "RAK_4631_repeater_lora_ota_no_external_sensors",
+    "LilyGo_TLora_V2_1_1_6_repeater",
+):
+    require(env_name, "build_flags", "WITH_RS232_BRIDGE=")
+    require(env_name, "build_flags", "RS232_BRIDGE_MERGED=1")
+    require(env_name, "build_src_filter", "helpers/bridges/RS232Bridge.cpp")
+
+require("RAK_4631_repeater", "build_flags", "WITH_RS232_BRIDGE_ALT=Serial1")
+require("RAK_4631_repeater", "build_flags", "WITH_RS232_BRIDGE_UART=2")
+reject("wio-e5_repeater", "build_flags", "WITH_RS232_BRIDGE=")
 
 for env_name in (
     "t1000e_companion_radio_usb",
@@ -132,6 +174,63 @@ configure_effective_build_profile build-firmware >/dev/null
   || fail "non-repeater nRF52 target incorrectly scheduled OTA profile passes"
 [ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = 0 ] \
   || fail "non-repeater nRF52 target incorrectly scheduled two artifacts"
+
+# Ordinary USB-loggable roles compile their historical logging profile into
+# the canonical artifact. OTA receivers, KISS, and BLE keep their distinct
+# stream/partition contracts. A standard ESP32 artifact still embeds logging
+# when the same target also has an expanded FULL profile.
+PIO_ENV_PLATFORM_BY_NAME[wio-e5-mini_repeater]=STM32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_kiss_modem]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_companion_radio_ble]=NRF52_PLATFORM
+uses_merged_standard_usb_logging nrf_sensor \
+  || fail "ordinary nRF52 sensor omitted merged USB logging"
+uses_merged_standard_usb_logging wio-e5-mini_repeater \
+  || fail "size-constrained STM32 target omitted merged packet logging"
+if uses_merged_standard_usb_logging nrf_repeater_lora_ota_no_external_sensors; then
+  fail "LoRa OTA receiver incorrectly merged USB logging"
+fi
+if uses_merged_standard_usb_logging nrf_kiss_modem; then
+  fail "KISS target incorrectly merged plaintext USB logging"
+fi
+if uses_merged_standard_usb_logging nrf_companion_radio_ble; then
+  fail "BLE Companion incorrectly merged USB logging"
+fi
+uses_merged_standard_usb_logging esp_repeater \
+  || fail "standard ESP32 target omitted logging because FULL also exists"
+
+PLATFORMIO_BUILD_FLAGS=""
+MESHDEBUG_OVERRIDE=""
+PACKET_LOGGING_OVERRIDE=""
+DISABLE_DEBUG=0
+apply_merged_standard_usb_logging_profile nrf_sensor
+[[ "$PLATFORMIO_BUILD_FLAGS" == *-DMESH_PACKET_LOGGING=1* ]] \
+  || fail "merged profile omitted packet logging"
+[[ "$PLATFORMIO_BUILD_FLAGS" == *-DMESH_DEBUG=1* ]] \
+  || fail "merged profile omitted mesh diagnostics"
+PLATFORMIO_BUILD_FLAGS=""
+apply_merged_standard_usb_logging_profile wio-e5-mini_repeater
+[[ "$PLATFORMIO_BUILD_FLAGS" == *-DMESH_PACKET_LOGGING=1* ]] \
+  || fail "constrained merged profile omitted packet logging"
+[[ "$PLATFORMIO_BUILD_FLAGS" != *-DMESH_DEBUG=1* ]] \
+  || fail "constrained merged profile enabled oversized mesh diagnostics"
+if declare -f run_logging_matrix_build_targets \
+    | grep -q 'FIRMWARE_FILENAME_INFIX="logging"'; then
+  fail "logging matrix still emits a separate standard logging artifact"
+fi
+if declare -f get_firmware_filename | grep -q 'filename_infix="logging"'; then
+  fail "explicit packet logging still renames the ordinary artifact"
+fi
+FIRMWARE_FILENAME_INFIX=""
+ESP32_FULL_BUILD=0
+PACKET_LOGGING_OVERRIDE="on"
+MQTT_BRIDGE_OVERRIDE="off"
+[ "$(get_firmware_filename nrf_sensor vtest)" = "nrf_sensor-vtest" ] \
+  || fail "packet logging still creates a separately named artifact"
+PACKET_LOGGING_OVERRIDE=""
+MQTT_BRIDGE_OVERRIDE=""
+if declare -f run_logging_matrix_build_targets | grep -q 'Profile 2'; then
+  fail "logging matrix still labels a separate Profile 2"
+fi
 
 calls=()
 build_firmware() {
@@ -220,6 +319,7 @@ SUPPORTED_PIO_ENVS=(
   Station_G2_companion_radio_ble
   Station_G2_companion_radio_wifi
   Station_G2_companion_radio_full
+  Station_G2_terminal_chat
 )
 for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
   PIO_ENV_PLATFORM_BY_NAME[$env_name]=ESP32_PLATFORM
@@ -232,6 +332,87 @@ mapfile -t companion_release_targets < <(
   || fail "Station G2 release did not collapse transports to one Full Companion"
 [ "${companion_release_targets[0]}" = Station_G2_companion_radio_full ] \
   || fail "Station G2 release selected a non-Full Companion artifact"
+
+# Full Companion's text terminal also replaces a separate Terminal Chat image
+# in bulk builds. Cover direct ESP32/nRF52 names and the canonical Heltec names
+# whose hardware/revision suffixes differ from their Terminal Chat targets.
+PIO_ENV_PLATFORM_BY_NAME[RAK_3401_terminal_chat]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[RAK_3401_companion_radio_full]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_v4_terminal_chat]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_v4_2_v4_3_companion_radio_full_femon]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_v4_tft_terminal_chat]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_v4_tft_companion_radio_full_femon]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_tracker_v2_terminal_chat]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[heltec_tracker_v2_companion_radio_full_femon]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[PicoW_terminal_chat]=RP2040_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[PicoW_companion_radio_usb]=RP2040_PLATFORM
+PIO_ENV_BOARD_BY_NAME[PicoW_terminal_chat]=rpipicow
+PIO_ENV_BOARD_BY_NAME[PicoW_companion_radio_usb]=rpipicow
+
+[ "$(get_terminal_chat_full_companion_replacement RAK_3401_terminal_chat)" \
+    = RAK_3401_companion_radio_full ] \
+  || fail "nRF52 Terminal Chat did not map to Full Companion"
+[ "$(get_terminal_chat_full_companion_replacement heltec_v4_terminal_chat)" \
+    = heltec_v4_2_v4_3_companion_radio_full_femon ] \
+  || fail "Heltec V4 Terminal Chat did not map to its canonical Full Companion"
+[ "$(get_terminal_chat_full_companion_replacement heltec_v4_tft_terminal_chat)" \
+    = heltec_v4_tft_companion_radio_full_femon ] \
+  || fail "Heltec V4 TFT Terminal Chat did not map to Full Companion"
+[ "$(get_terminal_chat_full_companion_replacement heltec_tracker_v2_terminal_chat)" \
+    = heltec_tracker_v2_companion_radio_full_femon ] \
+  || fail "Heltec Tracker V2 Terminal Chat did not map to Full Companion"
+is_redundant_bulk_build_target Station_G2_terminal_chat \
+  || fail "ESP32 Terminal Chat remained in bulk builds beside Full Companion"
+is_redundant_bulk_build_target RAK_3401_terminal_chat \
+  || fail "nRF52 Terminal Chat remained in bulk builds beside Full Companion"
+[ "$(get_terminal_chat_companion_replacement PicoW_terminal_chat)" \
+    = PicoW_companion_radio_usb ] \
+  || fail "RP2040 Terminal Chat did not map to USB Companion"
+is_redundant_bulk_build_target PicoW_terminal_chat \
+  || fail "Terminal Chat remained beside its matching USB Companion"
+
+PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_ethernet]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_full]=NRF52_PLATFORM
+[ "$(get_nrf52_full_companion_replacement \
+    RAK_4631_companion_radio_ethernet)" = RAK_4631_companion_radio_full ] \
+  || fail "RAK4631 Ethernet Companion did not map to Full Companion"
+PIO_ENV_PLATFORM_BY_NAME[ThinkNode_M2_companion_radio_serial]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[ThinkNode_M2_companion_radio_full]=ESP32_PLATFORM
+[ "$(get_esp32_full_companion_replacement \
+    ThinkNode_M2_companion_radio_serial)" = ThinkNode_M2_companion_radio_full ] \
+  || fail "serial Companion did not map to Full Companion"
+
+[ "$(get_combined_usb_ble_companion_replacement \
+    Heltec_E290_companion_usb)" = Heltec_E290_companion_usb_ble ] \
+  || fail "E290 USB Companion did not map to USB+BLE Companion"
+[ "$(get_combined_usb_ble_companion_replacement \
+    Heltec_T190_companion_radio_ble_)" \
+    = Heltec_T190_companion_radio_usb_ble_ ] \
+  || fail "T190 BLE Companion did not map to USB+BLE Companion"
+
+if is_redundant_bulk_build_target RAK_4631_repeater_ethernet \
+    || is_redundant_bulk_build_target RAK_4631_room_server_ethernet; then
+  fail "RAK4631 repeater/room Ethernet artifact was incorrectly merged"
+fi
+
+[ "$(get_merged_rs232_repeater_replacement \
+    RAK_4631_repeater_bridge_rs232_serial1)" = RAK_4631_repeater ] \
+  || fail "RAK4631 Serial1 bridge did not map to merged repeater"
+[ "$(get_merged_rs232_repeater_replacement \
+    RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors)" \
+    = RAK_4631_repeater_lora_ota_no_external_sensors ] \
+  || fail "RAK4631 Serial2 OTA bridge did not map to merged repeater"
+[ "$(get_merged_rs232_repeater_replacement \
+    Heltec_t114_repeater_bridge_rs232)" = Heltec_t114_repeater ] \
+  || fail "T114 RS232 bridge did not map to merged repeater"
+[ "$(get_merged_rs232_repeater_replacement \
+    Heltec_t096_repeater_bridge_rs232)" = Heltec_t096_repeater ] \
+  || fail "T096 RS232 bridge did not map to merged repeater"
+is_redundant_bulk_build_target Heltec_v3_repeater_bridge_rs232 \
+  || fail "merged RS232 bridge remained in canonical bulk builds"
+if is_redundant_bulk_build_target wio-e5-repeater_bridge_rs232; then
+  fail "capacity-constrained Wio-E5 RS232 bridge was incorrectly merged"
+fi
 
 # A WiFi base's final -UENABLE_OTA must not win over the Full Companion's
 # source-only OTA overlay. That mismatch compiles out both the TCP terminal and

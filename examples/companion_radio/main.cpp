@@ -147,6 +147,116 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
    #endif
 );
 
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+#include <helpers/ota/MotaSourceSerial.h>
+#include <helpers/ota/OtaContext.h>
+
+class Nrf52BleMotaSourceControl : public mesh::companion::MotaSourceControl {
+public:
+  Nrf52BleMotaSourceControl()
+      : _source(bluetooth_interface.motaStream(),
+                mesh::ota::MotaStreamWritePolicy::NoFlush, 3000),
+        _packets_sent_at_start(0), _last_packets_sent(0) {}
+
+  bool start(char* reply, size_t reply_size) override {
+    if (!reply || reply_size == 0) return false;
+    if (!bluetooth_interface.isMotaChannelReady()) {
+      snprintf(reply, reply_size,
+               "ERR subscribe to the Bluetooth mOTA request characteristic first");
+      return false;
+    }
+
+    mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+    if (context.folder_active
+        && context.folderLink() != mesh::ota::OtaContext::FOLDER_LINK_BLE) {
+      snprintf(reply, reply_size, "ERR mOTA source already uses %s",
+               mesh::ota::OtaContext::folderLinkName(context.folderLink()));
+      return false;
+    }
+
+    _packets_sent_at_start = context.manager.packetsSent();
+    _last_packets_sent = 0;
+    bluetooth_interface.setMotaStreamActive(true);
+    if (!context.attach_folder_source(
+            &_source, mesh::ota::OtaContext::FOLDER_LINK_BLE, "ble",
+            reply, reply_size)) {
+      bluetooth_interface.setMotaStreamActive(false);
+      return false;
+    }
+
+    context.manager.announce();
+    mesh::usbLoggingPort().println("Bluetooth mOTA source attached");
+    return true;
+  }
+
+  bool stop(char* reply, size_t reply_size) override {
+    if (!reply || reply_size == 0) return false;
+    mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+    bluetooth_interface.setMotaStreamActive(false);
+    if (context.folder_active
+        && context.folderLink() == mesh::ota::OtaContext::FOLDER_LINK_BLE) {
+      context.detach_folder();
+      context.manager.announce();
+      mesh::usbLoggingPort().println("Bluetooth mOTA source detached");
+    }
+    _last_packets_sent = context.manager.packetsSent()
+        - _packets_sent_at_start;
+    snprintf(reply, reply_size, "OK Bluetooth mOTA source stopped");
+    return true;
+  }
+
+  mesh::companion::MotaSourceStatus status() const override {
+    const mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+    mesh::companion::MotaSourceStatus result;
+    result.channel_ready = bluetooth_interface.isMotaChannelReady();
+    result.attached = context.folder_active
+        && context.folderLink() == mesh::ota::OtaContext::FOLDER_LINK_BLE
+        && bluetooth_interface.isMotaStreamActive();
+    result.another_link_active = context.folder_active
+        && context.folderLink() != mesh::ota::OtaContext::FOLDER_LINK_BLE;
+    if (result.attached) {
+      context.folderSourceStats(result.offered, result.advertised);
+      result.packets_sent = context.manager.packetsSent()
+          - _packets_sent_at_start;
+    } else {
+      result.packets_sent = _last_packets_sent;
+    }
+    return result;
+  }
+
+  void loop() {
+    mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+    const bool owns_folder = context.folder_active
+        && context.folderLink() == mesh::ota::OtaContext::FOLDER_LINK_BLE;
+    if (!owns_folder) {
+      if (bluetooth_interface.isMotaStreamActive()) {
+        bluetooth_interface.setMotaStreamActive(false);
+      }
+      return;
+    }
+    if (bluetooth_interface.isMotaChannelReady()
+        && bluetooth_interface.isMotaStreamActive()) {
+      return;
+    }
+
+    bluetooth_interface.setMotaStreamActive(false);
+    context.detach_folder();
+    context.manager.announce();
+    _last_packets_sent = context.manager.packetsSent()
+        - _packets_sent_at_start;
+    mesh::usbLoggingPort().println(
+        "Bluetooth mOTA source disconnected and was detached");
+  }
+
+private:
+  mesh::ota::SerialMotaSource _source;
+  uint32_t _packets_sent_at_start;
+  uint32_t _last_packets_sent;
+};
+
+static Nrf52BleMotaSourceControl ble_mota_source_control;
+#endif
+
 /* END GLOBAL OBJECTS */
 
 #ifdef RECOVERABLE_EXTERNAL_RADIO
@@ -463,7 +573,7 @@ static void serviceUsbTerminal() {
   // logs. `set usb.logging off` remains available here and returns this TTY to
   // Binary Companion after its command reply, even on USB-UART bridges that
   // cannot detect a host disconnect.
-#if defined(COMPANION_RADIO_FULL)
+#if MESH_USB_LOGGING_AVAILABLE
   if (!mesh::hasDedicatedUsbLoggingPort()) {
     if (mesh::isUsbLoggingEnabled()) {
       if (!the_mesh.isTerminalMode()) {
@@ -522,7 +632,7 @@ static void serviceUsbTerminal() {
       Serial.print("\r\n");
       the_mesh.handleTerminalCommand(usb_terminal_line);
       clearUsbTerminalLine();
-#if defined(COMPANION_RADIO_FULL)
+#if MESH_USB_LOGGING_AVAILABLE
       if (usb_logging_terminal_mode
           && !mesh::isUsbLoggingEnabled()) {
         leaveUsbTerminalMode(true);
@@ -1188,6 +1298,10 @@ void setup() {
   #error "need to define filesystem"
 #endif
 
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  the_mesh.setMotaSourceControl(&ble_mota_source_control);
+#endif
+
   // nRF52 cannot decide whether to add its optional logging CDC interface
   // until the saved Companion preferences above are available. ESP32 already
   // fixed its descriptor from the early NVS mirror, so this is harmless there.
@@ -1279,7 +1393,7 @@ void setup() {
   usb_serial_interface.setConnectedCheck([]() { return (bool)Serial; });
 #endif
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
-#if defined(COMPANION_RADIO_FULL)
+#if MESH_USB_LOGGING_AVAILABLE
   if (!mesh::hasDedicatedUsbLoggingPort()
       && mesh::isUsbLoggingEnabled()) {
     // Apply a saved single-TTY logging preference before the dispatcher can
@@ -1344,6 +1458,9 @@ void loop() {
   serviceUsbTerminal();
 #endif
   interface_manager.loop();
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  ble_mota_source_control.loop();
+#endif
   sensors.loop();
 #ifdef DISPLAY_CLASS
   #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)

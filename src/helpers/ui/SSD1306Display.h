@@ -32,6 +32,8 @@ public:
   bool begin();
 
   bool isOn() override { return _isOn; }
+  bool supportsRotation() const override { return true; }
+  bool setRotationDegrees(uint16_t degrees) override;
   void turnOn() override;
   void turnOff() override;
   void clear() override;

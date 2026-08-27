@@ -46,7 +46,10 @@ RADIO_SF_OVERRIDE="$USA_CASCADIA_FALLBACK_SF"
 RADIO_CR_OVERRIDE="$USA_CASCADIA_FALLBACK_CR"
 FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-cascade}"
 BATCH_BUILD_MODE=0
-OPTION3_BUILD_WORKERS="${OPTION3_BUILD_WORKERS:-2}"
+# PlatformIO shares and cleans .pio/build across environments in this checkout.
+# Keep target-level builds strictly single-process; OPTION3_PIO_JOBS only
+# controls compiler parallelism inside that one PlatformIO process.
+OPTION3_BUILD_WORKERS=1
 OPTION3_PIO_JOBS="${OPTION3_PIO_JOBS:-8}"
 PROFILE_BUILD_WORKERS=1
 PIO_BUILD_JOBS_OVERRIDE=""
@@ -99,9 +102,9 @@ Commands:
   help|usage|-h|--help: Shows this message.
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
-  build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases remain available as explicit builds.
-  build-firmwares-logging-matrix: Build the canonical standard, logging, unified FULL ESP32 USB+WiFi, and FULL logging fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. Full Companion targets provide runtime USB logging through a dedicated port or an input-capable single-TTY terminal.
-  build-companion-firmwares-logging-matrix: Build canonical Companion targets in each applicable standard, MQTT, and expanded FULL profile. Full Companion replaces separate USB, BLE, WiFi, and USB-logging artifacts where an exact combined recipe exists.
+  build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases and Terminal Chat targets replaced by Full Companion remain available as explicit builds.
+  build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA receiver contracts do not gain plaintext USB logging.
+  build-companion-firmwares-logging-matrix: Build canonical Companion targets with merged runtime USB logging where the transport is safe, plus applicable MQTT and expanded FULL profiles. Full Companion replaces separate USB, BLE, WiFi, Terminal Chat, and USB-logging artifacts where an exact combined recipe exists.
   build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
@@ -187,8 +190,7 @@ Environment Variables:
   RESUME_BUILD_OUTPUT=1: Preserves out/ and skips targets whose expected output
                          artifacts already exist. Option 3 resumes by default.
   OUTPUT_DIR=path: Writes artifacts outside out/ (useful for isolated test builds).
-  OPTION3_BUILD_WORKERS=2: Concurrent targets per Option 3 profile pass.
-  OPTION3_PIO_JOBS=8: Compiler jobs assigned to each concurrent Option 3 target.
+  OPTION3_PIO_JOBS=8: Compiler jobs inside the single active PlatformIO process.
 
 Examples:
 Build without debug logging:
@@ -1780,16 +1782,6 @@ filter_out_kiss_modem_targets() {
   RESOLVED_BUILD_TARGETS=("${filtered_targets[@]}")
 }
 
-filter_out_bluetooth_targets() {
-  local target
-
-  for target in "$@"; do
-    if ! is_bluetooth_target "$target"; then
-      printf '%s\n' "$target"
-    fi
-  done
-}
-
 is_lora_ota_only_target() {
   local target_lc=${1,,}
   [[ "$target_lc" == *lora_ota* ]]
@@ -1813,16 +1805,6 @@ is_rak_i2c_voltage_monitor_ota_target() {
   esac
 }
 
-filter_out_lora_ota_only_targets() {
-  local target
-
-  for target in "$@"; do
-    if ! is_lora_ota_only_target "$target"; then
-      printf '%s\n' "$target"
-    fi
-  done
-}
-
 is_logging_size_constrained_target() {
   case "$1" in
     Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_companion_radio_usb|wio-e5-mini_repeater|wio-e5-mini_sensor)
@@ -1832,16 +1814,6 @@ is_logging_size_constrained_target() {
       return 1
       ;;
   esac
-}
-
-filter_out_logging_size_constrained_targets() {
-  local target
-
-  for target in "$@"; do
-    if ! is_logging_size_constrained_target "$target"; then
-      printf '%s\n' "$target"
-    fi
-  done
 }
 
 prompt_for_kiss_modem_build_policy() {
@@ -2203,6 +2175,51 @@ apply_debug_overrides() {
   esac
 }
 
+uses_merged_standard_usb_logging() {
+  local env_name=$1
+
+  # These profiles either own Serial for framed traffic, deliberately trade
+  # logging for OTA space, or provide their own logging contract. Keep those
+  # contracts unchanged.
+  if is_kiss_modem_target "$env_name" \
+      || is_bluetooth_target "$env_name" \
+      || is_lora_ota_only_target "$env_name" \
+      || is_mqtt_bridge_target "$env_name" \
+      || is_companion_radio_full_target "$env_name"; then
+    return 1
+  fi
+
+  case "${env_name,,}" in
+    *companion*|*comp_radio*|*repeater*|*repeatr*|*room_server*|*room_svr*|\
+    *sensor*|*terminal_chat*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+apply_merged_standard_usb_logging_profile() {
+  local env_name=$1
+
+  uses_merged_standard_usb_logging "$env_name" || return 0
+
+  # Explicit diagnostic overrides retain their documented meaning. Canonical
+  # builds otherwise compile packet/debug output into the ordinary artifact;
+  # get/set usb.logging controls the live Serial stream at runtime.
+  if [ "${DISABLE_DEBUG:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ "${PACKET_LOGGING_OVERRIDE,,}" != "off" ]; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_PACKET_LOGGING=1 -DMESH_USB_LOGGING_MERGED=1"
+  fi
+  if [ "${MESHDEBUG_OVERRIDE,,}" != "off" ] \
+      && ! is_logging_size_constrained_target "$env_name"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_DEBUG=1"
+  fi
+}
+
 disable_usb_logging_for_mqtt() {
   local env_name=$1
 
@@ -2554,6 +2571,8 @@ declare_build_capability_contract() {
       record_build_expectation "web.webconfig" "start webconfig"
     else
       record_build_expectation "companion.usb_mota_source" "ota folder on"
+      record_build_expectation "companion.ble_mota_source" \
+        "Bluetooth mOTA source"
     fi
   elif [ "$env_platform" = "ESP32_PLATFORM" ] \
       && is_esp32_companion_build "$env_name" \
@@ -2983,7 +3002,7 @@ apply_companion_radio_full_profile() {
     # preamble. CDC 1 is a write-only plaintext packet/debug logging stream;
     # BLE remains an independent Companion link.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
     if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
       append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
@@ -3299,16 +3318,9 @@ get_firmware_filename() {
   local firmware_version_string=$2
   local filename_infix=$FIRMWARE_FILENAME_INFIX
 
-  if [ -z "$filename_infix" ] \
-      && [ "${PACKET_LOGGING_OVERRIDE,,}" == "on" ] \
-      && [ "${MQTT_BRIDGE_OVERRIDE,,}" != "on" ] \
-      && ! is_mqtt_bridge_target "$env_name"; then
-    filename_infix="logging"
-  fi
-
-  # Make LoRa-OTA artifacts as obvious as logging artifacts without changing
-  # the PlatformIO environment name or the stable MOTA target identity. FULL
-  # artifacts retain their profile marker as well as the required OTA marker.
+  # Make LoRa-OTA artifacts obvious without changing the PlatformIO environment
+  # name or the stable MOTA target identity. FULL artifacts retain their
+  # profile marker as well as the required OTA marker.
   if [ "$ESP32_FULL_BUILD" = "1" ] && is_lora_ota_build "$env_name"; then
     if [ "$filename_infix" = "full-logging" ]; then
       filename_infix="full-logging-ota"
@@ -3489,6 +3501,7 @@ build_firmware() {
   apply_debug_overrides "$env_name"
   apply_mqtt_bridge_override
   disable_usb_logging_for_mqtt "$env_name"
+  apply_merged_standard_usb_logging_profile "$env_name"
   apply_lora_ota_override "$env_name"
   apply_logical_ota_tuning_flags "$env_name" "$pio_env_name"
   apply_companion_radio_full_profile "$env_name" "$pio_env_name"
@@ -3669,6 +3682,9 @@ get_nrf52_full_companion_replacement() {
     *companion_radio_ble*)
       full_env=${env_name/companion_radio_ble/companion_radio_full}
       ;;
+    *companion_radio_ethernet*)
+      full_env=${env_name/companion_radio_ethernet/companion_radio_full}
+      ;;
     *)
       return 1
       ;;
@@ -3686,7 +3702,8 @@ get_esp32_full_companion_replacement() {
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
   case "$env_name" in
     *companion_radio_wifi_mqtt*) return 1 ;;
-    *companion_radio_usb*|*companion_radio_ble*|*companion_radio_wifi*) ;;
+    *companion_radio_usb*|*companion_radio_ble*|*companion_radio_wifi*|\
+    *companion_radio_serial*|*companion_radio_ethernet*) ;;
     *) return 1 ;;
   esac
 
@@ -3718,6 +3735,12 @@ get_esp32_full_companion_replacement() {
         *companion_radio_wifi*)
           full_env=${source_env/companion_radio_wifi/companion_radio_full}
           ;;
+        *companion_radio_serial*)
+          full_env=${source_env/companion_radio_serial/companion_radio_full}
+          ;;
+        *companion_radio_ethernet*)
+          full_env=${source_env/companion_radio_ethernet/companion_radio_full}
+          ;;
         *)
           return 1
           ;;
@@ -3734,8 +3757,148 @@ get_full_companion_replacement() {
     || get_esp32_full_companion_replacement "$1"
 }
 
-is_companion_transport_replaced_by_full() {
-  get_full_companion_replacement "$1" >/dev/null
+get_terminal_chat_full_companion_replacement() {
+  local source_env=$1
+  local env_name=${source_env,,}
+  local full_env=""
+
+  case "${PIO_ENV_PLATFORM_BY_NAME[$source_env]:-}" in
+    ESP32_PLATFORM|NRF52_PLATFORM) ;;
+    *) return 1 ;;
+  esac
+
+  # Most Terminal Chat and Full Companion targets share an exact hardware
+  # prefix. These exceptions use the canonical runtime-configurable Full name
+  # instead of the older revision/FEM-specific spelling.
+  case "$env_name" in
+    heltec_v4_terminal_chat)
+      full_env=heltec_v4_2_v4_3_companion_radio_full_femon
+      ;;
+    heltec_v4_tft_terminal_chat)
+      full_env=heltec_v4_tft_companion_radio_full_femon
+      ;;
+    heltec_tracker_v2_terminal_chat)
+      full_env=heltec_tracker_v2_companion_radio_full_femon
+      ;;
+    *terminal_chat*)
+      full_env=${source_env/terminal_chat/companion_radio_full}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  is_companion_radio_full_target "$full_env" || return 1
+  printf '%s\n' "$full_env"
+}
+
+get_terminal_chat_usb_companion_replacement() {
+  local source_env=$1
+  local env_name=${source_env,,}
+  local usb_env=""
+
+  case "$env_name" in
+    generic_espnow_terminal_chat)
+      usb_env=Generic_ESPNOW_comp_radio_usb
+      ;;
+    *terminal_chat*)
+      usb_env=${source_env/terminal_chat/companion_radio_usb}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [ -n "${PIO_ENV_PLATFORM_BY_NAME[$usb_env]+x}" ] || return 1
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$usb_env]:-}" = "${PIO_ENV_PLATFORM_BY_NAME[$source_env]:-}" ] \
+    || return 1
+  [ "${PIO_ENV_BOARD_BY_NAME[$usb_env]:-}" = "${PIO_ENV_BOARD_BY_NAME[$source_env]:-}" ] \
+    || return 1
+  printf '%s\n' "$usb_env"
+}
+
+get_terminal_chat_companion_replacement() {
+  get_terminal_chat_full_companion_replacement "$1" 2>/dev/null \
+    || get_terminal_chat_usb_companion_replacement "$1"
+}
+
+get_combined_usb_ble_companion_replacement() {
+  case "${1,,}" in
+    heltec_e290_companion_ble|heltec_e290_companion_usb)
+      printf '%s\n' Heltec_E290_companion_usb_ble
+      ;;
+    heltec_t190_companion_radio_ble_|heltec_t190_companion_radio_usb_)
+      printf '%s\n' Heltec_T190_companion_radio_usb_ble_
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+get_merged_rs232_repeater_replacement() {
+  case "${1,,}" in
+    heltec_t096_repeater_bridge_rs232)
+      printf '%s\n' Heltec_t096_repeater
+      ;;
+    heltec_t096_repeater_bridge_rs232_lora_ota_no_external_sensors)
+      printf '%s\n' Heltec_t096_repeater_lora_ota_no_external_sensors
+      ;;
+    rak_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|\
+    rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors)
+      printf '%s\n' RAK_4631_repeater_lora_ota_no_external_sensors
+      ;;
+    rak_4631_repeater_bridge_rs232_serial1|\
+    rak_4631_repeater_bridge_rs232_serial2)
+      printf '%s\n' RAK_4631_repeater
+      ;;
+    promicro_repeater_bridge_rs232_serial1)
+      printf '%s\n' ProMicro_repeater
+      ;;
+    heltec_t114_without_display_repeater_bridge_rs232)
+      printf '%s\n' Heltec_t114_without_display_repeater
+      ;;
+    heltec_t114_repeater_bridge_rs232)
+      printf '%s\n' Heltec_t114_repeater
+      ;;
+    rak_3112_repeater_bridge_rs232)
+      printf '%s\n' RAK_3112_repeater
+      ;;
+    rak_11310_repeater_bridge_rs232)
+      printf '%s\n' RAK_11310_repeater
+      ;;
+    waveshare_rp2040_lora_repeater_bridge_rs232)
+      printf '%s\n' waveshare_rp2040_lora_repeater
+      ;;
+    solarxiao_30s_repeater_bridge_rs232)
+      printf '%s\n' solarxiao_30S_repeater
+      ;;
+    solarxiao_33s_repeater_bridge_rs232)
+      printf '%s\n' solarxiao_33S_repeater
+      ;;
+    heltec_v3_repeater_bridge_rs232)
+      printf '%s\n' Heltec_v3_repeater
+      ;;
+    heltec_wsl3_repeater_bridge_rs232)
+      printf '%s\n' Heltec_WSL3_repeater
+      ;;
+    lilygo_tlora_v2_1_1_6_repeater_bridge_rs232)
+      printf '%s\n' LilyGo_TLora_V2_1_1_6_repeater
+      ;;
+    *)
+      # Wio-E5 intentionally remains separate: its normal image has only 916
+      # bytes free, and the measured combined image exceeds its 240 KiB app
+      # partition by 2,192 bytes unless the normal USB/MQTT host CLI is removed.
+      return 1
+      ;;
+  esac
+}
+
+is_firmware_role_replaced_by_canonical_artifact() {
+  get_full_companion_replacement "$1" >/dev/null 2>&1 \
+    || get_terminal_chat_companion_replacement "$1" >/dev/null \
+    || get_combined_usb_ble_companion_replacement "$1" >/dev/null \
+    || get_merged_rs232_repeater_replacement "$1" >/dev/null
 }
 
 is_runtime_setting_alias_target() {
@@ -3745,16 +3908,22 @@ is_runtime_setting_alias_target() {
       || is_exact_companion_recipe_alias_target "$1"; then
     return 0
   fi
+  case "${1,,}" in
+    ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_full)
+      return 0
+      ;;
+  esac
   return 1
 }
 
 is_redundant_bulk_build_target() {
   # Keep every legacy name available to `build-firmware` and
   # `build-matching-firmwares`, but do not republish binaries that differ only
-  # by a saved/default setting or by an attached transport already supplied by
-  # a dual-CDC Full Companion.
+  # by a saved/default setting, or roles already supplied by Full Companion.
+  # Its text terminal supersedes standalone Terminal Chat on the same exact
+  # hardware, in addition to its combined attached transports.
   if is_runtime_setting_alias_target "$1" \
-      || is_companion_transport_replaced_by_full "$1"; then
+      || is_firmware_role_replaced_by_canonical_artifact "$1"; then
     return 0
   fi
   return 1
@@ -4158,7 +4327,9 @@ run_logged_build_targets() {
   local build_status=0
   local overall_status=0
   local preserved_log=0
-  local worker_limit=${PROFILE_BUILD_WORKERS:-1}
+  # Never overlap PlatformIO processes in this checkout: environments share
+  # .pio/build and can clean one another's objects.
+  local worker_limit=1
   local pio_job_limit=${OPTION3_PIO_JOBS:-8}
   local next_index=0
   local candidate_index
@@ -4501,10 +4672,6 @@ run_logging_matrix_build_targets() {
   local targets=("$@")
   local target
   local standard_targets=()
-  local logging_source_targets=()
-  local logging_targets=()
-  local filtered_logging_targets=()
-  local constrained_logging_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
@@ -4512,12 +4679,9 @@ run_logging_matrix_build_targets() {
   local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local original_esp32_full_build=$ESP32_FULL_BUILD
   local original_profile_build_workers=$PROFILE_BUILD_WORKERS
-  local bluetooth_skip_count=0
-  local lora_ota_only_skip_count=0
   local full_only_standard_skip_count=0
-  local full_companion_logging_skip_count=0
-  local full_profile_logging_skip_count=0
-  local logging_target_count=0
+  local merged_usb_logging_count=0
+  local constrained_merged_logging_count=0
   local build_status=0
   local pass_status=0
 
@@ -4527,27 +4691,35 @@ run_logging_matrix_build_targets() {
   fi
   LOGGING_MATRIX_FAILURES=()
   PROFILE_BUILD_WORKERS=$OPTION3_BUILD_WORKERS
-  echo "Option 3 parallelism: ${PROFILE_BUILD_WORKERS} target build(s), ${OPTION3_PIO_JOBS} PlatformIO job(s) per target."
+  echo "Option 3 PlatformIO policy: one target build at a time, ${OPTION3_PIO_JOBS} compiler job(s) inside that process."
 
   for target in "${targets[@]}"; do
     if is_mqtt_bridge_target "$target"; then
       continue
     fi
-    logging_source_targets+=("$target")
     if requires_esp32_full_cli_profile "$target"; then
       full_only_standard_skip_count=$((full_only_standard_skip_count + 1))
     else
       standard_targets+=("$target")
+      if uses_merged_standard_usb_logging "$target"; then
+        merged_usb_logging_count=$((merged_usb_logging_count + 1))
+        if is_logging_size_constrained_target "$target"; then
+          constrained_merged_logging_count=$((constrained_merged_logging_count + 1))
+        fi
+      fi
     fi
   done
 
-  echo "Profile 1/3: building ${#standard_targets[@]} standard target(s) with logging off and MQTT bridge off."
+  echo "Profile 1/2: building ${#standard_targets[@]} standard target(s); ${merged_usb_logging_count} embed runtime-controlled USB logging in the ordinary artifact."
+  if [ "$constrained_merged_logging_count" -gt 0 ]; then
+    echo "Keeping verbose MESH_DEBUG off for ${constrained_merged_logging_count} size-constrained STM32 target(s); packet logging remains available at runtime."
+  fi
   if [ "$full_only_standard_skip_count" -gt 0 ]; then
     echo "Deferring ${full_only_standard_skip_count} ESP32 ESP-NOW target(s) to their FULL logging fallback; its persistent USB gate also provides normal output-off operation."
   fi
   ESP32_FULL_BUILD=0
-  MESHDEBUG_OVERRIDE="off"
-  PACKET_LOGGING_OVERRIDE="off"
+  MESHDEBUG_OVERRIDE=""
+  PACKET_LOGGING_OVERRIDE=""
   MQTT_BRIDGE_OVERRIDE="off"
   FIRMWARE_FILENAME_INFIX=""
   if [ ${#standard_targets[@]} -gt 0 ]; then
@@ -4557,87 +4729,12 @@ run_logging_matrix_build_targets() {
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
-  mapfile -t logging_targets < <(filter_out_bluetooth_targets "${logging_source_targets[@]}")
-  bluetooth_skip_count=$((${#logging_source_targets[@]} - ${#logging_targets[@]}))
-
-  if [ "$bluetooth_skip_count" -gt 0 ]; then
-    echo "Skipping ${bluetooth_skip_count} Bluetooth target(s) for logging-on pass."
-  fi
-
-  lora_ota_only_skip_count=0
-  for target in "${logging_targets[@]}"; do
-    if is_lora_ota_only_target "$target"; then
-      lora_ota_only_skip_count=$((lora_ota_only_skip_count + 1))
-    fi
-  done
-  mapfile -t logging_targets < <(filter_out_lora_ota_only_targets "${logging_targets[@]}")
-
-  if [ "$lora_ota_only_skip_count" -gt 0 ]; then
-    echo "Skipping ${lora_ota_only_skip_count} LoRa-OTA-only target(s) for logging-on pass because logging disables LoRa OTA."
-  fi
-
-  filtered_logging_targets=()
-  for target in "${logging_targets[@]}"; do
-    if is_companion_radio_full_target "$target"; then
-      full_companion_logging_skip_count=$((full_companion_logging_skip_count + 1))
-    elif has_esp32_full_profile "$target"; then
-      full_profile_logging_skip_count=$((full_profile_logging_skip_count + 1))
-    else
-      filtered_logging_targets+=("$target")
-    fi
-  done
-  logging_targets=("${filtered_logging_targets[@]}")
-  if [ "$full_profile_logging_skip_count" -gt 0 ]; then
-    echo "Deferring ${full_profile_logging_skip_count} ESP32 target(s) to the unified FULL/fallback pass; their separate standard logging artifacts would be redundant."
-  fi
-  if [ "$full_companion_logging_skip_count" -gt 0 ]; then
-    echo "Skipping ${full_companion_logging_skip_count} Full Companion target(s) for the separate logging-on pass; each Full image provides persistent runtime logging through either a dedicated CDC port or its input-capable single-TTY terminal."
-  fi
-
-  for target in "${logging_targets[@]}"; do
-    if is_logging_size_constrained_target "$target"; then
-      constrained_logging_targets+=("$target")
-    fi
-  done
-  mapfile -t logging_targets < <(filter_out_logging_size_constrained_targets "${logging_targets[@]}")
-  logging_target_count=$((${#logging_targets[@]} + ${#constrained_logging_targets[@]}))
-
-  if [ "$logging_target_count" -gt 0 ]; then
-    echo "Profile 2/3: building ${logging_target_count} standard target(s) with logging on and MQTT bridge off."
-    echo "Logging-on artifacts use filename form: name-logging-version"
-  else
-    echo "No non-Bluetooth targets remain for logging-on pass."
-  fi
-
-  if [ ${#logging_targets[@]} -gt 0 ]; then
-    MESHDEBUG_OVERRIDE="on"
-    PACKET_LOGGING_OVERRIDE="on"
-    MQTT_BRIDGE_OVERRIDE="off"
-    FIRMWARE_FILENAME_INFIX="logging"
-    run_logged_build_targets "${logging_targets[@]}"
-    pass_status=$?
-    if [ "$pass_status" -eq 130 ]; then return 130; fi
-    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
-  fi
-
-  if [ ${#constrained_logging_targets[@]} -gt 0 ]; then
-    echo "Building ${#constrained_logging_targets[@]} size-constrained STM32 target(s) with packet logging on and MESH_DEBUG off to fit flash."
-    MESHDEBUG_OVERRIDE="off"
-    PACKET_LOGGING_OVERRIDE="on"
-    MQTT_BRIDGE_OVERRIDE="off"
-    FIRMWARE_FILENAME_INFIX="logging"
-    run_logged_build_targets "${constrained_logging_targets[@]}"
-    pass_status=$?
-    if [ "$pass_status" -eq 130 ]; then return 130; fi
-    if [ "$pass_status" -ne 0 ]; then build_status=1; fi
-  fi
-
-  run_full_esp32_profile "Profile 3/3 unified FULL" "unified" "${targets[@]}"
+  run_full_esp32_profile "FULL unified pass" "unified" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-  run_full_esp32_profile "Profile 3/3 logging fallback" "fallback" "${targets[@]}"
+  run_full_esp32_profile "FULL logging fallback pass" "fallback" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
@@ -4863,7 +4960,7 @@ main() {
       echo "Skipping separate debug and MQTT prompts; FULL everything enables USB logging and WiFi MQTT where the hardware supports it."
     elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
-        echo "Skipping debug and MQTT prompts; this action builds standard, logging, and unified FULL profiles automatically."
+        echo "Skipping debug and MQTT prompts; this action builds standard artifacts with merged runtime USB logging and unified FULL profiles automatically."
       elif is_full_esp32_logging_command "${SELECTED_COMMAND_ARGS[0]}"; then
         echo "Skipping debug and MQTT prompts; this action builds only logging fallbacks for FULL targets without WiFi MQTT."
       else

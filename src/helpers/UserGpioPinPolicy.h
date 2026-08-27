@@ -251,6 +251,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef WITH_RS232_BRIDGE_TX
     WITH_RS232_BRIDGE_TX,
 #endif
+#ifdef WITH_RS232_BRIDGE_ALT_RX
+    WITH_RS232_BRIDGE_ALT_RX,
+#endif
+#ifdef WITH_RS232_BRIDGE_ALT_TX
+    WITH_RS232_BRIDGE_ALT_TX,
+#endif
 #ifdef PIN_SERIAL_RX
     PIN_SERIAL_RX,
 #endif

@@ -1396,6 +1396,24 @@ static bool gated_capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool
   capture->items.emplace_back(msg, msg + len);
   return true;
 }
+
+TEST(OtaMetrics, CountsOnlyPacketsAcceptedByTheRadioAdapter) {
+  OtaManager manager;
+  GatedCapture sent;
+  manager.begin(0, gated_capture_send, &sent);
+
+  EXPECT_EQ(manager.packetsSent(), 0u);
+  manager.announce();
+  EXPECT_EQ(manager.packetsSent(), 0u);
+  EXPECT_TRUE(sent.items.empty());
+
+  sent.accept = true;
+  manager.announce();
+  manager.announce();
+  EXPECT_EQ(manager.packetsSent(), 2u);
+  EXPECT_EQ(sent.items.size(), 2u);
+}
+
 // Drive the bus to quiescence: deliver queued messages; when idle, advance the client's clock (monotonic
 // across calls, so a jittered query scheduled in a prior pump still comes due) and call loop() (fires the
 // scheduled catalog query / block re-requests). Two idle ticks in a row = quiescent.

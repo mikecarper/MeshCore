@@ -55,9 +55,9 @@ the GPS in sensor slot A. Slot D's reset/PPS lines conflict with the RAK13302
 radio's BUSY/DIO1 lines.
 
 The RAK4631 internal-flash OTA repeater likewise retains GPS. A RAK12501 can
-use sensor slot A or D; a RAK12500 can use slot A or C. The RAK4631 Serial1
-RS232 OTA bridge is the exception because the bridge owns the GPS UART. The
-Serial2 RS232 OTA bridge retains GPS on Serial1.
+use sensor slot A or D; a RAK12500 can use slot A or C. Its runtime RS-232
+bridge defaults to Serial2 so GPS can retain Serial1. If you explicitly select
+Serial1 with `set bridge.uart 1`, turn GPS off before enabling the bridge.
 
 Selected nRF52 repeaters with dedicated external QSPI can now stage the
 complete package off-chip, so their normal full-sensor repeater build can
@@ -394,14 +394,17 @@ remote area.
 
 1. Put the firmware files (`.mota` files - see below) in a folder on the computer.
 2. Install the helper tool once - the standalone `motatool` CLI (<https://github.com/vk496/motatool>) -
-   then point it at your node and the folder - over the node's **USB serial**, or over **WiFi** if it is
-   an ESP32 WiFi companion or FULL ESP32 node:
+   then point it at your node and the folder - over the node's **USB serial**, over **WiFi** if it is
+   an ESP32 WiFi companion or FULL ESP32 node, or over encrypted **Bluetooth** if it is an nRF52 Full Companion:
    ```
    git clone https://github.com/vk496/motatool && cargo install --path ./motatool
    # over USB serial:
    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
    # ...or over WiFi: the seeder is on dedicated TCP port 5001:
    motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v
+   # ...or over paired BLE to an nRF52 Full Companion (protocol v14):
+   python3 tools/ble_mota/ble_mota_seeder.py \
+     --device MeshCore-MyCompanion --dir ./my_firmware/
    ```
    It answers the node's requests; your node then advertises those updates to neighbours, who can
    `ota get` them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.

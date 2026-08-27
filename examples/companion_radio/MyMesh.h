@@ -6,7 +6,7 @@
 #include "CompanionFeatures.h"
 
 /*------------ Frame Protocol --------------*/
-#define FIRMWARE_VER_CODE 13
+#define FIRMWARE_VER_CODE 14
 
 #ifndef FIRMWARE_BUILD_DATE
 #define FIRMWARE_BUILD_DATE "14 Aug 2026"
@@ -40,6 +40,7 @@
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/BaseSerialInterface.h>
+#include <helpers/CompanionMotaControl.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/LogicalMessageCache.h>
 #include <helpers/SimpleMeshTables.h>
@@ -137,6 +138,9 @@ public:
   CompanionNodePrefs *getNodePrefs();
   uint32_t getBLEPin();
   int getOfflineQueueCapacity() const;
+  void setMotaSourceControl(mesh::companion::MotaSourceControl* control) {
+    _mota_source_control = control;
+  }
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   void serviceMQTT(const char* wifi_ssid, const char* wifi_password);
@@ -397,6 +401,7 @@ private:
   uint32_t pending_telemetry, pending_discovery;   // pending _TELEMETRY_REQ
   uint32_t pending_req;   // pending _BINARY_REQ
   BaseSerialInterface *_serial;
+  mesh::companion::MotaSourceControl* _mota_source_control;
   AbstractUITask* _ui;
 
   ContactsIterator _iter;
@@ -437,9 +442,9 @@ private:
   uint8_t command_radio_cr;
   uint8_t command_radio_repeat;
   unsigned long command_radio_apply_deadline;
-#if MESH_USB_LOGGING_AVAILABLE
-  unsigned long _usb_logging_reboot_at;
-#endif
+  // Deferred so USB/TCP terminals can transmit the acknowledgement before
+  // the transport disappears. Also used by USB interface changes.
+  unsigned long _scheduled_reboot_at;
 #if COMPANION_FEATURE_TEMP_RADIO
   unsigned long _temp_radio_set_at;
   unsigned long _temp_radio_revert_at;

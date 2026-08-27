@@ -57,6 +57,7 @@ struct CompanionNodePrefs {  // persisted to file
   uint8_t usb_logging_enabled;    // live USB packet/debug output
   char bluetooth_name[mesh::companion::BLUETOOTH_NAME_SIZE];
                                   // exact BLE name; empty uses BLE_NAME_PREFIX + node_name
+  uint16_t display_rotation_degrees; // 0=board default; otherwise 90/180/270
 
   // Keep the upstream repeat API while retaining the existing binary prefs
   // layout used by this branch.

@@ -107,6 +107,12 @@ public:
   int  getMsgCount() const { return _msgcount; }
   int getPreviewCount() const;
   bool hasDisplay() const { return _display != NULL; }
+  bool supportsDisplayRotation() const override {
+    return _display != NULL && _display->supportsRotation();
+  }
+  bool setDisplayRotationDegrees(uint16_t degrees) override {
+    return _display != NULL && _display->setRotationDegrees(degrees);
+  }
   bool isButtonPressed() const;
 
   bool isBuzzerQuiet() { 

@@ -1386,7 +1386,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
       _clock_sync(radio, _clock_sync_millis, rtc, _clock_sync_acl, sensors,
                   _prefs.airtime_factor),
 #endif
-      _serial(NULL), telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
+      _serial(NULL), _mota_source_control(NULL),
+      telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
   _iter_started = false;
   _cli_rescue = false;
 #ifdef ENABLE_USB_INTERFACE
@@ -1412,9 +1413,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   command_radio_cr = 0;
   command_radio_repeat = 0;
   command_radio_apply_deadline = 0;
-#if MESH_USB_LOGGING_AVAILABLE
-  _usb_logging_reboot_at = 0;
-#endif
+  _scheduled_reboot_at = 0;
 #if COMPANION_FEATURE_TEMP_RADIO
   _temp_radio_set_at = 0;
   _temp_radio_revert_at = 0;
@@ -1477,10 +1476,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.powersaving_policy_version = 0;
   _prefs.wifi_enabled = 1;
   memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
-#if defined(COMPANION_RADIO_FULL)
-  // Keep Full Companion's primary stream exclusively framed on a fresh
-  // install. Dual-CDC builds can add a diagnostics port; single-TTY builds
-  // switch the primary stream into the text terminal before emitting logs.
+  _prefs.display_rotation_degrees = 0;
+#if defined(ENABLE_USB_INTERFACE)
+  // Keep a USB Companion's primary stream exclusively framed on a fresh
+  // install. Full dual-CDC builds can add a diagnostics port; single-TTY
+  // builds switch the primary stream into the text terminal before logs.
   _prefs.usb_logging_enabled = 0;
 #else
   _prefs.usb_logging_enabled = 1;
@@ -1567,6 +1567,14 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   if (bluetooth_name_repaired) {
     memset(_prefs.bluetooth_name, 0, sizeof(_prefs.bluetooth_name));
   }
+  const bool display_rotation_repaired =
+      _prefs.display_rotation_degrees != 0
+      && _prefs.display_rotation_degrees != 90
+      && _prefs.display_rotation_degrees != 180
+      && _prefs.display_rotation_degrees != 270;
+  if (display_rotation_repaired) {
+    _prefs.display_rotation_degrees = 0;
+  }
 
   // sanitise bad pref values
   _prefs.rx_delay_base = constrain(_prefs.rx_delay_base, 0, 20.0f);
@@ -1601,7 +1609,8 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
-  if (power_saving_default_migrated || bluetooth_name_repaired) {
+  if (power_saving_default_migrated || bluetooth_name_repaired
+      || display_rotation_repaired) {
     _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
   }
 #if MESH_USB_LOGGING_AVAILABLE
@@ -1864,6 +1873,57 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
 
+  if (strcmp(command, "get display.rotation") == 0) {
+    if (_ui == NULL || !_ui->supportsDisplayRotation()) {
+      snprintf(reply, reply_size, "Error: display rotation is unsupported");
+    } else if (_prefs.display_rotation_degrees == 0) {
+      snprintf(reply, reply_size, "display.rotation default");
+    } else {
+      snprintf(reply, reply_size, "display.rotation %u",
+               (unsigned)_prefs.display_rotation_degrees);
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set display.rotation", 20) == 0
+      && (command[20] == 0 || command[20] == ' '
+          || command[20] == '\t')) {
+    const char* value = command + 20;
+    while (*value == ' ' || *value == '\t') value++;
+    char* end = NULL;
+    const unsigned long degrees = strtoul(value, &end, 10);
+    while (end != NULL && (*end == ' ' || *end == '\t')) end++;
+    const bool valid = value[0] != 0 && end != NULL && *end == 0
+        && (degrees == 0 || degrees == 90 || degrees == 180
+            || degrees == 270);
+    if (!valid) {
+      snprintf(reply, reply_size,
+               "Error: use set display.rotation <0|90|180|270>");
+    } else if (_ui == NULL || !_ui->supportsDisplayRotation()) {
+      snprintf(reply, reply_size, "Error: display rotation is unsupported");
+    } else {
+      const uint16_t previous = _prefs.display_rotation_degrees;
+      if (!_ui->setDisplayRotationDegrees((uint16_t)degrees)) {
+        snprintf(reply, reply_size, "Error: display rotation failed");
+      } else {
+        _prefs.display_rotation_degrees = (uint16_t)degrees;
+        if (!savePrefs()) {
+          _prefs.display_rotation_degrees = previous;
+          _ui->setDisplayRotationDegrees(previous);
+          snprintf(reply, reply_size,
+                   "Error: display rotation changed but save failed");
+        } else if (degrees == 0) {
+          snprintf(reply, reply_size,
+                   "OK - display rotation reset to board default");
+        } else {
+          snprintf(reply, reply_size, "OK - display rotation %lu",
+                   degrees);
+        }
+      }
+    }
+    return true;
+  }
+
   if (strcmp(command, "get bluetooth.name") == 0
       || strcmp(command, "get ble.name") == 0) {
     formatBluetoothNameStatus(reply, reply_size);
@@ -2074,11 +2134,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 
   if (strncmp(command, "tempradio ", 10) == 0) {
     float freq = 0.0f, bw = 0.0f;
-    int sf = 0, cr = 0;
-    unsigned long timeout_mins = 0;
-    char extra = 0;
-    if (sscanf(command + 10, "%f,%f,%d,%d,%lu%c",
-               &freq, &bw, &sf, &cr, &timeout_mins, &extra) != 5
+    uint8_t sf = 0, cr = 0;
+    uint32_t timeout_mins = 0;
+    if (!mesh::cli::parseTemporaryRadioTupleStrict(
+            command + 10, freq, bw, sf, cr, timeout_mins)
         || !isfinite(freq) || !isfinite(bw)
         || freq < 150.0f || freq > 2500.0f
         || !isFullCompanionBandwidth(bw)
@@ -2088,8 +2147,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                "ERR usage: tempradio freq,bw,sf,cr,minutes (minutes 1-10080)");
       return true;
     }
-    scheduleTempRadio(freq, bw, (uint8_t)sf, (uint8_t)cr,
-                      (uint32_t)timeout_mins, reply, reply_size);
+    scheduleTempRadio(freq, bw, sf, cr, timeout_mins, reply, reply_size);
     return true;
   }
 
@@ -2448,17 +2506,16 @@ void MyMesh::execCommand(char* cmd, char* reply) {
   }
   if (strcmp(key, "radio") == 0) {
     float freq, bw;
-    int sf, cr;
-    char extra;
-    if (sscanf(value, "%f,%f,%d,%d%c", &freq, &bw, &sf, &cr, &extra) != 4
+    uint8_t sf, cr;
+    if (!mesh::cli::parseRadioTupleStrict(value, freq, bw, sf, cr)
         || !isfinite(freq) || !isfinite(bw) || freq < 150.0f || freq > 2500.0f
         || bw < 7.0f || bw > 500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8) {
       strcpy(reply, "Error: radio must be freq,bw,sf,cr");
     } else {
       _prefs.freq = freq;
       _prefs.bw = bw;
-      _prefs.sf = static_cast<uint8_t>(sf);
-      _prefs.cr = static_cast<uint8_t>(cr);
+      _prefs.sf = sf;
+      _prefs.cr = cr;
       recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                    _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                    &_prefs.rx_ps_sleep_us);
@@ -3825,6 +3882,85 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeOKFrame();
       }
     }
+  } else if (cmd_frame[0]
+             == mesh::companion::CMD_EXEC_LOCAL_OTA_CONTROL) {
+#if defined(COMPANION_RADIO_FULL)
+    const size_t command_len = len - 1;
+    if (!mesh::companion::isBleOtaControlCommandAllowed(
+            &cmd_frame[1], command_len)) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      char command[MAX_FRAME_SIZE] = {0};
+      memcpy(command, &cmd_frame[1], command_len);
+      char reply[MAX_FRAME_SIZE] = {0};
+      if (!handleLocalControlCommand(command, reply, sizeof(reply))) {
+        writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+      } else {
+        out_frame[0] = RESP_CODE_OK;
+        const size_t reply_len = strnlen(reply, MAX_FRAME_SIZE - 2);
+        out_frame[1] = static_cast<uint8_t>(reply_len);
+        memcpy(&out_frame[2], reply, reply_len);
+        _serial->writeFrame(out_frame, 2 + reply_len);
+      }
+    }
+#else
+    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+#endif
+  } else if (cmd_frame[0] == mesh::companion::CMD_BLE_MOTA_SOURCE) {
+#if defined(COMPANION_RADIO_FULL)
+    if (len != 2) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (_mota_source_control == NULL) {
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+    } else {
+      const mesh::companion::MotaSourceAction action =
+          static_cast<mesh::companion::MotaSourceAction>(cmd_frame[1]);
+      char control_reply[96] = {0};
+      bool action_ok = true;
+      if (action == mesh::companion::MotaSourceAction::Start) {
+        action_ok = _mota_source_control->start(control_reply,
+                                                sizeof(control_reply));
+      } else if (action == mesh::companion::MotaSourceAction::Stop) {
+        action_ok = _mota_source_control->stop(control_reply,
+                                               sizeof(control_reply));
+      } else if (action != mesh::companion::MotaSourceAction::Status) {
+        writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+        return;
+      }
+
+      if (!action_ok) {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+      } else {
+        const mesh::companion::MotaSourceStatus status =
+            _mota_source_control->status();
+        uint8_t flags = 0;
+        if (status.channel_ready) {
+          flags |= mesh::companion::MOTA_SOURCE_FLAG_CHANNEL_READY;
+        }
+        if (status.attached) {
+          flags |= mesh::companion::MOTA_SOURCE_FLAG_ATTACHED;
+        }
+        if (status.another_link_active) {
+          flags |=
+              mesh::companion::MOTA_SOURCE_FLAG_ANOTHER_LINK_ACTIVE;
+        }
+        out_frame[0] = RESP_CODE_OK;
+        out_frame[1] = cmd_frame[1];
+        out_frame[2] = flags;
+        out_frame[3] = static_cast<uint8_t>(status.offered & 0xFF);
+        out_frame[4] = static_cast<uint8_t>(status.offered >> 8);
+        out_frame[5] = static_cast<uint8_t>(status.advertised & 0xFF);
+        out_frame[6] = static_cast<uint8_t>(status.advertised >> 8);
+        out_frame[7] = static_cast<uint8_t>(status.packets_sent & 0xFF);
+        out_frame[8] = static_cast<uint8_t>((status.packets_sent >> 8) & 0xFF);
+        out_frame[9] = static_cast<uint8_t>((status.packets_sent >> 16) & 0xFF);
+        out_frame[10] = static_cast<uint8_t>((status.packets_sent >> 24) & 0xFF);
+        _serial->writeFrame(out_frame, 11);
+      }
+    }
+#else
+    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+#endif
   } else if (cmd_frame[0] == CMD_GET_ADVERT_PATH && len >= PUB_KEY_SIZE+2) {
     // FUTURE use:  uint8_t reserved = cmd_frame[1];
     uint8_t *pub_key = &cmd_frame[2];
@@ -5313,7 +5449,7 @@ void MyMesh::handleTerminalCommand(char* command) {
             terminalOutput().printf(
                 "  OK - USB logging %s (saved); rebooting to change USB interfaces\r\n",
                 enabled ? "on" : "off");
-            _usb_logging_reboot_at = futureMillis(1000);
+            _scheduled_reboot_at = futureMillis(1000);
           } else {
             terminalOutput().printf(
                 "  OK - USB logging %s (saved); reboot required to change USB interfaces\r\n",
@@ -5413,11 +5549,16 @@ void MyMesh::handleTerminalCommand(char* command) {
     } else {
       terminalOutput().printf("  ERROR: unknown setting: %s\r\n", config);
     }
+  } else if (strcmp(command, "reboot") == 0) {
+    terminalOutput().print("  OK - rebooting in 1 second\r\n");
+    _scheduled_reboot_at = futureMillis(1000);
   } else if (strcmp(command, "ver") == 0) {
     terminalOutput().printf("Companion %s (protocol %u, build %s)\r\n",
                   FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE, FIRMWARE_BUILD_DATE);
   } else if (strcmp(command, "help") == 0) {
     terminalOutput().print("Commands:\r\n");
+    terminalOutput().print("  get display.rotation\r\n");
+    terminalOutput().print("  set display.rotation <0|90|180|270>\r\n");
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     terminalOutput().print("  get bluetooth.name\r\n");
     terminalOutput().print("  set bluetooth.name <name|default>\r\n");
@@ -5476,6 +5617,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  ota {status|ls|announce|folder|config|...}\r\n");
 #endif
 #endif
+    terminalOutput().print("  reboot\r\n");
     terminalOutput().print("  ver\r\n");
     if (_terminal_mode) {
       terminalOutput().print("  +++MESHCORE-TERM-STOP\r\n");
@@ -5700,14 +5842,12 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
-#if MESH_USB_LOGGING_AVAILABLE
-  if (_usb_logging_reboot_at != 0
-      && millisHasNowPassed(_usb_logging_reboot_at)) {
-    _usb_logging_reboot_at = 0;
+  if (_scheduled_reboot_at != 0
+      && millisHasNowPassed(_scheduled_reboot_at)) {
+    _scheduled_reboot_at = 0;
     board.reboot();
     return;
   }
-#endif
 #if COMPANION_FEATURE_TEMP_RADIO
   serviceTempRadio();
 #endif

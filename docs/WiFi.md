@@ -431,8 +431,8 @@ meaning can change when the service reorders or adds presets.
 
 | Build profile | WiFi/MQTT behavior |
 |---|---|
-| Standard | Uses the selected target's role. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile. |
-| Logging | Enables USB/debug packet logging and disables the MQTT bridge. CommonCLI roles persist `get/set usb.logging`; logging output itself is not a direct MQTT uplink. |
+| Standard | Uses the selected target's role. Where USB is a safe plaintext console, the same artifact embeds debug/packet logging behind persistent `get/set usb.logging`. Ordinary legacy-slot ESP32 repeater/room-server artifacts omit WebConfig when needed to fit. ESP32 MQTT observer and ESP-NOW bridge targets are automatically promoted to FULL; WiFi-companion targets keep their companion partition profile. |
+| Legacy logging | No separate artifact is emitted; USB logging is part of the ordinary image. Logging output itself is not a direct MQTT uplink. |
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. Non-companion ESP32 MQTT observers always use FULL expanded partitions. |
 | FULL ESP32 USB + WiFi | Uses the board's MQTT target with USB packet logging and direct WiFi MQTT together, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. `get/set logging.output off\|usb\|wifi\|both` persists the active paths. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
 | FULL ESP32 logging fallback | Uses the board's non-MQTT target only when no matching WiFi MQTT environment exists. It keeps debug and packet logging, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. Persistent `usb.logging off` also provides normal output-off operation, so ESP-NOW FULL roles need no second non-logging image. |
@@ -445,9 +445,9 @@ persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.
 
 The interactive Option 1 **FULL everything** choice and the standalone FULL
 command select the unified USB + WiFi image when a matching MQTT target exists;
-otherwise they select the logging fallback. The build matrix no longer emits a
-separate standard logging image or non-MQTT FULL twin for a role covered by the
-unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
+otherwise they select the logging fallback. The build matrix no longer emits
+any separate standard logging image, or a non-MQTT FULL twin for a role covered
+by the unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
 up to 254 neighbors, and expanded dual-OTA partitions. Target-specific
 internal-DRAM limits still apply.
 

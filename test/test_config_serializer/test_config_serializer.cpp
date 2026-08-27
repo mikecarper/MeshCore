@@ -217,6 +217,7 @@ TEST(NodePrefs, FemGainSettingsRoundTrip) {
     saved.radio_fem_rxgain = 0;
     saved.radio_fem_txgain = 1;
     saved.usb_logging_enabled = 0;
+    saved.bridge_uart = 2;
 
     MockPrintStream output;
     ASSERT_TRUE(saved.saveSerial(output));
@@ -225,17 +226,20 @@ TEST(NodePrefs, FemGainSettingsRoundTrip) {
     EXPECT_NE(std::string::npos, serialised.find("fem_rxgain:0"));
     EXPECT_NE(std::string::npos, serialised.find("fem_txgain:1"));
     EXPECT_NE(std::string::npos, serialised.find("usb_log:0"));
+    EXPECT_NE(std::string::npos, serialised.find("uart:2"));
 
     MockInputStream input(serialised.c_str());
     NodePrefs loaded;
     loaded.radio_fem_rxgain = 1;
     loaded.radio_fem_txgain = 0;
     loaded.usb_logging_enabled = 1;
+    loaded.bridge_uart = 1;
 
     ASSERT_TRUE(loaded.loadSerial(input));
     EXPECT_EQ(0, loaded.radio_fem_rxgain);
     EXPECT_EQ(1, loaded.radio_fem_txgain);
     EXPECT_EQ(0, loaded.usb_logging_enabled);
+    EXPECT_EQ(2, loaded.bridge_uart);
 }
 
 

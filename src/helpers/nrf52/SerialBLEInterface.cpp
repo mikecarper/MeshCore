@@ -40,6 +40,9 @@ void SerialBLEInterface::onConnect(uint16_t connection_handle) {
     instance->_isDeviceConnected = false;
     instance->_security_timer.start(millis());
     instance->clearBuffers();
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+    instance->setMotaStreamActive(false);
+#endif
   }
 }
 
@@ -52,9 +55,45 @@ void SerialBLEInterface::onDisconnect(uint16_t connection_handle, uint8_t reason
       instance->_isDeviceConnected = false;
       instance->_security_timer.cancel();
       instance->clearBuffers();
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+      instance->setMotaStreamActive(false);
+#endif
     }
   }
 }
+
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+void SerialBLEInterface::onMotaResponse(
+    uint16_t conn_handle, BLECharacteristic* characteristic,
+    uint8_t* data, uint16_t length) {
+  if (!instance || characteristic != &instance->_mota_response
+      || instance->_conn_handle != conn_handle || !instance->isConnected()
+      || !instance->_mota_stream.isActive()) {
+    return;
+  }
+
+  if (length == 0 || length > mesh::ota::BLE_MOTA_RESPONSE_MAX
+      || !instance->_mota_stream.pushRx(data, length)) {
+    // A response that cannot fit intact would make the byte stream ambiguous.
+    // Disable the link so the current transaction times out and the main loop
+    // detaches it instead of consuming a partial or injected frame.
+    instance->setMotaStreamActive(false);
+  }
+}
+
+size_t SerialBLEInterface::sendMotaRequest(void* context,
+                                           const uint8_t* data,
+                                           size_t length) {
+  SerialBLEInterface* self = static_cast<SerialBLEInterface*>(context);
+  if (!self || !data || length == 0
+      || length > mesh::ota::BLE_MOTA_REQUEST_MAX
+      || !self->isMotaChannelReady() || !self->_mota_stream.isActive()) {
+    return 0;
+  }
+  return self->_mota_request.notify(self->_conn_handle, data, length)
+             ? length : 0;
+}
+#endif
 
 void SerialBLEInterface::onSecured(uint16_t connection_handle) {
   BLE_DEBUG_PRINTLN("SerialBLEInterface: onSecured handle=0x%04X", connection_handle);
@@ -272,6 +311,38 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name, uint32_t pi
   bleuart.begin();
   bleuart.setRxCallback(onBleUartRX);
 
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  _mota_stream.setSender(sendMotaRequest, this);
+  _mota_stream.setActive(false);
+
+  _mota_service.setPermission(SECMODE_ENC_WITH_MITM,
+                              SECMODE_ENC_WITH_MITM);
+  if (_mota_service.begin() != ERROR_NONE) {
+    BLE_DEBUG_PRINTLN("Bluetooth mOTA service begin failed");
+    return false;
+  }
+
+  _mota_request.setProperties(CHR_PROPS_NOTIFY);
+  _mota_request.setPermission(SECMODE_ENC_WITH_MITM,
+                              SECMODE_NO_ACCESS);
+  _mota_request.setMaxLen(mesh::ota::BLE_MOTA_REQUEST_MAX);
+  _mota_request.setUserDescriptor("mOTA device request");
+  if (_mota_request.begin() != ERROR_NONE) {
+    BLE_DEBUG_PRINTLN("Bluetooth mOTA request characteristic begin failed");
+    return false;
+  }
+
+  _mota_response.setProperties(CHR_PROPS_WRITE);
+  _mota_response.setPermission(SECMODE_NO_ACCESS,
+                               SECMODE_ENC_WITH_MITM);
+  _mota_response.setMaxLen(mesh::ota::BLE_MOTA_RESPONSE_MAX);
+  _mota_response.setUserDescriptor("mOTA host response");
+  _mota_response.setWriteCallback(onMotaResponse);
+  if (_mota_response.begin() != ERROR_NONE) {
+    BLE_DEBUG_PRINTLN("Bluetooth mOTA response characteristic begin failed");
+    return false;
+  }
+#endif
 
 
   // Register DFU on the main BLE stack so paired clients can discover it
@@ -390,6 +461,9 @@ void SerialBLEInterface::recoverStalledTx(const char* cause) {
   _last_retry_attempt = 0;
   _tx_stall_watchdog.reset();
   bleuart.flush();
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  setMotaStreamActive(false);
+#endif
   _tx_disconnect_recovery.begin();
   serviceTxRecovery((uint32_t)millis());
 }
@@ -442,6 +516,9 @@ void SerialBLEInterface::disable() {
   disconnect();
   _security_timer.cancel();
   _last_health_check = 0;
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  setMotaStreamActive(false);
+#endif
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
@@ -609,6 +686,13 @@ bool SerialBLEInterface::isConnected() const {
   return !_tx_disconnect_recovery.pending() && _isDeviceConnected &&
          Bluefruit.connected() > 0;
 }
+
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+bool SerialBLEInterface::isMotaChannelReady() {
+  return isConnected() && _conn_handle != BLE_CONN_HANDLE_INVALID
+      && _mota_request.notifyEnabled(_conn_handle);
+}
+#endif
 
 bool SerialBLEInterface::isReadBusy() const {
   return (recv_queue_len > 0);

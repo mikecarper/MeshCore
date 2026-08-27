@@ -88,8 +88,11 @@ def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
 
     matrix = build.split("run_logging_matrix_build_targets()", 1)[1]
     matrix = matrix.split("run_build_targets()", 1)[0]
-    assert 'is_companion_radio_full_target "$target"' in matrix
-    assert "input-capable single-TTY terminal" in matrix
+    assert 'uses_merged_standard_usb_logging "$target"' in matrix
+    assert 'run_full_esp32_profile "FULL unified pass"' in matrix
+    assert 'run_full_esp32_profile "FULL logging fallback pass"' in matrix
+    assert "Single-TTY boards first switch CDC 0" in mqtt_gate
+    assert "input-capable terminal" in mqtt_gate
 
 
 def test_espnow_tx_power_matches_cli_callback_contract():
@@ -136,10 +139,14 @@ def test_flash_constrained_stm32_repeaters_pin_the_size_qualified_toolchain():
         root / "examples/simple_repeater/MyMesh.cpp"
     ).read_text(encoding="utf-8")
     assert "#if MESH_PACKET_LOGGING_COMPACT" in dispatcher
-    assert "Utils::printHex(logging_port, raw, len);" in dispatcher
+    assert 'line.printf("T");' in dispatcher
+    assert "line.hex(raw, len);" in dispatcher
+    assert "line.flush(usbLoggingPort(), false);" in dispatcher
     assert "!MESH_PACKET_LOGGING_COMPACT" in dispatcher
     assert "#if MESH_PACKET_LOGGING_COMPACT" in repeater
-    assert "mesh::Utils::printHex(logging_port, raw, len);" in repeater
+    assert 'line.printf("R");' in repeater
+    assert "line.hex(raw, len);" in repeater
+    assert "line.flush(mesh::usbLoggingPort(), false);" in repeater
 
 
 def test_usb_companion_profiles_enable_the_usb_transport():
@@ -186,7 +193,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     redundant = build.split("is_redundant_bulk_build_target()", 1)[1]
     redundant = redundant.split("resolve_logging_matrix_firmwares()", 1)[0]
     assert "is_runtime_setting_alias_target" in redundant
-    assert "is_companion_transport_replaced_by_full" in redundant
+    assert "is_firmware_role_replaced_by_canonical_artifact" in redundant
 
     logging_matrix = build.split("resolve_logging_matrix_firmwares()", 1)[1]
     logging_matrix = logging_matrix.split("resolve_companion_firmwares()", 1)[0]

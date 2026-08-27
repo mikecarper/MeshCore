@@ -133,8 +133,8 @@ matched external QSPI staging, so their ordinary full-sensor repeater is already
 redundant lean sibling is generated. Integrated GPS and other
 board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The RAK3401
 OTA repeater also retains RAK12501 GPS support; install that module in sensor slot A because slot D conflicts
-with the RAK13302 radio's BUSY/DIO1 lines. RAK4631 OTA repeaters retain GPS except for the Serial1 RS232
-bridge, whose bridge and GPS would contend for the same UART.
+with the RAK13302 radio's BUSY/DIO1 lines. RAK4631 OTA repeaters retain GPS and default the runtime RS-232
+bridge to UART 2; do not enable GPS and an explicitly selected UART 1 bridge at the same time.
 ESP32 siblings retain the compact browser WiFi updater and use the full
 254-entry neighbor table. RP2040 and STM32 targets are not offered because
 those platforms do not yet have a safe bootloader/apply path.
@@ -161,8 +161,9 @@ Option 3 in `build.sh` emits one `*-full-usb-wifi-ota-*` ESP32 artifact for each
 FULL-capable non-companion hardware/role that has a matching MQTT environment.
 It compiles USB packet logging and direct WiFi MQTT together. A
 `*-full-logging-ota-*` fallback is emitted only when there is no MQTT sibling;
-the old separate standard-logging and non-MQTT FULL twins are skipped for
-covered ESP32 roles. MQTT observers and ESP-NOW bridges are emitted only with
+ordinary non-OTA roles compile runtime USB logging into their canonical image,
+so separate standard-logging artifacts are not emitted. Non-MQTT FULL twins
+are also skipped for covered ESP32 roles. MQTT observers and ESP-NOW bridges are emitted only with
 expanded FULL partitions. Menu option 8, or `build-full-esp32-firmwares`,
 builds the unified profiles plus necessary fallbacks. Menu option 9, or
 `build-full-esp32-logging-firmwares`, builds only those fallbacks.
@@ -686,13 +687,15 @@ verify everything). The serve side (`OtaManager`) keeps a lightweight registry o
 resident "views": `view0` (its own firmware) and one on-demand view loaded from a source when a request
 targets an external mota. Every fetch message carries `manifest_id`, so dispatch is a registry lookup.
 
-The same host-folder link is also a **pull destination** (the reverse direction): `ota pull <mid8> folder`
+The USB/TCP host-folder link can also be a **pull destination** (the reverse direction): `ota pull <mid8> folder`
 fetches a `.mota` off the mesh and streams it onto the host as `<mid>.mota` via the seeder STORAGE ops
 (`OP_STAT/BEGIN/WRITE/SREAD/FIN`, see `MotaSeederProto.h`), using a `FolderMotaStore` as the fetch's
 `OtaStore` instead of RAM/flash. This captures an exact copy of a device's firmware - e.g. to build a delta
 against firmware you don't have. Resume is bookkeeping-free: `BEGIN` 0xFF-fills the file and, on reconnect
 after a link drop (the fetch PAUSES, holding progress on the host - no RAM/flash fallback), `STAT`+`SREAD`
 let the fetcher recompute and refill only the missing blocks.
+The phone-oriented BLE link is deliberately source-only and does not register
+a folder destination.
 
 ### 10.1 The `MotaSource` abstraction (`OtaSource.h`)
 
@@ -717,7 +720,8 @@ blocks) and streams payload blocks from the source on demand; proofs are generat
 ### 10.2 The `mota-seeder` transport (`MotaSeederProto.h`)
 
 A `MotaSource` is fed by a host that serves a folder over the device's **USB serial** (the same console the
-CLI uses - no extra hardware) or, on an ESP32 WiFi companion or FULL ESP32 role, over **WiFi (TCP)**. The
+CLI uses - no extra hardware), on an ESP32 WiFi companion or FULL ESP32 role over **WiFi (TCP)**, or on an
+nRF52 Full Companion over an encrypted **BLE GATT** service. The
 host is the
 standalone Rust tool [`motatool`](https://github.com/vk496/motatool) (`motatool serve --serial <port>` /
 `--tcp <host[:port]>`, which also builds + verifies + inspects `.mota`). The device only emits request frames *while
@@ -761,6 +765,10 @@ deployment runner temporarily uses `0.3` on managed relays.
 work**: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI and `mota-seeder`
 request/response transport. An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
 source connection: use its dedicated seeder port with `motatool serve --tcp <host>:5001`.
+An nRF52 Full Companion can instead pair with a phone or Linux host, subscribe
+to its mOTA request characteristic, and use protocol-v14
+`CMD_BLE_MOTA_SOURCE`. That BLE path is source-only; it does not expose the
+reverse `FolderMotaStore` capture operations.
 
 Device CLI: `ota folder on` (attach + announce), `ota folder` (list), `ota folder off`. Build flag
 `OTA_FOLDER_SERIAL` (default stream = console `Serial`; override `OTA_FOLDER_SERIAL_STREAM` + define
@@ -784,10 +792,14 @@ disappearing. Operators should split a large chain or use a higher-capacity/SD s
 resync framing above exists for the shared USB-UART (an unframed byte stream); it is harmless over a
 reliable stream and the **WiFi (TCP)** transport reuses it as-is - both ends just treat the socket as a
 byte stream (on-device, `SerialMotaSource` runs verbatim over an Arduino `Stream`-compatible `WiFiClient`;
-`motatool`'s `TcpTransport` mirrors its `SerialTransport`). A future framed link such as **BLE GATT** (an
-Android phone relaying a folder) could carry the same ops with no magic/checksum at all - a request
-characteristic write delivers `op + args`, the reply notifies `status + payload`. `motatool` reflects this
-split: a transport-free `SeederCore` (the catalog logic) under a swappable framing/transport layer.
+`motatool`'s `TcpTransport` mirrors its `SerialTransport`). The nRF52 Full
+Companion's **BLE GATT** path also reuses the exact frame and checksum. Device
+requests are notifications on a dedicated characteristic and host responses
+are ordered write-with-response fragments on a second characteristic. Keeping
+the same framing makes retries and corruption handling identical across USB,
+TCP, and GATT. The Linux reference implementation is
+`tools/ble_mota/ble_mota_seeder.py`; a phone app can implement the same
+transport-free catalog operations.
 
 ---
 

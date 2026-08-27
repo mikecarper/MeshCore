@@ -34,8 +34,8 @@
 
 namespace mesh {
 
-#if defined(COMPANION_RADIO_FULL)
-// Full Companion owns its primary USB stream for framed traffic until saved
+#if defined(ENABLE_USB_INTERFACE)
+// A USB Companion owns its primary stream for framed traffic until saved
 // preferences are loaded. Starting disabled prevents early boot diagnostics
 // from corrupting that stream before single-TTY builds can enter terminal mode.
 static std::atomic<bool> usb_logging_enabled{false};

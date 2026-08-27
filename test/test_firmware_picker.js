@@ -158,6 +158,31 @@ assert(catalog.rows.some(function (item) {
   return item.target === "RAK_4631_companion_radio_usb-logging";
 }));
 
+const rakSensor = profile("RAK_4631_sensor");
+assert.strictEqual(rakSensor.logging, "usb-runtime");
+assert.deepStrictEqual(rakSensor.loggingModes, ["none", "usb"]);
+
+const standardBesideFull = picker.applyMergedStandardUsbLoggingCapabilities([
+  Object.assign(picker.parseTargetProfile("Example_repeater"), {
+    hardware: "Example",
+    role: "repeater",
+    variant: "default",
+    feature: "standard",
+    logging: "none",
+    ota: "none",
+  }),
+  Object.assign(picker.parseTargetProfile("Example_repeater-full-logging-ota"), {
+    hardware: "Example",
+    role: "repeater",
+    variant: "default",
+    feature: "full",
+    logging: "usb",
+    ota: "lora-receiver",
+  }),
+]);
+assert.strictEqual(standardBesideFull[0].logging, "usb-runtime");
+assert.deepStrictEqual(standardBesideFull[0].loggingModes, ["none", "usb"]);
+
 const v4Full = profile("heltec_v4_2_v4_3_companion_radio_full_femon");
 assert.strictEqual(v4Full.logging, "usb-runtime");
 assert.deepStrictEqual(v4Full.loggingModes, ["none", "usb"]);
@@ -190,6 +215,58 @@ assert.strictEqual(v4Full.dedicatedUsbLogging, true);
       [hardware + "_companion_radio_full"]
     );
   }
+);
+
+const combinedUsbBle = [
+  picker.parseTargetProfile("Heltec_E290_companion_usb"),
+  picker.parseTargetProfile("Heltec_E290_companion_ble"),
+  picker.parseTargetProfile("Heltec_E290_companion_usb_ble"),
+];
+combinedUsbBle.forEach(function (item) {
+  item.installKinds = ["bin"];
+});
+assert.strictEqual(combinedUsbBle[2].mode, "usb-ble");
+assert.strictEqual(combinedUsbBle[2].variant, "default");
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(combinedUsbBle).map(function (item) {
+    return item.target;
+  }),
+  ["Heltec_E290_companion_usb_ble"]
+);
+
+const fullWithWiredTransports = [
+  "ThinkNode_M7_companion_radio_full",
+  "ThinkNode_M7_companion_radio_usb",
+  "ThinkNode_M7_companion_radio_ble",
+  "ThinkNode_M7_companion_radio_wifi",
+  "ThinkNode_M7_companion_radio_serial",
+  "ThinkNode_M7_companion_radio_ethernet",
+  "ThinkNode_M7_terminal_chat",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["bin"],
+  });
+});
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(fullWithWiredTransports).map(
+    function (item) { return item.target; }
+  ),
+  ["ThinkNode_M7_companion_radio_full"]
+);
+
+const terminalWithUsb = [
+  "PicoW_terminal_chat",
+  "PicoW_companion_radio_usb",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["uf2"],
+  });
+});
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(terminalWithUsb).map(
+    function (item) { return item.target; }
+  ),
+  ["PicoW_companion_radio_usb"]
 );
 
 const companionBle = picker.parseTargetProfile(
@@ -323,10 +400,23 @@ assert.deepStrictEqual(
 const standardRepeater = profile("Station_G2_repeater");
 assert.strictEqual(standardRepeater.hardwareFamily, "Station_G2");
 assert.strictEqual(standardRepeater.role, "repeater");
-assert.strictEqual(standardRepeater.logging, "none");
+assert.strictEqual(standardRepeater.logging, "usb-runtime");
+assert.deepStrictEqual(standardRepeater.loggingModes, ["none", "usb"]);
 assert.strictEqual(standardRepeater.ota, "none");
 assert.strictEqual(standardRepeater.mode, "standard");
 assert.strictEqual(standardRepeater.feature, "standard");
+
+const mergedLoggingProfiles = picker.applyMergedStandardUsbLoggingCapabilities([
+  Object.assign(picker.parseTargetProfile("PicoW_room_server"), {
+    ota: "none",
+  }),
+  Object.assign(picker.parseTargetProfile("PicoW_kiss_modem"), {
+    ota: "none",
+  }),
+]);
+assert.strictEqual(mergedLoggingProfiles[0].logging, "usb-runtime");
+assert.deepStrictEqual(mergedLoggingProfiles[0].loggingModes, ["none", "usb"]);
+assert.strictEqual(mergedLoggingProfiles[1].logging, "none");
 assert.strictEqual(
   picker.canonicalAsset(standardRepeater.files, "merged-bin").name,
   "Station_G2_repeater-" + family + "-merged.bin"
@@ -390,6 +480,34 @@ assert.strictEqual(wio.hardware, "wio-e5");
 assert.strictEqual(wio.role, "repeater");
 assert.strictEqual(wio.mode, "rs232");
 
+const mergedRs232 = [
+  "RAK_4631_repeater",
+  "RAK_4631_repeater_bridge_rs232_serial1",
+  "RAK_4631_repeater_bridge_rs232_serial2",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["uf2"],
+  });
+});
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(mergedRs232).map(function (item) {
+    return item.target;
+  }),
+  ["RAK_4631_repeater"]
+);
+const constrainedRs232 = [
+  "wio-e5_repeater",
+  "wio-e5-repeater_bridge_rs232",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["hex"],
+  });
+});
+assert.strictEqual(
+  picker.omitTransportsReplacedByFull(constrainedRs232).length,
+  2
+);
+
 const matches = catalog.profiles.filter(function (item) {
   return picker.profileMatches(item, {
     hardware: "Station_G2",
@@ -397,10 +515,12 @@ const matches = catalog.profiles.filter(function (item) {
     logging: "usb",
   });
 });
-assert.strictEqual(matches.length, 1);
-assert.strictEqual(
-  matches[0].target,
-  "Station_G2_repeater_observer_mqtt-full-usb-wifi"
+assert.deepStrictEqual(
+  matches.map(function (item) { return item.target; }).sort(),
+  [
+    "Station_G2_repeater",
+    "Station_G2_repeater_observer_mqtt-full-usb-wifi",
+  ]
 );
 
 assert.deepStrictEqual(

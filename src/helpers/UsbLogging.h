@@ -1,8 +1,8 @@
 #pragma once
 
-// Logging artifacts compile at least one of these two diagnostics. Keep the
-// command surface out of ordinary images while providing one runtime gate for
-// every diagnostic category that writes to the USB Serial stream.
+// Canonical USB-capable images compile at least one of these two diagnostics.
+// One runtime gate covers every diagnostic category that writes to the USB
+// Serial stream, so a separate logging firmware is unnecessary.
 #if defined(ARDUINO) && \
     ((defined(MESH_DEBUG) && MESH_DEBUG) || \
      (defined(MESH_PACKET_LOGGING) && MESH_PACKET_LOGGING))
@@ -16,8 +16,8 @@
 
 namespace mesh {
 
-// Ordinary logging images start enabled. Every Full Companion starts with
-// logging disabled and restores its saved choice after preferences load.
+// Ordinary merged images start enabled. USB/Full Companion starts disabled to
+// protect framed traffic and restores its saved choice after preferences load.
 bool isUsbLoggingEnabled();
 void setUsbLoggingEnabled(bool enabled);
 

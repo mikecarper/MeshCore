@@ -1,7 +1,7 @@
 # Companion Protocol
 
-- **Last Updated**: 2026-08-18
-- **Protocol Version**: 13 (`FIRMWARE_VER_CODE`)
+- **Last Updated**: 2026-08-26
+- **Protocol Version**: 14 (`FIRMWARE_VER_CODE`)
 
 > The command and response catalogs track
 > `examples/companion_radio/MyMesh.cpp`. Applications should negotiate the
@@ -59,6 +59,22 @@ MeshCore Companion devices expose a BLE service with the following UUIDs:
 - **Service UUID**: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
 - **RX Characteristic** (App -> Firmware): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
 - **TX Characteristic** (Firmware -> App): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+
+An nRF52 Full Companion also exposes a separate LoRa mOTA source service. It
+does not replace or multiplex the normal Companion UART service:
+
+- **mOTA Service**: `14518FC2-7E7A-4D84-8CAE-6664B0234CF2`
+- **Device Request** (notify): `2BFAA1EE-7030-459A-B65A-E7CFD5B09735`
+- **Host Response** (write with response): `ACF38A51-DD58-4DCE-917F-0B1135E41B1A`
+
+All three mOTA attributes require an encrypted, MITM-authenticated connection
+using the Companion's six-digit PIN. The source remains inactive until the
+client subscribes to Device Request and explicitly starts it with command
+`0x4B`. See [Bluetooth LoRa mOTA source](#bluetooth-lora-mota-source).
+
+ESP32 and nRF52 Companion UART characteristics require the same PIN-protected,
+MITM-authenticated link. ESP32 advertises DisplayOnly capability so a central
+must enter the PIN shown by the Companion; a Just Works bond is insufficient.
 
 ### Connection Steps
 
@@ -170,7 +186,7 @@ The first byte indicates the packet type (see [Response Parsing](#response-parsi
 
 ## Commands
 
-The first byte selects the command. This is the current protocol-v13 command
+The first byte selects the command. This is the current protocol-v14 command
 catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 
 | Byte | Firmware name | Purpose |
@@ -222,12 +238,14 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x44` / `0x45` | `CMD_GET_RADIO_RXGAIN` / `CMD_SET_RADIO_RXGAIN` | Read or set the radio chip's boosted receive-gain mode. |
 | `0x46` / `0x47` | `CMD_GET_WIFI_POWER_SAVE` / `CMD_SET_WIFI_POWER_SAVE` | Read or set ESP32 Companion WiFi modem sleep. |
 | `0x48` / `0x49` | `CMD_GET_BLUETOOTH_NAME` / `CMD_SET_BLUETOOTH_NAME` | Read or set the independent Bluetooth device name. |
+| `0x4A` | `CMD_EXEC_LOCAL_OTA_CONTROL` | Run one bounded local TempRadio or OTA command on a Full Companion. |
+| `0x4B` | `CMD_BLE_MOTA_SOURCE` | Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source. |
 
 The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.
 
 The additive hardware-setting commands `0x42`-`0x47` do not change any existing
-version-13 frame layout. Clients should probe the command they need and treat
+legacy frame layout. Clients should probe the command they need and treat
 `ERR_CODE_UNSUPPORTED_CMD` as feature absence.
 
 Both gain-command pairs can be used over the normal binary Companion
@@ -273,6 +291,79 @@ override and restores `MeshCore-<advert name>`. A successful SET replies with
 control characters, malformed UTF-8, or oversized values return
 `ERR_CODE_ILLEGAL_ARG`; a storage failure returns `ERR_CODE_BAD_STATE`.
 
+### Bluetooth LoRa mOTA source
+
+Protocol v14 lets a phone use an nRF52 Full Companion as the source for a
+remote repeater update without a USB computer. The normal Companion service
+still carries contacts, repeater login, CLI messages, and these two control
+commands. The separate mOTA service carries only host-folder request/response
+frames.
+
+`CMD_EXEC_LOCAL_OTA_CONTROL` (`0x4A`) is followed by 1-174 printable ASCII
+bytes. Full Companion accepts only these local command families:
+
+```text
+tempradio <freq_kHz>,<bw_kHz>,<sf>,<cr>,<minutes>
+normalradio
+ota ...
+```
+
+`ota folder ...` is deliberately rejected because USB and Bluetooth source
+ownership must not be changed through the wrong transport. Embedded NUL, CR,
+LF, other control bytes, non-ASCII bytes, empty commands, and oversized frames
+return `ERR_CODE_ILLEGAL_ARG`. A recognized command replies with
+`RESP_CODE_OK`, one unsigned reply-length byte, and exactly that many printable
+result bytes. Shell metacharacters are rejected as well; the text is dispatched
+only to the in-firmware parser and is never passed to a host shell. Firmware
+without the Full Companion feature returns `ERR_CODE_UNSUPPORTED_CMD`.
+
+`CMD_BLE_MOTA_SOURCE` (`0x4B`) has one action byte:
+
+| Action | Meaning |
+| ---: | --- |
+| `0` | Read status without changing it. |
+| `1` | Attach and enumerate the subscribed Bluetooth host's `.mota` catalog. |
+| `2` | Detach the Bluetooth source. |
+
+Current firmware returns eleven bytes (legacy protocol-v14 previews returned
+the seven-byte prefix only):
+
+```text
+00 action flags offered_le16 advertised_le16 source_packets_sent_le32
+```
+
+Flag bit `0x01` means the encrypted GATT channel is connected and Device
+Request notifications are enabled. Bit `0x02` means the Bluetooth catalog is
+attached. Bit `0x04` means USB or another folder transport currently owns the
+source slot. Start without a ready subscription, or while another source link
+owns the slot, returns `ERR_CODE_BAD_STATE`. A non-nRF52 Full Companion returns
+`ERR_CODE_UNSUPPORTED_CMD`. `source_packets_sent` is a per-attachment count of
+OTA packets accepted by the Companion's LoRa transmit adapter, including
+catalog/manifest traffic, data, proofs, and retries. It wraps as an unsigned
+32-bit value. Clients should accept the legacy seven-byte response and display
+the packet counter as unavailable.
+
+After a successful start, the device sends the same bounded seeder frames used
+by `motatool serve` on Device Request:
+
+```text
+device -> host: 'M' 'S' op args... xor(op || args)
+host -> device: 'm' 's' op status payload... xor(all prior bytes)
+```
+
+Device requests are at most 11 bytes. A source response is at most 197 bytes.
+The host may split one response across multiple write-with-response operations
+when the negotiated ATT payload is smaller; it must preserve byte order and
+must not interleave another response. Bad checksums, partial frames, overflow,
+unsubscribe, loss of encryption, or disconnect fail closed. The firmware then
+detaches the catalog and stops advertising its entries. USB and Bluetooth
+folder sources are mutually exclusive.
+
+A Linux reference controller and seeder is provided at
+`tools/ble_mota/ble_mota_seeder.py`. It verifies every input with `motatool`
+before offering it. A mobile implementation should apply the same complete
+container verification before serving files.
+
 ### 1. App Start
 
 **Purpose**: Initialize communication with the device. Must be sent first after connection.
@@ -305,7 +396,7 @@ Byte 1: Highest companion protocol version understood by the app
 
 **Example** (hex):
 ```
-16 0D
+16 0E
 ```
 
 **Response**: `PACKET_DEVICE_INFO` (0x0D) with device information

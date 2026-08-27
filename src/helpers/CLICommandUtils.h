@@ -588,5 +588,98 @@ inline bool parseIntegerStrict(const char* text, int32_t& result) {
   return true;
 }
 
+inline bool splitCommaFieldsStrict(const char* text, char* storage,
+                                   size_t storage_size,
+                                   const char** fields,
+                                   size_t field_count) {
+  if (text == nullptr || storage == nullptr || storage_size == 0
+      || fields == nullptr || field_count == 0) {
+    return false;
+  }
+  const size_t length = strlen(text);
+  if (length == 0 || length >= storage_size) return false;
+  memcpy(storage, text, length + 1);
+
+  char* cursor = storage;
+  for (size_t i = 0; i < field_count; ++i) {
+    fields[i] = cursor;
+    char* separator = strchr(cursor, ',');
+    if (i + 1 == field_count) {
+      if (separator != nullptr) return false;
+    } else {
+      if (separator == nullptr) return false;
+      *separator = 0;
+      cursor = separator + 1;
+    }
+  }
+  return true;
+}
+
+// Parse the radio tuple syntax without libc's optional float-scanf support.
+// In particular, newlib-nano nRF52 builds commonly compile `%f` but return no
+// conversions unless the much larger _scanf_float implementation is linked.
+inline bool parseRadioTupleStrict(const char* text, float& frequency,
+                                  float& bandwidth, uint8_t& spreading_factor,
+                                  uint8_t& coding_rate) {
+  char storage[96] = {0};
+  const char* fields[4] = {nullptr};
+  if (!splitCommaFieldsStrict(text, storage, sizeof(storage), fields, 4)) {
+    return false;
+  }
+
+  float parsed_frequency = 0.0f;
+  float parsed_bandwidth = 0.0f;
+  int32_t parsed_sf = 0;
+  int32_t parsed_cr = 0;
+  if (!parseDecimalStrict(fields[0], parsed_frequency)
+      || !parseDecimalStrict(fields[1], parsed_bandwidth)
+      || !parseIntegerStrict(fields[2], parsed_sf)
+      || !parseIntegerStrict(fields[3], parsed_cr)
+      || parsed_sf < 0 || parsed_sf > 255
+      || parsed_cr < 0 || parsed_cr > 255) {
+    return false;
+  }
+
+  frequency = parsed_frequency;
+  bandwidth = parsed_bandwidth;
+  spreading_factor = static_cast<uint8_t>(parsed_sf);
+  coding_rate = static_cast<uint8_t>(parsed_cr);
+  return true;
+}
+
+inline bool parseTemporaryRadioTupleStrict(
+    const char* text, float& frequency, float& bandwidth,
+    uint8_t& spreading_factor, uint8_t& coding_rate,
+    uint32_t& timeout_minutes) {
+  char storage[96] = {0};
+  const char* fields[5] = {nullptr};
+  if (!splitCommaFieldsStrict(text, storage, sizeof(storage), fields, 5)) {
+    return false;
+  }
+
+  float parsed_frequency = 0.0f;
+  float parsed_bandwidth = 0.0f;
+  int32_t parsed_sf = 0;
+  int32_t parsed_cr = 0;
+  int32_t parsed_timeout = 0;
+  if (!parseDecimalStrict(fields[0], parsed_frequency)
+      || !parseDecimalStrict(fields[1], parsed_bandwidth)
+      || !parseIntegerStrict(fields[2], parsed_sf)
+      || !parseIntegerStrict(fields[3], parsed_cr)
+      || !parseIntegerStrict(fields[4], parsed_timeout)
+      || parsed_sf < 0 || parsed_sf > 255
+      || parsed_cr < 0 || parsed_cr > 255
+      || parsed_timeout < 0) {
+    return false;
+  }
+
+  frequency = parsed_frequency;
+  bandwidth = parsed_bandwidth;
+  spreading_factor = static_cast<uint8_t>(parsed_sf);
+  coding_rate = static_cast<uint8_t>(parsed_cr);
+  timeout_minutes = static_cast<uint32_t>(parsed_timeout);
+  return true;
+}
+
 }  // namespace cli
 }  // namespace mesh

@@ -18,7 +18,7 @@
  * - Fletcher-16 checksum for data integrity verification
  * - Magic header for packet synchronization and frame alignment
  * - Duplicate packet detection using SimpleMeshTables tracking
- * - Configurable RX/TX pins via build defines
+ * - Configurable UART and RX/TX pins selected by the owning runtime
  * - Fixed baud rate at 115200 for consistent timing
  *
  * Packet Structure:
@@ -34,8 +34,7 @@
  *
  * Configuration:
  * - Define WITH_RS232_BRIDGE to enable this bridge
- * - Define WITH_RS232_BRIDGE_RX with the RX pin number
- * - Define WITH_RS232_BRIDGE_TX with the TX pin number
+ * - The owning role supplies the selected UART and pins to the constructor
  *
  * Platform Support:
  * Different platforms require different pin configuration methods:
@@ -54,12 +53,12 @@ public:
    * @param mgr PacketManager for allocating and queuing packets
    * @param rtc RTCClock for timestamping debug messages
    */
-  RS232Bridge(NodePrefs *prefs, Stream &serial, mesh::PacketManager *mgr, mesh::RTCClock *rtc);
+  RS232Bridge(NodePrefs *prefs, Stream &serial, int16_t rx_pin, int16_t tx_pin,
+              mesh::PacketManager *mgr, mesh::RTCClock *rtc);
 
   /**
    * Initializes the RS232 bridge
    *
-   * - Validates that RX/TX pins are defined
    * - Configures UART pins based on target platform
    * - Sets baud rate to 115200 for consistent communication
    * - Platform-specific pin configuration methods are used
@@ -137,6 +136,8 @@ private:
 
   /** Hardware serial port interface */
   Stream *_serial;
+  int16_t _rx_pin;
+  int16_t _tx_pin;
 
   /** Buffer for building received packets */
   uint8_t _rx_buffer[MAX_SERIAL_PACKET_SIZE];

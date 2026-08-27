@@ -71,5 +71,10 @@ public:
                       int channel_idx = -1,
                       const char* channel_name = nullptr) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
+  virtual bool supportsDisplayRotation() const { return false; }
+  virtual bool setDisplayRotationDegrees(uint16_t degrees) {
+    (void)degrees;
+    return false;
+  }
   virtual void loop() = 0;
 };

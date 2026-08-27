@@ -67,9 +67,16 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name, uint32_t pi
   BLESecurity  sec;
 #if defined(CONFIG_NIMBLE_ENABLED)
   sec.setPassKey(true, pin_code);
+  // A passkey alone does not provide MITM protection when the controller's
+  // default capability is NoInputNoOutput: the peers can silently fall back
+  // to Just Works and create an unauthenticated bond. The Companion displays
+  // (or otherwise publishes) this PIN for entry on the phone/host, so declare
+  // the peripheral as DisplayOnly and force the passkey-entry association.
+  sec.setCapability(ESP_IO_CAP_OUT);
   sec.setAuthenticationMode(true, true, true);
 #else
   sec.setStaticPIN(pin_code);
+  sec.setCapability(ESP_IO_CAP_OUT);
   sec.setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
 #endif
 

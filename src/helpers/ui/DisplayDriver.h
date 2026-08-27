@@ -15,6 +15,7 @@ class DisplayDriver {
   int _w, _h;
 protected:
   DisplayDriver(int w, int h) { _w = w; _h = h; }
+  void setDimensions(int w, int h) { _w = w; _h = h; }
 
   static size_t trimLastUTF8Codepoint(char* str, size_t length) {
     if (length == 0) return 0;
@@ -30,6 +31,11 @@ public:
   int height() const { return _h; }
 
   virtual bool isOn() = 0;
+  virtual bool supportsRotation() const { return false; }
+  virtual bool setRotationDegrees(uint16_t degrees) {
+    (void)degrees;
+    return false;
+  }
   virtual bool isEink() { return false; } // default to non-eink, override in eink drivers
   virtual void forceFullRefresh() {} // next refresh will be full for eink
   virtual void turnOn() = 0;

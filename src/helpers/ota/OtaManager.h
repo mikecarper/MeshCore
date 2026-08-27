@@ -447,6 +447,7 @@ public:
   FetchError fetchError() const { return _fetch_error; }
   uint32_t blocksHave() const { return _have; }
   uint32_t blocksTotal() const { return _fbc; }
+  uint32_t packetsSent() const { return _packets_sent; }
   uint8_t fetchPipelineWidth() const { return _pipeline_width; }
   static constexpr uint8_t fetchPipelineCapacity() { return OTA_FETCH_PIPELINE; }
   uint32_t fetchRetryTimeoutMs() const;
@@ -482,7 +483,9 @@ private:
   bool expandCatalog();
 
   bool emit(const uint8_t* b, uint16_t n, bool flood) {
-    return _send && n && _send(_ctx, b, n, flood);
+    const bool sent = _send && n && _send(_ctx, b, n, flood);
+    if (sent) _packets_sent++;
+    return sent;
   }
   void handleAdv(const uint8_t* m, uint16_t n);     // beacon -> sources table (+ query if interested)
   void handleQuery(const uint8_t* m, uint16_t n);   // serve: reply OTA_HAVE catalog
@@ -655,6 +658,7 @@ private:
   uint32_t   _radio_packet_airtime_ms = 0;       // measured for MAX_TRANS_UNIT at active SF/BW
   uint16_t   _tx_spacing_permille = 2000;        // 1/duty-cycle; default airtime factor 1 => 50% TX
   uint8_t    _observed_path_transmissions = 0;   // source + relays; 0 falls back to configured max_hops+1
+  uint32_t   _packets_sent = 0;                  // OTA packets accepted by the radio adapter (wrap-safe)
   // multi-fragment manifest reassembly (a signed v2 manifest exceeds one packet)
   uint8_t    _mf_buf[OTA_MF_MAXFRAG * OTA_MF_FRAG];   // sized to the fragment cap so no valid manifest is silently dropped
   uint16_t   _mf_retries = 0;                          // GET_MANIFEST retries while WANT_MANIFEST (give up after a cap)

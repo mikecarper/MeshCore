@@ -414,6 +414,70 @@ TEST(CLICommandUtils, RejectsInvalidOrOverflowingIntegers) {
   EXPECT_EQ(123, value);
 }
 
+TEST(CLICommandUtils, ParsesRadioTuplesWithoutFloatScanf) {
+  float frequency = 0.0f;
+  float bandwidth = 0.0f;
+  uint8_t spreading_factor = 0;
+  uint8_t coding_rate = 0;
+  uint32_t timeout_minutes = 0;
+
+  EXPECT_TRUE(mesh::cli::parseRadioTupleStrict(
+      "910.525,62.5,7,5", frequency, bandwidth,
+      spreading_factor, coding_rate));
+  EXPECT_FLOAT_EQ(910.525f, frequency);
+  EXPECT_FLOAT_EQ(62.5f, bandwidth);
+  EXPECT_EQ(7, spreading_factor);
+  EXPECT_EQ(5, coding_rate);
+
+  EXPECT_TRUE(mesh::cli::parseTemporaryRadioTupleStrict(
+      " 909.950 , 250 , 5 , 5 , 120 ", frequency, bandwidth,
+      spreading_factor, coding_rate, timeout_minutes));
+  EXPECT_FLOAT_EQ(909.950f, frequency);
+  EXPECT_FLOAT_EQ(250.0f, bandwidth);
+  EXPECT_EQ(5, spreading_factor);
+  EXPECT_EQ(5, coding_rate);
+  EXPECT_EQ(120u, timeout_minutes);
+}
+
+TEST(CLICommandUtils, RejectsMalformedRadioTuples) {
+  float frequency = 123.0f;
+  float bandwidth = 456.0f;
+  uint8_t spreading_factor = 7;
+  uint8_t coding_rate = 5;
+  uint32_t timeout_minutes = 60;
+
+  EXPECT_FALSE(mesh::cli::parseRadioTupleStrict(
+      nullptr, frequency, bandwidth, spreading_factor, coding_rate));
+  EXPECT_FALSE(mesh::cli::parseRadioTupleStrict(
+      "910.525,62.5,7", frequency, bandwidth,
+      spreading_factor, coding_rate));
+  EXPECT_FALSE(mesh::cli::parseRadioTupleStrict(
+      "910.525,62.5,7,5,1", frequency, bandwidth,
+      spreading_factor, coding_rate));
+  EXPECT_FALSE(mesh::cli::parseRadioTupleStrict(
+      "910.525x,62.5,7,5", frequency, bandwidth,
+      spreading_factor, coding_rate));
+  EXPECT_FALSE(mesh::cli::parseRadioTupleStrict(
+      "910.525,62.5,256,5", frequency, bandwidth,
+      spreading_factor, coding_rate));
+
+  EXPECT_FALSE(mesh::cli::parseTemporaryRadioTupleStrict(
+      "909.950,250,5,5,1,99", frequency, bandwidth,
+      spreading_factor, coding_rate, timeout_minutes));
+  EXPECT_FALSE(mesh::cli::parseTemporaryRadioTupleStrict(
+      "909.950,250,5,5,1x", frequency, bandwidth,
+      spreading_factor, coding_rate, timeout_minutes));
+  EXPECT_FALSE(mesh::cli::parseTemporaryRadioTupleStrict(
+      "909.950,250,5,5,2147483648", frequency, bandwidth,
+      spreading_factor, coding_rate, timeout_minutes));
+
+  EXPECT_FLOAT_EQ(123.0f, frequency);
+  EXPECT_FLOAT_EQ(456.0f, bandwidth);
+  EXPECT_EQ(7, spreading_factor);
+  EXPECT_EQ(5, coding_rate);
+  EXPECT_EQ(60u, timeout_minutes);
+}
+
 TEST(RadioPowerLimits, LeavesUnspecifiedBackendRangeToDriver) {
   EXPECT_EQ(INT8_MIN, mesh::minLoRaTxPowerForFrequency(915.0f));
   EXPECT_EQ(INT8_MAX, mesh::maxLoRaTxPowerForFrequency(915.0f));

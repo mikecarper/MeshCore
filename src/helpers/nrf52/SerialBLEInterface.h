@@ -6,6 +6,10 @@
 #include "SecuritySessionTimer.h"
 #include <bluefruit.h>
 #include <atomic>
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+#include "../BleMotaProtocol.h"
+#include "../BleMotaStream.h"
+#endif
 
 #ifndef BLE_TX_POWER
 #define BLE_TX_POWER 4
@@ -14,6 +18,14 @@
 class SerialBLEInterface : public BaseSerialInterface {
   BLEDfu bledfu;
   BLEUart bleuart;
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  BLEService _mota_service = BLEService(mesh::ota::BLE_MOTA_SERVICE_UUID);
+  BLECharacteristic _mota_request =
+      BLECharacteristic(mesh::ota::BLE_MOTA_REQUEST_UUID);
+  BLECharacteristic _mota_response =
+      BLECharacteristic(mesh::ota::BLE_MOTA_RESPONSE_UUID);
+  mesh::ota::BleMotaStream _mota_stream;
+#endif
   bool _isEnabled;
   bool _isDeviceConnected;
   uint16_t _conn_handle;
@@ -56,6 +68,13 @@ class SerialBLEInterface : public BaseSerialInterface {
   static void onPairingComplete(uint16_t connection_handle, uint8_t auth_status);
   static void onBLEEvent(ble_evt_t* evt);
   static void onBleUartRX(uint16_t conn_handle);
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  static void onMotaResponse(uint16_t conn_handle,
+                             BLECharacteristic* characteristic,
+                             uint8_t* data, uint16_t length);
+  static size_t sendMotaRequest(void* context, const uint8_t* data,
+                                size_t length);
+#endif
 
 public:
   SerialBLEInterface() {
@@ -91,6 +110,12 @@ public:
   }
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  Stream& motaStream() { return _mota_stream; }
+  bool isMotaChannelReady();
+  bool isMotaStreamActive() const { return _mota_stream.isActive(); }
+  void setMotaStreamActive(bool active) { _mota_stream.setActive(active); }
+#endif
 };
 
 #if BLE_DEBUG_LOGGING && ARDUINO

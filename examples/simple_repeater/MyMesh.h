@@ -493,7 +493,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #if defined(WITH_MQTT_BRIDGE)
   MQTTBridge* mqtt_bridge;
 #elif defined(WITH_RS232_BRIDGE)
-  RS232Bridge bridge;
+  RS232Bridge* bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
   ESPNowBridge bridge;
 #endif
@@ -501,6 +501,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   AbstractBridge* activeBridge() {
 #ifdef WITH_MQTT_BRIDGE
     return mqtt_bridge;
+#elif defined(WITH_RS232_BRIDGE)
+    return bridge;
 #else
     return &bridge;
 #endif
@@ -508,6 +510,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   const AbstractBridge* activeBridge() const {
 #ifdef WITH_MQTT_BRIDGE
     return mqtt_bridge;
+#elif defined(WITH_RS232_BRIDGE)
+    return bridge;
 #else
     return &bridge;
 #endif
@@ -975,6 +979,21 @@ public:
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 
 #if defined(WITH_BRIDGE)
+#ifdef WITH_RS232_BRIDGE
+  RS232Bridge* createRS232Bridge() {
+#ifdef WITH_RS232_BRIDGE_ALT
+    if (_prefs.bridge_uart == WITH_RS232_BRIDGE_ALT_UART) {
+      return new RS232Bridge(&_prefs, WITH_RS232_BRIDGE_ALT,
+                             WITH_RS232_BRIDGE_ALT_RX,
+                             WITH_RS232_BRIDGE_ALT_TX, _mgr, getRTCClock());
+    }
+#endif
+    return new RS232Bridge(&_prefs, WITH_RS232_BRIDGE,
+                           WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX,
+                           _mgr, getRTCClock());
+  }
+#endif
+
   void setBridgeState(bool enable) override {
 #ifdef WITH_MQTT_BRIDGE
     if (!mqtt_bridge) {
@@ -991,8 +1010,23 @@ public:
       if (!mqtt_bridge) return;
     }
 #endif
+#ifdef WITH_RS232_BRIDGE
+    if (enable && !bridge) {
+      bridge = createRS232Bridge();
+      if (!bridge) return;
+    }
+#endif
     AbstractBridge* active_bridge = activeBridge();
-    if (!active_bridge || enable == active_bridge->isRunning()) return;
+    if (!active_bridge) return;
+    if (enable == active_bridge->isRunning()) {
+#ifdef WITH_RS232_BRIDGE
+      if (!enable) {
+        delete bridge;
+        bridge = nullptr;
+      }
+#endif
+      return;
+    }
     if (enable)
     {
 #ifdef WITH_MQTT_BRIDGE
@@ -1014,6 +1048,10 @@ public:
     else
     {
       active_bridge->end();
+#ifdef WITH_RS232_BRIDGE
+      delete bridge;
+      bridge = nullptr;
+#endif
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(nullptr);
 #endif
@@ -1030,6 +1068,12 @@ public:
     }
 #endif
     active_bridge->end();
+#ifdef WITH_RS232_BRIDGE
+    delete bridge;
+    bridge = createRS232Bridge();
+    if (bridge) bridge->begin();
+    return;
+#endif
 #ifdef WITH_MQTT_BRIDGE
     // Set device metadata before restarting bridge (same as in begin())
     char device_id[65];

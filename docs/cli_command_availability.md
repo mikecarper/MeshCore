@@ -11,10 +11,10 @@ own interface, so those build roles are not represented here.
 
 Build columns mean:
 
-- **Standard** - the ordinary non-MQTT artifact, without the `logging` or
-  explicit `ota` filename marker.
-- **Logging** - the ordinary non-MQTT `-logging-` artifact. Logging does not
-  remove commands by itself.
+- **Standard** - the ordinary non-MQTT artifact, without an explicit `ota`
+  filename marker. Safe plaintext-USB roles embed runtime USB logging.
+- **Logging** - the legacy `-logging-` profile, now represented by the same
+  ordinary artifact and retained as a comparison column only.
 - **LoRa OTA** - the explicit `-ota-` repeater or repeater-bridge artifact. Its
   optional external-sensor drivers are removed, but onboard GPS is retained.
 - **FULL unified** - the expanded-partition ESP32 artifact with LoRa OTA, the
@@ -72,7 +72,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data; other roles can return empty data | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial |
-| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | No | Yes | No |
+| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Ordinary safe-USB artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | Yes | Yes | No |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
@@ -155,6 +155,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Bridge | [`get/set bridge.delay`](cli_commands.md#add-a-delay-to-packets-routed-through-this-bridge) | Compiled bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.source`](cli_commands.md#view-or-change-the-source-of-packets-bridged-to-the-external-interface) | Compiled bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature |
+| Bridge | [`get/set bridge.uart`](cli_commands.md#view-or-change-the-uart-used-by-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.channel`](cli_commands.md#view-or-change-the-channel-used-for-bridging-espnow-only) | ESP-NOW is ESP32 only | No | No | No |
 | Bridge | [`get/set bridge.secret`](cli_commands.md#set-the-esp-now-secret) | ESP-NOW is ESP32 only | No | No | No |
 | Board | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 bootloader metadata | Yes | Yes | Yes |
@@ -235,7 +236,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Statistics | [`set telemetry.gps`; `get/set/send telemetry.tx`](cli_commands.md#read-repeater-telemetry-history) | Non-STM32 repeater; GPS setting requires a provider; remote access requires administrator | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log start`; `log stop`; `log erase`](cli_commands.md#logging) | Storage-backed roles retain data | Yes | Yes | Yes | Yes | Yes |
 | Logging | [`log`](cli_commands.md#print-the-captured-log-to-the-serial-terminal) | Local serial | Serial | Serial | Serial | Serial | Serial |
-| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Logging artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | No | Yes | No | No | Yes |
+| Logging | [`get/set usb.logging`; unified FULL `get/set logging.output`](cli_commands.md#control-live-usb-logging) | Ordinary safe-USB artifacts; CommonCLI USB gate is persistent; unified ESP32 FULL selects off/USB/WiFi/both; Full Companion uses either a reboot-controlled second CDC or an input-capable single-TTY logging terminal | Yes | Yes | No | No | Yes |
 | Radio | [`get radio`; `set radio ...`](cli_commands.md#view-or-change-this-nodes-radio-parameters) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes | Yes | Yes |
@@ -318,6 +319,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Bridge | [`get/set bridge.delay`](cli_commands.md#add-a-delay-to-packets-routed-through-this-bridge) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
 | Bridge | [`get/set bridge.source`](cli_commands.md#view-or-change-the-source-of-packets-bridged-to-the-external-interface) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature | No | Feature |
+| Bridge | [`get/set bridge.uart`](cli_commands.md#view-or-change-the-uart-used-by-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature | No | Feature |
 | Bridge | [`get/set bridge.channel`](cli_commands.md#view-or-change-the-channel-used-for-bridging-espnow-only) | ESP-NOW bridge | No | No | No | Feature | Feature |
 | Bridge | [`get/set bridge.secret`](cli_commands.md#set-the-esp-now-secret) | ESP-NOW bridge | No | No | No | Feature | Feature |
 | Board | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 only | No | No | No | No | No |
