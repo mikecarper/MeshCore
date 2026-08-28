@@ -515,10 +515,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#single-usb-serial-port" class="md-nav__link">
+  <a href="#esp32-single-usb-serial-port" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Single USB serial port
+        ESP32 single USB serial port
       
     </span>
   </a>
@@ -526,10 +526,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#dual-usb-serial-ports" class="md-nav__link">
+  <a href="#nrf52-dual-usb-serial-ports" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dual USB serial ports
+        nRF52 dual USB serial ports
       
     </span>
   </a>
@@ -1411,10 +1411,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#single-usb-serial-port" class="md-nav__link">
+  <a href="#esp32-single-usb-serial-port" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Single USB serial port
+        ESP32 single USB serial port
       
     </span>
   </a>
@@ -1422,10 +1422,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#dual-usb-serial-ports" class="md-nav__link">
+  <a href="#nrf52-dual-usb-serial-ports" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dual USB serial ports
+        nRF52 dual USB serial ports
       
     </span>
   </a>
@@ -1566,7 +1566,7 @@ firmware as an mOTA image.</p>
 </tr>
 <tr>
 <td>Dedicated USB plaintext logging</td>
-<td>Qualified native-USB ESP32-S3 profiles</td>
+<td>No - shares the one USB TTY</td>
 <td>Yes</td>
 </tr>
 <tr>
@@ -1606,13 +1606,15 @@ passed the combined-transport size check:</p>
   same board can safely add its platform's remaining transports. It never
   substitutes the pin map or peripherals from another board.</li>
 </ul>
-<p>The measured ESP32 additions are M5Stack Unit C6L, Heltec Wireless Tracker,
-Wireless Paper, E213, and CT62; LilyGo T3S3 SX1262/SX1276, T-Deck, TETH Elite,
-classic T-Beam SX1262/SX1276, and T-Beam S3 Supreme; Ebyte EoRa-S3;
-Meshadventurer SX1262/SX1268; and XIAO S3. The measured nRF52 additions are
-GAT562 Mesh Watch13, LilyGo T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker
-L1 E-Ink. Their old transport-specific names remain available for explicit
-compatibility builds, but the Full image is the canonical release artifact.</p>
+<p>The measured ESP32 additions are M5Stack Unit C6L; XIAO C6/S3, Meshimi,
+WHY2025 Badge, LilyGo T-LoRa C6, T3S3 SX1262/SX1276, T-Deck, TETH Elite,
+classic T-Beam SX1262/SX1276, and T-Beam S3 Supreme; Heltec Wireless Tracker,
+Wireless Paper, E213, E290, T190, CT62, and V4 expansion-kit TFT; Generic
+ESP-NOW; SenseCAP Indicator ESP-NOW/LoRa; Ebyte EoRa-S3; and Meshadventurer
+SX1262/SX1268. The measured nRF52 additions are GAT562 Mesh Watch13, LilyGo
+T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker L1 E-Ink. Their old
+transport-specific names remain available for explicit compatibility builds,
+but the Full image is the canonical release artifact.</p>
 <p>List the available targets:</p>
 <pre><code class="language-bash">bash build.sh list | grep companion_radio_full
 </code></pre>
@@ -1636,8 +1638,8 @@ hardware-serial, Ethernet Companion, Terminal Chat, and USB-only packet-logging
 release artifacts whenever the exact board supports those combined transports.
 Direct builds of the legacy targets remain available. RAK4631 repeater and room
 server Ethernet builds remain separate because they are different standalone
-roles, not Companion transports. Dual-CDC builds separate framed traffic and logs;
-single-TTY builds make those modes mutually exclusive. In WebConfig, use the
+roles, not Companion transports. nRF52 separates framed traffic and logs;
+ESP32 makes those modes mutually exclusive on its one USB TTY. In WebConfig, use the
 <strong>FEM RX boost</strong> switch. From the text terminal (USB, or TCP 5002 on ESP32), use:</p>
 <pre><code class="language-text">get radio.rxgain
 set radio.rxgain off
@@ -1662,8 +1664,14 @@ set display.rotation 270
 set display.rotation 0
 </code></pre>
 <p><code>0</code> resets the screen to that board's compiled default orientation.</p>
-<p>Heltec E290 and T190 use one <code>usb_ble</code> Companion artifact for simultaneous USB
-and BLE rather than publishing separate USB-only and BLE-only images.</p>
+<p>Heltec E290 and T190 now use their Full Companion artifacts for simultaneous
+USB, BLE, and WiFi. Their older <code>usb_ble</code>, USB-only, and BLE-only names remain
+available only as explicit compatibility builds.</p>
+<p>Heltec V3 and base OLED V4 Full Companion also include the former direct WiFi
+MQTT Companion capability. Configure and enable MQTT at runtime through
+WebConfig; the canonical release therefore publishes the Full image instead of
+a second <code>companion_radio_wifi_mqtt</code> image. V4 TFT and expansion-kit layouts
+remain separate hardware images because their display and I2C wiring differs.</p>
 <p>Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
 with the <strong>Device power saving</strong> switch or from the text terminal:</p>
 <pre><code class="language-text">powersaving
@@ -1738,8 +1746,8 @@ started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
 fragmentation. Compile-time prerequisite checks reject inconsistent feature
 flags. After linking, the capability sidecar verifies USB, BLE, the OTA CLI,
 TempRadio, and each platform's host-folder transport; it also verifies the TCP
-terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging whenever
-the board uses dual CDC.</p>
+terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging on
+nRF52.</p>
 <p>On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
 so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
 Companion uses that same LilyGo factory-compatible boot layout on its 16 MB
@@ -1880,20 +1888,27 @@ is active; do not enter the start token again after it appears.</p>
 WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Every
 Full Companion provides persistent <code>get/set usb.logging</code> and starts with
 logging off on a fresh installation.</p>
-<h3 id="single-usb-serial-port">Single USB serial port</h3>
-<p>On an ESP32 Full Companion without dual CDC, interface <code>00</code> has two exclusive
-modes. It starts as the ASCII terminal unless a saved logging-on preference
-boots directly into the logging terminal. If it is already binary, enter its
-text terminal with <code>+++MESHCORE-TERM-START</code>, then run <code>set usb.logging on</code>; the same TTY emits
-plaintext packet/debug logs and continues accepting CLI commands, including
-<code>set usb.logging off</code>. Turning it off sends the command reply and then returns
-that TTY to Binary Companion automatically, including on USB-UART bridges that
-cannot detect a cable disconnect. A saved logging-on preference boots directly
-into this input-capable logging terminal. BLE and Wi-Fi Companion remain
-available while USB is logging.</p>
-<h3 id="dual-usb-serial-ports">Dual USB serial ports</h3>
-<p>Current nRF52 Full Companion and qualified native-USB ESP32-S3 Full Companion
-firmware can expose two CDC ACM serial interfaces on one physical USB cable:</p>
+<h3 id="esp32-single-usb-serial-port">ESP32 single USB serial port</h3>
+<p>Every ESP32 Full Companion exposes one USB TTY with two exclusive modes. It
+starts as the ASCII terminal unless a saved logging-on preference boots
+directly into the logging terminal. If it is already binary, enter its text
+terminal with <code>+++MESHCORE-TERM-START</code>, then run <code>set usb.logging on</code>; the same
+TTY emits plaintext packet/debug logs and continues accepting CLI commands,
+including <code>set usb.logging off</code>. Framed Binary Companion is unavailable on USB
+while logging owns the TTY. Turning logging off sends the command reply, stops
+the logs, and leaves that TTY in the normal ASCII terminal, matching a fresh
+Full installation. Send <code>+++MESHCORE-TERM-STOP</code>, or let a Companion app send a
+valid framed probe, to switch it to Binary Companion afterward. A saved
+logging-on preference boots directly into this input-capable logging terminal.
+BLE and Wi-Fi Companion remain available while USB is logging.</p>
+<p>ESP32 Full Companion uses the repository's Arduino-ESP32 2.x platform base
+where the board supports it. RC32 and ESP32-C6 retain their board-required
+Arduino 3.x platform, but follow the same one-TTY policy. No ESP32 Full image
+creates an optional second CDC interface. The single-TTY behavior applies to
+native-USB ESP32-S3 boards and boards using a USB-UART bridge.</p>
+<h3 id="nrf52-dual-usb-serial-ports">nRF52 dual USB serial ports</h3>
+<p>Current nRF52 Full Companion firmware can expose two CDC ACM serial interfaces
+on one physical USB cable:</p>
 <ul>
 <li>USB interface <code>00</code> is the primary Companion, text-terminal, and serial-mOTA
   source port. It is always present, starts in ASCII after boot, and
@@ -1919,31 +1934,27 @@ line to the text terminal. Enter terminal mode on interface <code>00</code> with
 <code>ID_USB_INTERFACE_NUM</code>, rather than assuming which tty number is assigned. On
 Windows they appear as two COM ports; identify them by USB interface instead of
 depending on a particular COM number. The nRF52 bootloader temporarily exposes
-its normal DFU serial interface during an update. Qualified S3 boards
-temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.</p>
-<p>Opening the logging port prints <code>MeshCore USB logging port</code> followed by its
-portable identity, <code>USB CDC 1; interface 02; Linux stable suffix: -if02</code>.
+its normal DFU serial interface during an update.</p>
+<p>Opening the nRF52 logging port prints <code>MeshCore USB logging port</code> followed by
+its portable identity, <code>USB CDC 1; interface 02; Linux stable suffix: -if02</code>.
 <code>get usb.logging</code> reports the same endpoint. Firmware cannot print the exact
 <code>/dev/ttyACM*</code> or <code>COM*</code> name because Linux, macOS, or Windows assigns that name
 after USB enumeration; use the <code>*-if02</code> link on Linux to obtain the exact path.
 For example, <code>readlink -f /dev/serial/by-id/*-if02</code> prints the host-assigned
 <code>/dev/ttyACM*</code> name.</p>
-<p>Dual-CDC ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
-WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
-base Heltec V4 profile has completed live two-interface, ROM-flashing, and
-logging-off one-interface validation. Full recipes with only one usable TTY
-still replace separate transport images; they use the exclusive terminal/log
-mode above because firmware cannot add a second interface to a USB-UART bridge
-or a single-port USB peripheral.</p>
 <p>Every ESP32-S3 Full Companion image uses DIO flash mode, including the RAK3112
-and RC32 profiles that do not expose dual CDC. The S3 ROM supports DIO while
+and RC32 profiles. The S3 ROM supports DIO while
 loading the software bootloader, and some flash configurations fail before the
 application starts when a merged image inherits QIO. DIO trades some maximum
 flash-read throughput for compatibility; it does not change a board's PSRAM
 type or any ordinary non-Full firmware profile.</p>
-<p>Point MeshCore Companion software, <code>meshcli</code>, and <code>motatool</code> at interface <code>00</code>.
-When enabled and rebooted, point a plaintext reader or USB-connected MQTT
-service at interface <code>02</code>.</p>
+<p>On nRF52, point MeshCore Companion software, <code>meshcli</code>, and <code>motatool</code> at
+interface <code>00</code>. When enabled and rebooted, point a plaintext reader or
+USB-connected MQTT service at interface <code>02</code>. On ESP32, use its only USB TTY
+for Binary Companion while logging is off, or for the plaintext CLI/logger
+while logging is on; close one consumer before switching modes. Turning
+logging off returns to ASCII, so the normal stop token or a valid framed probe
+is still required before Binary Companion owns the port.</p>
 <p>ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with <code>nc DEVICE_IP 5002</code>; no USB control token is needed. USB terminal mode and
 the TCP terminal share recipient, login, command, trace, and display state, so

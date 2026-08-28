@@ -1553,12 +1553,12 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 <td>Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image.</td>
 </tr>
 <tr>
-<td>Dual-CDC Full Companion</td>
-<td>nRF52 and qualified native-USB ESP32-S3 Full images use one physical USB connection. Fresh installs expose only interface <code>00</code>; it starts as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to framed Companion. The same interface also carries exclusive serial mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. They also provide BLE and source-only LoRa OTA; ESP32 additionally provides WiFi. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
+<td>nRF52 dual-CDC Full Companion</td>
+<td>Fresh installs expose only interface <code>00</code>; it starts as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to framed Companion. The same interface also carries exclusive serial mOTA traffic. Enabling logging and rebooting adds interface <code>02</code> for plaintext logs. BLE and source-only LoRa OTA remain available. <code>get/set usb.logging</code> persistently controls whether the logging interface is present.</td>
 </tr>
 <tr>
-<td>Single-TTY Full Companion</td>
-<td>ESP32 Full images without dual CDC start with the ASCII terminal on their one TTY and automatically hand a complete <code>&lt;</code> frame to framed Companion. <code>set usb.logging on</code> switches it to an input-capable plaintext logging terminal; <code>set usb.logging off</code> replies and then restores framed Companion automatically. A saved logging-on setting starts directly in that logging terminal and disables automatic frame detection. BLE, WiFi, and source-only LoRa OTA remain available.</td>
+<td>ESP32 single-TTY Full Companion</td>
+<td>Every ESP32 Full image starts with the ASCII terminal on its one USB TTY and automatically hands a complete <code>&lt;</code> frame to framed Companion. <code>set usb.logging on</code> switches that TTY to an input-capable plaintext logging terminal and makes framed Companion unavailable on USB; <code>set usb.logging off</code> stops logging but leaves the TTY in normal ASCII mode. The terminal stop token or a valid incoming framed probe then performs the ordinary switch to Binary Companion. A saved logging-on setting starts directly in that logging terminal and disables automatic frame detection. BLE, WiFi, and source-only LoRa OTA remain available. ESP32 Full uses Arduino-ESP32 2.x where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x platform but still expose only one TTY.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
@@ -1587,10 +1587,11 @@ available from a canonical image:</p>
   separate USB, BLE, ordinary WiFi, hardware-serial, Ethernet Companion, and
   USB packet-logging Companion artifacts.
   It provides BLE and source-only LoRa OTA; ESP32 also provides ordinary WiFi.
-  Dual-CDC builds keep framed traffic on interface <code>00</code> and add logging on
-  interface <code>02</code> after a reboot. Single-TTY builds switch interface <code>00</code> into
-  an input-capable logging terminal and restore Binary Companion when that
-  terminal session ends.
+  nRF52 keeps framed traffic on interface <code>00</code> and can add logging on interface
+  <code>02</code> after a reboot. Every ESP32 Full build instead switches its one USB TTY
+  into an input-capable logging terminal. Turning logging off restores the
+  normal ASCII terminal; the usual stop token or a valid framed probe then
+  switches it to Binary Companion.
   Its LoRa OTA support is source-only: it can serve a host file to another node
   but has no staging store and cannot update itself over LoRa.
   Installing an ESP32 Full Companion may require one merged-image erase/flash
@@ -1618,8 +1619,8 @@ available from a canonical image:</p>
 collapsed; they retain their exact storage, bootloader, role, and target
 identity contracts. Companion boards keep transport-specific canonical images
 only when no exact Full recipe has passed the combined flash/RAM qualification.
-Dual CDC is not required: a qualified single-TTY Full image safely makes Binary
-Companion and plaintext USB logging mutually exclusive.</p>
+ESP32 deliberately uses one TTY: Binary Companion and plaintext USB logging
+are mutually exclusive there. nRF52 retains its optional second CDC port.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
 <p>The compact ESP32 CLI has been removed. <code>retry.preset</code> is a checked invariant
 for every repeater and room-server artifact, not a FULL-only command. MQTT

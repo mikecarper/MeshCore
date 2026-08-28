@@ -1633,6 +1633,7 @@ boot ------&gt; ASCII terminal                  Binary Companion
 
 ASCII terminal -- +++MESHCORE-TERM-STOP ------&gt; Binary Companion
 ASCII terminal -- observable USB disconnect ---&gt; Binary Companion
+ESP32 logging terminal -- usb.logging off -----&gt; ASCII terminal
 any mode ------- reboot ------------------------&gt; ASCII terminal
 </code></pre>
 <p>Serial mOTA and single-TTY logging add exclusive ownership states described
@@ -1703,12 +1704,12 @@ mOTA traffic on the same stream.</p>
 <td>ASCII; a complete <code>&lt;</code> frame switches to Binary Companion</td>
 </tr>
 <tr>
-<td>Dual-CDC logging enabled</td>
+<td>nRF52 logging enabled</td>
 <td>Primary interface still follows the switcher; logs use the optional second interface</td>
 </tr>
 <tr>
-<td>Single-TTY logging enabled at boot</td>
-<td>Logging terminal owns primary USB; automatic <code>&lt;</code> detection is disabled</td>
+<td>ESP32 logging enabled at boot</td>
+<td>Logging terminal owns the only USB TTY; automatic <code>&lt;</code> detection is disabled</td>
 </tr>
 <tr>
 <td>nRF52 USB serial mOTA active</td>
@@ -1720,9 +1721,16 @@ mOTA traffic on the same stream.</p>
 </tr>
 </tbody>
 </table>
-<p>On a single-TTY build, use <code>set usb.logging off</code> in its logging terminal before
-trying to use primary USB with an app. BLE and WiFi Companion transports remain
-available while primary USB is logging.</p>
+<p>On every ESP32 Full Companion, use <code>set usb.logging off</code> in its logging terminal
+before trying to use USB with an app. That command stops logging and returns to
+the ordinary ASCII terminal; it does not select Binary Companion. The app's
+first valid framed probe can perform the normal automatic switch, or a human
+can send <code>+++MESHCORE-TERM-STOP</code> first. The framed/binary Companion parser is
+disabled while logging owns that TTY. BLE and WiFi Companion transports remain
+available while USB is logging. ESP32 Full builds use the Arduino-ESP32 2.x
+base where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x
+platform but follow the same one-TTY policy. No ESP32 Full build enumerates a
+second CDC interface.</p>
 <p>On nRF52, serial <code>motatool</code> is also text-first. Its exact initial
 <code>ota folder on</code> line is recognized in either startup ASCII or Binary Companion
 mode. From ASCII, the firmware leaves terminal mode and directly enters
@@ -1784,7 +1792,7 @@ prefix it with another character if it is needed as command text.</p>
 <p>If <code>meshcli</code> cannot connect:</p>
 <ol>
 <li>close every terminal or logging reader using the primary interface;</li>
-<li>confirm that saved single-TTY logging is off;</li>
+<li>on ESP32, confirm that saved USB logging is off;</li>
 <li>reboot and let <code>meshcli</code> be the first process to open the data interface;</li>
 <li>use the stable <code>/dev/serial/by-id/*-if00</code> path on Linux when available;</li>
 <li>if a prompt appears after one second, the client's first frame was not
