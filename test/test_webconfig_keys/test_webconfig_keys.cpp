@@ -14,6 +14,7 @@ TEST(WebConfigKeys, AllowsKnownScalarKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("powersaving"));
   EXPECT_TRUE(wcIsAllowedSetKey("repeat"));
   EXPECT_TRUE(wcIsAllowedSetKey("wifi.ssid"));
+  EXPECT_TRUE(wcIsAllowedSetKey("espnow.channel"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt.iata"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt.neighbors"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt.neighbors.interval"));
@@ -65,6 +66,15 @@ TEST(WebConfigKeys, SlotIndexBoundsMatchMaxSlots) {
 TEST(WebConfigKeys, IsCaseSensitive) {
   EXPECT_FALSE(wcIsAllowedSetKey("Name"));
   EXPECT_FALSE(wcIsAllowedSetKey("MQTT1.preset"));
+}
+
+TEST(WebConfigKeys, EspNowChannelAlwaysRequiresAReboot) {
+  EXPECT_TRUE(wcSetKeyRequiresReboot("espnow.channel"));
+  EXPECT_FALSE(wcSetKeyRequiresReboot(NULL));
+  EXPECT_FALSE(wcSetKeyRequiresReboot("espnow.channel.extra"));
+  EXPECT_FALSE(wcSetKeyRequiresReboot("ESPNOW.channel"));
+  EXPECT_FALSE(wcSetKeyRequiresReboot("wifi.ssid"));
+  EXPECT_FALSE(wcSetKeyRequiresReboot(""));
 }
 
 // ---- short-key OOB guard --------------------------------------------------

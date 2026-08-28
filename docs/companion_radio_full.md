@@ -39,6 +39,39 @@ T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker L1 E-Ink. Their old
 transport-specific names remain available for explicit compatibility builds,
 but the Full image is the canonical release artifact.
 
+Every ESP32 Full image includes ordinary WiFi Companion, WebConfig, and the TCP
+mOTA services, even when its historical build base was USB- or BLE-only. On
+`Generic_ESPNOW` and `SenseCapIndicator-ESPNow`, ESP-NOW is also the primary
+mesh radio and shares the same 2.4 GHz hardware. Those two Full images retain
+B/G/N for ordinary clients alongside ESP-NOW LR. Their ESP-NOW mesh, setup AP,
+and infrastructure connection all use one persisted channel, which defaults
+to 1. Configure the router's 2.4 GHz radio and every other primary ESP-NOW node
+for that same fixed channel. Turning Companion WiFi off stops its TCP/AP
+services but deliberately leaves the ESP-NOW mesh radio running on the
+selected channel.
+
+Inspect or change the shared channel from the Full Companion text terminal:
+
+```text
+get espnow.channel
+set espnow.channel 6
+reboot
+```
+
+The accepted range is 1 through 13; use only a channel permitted in your region
+and supported by the router. The setter persists the selection, but the
+running radio stays on its current channel until reboot. Coordinate the change
+across every primary ESP-NOW node and the router before rebooting, or the node
+will lose one or both links. This primary-radio setting is not
+`bridge.channel`; that command belongs to the separate ESP-NOW bridge feature.
+To attach a LoRa-primary `*_repeater_bridge_espnow` gateway to these nodes,
+match its `bridge.channel` and select `set bridge.format raw`; the bridge's
+backward-compatible default is the distinct wrapped format.
+WiFi power saving cannot put infrastructure WiFi and ESP-NOW on different
+channels. On these two primary-ESP-NOW Full targets, `max` is unavailable
+because maximum modem sleep can make the station miss ESP-NOW broadcasts; use
+`min` for WiFi/BLE/ESP-NOW coexistence.
+
 List the available targets:
 
 ```bash
@@ -142,17 +175,29 @@ start webconfig
 stop webconfig
 ```
 
+On the two primary-ESP-NOW Full targets, the same terminal also provides
+`get espnow.channel` and `set espnow.channel <1-13>`. A channel change is
+persisted and requires a reboot, unlike a WiFi power-save change.
+
 SSID and password writes return their reply first, then restart the Companion
 WiFi station with the saved credentials. A TCP terminal therefore disconnects
 shortly after either write; reconnect to the IP reported by the new network.
-The password is write-only and is masked while it is entered over USB.
+The password is write-only and is masked while it is entered over USB. It may
+be empty for an open network, an ordinary passphrase of up to 63 characters, or
+an exact 64-character hexadecimal WPA/WPA2 PSK. Other 64-character values and
+all longer values are rejected.
 
 The normal binary Companion connection can also read or write this setting over
-USB, BLE, or TCP port 5000 without entering terminal mode. The saved values are
+USB, BLE, or TCP port 5000 without entering terminal mode. The mode values are
 `0` for `min`, `1` for `none`, and `2` for `max`; see the
 [Companion protocol](./companion_protocol.md#commands). Full Companion rejects
-`none` because simultaneous WiFi and BLE require modem sleep. Fresh Cascade
-builds select `min`, and an existing saved selection takes precedence.
+`none` because simultaneous WiFi and BLE require modem sleep. The two
+primary-ESP-NOW Full targets also reject `max`; unlike infrastructure traffic,
+peer ESP-NOW
+broadcasts cannot be buffered by the access point while the station sleeps. If
+an older image saved `max`, firmware applies and reports `min` instead. Fresh
+Cascade builds select `min`, and an existing valid saved selection takes
+precedence.
 
 On radios with RX duty-cycle support, WebConfig and the text terminal also
 expose the persisted RXPS setting:

@@ -21,6 +21,10 @@
 #include <helpers/ESP32TrueRandom.h>
 #endif
 
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+#include <helpers/esp32/WiFiRadioPolicy.h>
+#endif
+
 #include <helpers/CLICommandUtils.h>
 #ifdef ENABLE_USB_INTERFACE
 #include <helpers/TracePathHelpers.h>
@@ -2118,6 +2122,22 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (strcmp(command, "get espnow.channel") == 0) {
+    formatEspNowChannel(reply, reply_size);
+    return true;
+  }
+
+  if (strncmp(command, "set espnow.channel", 18) == 0
+      && (command[18] == 0 || command[18] == ' '
+          || command[18] == '\t')) {
+    const char* value = command + 18;
+    while (*value == ' ' || *value == '\t') value++;
+    applyAndSaveEspNowChannel(value, reply, reply_size);
+    return true;
+  }
+#endif
+
 #if defined(ESP32) && defined(WIFI_SSID)
 #ifdef WITH_WEBCONFIG
   if (strncmp(command, "get ", 4) == 0) {
@@ -2162,7 +2182,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         || wifi_key == mesh::cli::StandaloneWiFiKey::Password) {
       if (saved) {
         char saved_ssid[32] = {0};
-        char saved_password[64] = {0};
+        char saved_password[65] = {0};
         uint8_t saved_power_save = mesh::wifi::kDefaultPowerSave;
         const bool has_ssid = WebConfigServer::loadStandaloneWiFi(
             saved_ssid, sizeof(saved_ssid), saved_password,
@@ -2517,6 +2537,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
 #if defined(ESP32) && defined(WIFI_SSID)
   s.capabilities |= WebConfigServer::CAP_WIFI_POWER_SAVE;
 #endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  s.capabilities |= WebConfigServer::CAP_ESPNOW_CHANNEL;
+#endif
   if (radio_driver.supportsRxBoostedGainMode()) {
     s.capabilities |= WebConfigServer::CAP_RX_GAIN;
   }
@@ -2621,6 +2644,12 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     formatBluetoothNameStatus(reply, 160);
     return;
   }
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (cmd && strcmp(cmd, "get espnow.channel") == 0) {
+    formatEspNowChannel(reply, 160);
+    return;
+  }
+#endif
 #if defined(ESP32) && defined(WIFI_SSID)
   if (cmd && strcmp(cmd, "get wifi.powersave") == 0) {
     formatWiFiPowerSaving(reply, 160);
@@ -2653,6 +2682,12 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     applyAndSaveBluetoothName(value, reply, 160);
     return;
   }
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (strcmp(key, "espnow.channel") == 0) {
+    applyAndSaveEspNowChannel(value, reply, 160);
+    return;
+  }
+#endif
   if (strcmp(key, "lat") == 0 || strcmp(key, "lon") == 0) {
     double parsed;
     const bool latitude = key[1] == 'a';
@@ -4413,6 +4448,50 @@ void MyMesh::formatBluetoothNameStatus(char* reply, size_t reply_size) const {
                ? "custom" : "default from node name");
 }
 
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+void MyMesh::formatEspNowChannel(char* reply, size_t reply_size) const {
+  if (reply == NULL || reply_size == 0) return;
+  const uint8_t saved = mesh::wifi::loadConfiguredEspNowChannel();
+  const uint8_t active = mesh::wifi::activeEspNowChannel();
+  if (saved == active) {
+    snprintf(reply, reply_size, "> %u (saved and active)",
+             (unsigned)saved);
+  } else {
+    snprintf(reply, reply_size,
+             "> saved %u, active %u; reboot required",
+             (unsigned)saved, (unsigned)active);
+  }
+}
+
+bool MyMesh::applyAndSaveEspNowChannel(const char* value, char* reply,
+                                       size_t reply_size) {
+  if (reply == NULL || reply_size == 0) return false;
+  uint8_t channel = 0;
+  if (!mesh::wifi::parseEspNowChannel(value, channel)) {
+    snprintf(reply, reply_size, "Error: ESP-NOW channel must be 1-13");
+    return false;
+  }
+  // Snapshot the boot channel before writing NVS so even a CLI-only image
+  // cannot reinterpret the newly-saved setting as active in this boot.
+  const uint8_t active = mesh::wifi::activeEspNowChannel();
+  if (!mesh::wifi::saveConfiguredEspNowChannel(channel)) {
+    snprintf(reply, reply_size, "Error: failed to save ESP-NOW channel");
+    return false;
+  }
+
+  if (channel == active) {
+    snprintf(reply, reply_size,
+             "OK - ESP-NOW channel %u saved and active",
+             (unsigned)channel);
+  } else {
+    snprintf(reply, reply_size,
+             "OK - ESP-NOW channel %u saved; active %u; reboot required",
+             (unsigned)channel, (unsigned)active);
+  }
+  return true;
+}
+#endif
+
 bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
   bool enabled;
   if (strcmp(value, "on") == 0) {
@@ -4465,6 +4544,11 @@ bool MyMesh::applyAndSaveWiFiPowerSaving(const char* value, char* reply,
 
   const CompanionWiFiPowerSaveResult result =
       setCompanionWiFiPowerSave(mode);
+  if (result == CompanionWiFiPowerSaveResult::PrimaryEspNowConflict) {
+    snprintf(reply, reply_size,
+             "Error: power save max is unavailable while ESP-NOW is the primary radio");
+    return false;
+  }
   if (result == CompanionWiFiPowerSaveResult::BluetoothConflict) {
     snprintf(reply, reply_size,
              "Error: power save none is unavailable while Bluetooth is active");
@@ -5744,6 +5828,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  start webconfig [ap]\r\n");
     terminalOutput().print("  stop webconfig\r\n");
 #endif
+#endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    terminalOutput().print("  get espnow.channel\r\n");
+    terminalOutput().print("  set espnow.channel <1-13>\r\n");
 #endif
     terminalOutput().print("  get radio.rxps\r\n");
     terminalOutput().print("  get radio.rxps.config\r\n");

@@ -1236,6 +1236,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.bridge_pkt_src = 1;    // logRx (RX packets)
   _prefs.bridge_baud = 115200;  // baud rate
   _prefs.bridge_channel = 1;    // channel 1
+  _prefs.bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
 
   // MQTT/WiFi/timezone defaults live in /mqtt_prefs now (see applyMQTTDefaults).
 
@@ -1633,6 +1634,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
       | WebConfigServer::CAP_ADVERT | WebConfigServer::CAP_FLOOD
       | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE
       | WebConfigServer::CAP_POWER_SAVING;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  s.capabilities |= WebConfigServer::CAP_ESPNOW_CHANNEL;
+#endif
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
   }
@@ -1790,7 +1794,7 @@ void MyMesh::onConfigBatchEnd() {
   if (_wc_restart_pending) {
     _wc_restart_pending = false;
     _wc_slot_restart_mask = 0;
-    restartBridge();
+    if (_prefs.bridge_enabled) restartBridge();
     return;
   }
   const uint8_t mask = _wc_slot_restart_mask;

@@ -44,6 +44,41 @@ LEGACY_COMPANION_IDENTITY_ALIASES = {
         "LilyGo_TBeam_1W_companion_radio_wifi",
 }
 
+# These legacy recipes do not use the regular
+# ``<board>_companion_radio_<transport>`` spelling, or they carry a capability
+# name that Full now provides at runtime.  Keep the mapping beside the shared
+# resolver so the main and logging catalog updaters cannot drift apart.
+LEGACY_PLAIN_FULL_COMPANION_ALIASES = {
+    "generic_espnow_comp_radio_usb":
+        "Generic_ESPNOW_companion_radio_full",
+    "heltec_e290_companion_ble":
+        "Heltec_E290_companion_radio_full",
+    "heltec_e290_companion_usb":
+        "Heltec_E290_companion_radio_full",
+    "heltec_e290_companion_usb_ble":
+        "Heltec_E290_companion_radio_full",
+    "heltec_t190_companion_radio_usb_ble_":
+        "Heltec_T190_companion_radio_full_",
+    "sensecapindicator-espnow_comp_radio_usb":
+        "SenseCapIndicator-ESPNow_companion_radio_full",
+    "sensecapindicator-lora_comp_radio_usb_wifi":
+        "SenseCapIndicator-LoRa_companion_radio_full",
+    "heltec_v3_companion_radio_wifi_mqtt":
+        "Heltec_v3_companion_radio_full",
+    "heltec_v4_companion_radio_wifi_mqtt":
+        "heltec_v4_2_v4_3_companion_radio_full_femon",
+    "heltec_v4_companion_radio_wifi_mqtt_femon":
+        "heltec_v4_2_v4_3_companion_radio_full_femon",
+}
+
+LEGACY_COMPANION_ARTIFACT_SUFFIXES = (
+    "-full-logging-ota",
+    "-logging-ota",
+    "-ota-logging",
+    "-logging",
+    "-ota",
+)
+
 
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
@@ -392,16 +427,48 @@ def normalize_esp32_full_companion_metadata(
 
 
 def canonical_full_identity_for_transport(identity: str) -> str | None:
+    # OTA and logging were artifact variants of the old transport-specific
+    # recipes.  The consolidated target is a plain Full identity, so carrying
+    # either suffix through the transport substitution produces a name that
+    # can never exist (for example ``..._full-ota``).
+    legacy_identity = identity
+    while True:
+        lowered = legacy_identity.lower()
+        suffix = next(
+            (
+                suffix
+                for suffix in LEGACY_COMPANION_ARTIFACT_SUFFIXES
+                if lowered.endswith(suffix)
+            ),
+            None,
+        )
+        if suffix is None:
+            break
+        legacy_identity = legacy_identity[: -len(suffix)]
+
+    legacy_identity = canonical_runtime_identity(legacy_identity)
+    fixed_alias = LEGACY_PLAIN_FULL_COMPANION_ALIASES.get(
+        legacy_identity.lower()
+    )
+    if fixed_alias is not None:
+        return fixed_alias
+
+    # A catalog can already use the Full recipe while retaining an old
+    # ``-logging`` or ``-ota`` artifact qualifier.  Once the qualifier is
+    # removed there is no transport substitution left to perform.
+    if "_companion_radio_full" in legacy_identity.lower():
+        return canonical_runtime_identity(legacy_identity)
+
     match = re.search(
-        r"_companion_radio_(?:usb|ble|wifi(?!_mqtt))(?=-|_|$)",
-        identity,
+        r"_companion_radio_(?:usb|ble|wifi(?!_mqtt)|serial|ethernet)(?=-|_|$)",
+        legacy_identity,
         flags=re.IGNORECASE,
     )
     if match is None:
         return None
     full_identity = (
-        identity[:match.start()] + "_companion_radio_full" +
-        identity[match.end():]
+        legacy_identity[:match.start()] + "_companion_radio_full" +
+        legacy_identity[match.end():]
     )
     return canonical_runtime_identity(full_identity)
 
@@ -431,7 +498,7 @@ def resolve_release_identity(
         if full_identity is not None and release_identity_is_full_companion(
             release_files, full_identity
         ):
-            return full_identity, False
+            return full_identity, "_wifi_mqtt" in logging_base.lower()
 
     # Canonical Full Companion replaces separate USB, BLE, and ordinary Wi-Fi
     # artifacts. Full is source-only for LoRa OTA and needs no target-side
@@ -441,7 +508,7 @@ def resolve_release_identity(
         if full_identity is not None and release_identity_is_full_companion(
             release_files, full_identity
         ):
-            return full_identity, False
+            return full_identity, "_wifi_mqtt" in candidate.lower()
 
     # Accept catalogs produced while portable MQTT observers were still
     # emitted, and migrate them to the expanded-partition FULL artifact.

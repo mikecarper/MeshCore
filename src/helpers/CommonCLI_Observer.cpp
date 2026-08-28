@@ -22,6 +22,8 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
+#include "WiFiPowerSave.h"
+#include "esp32/WiFiRadioPolicy.h"
 #endif
 #if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
     (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
@@ -45,6 +47,14 @@ static uint32_t _atoi(const char* sp) {
 }
 
 #ifdef ESP_PLATFORM
+static bool observerBluetoothWiFiCoexistenceRequired() {
+#if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
+  return true;
+#else
+  return false;
+#endif
+}
+
 // Optional embedded CA bundle symbols produced by board_build.embed_files.
 // Weak linkage keeps non-bundle builds linkable.
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_certs_x509_crt_bundle_bin_start") __attribute__((weak));
@@ -170,6 +180,11 @@ static void formatMQTTPresetListReply(char* reply, size_t reply_size, int start)
 bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* config, char* reply) {
 #ifdef WITH_MQTT_BRIDGE
   bool handled = true;
+  const auto restart_observer_bridge = [this]() {
+    return mesh::cli::restartBridgeIfEnabled(
+        _prefs->bridge_enabled != 0,
+        [this]() { return _callbacks->restartBridge(); });
+  };
   if (memcmp(config, "snmp.community ", 15) == 0) {
     if (valueTooLong(&config[15], sizeof(_mqtt_prefs.snmp_community), reply, "snmp.community")) return true;
     StrHelper::strncpy(_mqtt_prefs.snmp_community, &config[15], sizeof(_mqtt_prefs.snmp_community));
@@ -222,8 +237,9 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
       // until one is set). This keeps the pre-existing "clear IATA" capability.
       _mqtt_prefs.mqtt_iata[0] = '\0';
       saveObserverPrefs();
-      _callbacks->restartBridge();
-      strcpy(reply, "OK - IATA cleared");
+      strcpy(reply, restart_observer_bridge()
+          ? "OK - IATA cleared"
+          : "Error: IATA cleared; bridge failed to restart");
     } else {
       // A region code goes straight into MQTT topic paths, so require exactly
       // three alphanumeric characters (real IATA codes are 3 letters, e.g. DEN).
@@ -235,8 +251,9 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
           _mqtt_prefs.mqtt_iata[i] = toupper(_mqtt_prefs.mqtt_iata[i]);
         }
         saveObserverPrefs();
-        _callbacks->restartBridge();
-        strcpy(reply, "OK");
+        strcpy(reply, restart_observer_bridge()
+            ? "OK"
+            : "Error: IATA saved; bridge failed to restart");
       }
     }
   } else if (memcmp(config, "mqtt.status ", 12) == 0) {
@@ -268,8 +285,17 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     if (minutes >= 1 && minutes <= 60) {
       _mqtt_prefs.mqtt_status_interval = minutes * 60000;
       saveObserverPrefs();
-      _callbacks->restartBridge();
-      sprintf(reply, "OK - interval set to %u minutes (%lu ms), bridge restarted", minutes, (unsigned long)_mqtt_prefs.mqtt_status_interval);
+      if (!restart_observer_bridge()) {
+        strcpy(reply, "Error: interval saved; bridge failed to restart");
+      } else if (_prefs->bridge_enabled) {
+        sprintf(reply,
+                "OK - interval set to %u minutes (%lu ms), bridge restarted",
+                minutes, (unsigned long)_mqtt_prefs.mqtt_status_interval);
+      } else {
+        sprintf(reply,
+                "OK - interval set to %u minutes (%lu ms), bridge disabled",
+                minutes, (unsigned long)_mqtt_prefs.mqtt_status_interval);
+      }
     } else {
       strcpy(reply, "Error: interval must be between 1-60 minutes");
     }
@@ -358,6 +384,17 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     }
     if (!valid) {
       strcpy(reply, "Error: must be none, min, or max");
+#ifdef ESP_PLATFORM
+    } else if (mesh::wifi::kPrimaryEspNowRadio
+               && ps_value == mesh::wifi::kPowerSaveMax) {
+      strcpy(reply,
+             "Error: power save max is unavailable while ESP-NOW is the primary radio");
+    } else if (mesh::wifi::effectivePowerSave(
+                   ps_value, observerBluetoothWiFiCoexistenceRequired(),
+                   mesh::wifi::kPrimaryEspNowRadio) != ps_value) {
+      strcpy(reply,
+             "Error: power save none is unavailable while Bluetooth is active");
+#endif
     } else {
       _mqtt_prefs.wifi_power_save = ps_value;
       saveObserverPrefs();
@@ -999,6 +1036,11 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
 #endif
   } else if (memcmp(config, "wifi.powersave", 14) == 0) {
     uint8_t ps = _mqtt_prefs.wifi_power_save;
+#ifdef ESP_PLATFORM
+    ps = mesh::wifi::effectivePowerSave(
+        ps, observerBluetoothWiFiCoexistenceRequired(),
+        mesh::wifi::kPrimaryEspNowRadio);
+#endif
     const char* ps_name = (ps == 1) ? "none" : (ps == 2) ? "max" : "min";
     sprintf(reply, "> %s", ps_name);
   } else if (memcmp(config, "timezone.offset", 15) == 0) {

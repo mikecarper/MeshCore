@@ -9,6 +9,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <strings.h>
+#include <helpers/CLICommandUtils.h>
+#include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/esp32/WiFiStationPolicy.h>
 
 namespace {
 
@@ -28,8 +31,8 @@ button{margin-top:1.2rem}small{color:#555}</style></head><body>
 <h2>MeshCore WiFi setup</h2><p>Enter the WiFi network this node should join.</p>
 <form method="post" action="/save">
 <label>SSID<input name="ssid" maxlength="31" required autocomplete="off"></label>
-<label>Password<input name="password" type="password" maxlength="63" autocomplete="off"></label>
-<small>Leave the password blank for an open network.</small>
+<label>Password<input name="password" type="password" maxlength="64" autocomplete="off"></label>
+<small>Leave blank for an open network. A 64-character key must be hexadecimal.</small>
 <button type="submit">Save and connect</button></form></body></html>)HTML";
 
 struct PortalImpl {
@@ -42,7 +45,7 @@ struct PortalImpl {
   uint32_t close_ap_at = 0;
   char ap_name[33] = "MeshCore-Setup";
   char recovery_ssid[32] = "";
-  char recovery_password[64] = "";
+  char recovery_password[65] = "";
   uint32_t recovery_interval_ms = 0;
   uint32_t next_recovery_at = 0;
   uint32_t recovery_deadline = 0;
@@ -114,7 +117,7 @@ static bool getFormField(const char* body, const char* name,
   while (field && *field) {
     const char* end = strchr(field, '&');
     size_t field_len = end ? static_cast<size_t>(end - field) : strlen(field);
-    if (field_len > name_len + 1 && field[name_len] == '='
+    if (field_len >= name_len + 1 && field[name_len] == '='
         && strncmp(field, name, name_len) == 0) {
       return decodeFormValue(field + name_len + 1, field_len - name_len - 1,
                              output, output_size);
@@ -125,22 +128,53 @@ static bool getFormField(const char* body, const char* name,
   return false;
 }
 
+static bool hasFormField(const char* body, const char* name) {
+  if (!body || !name) return false;
+  const size_t name_len = strlen(name);
+  const char* field = body;
+  while (*field) {
+    const char* end = strchr(field, '&');
+    const size_t field_len = end
+        ? static_cast<size_t>(end - field) : strlen(field);
+    if (field_len >= name_len + 1 && field[name_len] == '='
+        && strncmp(field, name, name_len) == 0) {
+      return true;
+    }
+    field = end ? end + 1 : nullptr;
+    if (!field) break;
+  }
+  return false;
+}
+
 static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
   char ssid[32];
-  char password[64];
+  char password[65];
   if (!getFormField(body, "ssid", ssid, sizeof(ssid)) || ssid[0] == 0) {
     sendResponse(client, 400, "Bad Request", "text/plain", "A valid SSID is required.");
     return;
   }
   // Browsers omit an empty password only if the form is modified. Treat either
   // an empty field or an absent one as an open network.
-  if (!getFormField(body, "password", password, sizeof(password))) password[0] = 0;
+  if (hasFormField(body, "password")) {
+    if (!getFormField(body, "password", password, sizeof(password))) {
+      sendResponse(client, 400, "Bad Request", "text/plain",
+                   "WiFi password must be 0-63 characters or exactly 64 hexadecimal characters.");
+      return;
+    }
+  } else {
+    password[0] = 0;
+  }
+  if (!mesh::cli::standaloneWiFiPasswordValid(password)) {
+    sendResponse(client, 400, "Bad Request", "text/plain",
+                 "WiFi password must be 0-63 characters or exactly 64 hexadecimal characters.");
+    return;
+  }
 
   // A submitted configuration takes priority over a background retry of the
   // previously saved network.
   impl->recovery_connecting = false;
   Serial.printf("WiFi setup: connecting to '%s'...\n", ssid);
-  WiFi.begin(ssid, password);
+  mesh::wifi::beginStation(ssid, password);
   uint32_t deadline = millis() + CONNECT_TIMEOUT_MS;
   while (impl->active && *impl->active && WiFi.status() != WL_CONNECTED
          && static_cast<int32_t>(millis() - deadline) < 0) {
@@ -250,7 +284,8 @@ static void portalTask(void* arg) {
     } else if (impl->recovery_ssid[0] && impl->recovery_interval_ms
                && static_cast<int32_t>(now - impl->next_recovery_at) >= 0) {
       Serial.printf("WiFi setup: retrying saved network '%s'...\n", impl->recovery_ssid);
-      WiFi.begin(impl->recovery_ssid, impl->recovery_password);
+      mesh::wifi::beginStation(
+          impl->recovery_ssid, impl->recovery_password);
       impl->recovery_connecting = true;
       impl->recovery_deadline = now + CONNECT_TIMEOUT_MS;
       impl->next_recovery_at = now + impl->recovery_interval_ms;
@@ -297,14 +332,15 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
 
   WiFi.mode(WIFI_AP_STA);
   if (!WiFi.softAPConfig(SETUP_IP, SETUP_IP, SETUP_MASK)
-      || !WiFi.softAP(impl->ap_name, nullptr)
+      || !WiFi.softAP(impl->ap_name, nullptr,
+                      mesh::wifi::accessPointChannel())
       || esp_wifi_set_protocol(
              WIFI_IF_AP,
-             WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+             mesh::wifi::kProtocolMask)
              != ESP_OK
       || esp_wifi_set_protocol(
              WIFI_IF_STA,
-             WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
+             mesh::wifi::kProtocolMask)
              != ESP_OK) {
     WiFi.softAPdisconnect(true);
     return false;
@@ -366,7 +402,8 @@ bool WiFiSetupPortal::loadStoredCredentials(char* ssid, size_t ssid_size,
   String stored_password = prefs.getString("password", "");
   prefs.end();
   if (stored_ssid.length() == 0 || stored_ssid.length() >= ssid_size
-      || stored_password.length() >= password_size) return false;
+      || stored_password.length() >= password_size
+      || !mesh::cli::standaloneWiFiPasswordValid(stored_password.c_str())) return false;
   strncpy(ssid, stored_ssid.c_str(), ssid_size - 1);
   ssid[ssid_size - 1] = 0;
   strncpy(password, stored_password.c_str(), password_size - 1);
@@ -375,10 +412,11 @@ bool WiFiSetupPortal::loadStoredCredentials(char* ssid, size_t ssid_size,
 }
 
 bool WiFiSetupPortal::saveStoredCredentials(const char* ssid, const char* password) {
-  if (!ssid || !ssid[0] || strlen(ssid) > 31 || (password && strlen(password) > 63)) return false;
+  const char* saved_password = password ? password : "";
+  if (!ssid || !ssid[0] || strlen(ssid) > 31
+      || !mesh::cli::standaloneWiFiPasswordValid(saved_password)) return false;
   Preferences prefs;
   if (!prefs.begin("mesh-wifi", false)) return false;
-  const char* saved_password = password ? password : "";
   bool ok = prefs.putString("ssid", ssid) == strlen(ssid);
   prefs.putString("password", saved_password);  // An empty String reports zero bytes even on success.
   ok = ok && prefs.getString("password", "\x01") == saved_password;

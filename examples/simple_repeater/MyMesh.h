@@ -994,7 +994,11 @@ public:
   }
 #endif
 
-  void setBridgeState(bool enable) override {
+  bool setBridgeState(bool enable) override {
+    // Disabling an already-absent heap-backed bridge is successful and must
+    // not allocate an instance merely to stop it. The embedded ESP-NOW bridge
+    // is always present, so it continues through the normal state check.
+    if (!enable && !activeBridge()) return true;
 #ifdef WITH_MQTT_BRIDGE
     if (!mqtt_bridge) {
       MQTTNodeInfo node_info;
@@ -1007,17 +1011,17 @@ public:
       node_info.repeat_when_nonzero = false;
       mqtt_bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
                                    getRTCClock(), &self_id);
-      if (!mqtt_bridge) return;
+      if (!mqtt_bridge) return false;
     }
 #endif
 #ifdef WITH_RS232_BRIDGE
     if (enable && !bridge) {
       bridge = createRS232Bridge();
-      if (!bridge) return;
+      if (!bridge) return false;
     }
 #endif
     AbstractBridge* active_bridge = activeBridge();
-    if (!active_bridge) return;
+    if (!active_bridge) return false;
     if (enable == active_bridge->isRunning()) {
 #ifdef WITH_RS232_BRIDGE
       if (!enable) {
@@ -1025,7 +1029,7 @@ public:
         bridge = nullptr;
       }
 #endif
-      return;
+      return true;
     }
     if (enable)
     {
@@ -1048,6 +1052,7 @@ public:
     else
     {
       active_bridge->end();
+      const bool stopped = !active_bridge->isRunning();
 #ifdef WITH_RS232_BRIDGE
       delete bridge;
       bridge = nullptr;
@@ -1055,24 +1060,26 @@ public:
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(nullptr);
 #endif
+      return stopped;
     }
+    return active_bridge->isRunning();
   }
 
-  void restartBridge() override {
+  bool restartBridge() override {
     AbstractBridge* active_bridge = activeBridge();
-    if (!active_bridge || !active_bridge->isRunning()) return;
+    if (!active_bridge) return false;
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {   // coalesced: applied once in onConfigBatchEnd()
       _wc_restart_pending = true;
-      return;
+      return true;
     }
 #endif
-    active_bridge->end();
+    if (active_bridge->isRunning()) active_bridge->end();
 #ifdef WITH_RS232_BRIDGE
     delete bridge;
     bridge = createRS232Bridge();
     if (bridge) bridge->begin();
-    return;
+    return bridge && bridge->isRunning();
 #endif
 #ifdef WITH_MQTT_BRIDGE
     // Set device metadata before restarting bridge (same as in begin())
@@ -1086,6 +1093,7 @@ public:
     mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
     active_bridge->begin();
+    return active_bridge->isRunning();
   }
 
   void restartBridgeSlot(int slot) override {

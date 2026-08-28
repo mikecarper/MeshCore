@@ -329,6 +329,77 @@ const heltecV4TftFemOff = picker.parseTargetProfile(
 assert.strictEqual(heltecV4TftFemOff.hardware, "heltec_v4_3_tft");
 assert.strictEqual(heltecV4TftFemOff.variant, "default");
 
+const directWifiMqtt = picker.parseTargetProfile(
+  "Heltec_v3_companion_radio_wifi_mqtt"
+);
+assert.strictEqual(directWifiMqtt.mode, "wifi");
+assert.strictEqual(directWifiMqtt.logging, "wifi");
+assert.deepStrictEqual(directWifiMqtt.loggingModes, ["wifi"]);
+assert.strictEqual(directWifiMqtt.variant, "default");
+
+const consolidatedV3 = [
+  "Heltec_v3_companion_radio_full",
+  "Heltec_v3_companion_radio_wifi_mqtt",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["bin", "merged-bin"],
+  });
+});
+picker.applyFullCompanionCapabilities(consolidatedV3);
+assert.deepStrictEqual(
+  consolidatedV3[0].loggingModes,
+  ["none", "usb"]
+);
+assert(!picker.profileMatches(consolidatedV3[0], { logging: "wifi" }));
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(consolidatedV3).map(function (item) {
+    return item.target;
+  }),
+  ["Heltec_v3_companion_radio_full"]
+);
+
+const consolidatedV4 = [
+  "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "heltec_v4_companion_radio_wifi_mqtt_femon",
+  "heltec_v4_3_companion_radio_wifi_mqtt_femoff",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["bin", "merged-bin"],
+  });
+});
+picker.applyFullCompanionCapabilities(consolidatedV4);
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(consolidatedV4).map(function (item) {
+    return item.target;
+  }),
+  ["heltec_v4_2_v4_3_companion_radio_full_femon"]
+);
+
+const consolidatedSenseCap = [
+  "SenseCapIndicator-LoRa_companion_radio_full",
+  "SenseCapIndicator-LoRa_comp_radio_usb_wifi",
+].map(function (target) {
+  return Object.assign(picker.parseTargetProfile(target), {
+    installKinds: ["bin", "merged-bin"],
+  });
+});
+assert.strictEqual(consolidatedSenseCap[1].variant, "default");
+picker.applyFullCompanionCapabilities(consolidatedSenseCap);
+assert.deepStrictEqual(
+  picker.omitTransportsReplacedByFull(consolidatedSenseCap).map(
+    function (item) { return item.target; }
+  ),
+  ["SenseCapIndicator-LoRa_companion_radio_full"]
+);
+
+const nrfUf2OnlyFull = Object.assign(
+  picker.parseTargetProfile("RAK_4631_companion_radio_full"),
+  { installKinds: ["uf2"] }
+);
+picker.applyFullCompanionCapabilities([nrfUf2OnlyFull]);
+assert.strictEqual(nrfUf2OnlyFull.dedicatedUsbLogging, true);
+assert.strictEqual(nrfUf2OnlyFull.logging, "usb-runtime");
+
 const g2RxBoosted = picker.parseTargetProfile(
   "Station_G2_logging_repeater"
 );
@@ -435,6 +506,18 @@ assert.deepStrictEqual(mqtt.loggingModes, ["none", "usb", "wifi", "both"]);
 assert.strictEqual(mqtt.mode, "mqtt");
 assert.strictEqual(mqtt.ota, "lora-receiver");
 assert.strictEqual(mqtt.variant, "default");
+
+const fullCompanionSteps = picker.installSteps(v4Full, "merged-bin");
+assert(fullCompanionSteps.some(function (step) {
+  return step.includes("usb.logging");
+}));
+assert(!fullCompanionSteps.some(function (step) {
+  return step.includes("logging.output");
+}));
+const observerSteps = picker.installSteps(mqtt, "merged-bin");
+assert(observerSteps.some(function (step) {
+  return step.includes("logging.output");
+}));
 
 const lora = profile(
   "Station_G2_repeater_lora_ota_no_external_sensors"

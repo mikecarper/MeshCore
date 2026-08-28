@@ -247,6 +247,10 @@ The WiFi `set` commands work on MQTT observers and on FULL standalone
 ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
 password stops an active WebConfig session; run `start webconfig` again to use
 the new credentials. `set wifi.pwd` with no value selects an open network.
+Standalone WiFi also accepts an exact 64-character hexadecimal WPA/WPA2 PSK;
+ordinary passphrases remain limited to 63 characters. Other 64-character values
+and all longer values are rejected. MQTT observer WiFi passwords retain their
+fixed 63-character limit.
 Power-save changes are applied immediately when WiFi is running and otherwise
 take effect on the next connection. `get wifi.pwd` is intentionally unavailable
 so the standalone password is never returned by the CLI.
@@ -260,9 +264,45 @@ restarting the WiFi station, so a TCP client should expect to reconnect at the
 new address; USB password input is masked. Binary
 Companion clients can use command bytes
 `0x46` and `0x47` over USB, BLE, or TCP port 5000 without the terminal-start
-token. WiFi-only Companions accept all three modes; Full Companion rejects
+token. WiFi-only Companions accept all three modes. Full Companion rejects
 `none` because its simultaneous BLE transport requires modem sleep. Companion
-device `powersaving` and LoRa `radio.rxps` remain independent.
+device `powersaving` and LoRa `radio.rxps` remain independent. On an ESP32 Full
+Companion whose primary mesh radio is ESP-NOW, `max` is also unavailable: a
+station using maximum modem sleep can miss ESP-NOW broadcasts, which the access
+point does not buffer for it. A previously saved `max` value is capped to and
+reported as `min`, and a new `max` selection is rejected. These
+WiFi/BLE/primary-ESP-NOW builds therefore use `min`.
+
+#### View or change the primary ESP-NOW/WiFi channel
+
+**Usage:**
+
+- `get espnow.channel`
+- `set espnow.channel <channel>`
+
+**Parameters:**
+
+- `channel`: Shared 2.4 GHz WiFi channel from `1` through `13`; choose one
+  permitted in your region and supported by the router.
+
+**Default:** `1`
+
+This command is available when ESP-NOW is the node's primary mesh radio. The
+setting is persisted. A `set` reply reports that reboot is required; until
+reboot, the running ESP-NOW radio remains on its previous channel. On builds
+that also provide ordinary WiFi, its station and setup AP share that channel.
+
+After reboot, ESP-NOW, the setup AP, and the infrastructure-WiFi station use
+the selected channel. Every primary ESP-NOW node that must communicate with
+this node, plus the configured router's 2.4 GHz radio, must use the same fixed
+channel. WiFi power saving does not allow the transports to use different
+channels. On an ESP32 Full build with primary ESP-NOW, `wifi.powersave max` is
+unavailable because maximum modem sleep can miss ESP-NOW broadcasts; use `min`
+for coexistence.
+
+`espnow.channel` is the channel of the primary ESP-NOW mesh transport. It is
+separate from `bridge.channel`, which configures only an ESP-NOW bridge on a
+firmware role whose primary mesh radio is LoRa.
 
 The browser portal is not compiled into the two 4 MB
 `LilyGo_TLora_V2_1_1_6_*_observer_mqtt` targets because it does not fit while
@@ -648,7 +688,10 @@ frames active on interface `00`; ESP32 resumes the ordinary ASCII/Binary
 switcher after the logging terminal turns logging off. This setting does not
 change the node-storage capture controlled by `log start` and `log stop`.
 
-Unified ESP32 FULL builds add one saved selector for both output paths:
+Unified non-Companion ESP32 FULL USB+WiFi observer builds add one saved
+selector for both output paths. Full Companion builds control USB diagnostics
+with `usb.logging` instead; their text-command parser does not expose
+`logging.output`:
 
 ```text
 get logging.output
@@ -3490,7 +3533,60 @@ rate before running `set bridge.enabled on`.
 - `set bridge.channel <channel>`
 
 **Parameters:**
-- `channel`: Channel number (1-14)
+- `channel`: Channel number from 1 through 13 in either format. This matches
+  the primary-ESP-NOW policy and the default regulatory range used by the
+  supported ESP32 targets.
+
+This controls the optional ESP-NOW bridge transport; it does not change a
+node's primary ESP-NOW mesh channel. Primary-ESP-NOW firmware uses
+`get espnow.channel` and `set espnow.channel <1-13>` instead.
+
+---
+
+#### View or change the ESP-NOW bridge wire format
+**Usage:**
+- `get bridge.format`
+- `set bridge.format <format>`
+
+**Parameters:**
+- `format`:
+  - `wrapped`: the original ESP-NOW bridge framing (magic, checksum, and XOR
+    using `bridge.secret`)
+  - `raw`: the exact serialized MeshCore packet used by primary
+    `ESPNOWRadio` firmware
+
+**Default:** `wrapped`
+
+The setting is persistent and restarts an enabled bridge immediately. Receive
+parsing is strict: `wrapped` accepts only wrapped frames and `raw` accepts only
+raw MeshCore frames. Coordinate the format and channel on every ESP-NOW peer;
+there is no automatic dual-format receive mode because it would permit
+ambiguous, asymmetric bridge deployments.
+
+Use `raw` to connect a LoRa-primary `*_repeater_bridge_espnow` node to
+`Generic_ESPNOW`, `SenseCapIndicator-ESPNow`, or another primary-ESP-NOW node.
+Raw mode enables the ESP-NOW LR PHY and sends at the same LR rate used by those
+targets. All nodes must use the same 1-13 channel. On a primary-ESP-NOW node,
+change that side with `set espnow.channel <1-13>` and reboot; on the bridge,
+use `set bridge.channel <1-13>`.
+
+Raw mode ignores `bridge.secret` and removes the bridge wrapper's lightweight
+network isolation. MeshCore's own packet authentication/encryption still
+applies where the packet type provides it, but public frames and routing
+metadata remain visible. The wrapped format's XOR is isolation, not strong
+cryptography. Bridge duplicate tracking remains active in both formats, but
+deploying multiple gateways between the same LoRa and ESP-NOW coverage areas
+can still increase duplicate traffic while their seen-packet tables converge.
+
+One ESP-NOW frame carries at most 250 payload bytes. In raw mode, serialized
+MeshCore packets up to that size remain byte-for-byte compatible with existing
+raw endpoints. Updated raw endpoints split 251-255-byte transport units into
+two versioned fragments and reassemble them by source MAC, length, and CRC;
+both endpoints must include this support for those sizes. Current valid
+MeshCore packet geometry reaches 254 bytes, while 255 is retained as transport
+headroom. Wrapped mode retains its legacy 246-byte maximum after the four-byte
+magic and checksum overhead, and drops larger packets instead of truncating
+them.
 
 ---
 
@@ -3503,6 +3599,8 @@ rate before running `set bridge.enabled on`.
 - `secret`: ESP-NOW bridge secret, 1-15 characters
 
 **Default:** Varies by board
+
+This setting is used only by `bridge.format wrapped`; raw mode ignores it.
 
 ---
 

@@ -3,7 +3,10 @@
 #include "MeshCore.h"
 #include "esp_now.h"
 #include "esp_idf_version.h"
+#include <freertos/FreeRTOS.h>
+#include "helpers/ESPNowRawFragmentation.h"
 #include "helpers/bridges/BridgeBase.h"
+#include "helpers/bridges/ESPNowBridgeFormat.h"
 
 #ifdef WITH_ESPNOW_BRIDGE
 
@@ -16,27 +19,35 @@
  *
  * Features:
  * - Broadcast-based communication (all bridges receive all packets)
- * - Network isolation using XOR encryption with shared secret
+ * - Selectable wrapped or raw MeshCore wire format
+ * - Network isolation using XOR encryption with shared secret in wrapped mode
  * - Duplicate packet detection using SimpleMeshTables tracking
- * - Maximum packet size of 250 bytes (ESP-NOW limitation)
+ * - Raw MeshCore packets up to 255 bytes using two frames only when needed
  *
- * Packet Structure:
+ * Wrapped Packet Structure (the backward-compatible default):
  * [2 bytes] Magic Header - Used to identify ESPNowBridge packets
- * [2 bytes] Fletcher-16 checksum of encrypted payload (calculated over payload only)
- * [246 bytes max] Encrypted payload containing the mesh packet
+ * [2 bytes] Fletcher-16 checksum of the plaintext mesh payload
+ * [246 bytes max] Mesh packet payload
  *
  * The Fletcher-16 checksum is used to validate packet integrity and detect
- * corrupted or tampered packets. It's calculated over the encrypted payload
- * and provides a simple but effective way to verify packets are both
- * uncorrupted and from the same network (since the checksum is calculated
- * after encryption).
+ * corrupted packets. It is calculated over the plaintext payload; the
+ * checksum and payload are then XORed together using bridge.secret. A receiver
+ * with the wrong secret will normally fail checksum validation.
+ *
+ * Raw mode sends the exact bytes produced by mesh::Packet::writeTo(). It is
+ * compatible with primary ESPNOWRadio nodes, but has no bridge-secret wrapper.
+ * Packets up to the ESP-NOW frame limit remain byte-for-byte unchanged;
+ * 251-255-byte packets use a versioned two-frame envelope understood by
+ * updated raw endpoints. Receive parsing is deliberately strict to the
+ * selected format so a mixed deployment cannot silently become asymmetric.
  *
  * Configuration:
  * - Define WITH_ESPNOW_BRIDGE to enable this bridge
  * - Define _prefs->bridge_secret with a string to set the network encryption key
+ * - Set _prefs->bridge_format to wrapped (default) or raw
  *
- * Network Isolation:
- * Multiple independent mesh networks can coexist by using different
+ * Network Isolation (wrapped mode only):
+ * Multiple independent wrapped mesh networks can coexist by using different
  * _prefs->bridge_secret values. Packets encrypted with a different key will
  * fail the checksum validation and be discarded.
  */
@@ -66,18 +77,52 @@ private:
    * - Checksum: 2 bytes
    * - Available payload: 246 bytes
    */
-  static const size_t MAX_ESPNOW_PACKET_SIZE = 250;
+  static const size_t MAX_ESPNOW_PACKET_SIZE = mesh::bridge::ESPNOW_MAX_FRAME_SIZE;
+  static const uint8_t RX_QUEUE_DEPTH = 4;
+  static const uint8_t TX_QUEUE_DEPTH = 6;
 
-  /**
-   * Size constants for packet parsing
-   */
-  static const size_t MAX_PAYLOAD_SIZE = MAX_ESPNOW_PACKET_SIZE - (BRIDGE_MAGIC_SIZE + BRIDGE_CHECKSUM_SIZE);
+  /** Bounded callback-to-loop queue for receiving ESP-NOW packets. */
+  uint8_t _rx_buffers[RX_QUEUE_DEPTH][MAX_ESPNOW_PACKET_SIZE];
+  uint16_t _rx_lengths[RX_QUEUE_DEPTH];
+  uint8_t _rx_sources[RX_QUEUE_DEPTH]
+                     [mesh::espnow::ESPNOW_RAW_SOURCE_MAC_SIZE];
 
-  /** Buffer for receiving ESP-NOW packets */
-  uint8_t _rx_buffer[MAX_ESPNOW_PACKET_SIZE];
+  // The ESP-NOW callback runs on the WiFi task. It only prefilters and copies
+  // bounded frames here; loop() owns PacketManager and duplicate processing.
+  portMUX_TYPE _rx_mux = portMUX_INITIALIZER_UNLOCKED;
+  volatile uint8_t _rx_head;
+  volatile uint8_t _rx_tail;
+  volatile uint8_t _rx_count;
+  volatile uint32_t _rx_dropped;
+  uint32_t _rx_dropped_reported;
 
-  /** Current position in receive buffer */
-  size_t _rx_buffer_pos;
+  // Keep logical packets intact in the queue. Espressif recommends waiting
+  // for a frame's send callback before submitting the next one, and retaining
+  // the packet boundary lets a failed first fragment discard its sibling
+  // instead of transmitting an orphan fragment.
+  struct QueuedTransmit {
+    mesh::espnow::ESPNowRawFrames frames;
+    mesh::Packet packet;
+    uint8_t next_frame;
+    bool started;
+  };
+  QueuedTransmit _tx_queue[TX_QUEUE_DEPTH];
+  portMUX_TYPE _tx_mux = portMUX_INITIALIZER_UNLOCKED;
+  volatile uint8_t _tx_head;
+  volatile uint8_t _tx_tail;
+  volatile uint8_t _tx_count;
+  volatile bool _tx_waiting;
+  volatile bool _tx_callback_done;
+  volatile int _tx_callback_status;
+  volatile uint32_t _tx_dropped;
+  uint32_t _tx_dropped_reported;
+
+  /** Raw-mode fragment assemblies, keyed by source MAC. */
+  mesh::espnow::ESPNowRawReassembler _raw_reassembler;
+
+  // Snapshotted by begin() and immutable until end(), so callbacks and sends
+  // never observe a partially applied preference change.
+  uint8_t _active_format;
 
   /**
    * Performs XOR encryption/decryption of data
@@ -92,6 +137,9 @@ private:
    */
   bool xorCrypt(uint8_t *data, size_t len);
 
+  /** Parse and queue one serialized MeshCore packet. */
+  void receiveMeshPacket(const uint8_t *data, size_t len);
+
   /**
    * ESP-NOW receive callback
    * Called by ESP-NOW when a packet is received
@@ -100,7 +148,18 @@ private:
    * @param data Received data
    * @param len Length of received data
    */
-  void onDataRecv(const uint8_t *mac, const uint8_t *data, int len);
+  void queueReceivedFrame(const uint8_t *mac, const uint8_t *data, int len);
+
+  /** Parse a queued frame from loop(), never from the WiFi callback. */
+  void processReceivedFrame(const uint8_t *mac, const uint8_t *data,
+                            size_t len);
+
+  /** Atomically append one logical packet's one or two transport frames. */
+  bool queueTransmitFrames(const mesh::espnow::ESPNowRawFrames& frames,
+                           const mesh::Packet& packet);
+
+  /** Submit at most one queued frame after the previous send callback. */
+  void pumpTransmitQueue();
 
   /**
    * ESP-NOW send callback
@@ -143,7 +202,7 @@ public:
 
   /**
    * Main loop handler
-   * ESP-NOW is callback-based, so this is currently empty
+   * Drains the bounded frames handed off by the WiFi receive callback.
    */
   void loop() override;
 

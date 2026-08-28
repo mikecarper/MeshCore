@@ -290,6 +290,89 @@ SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio
 SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full|SenseCapIndicator-LoRa_comp_radio_usb_wifi
 FULL_COMPANION_SPECS
 
+# The Full overlay, not the historical transport used as its build base, owns
+# the capability contract. Verify every registered ESP32 Full target receives
+# an ordinary WiFi Companion transport even when its base was USB- or BLE-only.
+for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
+  is_esp32_companion_radio_full_target "$full_env" || continue
+  pio_env=$(get_pio_build_env "$full_env")
+  PLATFORMIO_BUILD_FLAGS=""
+  PLATFORMIO_BUILD_UNFLAGS=""
+  PLATFORMIO_BUILD_SRC_FILTER=""
+  BUILD_REDUCTIONS=()
+  apply_companion_radio_full_profile "$full_env" "$pio_env"
+  apply_esp32_full_async_tcp_profile "$full_env"
+
+  if ! pio_env_option_contains "$pio_env" build_flags WIFI_SSID \
+      && [[ "$PLATFORMIO_BUILD_FLAGS" != *"WIFI_SSID"* ]]; then
+    fail "$full_env Full Companion omitted ordinary WiFi credentials"
+  fi
+  if ! pio_env_option_contains "$pio_env" build_src_filter "helpers/esp32/*.cpp" \
+      && ! pio_env_option_contains "$pio_env" build_src_filter \
+          "helpers/esp32/SerialWifiInterface.cpp" \
+      && [[ "$PLATFORMIO_BUILD_SRC_FILTER" \
+          != *"helpers/esp32/SerialWifiInterface.cpp"* ]]; then
+    fail "$full_env Full Companion omitted SerialWifiInterface"
+  fi
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"WIFI_OTA_SEEDER=1"* ]] \
+    || fail "$full_env Full Companion omitted its WiFi runtime overlay"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_STACK_SIZE=4096"* ]] \
+    || fail "$full_env Full Companion omitted its bounded AsyncTCP stack"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_RUNNING_CORE=1"* ]] \
+    || fail "$full_env Full Companion omitted its AsyncTCP core isolation"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"ASYNCWEBSERVER_USE_CHUNK_INFLIGHT=0"* ]] \
+    || fail "$full_env Full Companion omitted its slow-client response profile"
+
+  case "${full_env,,}" in
+    generic_espnow_companion_radio_full|\
+    sensecapindicator-espnow_companion_radio_full)
+      pio_env_option_contains "$pio_env" build_flags "MESH_PRIMARY_ESPNOW=1" \
+        || fail "$full_env lost its primary ESP-NOW radio marker"
+      [[ "$PLATFORMIO_BUILD_UNFLAGS" != *"MESH_PRIMARY_ESPNOW"* ]] \
+        || fail "$full_env removed its primary ESP-NOW radio marker"
+      [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_ESPNOW_RADIO=1"* ]] \
+        || fail "$full_env omitted ESP-NOW/WiFi coexistence policy"
+      ;;
+  esac
+done
+unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
+  PLATFORMIO_BUILD_SRC_FILTER
+
+# The bounded AsyncTCP task stack belongs to every ESP32 Full profile, including
+# expanded non-Companion builds, but must not leak into ordinary or nRF52
+# recipes.
+ESP32_FULL_BUILD=1
+PLATFORMIO_BUILD_FLAGS=""
+apply_esp32_full_async_tcp_profile Heltec_v3_repeater
+[[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_STACK_SIZE=4096"* ]] \
+  || fail "expanded ESP32 Full omitted its bounded AsyncTCP stack"
+[[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_RUNNING_CORE=1"* ]] \
+  || fail "expanded ESP32 Full omitted its AsyncTCP core isolation"
+[[ "$PLATFORMIO_BUILD_FLAGS" == *"ASYNCWEBSERVER_USE_CHUNK_INFLIGHT=0"* ]] \
+  || fail "expanded ESP32 Full omitted its slow-client response profile"
+
+ESP32_FULL_BUILD=0
+PLATFORMIO_BUILD_FLAGS=""
+apply_esp32_full_async_tcp_profile Heltec_v3_repeater
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"CONFIG_ASYNC_TCP_STACK_SIZE"* ]] \
+  || fail "ordinary ESP32 inherited the Full AsyncTCP stack override"
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"CONFIG_ASYNC_TCP_RUNNING_CORE"* ]] \
+  || fail "ordinary ESP32 inherited the Full AsyncTCP core override"
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"ASYNCWEBSERVER_USE_CHUNK_INFLIGHT"* ]] \
+  || fail "ordinary ESP32 inherited the Full slow-client response override"
+
+ESP32_FULL_BUILD=1
+PLATFORMIO_BUILD_FLAGS=""
+apply_esp32_full_async_tcp_profile RAK_4631_companion_radio_full
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"CONFIG_ASYNC_TCP_STACK_SIZE"* ]] \
+  || fail "nRF52 Full inherited the ESP32 AsyncTCP stack override"
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"CONFIG_ASYNC_TCP_RUNNING_CORE"* ]] \
+  || fail "nRF52 Full inherited the ESP32 AsyncTCP core override"
+[[ "$PLATFORMIO_BUILD_FLAGS" != *"ASYNCWEBSERVER_USE_CHUNK_INFLIGHT"* ]] \
+  || fail "nRF52 Full inherited the ESP32 slow-client response override"
+ESP32_FULL_BUILD=0
+unset PLATFORMIO_BUILD_FLAGS
+
 while IFS='|' read -r source_env full_env; do
   [ "$(get_esp32_full_companion_replacement "$source_env")" = "$full_env" ] \
     || fail "$source_env did not collapse into $full_env"

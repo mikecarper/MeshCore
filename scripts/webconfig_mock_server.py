@@ -60,10 +60,11 @@ ADMIN_PASSWORD = "password"          # matches the default ADMIN_PASSWORD build 
 BATCH_PENDING_SECS = 0.8             # how long POST->done takes, to exercise polling
 SCAN_SECS = 0.8
 
-# Destination buffer sizes (chars, minus the NUL) -- mirrors the MQTTPrefs fields
-# the firmware validates in CommonCLI_Observer.cpp.
+# Destination buffer sizes (chars, minus the NUL). Most mirror MQTTPrefs;
+# wifi.pwd models the standalone mesh-wifi NVS path and receives the additional
+# exact-64-hex check in apply_set(). Slot credentials remain fixed-layout.
 LEN_LIMITS = {
-    "name": 31, "wifi.ssid": 31, "wifi.pwd": 63, "mqtt.origin": 31,
+    "name": 31, "wifi.ssid": 31, "wifi.pwd": 64, "mqtt.origin": 31,
     "mqtt.email": 63, "mqtt.ntp": 63, "timezone": 31, "snmp.community": 23,
 }
 # "filter" is absent on purpose: it is a bitmask, not a text buffer, so it has
@@ -89,11 +90,11 @@ PRESETS = (
 )
 
 SCAN_NETWORKS = [
-    {"ssid": "Wokwi-GUEST", "rssi": -42, "enc": False},
-    {"ssid": "HomeNet", "rssi": -55, "enc": True},
-    {"ssid": "HomeNet-5G", "rssi": -61, "enc": True},
-    {"ssid": "Neighbor 2.4", "rssi": -78, "enc": True},
-    {"ssid": "OpenGuest", "rssi": -83, "enc": False},
+    {"ssid": "Wokwi-GUEST", "rssi": -42, "enc": False, "channel": 6},
+    {"ssid": "HomeNet", "rssi": -55, "enc": True, "channel": 1},
+    {"ssid": "HomeNet-5G", "rssi": -61, "enc": True, "channel": 11},
+    {"ssid": "Neighbor 2.4", "rssi": -78, "enc": True, "channel": 9},
+    {"ssid": "OpenGuest", "rssi": -83, "enc": False, "channel": 3},
 ]
 
 
@@ -137,7 +138,8 @@ def default_config(setup_mode):
             "alert.region": "", "alert.interval": 15,
             "alert.mqtt": False, "alert.wifi": False,
             "bridge.enabled": False, "bridge.source": "rx", "bridge.baud": 115200,
-            "bridge.delay": 0, "bridge.channel": 0, "bridge.secret": "",
+            "bridge.delay": 0, "bridge.channel": 0,
+            "bridge.format": "wrapped", "bridge.secret": "",
         },
     }
 
@@ -196,6 +198,7 @@ class State:
             "role": "Repeater", "board": "Heltec V3 (mock)",
             "uptime_s": int(time.time() - self.start),
             "runtime_slots": 6, "max_slots": 6, "active_slots": self.active_slots,
+            "wifi_psk64": True,
             # Every ordinary repeater feature except an external FEM, plus
             # radio RX power saving (bit 12) and device power saving (bit 13).
             "capabilities": 0x37FF,
@@ -262,6 +265,8 @@ def _rxps_level_timings(level, sf, bw, preamble):
 def apply_set(cfg, key, val):
     """Return (ok, reply) and mutate cfg. Mirrors the firmware's validation for
     the fields where it matters (length, IATA, owner key, port, radio combo)."""
+    if key == "wifi.pwd" and (len(val) > 64 or (len(val) == 64 and not _hex64(val))):
+        return False, "Error: WiFi password must be 0-63 characters or 64 hex characters"
     # length guard for the plain string fields
     if key in LEN_LIMITS and len(val) > LEN_LIMITS[key]:
         return False, "Error: %s too long (max %d chars)" % (key, LEN_LIMITS[key])

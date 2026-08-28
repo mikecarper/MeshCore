@@ -24,7 +24,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
   "advert.interval", "flood.advert.interval",
   "flood.max", "flood.max.advert", "flood.max.unscoped", "loop.detect",
   // MQTTPrefs (WiFi / MQTT / misc observer)
-  "wifi.ssid", "wifi.pwd", "wifi.powersave",
+  "wifi.ssid", "wifi.pwd", "wifi.powersave", "espnow.channel",
   "mqtt.origin", "mqtt.iata", "mqtt.status", "mqtt.packets", "mqtt.raw",
   "mqtt.tx", "mqtt.rx", "mqtt.interval", "mqtt.neighbors", "mqtt.neighbors.interval",
   "mqtt.ntp", "mqtt.owner", "mqtt.email",
@@ -55,6 +55,14 @@ static inline bool wcIsAllowedSetKey(const char* key) {
     }
   }
   return false;
+}
+
+// Changing the primary ESP-NOW channel cannot be applied live: every peer and
+// any infrastructure-WiFi association must stay on the boot channel until the
+// node restarts. The server enforces this even when a crafted client omits the
+// browser's reboot flag.
+static inline bool wcSetKeyRequiresReboot(const char* key) {
+  return key != NULL && strcmp(key, "espnow.channel") == 0;
 }
 
 // The admin password maps to the top-level `password` command, not a setter, so

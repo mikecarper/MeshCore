@@ -189,7 +189,30 @@ set wifi.powersave {none|min|max}
 Shows or changes the persisted WiFi modem-sleep policy on ESP32 WiFi Companion
 builds. Full Companion requires at least `min` while BLE is present and rejects
 `none`. The WebConfig WiFi card and the normal binary Companion protocol expose
-the same setting; binary clients do not need the terminal-start token.
+the same setting; binary clients do not need the terminal-start token. On an
+ESP32 Full Companion whose primary mesh radio is ESP-NOW, `max` is also
+unavailable because maximum modem sleep can make the
+station miss ESP-NOW broadcasts, which the access point does not buffer. A
+previously saved `max` value is capped to and reported as `min`, and a new `max`
+selection is rejected. Such a WiFi/BLE/primary-ESP-NOW build therefore uses
+`min`.
+
+```
+get espnow.channel
+set espnow.channel <1-13>
+```
+On Full Companion builds whose primary mesh radio is ESP-NOW, this shows or
+saves the single channel shared by ESP-NOW, the setup AP, and the
+infrastructure-WiFi station. The default is channel 1. Use only a channel
+permitted in your region and supported by the router. A saved change takes
+effect only after reboot. Every primary ESP-NOW node and the router's 2.4 GHz
+radio must use the same fixed channel; power saving does not permit separate
+channels. On these ESP32 Full builds, `wifi.powersave max` is unavailable and
+`min` is the coexistence setting. This channel setting is also distinct from
+`bridge.channel`, which controls the optional ESP-NOW bridge transport. An
+updated LoRa-primary ESP-NOW bridge can join this raw primary transport by
+selecting the same channel and running `set bridge.format raw`; its default
+`wrapped` format remains the bridge-to-bridge protocol.
 
 ```
 get radio.rxgain

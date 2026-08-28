@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ContactListOrder.h>
 #include <helpers/TerminalCommandTracker.h>
 #include <helpers/TerminalDisplayFilter.h>
+#include <helpers/WiFiChannelPolicy.h>
 #include <helpers/WiFiPowerSave.h>
+#include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
 
 TEST(ContactListOrder, SortsFavoritesBeforeNewerNonFavorites) {
@@ -543,8 +547,17 @@ TEST(CLICommandUtils, ValidatesStandaloneWiFiValues) {
   EXPECT_TRUE(mesh::cli::standaloneWiFiPasswordValid(""));
   EXPECT_TRUE(mesh::cli::standaloneWiFiPasswordValid(
       "123456789012345678901234567890123456789012345678901234567890123"));
+  EXPECT_TRUE(mesh::cli::standaloneWiFiPasswordValid(
+      "0123456789abcdefABCDEF0123456789abcdefABCDEF0123456789abcdef0123"));
+
+  std::string non_hex_64(64, 'a');
+  non_hex_64[31] = 'g';
+  EXPECT_FALSE(mesh::cli::standaloneWiFiPasswordValid(non_hex_64.c_str()));
+  non_hex_64[31] = ' ';
+  EXPECT_FALSE(mesh::cli::standaloneWiFiPasswordValid(non_hex_64.c_str()));
   EXPECT_FALSE(mesh::cli::standaloneWiFiPasswordValid(
-      "1234567890123456789012345678901234567890123456789012345678901234"));
+      std::string(65, 'a').c_str()));
+  EXPECT_FALSE(mesh::cli::standaloneWiFiPasswordValid(nullptr));
 
   uint8_t power_save = 99;
   EXPECT_TRUE(mesh::cli::parseStandaloneWiFiPowerSave("min", power_save));
@@ -569,6 +582,18 @@ TEST(CLICommandUtils, EnforcesWiFiSleepForBluetoothCoexistence) {
             mesh::wifi::effectivePowerSave(99, true));
   EXPECT_EQ(mesh::wifi::kPowerSaveNone,
             mesh::wifi::effectivePowerSave(99, false));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(
+                mesh::wifi::kPowerSaveMax, false, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(
+                mesh::wifi::kPowerSaveMax, true, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveMin,
+            mesh::wifi::effectivePowerSave(
+                mesh::wifi::kPowerSaveNone, true, true));
+  EXPECT_EQ(mesh::wifi::kPowerSaveNone,
+            mesh::wifi::effectivePowerSave(
+                mesh::wifi::kPowerSaveNone, false, true));
 }
 
 TEST(CLICommandUtils, DefaultsWiFiPowerSaveToNoneWithoutProfileOverride) {
@@ -689,6 +714,152 @@ TEST(CLICommandUtils, FormatsUsefulUnknownSettingErrors) {
 
   EXPECT_STREQ("Error: unknown setting: wifi.typo", reply);
   EXPECT_EQ(nullptr, strstr(reply, "??:"));
+}
+
+TEST(WiFiChannelPolicy, AcceptsTheSupportedEspNowChannelRange) {
+  uint8_t channel = 0;
+
+  EXPECT_TRUE(mesh::wifi::parseEspNowChannel("1", channel));
+  EXPECT_EQ(1, channel);
+  EXPECT_TRUE(mesh::wifi::parseEspNowChannel("6", channel));
+  EXPECT_EQ(6, channel);
+  EXPECT_TRUE(mesh::wifi::parseEspNowChannel("13", channel));
+  EXPECT_EQ(13, channel);
+  EXPECT_TRUE(mesh::wifi::parseEspNowChannel(" \t11\t ", channel));
+  EXPECT_EQ(11, channel);
+
+  EXPECT_FALSE(mesh::wifi::isValidEspNowChannel(0));
+  EXPECT_TRUE(mesh::wifi::isValidEspNowChannel(1));
+  EXPECT_TRUE(mesh::wifi::isValidEspNowChannel(13));
+  EXPECT_FALSE(mesh::wifi::isValidEspNowChannel(14));
+}
+
+TEST(WiFiChannelPolicy, RejectsMalformedAndOutOfRangeValuesWithoutMutation) {
+  const char* invalid[] = {
+    nullptr, "", " \t", "0", "14", "+1", "-1", "1.0", "6GHz",
+    "1 2", "1\n", "999999999999999999999999999999999999",
+  };
+
+  for (const char* value : invalid) {
+    uint8_t channel = 7;
+    EXPECT_FALSE(mesh::wifi::parseEspNowChannel(value, channel))
+        << (value == nullptr ? "<null>" : value);
+    EXPECT_EQ(7, channel);
+  }
+}
+
+TEST(WiFiChannelPolicy, FallsBackOnlyWhenTheStoredChannelIsInvalid) {
+  EXPECT_EQ(1, mesh::wifi::validEspNowChannelOrDefault(0, 1));
+  EXPECT_EQ(6, mesh::wifi::validEspNowChannelOrDefault(6, 1));
+  EXPECT_EQ(13, mesh::wifi::validEspNowChannelOrDefault(13, 1));
+  EXPECT_EQ(1, mesh::wifi::validEspNowChannelOrDefault(14, 1));
+}
+
+TEST(CLICommandUtils, ObserverSettingsNeverStartADisabledBridge) {
+  int calls = 0;
+  EXPECT_TRUE(mesh::cli::restartBridgeIfEnabled(false, [&calls]() {
+    ++calls;
+    return true;
+  }));
+  EXPECT_EQ(0, calls);
+
+  EXPECT_TRUE(mesh::cli::restartBridgeIfEnabled(true, [&calls]() {
+    ++calls;
+    return true;
+  }));
+  EXPECT_EQ(1, calls);
+
+  EXPECT_FALSE(mesh::cli::restartBridgeIfEnabled(true, [&calls]() {
+    ++calls;
+    return false;
+  }));
+  EXPECT_EQ(2, calls);
+}
+
+TEST(ESPNowBridgeFormat, ParsesOnlyExplicitSupportedNames) {
+  uint8_t format = 99;
+
+  EXPECT_TRUE(mesh::bridge::parseEspNowFormat("wrapped", format));
+  EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, format);
+  EXPECT_STREQ("wrapped", mesh::bridge::espNowFormatName(format));
+
+  EXPECT_TRUE(mesh::bridge::parseEspNowFormat("raw", format));
+  EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_RAW, format);
+  EXPECT_STREQ("raw", mesh::bridge::espNowFormatName(format));
+
+  const char* invalid[] = {
+    nullptr, "", "auto", "both", "native", "RAW", "raw ", " wrapped",
+  };
+  for (const char* value : invalid) {
+    format = 7;
+    EXPECT_FALSE(mesh::bridge::parseEspNowFormat(value, format));
+    EXPECT_EQ(7, format);
+  }
+}
+
+TEST(ESPNowBridgeFormat, PreservesLegacyDefaultAndRawPayloadCapacity) {
+  EXPECT_TRUE(mesh::bridge::isValidEspNowFormat(
+      mesh::bridge::ESPNOW_FORMAT_WRAPPED));
+  EXPECT_TRUE(mesh::bridge::isValidEspNowFormat(
+      mesh::bridge::ESPNOW_FORMAT_RAW));
+  EXPECT_FALSE(mesh::bridge::isValidEspNowFormat(2));
+
+  EXPECT_EQ(246U, mesh::bridge::espNowMaxMeshPacketSize(
+      mesh::bridge::ESPNOW_FORMAT_WRAPPED));
+  EXPECT_EQ(255U, mesh::bridge::espNowMaxMeshPacketSize(
+      mesh::bridge::ESPNOW_FORMAT_RAW));
+  EXPECT_EQ(246U, mesh::bridge::espNowMaxMeshPacketSize(99));
+}
+
+TEST(ESPNowBridgeFormat, BothFormatsAcceptExactlyChannelsOneThroughThirteen) {
+  const uint8_t formats[] = {
+    mesh::bridge::ESPNOW_FORMAT_WRAPPED,
+    mesh::bridge::ESPNOW_FORMAT_RAW,
+  };
+
+  for (uint8_t format : formats) {
+    EXPECT_EQ(13, mesh::bridge::espNowMaxChannel(format));
+    EXPECT_FALSE(mesh::bridge::isValidEspNowBridgeChannel(0, format));
+    EXPECT_FALSE(mesh::bridge::isValidEspNowBridgeChannel(14, format));
+
+    for (uint8_t expected = 1; expected <= 13; ++expected) {
+      char text[4];
+      snprintf(text, sizeof(text), "%u", (unsigned)expected);
+      uint8_t channel = 99;
+      EXPECT_TRUE(mesh::bridge::parseEspNowBridgeChannel(
+          text, format, channel)) << "format=" << (unsigned)format
+                                 << " channel=" << (unsigned)expected;
+      EXPECT_EQ(expected, channel);
+      EXPECT_TRUE(mesh::bridge::isValidEspNowBridgeChannel(channel, format));
+    }
+  }
+}
+
+TEST(ESPNowBridgeFormat, BothFormatsRejectMalformedChannelsWithoutMutation) {
+  const uint8_t formats[] = {
+    mesh::bridge::ESPNOW_FORMAT_WRAPPED,
+    mesh::bridge::ESPNOW_FORMAT_RAW,
+  };
+  const char* invalid[] = {
+    nullptr, "", " ", "0", "14", "15", "+6", "-6", "6junk", "1 2",
+    "6.0", "6\n", "999999999999999999999999999999999",
+  };
+
+  for (uint8_t format : formats) {
+    for (const char* value : invalid) {
+      uint8_t channel = 7;
+      EXPECT_FALSE(mesh::bridge::parseEspNowBridgeChannel(
+          value, format, channel))
+          << "format=" << (unsigned)format
+          << " value=" << (value == nullptr ? "<null>" : value);
+      EXPECT_EQ(7, channel);
+    }
+
+    uint8_t channel = 0;
+    EXPECT_TRUE(mesh::bridge::parseEspNowBridgeChannel(
+        " \t13\t ", format, channel));
+    EXPECT_EQ(13, channel);
+  }
 }
 
 int main(int argc, char** argv) {

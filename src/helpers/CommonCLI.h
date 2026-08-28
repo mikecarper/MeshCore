@@ -9,6 +9,7 @@
 #include <helpers/PrefsSaveRouting.h>
 #include <helpers/RegionMap.h>
 #include <helpers/ConfigSerializer.h>
+#include <helpers/bridges/ESPNowBridgeFormat.h>
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -147,7 +148,7 @@ public:
   uint16_t bridge_delay = 0;  // milliseconds (default 500 ms)
   uint8_t bridge_pkt_src = 0; // 0 = logTx, 1 = logRx (default logRx)
   uint32_t bridge_baud = 0;   // 9600, 19200, 38400, 57600, 115200 (default 115200)
-  uint8_t bridge_channel = 0; // 1-14 (ESP-NOW only)
+  uint8_t bridge_channel = 0; // 1-13 (ESP-NOW only)
   char bridge_secret[16] = {}; // for XOR encryption of bridge packets (ESP-NOW only)
   // Power setting
   uint8_t powersaving_enabled = 0; // boolean
@@ -179,6 +180,9 @@ public:
   // Runtime UART choice for merged RS-232 repeater artifacts. Appended at
   // /com_prefs offset 862; single-UART builds keep their compiled port here.
   uint8_t bridge_uart = 0;
+  // ESP-NOW bridge wire format. Appended at /com_prefs offset 863; zero keeps
+  // existing installations on the original wrapped/checksummed/XOR format.
+  uint8_t bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
   uint8_t retry_preset = 0;
   uint8_t direct_retry_attempts = 0;
   uint16_t direct_retry_base_ms = 0;
@@ -277,6 +281,7 @@ private:
       def("uart", _parent->bridge_uart);
       def("ch", _parent->bridge_channel);
       def("secret", _parent->bridge_secret, sizeof(_parent->bridge_secret));
+      def("format", _parent->bridge_format);
       def("usb_log", _parent->usb_logging_enabled);
     }
 
@@ -494,12 +499,15 @@ public:
     // no op by default
   }
 
-  virtual void setBridgeState(bool enable) {
+  virtual bool setBridgeState(bool enable) {
     // no op by default
+    (void)enable;
+    return false;
   };
 
-  virtual void restartBridge() {
+  virtual bool restartBridge() {
     // no op by default
+    return false;
   };
 
   virtual void restartBridgeSlot(int slot) {

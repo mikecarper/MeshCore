@@ -25,6 +25,7 @@
 #include <esp_wifi.h>
 #include <esp_sntp.h>
 #include <esp_heap_caps.h>
+#include <helpers/esp32/WiFiStationPolicy.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -1290,12 +1291,17 @@ void MQTTBridge::initializeWiFiInTask() {
   // Initialize WiFi
   WiFi.mode(WIFI_STA);
 
-  // Enable automatic reconnection - ESP32 will handle reconnection automatically
-  WiFi.setAutoReconnect(true);
+  // A primary ESP-NOW radio must reconnect through the fixed-channel policy;
+  // other ESP32 targets retain the driver's normal automatic reconnect.
+  mesh::wifi::setStationAutoReconnect(true);
 #if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3
   // Arduino-ESP32 3.x removed setAutoConnect(); begin() plus
   // setAutoReconnect() is the supported equivalent there.
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  WiFi.setAutoConnect(false);
+#else
   WiFi.setAutoConnect(true);
+#endif
 #endif
 
   // Set up WiFi event handlers for better diagnostics and immediate disconnection
@@ -1340,7 +1346,7 @@ void MQTTBridge::initializeWiFiInTask() {
   // because _ntp_synced persists across end() (only _slots_setup_done is reset).
   if (WiFi.status() != WL_CONNECTED) {
     if (_manage_wifi) {
-      WiFi.begin(_obs->wifi_ssid, _obs->wifi_password);
+      mesh::wifi::beginStation(_obs->wifi_ssid, _obs->wifi_password);
     }
   } else if (!_ntp_synced && !_ntp_sync_pending) {
     _ntp_sync_pending = true;  // already connected but never synced - kick NTP now
@@ -2834,6 +2840,14 @@ void MQTTBridge::checkConfigurationMismatch() {
 
 bool MQTTBridge::handleWiFiConnection(unsigned long now) {
   wl_status_t current_wifi_status = WiFi.status();
+#ifdef ESP_PLATFORM
+  if (current_wifi_status == WL_CONNECTED
+      && !mesh::wifi::enforceStationChannel()) {
+    current_wifi_status = WL_DISCONNECTED;
+    MQTT_DEBUG_PRINTLN(
+        "Rejected WiFi association outside the primary ESP-NOW channel");
+  }
+#endif
   bool transitioned_to_connected = false;
 
   if (current_wifi_status == WL_CONNECTED && s_wifi_connected_at == 0) {
@@ -2869,10 +2883,11 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       uint8_t ps_pref = mesh::wifi::effectivePowerSave(
           _obs->wifi_power_save,
 #if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
-          true
+          true,
 #else
-          false
+          false,
 #endif
+          mesh::wifi::kPrimaryEspNowRadio
       );
       if (ps_pref == 1) {
         ps_mode = WIFI_PS_NONE;
@@ -2920,7 +2935,11 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
         _wifi_reconnect_backoff_attempt =
             MQTTConnectionPolicy::nextWifiBackoffAttempt(_wifi_reconnect_backoff_attempt);
         WiFi.disconnect();
+#ifdef ESP_PLATFORM
+        mesh::wifi::beginStation(_obs->wifi_ssid, _obs->wifi_password);
+#else
         WiFi.begin(_obs->wifi_ssid, _obs->wifi_password);
+#endif
       }
     }
     _last_wifi_status = current_wifi_status;

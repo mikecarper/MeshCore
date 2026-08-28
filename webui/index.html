@@ -248,15 +248,18 @@ body.tab-cli{padding-bottom:0}
     <div class="card">
       <h2>Step 1 &middot; WiFi</h2>
       <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px" id="wz-wifi-copy">Connect this node to your WiFi network so it can reach the MQTT servers.</p>
-      <div class="note"><b>Preparing for remote deployment?</b> This wizard tests the WiFi before reboot. If the deployment network is not available here, use USB serial at <b>config.meshcore.io</b> and run <b>set wifi.ssid ...</b> and <b>set wifi.pwd ...</b>. The node saves them without connecting and retries after deployment.</div>
+      <div class="note"><b>Preparing for remote deployment?</b> This wizard tests the WiFi before reboot<span data-cap="32768"> unless you also change the shared ESP-NOW channel</span>. If the deployment network is not available here, use USB serial at <b>config.meshcore.io</b> and run <b>set wifi.ssid ...</b> and <b>set wifi.pwd ...</b>. The node saves them without connecting and retries after deployment.</div>
       <div class="f"><label>Network name (SSID)</label>
         <div class="row" style="gap:8px">
           <input type="text" data-k="wifi.ssid" id="wz-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
           <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('wz-ssid')">Scan</button>
         </div></div>
       <div class="f"><label>Password</label>
-        <input type="password" data-k="wifi.pwd" autocomplete="off">
-        <div class="hint">Leave blank for an open network. 2.4&thinsp;GHz networks only.</div></div>
+        <input type="password" data-k="wifi.pwd" maxlength="64" autocomplete="off">
+        <div class="hint">Leave blank for an open network. <span data-wifi-pwd-hint>Passphrases may be up to 63 characters; a 64-character key must be hexadecimal.</span> 2.4&thinsp;GHz networks only.</div></div>
+      <div class="f" data-cap="32768"><label>ESP-NOW / WiFi channel</label>
+        <input type="number" data-k="espnow.channel" min="1" max="13" step="1" style="max-width:120px">
+        <div class="hint">Must match the 2.4&thinsp;GHz router and every ESP-NOW node. Scanning fills the router's channel. Use only a channel permitted locally. A change takes effect after reboot, so WiFi is joined after the reboot too.</div></div>
       <div class="f"><label>Node name</label>
         <input type="text" data-k="name" maxlength="31">
         <div class="hint" id="wz-name-hint">Shown on the mesh and in MQTT status messages.</div></div>
@@ -495,7 +498,11 @@ body.tab-cli{padding-bottom:0}
           <input type="text" data-k="wifi.ssid" id="app-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
           <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('app-ssid')">Scan</button>
         </div></div>
-      <div class="f"><label>Password</label><input type="password" data-k="wifi.pwd" autocomplete="off"></div>
+      <div class="f"><label>Password</label><input type="password" data-k="wifi.pwd" maxlength="64" autocomplete="off">
+        <div class="hint">Leave blank for an open network. <span data-wifi-pwd-hint>Passphrases may be up to 63 characters; a 64-character key must be hexadecimal.</span></div></div>
+      <div class="f" data-cap="32768"><label>ESP-NOW / WiFi channel</label>
+        <input type="number" data-k="espnow.channel" min="1" max="13" step="1" style="max-width:120px">
+        <div class="hint">Channel 1-13 where locally permitted. The router and every ESP-NOW node must match. Selecting a scanned network fills its channel; changes require a reboot.</div></div>
       <div class="f" data-cap="1024"><label>Power save</label>
         <select data-k="wifi.powersave"><option value="min">Minimum</option><option value="none">None (lowest latency)</option><option value="max">Maximum (battery)</option></select></div>
     </div>
@@ -598,7 +605,7 @@ body.tab-cli{padding-bottom:0}
 <script>
 "use strict";
 var SENTINEL="********";
-var st={mode:"",authed:false,hasMqtt:false,hasCli:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+var st={mode:"",authed:false,hasMqtt:false,hasCli:false,wifiPsk64:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
 
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
@@ -662,6 +669,12 @@ function applyFeatures(){
   var floodCard=$("#radio-flood-card");
   if(floodCard)floodCard.classList.toggle("hide",!(st.caps&(128|256)));
   $$(".password-card").forEach(function(el){el.classList.toggle("hide",!st.passwordSupported)});
+  $$('[data-k="wifi.pwd"]').forEach(function(el){el.maxLength=st.wifiPsk64?64:63});
+  $$('[data-wifi-pwd-hint]').forEach(function(el){
+    el.textContent=st.wifiPsk64
+      ? "Passphrases may be up to 63 characters; a 64-character key must be hexadecimal."
+      : "Passphrases may be up to 63 characters.";
+  });
   if(!st.hasCli){
     var cliTab=$('#tabs button[data-t="cli"]');if(cliTab)cliTab.remove();
     $("#t-cli").classList.add("hide");
@@ -690,6 +703,7 @@ function boot(){
     // (active_slots: 2 without PSRAM, 5 with). Fall back to the runtime array
     // size for older firmware that doesn't report it.
     st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.hasCli=!!s.cli;
+    st.wifiPsk64=!!s.wifi_psk64;
     st.passwordSupported=!!s.password_supported;st.needsPassword=!!s.needs_password;
     st.needsSetup=!!s.needs_setup;st.caps=s.capabilities||0;
     st.nslots=st.hasMqtt?(s.active_slots||s.runtime_slots||0):0;
@@ -754,6 +768,7 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"flood.advert.interval":return String(r.flood_advert_interval);
     case"password":return"";
     case"wifi.ssid":return w.ssid;case"wifi.pwd":return w.pwd;case"wifi.powersave":return w.powersave;
+    case"espnow.channel":return String(w.espnow_channel||1);
     case"mqtt.origin":return q.origin;case"mqtt.iata":return q.iata;
     case"mqtt.status":return q.status?"on":"off";case"mqtt.packets":return q.packets?"on":"off";
     case"mqtt.raw":return q.raw?"on":"off";case"mqtt.tx":return q.tx;case"mqtt.rx":return q.rx?"on":"off";
@@ -1049,7 +1064,7 @@ function saveChanges(extra,cb){
   // Applying new station credentials necessarily drops this page. Reboot
   // after a successful batch so the bridge joins with the complete SSID and
   // password together instead of reconnecting between the two writes.
-  if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap))body.reboot=true;
+  if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap)||("espnow.channel" in setmap))body.reboot=true;
   if(Object.keys(setmap).length===0&&!body.reboot){toast("Nothing to save");return}
   var reqid=mkReqId();body.reqid=reqid;
   $("#save-btn").disabled=true;
@@ -1085,7 +1100,7 @@ function saveChanges(extra,cb){
   });
 }
 function appSave(){
-  var wifiChanged=("wifi.ssid" in st.dirty)||("wifi.pwd" in st.dirty);
+  var wifiChanged=("wifi.ssid" in st.dirty)||("wifi.pwd" in st.dirty)||("espnow.channel" in st.dirty);
   var pwdErr=adminPwdError(wifiChanged);
   if(pwdErr){
     $('#tabs button[data-t="radio"]').click();
@@ -1290,8 +1305,8 @@ function pollScan(url){
     nets.sort(function(a,b){return b.rssi-a.rssi});
     var seen={};nets=nets.filter(function(n){if(seen[n.ssid])return false;seen[n.ssid]=1;return true});
     $("#scan-list").innerHTML=nets.length?nets.map(function(n){
-      return'<button type="button" class="net" data-ssid="'+esc(n.ssid)+'">'+bars(n.rssi)
-        +'<span class="ss">'+esc(n.ssid)+"</span>"+(n.enc?"&#128274;":"")+"<small>"+n.rssi+"</small></button>";
+      return'<button type="button" class="net" data-ssid="'+esc(n.ssid)+'" data-channel="'+esc(n.channel||"")+'">'+bars(n.rssi)
+        +'<span class="ss">'+esc(n.ssid)+"</span>"+(n.enc?"&#128274;":"")+"<small>ch "+esc(n.channel||"?")+" &middot; "+n.rssi+"</small></button>";
     }).join(""):'<p style="color:var(--mut);padding:12px">No networks found.</p>';
   }).catch(function(){$("#scan-list").innerHTML='<p style="color:var(--mut);padding:12px">Scan failed.</p>'});
 }
@@ -1300,6 +1315,14 @@ $("#scan-list").addEventListener("click",function(ev){
   var el=document.getElementById(st.scanTarget);
   el.value=b.dataset.ssid;
   el.dispatchEvent(new Event("input",{bubbles:true}));
+  var channel=Number(b.dataset.channel);
+  if((st.caps&32768)&&channel>=1&&channel<=13&&Math.floor(channel)===channel){
+    // Wizard and app mode each render this setting. Keep both copies in sync
+    // so a scan always updates the channel field beside the SSID that opened it.
+    $$('[data-k="espnow.channel"]').forEach(function(ch){
+      ch.value=String(channel);ch.dispatchEvent(new Event("input",{bubbles:true}))
+    });
+  }
   closeScan();
 });
 
@@ -1409,6 +1432,7 @@ function buildReview(){
   function row(l,v){rows.push('<div class="kv"><i>'+l+"</i><b>"+esc(v)+"</b></div>")}
   row("WiFi network",d["wifi.ssid"]||st.orig["wifi.ssid"]||"(not set)");
   row("WiFi password",d["wifi.pwd"]?"******":(st.orig["wifi.pwd"]?"(unchanged)":"(open network)"));
+  if(st.caps&32768)row("ESP-NOW / WiFi channel","Channel "+eff("espnow.channel")+(d["espnow.channel"]?" (reboot required)":""));
   if(d.name||st.orig.name)row("Node name",d.name||st.orig.name);
   var rc=d.radio||st.orig.radio||"",rp=null;
   RADIO_PRESETS.forEach(function(p){if(comboEq(presetCombo(p),rc))rp=p});
@@ -1427,7 +1451,7 @@ function buildReview(){
       if(p&&p!=="none")row("Slot "+i,p);
     }
   }
-  var extra=Object.keys(d).filter(function(k){return!/^(wifi\.|password$|name$|radio$|tx$|mqtt\.origin|mqtt\.iata|mqtt\.owner|mqtt\.email|mqtt[1-9]\.)/.test(k)}).length;
+  var extra=Object.keys(d).filter(function(k){return!/^(wifi\.|espnow\.channel$|password$|name$|radio$|tx$|mqtt\.origin|mqtt\.iata|mqtt\.owner|mqtt\.email|mqtt[1-9]\.)/.test(k)}).length;
   if(extra)row("Other changes",extra+" setting(s)");
   $("#wz-review").innerHTML=rows.join("");
 }
@@ -1439,7 +1463,8 @@ function wizardSave(){
   if(st.hasMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
     $("#wz-err").textContent="Please enter a 3-letter IATA region code (MQTT step).";return}
   $("#wz-err").textContent="";
-  var b=$("#wz-save"),blabel=b.textContent;b.disabled=true;b.textContent="Testing WiFi...";
+  var b=$("#wz-save"),blabel=b.textContent;b.disabled=true;
+  b.textContent=("espnow.channel" in st.dirty)?"Saving channel...":"Testing WiFi...";
   saveChanges({reboot:true},function(r,acked){
     b.disabled=false;b.textContent=blabel;
     if(!r){
@@ -1464,8 +1489,11 @@ function wizardSave(){
         +"'. This page and address stay visible while it reboots. Reconnect your phone or laptop to that WiFi, then open the address.",
         false,"WiFi connected [OK] - rebooting soon",r.wifi_ip,rebootSeconds(r));
     }else{
-      showReboot("The settings were saved, but the node did not report a new network address. Reconnect to '"
-        +eff("wifi.ssid")+"' and use your router or 'get webui' to find it.",
+      var changedChannel="espnow.channel" in st.dirty;
+      showReboot((changedChannel
+        ? "The shared ESP-NOW channel and WiFi settings were saved together. The node joins '"+eff("wifi.ssid")+"' after reboot on channel "+eff("espnow.channel")+". "
+        : "The settings were saved, but the node did not report a new network address. Reconnect to '"+eff("wifi.ssid")+"'. ")
+        +"Use your router or 'get webui' to find its address.",
         false,"Settings saved [OK] - rebooting",null,rebootSeconds(r));
     }
     st.dirty={};
@@ -1640,6 +1668,7 @@ var CLI_KEYS=[
   ["bridge.baud","Bridge serial baud rate",0],
   ["bridge.delay","Bridge send delay",0],
   ["bridge.channel","Bridge channel",0],
+  ["bridge.format","ESP-NOW bridge wire format",0,"wrapped|raw"],
   ["bridge.secret","Bridge shared secret",0]
 ];
 // Per-slot keys, expanded across the slots this board actually runs.
@@ -1657,7 +1686,7 @@ var CLI_SLOT=[
 ];
 var CLI_TYPES="req,response,txt_msg,ack,advert,grp_txt,grp_data,anon_req,path,trace,multipart,control,raw_custom".split(",");
 
-var cli={built:0,tbl:[],hist:[],hix:-1,draft:"",sug:[],sel:-1,busy:false,shown:false,pwd:false};
+var cli={built:-1,tbl:[],hist:[],hix:-1,draft:"",sug:[],sel:-1,busy:false,shown:false,pwd:false};
 
 // Rebuilt when the slot count changes: `active_slots` decides how many
 // mqttN.* keys actually exist on this board.
@@ -1669,6 +1698,10 @@ function cliTable(){
     if(k[2]!==2)t.push(["get "+k[0],k[1]]);
     if(k[2]!==1)t.push(["set "+k[0]+" ",k[1]+vals]);
   });
+  if(st.caps&32768){
+    t.push(["get espnow.channel","Shared ESP-NOW / WiFi channel"]);
+    t.push(["set espnow.channel ","Shared channel {1-13; reboot required}"]);
+  }
   for(var n=1;n<=st.nslots;n++){
     CLI_SLOT.forEach(function(f){
       t.push(["get mqtt"+n+"."+f[0],"Slot "+n+" "+f[1]]);
@@ -1687,6 +1720,7 @@ function cliEnum(key){
     if(m[1]==="filter")return ["all","none"].concat(CLI_TYPES);
     return null;
   }
+  if(key==="espnow.channel")return(st.caps&32768)?["1","2","3","4","5","6","7","8","9","10","11","12","13"]:null;
   for(var i=0;i<CLI_KEYS.length;i++){
     if(CLI_KEYS[i][0]===key)return CLI_KEYS[i][3]?CLI_KEYS[i][3].split("|"):null;
   }
@@ -1940,6 +1974,7 @@ var CLI_RISK=[
   [/^ota update/,"downloads and flashes new firmware, then reboots"],
   [/^stop webconfig$/,"stops this portal"],
   [/^set wifi\.(ssid|pwd)\s/,"changes WiFi -- this page will drop"],
+  [/^set espnow\.channel\s/,"changes the shared ESP-NOW/WiFi channel after reboot -- every ESP-NOW peer and the router must match"],
   [/^set radio\s/,"changes radio parameters -- a wrong value takes this node off the air"],
   [/^set freq\s/,"changes the frequency -- a wrong value takes this node off the air"],
   [/^password\s/,"changes the admin password"],

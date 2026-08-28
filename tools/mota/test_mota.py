@@ -281,8 +281,9 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     )
     assert "COMPANION_FEATURE_DEDICATED_USB_LOGGING" in companion_features
     assert "defined(COMPANION_RADIO_FULL)" in companion
-    assert "if (!mesh::hasDedicatedUsbLoggingPort())" in companion_main
-    assert "if (mesh::isUsbLoggingEnabled())" in companion_main
+    assert "mesh::selectUsbLoggingTerminalAction(" in companion_main
+    assert "mesh::hasDedicatedUsbLoggingPort()" in companion_main
+    assert "mesh::isUsbLoggingEnabled()" in companion_main
     assert "enterUsbLoggingTerminalMode();" in companion_main
     assert "usb_logging_terminal_mode" in companion_main
     assert "_prefs.usb_logging_enabled = 0" in companion
@@ -306,7 +307,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "is_esp32_dual_cdc_companion_radio_full_target" not in replacement
 
 
-def test_single_tty_logging_off_requires_a_subsequent_mode_switch():
+def test_single_tty_logging_off_restores_each_builds_default_mode():
     root = Path(__file__).resolve().parents[2]
     companion_main = (
         root / "examples/companion_radio/main.cpp"
@@ -317,30 +318,36 @@ def test_single_tty_logging_off_requires_a_subsequent_mode_switch():
         "static void expireUsbBinaryStartupProbeBeforeDispatch()", 1
     )[0]
 
-    # A logging preference changed through BLE/WiFi must release logging's
-    # exclusive ownership without silently changing the protocol of an open
-    # USB ASCII session.
-    external_disable = service.split(
-        "else if (usb_logging_terminal_mode && the_mesh.isTerminalMode()) {",
-        1,
-    )[1].split("\n    }\n  }\n#endif", 1)[0]
-    assert "usb_logging_terminal_mode = false;" in external_disable
-    assert "clearUsbTerminalLine();" in external_disable
-    assert "usb_terminal_discard_line = false;" in external_disable
-    assert "leaveUsbTerminalMode" not in external_disable
+    # The shared policy distinguishes Full's startup ASCII mode from an
+    # ordinary USB Companion's Binary default, and an active TCP terminal keeps
+    # ownership even when the saved USB logging preference is on.
+    assert "mesh::selectUsbLoggingTerminalAction(" in service
+    assert "isNetworkTerminalActive()" in service
+    assert "case mesh::UsbLoggingTerminalAction::RETURN_TO_BINARY:" in service
+    assert "leaveUsbTerminalMode(true);" in service
+    assert "case mesh::UsbLoggingTerminalAction::KEEP_ASCII:" in service
+    keep_ascii = service.split(
+        "case mesh::UsbLoggingTerminalAction::KEEP_ASCII:", 1
+    )[1].split(
+        "case mesh::UsbLoggingTerminalAction::NONE:", 1
+    )[0]
+    assert "usb_logging_terminal_mode = false;" in keep_ascii
+    assert "clearUsbTerminalLine();" in keep_ascii
+    assert "usb_terminal_discard_line = false;" in keep_ascii
+    assert "leaveUsbTerminalMode" not in keep_ascii
 
-    # The same rule applies when `set usb.logging off` is entered on the USB
-    # logging terminal itself: keep the fresh-flash ASCII mode after replying.
+    # A command entered on the logging terminal follows the same split: Full
+    # stays in ASCII, while a non-Full Companion returns to Binary immediately.
     command_disable = service.split(
         "the_mesh.handleTerminalCommand(usb_terminal_line);", 1
     )[1].split('Serial.print("> ");', 1)[0]
     assert "!mesh::isUsbLoggingEnabled()" in command_disable
     assert "usb_logging_terminal_mode = false;" in command_disable
-    assert "leaveUsbTerminalMode" not in command_disable
+    assert "#if defined(COMPANION_RADIO_FULL)" in command_disable
+    assert "leaveUsbTerminalMode(true);" in command_disable
 
-    # Binary Companion remains reachable, but only through the ordinary mode
-    # switch that follows the logging-off command (explicit token or framed
-    # startup probe), never as a side effect of changing the preference.
+    # Full Companion reaches Binary through its ordinary explicit token or
+    # framed startup probe after logging is disabled.
     terminal_stop = service.split(
         "if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {", 1
     )[1].split("}", 1)[0]
@@ -726,6 +733,123 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
         catalog, {id(legacy): 8, id(canonical): 0}
     ) == 1
     assert catalog["device"][0]["firmware"] == [canonical]
+
+
+def test_release_catalog_resolves_legacy_companions_to_plain_full():
+    root = Path(__file__).resolve().parents[2]
+
+    def load_module(name, relative_path):
+        spec = importlib.util.spec_from_file_location(name, root / relative_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    provider = load_module(
+        "meshcore_provider_plain_full_test",
+        "mesh-america/update-provider-release.py",
+    )
+    logging_provider = load_module(
+        "meshcore_logging_provider_plain_full_test",
+        "mesh-america/update-logging-provider-release.py",
+    )
+
+    release_files = {
+        identity: [Path(f"{index}.bin")]
+        for index, identity in enumerate(
+            (
+                "Station_G2_companion_radio_full",
+                "ThinkNode_M2_companion_radio_full",
+                "RAK_4631_companion_radio_full",
+                "Heltec_v2_companion_radio_full",
+                "heltec_tracker_v2_companion_radio_full_femon",
+                "Heltec_v3_companion_radio_full",
+                "heltec_v4_2_v4_3_companion_radio_full_femon",
+                "Generic_ESPNOW_companion_radio_full",
+                "Heltec_E290_companion_radio_full",
+                "Heltec_T190_companion_radio_full_",
+                "SenseCapIndicator-ESPNow_companion_radio_full",
+                "SenseCapIndicator-LoRa_companion_radio_full",
+            )
+        )
+    }
+    migrations = {
+        # Ordinary transport artifacts can carry either release qualifier.
+        "Station_G2_companion_radio_usb-ota": (
+            "Station_G2_companion_radio_full", False
+        ),
+        "Station_G2_companion_radio_ble": (
+            "Station_G2_companion_radio_full", False
+        ),
+        "Station_G2_companion_radio_wifi-logging": (
+            "Station_G2_companion_radio_full", False
+        ),
+        "ThinkNode_M2_companion_radio_serial-logging": (
+            "ThinkNode_M2_companion_radio_full", False
+        ),
+        "RAK_4631_companion_radio_ethernet-logging": (
+            "RAK_4631_companion_radio_full", False
+        ),
+        "Heltec_v2_companion_radio_wifi-full-logging-ota": (
+            "Heltec_v2_companion_radio_full", False
+        ),
+        "heltec_tracker_v2_companion_radio_usb_femoff-ota": (
+            "heltec_tracker_v2_companion_radio_full_femon", False
+        ),
+        # Direct MQTT observers become the MQTT-capable Full image and must
+        # retain their observer metadata in both catalogs.
+        "Heltec_v3_companion_radio_wifi_mqtt-ota": (
+            "Heltec_v3_companion_radio_full", True
+        ),
+        "heltec_v4_companion_radio_wifi_mqtt_femon-ota": (
+            "heltec_v4_2_v4_3_companion_radio_full_femon", True
+        ),
+        "heltec_v4_3_companion_radio_wifi_mqtt_femoff-ota": (
+            "heltec_v4_2_v4_3_companion_radio_full_femon", True
+        ),
+        # Nonstandard and combined legacy recipe names use explicit aliases.
+        "Generic_ESPNOW_comp_radio_usb-ota": (
+            "Generic_ESPNOW_companion_radio_full", False
+        ),
+        "Generic_ESPNOW_comp_radio_usb-logging": (
+            "Generic_ESPNOW_companion_radio_full", False
+        ),
+        "Heltec_E290_companion_usb-ota": (
+            "Heltec_E290_companion_radio_full", False
+        ),
+        "Heltec_E290_companion_ble": (
+            "Heltec_E290_companion_radio_full", False
+        ),
+        "Heltec_E290_companion_usb_ble-logging": (
+            "Heltec_E290_companion_radio_full", False
+        ),
+        "Heltec_T190_companion_radio_usb_-ota": (
+            "Heltec_T190_companion_radio_full_", False
+        ),
+        "Heltec_T190_companion_radio_ble_": (
+            "Heltec_T190_companion_radio_full_", False
+        ),
+        "Heltec_T190_companion_radio_usb_ble_-logging": (
+            "Heltec_T190_companion_radio_full_", False
+        ),
+        "SenseCapIndicator-ESPNow_comp_radio_usb-ota": (
+            "SenseCapIndicator-ESPNow_companion_radio_full", False
+        ),
+        "SenseCapIndicator-ESPNow_comp_radio_usb-logging": (
+            "SenseCapIndicator-ESPNow_companion_radio_full", False
+        ),
+        "SenseCapIndicator-LoRa_comp_radio_usb_wifi-logging": (
+            "SenseCapIndicator-LoRa_companion_radio_full", False
+        ),
+    }
+
+    # The logging updater intentionally imports this resolver from the main
+    # updater. Exercise both loaded modules so a future local copy cannot drift.
+    for resolver_owner in (provider, logging_provider.common):
+        for old_identity, expected in migrations.items():
+            assert resolver_owner.resolve_release_identity(
+                old_identity, release_files
+            ) == expected
 
 
 def test_ota_target_generation_honors_explicit_disable():

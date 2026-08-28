@@ -322,6 +322,11 @@ private:
   bool applyAndSaveBluetoothName(const char* value, char* reply,
                                  size_t reply_size);
   void formatBluetoothNameStatus(char* reply, size_t reply_size) const;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  bool applyAndSaveEspNowChannel(const char* value, char* reply,
+                                 size_t reply_size);
+  void formatEspNowChannel(char* reply, size_t reply_size) const;
+#endif
   bool applyAndSavePowerSaving(const char* value, char* reply);
   bool applyAndSaveRxPowerSaving(const char* value, char* reply);
   void appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,

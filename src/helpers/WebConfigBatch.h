@@ -156,15 +156,20 @@ static inline uint32_t finishRebootAt(bool batch_reboot, bool batch_all_ok, uint
 
 // A successful setup-portal save that changes station credentials is held in
 // Pending while AP+STA joins the selected network. That makes the DHCP address
-// available to the captive page before its setup AP disappears. Other saves
-// keep the ordinary batch/reboot path.
+// available to the captive page before its setup AP disappears. When the
+// shared ESP-NOW channel changes, the station must remain on the old boot
+// channel until reboot, so credentials are applied together on the next boot
+// instead of attempting this live handoff. Other saves keep the ordinary
+// batch/reboot path.
 static inline bool shouldStartSetupWiFiHandoff(bool setup_mode,
                                                bool batch_reboot,
                                                bool batch_all_ok,
                                                bool wifi_credentials_changed,
-                                               bool has_wifi_ssid) {
+                                               bool has_wifi_ssid,
+                                               bool espnow_channel_changed) {
   return setup_mode && batch_reboot && batch_all_ok
-      && wifi_credentials_changed && has_wifi_ssid;
+      && wifi_credentials_changed && has_wifi_ssid
+      && !espnow_channel_changed;
 }
 
 static inline uint32_t setupWiFiConnectDeadline(uint32_t now) {

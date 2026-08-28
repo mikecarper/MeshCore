@@ -470,6 +470,39 @@ TEST(SerialModeSwitch, UsbBinaryActivityWinsDuringTcpBorrow) {
   EXPECT_FALSE(handoff.shouldRestoreAscii(21));
 }
 
+TEST(SerialModeSwitch, SingleTtyLoggingCannotStealNetworkTerminal) {
+  using Action = mesh::UsbLoggingTerminalAction;
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, true, false, false, true, true),
+            Action::NONE);
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, true, false, false, false, true),
+            Action::NONE);
+}
+
+TEST(SerialModeSwitch, LoggingClaimsOnlySingleTtyUsb) {
+  using Action = mesh::UsbLoggingTerminalAction;
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, true, false, false, true, false),
+            Action::CLAIM_USB);
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                true, true, false, false, true, false),
+            Action::NONE);
+}
+
+TEST(SerialModeSwitch, LoggingOffRestoresTheBuildDefaultUsbMode) {
+  using Action = mesh::UsbLoggingTerminalAction;
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, false, true, true, false, false),
+            Action::RETURN_TO_BINARY);
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, false, true, true, true, false),
+            Action::KEEP_ASCII);
+  EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
+                false, false, true, false, false, false),
+            Action::NONE);
+}
+
 TEST(SerialModeSwitch, FailedMotaRestoresOnlyItsAsciiOrigin) {
   EXPECT_TRUE(mesh::shouldRestoreAsciiAfterMotaFailure(
       mesh::UsbMotaEntryOrigin::ASCII));

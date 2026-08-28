@@ -254,6 +254,7 @@ TEST(NodePrefs, FemGainSettingsRoundTrip) {
     saved.radio_fem_txgain = 1;
     saved.usb_logging_enabled = 0;
     saved.bridge_uart = 2;
+    saved.bridge_format = mesh::bridge::ESPNOW_FORMAT_RAW;
 
     MockPrintStream output;
     ASSERT_TRUE(saved.saveSerial(output));
@@ -263,6 +264,7 @@ TEST(NodePrefs, FemGainSettingsRoundTrip) {
     EXPECT_NE(std::string::npos, serialised.find("fem_txgain:1"));
     EXPECT_NE(std::string::npos, serialised.find("usb_log:0"));
     EXPECT_NE(std::string::npos, serialised.find("uart:2"));
+    EXPECT_NE(std::string::npos, serialised.find("format:1"));
 
     MockInputStream input(serialised.c_str());
     NodePrefs loaded;
@@ -270,12 +272,46 @@ TEST(NodePrefs, FemGainSettingsRoundTrip) {
     loaded.radio_fem_txgain = 0;
     loaded.usb_logging_enabled = 1;
     loaded.bridge_uart = 1;
+    loaded.bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
 
     ASSERT_TRUE(loaded.loadSerial(input));
     EXPECT_EQ(0, loaded.radio_fem_rxgain);
     EXPECT_EQ(1, loaded.radio_fem_txgain);
     EXPECT_EQ(0, loaded.usb_logging_enabled);
     EXPECT_EQ(2, loaded.bridge_uart);
+    EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_RAW, loaded.bridge_format);
+}
+
+TEST(NodePrefs, BridgeFormatDefaultsToWrappedAndIsWrittenExplicitly) {
+    NodePrefs prefs;
+    EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, prefs.bridge_format);
+
+    MockPrintStream output;
+    ASSERT_TRUE(prefs.saveSerial(output));
+
+    std::string serialised(reinterpret_cast<const char*>(output.getBytes()),
+                           output.getLength());
+    EXPECT_NE(std::string::npos, serialised.find("format:0"));
+}
+
+TEST(NodePrefs, LegacySerialWithoutBridgeFormatKeepsWrappedDefault) {
+    MockInputStream legacy("{bridge:{ch:13,secret:\"legacy\"}}");
+    NodePrefs loaded;
+    ASSERT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, loaded.bridge_format);
+
+    ASSERT_TRUE(loaded.loadSerial(legacy));
+    EXPECT_EQ(13, loaded.bridge_channel);
+    EXPECT_STREQ("legacy", loaded.bridge_secret);
+    EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, loaded.bridge_format);
+}
+
+TEST(NodePrefs, ExplicitWrappedBridgeFormatReplacesRawInMemoryValue) {
+    MockInputStream serialised("{bridge:{format:0}}");
+    NodePrefs loaded;
+    loaded.bridge_format = mesh::bridge::ESPNOW_FORMAT_RAW;
+
+    ASSERT_TRUE(loaded.loadSerial(serialised));
+    EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, loaded.bridge_format);
 }
 
 

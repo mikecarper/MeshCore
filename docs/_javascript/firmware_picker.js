@@ -294,7 +294,7 @@
     let value = String(tail);
     if (role === "companion") {
       value = value.replace(
-        /^(?:full|usb_ble|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
+        /^(?:full|wifi_mqtt|usb_ble|usb_wifi|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
         " "
       );
       // Power saving and controllable FEM gain are persisted settings. Legacy
@@ -330,7 +330,9 @@
       ? "runtime"
       : fullLoggingFallback
         ? "usb-runtime"
-        : lowerTarget.includes("observer_mqtt")
+        : lowerTarget.includes("observer_mqtt") ||
+            (parts.role === "companion" &&
+              /(?:^|[_-])wifi_mqtt(?=$|[_-])/.test(lowerTail))
           ? "wifi"
           : lowerTarget.includes("-logging")
             ? "usb"
@@ -388,9 +390,17 @@
     if (!profile || profile.role !== "companion" || profile.mode !== "full") {
       return false;
     }
-    // Native nRF52 Serial DFU packages use .zip. ESP32 Full Companion always
-    // has one USB TTY and never receives the dedicated-port capability.
-    return profile.installKinds.includes("zip");
+    const installKinds = Array.isArray(profile.installKinds)
+      ? profile.installKinds
+      : [];
+    // Native nRF52 releases normally publish both Serial DFU ZIP and UF2.
+    // Treat a UF2-only Full profile as nRF52 too so an incomplete release page
+    // does not mislabel it as an ESP32 single-TTY image. ESP32 Full profiles
+    // always publish BIN assets.
+    return installKinds.includes("zip") ||
+      (installKinds.includes("uf2") &&
+        !installKinds.includes("bin") &&
+        !installKinds.includes("merged-bin"));
   }
 
   function isFullCompanion(profile) {
@@ -398,28 +408,31 @@
       profile.mode === "full");
   }
 
+  function replacementKey(profile) {
+    let hardware = String(profile && profile.hardware || "").toLowerCase();
+    // The generated base V4 Full image auto-detects both V4.2 and V4.3 FEMs.
+    // Older V4.3 transport artifacts therefore have the same physical
+    // replacement even though their filename hardware prefix differs.
+    if (hardware === "heltec_v4_3") hardware = "heltec_v4";
+    return hardware + "\n" + String(profile && profile.variant || "default");
+  }
+
   function omitTransportsReplacedByFull(profiles) {
     const fullKeys = new Set((profiles || []).filter(function (profile) {
       return isFullCompanion(profile);
-    }).map(function (profile) {
-      return profile.hardware + "\n" + profile.variant;
-    }));
+    }).map(replacementKey));
     const combinedUsbBleKeys = new Set((profiles || []).filter(
       function (profile) {
         return profile.role === "companion" && profile.mode === "usb-ble";
       }
-    ).map(function (profile) {
-      return profile.hardware + "\n" + profile.variant;
-    }));
+    ).map(replacementKey));
     const terminalReplacementKeys = new Set((profiles || []).filter(
       function (profile) {
         return profile.role === "companion" &&
           (profile.mode === "full" || profile.mode === "usb" ||
             profile.mode === "usb-ble");
       }
-    ).map(function (profile) {
-      return profile.hardware + "\n" + profile.variant;
-    }));
+    ).map(replacementKey));
     const targets = new Set((profiles || []).map(function (profile) {
       return String(profile.target || "").toLowerCase();
     }));
@@ -450,7 +463,7 @@
     };
 
     return (profiles || []).filter(function (profile) {
-      const key = profile.hardware + "\n" + profile.variant;
+      const key = replacementKey(profile);
       const replacedAttachedTransport = profile.role === "companion" &&
         (profile.mode === "usb" || profile.mode === "ble" ||
           profile.mode === "wifi" || profile.mode === "serial" ||
@@ -474,9 +487,10 @@
     return (profiles || []).map(function (profile) {
       if (!isFullCompanion(profile)) return profile;
 
-      // Every Full Companion has a runtime USB logging mode. nRF52 adds an
-      // independent plaintext interface after reboot. Every ESP32 target
-      // switches its one TTY between framed and plaintext modes.
+      // Every Full Companion controls diagnostics with usb.logging. Some
+      // qualified boards also contain a direct MQTT bridge, but the Companion
+      // command parser does not implement the observer-only logging.output
+      // selector, so never advertise its off/USB/WiFi/both modes here.
       profile.logging = "usb-runtime";
       profile.loggingModes = ["none", "usb"];
       profile.dedicatedUsbLogging = false;
@@ -1209,6 +1223,7 @@
     facetValues: facetValues,
     uniqueValues: uniqueValues,
     canonicalAsset: canonicalAsset,
+    installSteps: installSteps,
     humanizeHardware: humanizeHardware,
     humanizeVariant: humanizeVariant,
     labelFor: labelFor,

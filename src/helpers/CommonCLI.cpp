@@ -60,6 +60,9 @@ static void resetToUf2Bootloader() {
 #else
 #include <malloc.h>  // mallinfo() for the `memory` command on nRF52/RP2040
 #endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+#include <helpers/esp32/WiFiRadioPolicy.h>
+#endif
 #if defined(STM32_PLATFORM)
 #include <InternalFileSystem.h>
 #endif
@@ -779,6 +782,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #else
   _prefs->bridge_uart = 0;
 #endif
+  _prefs->bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
 
 #ifdef WITH_MQTT_BRIDGE
   bool node_prefs_needs_migration = false;
@@ -1277,6 +1281,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 #if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
             has_runtime_bridge_uart = true;
 #endif
+            if (file.available() >= (int)sizeof(_prefs->bridge_format)) {
+              file.read((uint8_t *)&_prefs->bridge_format,
+                        sizeof(_prefs->bridge_format));
+            }
           }
         }
       }
@@ -1348,7 +1356,6 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->bridge_delay = constrain(_prefs->bridge_delay, 0, 10000);
     _prefs->bridge_pkt_src = constrain(_prefs->bridge_pkt_src, 0, 1);
     _prefs->bridge_baud = constrain(_prefs->bridge_baud, 9600, BRIDGE_MAX_BAUD);
-    _prefs->bridge_channel = constrain(_prefs->bridge_channel, 0, 14);
 #ifdef WITH_RS232_BRIDGE
     if (_prefs->bridge_uart != WITH_RS232_BRIDGE_UART
 #ifdef WITH_RS232_BRIDGE_ALT
@@ -1360,6 +1367,17 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     }
 #else
     _prefs->bridge_uart = 0;
+#endif
+    if (!mesh::bridge::isValidEspNowFormat(_prefs->bridge_format)) {
+      _prefs->bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
+      _com_prefs_needs_upgrade = true;
+    }
+#ifdef WITH_ESPNOW_BRIDGE
+    if (!mesh::bridge::isValidEspNowBridgeChannel(
+            _prefs->bridge_channel, _prefs->bridge_format)) {
+      _prefs->bridge_channel = 1;
+      _com_prefs_needs_upgrade = true;
+    }
 #endif
 
     _prefs->powersaving_enabled = constrain(_prefs->powersaving_enabled, 0, 1);
@@ -1581,6 +1599,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->radio_fem_txgain);                // 860
   WRITE_COMMON_PREFS(&prefs->usb_logging_enabled);             // 861
   WRITE_COMMON_PREFS(&prefs->bridge_uart);                     // 862
+  WRITE_COMMON_PREFS(&prefs->bridge_format);                   // 863
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1734,7 +1753,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)&_prefs->radio_fem_txgain, sizeof(_prefs->radio_fem_txgain));             // 860
     file.write((uint8_t *)&_prefs->usb_logging_enabled, sizeof(_prefs->usb_logging_enabled));       // 861
     file.write((uint8_t *)&_prefs->bridge_uart, sizeof(_prefs->bridge_uart));                       // 862
-    // next: 863
+    file.write((uint8_t *)&_prefs->bridge_format, sizeof(_prefs->bridge_format));                   // 863
+    // next: 864
 
 #if defined(NRF52_PLATFORM)
     if (!file.commit()) {
@@ -3137,6 +3157,34 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (strncmp(config, "espnow.channel", 14) == 0
+      && (config[14] == 0 || config[14] == ' ' || config[14] == '\t')) {
+    const char* value = config + 14;
+    while (*value == ' ' || *value == '\t') value++;
+    uint8_t channel = 0;
+    if (!mesh::wifi::parseEspNowChannel(value, channel)) {
+      strcpy(reply, "Error: ESP-NOW channel must be 1-13");
+    } else {
+      // Snapshot the boot channel before writing NVS. The saved setting must
+      // never become the active value in this boot merely because this is the
+      // first policy helper reached by a CLI-only image.
+      const uint8_t active = mesh::wifi::activeEspNowChannel();
+      if (!mesh::wifi::saveConfiguredEspNowChannel(channel)) {
+        strcpy(reply, "Error: failed to save ESP-NOW channel");
+      } else if (channel == active) {
+        snprintf(reply, 160,
+                 "OK - ESP-NOW channel %u saved and active",
+                 (unsigned)channel);
+      } else {
+        snprintf(reply, 160,
+                 "OK - ESP-NOW channel %u saved; active %u; reboot required",
+                 (unsigned)channel, (unsigned)active);
+      }
+    }
+    return;
+  }
+#endif
 #if MESH_USB_LOGGING_AVAILABLE
   if (strncmp(config, "usb.logging", 11) == 0
       && (config[11] == 0 || config[11] == ' ' || config[11] == '\t')) {
@@ -4081,9 +4129,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
     {
       _prefs->bridge_enabled = enable;
-      _callbacks->setBridgeState(_prefs->bridge_enabled);
+      const bool applied = _callbacks->setBridgeState(_prefs->bridge_enabled);
       savePrefs();
-      strcpy(reply, "OK");
+      if (applied) {
+        strcpy(reply, "OK");
+      } else {
+        strcpy(reply, enable ? "Error: bridge failed to start; setting saved"
+                             : "Error: bridge failed to stop; setting saved");
+      }
     }
   } else if (memcmp(config, "bridge.delay ", 13) == 0) {
     int delay = _atoi(&config[13]);
@@ -4115,9 +4168,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     uint32_t baud = atoi(&config[12]);
     if (baud >= 9600 && baud <= BRIDGE_MAX_BAUD) {
       _prefs->bridge_baud = (uint32_t)baud;
-      _callbacks->restartBridge();
+      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
       savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, applied ? "OK"
+                            : "Error: setting saved; bridge failed to restart");
     } else {
       sprintf(reply, "Error: baud rate must be between 9600-%d",BRIDGE_MAX_BAUD);
     }
@@ -4144,21 +4198,28 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
     else {
       _prefs->bridge_uart = (uint8_t)uart;
-      _callbacks->restartBridge();
+      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
       savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, applied ? "OK"
+                            : "Error: setting saved; bridge failed to restart");
     }
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
   } else if (memcmp(config, "bridge.channel ", 15) == 0) {
-    int ch = atoi(&config[15]);
-    if (ch > 0 && ch < 15) {
-      _prefs->bridge_channel = (uint8_t)ch;
-      _callbacks->restartBridge();
+    uint8_t channel = 0;
+    const uint8_t max_channel =
+        mesh::bridge::espNowMaxChannel(_prefs->bridge_format);
+    if (mesh::bridge::parseEspNowBridgeChannel(
+            &config[15], _prefs->bridge_format, channel)) {
+      _prefs->bridge_channel = channel;
+      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
       savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, applied ? "OK"
+                            : "Error: setting saved; bridge failed to restart");
     } else {
-      strcpy(reply, "Error: channel must be between 1-14");
+      sprintf(reply, "Error: channel must be an integer between 1-%u for %s format",
+              (unsigned)max_channel,
+              mesh::bridge::espNowFormatName(_prefs->bridge_format));
     }
   } else if (memcmp(config, "bridge.secret ", 14) == 0) {
     const char* secret = &config[14];
@@ -4166,9 +4227,29 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "Error: secret must be 1-%u characters", (unsigned)(sizeof(_prefs->bridge_secret) - 1));
     } else {
       StrHelper::strncpy(_prefs->bridge_secret, secret, sizeof(_prefs->bridge_secret));
-      _callbacks->restartBridge();
+      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
       savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, applied ? "OK"
+                            : "Error: setting saved; bridge failed to restart");
+    }
+  } else if (memcmp(config, "bridge.format ", 14) == 0) {
+    uint8_t format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
+    if (!mesh::bridge::parseEspNowFormat(&config[14], format)) {
+      strcpy(reply, "Error: format must be wrapped or raw");
+    } else if (!mesh::bridge::isValidEspNowBridgeChannel(
+                   _prefs->bridge_channel, format)) {
+      strcpy(reply, "Error: set bridge.channel to 1-13 before changing format");
+    } else {
+      _prefs->bridge_format = format;
+      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      savePrefs();
+      if (!applied) {
+        strcpy(reply, "Error: setting saved; bridge failed to restart");
+      } else {
+        strcpy(reply, format == mesh::bridge::ESPNOW_FORMAT_RAW
+            ? "OK - raw MeshCore frames; bridge.secret is ignored"
+            : "OK - wrapped bridge frames");
+      }
     }
 #endif
   } else if (memcmp(config, "adc.multiplier ", 15) == 0) {
@@ -4226,6 +4307,19 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (strcmp(config, "espnow.channel") == 0) {
+    const uint8_t saved = mesh::wifi::loadConfiguredEspNowChannel();
+    const uint8_t active = mesh::wifi::activeEspNowChannel();
+    if (saved == active) {
+      snprintf(reply, 160, "> %u (saved and active)", (unsigned)saved);
+    } else {
+      snprintf(reply, 160, "> saved %u, active %u; reboot required",
+               (unsigned)saved, (unsigned)active);
+    }
+    return;
+  }
+#endif
 #if MESH_USB_LOGGING_AVAILABLE
   if (strcmp(config, "usb.logging") == 0) {
     snprintf(reply, 160, "> %s",
@@ -4551,6 +4645,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %d", (uint32_t)_prefs->bridge_channel);
   } else if (configKeyEquals(config, "bridge.secret")) {
     sprintf(reply, "> %s", _prefs->bridge_secret);
+  } else if (configKeyEquals(config, "bridge.format")) {
+    sprintf(reply, "> %s",
+            mesh::bridge::espNowFormatName(_prefs->bridge_format));
 #endif
   } else if (configKeyEquals(config, "bootloader.ver")) {
   #ifdef NRF52_PLATFORM

@@ -64,8 +64,11 @@ MultiSerialInterface interface_manager;
     // include esp32 wifi interface
     #include <helpers/esp32/SerialWifiInterface.h>
     #include <helpers/WiFiSetupPortal.h>
+    #include <helpers/CLICommandUtils.h>
     #include <helpers/WiFiReconnectPolicy.h>
     #include <helpers/WiFiPowerSave.h>
+    #include <helpers/esp32/WiFiRadioPolicy.h>
+    #include <helpers/esp32/WiFiStationPolicy.h>
     #include <Preferences.h>
     #include <esp_wifi.h>
     SerialWifiInterface wifi_interface;
@@ -96,6 +99,10 @@ MultiSerialInterface interface_manager;
     // for targets which cannot report DTR (see setConnectedCheck below)
     #define USB_CLIENT_IDLE_TIMEOUT   (10*60*1000UL)
   #endif
+#endif
+
+#if COMPANION_FEATURE_NETWORK_TERMINAL
+static bool isNetworkTerminalActive();
 #endif
 
 // include ethernet interface
@@ -595,18 +602,37 @@ static void serviceUsbTerminal() {
   // A saved logging-on preference makes the one available TTY behave like a
   // logging repeater: plaintext diagnostics plus an input-capable CLI. Put the
   // Companion interface into passthrough before it can mix framed traffic with
-  // logs. `set usb.logging off` remains available here and returns this TTY to
-  // the normal ASCII terminal, matching a fresh Full install. Binary Companion
-  // starts only after the usual terminal-stop token or framed startup probe.
+  // logs. An active TCP terminal owns the role CLI, so logging must not reclaim
+  // it. Turning logging off restores the build's normal USB mode: ASCII for
+  // Full Companion and Binary Companion for every other single-TTY build.
 #if MESH_USB_LOGGING_AVAILABLE
-  if (!mesh::hasDedicatedUsbLoggingPort()) {
-    if (mesh::isUsbLoggingEnabled()) {
+  const mesh::UsbLoggingTerminalAction logging_action =
+      mesh::selectUsbLoggingTerminalAction(
+          mesh::hasDedicatedUsbLoggingPort(), mesh::isUsbLoggingEnabled(),
+          the_mesh.isTerminalMode(), usb_logging_terminal_mode,
+#if defined(COMPANION_RADIO_FULL)
+          true,
+#else
+          false,
+#endif
+#if COMPANION_FEATURE_NETWORK_TERMINAL
+          isNetworkTerminalActive()
+#else
+          false
+#endif
+      );
+  switch (logging_action) {
+    case mesh::UsbLoggingTerminalAction::CLAIM_USB:
       if (!the_mesh.isTerminalMode()) {
         enterUsbLoggingTerminalMode();
         return;
       }
       usb_logging_terminal_mode = true;
-    } else if (usb_logging_terminal_mode && the_mesh.isTerminalMode()) {
+      break;
+    case mesh::UsbLoggingTerminalAction::RETURN_TO_BINARY:
+      leaveUsbTerminalMode(true);
+      return;
+    case mesh::UsbLoggingTerminalAction::KEEP_ASCII:
       // Logging may also be disabled over BLE/WiFi. Stop treating this session
       // as the logging terminal, but keep the ordinary ASCII terminal active;
       // do not silently change the USB protocol underneath an idle host. A
@@ -616,7 +642,9 @@ static void serviceUsbTerminal() {
       clearUsbTerminalLine();
       usb_terminal_discard_line = false;
       Serial.print("\r\nUSB logging off; ASCII terminal active\r\n> ");
-    }
+      break;
+    case mesh::UsbLoggingTerminalAction::NONE:
+      break;
   }
 #endif
   if (!the_mesh.isTerminalMode()) {
@@ -641,12 +669,20 @@ static void serviceUsbTerminal() {
     return;
   }
 
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // HWCDC has no DTR/open signal, and its bool operator is only a transient
+  // RX/TX activity heuristic. Do not interpret an idle interval as the host
+  // closing Full Companion's startup terminal. TCP handoff is separately
+  // arbitrated by hasObservableActiveUsbTerminalClient(), using actual input.
+#else
   if (isUsbTerminalDataConnected()) {
     usb_terminal_disconnect_armed = true;
   } else if (usb_terminal_disconnect_armed) {
     leaveUsbTerminalMode(false);
     return;
   }
+#endif
 
 #if defined(COMPANION_RADIO_FULL)
   // Full Companion boots as a useful ASCII terminal. MeshCLI's first framed
@@ -705,10 +741,15 @@ static void serviceUsbTerminal() {
 #if MESH_USB_LOGGING_AVAILABLE
       if (usb_logging_terminal_mode
           && !mesh::isUsbLoggingEnabled()) {
-        // The command reply belongs to the ASCII session. Leave that session
-        // active so a separate, observable mode switch is required before the
+#if defined(COMPANION_RADIO_FULL)
+        // The command reply belongs to the Full Companion's normal ASCII
+        // session. A separate, observable mode switch is required before the
         // port accepts framed Binary Companion traffic again.
         usb_logging_terminal_mode = false;
+#else
+        leaveUsbTerminalMode(true);
+        return;
+#endif
       }
 #endif
       Serial.print("> ");
@@ -764,7 +805,7 @@ void halt() {
   unsigned long last_wifi_setup_attempt = 0;
   bool wifi_setup_recovery_mode = false;
   static char configured_wifi_ssid[32];
-  static char configured_wifi_password[64];
+  static char configured_wifi_password[65];
   static bool companion_wifi_has_credentials = false;
   static bool companion_wifi_requested = true;
   static bool companion_wifi_active = false;
@@ -803,7 +844,8 @@ void halt() {
       nvs.end();
     }
     companion_wifi_power_save = mesh::wifi::effectivePowerSave(
-        configured, companionWiFiBluetoothActive());
+        configured, companionWiFiBluetoothActive(),
+        mesh::wifi::kPrimaryEspNowRadio);
     companion_wifi_power_save_loaded = true;
     applyCompanionWiFiPowerSave();
   }
@@ -831,11 +873,16 @@ void halt() {
     if (mode > mesh::wifi::kPowerSaveMax) {
       return CompanionWiFiPowerSaveResult::InvalidMode;
     }
-    if (mesh::wifi::effectivePowerSave(mode, companionWiFiBluetoothActive())
+    if (mesh::wifi::kPrimaryEspNowRadio
+        && mode == mesh::wifi::kPowerSaveMax) {
+      return CompanionWiFiPowerSaveResult::PrimaryEspNowConflict;
+    }
+    if (mesh::wifi::effectivePowerSave(
+            mode, companionWiFiBluetoothActive(),
+            mesh::wifi::kPrimaryEspNowRadio)
         != mode) {
       return CompanionWiFiPowerSaveResult::BluetoothConflict;
     }
-
     Preferences nvs;
     if (!nvs.begin("mesh-wifi", false)) {
       return CompanionWiFiPowerSaveResult::StorageError;
@@ -860,7 +907,8 @@ void halt() {
         configured_wifi_ssid, sizeof(configured_wifi_ssid),
         configured_wifi_password, sizeof(configured_wifi_password));
     if (!companion_wifi_has_credentials
-        && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)) {
+        && !WiFiSetupPortal::isPlaceholderSSID(WIFI_SSID)
+        && mesh::cli::standaloneWiFiPasswordValid(WIFI_PWD)) {
       strncpy(configured_wifi_ssid, WIFI_SSID, sizeof(configured_wifi_ssid) - 1);
       configured_wifi_ssid[sizeof(configured_wifi_ssid) - 1] = '\0';
       strncpy(configured_wifi_password, WIFI_PWD, sizeof(configured_wifi_password) - 1);
@@ -976,6 +1024,12 @@ void halt() {
   static bool ota_console_discard_line = false;
 #if COMPANION_FEATURE_NETWORK_TERMINAL && defined(ENABLE_USB_INTERFACE)
   static mesh::UsbTcpTerminalHandoff ota_console_usb_handoff;
+#endif
+
+#if COMPANION_FEATURE_NETWORK_TERMINAL
+  static bool isNetworkTerminalActive() {
+    return the_mesh.isNetworkTerminalMode(ota_console_client);
+  }
 #endif
 
   static void ota_console_clear_line() {
@@ -1140,9 +1194,11 @@ void halt() {
     }
 
     WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
+    mesh::wifi::applyProtocolMask(WIFI_IF_STA);
+    mesh::wifi::setStationAutoReconnect(true);
     WiFi.disconnect(false, false);
-    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+    mesh::wifi::beginStation(
+        configured_wifi_ssid, configured_wifi_password);
     wifi_reconnect_tracker.noteAttempt(millis());
     WIFI_DEBUG_PRINTLN("WiFi credentials reloaded; reconnecting to saved SSID");
   }
@@ -1151,13 +1207,15 @@ void halt() {
     if (companion_wifi_active) return;
 
     board.setInhibitSleep(true);
-    WiFi.setAutoReconnect(true);
+    mesh::wifi::setStationAutoReconnect(true);
     resetCompanionWiFiRecoveryState();
 
     if (companion_wifi_has_credentials) {
       WiFi.mode(WIFI_STA);
+      mesh::wifi::applyProtocolMask(WIFI_IF_STA);
       wifi_reconnect_tracker.noteDisconnected(millis());
-      WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+      mesh::wifi::beginStation(
+          configured_wifi_ssid, configured_wifi_password);
     }
 #ifndef WITH_WEBCONFIG
     else if (!wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP,
@@ -1197,6 +1255,21 @@ void halt() {
     companion_wifi_services_stopped = true;
   }
 
+  static void stopCompanionInfrastructureWiFi() {
+    WiFi.setAutoReconnect(false);
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    // ESP-NOW is the mesh radio on this target. Drop the station/AP services
+    // without stopping the driver, then restore its fixed LR mesh channel.
+    WiFi.disconnect(false, false);
+    WiFi.mode(WIFI_STA);
+    mesh::wifi::applyProtocolMask(WIFI_IF_STA);
+    mesh::wifi::restoreEspNowChannel();
+#else
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_OFF);
+#endif
+  }
+
   static bool finishStoppingCompanionWiFi() {
     stopCompanionWiFiServices();
 #ifdef WITH_WEBCONFIG
@@ -1212,13 +1285,16 @@ void halt() {
     if (wifiSetupPortal().isStopping()) return false;
 #endif
 
-    WiFi.setAutoReconnect(false);
-    WiFi.disconnect(true, false);
-    WiFi.mode(WIFI_OFF);
+    stopCompanionInfrastructureWiFi();
     board.setInhibitSleep(false);
     resetCompanionWiFiRecoveryState();
     companion_wifi_active = false;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    WIFI_DEBUG_PRINTLN(
+        "Companion WiFi services disabled; ESP-NOW mesh radio remains active");
+#else
     WIFI_DEBUG_PRINTLN("WiFi radio disabled by BOOT/GPIO 0 control");
+#endif
     return true;
   }
 
@@ -1455,10 +1531,29 @@ void setup() {
 #ifdef WIFI_SSID
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+          mesh::wifi::restoreEspNowChannel();
+#endif
           if (companion_wifi_requested) {
             WIFI_DEBUG_PRINTLN("WiFi disconnected; automatic recovery is active");
           }
       } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+          if (!mesh::wifi::enforceStationChannel()) {
+            WIFI_DEBUG_PRINTLN(
+                "Rejected WiFi association outside ESP-NOW channel %u",
+                (unsigned)mesh::wifi::activeEspNowChannel());
+            return;
+          }
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+          // Association can replace the station protocol bitmap after the
+          // pre-connect setup. Restore LR receive support once the AP has
+          // finished configuring the shared radio; B/G/N remain enabled for
+          // the infrastructure connection.
+          if (mesh::wifi::applyProtocolMask(WIFI_IF_STA) != ESP_OK) {
+            WIFI_DEBUG_PRINTLN(
+                "Failed to restore ESP-NOW/WiFi protocol coexistence");
+          }
+#endif
           WIFI_DEBUG_PRINTLN("connected! IP %s  (companion app on :%d)",
                              WiFi.localIP().toString().c_str(), TCP_PORT);
       }
@@ -1469,8 +1564,7 @@ void setup() {
   if (companion_wifi_requested) {
     startCompanionWiFi();
   } else {
-    WiFi.setAutoReconnect(false);
-    WiFi.mode(WIFI_OFF);
+    stopCompanionInfrastructureWiFi();
     board.setInhibitSleep(false);
     WIFI_DEBUG_PRINTLN("WiFi remains off from the saved BOOT/GPIO 0 setting");
   }
@@ -1504,10 +1598,10 @@ void setup() {
   // the kiss_modem tuning)
   Serial.setTxBufferSize(4096);
   Serial.setTxTimeoutMs(5);
-  // The ESP32 USB-Serial-JTAG peripheral (HWCDC) has no DTR concept at all:
-  // (bool)Serial only tells us the host has enumerated the device, which is
-  // already true when the cable is plugged into a powered port. Fall back to
-  // activity: a real client has to send us frames.
+  // The ESP32 USB-Serial-JTAG peripheral (HWCDC) has no DTR concept at all,
+  // and its bool operator is only a transient RX/TX activity heuristic. A real
+  // Binary Companion client therefore has to prove ownership by sending
+  // frames; an idle physical cable must not claim the interface.
   usb_serial_interface.setConnectedCheck([]() {
     uint32_t last = usb_serial_interface.getLastFrameMillis();
     return (bool)Serial && usb_serial_interface.hasReceivedFrame()
@@ -1682,7 +1776,8 @@ void loop() {
     ota_console_loop();  // service the OTA text console (port 5002)
   #endif
   const unsigned long wifi_now = millis();
-  if (WiFi.status() == WL_CONNECTED) {
+  const bool station_channel_ok = mesh::wifi::enforceStationChannel();
+  if (station_channel_ok && WiFi.status() == WL_CONNECTED) {
     wifi_reconnect_tracker.noteConnected();
     wifi_setup_attempted = false;
 #ifdef WITH_WEBCONFIG
@@ -1692,7 +1787,7 @@ void loop() {
     if (configured_wifi_ssid[0] && the_mesh.isWebConfigSetupActive()
         && (wifi_setup_recovery_mode
             || the_mesh.isWebConfigWiFiRecoveryActive())) {
-      WiFi.setAutoReconnect(true);
+      mesh::wifi::setStationAutoReconnect(true);
       the_mesh.stopWebConfig();
       wifi_setup_recovery_mode = false;
     }
@@ -1742,8 +1837,10 @@ void loop() {
     }
   }
 
-  // The ESP stack normally reconnects by itself. If it gets wedged after an AP
-  // outage, reassert the saved credentials every five minutes. WebConfig's
+  // Reassert the saved credentials every five minutes after an AP outage.
+  // Primary ESP-NOW builds deliberately disable the driver's unconstrained
+  // auto-reconnect; ordinary builds retain it and use this as a recovery path.
+  // WebConfig's
   // setup AP uses AP+STA mode, so the station retry can run without taking the
   // recovery page down. The legacy portal owns its own identical retry timer.
   const bool reconnect_owned_here =
@@ -1762,14 +1859,15 @@ void loop() {
 #ifdef WITH_WEBCONFIG
     if (!the_mesh.isWebConfigSetupActive()) {
       WiFi.mode(WIFI_STA);
-      WiFi.setAutoReconnect(true);
+      mesh::wifi::setStationAutoReconnect(true);
     }
 #else
     WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
+    mesh::wifi::setStationAutoReconnect(true);
 #endif
     WiFi.disconnect(false, false);
-    WiFi.begin(configured_wifi_ssid, configured_wifi_password);
+    mesh::wifi::beginStation(
+        configured_wifi_ssid, configured_wifi_password);
   }
 #ifdef WITH_MQTT_BRIDGE
   the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password);

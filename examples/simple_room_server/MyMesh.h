@@ -467,7 +467,10 @@ public:
   void loop();
 
 #if defined(WITH_BRIDGE)
-  void setBridgeState(bool enable) override {
+  bool setBridgeState(bool enable) override {
+    // An absent MQTT bridge is already stopped. Do not allocate one solely to
+    // satisfy an idempotent disable request.
+    if (!enable && !bridge) return true;
     if (!bridge) {
 #ifdef WITH_MQTT_BRIDGE
       MQTTNodeInfo node_info;
@@ -481,9 +484,9 @@ public:
       bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
                               getRTCClock(), &self_id);
 #endif
-      if (!bridge) return;
+      if (!bridge) return false;
     }
-    if (enable == bridge->isRunning()) return;
+    if (enable == bridge->isRunning()) return true;
     if (enable)
     {
       char device_id[65];
@@ -515,17 +518,18 @@ public:
       _alerter.setBridge(nullptr);
 #endif
     }
+    return enable ? bridge->isRunning() : !bridge->isRunning();
   }
 
-  void restartBridge() override {
-    if (!bridge || !bridge->isRunning()) return;
+  bool restartBridge() override {
+    if (!bridge) return false;
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {   // coalesced: applied once in onConfigBatchEnd()
       _wc_restart_pending = true;
-      return;
+      return true;
     }
 #endif
-    bridge->end();
+    if (bridge->isRunning()) bridge->end();
     char device_id[65];
     mesh::LocalIdentity self_id = getSelfId();
     mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
@@ -537,6 +541,7 @@ public:
     bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
     bridge->begin();
+    return bridge->isRunning();
   }
 
   void restartBridgeSlot(int slot) override {

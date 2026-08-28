@@ -157,6 +157,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.uart`](cli_commands.md#view-or-change-the-uart-used-by-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.channel`](cli_commands.md#view-or-change-the-channel-used-for-bridging-espnow-only) | ESP-NOW is ESP32 only | No | No | No |
+| Bridge | [`get/set bridge.format`](cli_commands.md#view-or-change-the-esp-now-bridge-wire-format) | ESP-NOW bridge | No | No | No |
 | Bridge | [`get/set bridge.secret`](cli_commands.md#set-the-esp-now-secret) | ESP-NOW is ESP32 only | No | No | No |
 | Board | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 bootloader metadata | Yes | Yes | Yes |
 | Board | [`get pwrmgt.support`; `get pwrmgt.source`; `get pwrmgt.bootreason`; `get pwrmgt.bootmv`](nrf52_power_management.md#cli-commands) | Board power-management implementation | Feature | Feature | Feature |
@@ -243,6 +244,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Radio | [`get/set/del radioat`; `get/set/del tempradioat`](cli_commands.md#schedule-radio-parameter-changes) | Full parser | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | `set` is local serial only | Yes | Yes | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature | Feature | Feature |
+| Radio | [`get/set espnow.channel`](cli_commands.md#view-or-change-the-primary-esp-nowwifi-channel) | Primary ESP-NOW mesh radio | Feature | Feature | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.txgain`](cli_commands.md#view-or-change-the-lora-fem-transmit-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature | Feature | Feature |
 | Radio | [`get/set radio.rxps`; `get rxps.wd`](#radio-rxps) | Full parser and RX power-saving support | Feature | Feature | Feature | Feature | Feature |
@@ -321,6 +323,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature | No | Feature |
 | Bridge | [`get/set bridge.uart`](cli_commands.md#view-or-change-the-uart-used-by-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature | No | Feature |
 | Bridge | [`get/set bridge.channel`](cli_commands.md#view-or-change-the-channel-used-for-bridging-espnow-only) | ESP-NOW bridge | No | No | No | Feature | Feature |
+| Bridge | [`get/set bridge.format`](cli_commands.md#view-or-change-the-esp-now-bridge-wire-format) | ESP-NOW bridge | No | No | No | Feature | Feature |
 | Bridge | [`get/set bridge.secret`](cli_commands.md#set-the-esp-now-secret) | ESP-NOW bridge | No | No | No | Feature | Feature |
 | Board | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 only | No | No | No | No | No |
 | Board | [`get pwrmgt.support`; `get pwrmgt.source`; `get pwrmgt.bootreason`; `get pwrmgt.bootmv`](nrf52_power_management.md#cli-commands) | nRF52 only | No | No | No | No | No |

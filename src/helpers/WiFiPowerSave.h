@@ -22,10 +22,16 @@ static constexpr uint8_t kPowerSaveMax = 2;
 static constexpr uint8_t kDefaultPowerSave = DEFAULT_WIFI_POWER_SAVE_MODE;
 
 // ESP32 WiFi and Bluetooth coexistence requires modem sleep, so "none" must
-// fall back to the minimum sleep policy whenever Bluetooth is active.
+// fall back to the minimum sleep policy whenever Bluetooth is active. A
+// primary ESP-NOW receiver must also avoid maximum modem sleep: infrastructure
+// access points do not buffer ESP-NOW broadcasts while the station is asleep.
 inline uint8_t effectivePowerSave(uint8_t configured,
-                                  bool bluetooth_active) {
+                                  bool bluetooth_active,
+                                  bool primary_espnow_active = false) {
   if (configured > kPowerSaveMax) configured = kDefaultPowerSave;
+  if (primary_espnow_active && configured == kPowerSaveMax) {
+    configured = kPowerSaveMin;
+  }
   return bluetooth_active && configured == kPowerSaveNone
       ? kPowerSaveMin : configured;
 }

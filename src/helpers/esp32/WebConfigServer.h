@@ -73,6 +73,7 @@ public:
     CAP_RX_POWER_SAVING = 1UL << 12,
     CAP_POWER_SAVING = 1UL << 13,
     CAP_BLUETOOTH_NAME = 1UL << 14,
+    CAP_ESPNOW_CHANNEL = 1UL << 15,
     CAP_DELAYS = CAP_RX_DELAY | CAP_TX_DELAY,
   };
 
@@ -243,7 +244,8 @@ private:
   uint32_t _setup_started_at = 0;
   uint32_t _connect_deadline = 0;
   char _wifi_ssid[32] = {0};
-  char _wifi_password[64] = {0};
+  // 63-character passphrase + NUL, or 64-hex raw WPA/WPA2 PSK + NUL.
+  char _wifi_password[65] = {0};
   uint8_t _wifi_power_save = mesh::wifi::kDefaultPowerSave;
   bool _cli_enabled = true;
   // A `password` command has succeeded this session. Lets the CLI satisfy the
@@ -319,6 +321,7 @@ private:
                           size_t index, size_t total);
 
   void handleRoot(AsyncWebServerRequest* req);
+  void handleUi(AsyncWebServerRequest* req);
   void handleStatus(AsyncWebServerRequest* req);
   void handleLogin(AsyncWebServerRequest* req);
   void handleLogout(AsyncWebServerRequest* req);

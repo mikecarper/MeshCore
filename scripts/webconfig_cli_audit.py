@@ -102,6 +102,8 @@ ROUND_TRIPS = [
     ("set dutycycle 25", "get dutycycle", "25.0"),
     ("set alert.mqtt on", "get alert.mqtt", "on"),
     ("set bridge.source tx", "get bridge.source", "tx"),
+    ("set bridge.channel 1", "get bridge.channel", "1"),
+    ("set bridge.format raw", "get bridge.format", "raw"),
     ("set mqtt.neighbors on", "get mqtt.neighbors", "on"),
     ("set path.hash.mode 2", "get path.hash.mode", "2"),
     ("set mqtt.iata den", "get mqtt.iata", "DEN"),

@@ -3345,6 +3345,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.bridge_pkt_src = 1;    // logRx (RX packets)
   _prefs.bridge_baud = 115200;  // baud rate
   _prefs.bridge_channel = 1;    // channel 1
+  _prefs.bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
 #ifdef WITH_RS232_BRIDGE
   _prefs.bridge_uart = WITH_RS232_BRIDGE_UART;
 #else
@@ -9995,6 +9996,9 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
       | WebConfigServer::CAP_ADVERT | WebConfigServer::CAP_FLOOD
       | WebConfigServer::CAP_LOOP | WebConfigServer::CAP_WIFI_POWER_SAVE
       | WebConfigServer::CAP_POWER_SAVING;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  s.capabilities |= WebConfigServer::CAP_ESPNOW_CHANNEL;
+#endif
   if (board.canControlLoRaFemLna()) {
     s.capabilities |= WebConfigServer::CAP_FEM_RX_GAIN;
   }
@@ -10148,14 +10152,16 @@ bool MyMesh::setWiFiCLI(const char* value, char* reply) {
 
 void MyMesh::onConfigBatchEnd() {
   _wc_batch_active = false;
-#ifdef WITH_MQTT_BRIDGE
+#ifdef WITH_BRIDGE
   if (_wc_restart_pending) {
     _wc_restart_pending = false;
     _wc_slot_restart_mask = 0;
-    restartBridge();
+    if (_prefs.bridge_enabled) restartBridge();
     return;
   }
+#endif
 
+#ifdef WITH_MQTT_BRIDGE
   const uint8_t mask = _wc_slot_restart_mask;
   _wc_slot_restart_mask = 0;
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {

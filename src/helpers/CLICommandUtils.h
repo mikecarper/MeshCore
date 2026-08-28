@@ -454,8 +454,32 @@ inline bool standaloneWiFiSSIDValid(const char* value) {
   return len >= 1 && len <= 31;
 }
 
+// Observer settings may need a live bridge restart, but an allocated bridge
+// object can remain present after `bridge.enabled` is turned off. Never invoke
+// restart in that state: doing so would start runtime services while the saved
+// enabled flag still says off. Propagate a real restart failure when enabled.
+template <typename RestartFn>
+inline bool restartBridgeIfEnabled(bool bridge_enabled, RestartFn restart) {
+  return !bridge_enabled || restart();
+}
+
 inline bool standaloneWiFiPasswordValid(const char* value) {
-  return value != nullptr && strlen(value) <= 63;
+  if (value == nullptr) return false;
+  const size_t len = strlen(value);
+  if (len <= 63) return true;
+  if (len != 64) return false;
+  // IEEE 802.11 permits a 64-character WPA/WPA2 PSK only in its raw
+  // hexadecimal form. Ordinary passphrases retain the historical 0-63
+  // character behavior above.
+  for (size_t i = 0; i < len; i++) {
+    const char c = value[i];
+    if (!((c >= '0' && c <= '9')
+          || (c >= 'a' && c <= 'f')
+          || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 inline bool parseStandaloneWiFiPowerSave(const char* value,

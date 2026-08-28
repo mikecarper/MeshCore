@@ -2884,6 +2884,32 @@ apply_esp32_full_size_profile() {
   fi
 }
 
+apply_esp32_full_async_tcp_profile() {
+  local env_name=$1
+
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "ESP32_PLATFORM" ] \
+      || { [ "$ESP32_FULL_BUILD" != "1" ] \
+           && ! is_esp32_companion_radio_full_target "$env_name"; }; then
+    return 0
+  fi
+
+  # AsyncTCP 3.x defaults to a 16 KiB task stack. A feature-complete image can
+  # have less than that as one contiguous internal-DRAM block by the time its
+  # WebConfig server starts, even when total/PSRAM capacity remains plentiful.
+  # Use the library's documented 4 KiB reduced configuration. Eight KiB let
+  # the task start on the most constrained measured Full Companion, but left
+  # too little internal heap to retire successive HTTP responses reliably.
+  # Pin its event/callback task to the application core as recommended by the
+  # library. Leaving it on the WiFi/Bluetooth core lets a long response to a
+  # lossy client starve the shared radio until even ARP recovery fails.
+  # Also disable ESPAsyncWebServer's optional 2-MSS in-flight gate. A slow peer
+  # can acknowledge one MSS at a time; after a fixed response crosses the TCP
+  # window the gate then waits forever for two MSS of space. WebConfig's
+  # response fillers are fast flash/memory copies, and the TCP send buffer still
+  # provides back-pressure without that gate.
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCONFIG_ASYNC_TCP_STACK_SIZE=4096 -DCONFIG_ASYNC_TCP_RUNNING_CORE=1 -DASYNCWEBSERVER_USE_CHUNK_INFLIGHT=0"
+}
+
 apply_repeater_neighbor_capacity() {
   local env_name=$1
   local max_neighbours=$REPEATER_MAX_NEIGHBOURS
@@ -3207,6 +3233,18 @@ apply_companion_radio_full_profile() {
   # path; a host may explicitly hold the native USB port in Companion terminal
   # mode when WiFi is unavailable and serve the same folder protocol there.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1"
+
+  # ESP-NOW is the primary mesh radio on these two layouts, so conventional
+  # Companion WiFi must share its protocol mask and fixed channel instead of
+  # resetting the driver to B/G/N on an arbitrary access-point channel. The
+  # runtime policy keeps B/G/N enabled for phones and normal routers while LR
+  # remains available for the mesh packets.
+  case "${env_name,,}" in
+    generic_espnow_companion_radio_full|\
+    sensecapindicator-espnow_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_ESPNOW_RADIO=1 -DMESH_ESPNOW_CHANNEL=1"
+      ;;
+  esac
 
   # Qualified BLE-based Full recipes did not previously need WiFi credentials.
   # Supply the same first-boot setup placeholders used by ordinary WiFi
@@ -3689,6 +3727,7 @@ build_firmware() {
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_constrained_companion_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
+  apply_esp32_full_async_tcp_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
   apply_nrf52_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"

@@ -112,12 +112,25 @@ TEST(WebConfigBatch, FinishArmsThirtySecondFallbackOnlyForAFullyOkRebootBatch) {
 TEST(WebConfigBatch, SetupWiFiHandoffRequiresASuccessfulCredentialChangingReboot) {
   EXPECT_TRUE(Batch::shouldStartSetupWiFiHandoff(
       /*setup=*/true, /*reboot=*/true, /*all_ok=*/true,
-      /*wifi_changed=*/true, /*has_ssid=*/true));
-  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(false, true, true, true, true));
-  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, false, true, true, true));
-  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, false, true, true));
-  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, true, false, true));
-  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(true, true, true, true, false));
+      /*wifi_changed=*/true, /*has_ssid=*/true,
+      /*espnow_channel_changed=*/false));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      false, true, true, true, true, false));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      true, false, true, true, true, false));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      true, true, false, true, true, false));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      true, true, true, false, true, false));
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      true, true, true, true, false, false));
+}
+
+TEST(WebConfigBatch, EspNowChannelChangeSkipsLiveSetupWiFiHandoff) {
+  EXPECT_FALSE(Batch::shouldStartSetupWiFiHandoff(
+      /*setup=*/true, /*reboot=*/true, /*all_ok=*/true,
+      /*wifi_changed=*/true, /*has_ssid=*/true,
+      /*espnow_channel_changed=*/true));
 }
 
 TEST(WebConfigBatch, SetupWiFiHandoffUsesBoundedConnectAndBriefFlushDelays) {

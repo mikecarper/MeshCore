@@ -261,7 +261,7 @@ text such as `set radio.rxgain off` still requires the USB terminal start token.
 
 The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
 normal binary USB, BLE, or TCP port 5000 transport. `CMD_GET_WIFI_POWER_SAVE`
-has no body and replies with `RESP_CODE_OK` followed by one mode byte.
+has no body and replies with `RESP_CODE_OK` followed by the effective mode byte.
 `CMD_SET_WIFI_POWER_SAVE` is followed by that mode byte and replies with
 `RESP_CODE_OK` after saving it:
 
@@ -274,10 +274,14 @@ has no body and replies with `RESP_CODE_OK` followed by one mode byte.
 An out-of-range value returns `ERR_CODE_ILLEGAL_ARG`. A non-WiFi Companion
 returns `ERR_CODE_UNSUPPORTED_CMD`. Full Companion has Bluetooth enabled and
 therefore returns `ERR_CODE_BAD_STATE` for `none`, because ESP32 WiFi/Bluetooth
-coexistence requires modem sleep. A storage failure also returns
-`ERR_CODE_BAD_STATE`. If an already-saved mode cannot be applied to the active
-WiFi driver, SET still returns `RESP_CODE_OK` and the mode is applied on the
-next connection. Device `powersaving` does not overwrite this setting.
+coexistence requires modem sleep. On an ESP32 Full Companion whose primary mesh
+radio is ESP-NOW, SET also returns `ERR_CODE_BAD_STATE` for `max` (value `2`): maximum
+modem sleep can make the station miss ESP-NOW broadcasts, which the access point
+cannot buffer. If an older image already saved `max`, GET reports `min` (value
+`0`) and the running policy uses `min`. A storage failure also returns
+`ERR_CODE_BAD_STATE`. If an otherwise permitted saved mode cannot be applied to
+the active WiFi driver, SET still returns `RESP_CODE_OK` and the mode is applied
+on the next connection. Device `powersaving` does not overwrite this setting.
 
 The Bluetooth-name pair is available on Companion builds regardless of the
 currently selected transport, so a host can configure a BLE-capable image over

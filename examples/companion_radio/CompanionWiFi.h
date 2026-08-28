@@ -9,6 +9,7 @@ enum class CompanionWiFiPowerSaveResult : uint8_t {
   SavedForNextConnection,
   InvalidMode,
   BluetoothConflict,
+  PrimaryEspNowConflict,
   StorageError,
 };
 
@@ -22,9 +23,10 @@ bool isCompanionWiFiEnabled();
 void scheduleCompanionWiFiCredentialReload();
 
 // Companion WiFi power save is stored in the shared mesh-wifi NVS namespace.
-// The returned mode is always the effective mode: WiFi+BLE builds map a stale
+// The returned mode is always the effective mode. WiFi+BLE builds map a stale
 // or default "none" value to "min" because modem sleep is required for radio
-// coexistence.
+// coexistence. Primary ESP-NOW builds also map stale "max" to "min" so the
+// receiver does not sleep through unbuffered ESP-NOW broadcasts.
 uint8_t getCompanionWiFiPowerSave();
 const char* getCompanionWiFiPowerSaveName();
 const char* companionWiFiPowerSaveName(uint8_t mode);

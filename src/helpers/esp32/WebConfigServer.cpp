@@ -28,6 +28,136 @@
 #include "helpers/CLICommandUtils.h"
 #include "helpers/WebConfigKeys.h"
 #include "helpers/WiFiPowerSave.h"
+#include "helpers/esp32/WiFiRadioPolicy.h"
+#include "helpers/esp32/WiFiStationPolicy.h"
+
+// ESPAsyncWebServer closes every ordinary response, so splitting the UI into
+// many HTTP requests exhausts a lossy link's TCP/WiFi resources. Its ordinary
+// PROGMEM response also fills the whole TCP send window at once. Keep one
+// response open and queue only 512 body bytes after the preceding bytes have
+// actually been acknowledged.
+class WebConfigPacedProgmemResponse final : public AsyncWebServerResponse {
+  static constexpr size_t kBodyChunk = 512;
+
+  const uint8_t* _content;
+  String _assembled_headers;
+  size_t _written_headers = 0;
+  size_t _in_flight = 0;
+  size_t _space_before_batch = 0;
+
+  size_t queueNext(AsyncWebServerRequest* request) {
+    AsyncClient* client = request ? request->client() : nullptr;
+    if (!client) {
+      _state = RESPONSE_FAILED;
+      return 0;
+    }
+
+    // This response has exactly one writer and never queues another batch
+    // until the current one is acknowledged. Remembering the send-buffer space
+    // here lets _ack() recover if AsyncTCP cannot allocate its SENT event: lwIP
+    // has already restored tcp_sndbuf by then, but that event is not replayed.
+    const size_t space_before_batch = client->space();
+    size_t queued = 0;
+    if (_state == RESPONSE_HEADERS) {
+      const size_t added = client->add(
+          _assembled_headers.c_str() + _written_headers,
+          _assembled_headers.length() - _written_headers);
+      _written_headers += added;
+      _writtenLength += added;
+      queued += added;
+      if (_written_headers < _assembled_headers.length()) {
+        if (queued && client->send()) {
+          _in_flight += queued;
+          _space_before_batch = space_before_batch;
+        } else if (queued) {
+          _state = RESPONSE_FAILED;
+          client->close();
+        }
+        return queued;
+      }
+      _assembled_headers = String();
+      _state = RESPONSE_CONTENT;
+    }
+
+    if (_state == RESPONSE_CONTENT && _sentLength < _contentLength) {
+      size_t amount = _contentLength - _sentLength;
+      if (amount > kBodyChunk) amount = kBodyChunk;
+      const size_t room = client->space();
+      if (amount > room) amount = room;
+      if (amount) {
+        const size_t added = client->add(
+            reinterpret_cast<const char*>(_content + _sentLength), amount);
+        _sentLength += added;
+        _writtenLength += added;
+        queued += added;
+      }
+      if (_sentLength == _contentLength) _state = RESPONSE_WAIT_ACK;
+    }
+
+    if (queued) {
+      if (client->send()) {
+        _in_flight += queued;
+        _space_before_batch = space_before_batch;
+      } else {
+        _state = RESPONSE_FAILED;
+        client->close();
+      }
+    }
+    return queued;
+  }
+
+public:
+  WebConfigPacedProgmemResponse(const char* content_type,
+                               const uint8_t* content, size_t length)
+      : _content(content) {
+    _code = 200;
+    _contentType = content_type;
+    _contentLength = length;
+  }
+
+  bool _sourceValid() const override {
+    return _content != nullptr && _contentLength != 0;
+  }
+
+  void _respond(AsyncWebServerRequest* request) override {
+    addHeader("Connection", "close", false);
+    _assembleHead(_assembled_headers, request->version());
+    _state = RESPONSE_HEADERS;
+    queueNext(request);
+  }
+
+  size_t _ack(AsyncWebServerRequest* request, size_t len,
+              uint32_t time) override {
+    (void)time;
+    AsyncClient* client = request ? request->client() : nullptr;
+    if (len == 0 && _in_flight != 0 && client
+        && client->space() >= _space_before_batch) {
+      // AsyncTCP reports polls as zero-length ACKs. A restored send buffer is
+      // unambiguous here because this response has only one batch in flight.
+      // Account for an ACK whose AsyncTCP event allocation failed under low
+      // internal heap, otherwise the response would remain stuck forever.
+      len = _in_flight;
+    }
+    _ackedLength += len;
+    if (len >= _in_flight) _in_flight = 0;
+    else _in_flight -= len;
+    if (_in_flight != 0) return 0;
+    if (_state == RESPONSE_WAIT_ACK) {
+      // The full Content-Length has now been acknowledged. ESPAsyncWebServer
+      // otherwise performs a graceful active close for every response, and
+      // this IDF 4.4 stack retains malloc-backed TCP PCBs in TIME_WAIT for about
+      // two minutes. Repeated WebConfig loads consume scarce internal heap and
+      // can also prevent AsyncTCP from retiring close events, wedging both
+      // infrastructure WiFi and ESP-NOW. Abort only after the final ACK so the
+      // peer has the complete page, while freeing this PCB immediately. Keep
+      // RESPONSE_WAIT_ACK: abort synchronously dispatches disconnect and the
+      // request's scoped owner then destroys this response.
+      if (client) client->abort();
+      return 0;
+    }
+    return queueNext(request);
+  }
+};
 
 static bool bluetoothWiFiCoexistenceRequired() {
 #if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
@@ -39,7 +169,23 @@ static bool bluetoothWiFiCoexistenceRequired() {
 
 static uint8_t effectiveWiFiPowerSave(uint8_t configured) {
   return mesh::wifi::effectivePowerSave(
-      configured, bluetoothWiFiCoexistenceRequired());
+      configured, bluetoothWiFiCoexistenceRequired(),
+      mesh::wifi::kPrimaryEspNowRadio);
+}
+
+static void stopOwnedWiFiRadio() {
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  // ESP-NOW is this target's mesh radio. Stop only infrastructure-WiFi
+  // ownership; powering the driver down would also remove the mesh transport.
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect(false, false);
+  WiFi.mode(WIFI_STA);
+  mesh::wifi::applyProtocolMask(WIFI_IF_STA);
+  mesh::wifi::restoreEspNowChannel();
+#else
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+#endif
 }
 
 // Placeholder sent instead of stored secrets; POSTs carrying it are dropped
@@ -48,6 +194,11 @@ static const char SECRET_SENTINEL[] = "********";
 
 static bool isAllowedSetKey(const char* key, bool has_mqtt) {
   if (!key || !wcIsAllowedSetKey(key)) return false;
+#if !defined(MESH_PRIMARY_ESPNOW) || !MESH_PRIMARY_ESPNOW
+  // The shared source-level allowlist is host-tested, but only a target whose
+  // mesh transport is ESP-NOW has a meaningful primary-radio channel to set.
+  if (wcSetKeyRequiresReboot(key)) return false;
+#endif
   const bool mqtt_only = strncmp(key, "mqtt.", 5) == 0
                       || strncmp(key, "mqtt", 4) == 0
                       || strncmp(key, "timezone", 8) == 0
@@ -202,24 +353,31 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
 
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs* obs = static_cast<MQTTPrefs*>(_mqtt_prefs);
-  if (obs) {
+  if (obs && _owns_wifi) {
     strncpy(_wifi_ssid, obs->wifi_ssid, sizeof(_wifi_ssid) - 1);
     strncpy(_wifi_password, obs->wifi_password, sizeof(_wifi_password) - 1);
     _wifi_power_save = obs->wifi_power_save <= mesh::wifi::kPowerSaveMax
         ? obs->wifi_power_save : mesh::wifi::kDefaultPowerSave;
-    // Companion builds keep their canonical connection credentials in the
-    // shared mesh-wifi namespace. A fresh MQTT configuration can therefore
-    // have an empty MQTTPrefs WiFi field even while the companion is already
-    // connected; use the canonical copy until the first WebUI save syncs both.
-    if (_wifi_ssid[0] == 0 && !_owns_wifi) {
-      loadStandaloneWiFi(_wifi_ssid, sizeof(_wifi_ssid),
-                         _wifi_password, sizeof(_wifi_password), &_wifi_power_save);
-    }
   } else
 #endif
   {
-    loadStandaloneWiFi(_wifi_ssid, sizeof(_wifi_ssid),
-                       _wifi_password, sizeof(_wifi_password), &_wifi_power_save);
+    // Companion and standalone FULL builds keep their canonical connection
+    // credentials in mesh-wifi NVS. Do not round-trip a 64-hex raw PSK through
+    // the fixed-layout MQTTPrefs wifi_password[64] field.
+    const bool loaded_standalone = loadStandaloneWiFi(
+        _wifi_ssid, sizeof(_wifi_ssid),
+        _wifi_password, sizeof(_wifi_password), &_wifi_power_save);
+#ifdef WITH_MQTT_BRIDGE
+    // Preserve the upgrade path from older WiFi-MQTT Companion installs that
+    // have not written the canonical namespace yet. Once mesh-wifi exists it
+    // always wins, including when it contains a 64-hex PSK.
+    if (!loaded_standalone && obs) {
+      strncpy(_wifi_ssid, obs->wifi_ssid, sizeof(_wifi_ssid) - 1);
+      strncpy(_wifi_password, obs->wifi_password, sizeof(_wifi_password) - 1);
+      _wifi_power_save = obs->wifi_power_save <= mesh::wifi::kPowerSaveMax
+          ? obs->wifi_power_save : mesh::wifi::kDefaultPowerSave;
+    }
+#endif
   }
   _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
 }
@@ -275,7 +433,8 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
       "powersave", mesh::wifi::kDefaultPowerSave);
   nvs.end();
   if (stored_ssid.length() >= ssid_len
-      || stored_password.length() >= password_len) {
+      || stored_password.length() >= password_len
+      || !mesh::cli::standaloneWiFiPasswordValid(stored_password.c_str())) {
     return false;
   }
   strncpy(ssid, stored_ssid.c_str(), ssid_len - 1);
@@ -289,14 +448,14 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
 bool WebConfigServer::saveStandaloneWiFi(const char* ssid, const char* password,
                                          uint8_t power_save) {
   power_save = effectiveWiFiPowerSave(power_save);
+  const char* pwd = password ? password : "";
   if (!ssid || !ssid[0] || strlen(ssid) >= 32
-      || (password && strlen(password) >= 64)
+      || !mesh::cli::standaloneWiFiPasswordValid(pwd)
       || power_save > mesh::wifi::kPowerSaveMax) {
     return false;
   }
   Preferences nvs;
   if (!nvs.begin("mesh-wifi", false)) return false;
-  const char* pwd = password ? password : "";
   bool ok = nvs.putString("ssid", ssid) == strlen(ssid);
   nvs.putString("password", pwd);  // empty String legitimately writes zero bytes
   ok = ok && nvs.getString("password", "\x01") == pwd;
@@ -330,7 +489,7 @@ bool WebConfigServer::setStandaloneWiFiPassword(const char* value, char* reply,
   if (!reply || reply_len == 0) return false;
   if (!mesh::cli::standaloneWiFiPasswordValid(value)) {
     snprintf(reply, reply_len,
-             "Error: WiFi password must be at most 63 characters");
+             "Error: WiFi password must be 0-63 characters or 64 hex characters");
     return false;
   }
 
@@ -355,12 +514,17 @@ bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
     snprintf(reply, reply_len, "Error: power save must be none, min, or max");
     return false;
   }
+  if (mesh::wifi::kPrimaryEspNowRadio
+      && power_save == mesh::wifi::kPowerSaveMax) {
+    snprintf(reply, reply_len,
+             "Error: power save max is unavailable while ESP-NOW is the primary radio");
+    return false;
+  }
   if (effectiveWiFiPowerSave(power_save) != power_save) {
     snprintf(reply, reply_len,
              "Error: power save none is unavailable while Bluetooth is active");
     return false;
   }
-
   Preferences nvs;
   if (!nvs.begin("mesh-wifi", false)) {
     snprintf(reply, reply_len, "Error: failed to open WiFi settings");
@@ -421,7 +585,7 @@ bool WebConfigServer::formatWiFiSSID(char* reply, size_t reply_len) {
   if (!reply || reply_len == 0) return false;
 
   char ssid[32] = "";
-  char password[64] = "";
+  char password[65] = "";
   uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   bool configured = loadStandaloneWiFi(
       ssid, sizeof(ssid), password, sizeof(password), &power_save);
@@ -443,7 +607,7 @@ bool WebConfigServer::formatWiFiPowerSave(char* reply, size_t reply_len) {
     power_save = _active->_wifi_power_save;
   } else {
     char ssid[32] = "";
-    char password[64] = "";
+    char password[65] = "";
     loadStandaloneWiFi(
         ssid, sizeof(ssid), password, sizeof(password), &power_save);
   }
@@ -479,7 +643,7 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
   if (!reply || reply_len == 0) return false;
 
   char ssid[32] = "";
-  char password[64] = "";
+  char password[65] = "";
   uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   bool configured = loadStandaloneWiFi(
       ssid, sizeof(ssid), password, sizeof(password), &power_save);
@@ -599,9 +763,11 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   bool ap_ok = false;
   for (uint8_t attempt = 1; attempt <= 6 && !ap_ok; ++attempt) {
 #ifdef WEBCONFIG_AP_PASSWORD
-    ap_ok = WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD);
+    ap_ok = WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD,
+                        mesh::wifi::accessPointChannel());
 #else
-    ap_ok = WiFi.softAP(_ap_ssid);
+    ap_ok = WiFi.softAP(_ap_ssid, nullptr,
+                        mesh::wifi::accessPointChannel());
 #endif
     if (ap_ok) {
       // ESP-NOW can leave the persistent AP protocol mask with the proprietary
@@ -609,11 +775,9 @@ bool WebConfigServer::startSetupMode(char reply[]) {
       // phones and laptops cannot discover its beacon. A WiFi companion must
       // advertise using the interoperable 2.4 GHz protocol set.
       const esp_err_t ap_protocol_result = esp_wifi_set_protocol(
-          WIFI_IF_AP,
-          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+          WIFI_IF_AP, mesh::wifi::kProtocolMask);
       const esp_err_t sta_protocol_result = esp_wifi_set_protocol(
-          WIFI_IF_STA,
-          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+          WIFI_IF_STA, mesh::wifi::kProtocolMask);
       if (ap_protocol_result == ESP_OK && sta_protocol_result == ESP_OK) break;
       Serial.printf("WebConfig protocol reset failed: AP=%d STA=%d\n",
                     (int)ap_protocol_result, (int)sta_protocol_result);
@@ -630,7 +794,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     mode_ok = WiFi.mode(WIFI_AP_STA);
   }
   if (!ap_ok) {
-    if (!promote_lan) WiFi.mode(WIFI_OFF);
+    if (!promote_lan) stopOwnedWiFiRadio();
     strcpy(reply, "Err: failed to start AP");
     return false;
   }
@@ -692,20 +856,17 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   }
 
   WiFi.mode(WIFI_STA);
-  if (esp_wifi_set_protocol(
-          WIFI_IF_STA,
-          WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N)
-      != ESP_OK) {
+  if (mesh::wifi::applyProtocolMask(WIFI_IF_STA) != ESP_OK) {
     strcpy(reply, "Err: failed to reset WiFi station protocol");
     return false;
   }
-  WiFi.setAutoReconnect(true);
+  mesh::wifi::setStationAutoReconnect(true);
   _retry_saved_wifi_in_setup = false;
   _setup_reconnect_in_progress = false;
   _setup_reconnect_deadline = 0;
   _setup_started_at = 0;
   _wifi_reconnect_tracker.noteDisconnected(millis());
-  WiFi.begin(_wifi_ssid, _wifi_password);
+  mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
   _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
   wifi_ps_type_t ps_mode =
       _wifi_power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
@@ -764,15 +925,14 @@ void WebConfigServer::finalizeTeardown() {
     // Nothing else owns WiFi when we raised the AP: either the node is
     // unconfigured, or `start webconfig ap` required the bridge stopped.
     if (_wifi_ssid[0] == 0 || _owns_wifi) {
-      WiFi.mode(WIFI_OFF);
+      stopOwnedWiFiRadio();
     } else {
       WiFi.mode(WIFI_STA);
     }
     _was_setup_ap = false;
   }
   if (_owns_wifi && !was_setup_ap) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    stopOwnedWiFiRadio();
   }
   _initial_setup = false;
   _setup_started_at = 0;
@@ -816,6 +976,13 @@ void WebConfigServer::tick(uint32_t now) {
   }
   if (_mode == MODE_OFF) return;
 
+  // A primary ESP-NOW radio and its WiFi station cannot remain on different
+  // channels. Reject a router-driven channel move (for example a CSA) and put
+  // the mesh radio back on its boot channel before any reconnect work runs.
+  if (!mesh::wifi::enforceStationChannel()) {
+    _wifi_reconnect_tracker.noteDisconnected(now);
+  }
+
   if (_mode == MODE_CONNECTING) {
     if (WiFi.status() == WL_CONNECTED) {
       _wifi_reconnect_tracker.noteConnected();
@@ -857,9 +1024,9 @@ void WebConfigServer::tick(uint32_t now) {
         Serial.printf("WebConfig: WiFi still unavailable; retrying '%s'\n",
                       _wifi_ssid);
         WiFi.mode(WIFI_STA);
-        WiFi.setAutoReconnect(true);
+        mesh::wifi::setStationAutoReconnect(true);
         WiFi.disconnect(false, false);
-        WiFi.begin(_wifi_ssid, _wifi_password);
+        mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
       }
     }
   }
@@ -881,7 +1048,7 @@ void WebConfigServer::tick(uint32_t now) {
       }
       WiFi.softAPdisconnect(true);
       WiFi.mode(WIFI_STA);
-      WiFi.setAutoReconnect(true);
+      mesh::wifi::setStationAutoReconnect(true);
       _was_setup_ap = false;
       _initial_setup = false;
       _setup_started_at = 0;
@@ -905,7 +1072,7 @@ void WebConfigServer::tick(uint32_t now) {
       _setup_reconnect_in_progress = true;
       _setup_reconnect_deadline = now + 20000UL;
       Serial.printf("WebConfig: retrying saved WiFi '%s'\n", _wifi_ssid);
-      WiFi.begin(_wifi_ssid, _wifi_password);
+      mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
     }
   }
 
@@ -965,7 +1132,7 @@ void WebConfigServer::tick(uint32_t now) {
       }
       WiFi.softAPdisconnect(true);
       WiFi.mode(WIFI_STA);
-      WiFi.setAutoReconnect(true);
+      mesh::wifi::setStationAutoReconnect(true);
       _was_setup_ap = false;
       _initial_setup = false;
       _setup_started_at = 0;
@@ -1090,8 +1257,9 @@ void WebConfigServer::drainBatch(uint32_t now) {
         strcpy(e.reply, "OK");
       }
     } else if ((_mqtt_prefs == NULL || !_owns_wifi) && strcmp(e.key, "wifi.pwd") == 0) {
-      if (strlen(value) >= sizeof(_wifi_password)) {
-        strcpy(e.reply, "Error: WiFi password must be at most 63 characters");
+      if (!mesh::cli::standaloneWiFiPasswordValid(value)) {
+        strcpy(e.reply,
+               "Error: WiFi password must be 0-63 characters or 64 hex characters");
       } else {
         strncpy(_wifi_password, value, sizeof(_wifi_password) - 1);
         _wifi_password[sizeof(_wifi_password) - 1] = 0;
@@ -1105,7 +1273,11 @@ void WebConfigServer::drainBatch(uint32_t now) {
         strcpy(e.reply,
                "Error: power save none is unavailable while Bluetooth is active");
       } else if (strcmp(value, "none") == 0) _wifi_power_save = 1;
-      else if (strcmp(value, "max") == 0) _wifi_power_save = 2;
+      else if (strcmp(value, "max") == 0
+               && mesh::wifi::kPrimaryEspNowRadio) {
+        strcpy(e.reply,
+               "Error: power save max is unavailable while ESP-NOW is the primary radio");
+      } else if (strcmp(value, "max") == 0) _wifi_power_save = 2;
       else strcpy(e.reply, "Error: must be none, min, or max");
       if (e.reply[0] == 0) {
         _standalone_wifi_dirty = true;
@@ -1169,16 +1341,19 @@ void WebConfigServer::drainBatch(uint32_t now) {
   }
 
   bool wifi_credentials_changed = false;
+  bool espnow_channel_changed = false;
   for (int i = 0; i < _batch_count; i++) {
     if (strcmp(_batch[i].key, "wifi.ssid") == 0
         || strcmp(_batch[i].key, "wifi.pwd") == 0) {
       wifi_credentials_changed = true;
-      break;
+    } else if (wcSetKeyRequiresReboot(_batch[i].key)) {
+      espnow_channel_changed = true;
     }
   }
   if (WebConfigBatch::shouldStartSetupWiFiHandoff(
           _mode == MODE_SETUP, _batch_reboot, _batch_all_ok,
-          wifi_credentials_changed, _wifi_ssid[0] != 0)) {
+          wifi_credentials_changed, _wifi_ssid[0] != 0,
+          espnow_channel_changed)) {
     {
       WCLock lock(_mux);
       _setup_wifi_handoff_pending = true;
@@ -1192,7 +1367,7 @@ void WebConfigServer::drainBatch(uint32_t now) {
     WiFi.setAutoReconnect(false);
     Serial.printf("WebConfig: testing saved WiFi '%s' before reboot\n",
                   _wifi_ssid);
-    WiFi.begin(_wifi_ssid, _wifi_password);
+    mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
     return;
   }
   finishBatch(now);
@@ -1252,6 +1427,9 @@ void WebConfigServer::dispatchRequest(AsyncWebServerRequest* req,
 }
 
 void WebConfigServer::registerRoutes() {
+  _server->on("/ui", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleUi);
+  });
   _server->on("/", HTTP_GET, [](AsyncWebServerRequest* r) {
     dispatchRequest(r, &WebConfigServer::handleRoot);
   });
@@ -1361,9 +1539,31 @@ void WebConfigServer::handleRoot(AsyncWebServerRequest* req) {
     return;
   }
   AsyncWebServerResponse* res =
-      req->beginResponse(200, "text/html", WEBCONFIG_HTML_GZ, WEBCONFIG_HTML_GZ_LEN);
-  res->addHeader("Content-Encoding", "gzip");
+      req->beginResponse(200, "text/html", WEBCONFIG_HTML_LOADER,
+                         WEBCONFIG_HTML_LOADER_LEN);
   res->addHeader("ETag", WEBCONFIG_HTML_ETAG);
+  req->send(res);
+}
+
+void WebConfigServer::handleUi(AsyncWebServerRequest* req) {
+  if (_mode == MODE_OFF) { req->send(503); return; }
+  _last_activity = millis();
+  if (!req->hasParam("v") ||
+      req->getParam("v")->value() != WEBCONFIG_HTML_VERSION) {
+    // Part URLs are immutable. Never serve a new layout under an old loader's
+    // cache key; a 409 tells the loader to refresh itself first.
+    AsyncWebServerResponse* res =
+        req->beginResponse(409, "text/plain", "WebConfig version changed");
+    res->addHeader("Cache-Control", "no-store");
+    req->send(res);
+    return;
+  }
+  AsyncWebServerResponse* res =
+      new WebConfigPacedProgmemResponse("text/html; charset=utf-8",
+                                       WEBCONFIG_HTML_GZ,
+                                       WEBCONFIG_HTML_GZ_LEN);
+  res->addHeader("Content-Encoding", "gzip");
+  res->addHeader("Cache-Control", "public, max-age=31536000, immutable");
   req->send(res);
 }
 
@@ -1405,6 +1605,9 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   doc["active_slots"] = 0;
 #endif
   doc["mqtt"] = has_mqtt;
+  // The fixed-layout MQTTPrefs path remains limited to 63 characters.
+  // Standalone mesh-wifi NVS can also hold a standards-defined 64-hex PSK.
+  doc["wifi_psk64"] = (_mqtt_prefs == NULL || !_owns_wifi);
   doc["cli"] = _cli_enabled && _mode == MODE_LAN
       && WiFi.status() == WL_CONNECTED && _cb->supportsCliTerminal();
   doc["capabilities"] = node.capabilities;
@@ -1524,6 +1727,9 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     wifi["pwd"] = _wifi_password[0] ? SECRET_SENTINEL : "";
     wifi["powersave"] = _wifi_power_save == 0 ? "min"
                         : _wifi_power_save == 2 ? "max" : "none";
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    wifi["espnow_channel"] = mesh::wifi::loadConfiguredEspNowChannel();
+#endif
 
 #ifdef WITH_MQTT_BRIDGE
     MQTTPrefs* obs = static_cast<MQTTPrefs*>(_mqtt_prefs);
@@ -1598,6 +1804,13 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
     return;
   }
   JsonObject set = doc["set"];
+  for (JsonPair kv : set) {
+    if (wcSetKeyRequiresReboot(kv.key().c_str())) {
+      // The configured value is intentionally not activated until boot, so a
+      // client cannot leave persisted and live ESP-NOW channels disagreeing.
+      reboot_after = true;
+    }
+  }
 
   WCLock lock(_mux);
   const WebConfigBatch::State bstate = toSpecState(_batch_state);
@@ -1648,6 +1861,18 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
       serializeJson(err, out);
       req->send(400, "application/json", out);
       return;
+    }
+    if (wcSetKeyRequiresReboot(key)) {
+      uint8_t channel = 0;
+      if (!mesh::wifi::parseEspNowChannel(val, channel)) {
+        StaticJsonDocument<128> err;
+        err["error"] = "ESP-NOW channel must be 1-13";
+        err["key"] = key;
+        String out;
+        serializeJson(err, out);
+        req->send(400, "application/json", out);
+        return;
+      }
     }
     if (admin_pwd && !wcIsValidAdminPassword(val)) {
       req->send(400, "application/json",
@@ -2120,6 +2345,7 @@ void WebConfigServer::handleScan(AsyncWebServerRequest* req) {
     net["ssid"] = WiFi.SSID(i);
     net["rssi"] = WiFi.RSSI(i);
     net["enc"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    net["channel"] = WiFi.channel(i);
   }
   AsyncResponseStream* res = req->beginResponseStream("application/json");
   serializeJson(doc, *res);

@@ -148,6 +148,18 @@ board has room; use `set bridge.enabled on` after configuring `bridge.uart` and
 RS-232 image. Repeaters may also offer separate ESP-NOW, Ethernet, or MQTT
 observer modes.
 
+An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Its runtime
+`bridge.format` setting chooses the peer protocol: `wrapped` (the
+backward-compatible bridge-to-bridge default using `bridge.secret`) or `raw`
+(direct MeshCore ESP-NOW LR frames for `Generic_ESPNOW`,
+`SenseCapIndicator-ESPNow`, and other primary-ESP-NOW nodes). This is one
+firmware choice, not two board images. Match `bridge.channel` to the primary
+nodes' `espnow.channel` before selecting `set bridge.format raw`.
+For Heltec V4 specifically, `companion_radio_full` is still a LoRa-primary
+Companion; choose the existing `heltec_v4_repeater_bridge_espnow` firmware to
+make that board the LoRa/ESP-NOW gateway. Use its exact merged artifact when
+changing roles or partition layouts.
+
 ## FULL versus standard
 
 For a new installation, use the FULL / complete profile when it exists and the
