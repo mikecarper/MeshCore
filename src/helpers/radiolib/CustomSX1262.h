@@ -92,9 +92,23 @@ class CustomSX1262 : public SX1262 {
   #endif
       int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo, useRegulatorLDO);
       if (status != RADIOLIB_ERR_NONE) {
+#if defined(SX126X_ALLOW_RECOVERABLE_INIT_STATUS) && SX126X_ALLOW_RECOVERABLE_INIT_STATUS
+        // Some SX1262 modules report a transient command status after the
+        // chip has already answered its identity probe. Continue configuring
+        // those devices; an absent chip or a hard command failure is fatal.
+        if (status == RADIOLIB_ERR_CHIP_NOT_FOUND
+            || status == RADIOLIB_ERR_SPI_CMD_FAILED) {
+          mesh::usbLoggingPort().print("ERROR: radio init failed: ");
+          mesh::usbLoggingPort().println(status);
+          return false;
+        }
+        mesh::usbLoggingPort().print("WARN: recoverable radio init status: ");
+        mesh::usbLoggingPort().println(status);
+#else
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);
         return false;  // fail
+#endif
       }
 
       // RadioLib's default DIO3 TCXO delay is 5 ms and its RX duty-cycle

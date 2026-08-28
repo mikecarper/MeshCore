@@ -2416,11 +2416,24 @@ is_esp32_dual_cdc_companion_radio_full_target() {
   esac
 }
 
-prepare_esp32_dual_cdc_framework() {
+requires_esp32_arduino3_framework() {
   local env_name=$1
   local pio_env_name=$2
 
-  is_esp32_dual_cdc_companion_radio_full_target "$env_name" || return 0
+  if is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
+    return 0
+  fi
+  case "${env_name,,}:${pio_env_name,,}" in
+    heltec_rc32_*:*|*:heltec_rc32_*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+prepare_esp32_arduino3_framework() {
+  local env_name=$1
+  local pio_env_name=$2
+
+  requires_esp32_arduino3_framework "$env_name" "$pio_env_name" || return 0
 
   # PlatformIO's standard ESP32 platform and pioarduino publish incompatible
   # Arduino 2.x/3.x cores under the same global package name. `pio run` restores
@@ -3667,7 +3680,7 @@ build_firmware() {
     fi
   fi
   if [ "$build_status" -eq 0 ]; then
-    prepare_esp32_dual_cdc_framework "$env_name" "$pio_env_name"
+    prepare_esp32_arduino3_framework "$env_name" "$pio_env_name"
     build_status=$?
   fi
   pio_run_args=(run -e "$pio_env_name")

@@ -414,16 +414,16 @@ def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
 
     build = (root / "build.sh").read_text(encoding="utf-8")
     framework_preflight = build.split(
-        "prepare_esp32_dual_cdc_framework()", 1
+        "prepare_esp32_arduino3_framework()", 1
     )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
-    assert "is_esp32_dual_cdc_companion_radio_full_target" in framework_preflight
+    assert "requires_esp32_arduino3_framework" in framework_preflight
     assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
     build_call = build.split(
         'print_build_flags "$pio_env_name" "$env_name"', 1
     )[1].split(
         "restore_platformio_build_flags", 1
     )[0]
-    assert 'prepare_esp32_dual_cdc_framework "$env_name" "$pio_env_name"' in build_call
+    assert 'prepare_esp32_arduino3_framework "$env_name" "$pio_env_name"' in build_call
     assert 'if [ "$build_status" -eq 0 ]; then' in build_call
     assert 'flock "$platformio_package_lock_fd"' in build_call
     assert 'flock -u "$platformio_package_lock_fd"' in build_call

@@ -18,6 +18,9 @@ void HeltecRC32Board::begin() {
 
   periph_power.begin();
   periph_power.claim();
+#ifdef RC32_PERIPHERAL_WARMUP_MS
+  delay(RC32_PERIPHERAL_WARMUP_MS);
+#endif
 
   esp_reset_reason_t reason = esp_reset_reason();
   if (reason == ESP_RST_DEEPSLEEP) {
@@ -29,6 +32,22 @@ void HeltecRC32Board::begin() {
     rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
     rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
   }
+}
+
+void HeltecRC32Board::onBootComplete() {
+#ifdef ESP32_POST_BOOT_CPU_FREQ
+  const uint32_t current_mhz = getCpuFrequencyMhz();
+  if (current_mhz > ESP32_POST_BOOT_CPU_FREQ) {
+    if (setCpuFrequencyMhz(ESP32_POST_BOOT_CPU_FREQ)) {
+      MESH_DEBUG_PRINTLN("RC32 startup complete; CPU reduced from %lu to %u MHz",
+                         (unsigned long)current_mhz,
+                         (unsigned)ESP32_POST_BOOT_CPU_FREQ);
+    } else {
+      MESH_DEBUG_PRINTLN("RC32 could not set post-boot CPU frequency to %u MHz",
+                         (unsigned)ESP32_POST_BOOT_CPU_FREQ);
+    }
+  }
+#endif
 }
 
 void HeltecRC32Board::powerOff() {

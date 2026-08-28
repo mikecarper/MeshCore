@@ -289,7 +289,9 @@ static int8_t attempted_power_saving = -1;
 static unsigned long power_saving_retry_at = 0;
 
 static uint32_t companionNominalCpuMhz() {
-#ifdef ESP32_CPU_FREQ
+#ifdef ESP32_POST_BOOT_CPU_FREQ
+  return ESP32_POST_BOOT_CPU_FREQ;
+#elif defined(ESP32_CPU_FREQ)
   return ESP32_CPU_FREQ;
 #else
   return F_CPU / 1000000UL;

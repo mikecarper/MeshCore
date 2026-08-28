@@ -12,6 +12,25 @@ fail() {
 [ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
   || fail "logging matrix permits concurrent PlatformIO target builds"
 
+requires_esp32_arduino3_framework \
+  heltec_rc32_repeater heltec_rc32_repeater \
+  || fail "RC32 omitted its Arduino-ESP32 3.x package preflight"
+if requires_esp32_arduino3_framework \
+    Heltec_v3_repeater Heltec_v3_repeater; then
+  fail "ordinary ESP32 target unexpectedly selected Arduino-ESP32 3.x"
+fi
+
+grep -Fq 'void HeltecRC32Board::onBootComplete()' \
+  variants/heltec_rc32/HeltecRC32Board.cpp \
+  || fail "RC32 omitted its post-boot clock transition"
+grep -Fq 'current_mhz > ESP32_POST_BOOT_CPU_FREQ' \
+  variants/heltec_rc32/HeltecRC32Board.cpp \
+  || fail "RC32 post-boot clock transition overrides lower power-saving clocks"
+grep -Fq 'return ESP32_POST_BOOT_CPU_FREQ;' examples/companion_radio/main.cpp \
+  || fail "Companion power saving ignores the RC32 post-boot nominal clock"
+grep -Fq 'board.onBootComplete();' examples/simple_sensor/main.cpp \
+  || fail "sensor firmware never applies board post-boot policy"
+
 # Interactive builds can carry the complete version from the newest artifact
 # in out/, while an empty directory falls through to the existing tag-derived
 # editable prompt.
@@ -87,6 +106,14 @@ require("Heltec_E290_companion_usb_ble", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_E290_companion_usb_ble", "build_flags", "BLE_PIN_CODE=123456")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
+
+rc32_repeater = "heltec_rc32_repeater"
+require(rc32_repeater, "platform", "55.03.311")
+require(rc32_repeater, "platform_packages", "esp32-core-3.3.11.tar.xz")
+require(rc32_repeater, "build_flags", "ESP32_POST_BOOT_CPU_FREQ=160")
+require(rc32_repeater, "build_flags", "RC32_PERIPHERAL_WARMUP_MS=100")
+require(rc32_repeater, "build_flags", "SX126X_ALLOW_RECOVERABLE_INIT_STATUS=1")
+reject(rc32_repeater, "build_flags", "ESP32_CPU_FREQ=160")
 
 for env_name in (
     "Heltec_t114_without_display_repeater",

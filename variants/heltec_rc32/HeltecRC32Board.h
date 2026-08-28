@@ -19,6 +19,7 @@ public:
   HeltecRC32Board() : periph_power(SENSOR_POWER_CTRL_PIN, SENSOR_POWER_ON){}
 
   void begin();
+  void onBootComplete() override;
   void onBeforeTransmit() override;
   void onAfterTransmit() override;
   void powerOff() override;
