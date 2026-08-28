@@ -2911,7 +2911,7 @@ busy radio returns <code>ERR_CODE_BAD_STATE</code>; unsupported boosted gain ret
 text such as <code>set radio.rxgain off</code> still requires the USB terminal start token.</p>
 <p>The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
 normal binary USB, BLE, or TCP port 5000 transport. <code>CMD_GET_WIFI_POWER_SAVE</code>
-has no body and replies with <code>RESP_CODE_OK</code> followed by one mode byte.
+has no body and replies with <code>RESP_CODE_OK</code> followed by the effective mode byte.
 <code>CMD_SET_WIFI_POWER_SAVE</code> is followed by that mode byte and replies with
 <code>RESP_CODE_OK</code> after saving it:</p>
 <table>
@@ -2939,10 +2939,14 @@ has no body and replies with <code>RESP_CODE_OK</code> followed by one mode byte
 <p>An out-of-range value returns <code>ERR_CODE_ILLEGAL_ARG</code>. A non-WiFi Companion
 returns <code>ERR_CODE_UNSUPPORTED_CMD</code>. Full Companion has Bluetooth enabled and
 therefore returns <code>ERR_CODE_BAD_STATE</code> for <code>none</code>, because ESP32 WiFi/Bluetooth
-coexistence requires modem sleep. A storage failure also returns
-<code>ERR_CODE_BAD_STATE</code>. If an already-saved mode cannot be applied to the active
-WiFi driver, SET still returns <code>RESP_CODE_OK</code> and the mode is applied on the
-next connection. Device <code>powersaving</code> does not overwrite this setting.</p>
+coexistence requires modem sleep. On an ESP32 Full Companion whose primary mesh
+radio is ESP-NOW, SET also returns <code>ERR_CODE_BAD_STATE</code> for <code>max</code> (value <code>2</code>): maximum
+modem sleep can make the station miss ESP-NOW broadcasts, which the access point
+cannot buffer. If an older image already saved <code>max</code>, GET reports <code>min</code> (value
+<code>0</code>) and the running policy uses <code>min</code>. A storage failure also returns
+<code>ERR_CODE_BAD_STATE</code>. If an otherwise permitted saved mode cannot be applied to
+the active WiFi driver, SET still returns <code>RESP_CODE_OK</code> and the mode is applied
+on the next connection. Device <code>powersaving</code> does not overwrite this setting.</p>
 <p>The Bluetooth-name pair is available on Companion builds regardless of the
 currently selected transport, so a host can configure a BLE-capable image over
 USB or TCP before rebooting into it. <code>CMD_GET_BLUETOOTH_NAME</code> has no body and

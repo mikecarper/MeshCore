@@ -552,6 +552,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Browser configuration portal (ESP32 repeater and room server)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-primary-esp-nowwifi-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the primary ESP-NOW/WiFi channel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2184,6 +2201,17 @@
     <span class="md-ellipsis">
       
         View or change the channel used for bridging (ESPNow only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-esp-now-bridge-wire-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the ESP-NOW bridge wire format
       
     </span>
   </a>
@@ -3291,6 +3319,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Browser configuration portal (ESP32 repeater and room server)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-primary-esp-nowwifi-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the primary ESP-NOW/WiFi channel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -4930,6 +4975,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-change-the-esp-now-bridge-wire-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the ESP-NOW bridge wire format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#set-the-esp-now-secret" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5263,6 +5319,10 @@ upgrade.</p>
 ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
 password stops an active WebConfig session; run <code>start webconfig</code> again to use
 the new credentials. <code>set wifi.pwd</code> with no value selects an open network.
+Standalone WiFi also accepts an exact 64-character hexadecimal WPA/WPA2 PSK;
+ordinary passphrases remain limited to 63 characters. Other 64-character values
+and all longer values are rejected. MQTT observer WiFi passwords retain their
+fixed 63-character limit.
 Power-save changes are applied immediately when WiFi is running and otherwise
 take effect on the next connection. <code>get wifi.pwd</code> is intentionally unavailable
 so the standalone password is never returned by the CLI.</p>
@@ -5275,9 +5335,40 @@ restarting the WiFi station, so a TCP client should expect to reconnect at the
 new address; USB password input is masked. Binary
 Companion clients can use command bytes
 <code>0x46</code> and <code>0x47</code> over USB, BLE, or TCP port 5000 without the terminal-start
-token. WiFi-only Companions accept all three modes; Full Companion rejects
+token. WiFi-only Companions accept all three modes. Full Companion rejects
 <code>none</code> because its simultaneous BLE transport requires modem sleep. Companion
-device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent.</p>
+device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent. On an ESP32 Full
+Companion whose primary mesh radio is ESP-NOW, <code>max</code> is also unavailable: a
+station using maximum modem sleep can miss ESP-NOW broadcasts, which the access
+point does not buffer for it. A previously saved <code>max</code> value is capped to and
+reported as <code>min</code>, and a new <code>max</code> selection is rejected. These
+WiFi/BLE/primary-ESP-NOW builds therefore use <code>min</code>.</p>
+<h4 id="view-or-change-the-primary-esp-nowwifi-channel">View or change the primary ESP-NOW/WiFi channel</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get espnow.channel</code></li>
+<li><code>set espnow.channel &lt;channel&gt;</code></li>
+</ul>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>channel</code>: Shared 2.4 GHz WiFi channel from <code>1</code> through <code>13</code>; choose one
+  permitted in your region and supported by the router.</li>
+</ul>
+<p><strong>Default:</strong> <code>1</code></p>
+<p>This command is available when ESP-NOW is the node's primary mesh radio. The
+setting is persisted. A <code>set</code> reply reports that reboot is required; until
+reboot, the running ESP-NOW radio remains on its previous channel. On builds
+that also provide ordinary WiFi, its station and setup AP share that channel.</p>
+<p>After reboot, ESP-NOW, the setup AP, and the infrastructure-WiFi station use
+the selected channel. Every primary ESP-NOW node that must communicate with
+this node, plus the configured router's 2.4 GHz radio, must use the same fixed
+channel. WiFi power saving does not allow the transports to use different
+channels. On an ESP32 Full build with primary ESP-NOW, <code>wifi.powersave max</code> is
+unavailable because maximum modem sleep can miss ESP-NOW broadcasts; use <code>min</code>
+for coexistence.</p>
+<p><code>espnow.channel</code> is the channel of the primary ESP-NOW mesh transport. It is
+separate from <code>bridge.channel</code>, which configures only an ESP-NOW bridge on a
+firmware role whose primary mesh radio is LoRa.</p>
 <p>The browser portal is not compiled into the two 4 MB
 <code>LilyGo_TLora_V2_1_1_6_*_observer_mqtt</code> targets because it does not fit while
 retaining the two app slots required for LoRa OTA. Their normal CLI settings
@@ -5744,7 +5835,10 @@ count does not change.</p>
 frames active on interface <code>00</code>; ESP32 resumes the ordinary ASCII/Binary
 switcher after the logging terminal turns logging off. This setting does not
 change the node-storage capture controlled by <code>log start</code> and <code>log stop</code>.</p>
-<p>Unified ESP32 FULL builds add one saved selector for both output paths:</p>
+<p>Unified non-Companion ESP32 FULL USB+WiFi observer builds add one saved
+selector for both output paths. Full Companion builds control USB diagnostics
+with <code>usb.logging</code> instead; their text-command parser does not expose
+<code>logging.output</code>:</p>
 <pre><code class="language-text">get logging.output
 set logging.output off
 set logging.output usb
@@ -8073,7 +8167,51 @@ rate before running <code>set bridge.enabled on</code>.</p>
 - <code>get bridge.channel</code>
 - <code>set bridge.channel &lt;channel&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>channel</code>: Channel number (1-14)</p>
+- <code>channel</code>: Channel number from 1 through 13 in either format. This matches
+  the primary-ESP-NOW policy and the default regulatory range used by the
+  supported ESP32 targets.</p>
+<p>This controls the optional ESP-NOW bridge transport; it does not change a
+node's primary ESP-NOW mesh channel. Primary-ESP-NOW firmware uses
+<code>get espnow.channel</code> and <code>set espnow.channel &lt;1-13&gt;</code> instead.</p>
+<hr />
+<h4 id="view-or-change-the-esp-now-bridge-wire-format">View or change the ESP-NOW bridge wire format</h4>
+<p><strong>Usage:</strong>
+- <code>get bridge.format</code>
+- <code>set bridge.format &lt;format&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>format</code>:
+  - <code>wrapped</code>: the original ESP-NOW bridge framing (magic, checksum, and XOR
+    using <code>bridge.secret</code>)
+  - <code>raw</code>: the exact serialized MeshCore packet used by primary
+    <code>ESPNOWRadio</code> firmware</p>
+<p><strong>Default:</strong> <code>wrapped</code></p>
+<p>The setting is persistent and restarts an enabled bridge immediately. Receive
+parsing is strict: <code>wrapped</code> accepts only wrapped frames and <code>raw</code> accepts only
+raw MeshCore frames. Coordinate the format and channel on every ESP-NOW peer;
+there is no automatic dual-format receive mode because it would permit
+ambiguous, asymmetric bridge deployments.</p>
+<p>Use <code>raw</code> to connect a LoRa-primary <code>*_repeater_bridge_espnow</code> node to
+<code>Generic_ESPNOW</code>, <code>SenseCapIndicator-ESPNow</code>, or another primary-ESP-NOW node.
+Raw mode enables the ESP-NOW LR PHY and sends at the same LR rate used by those
+targets. All nodes must use the same 1-13 channel. On a primary-ESP-NOW node,
+change that side with <code>set espnow.channel &lt;1-13&gt;</code> and reboot; on the bridge,
+use <code>set bridge.channel &lt;1-13&gt;</code>.</p>
+<p>Raw mode ignores <code>bridge.secret</code> and removes the bridge wrapper's lightweight
+network isolation. MeshCore's own packet authentication/encryption still
+applies where the packet type provides it, but public frames and routing
+metadata remain visible. The wrapped format's XOR is isolation, not strong
+cryptography. Bridge duplicate tracking remains active in both formats, but
+deploying multiple gateways between the same LoRa and ESP-NOW coverage areas
+can still increase duplicate traffic while their seen-packet tables converge.</p>
+<p>One ESP-NOW frame carries at most 250 payload bytes. In raw mode, serialized
+MeshCore packets up to that size remain byte-for-byte compatible with existing
+raw endpoints. Updated raw endpoints split 251-255-byte transport units into
+two versioned fragments and reassemble them by source MAC, length, and CRC;
+both endpoints must include this support for those sizes. Current valid
+MeshCore packet geometry reaches 254 bytes, while 255 is retained as transport
+headroom. Wrapped mode retains its legacy 246-byte maximum after the four-byte
+magic and checksum overhead, and drops larger packets instead of truncating
+them.</p>
 <hr />
 <h4 id="set-the-esp-now-secret">Set the ESP-Now secret</h4>
 <p><strong>Usage:</strong> 
@@ -8082,6 +8220,7 @@ rate before running <code>set bridge.enabled on</code>.</p>
 <p><strong>Parameters:</strong>
 - <code>secret</code>: ESP-NOW bridge secret, 1-15 characters</p>
 <p><strong>Default:</strong> Varies by board</p>
+<p>This setting is used only by <code>bridge.format wrapped</code>; raw mode ignores it.</p>
 <hr />
 <h4 id="view-the-bootloader-version-nrf52-only">View the bootloader version (nRF52 only)</h4>
 <p><strong>Usage:</strong> <code>get bootloader.ver</code></p>

@@ -1595,7 +1595,7 @@ to MQTT unless its target name also contains <code>mqtt</code>.</p>
 <td><code>*_repeater_bridge_espnow</code></td>
 <td style="text-align: right;">Build-dependent on ESP32</td>
 <td style="text-align: right;">No</td>
-<td>Uses ESP-NOW for its bridge; a FULL build also exposes the TCP 5001 LoRa-OTA seeder whenever WiFi is usable</td>
+<td>Uses ESP-NOW for its bridge; <code>bridge.format wrapped|raw</code> selects legacy bridge framing or primary-ESP-NOW compatibility; a FULL build also exposes the TCP 5001 LoRa-OTA seeder whenever WiFi is usable</td>
 </tr>
 <tr>
 <td>RS232 bridge</td>
@@ -1783,7 +1783,60 @@ set wifi.pwd your-password
 <p>Credential writes are persisted immediately. After the reply has drained, the
 Companion restarts its WiFi station with the saved pair. A port-5002 client is
 expected to disconnect and can reconnect at the new LAN IP. USB masks the
-password as it is entered; <code>get wifi.pwd</code> is intentionally unavailable.</p>
+password as it is entered; <code>get wifi.pwd</code> is intentionally unavailable. The
+standalone credential store accepts an empty password, ordinary passphrases up
+to 63 characters, or an exact 64-character hexadecimal WPA/WPA2 PSK. A
+non-hexadecimal 64-character value and every longer value are rejected.</p>
+<p>On Full Companion targets whose primary mesh radio is ESP-NOW, ESP-NOW, the
+setup AP, and the infrastructure-WiFi station must share one 2.4 GHz channel.
+The persisted channel defaults to 1 and can be inspected or changed from the
+text terminal:</p>
+<pre><code class="language-text">get espnow.channel
+set espnow.channel 6
+reboot
+</code></pre>
+<p>Valid values are 1 through 13; use only a channel permitted in your region and
+supported by the router. <code>set espnow.channel</code> saves the new value but does not
+move the running radio; reboot the node to apply it. Every primary
+ESP-NOW node that should communicate with it must use the same channel, and
+the configured router's 2.4 GHz radio must be fixed to that channel as well.
+A router left on automatic channel selection can move the infrastructure
+connection away from the ESP-NOW mesh.</p>
+<p><code>espnow.channel</code> configures the node's primary ESP-NOW mesh radio. It is
+distinct from <code>bridge.channel</code>, which applies only to the separate ESP-NOW
+bridge feature. WiFi power saving does not let ESP-NOW and infrastructure WiFi
+operate on different channels. On an ESP32 Full build whose primary radio is
+ESP-NOW, <code>wifi.powersave max</code> is unavailable because a station using maximum
+modem sleep can miss ESP-NOW broadcasts; use <code>min</code> for coexistence.</p>
+<p>ESP-NOW compatibility also depends on the bytes and PHY used above the common
+Espressif transport. The historical <code>*_repeater_bridge_espnow</code> firmware wraps
+each MeshCore packet with a magic value, checksum, and secret-based XOR, while
+<code>Generic_ESPNOW</code> and <code>SenseCapIndicator-ESPNow</code> send the serialized MeshCore
+packet directly using the ESP-NOW LR PHY. Updated bridge firmware can select
+either behavior without changing the board target:</p>
+<pre><code class="language-text">get bridge.format
+set bridge.channel 1
+set bridge.format raw
+</code></pre>
+<p>On a Heltec V4, the ordinary <code>companion_radio_full</code> image remains a
+LoRa-primary Companion and does not instantiate this bridge. Select and flash
+the existing <code>heltec_v4_repeater_bridge_espnow</code> role before using these
+commands. Treat that Companion-to-repeater change as a role/partition
+migration: back up the node and use the exact V4 merged install artifact.</p>
+<p><code>wrapped</code> remains the default and interoperates with existing bridge nodes
+that use the same channel and <code>bridge.secret</code>. <code>raw</code> interoperates with
+primary-ESP-NOW nodes and other raw bridges; it requires channel 1-13, enables
+LR reception, forces LR transmission, and ignores <code>bridge.secret</code>. Receive
+parsing is strict to the selected format, so migrate peers deliberately rather
+than expecting one bridge to accept both. Match <code>bridge.channel</code> on the LoRa
+gateway to the primary nodes' <code>espnow.channel</code>; a primary-node channel change
+takes effect after its reboot.</p>
+<p>Raw mode retains MeshCore's normal packet parsing, authentication/encryption,
+and the bridge's duplicate suppression, but it does not provide the wrapper's
+secret-based network isolation. That XOR wrapper is itself only lightweight
+isolation, not cryptographic security. Multiple LoRa/ESP-NOW gateways covering
+the same nodes can temporarily amplify duplicates, even though seen-packet
+tracking prevents an individual bridge from immediately echoing a packet back.</p>
 <p>If the configured network remains unavailable for two minutes, the companion
 opens its setup AP so the credentials can be repaired. It continues retrying
 the saved network. WiFi modem sleep has its own persisted <code>wifi.powersave</code>
@@ -1791,11 +1844,16 @@ setting and is independent of the Companion device <code>powersaving</code> sett
 WiFi card in Companion WebConfig exposes <code>none</code>, <code>min</code>, and <code>max</code>. Fresh
 Cascade-profile builds select <code>min</code>; target-default builds select <code>none</code>.
 A saved setting takes precedence after an upgrade.</p>
-<p>WiFi-only Companions can use all three modes. A Full Companion also runs BLE,
-so ESP32 WiFi/Bluetooth coexistence requires at least minimum modem sleep. It
+<p>WiFi-only Companions can use all three modes. Full Companion also runs BLE, so
+ESP32 WiFi/Bluetooth coexistence requires at least minimum modem sleep. It
 reports <code>min</code> when an old or target-default <code>none</code> value is found and rejects a
-new <code>none</code> selection while Bluetooth is compiled in. Device power saving can
-therefore be turned on or off without changing the selected WiFi modem policy.</p>
+new <code>none</code> selection while Bluetooth is compiled in. When ESP-NOW is also the
+Full Companion's primary mesh radio, <code>max</code> is unavailable: the access point does
+not buffer ESP-NOW broadcasts for a sleeping station, so maximum modem sleep can
+lose them. Firmware caps a previously saved <code>max</code> value to and reports it as
+<code>min</code>, and rejects a new <code>max</code> selection. Thus a WiFi/BLE/primary-ESP-NOW Full
+Companion uses <code>min</code>. Device power saving can still be turned on or off without
+changing the selected WiFi modem policy.</p>
 <p>WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
 a trusted LAN.</p>
@@ -1902,7 +1960,10 @@ connect temporarily. Standalone credentials can be changed through WebConfig
 or with the listed CLI commands. Changing the SSID or password stops an active
 WebConfig session; start it again to connect with the new values. Use
 <code>set wifi.pwd</code> with no value for an open network. The password is write-only
-and is never returned by <code>get</code>.</p>
+and is never returned by <code>get</code>. Standalone WiFi accepts ordinary passphrases up
+to 63 characters and exact 64-character hexadecimal WPA/WPA2 PSKs; other
+64-character values and all longer values are rejected. MQTT observer WiFi
+passwords remain limited to 63 characters by their fixed persisted layout.</p>
 <p><code>get webui</code> starts with the saved boot setting, then reports the current
 session. For example, <code>&gt; off, http://192.168.1.130/</code> means automatic WebConfig
 startup is saved as off, but a temporary session started by <code>start webconfig</code>
@@ -2011,7 +2072,13 @@ card and USB text terminal. Full Companion also accepts the text commands from
 TCP port 5002. The normal binary Companion protocol can read or write the
 setting over USB, BLE, or TCP port 5000 without entering terminal mode. Full
 Companion rejects <code>none</code> because its simultaneous BLE transport requires WiFi
-modem sleep.</p>
+modem sleep. An ESP32 Full Companion whose primary mesh radio is ESP-NOW also
+rejects <code>max</code>; maximum
+modem sleep can cause the station to miss ESP-NOW broadcasts because the access
+point does not buffer them. A previously saved <code>max</code> value is capped to and
+reported as <code>min</code>. Such a primary-ESP-NOW Full Companion therefore uses <code>min</code>.
+ESP-NOW and
+infrastructure WiFi still must use the same fixed channel.</p>
 <p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
 the board configuration overrides <code>MQTT_WIFI_TX_POWER</code>. This setting affects
 WiFi only, not LoRa transmit power.</p>
@@ -2058,7 +2125,10 @@ get mqtt2.diag
 TCP port 5000, and use the open <code>MeshCore-Setup-XXXX</code> AP at
 <code>http://192.168.4.1/</code> if it cannot join the saved network. Current firmware
 normalizes both ESP32 WiFi interfaces to standard b/g/n before advertising the
-setup AP, including after an ESP-NOW image used its long-range protocol mode.
+setup AP. Full Companion targets whose primary mesh radio is ESP-NOW use
+b/g/n+LR instead and keep the setup AP, infrastructure station, and mesh on the
+persisted <code>espnow.channel</code> (channel 1 by default). Their configured 2.4 GHz
+router and every other primary ESP-NOW node must use that same channel.
 MQTT diagnostics apply only to a <code>wifi_mqtt</code> companion target.</p>
 
 

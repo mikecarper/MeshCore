@@ -1563,6 +1563,17 @@ board has room; use <code>set bridge.enabled on</code> after configuring <code>b
 <code>bridge.baud</code>. The Wio-E5 remains the capacity exception and offers a separate
 RS-232 image. Repeaters may also offer separate ESP-NOW, Ethernet, or MQTT
 observer modes.</p>
+<p>An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Its runtime
+<code>bridge.format</code> setting chooses the peer protocol: <code>wrapped</code> (the
+backward-compatible bridge-to-bridge default using <code>bridge.secret</code>) or <code>raw</code>
+(direct MeshCore ESP-NOW LR frames for <code>Generic_ESPNOW</code>,
+<code>SenseCapIndicator-ESPNow</code>, and other primary-ESP-NOW nodes). This is one
+firmware choice, not two board images. Match <code>bridge.channel</code> to the primary
+nodes' <code>espnow.channel</code> before selecting <code>set bridge.format raw</code>.
+For Heltec V4 specifically, <code>companion_radio_full</code> is still a LoRa-primary
+Companion; choose the existing <code>heltec_v4_repeater_bridge_espnow</code> firmware to
+make that board the LoRa/ESP-NOW gateway. Use its exact merged artifact when
+changing roles or partition layouts.</p>
 <h2 id="full-versus-standard">FULL versus standard</h2>
 <p>For a new installation, use the FULL / complete profile when it exists and the
 board has enough flash. FULL profiles keep the complete supported feature set
