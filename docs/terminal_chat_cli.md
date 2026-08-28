@@ -201,18 +201,20 @@ selection is rejected. Such a WiFi/BLE/primary-ESP-NOW build therefore uses
 get espnow.channel
 set espnow.channel <1-13>
 ```
-On Full Companion builds whose primary mesh radio is ESP-NOW, this shows or
-saves the single channel shared by ESP-NOW, the setup AP, and the
-infrastructure-WiFi station. The default is channel 1. Use only a channel
-permitted in your region and supported by the router. A saved change takes
-effect only after reboot. Every primary ESP-NOW node and the router's 2.4 GHz
-radio must use the same fixed channel; power saving does not permit separate
-channels. On these ESP32 Full builds, `wifi.powersave max` is unavailable and
-`min` is the coexistence setting. This channel setting is also distinct from
-`bridge.channel`, which controls the optional ESP-NOW bridge transport. An
-updated LoRa-primary ESP-NOW bridge can join this raw primary transport by
-selecting the same channel and running `set bridge.format raw`; its default
-`wrapped` format remains the bridge-to-bridge protocol.
+On builds whose primary mesh radio is ESP-NOW, this shows or saves the primary
+radio's channel. The default is channel 1. Use only a channel permitted in
+your region, and restart or power-cycle the node after changing it. Every
+primary ESP-NOW peer must use the same channel.
+
+On Full Companion, the setup AP and infrastructure-WiFi station also share
+that channel, so the router's 2.4 GHz radio must remain fixed to it. Power
+saving does not permit separate channels. `wifi.powersave max` is unavailable
+on these ESP32 Full builds and `min` is the coexistence setting. This channel
+setting is also distinct from `bridge.channel`, which controls the optional
+ESP-NOW bridge transport. An updated LoRa-primary ESP-NOW bridge can join this
+raw primary transport by selecting the same channel and running
+`set bridge.format raw`; its default `wrapped` format remains the
+bridge-to-bridge protocol.
 
 ```
 get radio.rxgain

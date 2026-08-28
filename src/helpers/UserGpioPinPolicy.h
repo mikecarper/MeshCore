@@ -60,6 +60,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef P_LORA_PA_POWER
     P_LORA_PA_POWER,
 #endif
+#ifdef P_LORA_LF_PA_POWER
+    P_LORA_LF_PA_POWER,
+#endif
+#ifdef P_LORA_HF_PA_POWER
+    P_LORA_HF_PA_POWER,
+#endif
 #ifdef P_LORA_TX_LED
     P_LORA_TX_LED,
 #endif
@@ -405,6 +411,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef PIN_TFT_EN
     PIN_TFT_EN,
+#endif
+#ifdef ST7789_CS
+    ST7789_CS,
+#endif
+#ifdef ST7789_RS
+    ST7789_RS,
 #endif
 #ifdef PIN_TOUCH_RST
     PIN_TOUCH_RST,

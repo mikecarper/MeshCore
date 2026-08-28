@@ -20,6 +20,9 @@
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
 #endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  #include <helpers/esp32/WiFiRadioPolicy.h>
+#endif
 #include <RTClib.h>
 #include <target.h>
 
@@ -503,7 +506,44 @@ public:
       }
     } else if (memcmp(command, "import ", 7) == 0) {
       importCard(&command[7]);
-    } else if (strcmp(command, "get usb.logging") == 0) {
+    }
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    else if (strcmp(command, "get espnow.channel") == 0) {
+      const uint8_t saved = mesh::wifi::loadConfiguredEspNowChannel();
+      const uint8_t active = mesh::wifi::activeEspNowChannel();
+      if (saved == active) {
+        Serial.printf("> %u (saved and active)\n", (unsigned)saved);
+      } else {
+        Serial.printf("> saved %u, active %u; reboot required\n",
+                      (unsigned)saved, (unsigned)active);
+      }
+    } else if (strncmp(command, "set espnow.channel", 18) == 0
+               && (command[18] == 0 || command[18] == ' '
+                   || command[18] == '\t')) {
+      const char* value = command + 18;
+      while (*value == ' ' || *value == '\t') value++;
+      uint8_t channel = 0;
+      if (!mesh::wifi::parseEspNowChannel(value, channel)) {
+        Serial.println("Error: ESP-NOW channel must be 1-13");
+      } else {
+        // Snapshot the boot channel before writing NVS. The running radio
+        // remains on that channel until restart, keeping this node joined to
+        // its current peers for the rest of this boot.
+        const uint8_t active = mesh::wifi::activeEspNowChannel();
+        if (!mesh::wifi::saveConfiguredEspNowChannel(channel)) {
+          Serial.println("Error: failed to save ESP-NOW channel");
+        } else if (channel == active) {
+          Serial.printf("OK - ESP-NOW channel %u saved and active\n",
+                        (unsigned)channel);
+        } else {
+          Serial.printf(
+              "OK - ESP-NOW channel %u saved; active %u; reboot required\n",
+              (unsigned)channel, (unsigned)active);
+        }
+      }
+    }
+#endif
+    else if (strcmp(command, "get usb.logging") == 0) {
 #if MESH_USB_LOGGING_AVAILABLE
       Serial.printf("  usb.logging %s\n",
                     mesh::isUsbLoggingEnabled() ? "on" : "off");
@@ -558,6 +598,10 @@ public:
       Serial.println("   set {name|lat|lon|freq|tx|af} {value}");
       Serial.println("   get usb.logging");
       Serial.println("   set usb.logging {on|off}");
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+      Serial.println("   get espnow.channel");
+      Serial.println("   set espnow.channel <1-13>");
+#endif
       Serial.println("   card");
       Serial.println("   import {biz card}");
       Serial.println("   clock");

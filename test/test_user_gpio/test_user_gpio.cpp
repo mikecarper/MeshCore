@@ -1,7 +1,13 @@
 #include <gtest/gtest.h>
 
+#define P_LORA_LF_PA_POWER 4
+#define P_LORA_HF_PA_POWER 3
+#define ST7789_CS 16
+#define ST7789_RS 15
+
 #include <Arduino.h>
 #include <helpers/UserGpio.h>
+#include <helpers/UserGpioPinPolicy.h>
 #include <helpers/UserGpioReplyTracker.h>
 
 #include <climits>
@@ -37,6 +43,14 @@ protected:
     board.available[16] = true;
   }
 };
+
+TEST(UserGpioPinPolicyTest, ReservesRadioPaAndSt7789ControlAliases) {
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(P_LORA_LF_PA_POWER));
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(P_LORA_HF_PA_POWER));
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(ST7789_CS));
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(ST7789_RS));
+  EXPECT_FALSE(UserGpioPinPolicy::isFirmwareReserved(22));
+}
 
 TEST_F(UserGpioTest, ListsOnlyBoardApprovedPins) {
   UserGpio gpio(board);
