@@ -4,6 +4,11 @@
 #include <MicroNMEA.h>
 #include <RTClib.h>
 #include <helpers/RefCountedDigitalPin.h>
+#include <helpers/sensors/GpsTimeValidation.h>
+
+#ifndef GPS_LOOP_MAX_BYTES
+    #define GPS_LOOP_MAX_BYTES 96
+#endif
 
 #ifndef GPS_EN
     #ifdef PIN_GPS_EN
@@ -133,9 +138,20 @@ public :
     long satellitesCount() override { return nmea.getNumSatellites(); }
     bool isValid() override { return nmea.isValid(); }
 
-    long getTimestamp() override { 
-        DateTime dt(nmea.getYear(), nmea.getMonth(),nmea.getDay(),nmea.getHour(),nmea.getMinute(),nmea.getSecond());
-        return dt.unixtime();
+    long getTimestamp() override {
+        const uint16_t year = nmea.getYear();
+        const uint8_t month = nmea.getMonth();
+        const uint8_t day = nmea.getDay();
+        const uint8_t hour = nmea.getHour();
+        const uint8_t minute = nmea.getMinute();
+        const uint8_t second = nmea.getSecond();
+        if (!mesh::gps::isValidNmeaDateTime(year, month, day, hour, minute,
+                                            second)) {
+            return 0;
+        }
+        DateTime dt(year, month, day, hour, minute, second);
+        const uint32_t timestamp = dt.unixtime();
+        return timestamp <= 0x7FFFFFFFUL ? static_cast<long>(timestamp) : 0;
     } 
 
     void sendSentence(const char *sentence) override {
@@ -144,12 +160,14 @@ public :
 
     void loop() override {
 
-        while (_gps_serial->available()) {
+        size_t processed = 0;
+        while (_gps_serial->available() && processed < GPS_LOOP_MAX_BYTES) {
             char c = _gps_serial->read();
             #ifdef GPS_NMEA_DEBUG
             if (mesh::isUsbLoggingEnabled()) mesh::usbLoggingPort().print(c);
             #endif
             nmea.process(c);
+            processed++;
         }
 
         if (!isValid()) time_valid = 0;
@@ -160,17 +178,20 @@ public :
             if (!_time_sync_needed && _clock != NULL && (millis() - _last_time_sync) > TIME_SYNC_INTERVAL) {
                 _time_sync_needed = true;
             }
+            const long timestamp = getTimestamp();
+            if (isValid() && satellitesCount() >= 5 && timestamp > 0) {
+                time_valid++;
+            } else {
+                time_valid = 0;
+            }
             if (_time_sync_needed && time_valid > 2) {
                 if (_clock != NULL) {
-                    _clock->setCurrentTime(getTimestamp());
+                    _clock->setCurrentTime(timestamp);
                     markTimeSyncApplied();
                     _time_sync_needed = false;
                     _last_time_sync = millis();
                     _last_valid_time_sync = _clock->getCurrentTime();
                 }
-            }
-            if (isValid() && satellitesCount() >= 5) {
-                time_valid ++;
             }
         }
     }
