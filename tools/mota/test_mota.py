@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import importlib.util
+import json
 import os
 import random
 import struct
@@ -417,6 +418,11 @@ def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
         "prepare_esp32_arduino3_framework()", 1
     )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
     assert "requires_esp32_arduino3_framework" in framework_preflight
+    assert 'framework-arduinoespressif32/package.json' in framework_preflight
+    assert '"3\\.3\\.11"' in framework_preflight
+    assert "pio pkg uninstall --global --tool framework-arduinoespressif32" in framework_preflight
+    assert 'pio pkg install --global --tool "$arduino3_core_url"' in framework_preflight
+    assert 'pio pkg install --global --tool "$arduino3_libs_url"' in framework_preflight
     assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
     build_call = build.split(
         'print_build_flags "$pio_env_name" "$env_name"', 1
@@ -457,6 +463,73 @@ def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
             ) in section, f"ESP32-S3 Full profile lacks shared DIO mode: {path}"
 
     assert profile_count == 17
+
+
+def test_tbeam_1w_release_hardware_fixes_are_preserved():
+    root = Path(__file__).resolve().parents[2]
+    variant_root = root / "variants/lilygo_tbeam_1w"
+    profile = (variant_root / "platformio.ini").read_text(encoding="utf-8")
+    variant = (variant_root / "variant.h").read_text(encoding="utf-8")
+    pins = (variant_root / "pins_arduino.h").read_text(encoding="utf-8")
+    target = (variant_root / "target.cpp").read_text(encoding="utf-8")
+    board_impl = (variant_root / "TBeam1WBoard.cpp").read_text(
+        encoding="utf-8"
+    )
+    wrapper = (
+        root / "src/helpers/radiolib/CustomSX1262Wrapper.h"
+    ).read_text(encoding="utf-8")
+    board_manifest = json.loads(
+        (root / "boards/t_beam_1w.json").read_text(encoding="utf-8")
+    )
+
+    # Hardware fixes advertised by the T-Beam 1W v1.17.1 release. Keep the
+    # build flag and header fallback aligned so every role uses 1700 us.
+    for flag in (
+        "-D USE_SX1262",
+        "-D SX126X_REGISTER_PATCH=1",
+        "-D SX126X_PA_RAMP_TIME=0x06",
+        "-D SX126X_CURRENT_LIMIT=140",
+        "-D SX126X_RX_BOOSTED_GAIN=1",
+        "-D MAX_LORA_TX_POWER=22",
+        "-D BATT_MIN_MILLIVOLTS=6000",
+        "-D BATT_MAX_MILLIVOLTS=8400",
+        "-D GPS_BAUD_RATE=9600",
+    ):
+        assert flag in profile
+    assert "#define SX126X_PA_RAMP_TIME 0x06" in variant
+    assert "RADIOLIB_SX126X_PA_RAMP_1700U" in variant
+
+    # This branch has a working board-specific Arduino variant. Protect its
+    # correct default SPI pins instead of regressing to generic ESP32-S3 pins.
+    assert board_manifest["build"]["variant"] == "lilygo_tbeam_1w"
+    assert (
+        board_manifest["build"]["arduino"]["partitions"]
+        == "default_16MB.csv"
+    )
+    assert "static const uint8_t MISO = 12;" in pins
+    assert "static const uint8_t SCK = 13;" in pins
+
+    # The extended ramp must survive boot, CLI power changes, and recovery.
+    assert "radio.setTxParams(" in target
+    assert "SX126X_PA_RAMP_TIME" in target
+    assert "applyCachedTxPower(int8_t dbm) override" in wrapper
+    assert "SX126X_PA_RAMP_TIME" in wrapper
+
+    # Preserve the hardware-tested battery divider and fan thermostat.
+    assert "#define BATTERY_PIN 4" in variant
+    assert "#define BATTERY_SENSE_SAMPLES 30" in variant
+    assert "#define ADC_MULTIPLIER 2.9333f" in variant
+    assert "#define FAN_TEMP_ON_C 45.0f" in board_impl
+    assert "#define FAN_TEMP_OFF_C 41.0f" in board_impl
+    assert "#define FAN_MIN_RUN_TIME_MS 5000UL" in board_impl
+    for role_main in (
+        "examples/companion_radio/main.cpp",
+        "examples/simple_repeater/main.cpp",
+        "examples/simple_room_server/main.cpp",
+        "examples/kiss_modem/main.cpp",
+    ):
+        source = (root / role_main).read_text(encoding="utf-8")
+        assert "board.updateFanControl();" in source
 
 
 def test_release_catalog_resolves_canonical_runtime_aliases():

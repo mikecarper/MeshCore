@@ -3,6 +3,19 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 
+#ifndef FAN_TEMP_ON_C
+#define FAN_TEMP_ON_C 45.0f
+#endif
+#ifndef FAN_TEMP_OFF_C
+#define FAN_TEMP_OFF_C 41.0f
+#endif
+#ifndef FAN_MIN_RUN_TIME_MS
+#define FAN_MIN_RUN_TIME_MS 5000UL
+#endif
+#ifndef FAN_TEMP_POLL_INTERVAL_MS
+#define FAN_TEMP_POLL_INTERVAL_MS 1000UL
+#endif
+
 void TBeam1WBoard::begin() {
   ESP32Board::begin();
 
@@ -36,9 +49,15 @@ void TBeam1WBoard::begin() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Initialize fan control (on by default - 1W PA can overheat)
+  // Start with the fan off. updateFanControl() turns it on at the validated
+  // temperature threshold and applies hysteresis, avoiding the former
+  // always-on battery drain while still failing safe on an invalid reading.
   pinMode(FAN_CTRL_PIN, OUTPUT);
-  digitalWrite(FAN_CTRL_PIN, HIGH);
+  fan_running = false;
+  fan_temperature_valid = false;
+  fan_started_at_ms = 0;
+  fan_last_poll_ms = 0;
+  digitalWrite(FAN_CTRL_PIN, LOW);
 }
 
 void TBeam1WBoard::powerCycleRadio() {
@@ -55,25 +74,34 @@ void TBeam1WBoard::powerCycleRadio() {
 
 void TBeam1WBoard::onBeforeTransmit() {
   // RF switching handled by RadioLib via SX126X_DIO2_AS_RF_SWITCH and setRfSwitchPins()
+  updateFanControl();
   digitalWrite(LED_PIN, HIGH);  // TX LED on
 }
 
 void TBeam1WBoard::onAfterTransmit() {
   digitalWrite(LED_PIN, LOW);   // TX LED off
+  updateFanControl();
 }
 
 uint16_t TBeam1WBoard::getBattMilliVolts() {
-  // T-Beam 1W uses 7.4V battery with voltage divider
-  // ADC reads through divider - adjust multiplier based on actual divider ratio
-  analogReadResolution(12);
-  uint32_t raw = 0;
-  for (int i = 0; i < 8; i++) {
-    raw += analogRead(BATTERY_PIN);
+  // T-Beam 1W uses a 2S battery through the GPIO4 divider. These settings
+  // match the hardware-tested fork and the Meshtastic board definition.
+  static bool adc_initialized = false;
+  if (!adc_initialized) {
+    pinMode(BATTERY_PIN, INPUT);
+    analogReadResolution(12);
+    analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+    adc_initialized = true;
   }
-  raw = raw / 8;
-  // Assuming voltage divider ratio from ADC_MULTIPLIER
-  // 3.3V reference, 12-bit ADC (4095 max)
-  return static_cast<uint16_t>((raw * 3300 * ADC_MULTIPLIER) / 4095);
+
+  uint32_t raw = 0;
+  for (int i = 0; i < BATTERY_SENSE_SAMPLES; i++) {
+    raw += analogRead(BATTERY_PIN);
+    delayMicroseconds(100);
+  }
+  raw /= BATTERY_SENSE_SAMPLES;
+  return static_cast<uint16_t>(
+      (static_cast<float>(raw) / 4095.0f) * 3300.0f * ADC_MULTIPLIER);
 }
 
 const char* TBeam1WBoard::getManufacturerName() const {
@@ -90,7 +118,7 @@ void TBeam1WBoard::powerOff() {
 
   // Turn off LED and fan
   digitalWrite(LED_PIN, LOW);
-  digitalWrite(FAN_CTRL_PIN, LOW);
+  setFanEnabled(false);
 
   ESP32Board::powerOff();
 }
@@ -137,9 +165,39 @@ bool TBeam1WBoard::isLoRaFemLnaEnabled() const {
 }
 
 void TBeam1WBoard::setFanEnabled(bool enabled) {
+  if (fan_running == enabled) return;
+  fan_running = enabled;
+  if (enabled) fan_started_at_ms = millis();
   digitalWrite(FAN_CTRL_PIN, enabled ? HIGH : LOW);
 }
 
 bool TBeam1WBoard::isFanEnabled() const {
-  return digitalRead(FAN_CTRL_PIN) == HIGH;
+  return fan_running;
+}
+
+void TBeam1WBoard::updateFanControl() {
+  const uint32_t now = millis();
+  if (!fan_temperature_valid
+      || static_cast<uint32_t>(now - fan_last_poll_ms)
+          >= FAN_TEMP_POLL_INTERVAL_MS) {
+    const float temperature_c = getMCUTemperature();
+    fan_last_poll_ms = now;
+    if (isnan(temperature_c)) {
+      // Cooling is safer than silently leaving the 1 W PA unprotected if the
+      // ESP32 temperature sensor ever reports an invalid sample.
+      setFanEnabled(true);
+      return;
+    }
+    fan_last_temperature_c = temperature_c;
+    fan_temperature_valid = true;
+  }
+
+  if (fan_running) {
+    if (static_cast<uint32_t>(now - fan_started_at_ms) >= FAN_MIN_RUN_TIME_MS
+        && fan_last_temperature_c < FAN_TEMP_OFF_C) {
+      setFanEnabled(false);
+    }
+  } else if (fan_last_temperature_c >= FAN_TEMP_ON_C) {
+    setFanEnabled(true);
+  }
 }

@@ -157,6 +157,9 @@ void loop() {
   // GPS acquisition, cache refresh, and delayed shutdown are driven by the
   // sensor manager loop even though KISS itself is normally host powered.
   sensors.loop();
+#ifdef TBEAM_1W
+  board.updateFanControl();
+#endif
 
   if (!modem->isActuallyTransmitting() && !modem->isHostOutputBackedUp()) {
     if (!modem->isTxBusy()) {

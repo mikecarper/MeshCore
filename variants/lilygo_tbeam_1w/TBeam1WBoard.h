@@ -35,6 +35,11 @@ private:
   bool lna_enabled = true;
   bool lna_driver_synced = false;
   CustomSX1262Wrapper* radio_driver = nullptr;
+  bool fan_running = false;
+  bool fan_temperature_valid = false;
+  uint32_t fan_started_at_ms = 0;
+  uint32_t fan_last_poll_ms = 0;
+  float fan_last_temperature_c = 0.0f;
 
 public:
   void begin();
@@ -55,7 +60,10 @@ public:
   bool canControlLoRaFemLna() const override;
   bool isLoRaFemLnaEnabled() const override;
 
-  // Fan control methods
+  // Temperature-gated cooling for the external PA. Every T-Beam 1W role
+  // services this from its main loop; the TX hooks also run it at the points
+  // where the PA can begin heating.
+  void updateFanControl();
   void setFanEnabled(bool enabled);
   bool isFanEnabled() const;
 };

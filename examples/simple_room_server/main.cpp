@@ -192,6 +192,9 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
+#ifdef TBEAM_1W
+  board.updateFanControl();
+#endif
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif

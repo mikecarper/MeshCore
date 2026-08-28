@@ -2432,15 +2432,24 @@ requires_esp32_arduino3_framework() {
 prepare_esp32_arduino3_framework() {
   local env_name=$1
   local pio_env_name=$2
+  local arduino3_core_url="https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11.tar.xz"
+  local arduino3_libs_url="https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11-libs.tar.xz"
+  local pio_core_dir="${PLATFORMIO_CORE_DIR:-${HOME}/.platformio}"
+  local arduino_manifest="${pio_core_dir}/packages/framework-arduinoespressif32/package.json"
 
   requires_esp32_arduino3_framework "$env_name" "$pio_env_name" || return 0
 
   # PlatformIO's standard ESP32 platform and pioarduino publish incompatible
-  # Arduino 2.x/3.x cores under the same global package name. `pio run` restores
-  # the standard core automatically, but pioarduino can otherwise proceed with
-  # no matching framework after a standard build. Enforce this environment's
-  # explicit platform_packages pins before SCons starts.
+  # Arduino 2.x/3.x cores under the same global package name. PlatformIO may
+  # list both versions side by side but pioarduino only resolves the canonical
+  # package directory. Replace just that conflicting framework when necessary;
+  # do not force-reinstall the platform and all of its toolchains.
   echo "Ensuring Arduino-ESP32 3.3.11 dependencies for ${env_name}..."
+  if ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"3\.3\.11"' "$arduino_manifest" 2>/dev/null; then
+    pio pkg uninstall --global --tool framework-arduinoespressif32 --no-save || true
+    pio pkg install --global --tool "$arduino3_core_url"
+  fi
+  pio pkg install --global --tool "$arduino3_libs_url"
   pio pkg install -e "$pio_env_name"
 }
 

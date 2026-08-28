@@ -53,12 +53,19 @@ bool radio_init() {
   // GPS serial initialized by EnvironmentSensorManager::begin()
 
   bool success = radio.std_init(&spi);
+  if (success) {
+    // T-Beam 1W has external PA requiring longer ramp time (>800us recommended)
+    const int16_t ramp_status = radio.setTxParams(
+        LORA_TX_POWER, static_cast<uint8_t>(SX126X_PA_RAMP_TIME));
+    if (ramp_status != RADIOLIB_ERR_NONE) {
+      MESH_DEBUG_PRINTLN("T-Beam 1W PA ramp configuration failed: %d",
+                         (int)ramp_status);
+      success = false;
+    }
+  }
   target_radio_available = success;
   if (success) {
     board.attachRadioDriver(&radio_driver);
-    // T-Beam 1W has external PA requiring longer ramp time (>800us recommended)
-    // RADIOLIB_SX126X_PA_RAMP_800U = 0x05
-    radio.setTxParams(LORA_TX_POWER, RADIOLIB_SX126X_PA_RAMP_800U);
   } else {
     MESH_DEBUG_PRINTLN(
         "T-Beam 1W radio pins: LDO=%d NSS=%d RST=%d BUSY=%d MISO=%d DIO1=%d CTRL=%d",

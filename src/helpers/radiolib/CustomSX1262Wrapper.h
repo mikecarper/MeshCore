@@ -13,6 +13,18 @@ public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
 protected:
+  int16_t applyCachedTxPower(int8_t dbm) override {
+#ifdef SX126X_PA_RAMP_TIME
+    // External-PA boards such as the T-Beam 1W require a slower PA ramp. Use
+    // the same ramp for runtime power changes and post-reset restoration;
+    // SX1262::setOutputPower() would otherwise restore RadioLib's default.
+    return ((CustomSX1262 *)_radio)->setTxParams(
+        dbm, static_cast<uint8_t>(SX126X_PA_RAMP_TIME));
+#else
+    return RadioLibWrapper::applyCachedTxPower(dbm);
+#endif
+  }
+
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     bool success = ((CustomSX1262 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
         && ((CustomSX1262 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE

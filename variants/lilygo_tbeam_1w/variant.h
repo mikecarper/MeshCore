@@ -15,7 +15,7 @@
 #define PIN_GPS_PPS 7      // GPS PPS output
 #define PIN_GPS_EN 16      // GPS wake-up/enable (GPS_EN_PIN in LilyGO code)
 #define HAS_GPS 1
-#define GPS_BAUDRATE 9600
+#define GPS_BAUD_RATE 9600
 
 // Buttons
 #define BUTTON_PIN 0         // BUTTON 1 (boot)
@@ -75,7 +75,7 @@
 #define BATTERY_PIN 4
 #define ADC_CHANNEL ADC1_GPIO4_CHANNEL
 #define BATTERY_SENSE_SAMPLES 30
-#define ADC_MULTIPLIER 3.0
+#define ADC_MULTIPLIER 2.9333f
 
 // NTC temperature sensor
 #define NTC_PIN 14
@@ -84,8 +84,10 @@
 #define FAN_CTRL_PIN 41
 
 // PA Ramp Time - T-Beam 1W requires >800us stabilization (default is 200us)
-// Value 0x05 = RADIOLIB_SX126X_PA_RAMP_800U
-#define SX126X_PA_RAMP_US 0x05
+// Value 0x06 = RADIOLIB_SX126X_PA_RAMP_1700U
+#ifndef SX126X_PA_RAMP_TIME
+#define SX126X_PA_RAMP_TIME 0x06
+#endif
 
 // Display - SH1106 OLED (128x64)
 #define USE_SH1106
