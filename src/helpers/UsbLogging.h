@@ -21,13 +21,13 @@ namespace mesh {
 bool isUsbLoggingEnabled();
 void setUsbLoggingEnabled(bool enabled);
 
-// ESP32 native USB starts before setup(), so its next-boot interface count is
-// mirrored outside the normal role preferences. Other platforms need no
-// mirror. Returns false only when that mirror could not be saved.
+// Kept as a platform-neutral persistence hook. Single-TTY builds need no
+// descriptor mirror; nRF52 selects its optional second interface after loading
+// the normal role preferences.
 bool saveUsbLoggingBootPreference(bool enabled);
 
 // Start the optional dedicated USB logging interface. Ordinary and single-TTY
-// builds use Serial; dual-CDC Full Companion builds use a second CDC ACM port.
+// builds use Serial; nRF52 Full Companion uses a second CDC ACM port.
 void beginUsbLoggingPort();
 // Emit a short identity marker whenever a host opens the dedicated logging
 // endpoint. The device can report its USB interface, but the host alone chooses

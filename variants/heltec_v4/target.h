@@ -1,5 +1,9 @@
 #pragma once
 
+// GPIO40 and GPIO41 are hard-wired to GNSS WAKE and PPS respectively.
+// Keep them unavailable even when no GNSS data is detected at startup.
+#define USER_GPIO_RESERVED_PINS 40, 41
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
@@ -34,4 +38,3 @@ extern EnvironmentSensorManager sensors;
 
 bool radio_init();
 mesh::LocalIdentity radio_new_identity();
-

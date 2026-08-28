@@ -142,7 +142,7 @@ assert.strictEqual(companionFull.role, "companion");
 assert.strictEqual(companionFull.mode, "full");
 assert.strictEqual(companionFull.logging, "usb-runtime");
 assert.deepStrictEqual(companionFull.loggingModes, ["none", "usb"]);
-assert.strictEqual(companionFull.dedicatedUsbLogging, true);
+assert.strictEqual(companionFull.dedicatedUsbLogging, false);
 assert.strictEqual(companionFull.ota, "lora-source");
 assert.strictEqual(companionFull.feature, "full");
 assert.strictEqual(companionFull.variant, "default");
@@ -186,7 +186,7 @@ assert.deepStrictEqual(standardBesideFull[0].loggingModes, ["none", "usb"]);
 const v4Full = profile("heltec_v4_2_v4_3_companion_radio_full_femon");
 assert.strictEqual(v4Full.logging, "usb-runtime");
 assert.deepStrictEqual(v4Full.loggingModes, ["none", "usb"]);
-assert.strictEqual(v4Full.dedicatedUsbLogging, true);
+assert.strictEqual(v4Full.dedicatedUsbLogging, false);
 ["usb", "ble", "wifi"].forEach(function (mode) {
   assert(!catalog.profiles.some(function (item) {
     return item.hardware === "heltec_v4" && item.role === "companion" &&
@@ -207,7 +207,7 @@ assert.strictEqual(v4Full.dedicatedUsbLogging, true);
     const classified = picker.applyFullCompanionCapabilities(candidates);
     assert.strictEqual(classified[0].logging, "usb-runtime");
     assert.deepStrictEqual(classified[0].loggingModes, ["none", "usb"]);
-    assert.strictEqual(classified[0].dedicatedUsbLogging, undefined);
+    assert.strictEqual(classified[0].dedicatedUsbLogging, false);
     assert.deepStrictEqual(
       picker.omitTransportsReplacedByFull(classified).map(function (item) {
         return item.target;

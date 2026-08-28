@@ -19,16 +19,6 @@ VERSION_LABEL_RE = re.compile(r"v\d+(?:\.\d+)+")
 CATALOG_VERSION_TEXT_RE = re.compile(
     r"Keymind Cascade MeshCore v[0-9][A-Za-z0-9_.-]*"
 )
-ESP32_DUAL_CDC_FULL_RE = re.compile(
-    r"^(?:"
-    r"heltec_v4(?:_2_v4_3|_3)?(?:_r8)?(?:_tft)?|"
-    r"LilyGo_TBeam_1W|Station_G2|Station_G3_ESP32|Xiao_S3_WIO|"
-    r"heltec_tracker_v2|meshnology_w12|"
-    r"nibble_(?:screen|zero)_connect"
-    r")_companion_radio_full(?:_|$)",
-    flags=re.IGNORECASE,
-)
-
 LEGACY_PORTABLE_CEILING_EXCEPTIONS = {
     "heltec_ct62_repeater_lora_ota_no_external_sensors",
     "heltec_tracker_v1_1_repeater_observer_mqtt",
@@ -344,78 +334,25 @@ def normalize_nrf52_full_companion_metadata(
     return "\n\n".join(paragraphs)
 
 
-def normalize_esp32_dual_cdc_full_companion_metadata(
+def normalize_esp32_full_companion_metadata(
     firmware: dict, notes: str
 ) -> str:
-    """Describe a native-USB ESP32-S3 Full Companion accurately."""
+    """Describe the canonical single-TTY ESP32 Full Companion accurately."""
     firmware["title"] = "Full Companion"
     firmware["subTitle"] = (
-        "USB Companion + optional USB logging + BLE + Wi-Fi + LoRa OTA source"
+        "USB Companion or logging + BLE + Wi-Fi + LoRa OTA source"
     )
     profile = (
-        "PROFILE - Native-USB ESP32-S3 Full Companion: one USB cable always "
-        "exposes interface 00 for Binary Companion, the text terminal, flashing, and "
-        "serial mOTA source traffic. Fresh installs default USB logging off and "
-        "do not enumerate interface 02. Enabling logging and rebooting adds "
-        "interface 02 as a separate plaintext packet/debug port. BLE, Wi-Fi "
-        "Companion on TCP 5000, "
-        "WebConfig, TCP mOTA seeding on 5001, and the text terminal on 5002 "
-        "remain available. Use set usb.logging on reboot or set usb.logging "
-        "off reboot to save and apply the interface count."
-    )
-    logging_use = (
-        "LOGGING USE - Point Companion software, meshcli, motatool, and wired "
-        "flashing at USB interface 00. After enabling logging and rebooting, "
-        "point a USB-connected MQTT/logging reader at interface 02. Match the "
-        "USB interface number rather than assuming a tty or COM port number. "
-        "Input received on interface 02 is ignored and cannot reboot the board."
-    )
-    selection = (
-        "SELECTION - One Full image for this exact native-USB hardware layout "
-        "replaces separate USB, BLE, ordinary Wi-Fi, and USB-logging images."
-    )
-
-    paragraphs: list[str] = []
-    profile_added = False
-    selection_added = False
-    for paragraph in notes.split("\n\n"):
-        if paragraph.startswith("PROFILE "):
-            if not profile_added:
-                paragraphs.append(profile)
-                profile_added = True
-            continue
-        if paragraph.startswith("LOGGING USE "):
-            continue
-        if paragraph.startswith("SELECTION "):
-            if not selection_added:
-                paragraphs.append(selection)
-                selection_added = True
-            continue
-        paragraphs.append(paragraph)
-    if not profile_added:
-        paragraphs.append(profile)
-    if not selection_added:
-        paragraphs.append(selection)
-    paragraphs.append(logging_use)
-    return "\n\n".join(paragraphs)
-
-
-def normalize_esp32_single_tty_full_companion_metadata(
-    firmware: dict, notes: str
-) -> str:
-    """Describe an ESP32 Full Companion whose USB path has one TTY."""
-    firmware["title"] = "Full Companion"
-    firmware["subTitle"] = (
-        "USB Companion/logging + BLE + Wi-Fi + LoRa OTA source"
-    )
-    profile = (
-        "PROFILE - Single-TTY ESP32 Full Companion: the USB TTY defaults to "
-        "Binary Companion on a fresh install. BLE, Wi-Fi Companion on TCP "
+        "PROFILE - ESP32 Full Companion: its single USB TTY starts with USB "
+        "logging off and uses the ASCII/Binary Companion switcher. BLE, "
+        "Wi-Fi Companion on TCP "
         "5000, WebConfig, TCP mOTA seeding on 5001, and the text terminal on "
         "5002 remain available. Enter the USB text terminal and use set "
         "usb.logging on to turn that TTY into an input-capable plaintext "
         "packet/debug stream. Use set usb.logging off to stop diagnostics; "
-        "after its reply, the TTY returns to Binary Companion automatically. "
+        "after its reply, the TTY remains in the normal ASCII terminal, matching "
+        "fresh Full firmware. Then use the normal terminal stop token or let a "
+        "Companion app send a valid framed probe to select Binary Companion. "
         "The saved logging choice is restored at boot."
     )
     logging_use = (
@@ -483,9 +420,9 @@ def resolve_release_identity(
         if candidate in release_files:
             return candidate, False
 
-    # Full Companion replaces the old USB-only logging artifact. Dual-CDC
-    # hardware uses its second interface; single-TTY hardware safely switches
-    # its primary port into an input-capable plaintext logging terminal.
+    # Full Companion replaces the old USB-only logging artifact. ESP32 safely
+    # switches its one TTY between framed Companion and an input-capable
+    # plaintext logging terminal; nRF52 can expose a second interface.
     for candidate in candidates:
         if not candidate.endswith("-logging"):
             continue
@@ -777,9 +714,9 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
             "USB + Wi-Fi observer and ESP-NOW bridge builds. Unified observers "
             "provide persistent off/USB/WiFi/both output selection. Full Companion "
             "replaces separate BLE, USB, ordinary Wi-Fi, and USB-logging choices "
-            "with one image. Dual-CDC builds can add a separate plaintext port; "
-            "single-TTY builds switch that port into an input-capable logging "
-            "terminal. Open Release notes for role, "
+            "with one image. nRF52 Full Companion can add a separate plaintext "
+            "port; ESP32 Full Companion switches its one USB TTY into an "
+            "input-capable logging terminal. Open Release notes for role, "
             "hardware, installation, and partition requirements."
         )
 
@@ -875,17 +812,10 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                         firmware, notes
                     )
                 elif device_type == "esp32" and any(
-                    ESP32_DUAL_CDC_FULL_RE.match(identity) is not None
-                    for identity in resolved_identities
-                ):
-                    notes = normalize_esp32_dual_cdc_full_companion_metadata(
-                        firmware, notes
-                    )
-                elif device_type == "esp32" and any(
                     "companion_radio_full" in identity.lower()
                     for identity in resolved_identities
                 ):
-                    notes = normalize_esp32_single_tty_full_companion_metadata(
+                    notes = normalize_esp32_full_companion_metadata(
                         firmware, notes
                     )
 

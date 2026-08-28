@@ -1,8 +1,9 @@
 #include "EnvironmentSensorManager.h"
+#include "EnvironmentI2CConfig.h"
 
 #include <Wire.h>
 
-#if ENV_PIN_SDA && ENV_PIN_SCL
+#if ENV_HAS_SECONDARY_I2C
 #define TELEM_WIRE &Wire1  // Use Wire1 as the I2C bus for Environment Sensors
 #else
 #define TELEM_WIRE &Wire  // Use default I2C bus for Environment Sensors
@@ -707,7 +708,7 @@ bool EnvironmentSensorManager::begin() {
   #endif
   #endif
 
-  #if ENV_PIN_SDA && ENV_PIN_SCL
+  #if ENV_HAS_SECONDARY_I2C
     #ifdef NRF52_PLATFORM
   Wire1.setPins(ENV_PIN_SDA, ENV_PIN_SCL);
   Wire1.setClock(100000);

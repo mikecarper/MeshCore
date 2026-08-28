@@ -15,6 +15,13 @@ def parse_flash_size(value):
 if os.environ.get("MESHCORE_ESP32_FULL_BUILD") == "1":
     board = env.BoardConfig()
     flash_size = parse_flash_size(board.get("upload.flash_size", "4MB"))
+    if str(board.get("build.mcu", "")).lower() == "esp32s3":
+        # Every S3 Full image must remain ROM-bootable across the supported
+        # flash parts. Some board manifests default to QIO even though their
+        # ROM/bootloader chain only starts a merged image reliably in DIO.
+        # PSRAM mode is an independent setting and is intentionally untouched.
+        board.update("build.flash_mode", "dio")
+        print("ESP32-S3 FULL build: forcing ROM-compatible DIO flash mode")
     companion_radio_full = (
         os.environ.get("MESHCORE_COMPANION_RADIO_FULL") == "1"
     )

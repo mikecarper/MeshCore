@@ -1292,7 +1292,11 @@ void MQTTBridge::initializeWiFiInTask() {
 
   // Enable automatic reconnection - ESP32 will handle reconnection automatically
   WiFi.setAutoReconnect(true);
+#if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3
+  // Arduino-ESP32 3.x removed setAutoConnect(); begin() plus
+  // setAutoReconnect() is the supported equivalent there.
   WiFi.setAutoConnect(true);
+#endif
 
   // Set up WiFi event handlers for better diagnostics and immediate disconnection
   // detection. Register ONCE - the bridge is reused across restarts (e.g. stopped
@@ -4098,7 +4102,9 @@ bool MQTTBridge::syncTimeWithNTP(bool force, bool primary_only) {
     for (int s = 0; s < server_count && !ntp_ok; s++) {
       const char* server = servers[s];
       MQTT_DEBUG_PRINTLN("SNTP fallback trying %s...", server);
-      if (sntp_enabled()) sntp_stop();
+      // configTime() already stops and reconfigures an active SNTP client on
+      // both Arduino-ESP32 2.x and 3.x. Avoid the legacy unprefixed stop APIs,
+      // which are no longer exported by esp_sntp.h in Arduino 3.x.
       sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
       configTime(0, 0, server);
       for (int i = 0; i < 20; i++) {

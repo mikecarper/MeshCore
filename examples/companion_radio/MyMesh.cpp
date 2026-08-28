@@ -1500,7 +1500,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.cad_max_duration_ms = 0;
 #if defined(ENABLE_USB_INTERFACE)
   // Keep a USB Companion's primary stream exclusively framed on a fresh
-  // install. Full dual-CDC builds can add a diagnostics port; single-TTY
+  // install. nRF52 Full can add a diagnostics port; ESP32 and other single-TTY
   // builds switch the primary stream into the text terminal before logs.
   _prefs.usb_logging_enabled = 0;
 #else

@@ -11,7 +11,7 @@ firmware as an mOTA image.
 | USB Binary Companion | Yes | Yes |
 | BLE Binary Companion | Yes | Yes |
 | USB ASCII terminal | Yes | Yes |
-| Dedicated USB plaintext logging | Qualified native-USB ESP32-S3 profiles | Yes |
+| Dedicated USB plaintext logging | No - shares the one USB TTY | Yes |
 | Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode or encrypted BLE |
 | WiFi Companion/WebConfig | Yes | No - nRF52840 has no WiFi |
 | Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
@@ -29,13 +29,15 @@ passed the combined-transport size check:
   same board can safely add its platform's remaining transports. It never
   substitutes the pin map or peripherals from another board.
 
-The measured ESP32 additions are M5Stack Unit C6L, Heltec Wireless Tracker,
-Wireless Paper, E213, and CT62; LilyGo T3S3 SX1262/SX1276, T-Deck, TETH Elite,
-classic T-Beam SX1262/SX1276, and T-Beam S3 Supreme; Ebyte EoRa-S3;
-Meshadventurer SX1262/SX1268; and XIAO S3. The measured nRF52 additions are
-GAT562 Mesh Watch13, LilyGo T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker
-L1 E-Ink. Their old transport-specific names remain available for explicit
-compatibility builds, but the Full image is the canonical release artifact.
+The measured ESP32 additions are M5Stack Unit C6L; XIAO C6/S3, Meshimi,
+WHY2025 Badge, LilyGo T-LoRa C6, T3S3 SX1262/SX1276, T-Deck, TETH Elite,
+classic T-Beam SX1262/SX1276, and T-Beam S3 Supreme; Heltec Wireless Tracker,
+Wireless Paper, E213, E290, T190, CT62, and V4 expansion-kit TFT; Generic
+ESP-NOW; SenseCAP Indicator ESP-NOW/LoRa; Ebyte EoRa-S3; and Meshadventurer
+SX1262/SX1268. The measured nRF52 additions are GAT562 Mesh Watch13, LilyGo
+T-Echo Lite, LilyGo T-Impulse Plus, and Wio Tracker L1 E-Ink. Their old
+transport-specific names remain available for explicit compatibility builds,
+but the Full image is the canonical release artifact.
 
 List the available targets:
 
@@ -69,8 +71,8 @@ hardware-serial, Ethernet Companion, Terminal Chat, and USB-only packet-logging
 release artifacts whenever the exact board supports those combined transports.
 Direct builds of the legacy targets remain available. RAK4631 repeater and room
 server Ethernet builds remain separate because they are different standalone
-roles, not Companion transports. Dual-CDC builds separate framed traffic and logs;
-single-TTY builds make those modes mutually exclusive. In WebConfig, use the
+roles, not Companion transports. nRF52 separates framed traffic and logs;
+ESP32 makes those modes mutually exclusive on its one USB TTY. In WebConfig, use the
 **FEM RX boost** switch. From the text terminal (USB, or TCP 5002 on ESP32), use:
 
 ```text
@@ -103,8 +105,15 @@ set display.rotation 0
 
 `0` resets the screen to that board's compiled default orientation.
 
-Heltec E290 and T190 use one `usb_ble` Companion artifact for simultaneous USB
-and BLE rather than publishing separate USB-only and BLE-only images.
+Heltec E290 and T190 now use their Full Companion artifacts for simultaneous
+USB, BLE, and WiFi. Their older `usb_ble`, USB-only, and BLE-only names remain
+available only as explicit compatibility builds.
+
+Heltec V3 and base OLED V4 Full Companion also include the former direct WiFi
+MQTT Companion capability. Configure and enable MQTT at runtime through
+WebConfig; the canonical release therefore publishes the Full image instead of
+a second `companion_radio_wifi_mqtt` image. V4 TFT and expansion-kit layouts
+remain separate hardware images because their display and I2C wiring differs.
 
 Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
 with the **Device power saving** switch or from the text terminal:
@@ -196,8 +205,8 @@ started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
 fragmentation. Compile-time prerequisite checks reject inconsistent feature
 flags. After linking, the capability sidecar verifies USB, BLE, the OTA CLI,
 TempRadio, and each platform's host-folder transport; it also verifies the TCP
-terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging whenever
-the board uses dual CDC.
+terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging on
+nRF52.
 
 On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
 so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
@@ -318,23 +327,31 @@ WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Every
 Full Companion provides persistent `get/set usb.logging` and starts with
 logging off on a fresh installation.
 
-### Single USB serial port
+### ESP32 single USB serial port
 
-On an ESP32 Full Companion without dual CDC, interface `00` has two exclusive
-modes. It starts as the ASCII terminal unless a saved logging-on preference
-boots directly into the logging terminal. If it is already binary, enter its
-text terminal with `+++MESHCORE-TERM-START`, then run `set usb.logging on`; the same TTY emits
-plaintext packet/debug logs and continues accepting CLI commands, including
-`set usb.logging off`. Turning it off sends the command reply and then returns
-that TTY to Binary Companion automatically, including on USB-UART bridges that
-cannot detect a cable disconnect. A saved logging-on preference boots directly
-into this input-capable logging terminal. BLE and Wi-Fi Companion remain
-available while USB is logging.
+Every ESP32 Full Companion exposes one USB TTY with two exclusive modes. It
+starts as the ASCII terminal unless a saved logging-on preference boots
+directly into the logging terminal. If it is already binary, enter its text
+terminal with `+++MESHCORE-TERM-START`, then run `set usb.logging on`; the same
+TTY emits plaintext packet/debug logs and continues accepting CLI commands,
+including `set usb.logging off`. Framed Binary Companion is unavailable on USB
+while logging owns the TTY. Turning logging off sends the command reply, stops
+the logs, and leaves that TTY in the normal ASCII terminal, matching a fresh
+Full installation. Send `+++MESHCORE-TERM-STOP`, or let a Companion app send a
+valid framed probe, to switch it to Binary Companion afterward. A saved
+logging-on preference boots directly into this input-capable logging terminal.
+BLE and Wi-Fi Companion remain available while USB is logging.
 
-### Dual USB serial ports
+ESP32 Full Companion uses the repository's Arduino-ESP32 2.x platform base
+where the board supports it. RC32 and ESP32-C6 retain their board-required
+Arduino 3.x platform, but follow the same one-TTY policy. No ESP32 Full image
+creates an optional second CDC interface. The single-TTY behavior applies to
+native-USB ESP32-S3 boards and boards using a USB-UART bridge.
 
-Current nRF52 Full Companion and qualified native-USB ESP32-S3 Full Companion
-firmware can expose two CDC ACM serial interfaces on one physical USB cable:
+### nRF52 dual USB serial ports
+
+Current nRF52 Full Companion firmware can expose two CDC ACM serial interfaces
+on one physical USB cable:
 
 - USB interface `00` is the primary Companion, text-terminal, and serial-mOTA
   source port. It is always present, starts in ASCII after boot, and
@@ -362,35 +379,30 @@ When logging is on, Linux normally shows two `/dev/ttyACM*` devices. Match the s
 `ID_USB_INTERFACE_NUM`, rather than assuming which tty number is assigned. On
 Windows they appear as two COM ports; identify them by USB interface instead of
 depending on a particular COM number. The nRF52 bootloader temporarily exposes
-its normal DFU serial interface during an update. Qualified S3 boards
-temporarily expose the ESP32-S3 ROM USB-JTAG serial port during a wired flash.
+its normal DFU serial interface during an update.
 
-Opening the logging port prints `MeshCore USB logging port` followed by its
-portable identity, `USB CDC 1; interface 02; Linux stable suffix: -if02`.
+Opening the nRF52 logging port prints `MeshCore USB logging port` followed by
+its portable identity, `USB CDC 1; interface 02; Linux stable suffix: -if02`.
 `get usb.logging` reports the same endpoint. Firmware cannot print the exact
 `/dev/ttyACM*` or `COM*` name because Linux, macOS, or Windows assigns that name
 after USB enumeration; use the `*-if02` link on Linux to obtain the exact path.
 For example, `readlink -f /dev/serial/by-id/*-if02` prints the host-assigned
 `/dev/ttyACM*` name.
 
-Dual-CDC ESP32-S3 targets are Heltec V4, T-Beam 1W, Station G2/G3, XIAO S3
-WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect. The
-base Heltec V4 profile has completed live two-interface, ROM-flashing, and
-logging-off one-interface validation. Full recipes with only one usable TTY
-still replace separate transport images; they use the exclusive terminal/log
-mode above because firmware cannot add a second interface to a USB-UART bridge
-or a single-port USB peripheral.
-
 Every ESP32-S3 Full Companion image uses DIO flash mode, including the RAK3112
-and RC32 profiles that do not expose dual CDC. The S3 ROM supports DIO while
+and RC32 profiles. The S3 ROM supports DIO while
 loading the software bootloader, and some flash configurations fail before the
 application starts when a merged image inherits QIO. DIO trades some maximum
 flash-read throughput for compatibility; it does not change a board's PSRAM
 type or any ordinary non-Full firmware profile.
 
-Point MeshCore Companion software, `meshcli`, and `motatool` at interface `00`.
-When enabled and rebooted, point a plaintext reader or USB-connected MQTT
-service at interface `02`.
+On nRF52, point MeshCore Companion software, `meshcli`, and `motatool` at
+interface `00`. When enabled and rebooted, point a plaintext reader or
+USB-connected MQTT service at interface `02`. On ESP32, use its only USB TTY
+for Binary Companion while logging is off, or for the plaintext CLI/logger
+while logging is on; close one consumer before switching modes. Turning
+logging off returns to ASCII, so the normal stop token or a valid framed probe
+is still required before Binary Companion owns the port.
 
 ESP32 Full Companion exposes this same text terminal on TCP port 5002. Connect
 with `nc DEVICE_IP 5002`; no USB control token is needed. USB terminal mode and

@@ -178,12 +178,18 @@ board-qualified serial or Ethernet Companion transport. Bulk builds therefore
 omit separate attached-transport, Terminal Chat, and USB-logging artifacts
 whenever the exact Full recipe exists. RAK4631 repeater and room-server
 Ethernet images remain separate roles. Fresh installs default to logging off.
+Heltec V3 and base OLED V4 Full images also contain the former direct Wi-Fi
+MQTT Companion capability, configured at runtime through WebConfig, so their
+separate `companion_radio_wifi_mqtt` artifacts are omitted from canonical
+builds as well.
 
 When Full Companion does not fit but a matching USB Companion does, that USB
 artifact also supplies Terminal Chat and replaces its standalone release image.
-Heltec E290 and T190 publish a combined USB + BLE Companion. SSD1306 Full
-Companion builds use `set display.rotation 90|180|270`; `0` restores the board
-default, so a separate rotated release image is not recommended.
+Heltec E290 and T190 now publish one Full USB + BLE + WiFi Companion; their old
+combined and single-transport names are explicit-build compatibility aliases.
+SSD1306 Full Companion builds use `set display.rotation 90|180|270`; `0`
+restores the board default, so a separate rotated release image is not
+recommended.
 
 Ordinary non-OTA roles also use one artifact for normal operation and USB
 logging. Select the saved mode with `set usb.logging off|on`; no `-logging-`
@@ -191,23 +197,22 @@ artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
 receiver images retain their protocol/partition contracts and do not inherit
 plaintext USB logging.
 
-Dual-CDC nRF52 and qualified native-USB ESP32-S3 builds keep the multi-role
-primary interface on `00`; it starts as an ASCII terminal and automatically
-hands a complete `<` frame to Binary Companion. `set usb.logging on reboot`
-adds plaintext interface `02`.
-Single-TTY ESP32 builds instead use `set usb.logging on` to switch that TTY to
-an input-capable plaintext logging terminal. `set usb.logging off` stops the
-logs and returns the TTY to Binary Companion after its reply. BLE and Wi-Fi
-remain usable while the USB TTY is logging.
+nRF52 Full Companion keeps the multi-role primary interface on `00`; it starts
+as an ASCII terminal and automatically hands a complete `<` frame to Binary
+Companion. `set usb.logging on reboot` adds its plaintext interface `02`.
 
-The dual-CDC ESP32-S3 subset includes Heltec V4, T-Beam 1W, Station G2/G3,
-XIAO S3 WIO, Heltec Tracker V2, Meshnology W12, and Nibble Screen/Zero Connect
-layouts. Existing single-TTY Full recipes include RAK3112, Heltec RC32,
-Heltec V3/WSL3, ThinkNode M2/M5/M7/M9, Heltec V2, LilyGo T-LoRa V2.1.1.6,
-and XIAO C3. Additional qualified single-TTY ESP32 profiles include M5Stack
-Unit C6L, Heltec Wireless Tracker/Paper/E213/CT62, LilyGo T3S3
-SX1262/SX1276, T-Deck, TETH Elite, classic T-Beam SX1262/SX1276, T-Beam S3
-Supreme, Ebyte EoRa-S3, Meshadventurer SX1262/SX1268, and XIAO S3.
+Every ESP32 Full Companion instead exposes one USB TTY. Logging is off by
+default, so the TTY serves the ASCII/Binary Companion switcher. Use
+`set usb.logging on` to turn that same TTY into an input-capable plaintext
+CLI/logging stream; framed Binary Companion is unavailable on USB while
+logging owns it. `set usb.logging off` stops the logs and leaves the TTY in
+the normal ASCII terminal, matching a fresh Full installation. Send
+`+++MESHCORE-TERM-STOP`, or let a Companion app send a valid framed probe, to
+switch from there to Binary Companion. BLE and Wi-Fi Companion remain usable
+while the USB TTY is logging. ESP32 Full builds use the repository's
+Arduino-ESP32 2.x base where the board supports it; RC32 and ESP32-C6 retain
+their board-required Arduino 3.x platform but still expose only one USB TTY.
+A second ESP32 CDC interface is not part of the release profile.
 
 ## Installation methods
 
@@ -244,11 +249,11 @@ saving, controllable FEM receive gain, and radio-chip receive gain are saved
 settings rather than separate recommended firmware files. Do not substitute a
 similarly named physical target.
 
-For hardware with a dual-CDC Full Companion image, the picker recommends that
-one normal image instead of separate USB, BLE, ordinary WiFi, and USB-logging
-images. Full Companion provides the attached transports and a dedicated
-plaintext logging port when enabled without mixing logs into framed Companion
-traffic. Logging is off by default, so only primary interface `00` appears; it
-starts in ASCII and automatically changes to framed Companion when a complete
-`<` frame arrives. Enabling logging and rebooting adds interface `02`.
+The picker recommends one Full Companion image instead of separate USB, BLE,
+ordinary WiFi, and USB-logging images. On ESP32, logging is off by default so
+the one USB TTY starts in ASCII and automatically changes to framed Companion
+when a complete `<` frame arrives. Enabling logging gives that TTY to the
+plaintext CLI/logger and disables framed USB Companion until logging is turned
+off and the normal ASCII-to-binary mode switch occurs. nRF52 Full Companion
+retains its optional dedicated interface `02`.
 Exact filename search still finds old aliases from earlier releases.

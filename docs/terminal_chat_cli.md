@@ -120,10 +120,13 @@ set usb.logging {on|off} [reboot]
 Shows or changes persistent live USB debug and packet output in an ordinary
 USB-loggable Companion or Full Companion. USB Companion and Full start off on
 a fresh install with logging disabled to protect framed traffic.
-Dual-CDC Full changes its interface count after a reboot and keeps Companion on
-interface `00`. Single-TTY Full needs no reboot: logging uses the active text
-terminal, which continues accepting `set usb.logging off` and automatically
-restores Binary Companion after that reply.
+nRF52 Full changes its interface count after a reboot and keeps Companion on
+interface `00`. Every ESP32 Full Companion has one TTY and needs no reboot:
+logging uses the active text terminal, disables framed Binary Companion on
+USB, and continues accepting `set usb.logging off`. Turning logging off leaves
+the port in the normal ASCII terminal, matching fresh firmware. Send
+`+++MESHCORE-TERM-STOP`, or let a Companion app send a valid framed probe, to
+switch it to Binary Companion afterward.
 
 ```
 reboot

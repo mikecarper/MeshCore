@@ -388,22 +388,9 @@
     if (!profile || profile.role !== "companion" || profile.mode !== "full") {
       return false;
     }
-    if (profile.installKinds.includes("zip")) return true;
-    const target = String(profile.target || "").toLowerCase();
-    if (/^heltec_v4(?:_2_v4_3|_3)?(?:_r8)?(?:_tft)?_companion_radio_full(?:_|$)/
-      .test(target)) {
-      return true;
-    }
-    return [
-      "lilygo_tbeam_1w_companion_radio_full",
-      "station_g2_companion_radio_full",
-      "station_g3_esp32_companion_radio_full",
-      "xiao_s3_wio_companion_radio_full",
-      "heltec_tracker_v2_companion_radio_full_femon",
-      "meshnology_w12_companion_radio_full",
-      "nibble_screen_connect_companion_radio_full_",
-      "nibble_zero_connect_companion_radio_full_",
-    ].includes(target);
+    // Native nRF52 Serial DFU packages use .zip. ESP32 Full Companion always
+    // has one USB TTY and never receives the dedicated-port capability.
+    return profile.installKinds.includes("zip");
   }
 
   function isFullCompanion(profile) {
@@ -487,11 +474,12 @@
     return (profiles || []).map(function (profile) {
       if (!isFullCompanion(profile)) return profile;
 
-      // Every Full Companion has a runtime USB logging mode. Dual-CDC targets
-      // add an independent plaintext interface after reboot; single-TTY
-      // targets switch their existing port between framed and plaintext modes.
+      // Every Full Companion has a runtime USB logging mode. nRF52 adds an
+      // independent plaintext interface after reboot. Every ESP32 target
+      // switches its one TTY between framed and plaintext modes.
       profile.logging = "usb-runtime";
       profile.loggingModes = ["none", "usb"];
+      profile.dedicatedUsbLogging = false;
       if (isDualCdcFullCompanion(profile)) {
         profile.dedicatedUsbLogging = true;
       }
@@ -830,7 +818,7 @@
         );
       } else {
         extra.push(
-          "Full Companion starts with USB logging off and Binary Companion on its single TTY. Enter the text terminal and use set usb.logging on for plaintext logs; that TTY still accepts set usb.logging off and automatically returns to Binary Companion after the reply."
+          "Full Companion starts in its ASCII terminal with USB logging off. Use set usb.logging on for plaintext logs; set usb.logging off stops those logs but stays in normal ASCII mode. Then send +++MESHCORE-TERM-STOP or let a Companion app send a valid framed probe to switch the TTY to Binary Companion."
         );
       }
     }

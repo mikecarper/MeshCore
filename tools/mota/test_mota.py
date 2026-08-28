@@ -92,8 +92,9 @@ def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
     assert 'uses_merged_standard_usb_logging "$target"' in matrix
     assert 'run_full_esp32_profile "FULL unified pass"' in matrix
     assert 'run_full_esp32_profile "FULL logging fallback pass"' in matrix
-    assert "Single-TTY boards first switch CDC 0" in mqtt_gate
-    assert "input-capable terminal" in mqtt_gate
+    assert "ESP32 uses one TTY" in mqtt_gate
+    assert "input-capable logging terminal" in mqtt_gate
+    assert "plaintext cannot mix with framed traffic" in mqtt_gate
 
 
 def test_espnow_tx_power_matches_cli_callback_contract():
@@ -201,17 +202,24 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "resolve_all_firmwares" in logging_matrix
     assert "print_nrf52_usb_logging_source_targets" not in build
 
-    full = build.split("apply_companion_radio_full_profile()", 1)[1]
+    full = build.split("apply_companion_radio_full_profile() {", 1)[1]
     full = full.split("get_firmware_filename()", 1)[0]
     assert "-DOTA_SEEDER_ONLY=1" in full
     assert "-DMOTA_TARGET_ID=0" in full
     assert "-UOTA_FLASH_STORE" in full
     assert "-UOTA_SD_STORE" in full
     assert "-UWEBCONFIG_DISABLED" in full
-    assert "-DCFG_TUD_CDC=2" in full
-    assert "-DMESH_DUAL_CDC_LOGGING=1" in full
     assert "-DMESH_DEBUG=1" in full
     assert "-DMESH_PACKET_LOGGING=1" in full
+    nrf52_full = full.split(
+        'if is_nrf52_companion_radio_full_target "$env_name"', 1
+    )[1].split("return 0", 1)[0]
+    assert "-DCFG_TUD_CDC=2" in nrf52_full
+    assert "-DMESH_DUAL_CDC_LOGGING=1" in nrf52_full
+    esp32_full = full.split("return 0\n  fi", 1)[1]
+    assert "-DCFG_TUD_CDC=2" not in esp32_full
+    assert "-DMESH_DUAL_CDC_LOGGING=1" not in esp32_full
+    assert "-DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1" not in esp32_full
     assert 'disable_debug_flags "$env_name"' in build
     assert 'apply_debug_overrides "$env_name"' in build
 
@@ -228,13 +236,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert 'is_companion_radio_full_target "$env_name"' in disable_debug
     assert 'usb_logging_undefs=""' in disable_debug
 
-    esp32_dual = build.split(
-        "is_esp32_dual_cdc_companion_radio_full_target()", 1
-    )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
-    assert "heltec_v4_2_v4_3_companion_radio_full_femon" in esp32_dual
-    assert "rak_3112_companion_radio_full" not in esp32_dual
-    assert "heltec_rc32_companion_radio_full" not in esp32_dual
-    assert "heltec_rc32_without_display_companion_radio_full" not in esp32_dual
+    assert "is_esp32_dual_cdc_companion_radio_full_target" not in build
 
     for relative, section, next_section in (
         (
@@ -261,13 +263,11 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
         encoding="utf-8"
     )
     assert "Adafruit_USBD_CDC dedicated_usb_logging_port" in usb_logging
-    assert "new (dedicated_usb_logging_port_storage)" in usb_logging
-    assert "USBCDC(1)" in usb_logging
-    assert "dedicated_usb_logging_port->enableReboot(false)" in usb_logging
-    assert "return result == ESP_OK && value != 0" in usb_logging
+    assert "supported only by nRF52 Full Companion" in usb_logging
+    assert "MESH_ESP32_DUAL_CDC_LOGGING" not in usb_logging
+    assert "USBCDC(1)" not in usb_logging
     assert "TinyUSBDevice.detach()" in usb_logging
     assert "return dedicated_usb_logging_port" in usb_logging
-    assert "return *dedicated_usb_logging_port" in usb_logging
     assert "return null_usb_logging_stream" in usb_logging
 
     companion = (root / "examples/companion_radio/MyMesh.cpp").read_text(
@@ -276,8 +276,15 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     companion_features = (
         root / "examples/companion_radio/CompanionFeatures.h"
     ).read_text(encoding="utf-8")
+    companion_main = (root / "examples/companion_radio/main.cpp").read_text(
+        encoding="utf-8"
+    )
     assert "COMPANION_FEATURE_DEDICATED_USB_LOGGING" in companion_features
     assert "defined(COMPANION_RADIO_FULL)" in companion
+    assert "if (!mesh::hasDedicatedUsbLoggingPort())" in companion_main
+    assert "if (mesh::isUsbLoggingEnabled())" in companion_main
+    assert "enterUsbLoggingTerminalMode();" in companion_main
+    assert "usb_logging_terminal_mode" in companion_main
     assert "_prefs.usb_logging_enabled = 0" in companion
     assert 'strcmp(value, "on reboot") == 0' in companion
     assert 'strcmp(value, "off reboot") == 0' in companion
@@ -297,6 +304,49 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     )[1].split("get_full_companion_replacement()", 1)[0]
     assert 'is_esp32_companion_radio_full_target "$full_env"' in replacement
     assert "is_esp32_dual_cdc_companion_radio_full_target" not in replacement
+
+
+def test_single_tty_logging_off_requires_a_subsequent_mode_switch():
+    root = Path(__file__).resolve().parents[2]
+    companion_main = (
+        root / "examples/companion_radio/main.cpp"
+    ).read_text(encoding="utf-8")
+    service = companion_main.split(
+        "static void serviceUsbTerminal() {", 1
+    )[1].split(
+        "static void expireUsbBinaryStartupProbeBeforeDispatch()", 1
+    )[0]
+
+    # A logging preference changed through BLE/WiFi must release logging's
+    # exclusive ownership without silently changing the protocol of an open
+    # USB ASCII session.
+    external_disable = service.split(
+        "else if (usb_logging_terminal_mode && the_mesh.isTerminalMode()) {",
+        1,
+    )[1].split("\n    }\n  }\n#endif", 1)[0]
+    assert "usb_logging_terminal_mode = false;" in external_disable
+    assert "clearUsbTerminalLine();" in external_disable
+    assert "usb_terminal_discard_line = false;" in external_disable
+    assert "leaveUsbTerminalMode" not in external_disable
+
+    # The same rule applies when `set usb.logging off` is entered on the USB
+    # logging terminal itself: keep the fresh-flash ASCII mode after replying.
+    command_disable = service.split(
+        "the_mesh.handleTerminalCommand(usb_terminal_line);", 1
+    )[1].split('Serial.print("> ");', 1)[0]
+    assert "!mesh::isUsbLoggingEnabled()" in command_disable
+    assert "usb_logging_terminal_mode = false;" in command_disable
+    assert "leaveUsbTerminalMode" not in command_disable
+
+    # Binary Companion remains reachable, but only through the ordinary mode
+    # switch that follows the logging-off command (explicit token or framed
+    # startup probe), never as a side effect of changing the preference.
+    terminal_stop = service.split(
+        "if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {", 1
+    )[1].split("}", 1)[0]
+    assert "leaveUsbTerminalMode(true);" in terminal_stop
+    assert "if (!usb_logging_terminal_mode" in service
+    assert "usb_binary_startup_probe.shouldStart(" in service
 
 
 def test_measured_full_companion_promotions_are_exact_and_bounded():
@@ -395,25 +445,26 @@ def test_full_companion_wireless_startup_and_psram_contacts_are_resilient():
     )
 
 
-def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
+def test_esp32_s3_full_profiles_use_arduino2_and_dio_boot_mode():
     root = Path(__file__).resolve().parents[2]
     project = (root / "platformio.ini").read_text(encoding="utf-8")
+    esp32_base = project.split("[esp32_base]", 1)[1].split("\n[", 1)[0]
+    assert "platformio/espressif32@6.11.0" in esp32_base
     shared = project.split("[esp32_s3_full]", 1)[1].split(
         "\n[", 1
     )[0]
     assert "board_build.flash_mode = dio" in shared
-
-    dual_cdc = project.split("[esp32_s3_dual_cdc_full]", 1)[1].split(
-        "\n[", 1
-    )[0]
-    assert (
-        "board_build.flash_mode = ${esp32_s3_full.board_build.flash_mode}"
-        in dual_cdc
-    )
-    assert "esp32-core-3.3.11.tar.xz" in dual_cdc
-    assert "esp32-core-3.3.11-libs.tar.xz" in dual_cdc
+    assert "[esp32_s3_dual_cdc_full]" not in project
 
     build = (root / "build.sh").read_text(encoding="utf-8")
+    framework_selector = build.split(
+        "requires_esp32_arduino3_framework()", 1
+    )[1].split("prepare_esp32_arduino3_framework()", 1)[0]
+    assert "heltec_rc32_" in framework_selector
+    assert (
+        "is_esp32_dual_cdc_companion_radio_full_target"
+        not in framework_selector
+    )
     framework_preflight = build.split(
         "prepare_esp32_arduino3_framework()", 1
     )[1].split("requires_esp32_companion_full_ota_fallback()", 1)[0]
@@ -461,8 +512,12 @@ def test_esp32_s3_full_profiles_inherit_dio_boot_mode():
                 "board_build.flash_mode = "
                 "${esp32_s3_full.board_build.flash_mode}"
             ) in section, f"ESP32-S3 Full profile lacks shared DIO mode: {path}"
+            assert "esp32_s3_dual_cdc_full" not in section
+            if variant_dir != "heltec_rc32":
+                assert "55.03.311" not in section
+                assert "esp32-core-3.3.11" not in section
 
-    assert profile_count == 17
+    assert profile_count == 18
 
 
 def test_tbeam_1w_release_hardware_fixes_are_preserved():
@@ -542,18 +597,14 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     provider = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(provider)
 
-    assert provider.ESP32_DUAL_CDC_FULL_RE.match(
-        "heltec_v4_2_v4_3_companion_radio_full_femon"
-    )
-    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
-        "RAK_3112_companion_radio_full"
-    )
-    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
-        "heltec_rc32_companion_radio_full"
-    )
-    assert not provider.ESP32_DUAL_CDC_FULL_RE.match(
-        "heltec_rc32_without_display_companion_radio_full"
-    )
+    esp32_dual_cdc = getattr(provider, "ESP32_DUAL_CDC_FULL_RE", None)
+    for identity in (
+        "heltec_v4_2_v4_3_companion_radio_full_femon",
+        "RAK_3112_companion_radio_full",
+        "heltec_rc32_companion_radio_full",
+        "heltec_rc32_without_display_companion_radio_full",
+    ):
+        assert esp32_dual_cdc is None or not esp32_dual_cdc.match(identity)
 
     release_files = {
         "RAK_4631_companion_radio_full": [Path("rak-full.zip")],
@@ -626,21 +677,27 @@ def test_release_catalog_resolves_canonical_runtime_aliases():
     assert "interface 02" in dual_notes
     assert "Input received on interface 02 is ignored" in dual_notes
 
-    v4_notes = provider.normalize_esp32_dual_cdc_full_companion_metadata(
+    v4_notes = provider.normalize_esp32_full_companion_metadata(
         {"title": "Companion USB", "subTitle": "USB logging"},
         "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
     )
-    assert "interface 00" in v4_notes
-    assert "interface 02" in v4_notes
-    assert "cannot reboot the board" in v4_notes
-    assert "ordinary Wi-Fi" in v4_notes
+    assert "input-capable plaintext" in v4_notes
+    assert "set usb.logging off" in v4_notes
+    assert "remains in the normal ASCII terminal" in v4_notes
+    assert "normal terminal stop token" in v4_notes
+    assert "valid framed probe" in v4_notes
+    assert "do not share the single TTY" in v4_notes
+    assert "interface 02" not in v4_notes
 
-    single_tty_notes = provider.normalize_esp32_single_tty_full_companion_metadata(
+    single_tty_notes = provider.normalize_esp32_full_companion_metadata(
         {"title": "Companion USB", "subTitle": "USB logging"},
         "PROFILE - old profile\n\nLOGGING USE - old use\n\nSELECTION - USB.",
     )
     assert "input-capable plaintext" in single_tty_notes
     assert "set usb.logging off" in single_tty_notes
+    assert "remains in the normal ASCII terminal" in single_tty_notes
+    assert "normal terminal stop token" in single_tty_notes
+    assert "valid framed probe" in single_tty_notes
     assert "do not share the single TTY" in single_tty_notes
 
     legacy = {

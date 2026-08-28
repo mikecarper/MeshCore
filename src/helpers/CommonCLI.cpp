@@ -6,6 +6,7 @@
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
+#include "sensors/EnvironmentI2CConfig.h"
 #if defined(NRF52_PLATFORM)
 #include "AtomicFileWriter.h"
 #include "ota/OtaFlashLayout_nrf52.h"
@@ -2785,7 +2786,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       }
     } else if (memcmp(command, "sensor", 6) == 0) {
       // I2C
-#if defined(ENV_PIN_SDA) && defined(ENV_PIN_SCL)
+#if ENV_HAS_SECONDARY_I2C
       sprintf(reply, "I2C Wire1: SDA=%s,SCL=%s\r\n", STR(ENV_PIN_SDA), STR(ENV_PIN_SCL));
 #elif defined(PIN_BOARD_SDA) && defined(PIN_BOARD_SCL)
       sprintf(reply, "I2C Wire: SDA=%s, SCL=%s\r\n", STR(PIN_BOARD_SDA), STR(PIN_BOARD_SCL));

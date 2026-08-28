@@ -114,7 +114,7 @@ Commands:
   build-room-server-firmwares: Build all chat room server firmwares for all build targets.
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
-  get-companion-firmwares-to-build: List canonical attached companion targets for release automation; dual-CDC boards use Full Companion instead of separate transport artifacts.
+  get-companion-firmwares-to-build: List canonical attached companion targets for release automation; Full Companion replaces separate transport artifacts where qualified.
   get-repeater-firmwares-to-build: List standard and specialized external-storage repeater targets for release automation.
   get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
@@ -430,11 +430,15 @@ for section, options in data:
       M5Stack_Unit_C6L_companion_radio_ble
       Heltec_Wireless_Tracker_companion_radio_ble
       LilyGo_T3S3_sx1276_companion_radio_ble
+      LilyGo_Tlora_C6_companion_radio_ble_
       Heltec_ct62_companion_radio_ble
       Meshadventurer_sx1262_companion_radio_ble
       Meshadventurer_sx1268_companion_radio_ble
       Heltec_Wireless_Paper_companion_radio_ble
       Heltec_E213_companion_radio_ble
+      Meshimi_companion_radio_ble_
+      WHY2025_badge_companion_radio_ble_
+      Xiao_C6_companion_radio_ble_
       Xiao_S3_companion_radio_ble
       LilyGo_TETH_Elite_sx1262_companion_radio_ble
       LilyGo_T3S3_sx1262_companion_radio_ble
@@ -443,6 +447,19 @@ for section, options in data:
       Tbeam_SX1262_companion_radio_ble
       Tbeam_SX1276_companion_radio_ble
       T_Beam_S3_Supreme_SX1262_companion_radio_ble
+      heltec_v4_expansionkit_tft_companion_radio_ble_femon
+    )
+    # A few older targets predate the companion_radio_<transport> naming
+    # convention. Keep their established PlatformIO recipe as the build base,
+    # but publish a consistently named Full target. SenseCAP Indicator keeps
+    # separate ESP-NOW and LoRa images because those are different physical
+    # radio layouts, not transport-only variants of one image.
+    local -a qualified_esp32_named_full_companion_specs=(
+      'Generic_ESPNOW_comp_radio_usb|Generic_ESPNOW_companion_radio_full'
+      'Heltec_E290_companion_usb_ble|Heltec_E290_companion_radio_full'
+      'Heltec_T190_companion_radio_usb_ble_|Heltec_T190_companion_radio_full_'
+      'SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio_full'
+      'SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full'
     )
     local -a qualified_nrf52_full_companion_bases=(
       GAT562_Mesh_Watch13_companion_radio_ble
@@ -472,6 +489,28 @@ for section, options in data:
       PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
     done
 
+    local full_spec
+    for full_spec in "${qualified_esp32_named_full_companion_specs[@]}"; do
+      IFS='|' read -r env_name full_env <<<"$full_spec"
+      if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ]; then
+        continue
+      fi
+      if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "ESP32_PLATFORM" ]; then
+        echo "Qualified Full Companion base is missing or not ESP32: ${env_name}" >&2
+        return 1
+      fi
+      SUPPORTED_PIO_ENVS+=("$full_env")
+      PIO_ENV_PLATFORM_BY_NAME["$full_env"]="ESP32_PLATFORM"
+      PIO_ENV_BOARD_BY_NAME["$full_env"]="${PIO_ENV_BOARD_BY_NAME[$env_name]}"
+      PIO_ENV_MQTT_BY_NAME["$full_env"]=0
+      PIO_ENV_OTA_BY_NAME["$full_env"]=1
+      PIO_ENV_SD_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_QSPI_OTA_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
+      PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]="${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}"
+      PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+    done
+
     for env_name in "${qualified_nrf52_full_companion_bases[@]}"; do
       full_env=${env_name/companion_radio_ble/companion_radio_full}
       if [ -n "${PIO_ENV_PLATFORM_BY_NAME[$full_env]+x}" ]; then
@@ -491,6 +530,17 @@ for section, options in data:
       PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+    done
+
+    # Full Companion may compile the direct WiFi MQTT bridge as a saved,
+    # runtime-optional capability. It is still the canonical all-transport
+    # image, not an MQTT-only profile which the global MQTT build selector may
+    # replace or discard.
+    for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+      if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] \
+          && is_companion_radio_full_target "$env_name"; then
+        PIO_ENV_MQTT_BY_NAME["$env_name"]=0
+      fi
     done
   fi
 }
@@ -610,7 +660,7 @@ prompt_for_build_mode() {
     "Build all canonical firmwares (legacy setting aliases remain direct-build only)"
     "Build the canonical release matrix with unified FULL ESP32 USB + WiFi output (plus logging fallbacks where WiFi is unavailable)"
     "Build all repeater firmwares"
-    "Build canonical companion firmwares (dual-CDC Full replaces separate transports; power saving and FEM/RX gain are runtime configurable)"
+    "Build canonical companion firmwares (Full replaces separate transports; power saving and FEM/RX gain are runtime configurable)"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
     "Build FULL ESP32 firmwares (all features, USB logging, WiFi MQTT where available, and LoRa OTA)"
@@ -2195,7 +2245,17 @@ normalize_resolved_targets_for_mqtt() {
 
   for target in "${candidates[@]}"; do
     candidate=""
-    if [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
+    if is_companion_radio_full_target "$target"; then
+      # Full is already the board's one runtime-configurable transport image,
+      # so never swap it for a second artifact or compile a different feature
+      # set under the same name. Keep it for MQTT=off; for MQTT=on, keep only
+      # recipes which were explicitly qualified with direct MQTT support.
+      if [ "${MQTT_BRIDGE_OVERRIDE,,}" != "on" ] \
+          || pio_env_option_contains "$(get_pio_build_env "$target")" \
+            build_flags "WITH_MQTT_BRIDGE"; then
+        candidate=$target
+      fi
+    elif [ "${MQTT_BRIDGE_OVERRIDE,,}" == "on" ]; then
       candidate=$(get_mqtt_enabled_target "$target") || candidate=""
     else
       candidate=$(get_mqtt_disabled_target "$target") || candidate=""
@@ -2242,6 +2302,16 @@ disable_debug_flags() {
 }
 
 apply_mqtt_bridge_override() {
+  local env_name=${1:-}
+
+  # Full Companion is one immutable release artifact whose compiled
+  # capabilities are controlled by its qualified board recipe and then
+  # enabled or disabled at runtime. A matrix-wide MQTT choice must not mutate
+  # that artifact into another binary under the same filename.
+  if [ -n "$env_name" ] && is_companion_radio_full_target "$env_name"; then
+    return 0
+  fi
+
   case "${MQTT_BRIDGE_OVERRIDE,,}" in
     on)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWITH_MQTT_BRIDGE=1"
@@ -2338,8 +2408,8 @@ disable_usb_logging_for_mqtt() {
   local env_name=$1
 
   # Full Companion always compiles diagnostics behind a saved runtime gate.
-  # Dual-CDC boards write them to CDC 1. Single-TTY boards first switch CDC 0
-  # into an input-capable terminal so plaintext cannot mix with framed traffic.
+  # ESP32 uses one TTY and switches it into an input-capable logging terminal,
+  # so plaintext cannot mix with framed traffic. nRF52 retains dedicated CDC 1.
   if is_companion_radio_full_target "$env_name"; then
     return 0
   fi
@@ -2393,36 +2463,13 @@ is_nrf52_companion_radio_full_target() {
     && is_companion_radio_full_target "$1"
 }
 
-is_esp32_dual_cdc_companion_radio_full_target() {
-  is_esp32_companion_radio_full_target "$1" || return 1
-  case "${1,,}" in
-    lilygo_tbeam_1w_companion_radio_full|\
-    station_g2_companion_radio_full|\
-    station_g3_esp32_companion_radio_full|\
-    xiao_s3_wio_companion_radio_full|\
-    heltec_tracker_v2_companion_radio_full_femon|\
-    meshnology_w12_companion_radio_full|\
-    nibble_screen_connect_companion_radio_full_|\
-    nibble_zero_connect_companion_radio_full_|\
-    heltec_v4_2_v4_3_companion_radio_full_femon|\
-    heltec_v4_3_companion_radio_full_femoff|\
-    heltec_v4_tft_companion_radio_full_femon|\
-    heltec_v4_3_tft_companion_radio_full_femoff|\
-    heltec_v4_r8_companion_radio_full|\
-    heltec_v4_r8_tft_companion_radio_full)
-      return 0
-      ;;
-    *) return 1 ;;
-  esac
-}
-
 requires_esp32_arduino3_framework() {
   local env_name=$1
   local pio_env_name=$2
 
-  if is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
-    return 0
-  fi
+  # RC32 still uses its board-qualified Arduino 3 package independently of
+  # the removed dual-CDC Full profile. ESP32-C6 also inherently uses A3;
+  # ordinary ESP32/S3 Full images return to the shared A2 platform.
   case "${env_name,,}:${pio_env_name,,}" in
     heltec_rc32_*:*|*:heltec_rc32_*) return 0 ;;
     *) return 1 ;;
@@ -2694,8 +2741,7 @@ declare_build_capability_contract() {
     record_build_expectation "companion.bluetooth" \
       "Companion: starting Bluetooth"
     record_build_expectation "companion.usb_logging" "get usb.logging"
-    if is_nrf52_companion_radio_full_target "$env_name" \
-        || is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
+    if is_nrf52_companion_radio_full_target "$env_name"; then
       record_build_expectation "companion.dedicated_usb_logging" \
         "get usb.logging"
     fi
@@ -2705,6 +2751,11 @@ declare_build_capability_contract() {
       record_build_expectation "companion.wifi_ota_seeder" \
         "OTA seeder listening on :"
       record_build_expectation "web.webconfig" "start webconfig"
+      pio_env_name=$(get_pio_build_env "$env_name")
+      if pio_env_option_contains "$pio_env_name" build_flags \
+          "WITH_MQTT_BRIDGE"; then
+        record_build_expectation "companion.direct_mqtt" "mqtt.status"
+      fi
     else
       record_build_expectation "companion.usb_mota_source" "ota folder on"
       record_build_expectation "companion.ble_mota_source" \
@@ -3137,7 +3188,8 @@ apply_companion_radio_full_profile() {
     # command to Binary Companion. `motatool serve --serial` switches it into
     # an exclusive host-folder mode with its existing `ota folder on` preamble.
     # CDC 1 is a write-only plaintext packet/debug logging stream; BLE remains
-    # an independent Companion link.
+    # an independent Companion link. ESP32 intentionally does not use this
+    # dual-CDC capability.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
@@ -3149,16 +3201,6 @@ apply_companion_radio_full_profile() {
       append_platformio_build_src_filter "+<helpers/nrf52/SerialBLEInterface.cpp>"
     fi
     return 0
-  fi
-
-  if is_esp32_dual_cdc_companion_radio_full_target "$env_name"; then
-    # Qualified ESP32-S3 boards route their data connector to the native USB
-    # peripheral. Arduino-ESP32 3.x supplies two real TinyUSB CDC ACM
-    # instances: CDC 0 carries framed Companion traffic and accepts the
-    # flashing reboot gesture; CDC 1 is a write-only plaintext diagnostics
-    # stream and cannot reboot the board.
-    append_platformio_build_unflags "-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=0"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
   fi
 
   # ESP32 keeps both source transports. TCP remains the normal unattended
@@ -3636,7 +3678,7 @@ build_firmware() {
   export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
   disable_debug_flags "$env_name"
   apply_debug_overrides "$env_name"
-  apply_mqtt_bridge_override
+  apply_mqtt_bridge_override "$env_name"
   disable_usb_logging_for_mqtt "$env_name"
   apply_merged_standard_usb_logging_profile "$env_name"
   apply_lora_ota_override "$env_name"
@@ -3838,17 +3880,45 @@ get_esp32_full_companion_replacement() {
 
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
   case "$env_name" in
+    heltec_v3_companion_radio_wifi_mqtt|\
+    heltec_v4_companion_radio_wifi_mqtt_femon|\
+    heltec_v4_3_companion_radio_wifi_mqtt_femoff) ;;
     *companion_radio_wifi_mqtt*) return 1 ;;
     *companion_radio_usb*|*companion_radio_ble*|*companion_radio_wifi*|\
-    *companion_radio_serial*|*companion_radio_ethernet*) ;;
+    *companion_radio_serial*|*companion_radio_ethernet*|*comp_radio_usb*|\
+    heltec_e290_companion_ble|heltec_e290_companion_usb|\
+    heltec_e290_companion_usb_ble) ;;
     *) return 1 ;;
   esac
 
   # Full Companion includes USB, BLE, and ordinary WiFi Companion. Map legacy
   # FEM-default aliases to the one runtime-configurable image for each physical
-  # V4 display/radio layout. Expansion-kit targets intentionally do not match:
-  # they have distinct sensor wiring and no corresponding Full recipe.
+  # V4 display/radio layout. The expansion-kit TFT remains a distinct Full
+  # recipe because it has different sensor wiring from both base display
+  # layouts.
   case "$env_name" in
+    heltec_v3_companion_radio_wifi_mqtt)
+      full_env=Heltec_v3_companion_radio_full
+      ;;
+    generic_espnow_comp_radio_*)
+      full_env=Generic_ESPNOW_companion_radio_full
+      ;;
+    heltec_e290_companion_*)
+      full_env=Heltec_E290_companion_radio_full
+      ;;
+    heltec_t190_companion_radio_*)
+      full_env=Heltec_T190_companion_radio_full_
+      ;;
+    sensecapindicator-espnow_comp_radio_*)
+      full_env=SenseCapIndicator-ESPNow_companion_radio_full
+      ;;
+    sensecapindicator-lora_comp_radio_*)
+      full_env=SenseCapIndicator-LoRa_companion_radio_full
+      ;;
+    heltec_v4_3_expansionkit_tft_companion_radio_*|\
+    heltec_v4_expansionkit_tft_companion_radio_*)
+      full_env=heltec_v4_expansionkit_tft_companion_radio_full_femon
+      ;;
     heltec_v4_r8_tft_companion_radio_*)
       full_env=heltec_v4_r8_tft_companion_radio_full
       ;;

@@ -106,6 +106,61 @@ require("Heltec_E290_companion_usb_ble", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_E290_companion_usb_ble", "build_flags", "BLE_PIN_CODE=123456")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
+require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform", "platformio/espressif32@6.11.0")
+require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "build_flags", "ARDUINO_USB_MODE=1")
+reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "build_flags", "ARDUINO_USB_MODE=0")
+reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform", "55.03.311")
+reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform_packages", "esp32-core-3.3.11")
+
+# ESP32 Full uses the board-specific Arduino-ESP32 2.x recipe and one USB TTY. The
+# independently qualified RC32 stays on Arduino 3.x, but it must not enable a
+# second CDC interface either.
+for env_name in (
+    "LilyGo_TBeam_1W_companion_radio_full",
+    "RAK_3112_companion_radio_full",
+    "Station_G2_companion_radio_full",
+    "ThinkNode_M2_companion_radio_full",
+    "ThinkNode_M5_companion_radio_full",
+    "ThinkNode_M7_companion_radio_full",
+    "Xiao_S3_WIO_companion_radio_full",
+    "heltec_v4_r8_companion_radio_full",
+    "heltec_v4_r8_tft_companion_radio_full",
+    "meshnology_w12_companion_radio_full",
+    "heltec_v4_2_v4_3_companion_radio_full_femon",
+    "heltec_v4_3_companion_radio_full_femoff",
+    "heltec_v4_expansionkit_tft_companion_radio_full_femon",
+    "heltec_v4_tft_companion_radio_full_femon",
+    "heltec_v4_3_tft_companion_radio_full_femoff",
+    "nibble_zero_connect_companion_radio_full_",
+    "nibble_screen_connect_companion_radio_full_",
+    "Station_G3_ESP32_companion_radio_full",
+    "Heltec_v3_companion_radio_full",
+    "heltec_tracker_v2_companion_radio_full_femon",
+):
+    require(env_name, "platform", "platformio/espressif32@6.11.0")
+    reject(env_name, "platform", "55.03.311")
+    reject(env_name, "build_flags", "MESH_DUAL_CDC_LOGGING")
+    reject(env_name, "build_flags", "COMPANION_FEATURE_DEDICATED_USB_LOGGING")
+    reject(env_name, "build_flags", "CFG_TUD_CDC=2")
+
+for env_name in (
+    "heltec_rc32_without_display_companion_radio_full",
+    "heltec_rc32_companion_radio_full",
+):
+    require(env_name, "platform", "55.03.311")
+    reject(env_name, "build_flags", "MESH_DUAL_CDC_LOGGING")
+    reject(env_name, "build_flags", "COMPANION_FEATURE_DEDICATED_USB_LOGGING")
+    reject(env_name, "build_flags", "CFG_TUD_CDC=2")
+
+# V3/V4 Full are the one canonical Companion image for each base OLED layout,
+# including the former separately published direct-WiFi-MQTT capability.
+for env_name in (
+    "Heltec_v3_companion_radio_full",
+    "heltec_v4_2_v4_3_companion_radio_full_femon",
+):
+    require(env_name, "build_flags", "WITH_MQTT_BRIDGE=1")
+    require(env_name, "build_src_filter", "helpers/bridges/MQTTBridge.cpp")
+    require(env_name, "lib_deps", "PsychicMqttClient")
 
 rc32_repeater = "heltec_rc32_repeater"
 require(rc32_repeater, "platform", "55.03.311")
@@ -114,6 +169,55 @@ require(rc32_repeater, "build_flags", "ESP32_POST_BOOT_CPU_FREQ=160")
 require(rc32_repeater, "build_flags", "RC32_PERIPHERAL_WARMUP_MS=100")
 require(rc32_repeater, "build_flags", "SX126X_ALLOW_RECOVERABLE_INIT_STATUS=1")
 reject(rc32_repeater, "build_flags", "ESP32_CPU_FREQ=160")
+
+# Environmental telemetry must follow the verified connector bus without
+# creating a second Wire instance on the same pins as the board bus.
+require("Heltec_t096_companion_radio_usb_femon", "build_flags", "ENV_PIN_SDA=PIN_WIRE1_SDA")
+require("Heltec_t096_companion_radio_usb_femon", "build_flags", "ENV_PIN_SCL=PIN_WIRE1_SCL")
+require("Heltec_v3_companion_radio_wifi", "build_flags", "ENV_PIN_SDA=33")
+require("Heltec_v3_companion_radio_wifi", "build_flags", "ENV_PIN_SCL=34")
+
+for env_name in (
+    "heltec_rc32_without_display_sensor",
+    "heltec_rc32_sensor",
+):
+    require(env_name, "build_flags", "PIN_BOARD_SDA=21")
+    require(env_name, "build_flags", "PIN_BOARD_SCL=18")
+    reject(env_name, "build_flags", "ENV_PIN_")
+
+require("meshnology_w12_sensor", "build_flags", "PIN_BOARD_SDA=17")
+require("meshnology_w12_sensor", "build_flags", "PIN_BOARD_SCL=18")
+reject("meshnology_w12_sensor", "build_flags", "ENV_PIN_")
+
+for env_name in (
+    "heltec_v4_sensor",
+    "heltec_v4_2_v4_3_companion_radio_full_femon",
+):
+    require(env_name, "build_flags", "PIN_BOARD_SDA=17")
+    require(env_name, "build_flags", "PIN_BOARD_SCL=18")
+    require(env_name, "build_flags", "ENV_PIN_SDA=4")
+    require(env_name, "build_flags", "ENV_PIN_SCL=3")
+
+for env_name in (
+    "heltec_v4_tft_sensor",
+    "heltec_v4_expansionkit_tft_companion_radio_ble_femon",
+    "heltec_v4_expansionkit_tft_companion_radio_full_femon",
+    "heltec_v4_tft_companion_radio_full_femon",
+):
+    require(env_name, "build_flags", "PIN_BOARD_SDA=4")
+    require(env_name, "build_flags", "PIN_BOARD_SCL=3")
+    reject(env_name, "build_flags", "ENV_PIN_")
+
+for env_name in (
+    "RAK_3112_sensor",
+    "RAK_3112_companion_radio_full",
+):
+    require(env_name, "build_flags", "PIN_BOARD_SDA=9")
+    require(env_name, "build_flags", "PIN_BOARD_SCL=40")
+    require(env_name, "build_flags", "ENV_PIN_SDA=17")
+    require(env_name, "build_flags", "ENV_PIN_SCL=18")
+    reject(env_name, "build_flags", "ENV_PIN_SDA=33")
+    reject(env_name, "build_flags", "ENV_PIN_SCL=34")
 
 for env_name in (
     "Heltec_t114_without_display_repeater",
@@ -158,6 +262,72 @@ rak_usb = "RAK_3401_companion_radio_usb"
 require(rak_usb, "build_flags", "RAK_BOARD")
 require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 '
+
+# Every qualified ESP32 Companion layout publishes one Full image even when
+# its historical recipe had no separately named WiFi target. The transport
+# aliases remain directly buildable, but canonical release resolution must
+# replace each with that exact board's Full target.
+init_project_context >/dev/null
+while IFS='|' read -r source_env full_env build_base; do
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$full_env]:-}" = ESP32_PLATFORM ] \
+    || fail "$full_env was not registered as ESP32 Full Companion"
+  [ "$(get_pio_build_env "$full_env")" = "$build_base" ] \
+    || fail "$full_env did not retain its exact board recipe"
+  [ "$(get_esp32_full_companion_replacement "$source_env")" = "$full_env" ] \
+    || fail "$source_env did not map to $full_env"
+  is_redundant_bulk_build_target "$source_env" \
+    || fail "$source_env remained beside its Full Companion"
+done <<'FULL_COMPANION_SPECS'
+LilyGo_Tlora_C6_companion_radio_ble_|LilyGo_Tlora_C6_companion_radio_full_|LilyGo_Tlora_C6_companion_radio_ble_
+Meshimi_companion_radio_ble_|Meshimi_companion_radio_full_|Meshimi_companion_radio_ble_
+WHY2025_badge_companion_radio_ble_|WHY2025_badge_companion_radio_full_|WHY2025_badge_companion_radio_ble_
+Xiao_C6_companion_radio_ble_|Xiao_C6_companion_radio_full_|Xiao_C6_companion_radio_ble_
+heltec_v4_3_expansionkit_tft_companion_radio_ble_femoff|heltec_v4_expansionkit_tft_companion_radio_full_femon|heltec_v4_expansionkit_tft_companion_radio_full_femon
+Generic_ESPNOW_comp_radio_usb|Generic_ESPNOW_companion_radio_full|Generic_ESPNOW_comp_radio_usb
+Heltec_E290_companion_usb_ble|Heltec_E290_companion_radio_full|Heltec_E290_companion_usb_ble
+Heltec_T190_companion_radio_usb_ble_|Heltec_T190_companion_radio_full_|Heltec_T190_companion_radio_usb_ble_
+SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio_full|SenseCapIndicator-ESPNow_comp_radio_usb
+SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full|SenseCapIndicator-LoRa_comp_radio_usb_wifi
+FULL_COMPANION_SPECS
+
+while IFS='|' read -r source_env full_env; do
+  [ "$(get_esp32_full_companion_replacement "$source_env")" = "$full_env" ] \
+    || fail "$source_env did not collapse into $full_env"
+  is_redundant_bulk_build_target "$source_env" \
+    || fail "$source_env remained beside its MQTT-capable Full Companion"
+  [ "${PIO_ENV_MQTT_BY_NAME[$full_env]:-1}" = 0 ] \
+    || fail "$full_env was incorrectly classified as an MQTT-only profile"
+done <<'MQTT_FULL_COMPANION_SPECS'
+Heltec_v3_companion_radio_wifi_mqtt|Heltec_v3_companion_radio_full
+heltec_v4_companion_radio_wifi_mqtt_femon|heltec_v4_2_v4_3_companion_radio_full_femon
+heltec_v4_3_companion_radio_wifi_mqtt_femoff|heltec_v4_2_v4_3_companion_radio_full_femon
+MQTT_FULL_COMPANION_SPECS
+
+for mqtt_override in on off; do
+  MQTT_BRIDGE_OVERRIDE=$mqtt_override
+  RESOLVED_BUILD_TARGETS=(Heltec_v3_companion_radio_full)
+  normalize_resolved_targets_for_mqtt build-companion-firmwares >/dev/null
+  [ "${RESOLVED_BUILD_TARGETS[*]}" = Heltec_v3_companion_radio_full ] \
+    || fail "MQTT=${mqtt_override} replaced or discarded canonical Full Companion"
+  PLATFORMIO_BUILD_FLAGS="-DKEEP_FULL_RECIPE=1"
+  apply_mqtt_bridge_override Heltec_v3_companion_radio_full
+  [ "$PLATFORMIO_BUILD_FLAGS" = "-DKEEP_FULL_RECIPE=1" ] \
+    || fail "MQTT=${mqtt_override} mutated canonical Full Companion flags"
+done
+
+MQTT_BRIDGE_OVERRIDE=on
+RESOLVED_BUILD_TARGETS=(Station_G2_companion_radio_full)
+if normalize_resolved_targets_for_mqtt build-companion-firmwares >/dev/null; then
+  fail "MQTT=on retained a Full recipe without direct MQTT capability"
+fi
+MQTT_BRIDGE_OVERRIDE=""
+
+while IFS= read -r env_name; do
+  if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = ESP32_PLATFORM ] \
+      && ! is_companion_radio_full_target "$env_name"; then
+    fail "canonical ESP32 Companion inventory still contains $env_name"
+  fi
+done < <(resolve_companion_firmwares)
 
 # Synthetic inventory: one ESP32 target qualified for expanded Full and one
 # nRF52 target which must attempt complete LoRa OTA in its current partition.
@@ -505,6 +675,18 @@ expectations=" ${BUILD_EXPECTATIONS[*]} "
   || fail "ESP32 Full contract omitted the WiFi seeder"
 [[ "$expectations" != *"Full Companion terminal listening"* ]] \
   || fail "ESP32 Full contract still depends on optional debug logging"
+
+pio_env_option_contains() {
+  [ "$1" = Heltec_v3_companion_radio_full ] \
+    && [ "$2" = build_flags ] \
+    && [ "$3" = WITH_MQTT_BRIDGE ]
+}
+BUILD_EXPECTATIONS=()
+declare_build_capability_contract \
+  Heltec_v3_companion_radio_full ESP32_PLATFORM
+expectations=" ${BUILD_EXPECTATIONS[*]} "
+[[ "$expectations" == *"companion.direct_mqtt=mqtt.status"* ]] \
+  || fail "MQTT-capable ESP32 Full contract omitted direct MQTT"
 
 PIO_ENV_PLATFORM_BY_NAME[RAK_3401_companion_radio_full]=NRF52_PLATFORM
 BUILD_CAPABILITIES=()

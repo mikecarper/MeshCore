@@ -624,26 +624,29 @@ Binary `get/set` parameter namespace. Open interface `00`, send
 `meshcli ... get usb.logging` directly can instead return
 `Unknown var usb.logging` because that is a different protocol operation.
 
-Dual-CDC Full Companion instead defaults logging to off and enumerates only
-USB interface `00`, which carries Companion, terminal, and serial mOTA traffic.
-Enabling logging adds interface `02`, its dedicated plaintext logging port, on
-the next boot. Disabling it removes interface `02` on the next boot. A command
-without the optional `reboot` argument saves the choice and reports that a
-reboot is required when the USB interface count must change. The exact
+nRF52 Full Companion defaults logging to off and enumerates only USB interface
+`00`, which carries Companion, terminal, and serial mOTA traffic. Enabling
+logging adds interface `02`, its dedicated plaintext logging port, on the next
+boot. Disabling it removes interface `02` on the next boot. A command without
+the optional `reboot` argument saves the choice and reports that a reboot is
+required when the USB interface count must change. The exact
 `set usb.logging on reboot` and `set usb.logging off reboot` forms save the
-choice, send their reply, and reboot one second later only when needed. This
-behavior includes nRF52 and dual-CDC native-USB ESP32-S3 Full images.
+choice, send their reply, and reboot one second later only when needed.
 
-On a single-TTY ESP32 Full Companion, enter the USB text terminal and use
+On every ESP32 Full Companion, enter the USB text terminal and use
 `set usb.logging on` to turn that TTY into a logging-repeater-style plaintext
-stream. It remains an input-capable CLI, so `set usb.logging off` works on the
-same TTY and automatically restores Binary Companion after its reply. No
-reboot is needed because the USB interface count does not change.
+stream. Framed Binary Companion is unavailable on USB while logging is on. The
+TTY remains an input-capable CLI, so `set usb.logging off` works on the same
+TTY. After its reply, logging stops and the TTY remains in the normal ASCII
+terminal, just as it does after a fresh Full installation. Send
+`+++MESHCORE-TERM-STOP`, or let a Companion app send a valid framed probe, to
+switch it to Binary Companion. No reboot is needed because the USB interface
+count does not change.
 
-Turning USB logging off does not disable CLI replies. Dual-CDC builds keep
-Companion frames active on interface `00`; single-TTY builds resume frames when
-their terminal session ends. This setting does not change the node-storage
-capture controlled by `log start` and `log stop`.
+Turning USB logging off does not disable CLI replies. nRF52 keeps Companion
+frames active on interface `00`; ESP32 resumes the ordinary ASCII/Binary
+switcher after the logging terminal turns logging off. This setting does not
+change the node-storage capture controlled by `log start` and `log stop`.
 
 Unified ESP32 FULL builds add one saved selector for both output paths:
 

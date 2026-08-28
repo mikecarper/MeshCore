@@ -596,8 +596,8 @@ static void serviceUsbTerminal() {
   // logging repeater: plaintext diagnostics plus an input-capable CLI. Put the
   // Companion interface into passthrough before it can mix framed traffic with
   // logs. `set usb.logging off` remains available here and returns this TTY to
-  // Binary Companion after its command reply, even on USB-UART bridges that
-  // cannot detect a host disconnect.
+  // the normal ASCII terminal, matching a fresh Full install. Binary Companion
+  // starts only after the usual terminal-stop token or framed startup probe.
 #if MESH_USB_LOGGING_AVAILABLE
   if (!mesh::hasDedicatedUsbLoggingPort()) {
     if (mesh::isUsbLoggingEnabled()) {
@@ -607,8 +607,15 @@ static void serviceUsbTerminal() {
       }
       usb_logging_terminal_mode = true;
     } else if (usb_logging_terminal_mode && the_mesh.isTerminalMode()) {
-      leaveUsbTerminalMode(true);
-      return;
+      // Logging may also be disabled over BLE/WiFi. Stop treating this session
+      // as the logging terminal, but keep the ordinary ASCII terminal active;
+      // do not silently change the USB protocol underneath an idle host. A
+      // remote mode change also cancels any partially typed USB command before
+      // drawing a fresh prompt.
+      usb_logging_terminal_mode = false;
+      clearUsbTerminalLine();
+      usb_terminal_discard_line = false;
+      Serial.print("\r\nUSB logging off; ASCII terminal active\r\n> ");
     }
   }
 #endif
@@ -698,8 +705,10 @@ static void serviceUsbTerminal() {
 #if MESH_USB_LOGGING_AVAILABLE
       if (usb_logging_terminal_mode
           && !mesh::isUsbLoggingEnabled()) {
-        leaveUsbTerminalMode(true);
-        return;
+        // The command reply belongs to the ASCII session. Leave that session
+        // active so a separate, observable mode switch is required before the
+        // port accepts framed Binary Companion traffic again.
+        usb_logging_terminal_mode = false;
       }
 #endif
       Serial.print("> ");
@@ -1422,8 +1431,8 @@ void setup() {
 #endif
 
   // nRF52 cannot decide whether to add its optional logging CDC interface
-  // until the saved Companion preferences above are available. ESP32 already
-  // fixed its descriptor from the early NVS mirror, so this is harmless there.
+  // until the saved Companion preferences above are available. Single-TTY
+  // platforms have no separate port, so this is a harmless no-op there.
   mesh::beginUsbLoggingPort();
 
 // Load WiFi state before bringing up either wireless stack.
@@ -1576,8 +1585,8 @@ void loop() {
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog();
 #endif
-  // Identify CDC 1 when a terminal opens it. Doing this on the connection edge
-  // avoids losing the marker during boot before the host has opened the port.
+  // Identify nRF52 CDC 1 when a terminal opens it. Doing this on the connection
+  // edge avoids losing the marker before the host has opened the port.
   mesh::serviceUsbLoggingPort();
 #if defined(ENABLE_USB_INTERFACE) && defined(COMPANION_RADIO_FULL)
   expireUsbBinaryStartupProbeBeforeDispatch();

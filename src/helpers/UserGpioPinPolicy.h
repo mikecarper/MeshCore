@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "sensors/EnvironmentI2CConfig.h"
+
 // Simulator targets do not include RadioLib, but board pin macros can still
 // use its sentinel value. Keep the fallback local to this header.
 #ifndef RADIOLIB_NC
@@ -150,10 +152,8 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef PIN_WIRE_SCL
     PIN_WIRE_SCL,
 #endif
-#ifdef ENV_PIN_SDA
+#if ENV_HAS_SECONDARY_I2C
     ENV_PIN_SDA,
-#endif
-#ifdef ENV_PIN_SCL
     ENV_PIN_SCL,
 #endif
 #ifdef I2C_SDA
