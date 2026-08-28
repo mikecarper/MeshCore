@@ -1525,18 +1525,19 @@ selection is rejected. Such a WiFi/BLE/primary-ESP-NOW build therefore uses
 <pre><code>get espnow.channel
 set espnow.channel &lt;1-13&gt;
 </code></pre>
-<p>On Full Companion builds whose primary mesh radio is ESP-NOW, this shows or
-saves the single channel shared by ESP-NOW, the setup AP, and the
-infrastructure-WiFi station. The default is channel 1. Use only a channel
-permitted in your region and supported by the router. A saved change takes
-effect only after reboot. Every primary ESP-NOW node and the router's 2.4 GHz
-radio must use the same fixed channel; power saving does not permit separate
-channels. On these ESP32 Full builds, <code>wifi.powersave max</code> is unavailable and
-<code>min</code> is the coexistence setting. This channel setting is also distinct from
-<code>bridge.channel</code>, which controls the optional ESP-NOW bridge transport. An
-updated LoRa-primary ESP-NOW bridge can join this raw primary transport by
-selecting the same channel and running <code>set bridge.format raw</code>; its default
-<code>wrapped</code> format remains the bridge-to-bridge protocol.</p>
+<p>On builds whose primary mesh radio is ESP-NOW, this shows or saves the primary
+radio's channel. The default is channel 1. Use only a channel permitted in
+your region, and restart or power-cycle the node after changing it. Every
+primary ESP-NOW peer must use the same channel.</p>
+<p>On Full Companion, the setup AP and infrastructure-WiFi station also share
+that channel, so the router's 2.4 GHz radio must remain fixed to it. Power
+saving does not permit separate channels. <code>wifi.powersave max</code> is unavailable
+on these ESP32 Full builds and <code>min</code> is the coexistence setting. This channel
+setting is also distinct from <code>bridge.channel</code>, which controls the optional
+ESP-NOW bridge transport. An updated LoRa-primary ESP-NOW bridge can join this
+raw primary transport by selecting the same channel and running
+<code>set bridge.format raw</code>; its default <code>wrapped</code> format remains the
+bridge-to-bridge protocol.</p>
 <pre><code>get radio.rxgain
 set radio.rxgain {on|off}
 get radio.fem.rxgain
