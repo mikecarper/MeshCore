@@ -647,19 +647,45 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
   } else if (is_cmd(a, "drop|cancel|stop", &rest)) {
     if (c.apply_pending) { strcpy(reply, "ERR update is armed; reboot is pending"); return true; }
     OtaManager::FetchState fs = c.manager.fetchState();
+    const bool was_folder = c.fetch_to_folder;
+    bool was_sd_archive = false;
     char midhx[9]; strcpy(midhx, "-");
     if (fs != OtaManager::IDLE) mesh::Utils::toHex(midhx, c.manager.fetchManifestId(), 4);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    was_sd_archive = c.sdCacheFetching();
     c.stopSdCacheFetch();
 #endif
     c.manager.reset_session(); c.manager.want(0); c.manager.want_mid(nullptr);
+    if (was_folder && c.folder_dest) c.folder_dest->clear();
     c.fetch_to_folder = false;
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
 #if defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE) && !defined(OTA_QSPI_STORE)
     c.manager.set_accept_full(false);
 #endif
-    c.fetch_store.clear(); c.serving = false; c.serve_expected = 0; c.session_started_ms = 0;
-    snprintf(reply, 160, "OK dropped session (was %c mid=%s); slot free for a new pull", fstate_char(fs), midhx);
+    const bool discarded = !was_folder && !was_sd_archive &&
+                           c.fetch_store.discard();
+    // Fetch cancellation and serving are independent. In particular, a
+    // manual ESP32 serve view can point into serve_buf, so leave the manager
+    // view and its caller-owned buffer intact until `ota dev clear` (which
+    // detaches the view before releasing the buffer).
+    c.session_started_ms = 0;
+    if (was_folder) {
+      snprintf(reply, 160,
+               "OK dropped folder session (was %c mid=%s); host file left untouched",
+               fstate_char(fs), midhx);
+    } else if (was_sd_archive) {
+      snprintf(reply, 160,
+               "OK dropped SD archive session (was %c mid=%s); partial retained for resume",
+               fstate_char(fs), midhx);
+    } else if (!discarded) {
+      snprintf(reply, 160,
+               "ERR dropped live session (was %c mid=%s), but persistent OTA slot invalidation failed",
+               fstate_char(fs), midhx);
+    } else {
+      snprintf(reply, 160,
+               "OK dropped session (was %c mid=%s); OTA receive slot confirmed clear",
+               fstate_char(fs), midhx);
+    }
 
   // ---- broadcast our tiny beacon so peers discover us. If not already serving, set up flash-backed
   //      self-serve first (so we're a real, fetchable source of our own running firmware). ----
@@ -1141,13 +1167,27 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 
   } else if (strncmp(d, "clear", 5) == 0) {
+    const bool was_folder = c.fetch_to_folder;
+    bool was_sd_archive = false;
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    was_sd_archive = c.sdCacheFetching();
     c.stopSdCacheFetch();
 #endif
     c.manager.clear_primary();
     c.serve_expected = 0; c.serving = false; c.releaseServeBuffer();
-    c.fetch_store.clear(); c.manager.reset_session(); c.fetch_to_folder = false;
-    strcpy(reply, "OK cleared");
+    c.manager.reset_session();
+    if (was_folder && c.folder_dest) c.folder_dest->clear();
+    c.fetch_to_folder = false;
+    c.manager.set_fetch_store(&c.fetch_store);
+    if (was_folder) {
+      strcpy(reply, "OK cleared folder session; host file left untouched");
+    } else if (was_sd_archive) {
+      strcpy(reply, "OK cleared SD archive session; partial retained for resume");
+    } else {
+      const bool discarded = c.fetch_store.discard();
+      strcpy(reply, discarded ? "OK OTA receive slot confirmed clear"
+                              : "ERR RAM state cleared; persistent OTA slot invalidation failed");
+    }
 
   } else {
     strcpy(reply, "ota dev: stage|recv|serve|announce|resume [mid8]|verify|want|apply|clear");

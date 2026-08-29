@@ -864,7 +864,7 @@ bool OtaStoreQspiNrf52::reopen() {
   return true;
 }
 
-void OtaStoreQspiNrf52::clear() {
+bool OtaStoreQspiNrf52::discard() {
   bool ok = ensureFlash();
   uint8_t zero[4] = { 0, 0, 0, 0 };
   uint8_t check[sizeof(zero)];
@@ -872,7 +872,11 @@ void OtaStoreQspiNrf52::clear() {
     ok = rawWrite(0, zero, sizeof(zero)) && rawRead(0, check, sizeof(check)) &&
          memcmp(check, zero, sizeof(zero)) == 0;
   }
-  if (ok && _total >= 8 + MOTA_OFF_APPROVAL + sizeof(zero)) {
+  // The raw QSPI store is dedicated to OTA, and APRV has a fixed manifest
+  // offset. A fresh store object has _total == 0 even when an older approved
+  // container remains in flash, so invalidate both gates from flash capacity
+  // rather than trusting this session's RAM state.
+  if (ok && _flash_size >= 8 + MOTA_OFF_APPROVAL + sizeof(zero)) {
     const uint32_t approval = 8 + MOTA_OFF_APPROVAL;
     ok = rawWrite(approval, zero, sizeof(zero)) && rawRead(approval, check, sizeof(check)) &&
          memcmp(check, zero, sizeof(zero)) == 0;
@@ -883,7 +887,10 @@ void OtaStoreQspiNrf52::clear() {
   resetSession();
   if (!ok) fail(saved_error[0] ? saved_error : "QSPI container invalidation failed");
   releaseFlash();
+  return ok;
 }
+
+void OtaStoreQspiNrf52::clear() { (void)discard(); }
 
 bool OtaStoreQspiNrf52::approve_for_bootloader() {
   if (!finalize()) return false;

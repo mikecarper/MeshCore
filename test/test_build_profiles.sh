@@ -783,4 +783,23 @@ expectations=" ${BUILD_EXPECTATIONS[*]} "
 [[ "$expectations" != *"companion.network_terminal="* ]] \
   || fail "nRF52 Full contract promised an ESP32-only network terminal"
 
+BUILD_PROFILE_FOR_TARGET=standard
+for rak_target in \
+    RAK_3401_repeater_lora_ota_no_external_sensors \
+    RAK_4631_repeater_lora_ota_no_external_sensors; do
+  BUILD_CAPABILITIES=()
+  BUILD_REDUCTIONS=()
+  BUILD_EXPECTATIONS=()
+  declare_build_capability_contract "$rak_target" NRF52_PLATFORM
+  expectations=" ${BUILD_EXPECTATIONS[*]} "
+  [[ "$expectations" == *"sensor.gps=meshcore.capability.rak_wisblock_gps.v1"* ]] \
+    || fail "$rak_target reduced OTA contract omitted retained GPS"
+  [[ "$expectations" != *"sensor.gps=gps setloc"* ]] \
+    || fail "$rak_target reduced OTA contract still accepts generic GPS CLI text"
+  for ina in 219 226 260 3221; do
+    [[ "$expectations" == *"sensor.ina${ina}=INA${ina}"* ]] \
+      || fail "$rak_target reduced OTA contract omitted retained INA${ina}"
+  done
+done
+
 echo "test_build_profiles: OK"

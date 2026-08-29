@@ -24,6 +24,17 @@ public:
   virtual uint32_t staged_size() const = 0;   // total_size from begin(), 0 if none
   virtual void clear() = 0;
 
+  // Durably discard a staged container. `clear()` resets the store object's
+  // live session state and is intentionally cheap enough for begin()/retry
+  // paths; a persistent backend may therefore leave its resumable bytes in
+  // place. User-facing cancellation needs the stronger operation: after a
+  // successful discard, a fresh store object must not be able to reopen the
+  // old container. The conservative default clears only the live object and
+  // returns false: a backend must opt in only when it can prove that its
+  // durable copy is gone. A false result means cancellation must not be
+  // reported as having cleared the persistent slot.
+  virtual bool discard() { clear(); return false; }
+
   // Optional: declare the size of the leading metadata (header + manifest + merkle leaves, i.e.
   // everything before the payload). A flash-backed store keeps that region - which is updated
   // throughout the transfer (a leaf is committed per block) - pinned in one RAM page, so it can
@@ -90,9 +101,17 @@ public:
   uint32_t capacity() const override { return CAP; }
   uint32_t staged_size() const override { return _total; }
   void clear() override { _total = 0; }
+  bool discard() override {
+    _total = 0;
+    const size_t marker_bytes =
+        CAP < sizeof(MOTA_MAGIC) ? CAP : sizeof(MOTA_MAGIC);
+    memset(_buf, 0, marker_bytes);
+    return true;
+  }
   // RAM doesn't survive a real reboot, but the buffer persists within a process - enough to exercise the
   // manager's resume path in native tests. Recover `total` from the stored header so read() bounds work.
   bool reopen() override {
+    if (CAP < 8u) return false;
     if (memcmp(_buf, MOTA_MAGIC, 4) != 0) return false;
     uint32_t t = (uint32_t)_buf[4] | ((uint32_t)_buf[5] << 8) | ((uint32_t)_buf[6] << 16) | ((uint32_t)_buf[7] << 24);
     if (t < 13 || t > CAP) return false;

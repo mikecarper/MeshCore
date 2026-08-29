@@ -47,6 +47,7 @@ static const uint32_t MOTA_NRF52_STAGE_CEILING_EXPANDED = MOTA_NRF52_APP_END;
 // explicit ceiling so it cannot accidentally cross an Internal ExtraFS.
 static const uint32_t MOTA_NRF52_FS_START   = MOTA_NRF52_EXTRAFS_START;
 static const uint32_t MOTA_NRF52_FLASH_PAGE = 4096u;
+static const uint32_t MOTA_NRF52_CONTAINER_MIN_SIZE = 8u + 197u + 5u;
 static const uint8_t  GPREGRET_OTA_APPLY    = 0x6Au;        // distinct from DFU magics 0x57/0x4E/0xA8
 static const uint8_t  GPREGRET_OTA_BOOTLOADER_UPDATE = 0x6Bu;
 static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
@@ -270,6 +271,72 @@ inline bool mota_nrf52_stage_plan(uint32_t total_size, uint32_t app_base, uint32
                                   uint32_t& out_start) {
   return mota_nrf52_stage_plan(total_size, app_base, app_end,
                                mota_nrf52_layout_stage_ceiling(), out_start);
+}
+
+// Durable internal-store cancellation has to work even when the live
+// OtaStore object is empty (for example, autofetch is off after a reboot). It
+// also has to invalidate every older bottom-aligned header: invalidating only
+// the highest container could expose a larger stale container below it on the
+// next reopen scan. Keep the page walk and layout recognition pure so native
+// tests can exercise fresh-object and multiple-header cases without nRF flash.
+typedef bool (*MotaNrf52ReadStagedHeader)(void* context, uint32_t address,
+                                          uint32_t& total_size);
+typedef bool (*MotaNrf52InvalidateStagedHeader)(void* context,
+                                                uint32_t address);
+
+inline bool mota_nrf52_staged_header_matches_layout(
+    uint32_t address, uint32_t total_size, uint32_t app_base,
+    uint32_t app_end, uint32_t effective_stage_ceiling) {
+  uint32_t planned = 0;
+  if (mota_nrf52_stage_plan(total_size, app_base, app_end,
+                            effective_stage_ceiling, planned) &&
+      planned == address) {
+    return true;
+  }
+
+  // A device that moved from the legacy D4000 ceiling to the expanded ED000
+  // ceiling can still contain an older, otherwise reopenable legacy header.
+  // The expanded layout has no filesystem in that range, so it is safe to
+  // invalidate both geometries. A legacy-only build never scans above D4000.
+  return effective_stage_ceiling == MOTA_NRF52_STAGE_CEILING_EXPANDED &&
+         mota_nrf52_stage_plan(total_size, app_base, app_end,
+                               MOTA_NRF52_STAGE_CEILING_LEGACY, planned) &&
+         planned == address;
+}
+
+inline bool mota_nrf52_discard_staged_headers(
+    uint32_t app_base, uint32_t app_end, uint32_t effective_stage_ceiling,
+    void* context, MotaNrf52ReadStagedHeader read_header,
+    MotaNrf52InvalidateStagedHeader invalidate_header,
+    uint32_t* invalidated_count = nullptr) {
+  if (invalidated_count) *invalidated_count = 0;
+  if (!read_header || !invalidate_header ||
+      !mota_nrf52_layout_valid(app_base, effective_stage_ceiling) ||
+      app_end < app_base || app_end > effective_stage_ceiling) {
+    return false;
+  }
+
+  bool ok = true;
+  uint32_t count = 0;
+  uint32_t address = effective_stage_ceiling - MOTA_NRF52_FLASH_PAGE;
+  while (address >= app_end) {
+    uint32_t total_size = 0;
+    if (read_header(context, address, total_size) &&
+        total_size >= MOTA_NRF52_CONTAINER_MIN_SIZE &&
+        mota_nrf52_staged_header_matches_layout(
+            address, total_size, app_base, app_end,
+            effective_stage_ceiling)) {
+      if (invalidate_header(context, address)) {
+        ++count;
+      } else {
+        ok = false;
+      }
+    }
+    if (address < MOTA_NRF52_FLASH_PAGE) break;
+    address -= MOTA_NRF52_FLASH_PAGE;
+  }
+  if (invalidated_count) *invalidated_count = count;
+  return ok;
 }
 
 } // namespace ota

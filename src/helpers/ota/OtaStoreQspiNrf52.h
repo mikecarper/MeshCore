@@ -155,6 +155,7 @@ public:
   uint32_t capacity() const override;
   uint32_t staged_size() const override { return _total; }
   void clear() override;
+  bool discard() override;
   bool set_meta_size(uint32_t meta_bytes) override;
   bool finalize() override;
   void checkpoint() override;

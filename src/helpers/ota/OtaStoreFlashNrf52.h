@@ -57,6 +57,10 @@ class OtaStoreFlashNrf52 : public OtaStore {
   uint8_t* write_slot(uint32_t pos);
   bool flush_pay();                 // commit _pay_page to flash (erase + program, one page)
   bool flush_page(uint32_t page_idx, const uint8_t* buf);   // write + verify a full page
+  void reset_session();             // RAM bookkeeping only; never touches staged flash
+  static bool read_staged_header(void* context, uint32_t address,
+                                 uint32_t& total_size);
+  static bool invalidate_staged_header(void* context, uint32_t address);
 
 public:
   bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
@@ -66,11 +70,8 @@ public:
   bool read(uint32_t offset, uint8_t* buf, uint32_t len) const override;
   uint32_t capacity() const override;
   uint32_t staged_size() const override { return _total; }
-  void clear() override {
-    _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
-    _total = 0; _pay_idx = 0; _flushed = false; _io_ok = true;
-    _planned_bootloader = false; _planned_total = 0; _planned_start = 0;
-  }
+  void clear() override { reset_session(); }
+  bool discard() override;
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes <= PG; }  // leaves must fit page 0
   bool finalize() override;
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume

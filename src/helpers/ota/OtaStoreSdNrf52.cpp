@@ -509,16 +509,31 @@ bool OtaStoreSdNrf52::reopen() {
   return true;
 }
 
-void OtaStoreSdNrf52::clear() {
+bool OtaStoreSdNrf52::discard() {
   _total = 0;
   _planned_bootloader = false;
   _first_sector = 0;
   _allocated_sectors = 0;
   clear_sd_auth_record();
-  if (!mount()) return;
+  if (!mount()) return false;
   if (_file && *_file) _file->close();
-  _sd->remove(PATH);
+  if (_sd->exists(PATH) && !_sd->remove(PATH)) {
+    fail("SD OTA file removal failed");
+    return false;
+  }
+  if (_sd->exists(PATH)) {
+    fail("SD OTA file still exists after removal");
+    return false;
+  }
+  SdCard* const card = _sd->card();
+  if (card && !card->syncDevice()) {
+    fail("SD OTA removal sync failed");
+    return false;
+  }
+  return true;
 }
+
+void OtaStoreSdNrf52::clear() { (void)discard(); }
 
 bool OtaStoreSdNrf52::approve_for_bootloader(
     const uint8_t expected_boot_image_hash[32],

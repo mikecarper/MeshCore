@@ -3,7 +3,7 @@
 #if defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
 
 #include "OtaDebug.h"
-#include "OtaByteIO.h"          // align_up / align_down (flash-sector geometry)
+#include "OtaByteIO.h"          // rd_u32le (persisted header total)
 #include "MotaContainer.h"      // mota_parse_manifest (reopen: rebuild geometry from the staged manifest)
 #include <string.h>
 #include <stdlib.h>             // malloc/free (the meta buffer is sized per fetch)
@@ -22,33 +22,29 @@ bool OtaStoreFlashEsp32::acquire() {
   return _part != nullptr;
 }
 
+void OtaStoreFlashEsp32::set_layout(const MotaEsp32StageLayout& layout) {
+  _total = layout.total;
+  _meta_span = layout.meta_span;
+  _meta_flush = layout.meta_flush;
+  _write_start = layout.write_start;
+  _meta_part = layout.meta_part;
+  _pay_log0 = layout.pay_log0;
+  _pay_part0 = layout.pay_part0;
+  _trailer_part = _full ? _meta_part + _meta_bytes
+                         : _write_start + _total - 5u;
+}
+
 // Compute the slot placement from _full/_image_size/_meta_bytes/_pay_size (already set). Returns false if
-// it won't fit. Shared by plan_layout (fresh fetch) and reopen (resume) so both derive identical geometry.
+// it won't fit. Shared by plan_layout (fresh fetch), reopen (resume), and discard validation so all three
+// derive identical geometry.
 bool OtaStoreFlashEsp32::layout() {
-  uint32_t total = _meta_bytes + _pay_size + 5;
-  if (_full) {
-    // payload streams to slot offset 0 (it IS the image); header+manifest+leaves+trailer persist at the
-    // bottom so the container survives a reboot (resume / re-serve).
-    _meta_span    = _meta_bytes;                       // routing boundary: [0,meta) -> RAM meta buffer
-    _meta_flush   = align_up(_meta_bytes + 5, SEC);    // meta + 5-byte trailer, whole sectors
-    if (_meta_flush > OTA_ESP32_META_CAP) return false;
-    uint32_t bottom = align_down(_psize - _meta_flush, SEC);
-    _meta_part  = bottom;
-    _pay_log0   = _meta_bytes; _pay_part0 = 0;
-    _write_start = 0;
-    if (_image_size > bottom) return false;            // image would overrun the bottom meta region
-  } else {
-    // whole container staged bottom-aligned; the decoded image fills the slot from offset 0.
-    _meta_span  = align_up(_meta_bytes, SEC);          // pin whole sectors covering meta (+ spillover payload)
-    _meta_flush = _meta_span;
-    if (_meta_flush > OTA_ESP32_META_CAP) return false;
-    if (total > _psize) return false;
-    _write_start = align_down(_psize - total, SEC);
-    _meta_part   = _write_start;
-    _pay_log0    = _meta_span; _pay_part0 = _write_start + _meta_span;
-    if (_image_size > _write_start) return false;      // decoded output would overlap the staged container
+  MotaEsp32StageLayout planned;
+  if (!mota_esp32_stage_layout(
+          _psize, SEC, OTA_ESP32_META_CAP, _full, _image_size,
+          _meta_bytes, _pay_size, planned)) {
+    return false;
   }
-  _total = total;
+  set_layout(planned);
   return true;
 }
 
@@ -82,6 +78,120 @@ bool OtaStoreFlashEsp32::begin(uint32_t total_size) {
 void OtaStoreFlashEsp32::clear() {
   free(_meta); _meta = nullptr;
   _total = 0; _pay_open = false; _flushed = false;   // _part kept (re-acquire is fine)
+}
+
+OtaStoreFlashEsp32::CandidateProbe OtaStoreFlashEsp32::probe_candidate(
+    uint32_t offset, StagedCandidate& candidate) const {
+  if (!_part || _psize < SEC || offset > _psize - SEC) {
+    return CandidateProbe::INVALID;
+  }
+
+  uint8_t header[8];
+  if (esp_partition_read(_part, offset, header, sizeof(header)) != ESP_OK) {
+    return CandidateProbe::IO_ERROR;
+  }
+  if (memcmp(header, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0) {
+    return CandidateProbe::INVALID;
+  }
+
+  const uint32_t total = rd_u32le(header + sizeof(MOTA_MAGIC));
+  if (total < 8u + MOTA_MFL + 5u || total > _psize) {
+    return CandidateProbe::INVALID;
+  }
+
+  uint8_t manifest_bytes[256];
+  uint32_t manifest_read = total - 8u;
+  if (manifest_read > sizeof(manifest_bytes)) {
+    manifest_read = sizeof(manifest_bytes);
+  }
+  if (esp_partition_read(_part, offset + 8u, manifest_bytes,
+                         manifest_read) != ESP_OK) {
+    return CandidateProbe::IO_ERROR;
+  }
+
+  MotaManifest manifest;
+  if (!mota_parse_manifest(manifest_bytes, manifest_read, manifest)) {
+    return CandidateProbe::INVALID;
+  }
+  const uint32_t manifest_len =
+      (uint32_t)(manifest.approval - manifest.manifest_start) +
+      sizeof(APPROVAL_YES);
+  const uint64_t payload_off64 =
+      8u + (uint64_t)manifest_len + (uint64_t)manifest.block_count * 4u;
+  if (payload_off64 > UINT32_MAX ||
+      payload_off64 + (uint64_t)manifest.payload_size + 5u != total) {
+    return CandidateProbe::INVALID;
+  }
+
+  MotaEsp32StageLayout planned;
+  if (!mota_esp32_stage_layout(
+          _psize, SEC, OTA_ESP32_META_CAP, manifest.is_full(),
+          manifest.image_size, (uint32_t)payload_off64,
+          manifest.payload_size, planned) ||
+      planned.meta_part != offset || planned.total != total) {
+    return CandidateProbe::INVALID;
+  }
+
+  candidate.layout = planned;
+  candidate.full = manifest.is_full();
+  candidate.image_size = manifest.image_size;
+  candidate.meta_bytes = (uint32_t)payload_off64;
+  candidate.pay_size = manifest.payload_size;
+  return CandidateProbe::VALID;
+}
+
+bool OtaStoreFlashEsp32::probe_staged_header(
+    void* context, uint32_t offset, bool& reopenable) {
+  OtaStoreFlashEsp32* store = static_cast<OtaStoreFlashEsp32*>(context);
+  StagedCandidate candidate;
+  const CandidateProbe result = store->probe_candidate(offset, candidate);
+  reopenable = result == CandidateProbe::VALID;
+  return result != CandidateProbe::IO_ERROR;
+}
+
+bool OtaStoreFlashEsp32::invalidate_staged_header(
+    void* context, uint32_t offset) {
+  OtaStoreFlashEsp32* store = static_cast<OtaStoreFlashEsp32*>(context);
+  if (!store->_part || store->_psize < SEC || offset > store->_psize - SEC ||
+      esp_partition_read(store->_part, offset, store->_pay, SEC) != ESP_OK) {
+    return false;
+  }
+
+  // Both markers are inside the already-validated first metadata sector.
+  // One sector RMW avoids erasing a delta's adjacent metadata/payload twice.
+  memset(store->_pay, 0, sizeof(MOTA_MAGIC));
+  memset(store->_pay + 8u + MOTA_OFF_APPROVAL, 0,
+         sizeof(APPROVAL_YES));
+  if (esp_partition_erase_range(store->_part, offset, SEC) != ESP_OK ||
+      esp_partition_write(store->_part, offset, store->_pay, SEC) != ESP_OK) {
+    return false;
+  }
+
+  uint8_t check[sizeof(MOTA_MAGIC)];
+  if (esp_partition_read(store->_part, offset, check, sizeof(check)) != ESP_OK ||
+      memcmp(check, store->_pay, sizeof(check)) != 0 ||
+      esp_partition_read(store->_part, offset + 8u + MOTA_OFF_APPROVAL,
+                         check, sizeof(check)) != ESP_OK ||
+      memcmp(check, store->_pay + 8u + MOTA_OFF_APPROVAL,
+             sizeof(check)) != 0) {
+    return false;
+  }
+  return true;
+}
+
+bool OtaStoreFlashEsp32::discard() {
+  bool ok = acquire();
+  uint32_t invalidated = 0;
+  if (ok) {
+    ok = mota_esp32_discard_staged_headers(
+        _psize, SEC, this, probe_staged_header,
+        invalidate_staged_header, &invalidated);
+  }
+  OTA_DBG("OTA esp32: discard invalidated=%u ok=%d\n",
+          (unsigned)invalidated, (int)ok);
+  clear();
+  _io_ok = ok;
+  return ok;
 }
 
 uint8_t* OtaStoreFlashEsp32::meta_slot(uint32_t L) {
@@ -207,34 +317,26 @@ void OtaStoreFlashEsp32::checkpoint() {
 // so a stray/stale match can only cost a restart, never a corrupt adopt.
 bool OtaStoreFlashEsp32::reopen() {
   if (!acquire() || _psize < SEC) return false;
-  uint8_t hb[8];
   // The meta/container is staged at the bottom of the slot. Large delta containers can begin well above
   // the final 512 KB, so scan the complete partition rather than silently losing resumability after reboot.
-  for (uint32_t o = align_down(_psize - SEC, SEC); ; o -= SEC) {
-    if (esp_partition_read(_part, o, hb, 8) == ESP_OK && memcmp(hb, MOTA_MAGIC, 4) == 0) {
-      uint32_t total = rd_u32le(hb + 4);
-      if (total >= 13 && total <= _psize) {
-        uint8_t mbuf[256]; uint32_t mread = total - 8; if (mread > sizeof(mbuf)) mread = sizeof(mbuf);
-        MotaManifest m;
-        if (esp_partition_read(_part, o + 8, mbuf, mread) == ESP_OK && mota_parse_manifest(mbuf, mread, m)) {
-          uint32_t mfl = (uint32_t)(m.approval - m.manifest_start) + 4;
-          uint32_t payload_off = 8 + mfl + m.block_count * 4;
-          if ((uint64_t)payload_off + m.payload_size + 5 == total) {
-            _full = m.is_full(); _image_size = m.image_size; _meta_bytes = payload_off; _pay_size = m.payload_size;
-            if (layout() && _meta_part == o) {                 // geometry agrees AND magic is where we'd place meta
-              free(_meta); _meta = (uint8_t*)malloc(_meta_flush);
-              if (!_meta) { _total = 0; return false; }
-              if (esp_partition_read(_part, _meta_part, _meta, _meta_flush) != ESP_OK) {
-                free(_meta); _meta = nullptr; _total = 0; return false; }
-              memset(_trailer, 0xFF, sizeof(_trailer));        // delta trailer (re-written at finalize); full reads it from _meta
-              _pay_open = false; _pay_sec = 0; _flushed = false; _io_ok = true;
-              _pay_max_sec = (_pay_part0 + _pay_size + SEC) / SEC;   // treat all payload sectors as seen -> RMW preserves committed blocks
-              OTA_DBG("OTA esp32: reopen %s total=%u meta_part=%u\n", _full ? "FULL" : "DELTA", (unsigned)total, (unsigned)o);
-              return true;
-            }
-          }
-        }
+  for (uint32_t o = mota_esp32_align_down(_psize - SEC, SEC); ; o -= SEC) {
+    StagedCandidate candidate;
+    if (probe_candidate(o, candidate) == CandidateProbe::VALID) {
+      _full = candidate.full;
+      _image_size = candidate.image_size;
+      _meta_bytes = candidate.meta_bytes;
+      _pay_size = candidate.pay_size;
+      set_layout(candidate.layout);
+      free(_meta); _meta = (uint8_t*)malloc(_meta_flush);
+      if (!_meta) { _total = 0; return false; }
+      if (esp_partition_read(_part, _meta_part, _meta, _meta_flush) != ESP_OK) {
+        free(_meta); _meta = nullptr; _total = 0; return false;
       }
+      memset(_trailer, 0xFF, sizeof(_trailer));        // delta trailer (re-written at finalize); full reads it from _meta
+      _pay_open = false; _pay_sec = 0; _flushed = false; _io_ok = true;
+      _pay_max_sec = (_pay_part0 + _pay_size + SEC) / SEC;   // treat all payload sectors as seen -> RMW preserves committed blocks
+      OTA_DBG("OTA esp32: reopen %s total=%u meta_part=%u\n", _full ? "FULL" : "DELTA", (unsigned)_total, (unsigned)o);
+      return true;
     }
     if (o == 0) break;
   }

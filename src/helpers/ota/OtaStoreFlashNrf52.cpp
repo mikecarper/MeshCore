@@ -13,6 +13,18 @@
 namespace mesh {
 namespace ota {
 
+void OtaStoreFlashNrf52::reset_session() {
+  _write_start = 0;
+  _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
+  _total = 0;
+  _pay_idx = 0;
+  _flushed = false;
+  _io_ok = true;
+  _planned_bootloader = false;
+  _planned_total = 0;
+  _planned_start = 0;
+}
+
 // A valid EndF gives the exact live-image extent. Legacy app-only builds keep
 // the conservative rescue fallback. Shared internal bootloader-update builds
 // reject every package kind without EndF because their normal linker may place
@@ -71,6 +83,59 @@ static bool flash_matches(uint32_t addr, const uint8_t* expected, uint32_t n) {
   const volatile uint8_t* actual = (const volatile uint8_t*)(uintptr_t)addr;
   for (uint32_t i = 0; i < n; i++) if (actual[i] != expected[i]) return false;
   return true;
+}
+
+bool OtaStoreFlashNrf52::read_staged_header(
+    void*, uint32_t address, uint32_t& total_size) {
+  const uint8_t* header = (const uint8_t*)(uintptr_t)address;
+  if (memcmp(header, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0) return false;
+  total_size = rd_u32le(header + sizeof(MOTA_MAGIC));
+  return true;
+}
+
+bool OtaStoreFlashNrf52::invalidate_staged_header(
+    void* context, uint32_t address) {
+  OtaStoreFlashNrf52* store = static_cast<OtaStoreFlashNrf52*>(context);
+  const uint8_t* page = (const uint8_t*)(uintptr_t)address;
+  memcpy(store->_meta_page, page, PG);
+
+  // Magic prevents application reopen; approval prevents an explicitly
+  // triggered legacy bootloader from accepting a half-cleared container.
+  // Rewrite the page once so both durable markers are consumed together.
+  memset(store->_meta_page, 0, sizeof(MOTA_MAGIC));
+  memset(store->_meta_page + 8u + MOTA_OFF_APPROVAL, 0,
+         sizeof(APPROVAL_YES));
+  if (flash_nrf5x_write(address, store->_meta_page, PG) < 0) {
+    store->_io_ok = false;
+    return false;
+  }
+  flash_nrf5x_flush();
+  if (!flash_matches(address, store->_meta_page, PG)) {
+    store->_io_ok = false;
+    return false;
+  }
+  return true;
+}
+
+bool OtaStoreFlashNrf52::discard() {
+  const uint32_t app_base = mota_nrf52_app_base();
+  const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
+  uint32_t app_end = 0;
+  if (!protected_app_end(app_base, stage_ceiling, app_end)) {
+    reset_session();
+    _io_ok = false;
+    return false;
+  }
+
+  uint32_t invalidated = 0;
+  const bool ok = mota_nrf52_discard_staged_headers(
+      app_base, app_end, stage_ceiling, this, read_staged_header,
+      invalidate_staged_header, &invalidated);
+  OTA_DBG("OTA flash: discard invalidated=%u ok=%d\n",
+          (unsigned)invalidated, (int)ok);
+  reset_session();
+  _io_ok = ok;
+  return ok;
 }
 
 bool OtaStoreFlashNrf52::flush_page(uint32_t page_idx, const uint8_t* buf) {
@@ -133,7 +198,7 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
   const bool planned_bootloader = _planned_bootloader;
   const uint32_t planned_total = _planned_total;
   const uint32_t planned_start = _planned_start;
-  clear();
+  reset_session();
 
   // never collide with the running application image (its extent comes from its EndF trailer)
   const uint32_t app_base = mota_nrf52_app_base();

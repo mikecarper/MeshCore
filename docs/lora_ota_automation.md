@@ -262,6 +262,22 @@ runner can restore those periods but cannot reconstruct an unreported saved
 level. A radio change later recalculates from a preserved saved minimum, so
 moving back to a slower tuple returns to the operator's saved level.
 
+The OTA source has a stricter policy than the destination. For every source
+with a managed serial or TCP CLI, the runner reads and retains its exact RXPS
+preference, using the legacy fixed-period query only when the detailed query is
+unavailable. It then disables RXPS and verifies the readback before any target
+discovery or TempRadio change. Source RXPS stays off through catalog serving,
+download, installation, and post-install identity verification. Cleanup first
+proves that the source has returned to its normal radio, then restores and
+verifies the exact saved level/preamble or fixed-period state once. A source
+whose RXPS state cannot be read, disabled, or restored safely fails closed.
+If current firmware explicitly rejects an RXPS disable or restore with `radio
+busy; retry`, the runner retries that idempotent mutation at staggered
+210–378 ms intervals. All 32 delays are distinct and contribute about 9.4
+seconds of waits; source-CLI command round-trip time is additional. This avoids
+repeatedly sampling one radio phase while retaining a strict attempt cap. Other
+rejections are not replayed.
+
 ## 4. Run an ESP32 update
 
 The ZIP can contain a compatible ready `.mota` or the exact board-and-role
@@ -427,7 +443,9 @@ later as a catalog timeout.
 If the source is already on the exact TempRadio tuple through a scheduled or
 manual operation, `--source-already-temp` lets a TCP source run without a raw
 CLI link. The script cannot verify, extend, or shorten that source window, so
-leave a comfortable time margin.
+leave a comfortable time margin. It also cannot inspect or change that
+unmanaged source's RXPS state; disable source RXPS yourself before starting
+the run and restore it only after returning the source to its normal radio.
 
 Use `--controller-baud` or `--source-baud` only for a build whose corresponding
 interface is genuinely configured to another speed.
@@ -458,7 +476,9 @@ Useful controls:
 - `--no-install` downloads and verifies the image but leaves it staged. By
   default the runner then schedules the target, relays, and a script-configured
   source back to their normal radios. Combining it with
-  `--leave-controller-radio` deliberately preserves the TempRadio topology.
+  `--leave-controller-radio` deliberately preserves the destination, relays,
+  and separate controller on the TempRadio topology; a managed source is still
+  returned to normal so its exact RXPS setting can be restored.
   If the version gate required RXPS off, it stays off while that topology is
   preserved; use `target-rxps-settings.json` to restore it only after sending
   `normalradio`.
@@ -467,10 +487,14 @@ Useful controls:
   downloading or staged on the target. Without it, that update is preserved.
 - `--source-shares-controller` is for a Full Companion whose USB Binary API is
   the controller while its TCP port `5001` is the source. It verifies that the
-  source's port-`5000` public key equals the controller key. The Binary API
-  first moves the shared physical radio, port `5002` then enables the local OTA
-  egress gate, and cleanup sends `normalradio` before restoring the saved
-  Binary radio tuple.
+  source's port-`5000` public key equals the controller key. Port `5002` uses a
+  bounded local `tempradio` override to move the shared physical radio without
+  overwriting its saved normal tuple; the Binary API remains the authenticated
+  transport. Cleanup sends local `normalradio`, proves that override inactive,
+  and then reasserts the saved Binary tuple. It cannot be combined with
+  `--leave-controller-radio`,
+  because exact source RXPS restoration requires that shared physical radio to
+  be back on its verified normal tuple.
 - `--require-system-watchdog-off` checks `get system.watchdog` immediately
   before every `ota install` transmission and refuses installation unless the
   destination reports `> off`. Use it for nRF52 chains whose bootloader cannot
@@ -511,12 +535,14 @@ the destination.
    hashes, Merkle root, full-image hash where applicable, identity fields,
    signature, codec, base, and the firmware's 1024-byte maximum block size.
    Version-3 bootloader packages are refused before any target state changes.
-4. Save the controller's normal radio tuple, read every participant's version,
-   save the destination's RXPS state, select the qualified RXPS policy, and
-   show the confirmation prompt.
-5. Apply and verify that RXPS policy, then start TempRadio on the target,
-   far-to-near relays, and the source;
-   finally switch the controller to the same tuple and read it back. The runner
+4. Read and save a managed source's exact RXPS preference, disable and verify
+   source RXPS, save the controller's normal radio tuple, read every
+   participant's version, save the destination's RXPS state, select the
+   qualified destination policy, and show the confirmation prompt.
+5. Apply and verify the destination RXPS policy, then start TempRadio on the
+   target, far-to-near relays, and source. A separate controller is moved and
+   read back through Binary; a shared Full Companion instead schedules its
+   bounded local override while Binary remains the transport. The runner
    rejects a TempRadio window that cannot cover setup, seeder startup,
    discovery, the transfer timeout, final polling, and install checks.
 6. Start `motatool serve`, discover the exact eight-hex manifest ID, request
@@ -527,14 +553,17 @@ the destination.
 7. Recheck that exact ID, give the target a short final TempRadio safety window,
    and request `ota install`. Then shorten each relay's TempRadio window so the
    normal multi-hop route returns, stop the seeder, shorten the source window,
-   restore the controller, and probe `ota self` at 10 and 20 seconds instead of
-   sleeping for 90 seconds. The exact new body hash is the readiness signal;
+   restore the controller, and probe `ota self` every 10 seconds through the
+   configured readiness window (five minutes by default). The exact new body
+   hash is the readiness signal;
    only then does the runner require the exact package version. A relayed run
    continues the 10-second probes through the mandatory relay-return window. A
    source supplied with `--source-already-temp` is never modified.
    `--leave-controller-radio` moves the controller back to TempRadio only after
    this normal-channel verification. Restore the destination's exact original
-   RXPS setting after normal-channel identity is proven.
+   RXPS setting after normal-channel identity is proven. A managed source stays
+   RXPS-off through that verification and its exact setting is restored only
+   after its own TempRadio state is proven inactive.
 
 Remote replies are matched only after queued messages have been drained and
 only when they come from the intended contact and fit the command. A ready
@@ -565,25 +594,53 @@ budget. If a bounded window expires, rerun the same package after the nodes
 return to their normal channel; the manifest-ID check resumes its partial
 download without replacing it.
 
-The working directory is retained and printed at exit. It contains the exact
+The working directory is created before a managed source can be changed, then
+retained and printed at exit. It contains the exact
 served mOTA, `motatool-serve.log`, extracted build inputs when needed, and
-`controller-radio.txt`. When the destination started with RXPS enabled it also
-contains protected `target-rxps-settings.json` for manual recovery. It contains
-no saved admin password.
+`controller-radio.txt`. A managed source also gets a protected
+`source-rxps-settings.json` containing its exact original preference and
+idempotent restore command. Its contents and directory entry are flushed before
+RXPS is disabled. When the destination
+started with RXPS enabled, protected `target-rxps-settings.json` records its
+manual recovery state. The RAK3401 chain points every nested step at one
+chain-root source record, so a rerun after host power loss does not adopt the
+temporary RXPS-off state as the original. A retained record is accepted only
+for the same managed CLI endpoint. These files contain no saved admin password.
+After exact source restoration, a standalone run atomically retires its record;
+the chain retains its shared record between steps and retires it only after the
+verified endpoint restoration completes.
 
 ## Interruption and recovery
 
-Ctrl-C stops the seeder, detaches its serial folder, makes one best-effort
-request to shorten a source TempRadio window started by the script, and attempts
-to restore the controller. The target and relays remain on TempRadio only until
-their bounded windows end; rebooting also restores their saved radio settings.
-A normal cleanup restores the destination's exact RXPS periods. If that remote
-restore cannot be confirmed, use `target-rxps-settings.json` after the target
-returns to its normal channel.
+Ctrl-C stops the seeder, detaches its serial folder, makes a bounded attempt to
+shorten a source TempRadio window started by the script, and attempts to
+restore the controller. For a managed source it leaves RXPS off until the
+source is proven back on its normal radio, then restores and verifies the
+saved source preference. A transient success-path restore failure remains
+armed for one more idempotent cleanup attempt. The target and relays remain on
+TempRadio only until their bounded windows end; rebooting also restores their
+saved radio settings. A normal cleanup restores the destination's exact RXPS
+periods. If that remote restore cannot be confirmed, use
+`target-rxps-settings.json` after the target returns to its normal channel.
 A partial download remains safe. Once the target is reachable again (after its
 TempRadio window ends, or after putting the controller back on that tuple),
 rerunning the same package recognizes its manifest ID and resumes the existing
 session instead of clearing it.
+
+When a chained run has already proved the newly running body hash, its retained
+previous package can briefly report `verifying staged blocks` after TempRadio
+reactivates the OTA manager. The runner waits only through the configured
+discovery timeout, keeps checking source liveness, and accepts only the same
+manifest becoming `ready to install` or the manager becoming idle. A changed
+ID, failed or incomplete state, or timeout stops the chain. It then proves the
+exact installed body again. If that same session is still attached and ready,
+the runner detaches it with `ota cancel`; if the manager has become idle, it
+sends no cancel. An ordinary-channel `no download` status proves only that the
+manager is idle, not that persistent staging was erased. The runner therefore
+does not issue or describe an IDLE cancel as durable cleanup. The next chain
+transition explicitly re-adopts and proves the expected previous MID before detaching it;
+after the final install OTAFIX has consumed the approval word, so any retained
+container is inert and is replaced by the next valid pull.
 
 A hard process kill or host power loss cannot run cleanup. Recover a serial
 controller using the tuple saved in the printed work directory:
@@ -597,6 +654,12 @@ meshcli -s /dev/ttyACM0 set radio "$radio"
 $radio = (Get-Content '.\meshcore-lora-ota-...\controller-radio.txt' -Raw).Trim()
 meshcli -s COM7 set radio $radio
 ```
+
+For a managed source, first return it to its ordinary radio, then inspect
+`source-rxps-settings.json` and issue its exact `restore_command` through the
+same serial or TCP-console endpoint recorded in that file. The command is
+idempotent; confirm the full setting with `get radio.rxps.config` before
+resuming an update.
 
 If you stop during final confirmation, reconnect on the node's normal channel
 and run `ota self` and `ver`. A completed run returns success only when

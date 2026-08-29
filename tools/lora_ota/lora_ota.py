@@ -28,6 +28,7 @@ import shlex
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -62,12 +63,21 @@ TRANSMISSION_RETRY_WINDOW_SECONDS = 90
 TRANSMISSION_RETRY_DELAY_SECONDS = 2
 TRANSMISSION_RETRY_MAX_DELAY_SECONDS = 8
 TRANSMISSION_PROMPT_SECONDS = 10
+SOURCE_RXPS_BUSY_RETRY_LIMIT = 32
 ADAPTIVE_POLL_MAX_FACTOR = 3
 TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
 TEMP_RADIO_RETURN_MINUTES = 1
 TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
+SHARED_SOURCE_NORMAL_TIMEOUT_SECONDS = 30
+SHARED_SOURCE_NORMAL_POLL_SECONDS = 1
 INSTALL_TARGET_WINDOW_MINUTES = 3
-DEFAULT_POST_INSTALL_READY_WAIT_SECONDS = 20
+# Internal-flash nRF52 installs can spend minutes applying a large in-place
+# patch before USB and LoRa are available again.  The RAK3401 hardware run
+# measured a 106-KiB package taking 64 seconds from USB disconnect to
+# re-enumeration, while later chain packages are substantially larger.  Keep
+# the readiness probe bounded at five minutes; it still returns immediately
+# when the exact installed identity replies.
+DEFAULT_POST_INSTALL_READY_WAIT_SECONDS = 300
 POST_INSTALL_READY_PROBE_INTERVAL_SECONDS = 10
 COMPANION_TERMINAL_START = "+++MESHCORE-TERM-START"
 COMPANION_TERMINAL_STOP = "+++MESHCORE-TERM-STOP"
@@ -78,6 +88,7 @@ DEFAULT_RELAY_TX_DELAY = 0.3
 RELAY_TIMING_COMMANDS_PER_RELAY = 12
 RELAY_TIMING_RECOVERY_FILE = "relay-timing-settings.json"
 TARGET_RXPS_RECOVERY_FILE = "target-rxps-settings.json"
+SOURCE_RXPS_RECOVERY_FILE = "source-rxps-settings.json"
 MIN_MESHCLI_VERSION = (1, 6, 0)
 # v1.17.1.5 is the first release-version contract in which every packet,
 # including retries, uses the same tuple-selected physical preamble: normally
@@ -1021,19 +1032,19 @@ def redact_text(value: str, sensitive_values: tuple[str, ...] = ()) -> str:
 
 
 def _debug_text(
-    value: str | bytes | None,
+    value: str | bytes | bytearray | memoryview | None,
     sensitive_values: tuple[str, ...] = (),
 ) -> str:
     if value is None:
         return "<empty>"
-    if isinstance(value, bytes):
-        value = value.decode("utf-8", "replace")
+    if not isinstance(value, str):
+        value = bytes(value).decode("utf-8", "replace")
     return redact_text(value, sensitive_values).rstrip() or "<empty>"
 
 
 def debug_stream(
     label: str,
-    value: str | bytes | None,
+    value: str | bytes | bytearray | memoryview | None,
     sensitive_values: tuple[str, ...] = (),
 ) -> None:
     if not DEBUG:
@@ -1299,7 +1310,16 @@ def reply_matches_command(command_text: str, reply: str) -> bool:
             )
         )
     if command == "ota cancel":
-        return lowered.startswith("ok dropped ") or is_unknown or needs_temp
+        # Current persistent stores can report that the manager/RAM session
+        # was dropped but durable media invalidation failed. Treat that as the
+        # command's reply so callers surface the real rejection instead of
+        # waiting through reply-timeout retries for an impossible OK.
+        return (
+            lowered.startswith("ok dropped ")
+            or (is_error and "persistent ota slot" in lowered)
+            or is_unknown
+            or needs_temp
+        )
     if command == "ota install":
         return (
             lowered.startswith(("ok |", "err |"))
@@ -2134,6 +2154,15 @@ def preflight_source_cli(args: argparse.Namespace) -> None:
         )
 
 
+def has_managed_source_cli(args: argparse.Namespace) -> bool:
+    """Return whether this run can safely inspect and restore its OTA source."""
+    return bool(
+        getattr(args, "source_serial", None)
+        or getattr(args, "source_cli_serial", None)
+        or getattr(args, "source_cli_tcp", None)
+    )
+
+
 def read_lora_ota_participant_versions(
     controller: Controller,
     args: argparse.Namespace,
@@ -2463,6 +2492,300 @@ def read_remote_rxps(
             ) from detailed_error
 
 
+def read_source_rxps(args: argparse.Namespace) -> RxpsSettings:
+    """Read the managed source's persisted RXPS preference exactly."""
+    try:
+        reply = source_cli_command(args, "get radio.rxps.config")
+        return parse_rxps_settings(reply, "OTA source")
+    except TransmissionStopped:
+        raise
+    except OtaError as detailed_error:
+        # Older full-parser sources expose only the fixed receive/sleep
+        # periods. They are still sufficient for an exact legacy restore.
+        try:
+            reply = source_cli_command(args, "get radio.rxps")
+            return parse_rxps_settings(reply, "OTA source")
+        except TransmissionStopped:
+            raise
+        except OtaError as legacy_error:
+            raise OtaError(
+                "could not read OTA source RXPS state using current or "
+                f"legacy CLI: {legacy_error}"
+            ) from detailed_error
+
+
+def source_rxps_busy_retry_delay(retry_number: int) -> float:
+    """Return a unique short cadence for each retry in the bounded window."""
+    # 73 and 173 are coprime, so none of the 32 delays repeat. Their sum is
+    # 9.366 seconds, and the varying 210-378 ms spacing avoids phase-locking
+    # retries to a periodic RX/TX scheduler slot.
+    return (210 + (((retry_number - 1) * 73) % 173)) / 1000
+
+
+def mutate_source_rxps(args: argparse.Namespace, command: str) -> str:
+    """Run one idempotent source RXPS mutation across short busy phases."""
+    busy_retries = 0
+    while True:
+        try:
+            return source_cli_command(args, command)
+        except TransmissionStopped:
+            raise
+        except OtaError as exc:
+            # The Full Companion emits this exact response only when the
+            # driver rejected the change before updating or saving the RXPS
+            # preference. It is therefore safe to replay an idempotent RXPS
+            # mutation, unlike an arbitrary rejected or reply-lost command.
+            busy = re.search(
+                r"\bradio busy;\s*retry\b", str(exc), re.IGNORECASE
+            )
+            if busy is None:
+                raise
+            if busy_retries >= SOURCE_RXPS_BUSY_RETRY_LIMIT:
+                raise OtaError(
+                    "OTA source remained radio busy after "
+                    f"{SOURCE_RXPS_BUSY_RETRY_LIMIT} bounded RXPS retries "
+                    "and about 9.4 seconds of retry waits (command round-trip "
+                    "time is additional)"
+                ) from exc
+            busy_retries += 1
+            delay = source_rxps_busy_retry_delay(busy_retries)
+            print(
+                "[rxps] OTA source radio busy; retrying RXPS mutation in "
+                f"{delay:.2f}s ({busy_retries}/{SOURCE_RXPS_BUSY_RETRY_LIMIT})"
+            )
+            time.sleep(delay)
+
+
+def disable_source_rxps(
+    args: argparse.Namespace,
+    saved: RxpsSettings,
+) -> bool:
+    """Disable RXPS for a managed source and prove continuous receive mode."""
+    if not saved.enabled:
+        print("[rxps] OTA source was already off; leaving it unchanged")
+        return False
+
+    reply = mutate_source_rxps(args, "set radio.rxps off")
+    if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+        raise OtaError(f"OTA source did not confirm RXPS off: {reply}")
+    verified = read_source_rxps(args)
+    if verified.enabled:
+        raise OtaError("OTA source RXPS did not read back as off")
+    print("[rxps] OTA source temporarily off for TempRadio transfer")
+    return True
+
+
+def rxps_restore_command(saved: RxpsSettings) -> str:
+    if saved.level is not None and 1 <= saved.level <= 10:
+        if saved.preamble in (16, 32):
+            return (
+                f"set radio.rxps level {saved.level} "
+                f"preamble {saved.preamble}"
+            )
+        return f"set radio.rxps level {saved.level}"
+    return f"set radio.rxps {saved.rx_us} {saved.sleep_us}"
+
+
+def restore_source_rxps(
+    args: argparse.Namespace,
+    saved: RxpsSettings,
+) -> None:
+    """Restore and verify a managed source's exact saved RXPS preference."""
+    current = read_source_rxps(args)
+    if saved.enabled:
+        if current != saved:
+            reply = mutate_source_rxps(args, rxps_restore_command(saved))
+            if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+                raise OtaError(f"OTA source did not restore RXPS: {reply}")
+    elif current.enabled:
+        reply = mutate_source_rxps(args, "set radio.rxps off")
+        if re.search(r"\boff\b", reply, re.IGNORECASE) is None:
+            raise OtaError(f"OTA source did not restore RXPS-off: {reply}")
+
+    verified = read_source_rxps(args)
+    if verified != saved:
+        raise OtaError("OTA source RXPS settings did not restore exactly")
+    print("[rxps] OTA source original RXPS settings restored")
+
+
+def source_rxps_connection(args: argparse.Namespace) -> dict[str, object]:
+    """Describe the managed CLI without retaining an admin credential."""
+    serial_port = getattr(args, "source_cli_serial", None) or getattr(
+        args, "source_serial", None
+    )
+    tcp_console = getattr(args, "source_cli_tcp", None)
+    if serial_port:
+        return {
+            "kind": "serial",
+            "endpoint": str(serial_port),
+            "baud": getattr(args, "source_baud", None),
+        }
+    if tcp_console:
+        return {
+            "kind": "tcp-console",
+            "endpoint": str(tcp_console),
+        }
+    raise OtaError("cannot preserve source RXPS without a managed source CLI")
+
+
+def source_rxps_recovery_payload(
+    args: argparse.Namespace,
+    saved: RxpsSettings,
+) -> dict[str, object]:
+    return {
+        "connection": source_rxps_connection(args),
+        "rxps_enabled": saved.enabled,
+        "rxps_rx_us": saved.rx_us,
+        "rxps_sleep_us": saved.sleep_us,
+        "rxps_level": saved.level,
+        "rxps_preamble": saved.preamble,
+        "restore_command": (
+            rxps_restore_command(saved)
+            if saved.enabled else "set radio.rxps off"
+        ),
+    }
+
+
+def fsync_parent_directory(path: Path) -> None:
+    """Make a preceding replace/unlink durable on filesystems that support it."""
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        directory_fd = os.open(path.parent, flags)
+    except OSError as exc:
+        raise OtaError(
+            f"cannot open recovery directory for a durable update: {path.parent}: {exc}"
+        ) from exc
+    try:
+        os.fsync(directory_fd)
+    except OSError as exc:
+        raise OtaError(
+            f"cannot flush recovery directory update: {path.parent}: {exc}"
+        ) from exc
+    finally:
+        os.close(directory_fd)
+
+
+def write_private_recovery_file(path: Path, contents: str) -> Path:
+    """Atomically install a private recovery file after flushing its contents."""
+    if path.is_symlink():
+        raise OtaError(f"recovery path is a symbolic link: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(temporary_fd, "w", encoding="ascii", newline="\n") as output:
+            output.write(contents)
+            output.flush()
+            os.fsync(output.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+        fsync_parent_directory(path)
+    except BaseException:
+        try:
+            os.close(temporary_fd)
+        except OSError:
+            pass
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def retire_private_recovery_file(path: Path, label: str) -> None:
+    """Atomically remove an active private record after exact restoration."""
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_symlink():
+        raise OtaError(f"{label} path is a symbolic link: {path}")
+    retired = path.with_name(
+        f".{path.name}.restored-{os.getpid()}-{secrets.token_hex(4)}"
+    )
+    try:
+        os.replace(path, retired)
+        fsync_parent_directory(path)
+        retired.unlink()
+        fsync_parent_directory(path)
+    except OSError as exc:
+        raise OtaError(f"cannot retire {label} {path}: {exc}") from exc
+
+
+def retire_source_rxps_recovery(path: Path) -> None:
+    """Atomically remove an active source RXPS record after restoration."""
+    retire_private_recovery_file(path, "source RXPS recovery record")
+
+
+def write_source_rxps_recovery(
+    work_dir: Path,
+    args: argparse.Namespace,
+    saved: RxpsSettings,
+    *,
+    recovery_path: Path | None = None,
+) -> Path:
+    """Persist a non-secret, exact source RXPS restore record atomically."""
+    path = recovery_path or (work_dir / SOURCE_RXPS_RECOVERY_FILE)
+    if path.is_symlink():
+        raise OtaError(f"source RXPS recovery path is a symbolic link: {path}")
+    path = path.resolve()
+    payload = source_rxps_recovery_payload(args, saved)
+    return write_private_recovery_file(
+        path,
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+    )
+
+
+def read_source_rxps_recovery(
+    path: Path,
+    args: argparse.Namespace,
+) -> RxpsSettings:
+    """Load an exact saved preference only for the same managed source."""
+    if path.is_symlink():
+        raise OtaError(f"source RXPS recovery path is a symbolic link: {path}")
+    path = path.resolve()
+    if not path.is_file():
+        raise OtaError(f"source RXPS recovery file is unavailable: {path}")
+    if stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise OtaError(f"source RXPS recovery file is not private (0600): {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise OtaError(f"cannot read source RXPS recovery file {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise OtaError(f"invalid source RXPS recovery record: {path}")
+    if payload.get("connection") != source_rxps_connection(args):
+        raise OtaError(
+            "source RXPS recovery record belongs to a different CLI endpoint: "
+            f"{path}"
+        )
+    enabled = payload.get("rxps_enabled")
+    rx_us = payload.get("rxps_rx_us")
+    sleep_us = payload.get("rxps_sleep_us")
+    level = payload.get("rxps_level")
+    preamble = payload.get("rxps_preamble")
+    if (
+        type(enabled) is not bool
+        or type(rx_us) is not int
+        or type(sleep_us) is not int
+        or not RXPS_MIN_PERIOD_US <= rx_us <= RXPS_MAX_PERIOD_US
+        or not RXPS_MIN_PERIOD_US <= sleep_us <= RXPS_MAX_PERIOD_US
+        or (level is not None and (type(level) is not int or not 0 <= level <= 10))
+        or (preamble is not None and preamble not in (0, 16, 32))
+    ):
+        raise OtaError(f"invalid source RXPS values in recovery record: {path}")
+    saved = RxpsSettings(enabled, rx_us, sleep_us, level, preamble)
+    expected_command = (
+        rxps_restore_command(saved) if saved.enabled else "set radio.rxps off"
+    )
+    if payload.get("restore_command") != expected_command:
+        raise OtaError(f"source RXPS recovery command is inconsistent: {path}")
+    return saved
+
+
 def write_target_rxps_recovery(
     work_dir: Path,
     target_name: str,
@@ -2487,14 +2810,10 @@ def write_target_rxps_recovery(
             for label, version in participant_versions.items()
         },
     }
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
+    return write_private_recovery_file(
+        path,
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="ascii",
     )
-    temporary.chmod(0o600)
-    os.replace(temporary, path)
-    return path
 
 
 def apply_remote_rxps_policy(
@@ -2585,16 +2904,7 @@ def restore_remote_rxps(
     )
     if saved.enabled:
         if current != saved:
-            if saved.level is not None and 1 <= saved.level <= 10:
-                if saved.preamble in (16, 32):
-                    command = (
-                        f"set radio.rxps level {saved.level} "
-                        f"preamble {saved.preamble}"
-                    )
-                else:
-                    command = f"set radio.rxps level {saved.level}"
-            else:
-                command = f"set radio.rxps {saved.rx_us} {saved.sleep_us}"
+            command = rxps_restore_command(saved)
             reply = controller.remote_command(
                 target_name,
                 command,
@@ -2674,14 +2984,10 @@ def write_relay_timing_recovery(
         }
         for item in settings
     ]
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
+    return write_private_recovery_file(
+        path,
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="ascii",
     )
-    temporary.chmod(0o600)
-    os.replace(temporary, path)
-    return path
 
 
 def enforce_relay_timing(
@@ -2868,6 +3174,73 @@ def remote_command_with_seeder(
     return retry_transmission(run_once, f"{command!r} on {target}")
 
 
+def wait_for_completed_manifest_verification(
+    controller: Controller,
+    args: argparse.Namespace,
+    manifest_id: str,
+    status: str,
+    seeder: SeederProcess | None,
+) -> str:
+    """Bound a retained store's transient boot-time verification state."""
+    if "verifying staged blocks" not in status.lower():
+        return status
+
+    deadline = time.monotonic() + args.discovery_timeout
+    last_status = status
+    while True:
+        ensure_seeder_running(
+            seeder, "while waiting for a completed previous manifest"
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise OtaError(
+                f"timed out waiting for previous mOTA {manifest_id} staged "
+                f"block verification: {last_status}"
+            )
+        time.sleep(min(float(args.discovery_interval), remaining))
+        ensure_seeder_running(
+            seeder, "while waiting for a completed previous manifest"
+        )
+        try:
+            last_status = controller.remote_command(
+                args.target, "ota status", retry=False
+            )
+        except TransmissionError as exc:
+            print(
+                "[download] previous staged-block verification status reply "
+                f"was lost; retrying within the discovery window: {exc}"
+            )
+            continue
+
+        lowered = last_status.lower()
+        active_id = download_manifest_id(last_status)
+        if active_id is not None and active_id != manifest_id:
+            raise OtaError(
+                f"previous mOTA changed during staged-block verification: "
+                f"expected {manifest_id}, got {active_id}; "
+                f"status: {last_status}"
+            )
+        if "no download" in lowered:
+            return last_status
+        if active_id is None:
+            raise OtaError(
+                f"previous mOTA changed during staged-block verification: "
+                f"expected {manifest_id}, got unknown; status: {last_status}"
+            )
+        if "download: failed" in lowered:
+            raise OtaError(
+                f"previous mOTA {manifest_id} failed staged-block "
+                f"verification: {last_status}"
+            )
+        if "ready to install" in lowered:
+            return last_status
+        if "verifying staged blocks" not in lowered:
+            raise OtaError(
+                f"previous mOTA {manifest_id} became incomplete while "
+                f"verifying staged blocks: {last_status}"
+            )
+
+
 def find_and_start_pull(
     controller: Controller,
     args: argparse.Namespace,
@@ -2891,10 +3264,14 @@ def find_and_start_pull(
                 )
         elif active_id == getattr(args, "clear_completed_manifest", None):
             expected_hash = args.clear_completed_on_body_hash
-            if "ready to install" not in status.lower():
+            status = wait_for_completed_manifest_verification(
+                controller, args, active_id, status, seeder
+            )
+            manager_is_idle = "no download" in status.lower()
+            if not manager_is_idle and "ready to install" not in status.lower():
                 raise OtaError(
-                    f"refusing to clear previous mOTA {active_id} because it is "
-                    f"not complete: {status}"
+                    f"refusing to clear previous mOTA {active_id} because "
+                    f"it is not complete: {status}"
                 )
             identity = remote_command_with_seeder(
                 controller, args.target, "ota self", seeder,
@@ -2909,36 +3286,46 @@ def find_and_start_pull(
                     f"refusing to clear previous mOTA {active_id}: running body "
                     f"hash is {running_hash or 'unknown'}, expected {expected_hash}"
                 )
-            try:
-                cancel_reply = controller.remote_command(
-                    args.target, "ota cancel", retry=False
+            if manager_is_idle:
+                print(
+                    f"[download] previous session {active_id} became idle after "
+                    f"proving running body {expected_hash}; persistent erasure "
+                    "is not inferred and no IDLE cancel was sent"
                 )
-            except TransmissionError as cancel_error:
-                resolved = remote_command_with_seeder(
-                    controller, args.target, "ota status", seeder,
-                    "while resolving a lost completed-manifest cancel reply",
-                )
-                if "no download" not in resolved.lower():
-                    raise OtaError(
-                        f"completed-manifest cancel outcome is ambiguous: {resolved}"
-                    ) from cancel_error
             else:
-                if not cancel_reply.startswith("OK"):
-                    raise OtaError(
-                        f"could not clear completed previous mOTA: {cancel_reply}"
+                try:
+                    cancel_reply = controller.remote_command(
+                        args.target, "ota cancel", retry=False
                     )
-            status = remote_command_with_seeder(
-                controller, args.target, "ota status", seeder,
-                "after clearing a completed previous manifest",
-            )
-            if "no download" not in status.lower():
-                raise OtaError(
-                    f"completed previous mOTA {active_id} remains: {status}"
+                except TransmissionError as cancel_error:
+                    resolved = remote_command_with_seeder(
+                        controller, args.target, "ota status", seeder,
+                        "while resolving a lost completed-manifest cancel reply",
+                    )
+                    if "no download" not in resolved.lower():
+                        raise OtaError(
+                            "completed-manifest cancel outcome is ambiguous: "
+                            f"{resolved}"
+                        ) from cancel_error
+                else:
+                    if not cancel_reply.startswith("OK"):
+                        raise OtaError(
+                            "could not clear completed previous mOTA: "
+                            f"{cancel_reply}"
+                        )
+                status = remote_command_with_seeder(
+                    controller, args.target, "ota status", seeder,
+                    "after clearing a completed previous manifest",
                 )
-            print(
-                f"[download] cleared completed previous session {active_id} "
-                f"after proving running body {expected_hash}"
-            )
+                if "no download" not in status.lower():
+                    raise OtaError(
+                        f"completed previous mOTA {active_id} remains: {status}"
+                    )
+                print(
+                    f"[download] detached completed previous session {active_id} "
+                    f"after proving running body {expected_hash}; persistent "
+                    "erasure is not inferred"
+                )
         elif not args.replace_active_download:
             raise OtaError(
                 f"destination already has mOTA {active_id} staged or downloading; "
@@ -2956,9 +3343,23 @@ def find_and_start_pull(
     deadline = time.monotonic() + args.discovery_timeout
     last_reply = ""
     while time.monotonic() < deadline:
-        last_reply = remote_command_with_seeder(
-            controller, args.target, "ota ls", seeder, "during discovery"
-        )
+        ensure_seeder_running(seeder, "during discovery")
+        try:
+            last_reply = controller.remote_command(
+                args.target, "ota ls", retry=False
+            )
+        except TransmissionError as exc:
+            # `ota ls` is a discovery broadcast followed by an ordinary admin
+            # reply. On a busy half-duplex TempRadio channel that reply can be
+            # lost even though discovery was sent. Do not rebroadcast it in the
+            # generic retry loop; the exact pull below is safe, and its existing
+            # status reconciliation proves whether a lost pull reply started the
+            # requested manifest.
+            last_reply = f"reply lost: {exc}"
+            print(
+                "[download] `ota ls` reply was lost; attempting the exact "
+                f"manifest {package.manifest_id}"
+            )
 
         def attempt_pull() -> bool:
             try:
@@ -3140,9 +3541,16 @@ def arm_target_temp_radio(
                 "[destination] TempRadio reply was lost; probing the declared "
                 "temporary channel"
             )
-            controller.set_radio(temp_radio, "probe destination TempRadio state")
+            shared_controller = bool(
+                getattr(args, "source_shares_controller", False)
+            )
             found_on_temp = False
             try:
+                switch_controller_to_temp_radio(
+                    controller, args, command, temp_radio
+                )
+                if shared_controller:
+                    time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
                 identity = controller.remote_command(
                     args.target, "ota self", retry=False
                 )
@@ -3155,9 +3563,20 @@ def arm_target_temp_radio(
             except (OtaError, TransmissionError):
                 pass
             finally:
-                controller.set_radio(
-                    normal_radio, "restore controller after TempRadio probe"
-                )
+                # Always reassert the saved Binary tuple, even if ending the
+                # shared source's local live override fails. The caller owns a
+                # conservative source/target cleanup flag before entering this
+                # helper, so either failure is retried by outer cleanup.
+                try:
+                    if shared_controller:
+                        # The shared Full Companion entered TempRadio through
+                        # its bounded local command. Leave it through that same
+                        # path without ever persisting the temporary tuple.
+                        shorten_source_temp_window(args)
+                finally:
+                    controller.set_radio(
+                        normal_radio, "restore controller after TempRadio probe"
+                    )
             if found_on_temp:
                 print(
                     "[destination] resolved lost TempRadio reply from the exact "
@@ -3165,7 +3584,7 @@ def arm_target_temp_radio(
                 )
                 return
 
-            # The 2-second scheduled handoff is long past by the time the
+            # The 1.5-second scheduled handoff is long past by the time the
             # temporary-channel probe times out. An exact identity reply back
             # on the normal channel therefore proves that the target did not
             # remain on TempRadio, making a bounded replay safe.
@@ -3350,18 +3769,64 @@ def shorten_source_temp_window(
 ) -> bool:
     if args.source_already_temp:
         return True
-    if getattr(args, "source_shares_controller", False):
-        print("[source] ending shared Full Companion TempRadio before restore")
-        output = source_cli_command(args, "normalradio", check=check)
-        if not output and not check:
-            print(
-                "[warn] could not end the shared source TempRadio window; "
-                "end it with `normalradio` before restoring the controller",
-                file=sys.stderr,
+    shares_controller = getattr(args, "source_shares_controller", False)
+    label = "shared Full Companion" if shares_controller else "managed OTA source"
+    print(f"[source] ending {label} TempRadio before restore")
+
+    # Current full-parser sources can cancel the lease immediately. For a
+    # separate legacy source, a rejected `normalradio` falls back to its
+    # bounded one-minute lease below. A shared source cannot use that fallback:
+    # its normal tuple must be proven before the Binary controller is restored.
+    output = source_cli_command(
+        args,
+        "normalradio",
+        check=check if shares_controller else False,
+    )
+    if output:
+        deadline = time.monotonic() + SHARED_SOURCE_NORMAL_TIMEOUT_SECONDS
+        while True:
+            status = source_cli_command(
+                args,
+                "tempradio",
+                check=check if shares_controller else False,
             )
-            return False
-        time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
-        return True
+            lowered = status.strip().lower()
+            if lowered.startswith("tempradio inactive"):
+                print(f"[source] {label} TempRadio is inactive")
+                return True
+            if not lowered.startswith(("tempradio active:", "tempradio pending:")):
+                if not shares_controller:
+                    break
+                error = OtaError(
+                    "shared Full Companion returned an unexpected TempRadio "
+                    f"status after normalradio: {status or 'no output'}"
+                )
+                if check:
+                    raise error
+                print(f"[warn] {error}", file=sys.stderr)
+                return False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                error = OtaError(
+                    f"{label} did not leave TempRadio within "
+                    f"{SHARED_SOURCE_NORMAL_TIMEOUT_SECONDS} seconds"
+                )
+                if check:
+                    raise error
+                print(f"[warn] {error}", file=sys.stderr)
+                return False
+            time.sleep(min(SHARED_SOURCE_NORMAL_POLL_SECONDS, remaining))
+    elif shares_controller:
+        print(
+            "[warn] could not end the shared source TempRadio window; "
+            "end it with `normalradio` before restoring the controller",
+            file=sys.stderr,
+        )
+        return False
+
+    # Compatibility for older separate source CLIs without `normalradio` or a
+    # TempRadio status query. Re-arm the same tuple for one minute and wait out
+    # the complete bounded lease before reporting that RXPS may be restored.
     command = temp_radio_command_for_minutes(args, TEMP_RADIO_RETURN_MINUTES)
     print(
         f"[source] scheduling return to the normal channel in "
@@ -3375,7 +3840,27 @@ def shorten_source_temp_window(
             file=sys.stderr,
         )
         return False
+    time.sleep(
+        TEMP_RADIO_RETURN_MINUTES * 60 + TEMP_RADIO_RETURN_MARGIN_SECONDS
+    )
+    print("[source] managed OTA source bounded TempRadio lease expired")
     return True
+
+
+def switch_controller_to_temp_radio(
+    controller: Controller,
+    args: argparse.Namespace,
+    temp_command: str,
+    temp_radio: RadioSettings,
+) -> None:
+    """Enter TempRadio without overwriting a shared Companion's saved tuple."""
+    if getattr(args, "source_shares_controller", False):
+        # This local command changes only the bounded live radio tuple. A Binary
+        # `set radio` would persist the temporary tuple, leaving `normalradio`
+        # with no saved normal tuple to restore.
+        source_cli_command(args, temp_command)
+        return
+    controller.set_radio(temp_radio, "switch controller to TempRadio")
 
 
 def verify_installed(
@@ -3606,6 +4091,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="destination platform for --prepare-only (detected during a live run)",
     )
     parser.add_argument("--work-dir", type=Path)
+    parser.add_argument(
+        "--source-rxps-recovery-file",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--meshcli", default="meshcli")
     parser.add_argument("--motatool", default="motatool")
     parser.add_argument(
@@ -3640,7 +4130,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "TCP source is the controller's own Full Companion; verify its "
-            "port-5000 identity and let the controller radio switch move both"
+            "port-5000 identity and use its local CLI for the bounded live "
+            "TempRadio override without persisting that tuple through Binary"
         ),
     )
     parser.add_argument(
@@ -3699,6 +4190,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="permit reinstalling the same version or installing an older one",
     )
     return parser
+
+
+def serial_paths_match(first: str, second: str) -> bool:
+    """Recognize two names for one serial endpoint, including /dev symlinks."""
+    try:
+        if os.path.samefile(first, second):
+            return True
+    except OSError:
+        # One or both paths may not exist yet (common in dry-run tests and after
+        # a USB reset), but resolving existing symlink components still catches
+        # stable by-id aliases of the same eventual device.
+        pass
+    return Path(first).resolve(strict=False) == Path(second).resolve(strict=False)
 
 
 def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
@@ -3773,6 +4277,14 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error(
                 "--source-tcp also needs --source-cli-serial, --source-cli-tcp, or --source-already-temp"
             )
+        if args.source_already_temp and not args.source_tcp:
+            parser.error("--source-already-temp requires --source-tcp")
+        if args.source_already_temp and (
+            args.source_cli_serial or args.source_cli_tcp
+        ):
+            parser.error(
+                "--source-already-temp cannot be combined with a managed source CLI"
+            )
         if args.source_shares_controller and not (
             args.source_tcp and args.source_cli_tcp
         ):
@@ -3783,11 +4295,17 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error(
                 "--source-shares-controller and --source-already-temp are mutually exclusive"
             )
+        if args.source_shares_controller and args.leave_controller_radio:
+            parser.error(
+                "--leave-controller-radio cannot be combined with a shared "
+                "managed source because source RXPS must be restored only "
+                "after its normal radio is verified"
+            )
         if args.controller_serial and args.source_serial:
-            if os.path.abspath(args.controller_serial) == os.path.abspath(args.source_serial):
+            if serial_paths_match(args.controller_serial, args.source_serial):
                 parser.error("controller and source must be separate nodes/serial ports")
         if args.controller_serial and args.source_cli_serial:
-            if os.path.abspath(args.controller_serial) == os.path.abspath(args.source_cli_serial):
+            if serial_paths_match(args.controller_serial, args.source_cli_serial):
                 parser.error("controller and source CLI must use separate serial ports")
     unsafe_text = {
         "TARGET_NODE": args.target,
@@ -3889,6 +4407,23 @@ def make_work_dir(requested: Path | None) -> Path:
     return path
 
 
+def validate_source_recovery_location(
+    recovery_path: Path | None, work_dir: Path
+) -> Path | None:
+    """Keep caller-owned chain recovery state outside per-attempt artifacts."""
+    if recovery_path is None:
+        return None
+    resolved_recovery = recovery_path.resolve(strict=False)
+    resolved_work = work_dir.resolve(strict=True)
+    if resolved_recovery == resolved_work or resolved_recovery.is_relative_to(
+        resolved_work
+    ):
+        raise OtaError(
+            "--source-rxps-recovery-file must be outside the run work directory"
+        )
+    return resolved_recovery
+
+
 def offline_target(args: argparse.Namespace) -> TargetInfo:
     target_id_text = args.target_id.removeprefix("0x").removeprefix("0X")
     if not re.fullmatch(r"[0-9A-Fa-f]{8}", target_id_text):
@@ -3932,12 +4467,49 @@ def main(
     seeder: SeederProcess | None = None
     seeder_attempted = False
     source_temp_owned = False
+    source_rxps_saved: RxpsSettings | None = None
+    source_rxps_changed = False
+    source_rxps_recovery_path: Path | None = None
     target_temp_owned = False
     target_rxps_saved: RxpsSettings | None = None
     target_rxps_changed = False
     armed_relay_values: list[tuple[str, str]] = []
     relay_timing_settings: list[RelayTimingSettings] = []
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
+    temp_command = f"tempradio {args.temp_radio}"
+
+    def restore_source_rxps_once(context: str) -> None:
+        """Restore the source only after its ordinary radio is proven active."""
+        nonlocal source_rxps_changed
+        if not source_rxps_changed or source_rxps_saved is None:
+            return
+        if source_temp_owned:
+            raise OtaError(
+                f"cannot restore OTA source RXPS during {context}: its "
+                "TempRadio state is still active or uncertain"
+            )
+        if args.source_shares_controller and controller_changed:
+            raise OtaError(
+                f"cannot restore OTA source RXPS during {context}: the "
+                "shared controller has not returned to its normal radio"
+            )
+        # Keep this flag armed until exact readback succeeds. A transient
+        # restore failure remains retryable from the outer finally block; the
+        # restore mutation itself is deliberately idempotent.
+        restore_source_rxps(args, source_rxps_saved)
+        source_rxps_changed = False
+
+    def retire_local_source_rxps_recovery() -> None:
+        """A caller-supplied chain record remains owned by that caller."""
+        nonlocal source_rxps_recovery_path
+        if (
+            source_rxps_recovery_path is None
+            or args.source_rxps_recovery_file is not None
+        ):
+            return
+        retire_source_rxps_recovery(source_rxps_recovery_path)
+        source_rxps_recovery_path = None
+
     try:
         preflight_inputs(args)
         if not args.prepare_only and not password:
@@ -3949,8 +4521,61 @@ def main(
         if any(char in password for char in "\r\n\0"):
             raise OtaError("admin password contains an unsupported control character")
         args.relay_values = [parse_relay(value, password) for value in args.relay]
+        # Retain recovery state before any source mutation. A hard kill after
+        # RXPS is disabled must not erase the only copy of its saved setting.
+        work_dir = make_work_dir(args.work_dir)
+        args.source_rxps_recovery_file = validate_source_recovery_location(
+            args.source_rxps_recovery_file, work_dir
+        )
         if not args.prepare_only:
             preflight_source_cli(args)
+            if has_managed_source_cli(args):
+                try:
+                    current_source_rxps = read_source_rxps(args)
+                except TransmissionStopped:
+                    raise
+                except OtaError as exc:
+                    raise OtaError(
+                        "cannot safely preserve or disable OTA source RXPS "
+                        f"because its current state is unavailable: {exc}"
+                    ) from exc
+                source_rxps_recovery_path = (
+                    args.source_rxps_recovery_file
+                    if args.source_rxps_recovery_file is not None
+                    else work_dir / SOURCE_RXPS_RECOVERY_FILE
+                )
+                if source_rxps_recovery_path.exists():
+                    source_rxps_saved = read_source_rxps_recovery(
+                        source_rxps_recovery_path, args
+                    )
+                    print(
+                        "[rxps] loaded original source recovery settings: "
+                        f"{source_rxps_recovery_path}"
+                    )
+                else:
+                    source_rxps_saved = current_source_rxps
+                    source_rxps_recovery_path = write_source_rxps_recovery(
+                        work_dir,
+                        args,
+                        source_rxps_saved,
+                        recovery_path=source_rxps_recovery_path,
+                    )
+                    print(
+                        "[rxps] source recovery settings: "
+                        f"{source_rxps_recovery_path}"
+                    )
+                # Arm cleanup before the mutating command. The command may
+                # reach the source even if its acknowledgement is lost. A
+                # retained record can also differ because a killed prior run
+                # left the source off; restore that original at cleanup.
+                source_rxps_changed = (
+                    current_source_rxps != source_rxps_saved
+                    or source_rxps_saved.enabled
+                )
+                disabled_now = disable_source_rxps(
+                    args, current_source_rxps
+                )
+                source_rxps_changed = source_rxps_changed or disabled_now
             if controller is None:
                 controller = Controller(args, password)
             verify_shared_source_identity(controller, args)
@@ -3960,10 +4585,11 @@ def main(
         else:
             target = offline_target(args)
 
-        work_dir = make_work_dir(args.work_dir)
         if original_radio is not None:
             recovery_path = work_dir / "controller-radio.txt"
-            recovery_path.write_text(original_radio.meshcli_value() + "\n", encoding="ascii")
+            write_private_recovery_file(
+                recovery_path, original_radio.meshcli_value() + "\n"
+            )
             print(f"[controller] recovery settings: {recovery_path}")
         package_path, package, expected_body_hash = prepare_package(
             args, target, work_dir
@@ -4022,8 +4648,6 @@ def main(
         args.target_rxps_profile = target_rxps_profile
         confirm_update(args, target, package)
         freq, bandwidth, sf, cr, _minutes = args.temp_values
-        temp_command = f"tempradio {args.temp_radio}"
-
         temp_radio = RadioSettings(
             freq, bandwidth, sf, cr, original_radio.repeat
         )
@@ -4053,10 +4677,15 @@ def main(
         # can process TempRadio even when its reply is lost, so resolve that
         # ambiguity by probing its exact identity on the temporary channel
         # instead of replaying the command from the normal channel.
+        target_temp_owned = True
+        if args.source_shares_controller:
+            # A lost-reply probe can schedule the shared local source onto the
+            # temporary tuple. Own that possible override before entering the
+            # helper so outer cleanup retries any failed local restore.
+            source_temp_owned = True
         arm_target_temp_radio(
             controller, args, temp_command, temp_radio, original_radio
         )
-        target_temp_owned = True
         for relay_name, relay_password in args.relay_values:
             temp_reply = controller.remote_command(
                 relay_name, temp_command, password=relay_password
@@ -4064,18 +4693,23 @@ def main(
             require_temp_radio_reply(relay_name, temp_reply)
             armed_relay_values.append((relay_name, relay_password))
         if not args.source_already_temp and not args.source_shares_controller:
-            source_cli_command(args, temp_command)
+            # Arm cleanup before the mutating command because the source can
+            # enter TempRadio even when its acknowledgement is lost.
             source_temp_owned = True
+            source_cli_command(args, temp_command)
 
-        controller_changed = True
-        controller.set_radio(temp_radio, "switch controller to TempRadio")
         if args.source_shares_controller:
-            # The Full Companion OTA egress gate needs its local TempRadio
-            # state even though the Binary API has already moved the same
-            # physical radio. Enter it after persisting the temporary tuple;
-            # cleanup runs `normalradio` before the Binary restore.
-            source_cli_command(args, temp_command)
+            # Arm cleanup before the local command. Its reply can be lost after
+            # the shared physical radio has already scheduled the handoff.
             source_temp_owned = True
+        switch_controller_to_temp_radio(
+            controller, args, temp_command, temp_radio
+        )
+        # Arm Binary restoration only after the handoff succeeds. For a
+        # shared Full Companion the helper deliberately uses its bounded
+        # local TempRadio command so the temporary tuple is never persisted as
+        # the normal radio configuration.
+        controller_changed = True
         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
 
         for relay_name, relay_password in args.relay_values:
@@ -4111,11 +4745,6 @@ def main(
                 target_temp_owned = False
                 shorten_relay_temp_windows(controller, args)
                 armed_relay_values.clear()
-                seeder.stop()
-                seeder = None
-                if source_temp_owned:
-                    shorten_source_temp_window(args)
-                    source_temp_owned = False
             if target_rxps_changed and target_rxps_saved is not None:
                 if args.leave_controller_radio:
                     print(
@@ -4124,10 +4753,28 @@ def main(
                         f"{TARGET_RXPS_RECOVERY_FILE} after normalradio"
                     )
                 else:
+                    # Restore while the controller and destination still share
+                    # the temporary tuple. The destination's one-minute return
+                    # window remains bounded after this exact readback.
                     restore_remote_rxps(
                         controller, args.target, target_rxps_saved
                     )
                 target_rxps_changed = False
+            seeder.stop()
+            seeder = None
+            if source_temp_owned and (
+                not args.leave_controller_radio
+                or not args.source_shares_controller
+            ):
+                if shorten_source_temp_window(args):
+                    source_temp_owned = False
+            if controller_changed and not args.leave_controller_radio:
+                controller.set_radio(
+                    original_radio, "restore controller radio after staging"
+                )
+                controller_changed = False
+            restore_source_rxps_once("stage-only cleanup")
+            retire_local_source_rxps_recovery()
             return 0
 
         install_confirmed = request_install(controller, args, package)
@@ -4153,9 +4800,12 @@ def main(
         # Stop seeding before returning the controller to its ordinary channel.
         seeder.stop()
         seeder = None
-        if source_temp_owned and not args.leave_controller_radio:
-            shorten_source_temp_window(args)
-            source_temp_owned = False
+        if source_temp_owned and (
+            not args.leave_controller_radio
+            or not args.source_shares_controller
+        ):
+            if shorten_source_temp_window(args):
+                source_temp_owned = False
         controller.set_radio(original_radio, "restore controller radio for verification")
         controller_changed = False
         relay_wait = (
@@ -4190,6 +4840,8 @@ def main(
                     temp_radio, "return controller to TempRadio after verification"
                 )
                 controller_changed = True
+        restore_source_rxps_once("successful update cleanup")
+        retire_local_source_rxps_recovery()
         return 0
     except KeyboardInterrupt:
         print("\nInterrupted; any partial target download remains resumable.", file=sys.stderr)
@@ -4218,9 +4870,8 @@ def main(
             ):
                 if not controller_changed:
                     try:
-                        controller.set_radio(
-                            temp_radio,
-                            "return controller to TempRadio for failure cleanup",
+                        switch_controller_to_temp_radio(
+                            controller, args, temp_command, temp_radio
                         )
                         controller_changed = True
                         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
@@ -4286,13 +4937,20 @@ def main(
                                     f"{exc}",
                                     file=sys.stderr,
                                 )
-            if source_temp_owned and not args.leave_controller_radio:
-                shorten_source_temp_window(args, check=False)
+            if source_temp_owned and (
+                not args.leave_controller_radio
+                or not args.source_shares_controller
+            ):
+                if shorten_source_temp_window(args, check=False):
+                    source_temp_owned = False
             if (
                 controller is not None
                 and controller_changed
                 and original_radio is not None
                 and not args.leave_controller_radio
+                and not (
+                    args.source_shares_controller and source_temp_owned
+                )
             ):
                 try:
                     controller.set_radio(original_radio, "restore controller radio after failure")
@@ -4319,6 +4977,31 @@ def main(
                     print(
                         "CRITICAL: could not restore destination RXPS; use "
                         f"{TARGET_RXPS_RECOVERY_FILE}: {exc}",
+                        file=sys.stderr,
+                    )
+            if source_rxps_changed:
+                try:
+                    restore_source_rxps_once("failure cleanup")
+                except (OtaError, OSError) as exc:
+                    recovery_hint = (
+                        str(source_rxps_recovery_path)
+                        if source_rxps_recovery_path is not None
+                        else SOURCE_RXPS_RECOVERY_FILE
+                    )
+                    print(
+                        "CRITICAL: could not safely restore OTA source RXPS; "
+                        "leave RXPS off and return the source to its normal "
+                        "radio before restoring it manually with "
+                        f"{recovery_hint}: {exc}",
+                        file=sys.stderr,
+                    )
+            if not source_rxps_changed:
+                try:
+                    retire_local_source_rxps_recovery()
+                except (OtaError, OSError) as exc:
+                    print(
+                        "WARNING: source RXPS was restored, but its completed "
+                        f"recovery record could not be retired: {exc}",
                         file=sys.stderr,
                     )
         if work_dir is not None:

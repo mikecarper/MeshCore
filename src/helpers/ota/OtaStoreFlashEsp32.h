@@ -3,6 +3,7 @@
 #if defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
 
 #include "OtaStore.h"
+#include "OtaFlashLayout_esp32.h"
 #include "esp_partition.h"
 
 // Persistent flash-backed OtaStore for ESP32 (A/B). Stages the received `.mota` in the INACTIVE OTA
@@ -41,6 +42,15 @@ namespace ota {
 class OtaStoreFlashEsp32 : public OtaStore {
   static const uint32_t SEC = 4096;          // ESP32 NOR flash erase unit
 
+  enum class CandidateProbe : uint8_t { INVALID, VALID, IO_ERROR };
+  struct StagedCandidate {
+    MotaEsp32StageLayout layout;
+    bool full = false;
+    uint32_t image_size = 0;
+    uint32_t meta_bytes = 0;
+    uint32_t pay_size = 0;
+  };
+
   const esp_partition_t* _part = nullptr;    // inactive OTA slot (acquired in plan_layout/begin)
   uint32_t _psize = 0;                       // slot size
 
@@ -62,7 +72,7 @@ class OtaStoreFlashEsp32 : public OtaStore {
 
   // RX-safe staging buffers
   uint8_t* _meta = nullptr;                  // heap, sized per fetch: header+manifest+leaves(+full trailer)
-  uint8_t  _pay[SEC];                        // one sliding payload sector (slot-sector aligned)
+  alignas(4) uint8_t _pay[SEC];              // one sliding payload sector (slot-sector aligned)
   uint32_t _pay_sec = 0;                     // slot sector index currently in _pay (0 = none open)
   uint8_t  _trailer[5];
   uint32_t _meta_flush = 0;                  // whole-sector byte count to program for the meta buffer
@@ -73,6 +83,12 @@ class OtaStoreFlashEsp32 : public OtaStore {
 
   bool acquire();                            // resolve the inactive slot (idempotent)
   bool layout();                             // compute placement from _full/_image_size/_meta_bytes/_pay_size
+  void set_layout(const MotaEsp32StageLayout& layout);
+  CandidateProbe probe_candidate(uint32_t offset,
+                                 StagedCandidate& candidate) const;
+  static bool probe_staged_header(void* context, uint32_t offset,
+                                  bool& reopenable);
+  static bool invalidate_staged_header(void* context, uint32_t offset);
   uint32_t pay_part(uint32_t L) const { return _pay_part0 + (L - _pay_log0); }   // payload slot offset
   bool in_trailer(uint32_t L) const { return L >= _total - 5; }
   uint32_t run(uint32_t pos, uint32_t remain) const;   // bytes from `pos` that stay in one region+sector
@@ -92,6 +108,7 @@ public:
   uint32_t capacity() const override { return _psize; }   // loose bound; plan_layout does the real check
   uint32_t staged_size() const override { return _total; }
   void clear() override;
+  bool discard() override;
   bool set_meta_size(uint32_t meta_bytes) override { return meta_bytes < OTA_ESP32_META_CAP; }
   bool finalize() override;
   void checkpoint() override;   // persist meta(leaves) + open payload sector so a reboot can resume

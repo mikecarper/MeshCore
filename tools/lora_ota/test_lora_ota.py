@@ -394,6 +394,32 @@ class FormatTests(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             ota.validate_args(args, parser)
 
+    def test_serial_aliases_cannot_identify_the_same_node(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            device = root / "ttyACM0"
+            device.touch()
+            alias = root / "by-id-radio"
+            alias.symlink_to(device)
+            parser = ota.build_parser()
+            for source_option in ("--source-serial", "--source-cli-serial"):
+                arguments = [
+                    "release.mota", "remote",
+                    "--controller-serial", str(device),
+                ]
+                if source_option == "--source-cli-serial":
+                    arguments.extend((
+                        "--source-tcp", "192.0.2.10:5001",
+                        source_option, str(alias),
+                    ))
+                else:
+                    arguments.extend((source_option, str(alias)))
+                args = parser.parse_args(arguments)
+                with self.subTest(source_option=source_option), \
+                        contextlib.redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit):
+                    ota.validate_args(args, parser)
+
     def test_intel_hex_rejects_an_excessive_address_span(self) -> None:
         def record(address: int, record_type: int, data: bytes) -> str:
             raw = bytes((len(data), address >> 8, address & 0xFF, record_type)) + data
@@ -504,6 +530,19 @@ class DebugTests(unittest.TestCase):
         self.assertNotIn("top-secret", rendered)
         self.assertIn("<REDACTED>", rendered)
 
+    def test_debug_stream_accepts_and_redacts_bytearray_output(self) -> None:
+        ota.DEBUG = True
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            ota.debug_stream(
+                "pending output",
+                bytearray(b"reply top-secret"),
+                ("top-secret",),
+            )
+        rendered = output.getvalue()
+        self.assertNotIn("top-secret", rendered)
+        self.assertIn("reply <REDACTED>", rendered)
+
     def test_meshcli_debug_redacts_admin_password(self) -> None:
         ota.DEBUG = True
         args = argparse.Namespace(
@@ -562,6 +601,579 @@ class DebugTests(unittest.TestCase):
 
 
 class SourceCliTests(unittest.TestCase):
+    @staticmethod
+    def source_args() -> argparse.Namespace:
+        return argparse.Namespace(
+            source_cli_serial=None,
+            source_serial="/dev/source",
+            source_cli_tcp=None,
+        )
+
+    def test_source_rxps_enabled_profile_is_saved_and_disabled(self) -> None:
+        args = self.source_args()
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            side_effect=(
+                "radio.rxps.config on,level=8,preamble=16,"
+                "rx=18205,sleep=20423",
+                "OK - off,18205,20423",
+                "radio.rxps.config off,level=8,preamble=16,"
+                "rx=18205,sleep=20423",
+            ),
+        ) as source_command:
+            saved = ota.read_source_rxps(args)
+            changed = ota.disable_source_rxps(args, saved)
+
+        self.assertEqual(
+            saved, ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        )
+        self.assertTrue(changed)
+        self.assertEqual(
+            [call.args[1] for call in source_command.call_args_list],
+            [
+                "get radio.rxps.config",
+                "set radio.rxps off",
+                "get radio.rxps.config",
+            ],
+        )
+
+    def test_source_rxps_recovery_record_preserves_exact_setting(self) -> None:
+        args = self.source_args()
+        args.source_baud = 115200
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            path = ota.write_source_rxps_recovery(
+                Path(directory), args, saved
+            )
+            payload = json.loads(path.read_text(encoding="ascii"))
+            mode = path.stat().st_mode & 0o777
+            recovered = ota.read_source_rxps_recovery(path, args)
+
+        self.assertEqual(mode, 0o600)
+        self.assertEqual(recovered, saved)
+        self.assertEqual(
+            payload,
+            {
+                "connection": {
+                    "baud": 115200,
+                    "endpoint": "/dev/source",
+                    "kind": "serial",
+                },
+                "restore_command": "set radio.rxps level 8 preamble 16",
+                "rxps_enabled": True,
+                "rxps_level": 8,
+                "rxps_preamble": 16,
+                "rxps_rx_us": 18205,
+                "rxps_sleep_us": 20423,
+            },
+        )
+
+    def test_source_rxps_recovery_flushes_file_and_directory(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            ota.os, "fsync"
+        ) as fsync:
+            ota.write_source_rxps_recovery(Path(directory), args, saved)
+        expected_calls = 1 if os.name == "nt" else 2
+        self.assertEqual(fsync.call_count, expected_calls)
+
+    def test_retired_source_rxps_record_is_no_longer_active(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = ota.write_source_rxps_recovery(root, args, saved)
+            ota.retire_source_rxps_recovery(path)
+            self.assertFalse(path.exists())
+            self.assertEqual(list(root.glob(".*.restored-*")), [])
+
+    def test_source_rxps_recovery_record_restores_saved_off_state(self) -> None:
+        args = self.source_args()
+        with tempfile.TemporaryDirectory() as directory:
+            path = ota.write_source_rxps_recovery(
+                Path(directory),
+                args,
+                ota.RxpsSettings(False, 18205, 20423, 8, 16),
+            )
+            payload = json.loads(path.read_text(encoding="ascii"))
+        self.assertEqual(payload["restore_command"], "set radio.rxps off")
+
+    def test_source_rxps_recovery_rejects_a_different_endpoint(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            path = ota.write_source_rxps_recovery(Path(directory), args, saved)
+            other = self.source_args()
+            other.source_serial = "/dev/other"
+            with self.assertRaisesRegex(ota.OtaError, "different CLI endpoint"):
+                ota.read_source_rxps_recovery(path, other)
+    def test_source_rxps_legacy_query_fallback(self) -> None:
+        args = self.source_args()
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            side_effect=("Unknown command", "radio.rxps on,65625,60000"),
+        ) as source_command:
+            saved = ota.read_source_rxps(args)
+
+        self.assertEqual(saved, ota.RxpsSettings(True, 65625, 60000))
+        self.assertEqual(
+            [call.args[1] for call in source_command.call_args_list],
+            ["get radio.rxps.config", "get radio.rxps"],
+        )
+
+    def test_source_rxps_already_off_is_not_changed(self) -> None:
+        args = self.source_args()
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            return_value=(
+                "radio.rxps.config off,level=8,preamble=16,"
+                "rx=18205,sleep=20423"
+            ),
+        ) as source_command:
+            saved = ota.read_source_rxps(args)
+            changed = ota.disable_source_rxps(args, saved)
+
+        self.assertFalse(changed)
+        source_command.assert_called_once_with(args, "get radio.rxps.config")
+
+    def test_source_rxps_disable_requires_off_readback(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=(
+                    "OK - off,18205,20423",
+                    "radio.rxps.config on,level=8,preamble=16,"
+                    "rx=18205,sleep=20423",
+                ),
+            ),
+            self.assertRaisesRegex(ota.OtaError, "did not read back as off"),
+        ):
+            ota.disable_source_rxps(args, saved)
+
+    def test_source_rxps_disable_retries_explicit_radio_busy(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=(
+                    ota.OtaError(
+                        "source rejected 'set radio.rxps off': "
+                        "Error: radio busy; retry"
+                    ),
+                    "OK - off,18205,20423",
+                    "radio.rxps.config off,level=8,preamble=16,"
+                    "rx=18205,sleep=20423",
+                ),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            self.assertTrue(ota.disable_source_rxps(args, saved))
+
+        self.assertEqual(
+            [call.args[1] for call in source_command.call_args_list],
+            [
+                "set radio.rxps off",
+                "set radio.rxps off",
+                "get radio.rxps.config",
+            ],
+        )
+        sleep.assert_called_once_with(
+            ota.source_rxps_busy_retry_delay(1)
+        )
+
+    def test_source_rxps_busy_retry_is_bounded(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        busy = ota.OtaError("Error: radio busy; retry")
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=[busy] * (ota.SOURCE_RXPS_BUSY_RETRY_LIMIT + 1),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+            self.assertRaisesRegex(
+                ota.OtaError,
+                f"remained radio busy after {ota.SOURCE_RXPS_BUSY_RETRY_LIMIT} bounded",
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            ota.disable_source_rxps(args, saved)
+
+        self.assertEqual(
+            source_command.call_count,
+            ota.SOURCE_RXPS_BUSY_RETRY_LIMIT + 1,
+        )
+        expected_delays = [
+            ota.source_rxps_busy_retry_delay(index)
+            for index in range(1, ota.SOURCE_RXPS_BUSY_RETRY_LIMIT + 1)
+        ]
+        self.assertEqual(len(set(expected_delays)), len(expected_delays))
+        self.assertEqual(
+            [call.args[0] for call in sleep.call_args_list], expected_delays
+        )
+        self.assertGreater(sum(expected_delays), 9.0)
+        self.assertLess(sum(expected_delays), 10.0)
+
+    def test_source_rxps_disable_does_not_retry_other_rejections(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=ota.OtaError("Error: unsupported"),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+            self.assertRaisesRegex(ota.OtaError, "unsupported"),
+        ):
+            ota.disable_source_rxps(args, saved)
+
+        source_command.assert_called_once_with(args, "set radio.rxps off")
+        sleep.assert_not_called()
+
+    def test_source_rxps_restore_uses_saved_level_and_preamble(self) -> None:
+        args = self.source_args()
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        disabled = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        with (
+            mock.patch.object(
+                ota, "read_source_rxps", side_effect=(disabled, saved)
+            ) as read_source,
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=(
+                    ota.OtaError("Error: radio busy; retry"),
+                    "OK - level 8,on,18205,20423,preamble=16",
+                ),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            ota.restore_source_rxps(args, saved)
+
+        self.assertEqual(read_source.call_count, 2)
+        self.assertEqual(
+            source_command.call_args_list,
+            [
+                mock.call(args, "set radio.rxps level 8 preamble 16"),
+                mock.call(args, "set radio.rxps level 8 preamble 16"),
+            ],
+        )
+        sleep.assert_called_once_with(
+            ota.source_rxps_busy_retry_delay(1)
+        )
+
+    def test_failure_cleanup_restores_source_rxps_once(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        disabled = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory) / "work"
+            argv = [
+                "release.mota",
+                "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(work_dir),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(
+                    ota,
+                    "read_source_rxps",
+                    side_effect=(saved, disabled, disabled, saved),
+                ) as read_source,
+                mock.patch.object(
+                    ota,
+                    "source_cli_command",
+                    side_effect=(
+                        "OK - off,18205,20423",
+                        "OK - level 8,on,18205,20423,preamble=16",
+                    ),
+                ) as source_command,
+                mock.patch.object(
+                    ota, "query_target", side_effect=ota.OtaError("synthetic failure")
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=mock.Mock())
+            recovery_exists = (
+                work_dir / ota.SOURCE_RXPS_RECOVERY_FILE
+            ).exists()
+
+        self.assertEqual(result, 2)
+        self.assertFalse(recovery_exists)
+        self.assertEqual(read_source.call_count, 4)
+        self.assertEqual(
+            [call.args[1] for call in source_command.call_args_list],
+            [
+                "set radio.rxps off",
+                "set radio.rxps level 8 preamble 16",
+            ],
+        )
+
+    def test_rerun_uses_persisted_source_rxps_instead_of_temporary_off(self) -> None:
+        original = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        currently_off = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            recovery_path = ota.write_source_rxps_recovery(
+                root,
+                argparse.Namespace(
+                    source_cli_serial=None,
+                    source_serial="/dev/source",
+                    source_cli_tcp=None,
+                    source_baud=115200,
+                ),
+                original,
+            )
+            argv = [
+                "release.mota",
+                "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--source-rxps-recovery-file", str(recovery_path),
+                "--work-dir", str(root / "attempt"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(
+                    ota, "read_source_rxps", return_value=currently_off
+                ),
+                mock.patch.object(
+                    ota, "disable_source_rxps", return_value=False
+                ) as disable,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                mock.patch.object(
+                    ota, "query_target", side_effect=ota.OtaError("synthetic failure")
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=mock.Mock())
+
+        self.assertEqual(result, 2)
+        disable.assert_called_once_with(mock.ANY, currently_off)
+        restore.assert_called_once_with(mock.ANY, original)
+
+    def test_source_recovery_file_inside_attempt_is_rejected_before_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory) / "attempt"
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(work_dir),
+                "--source-rxps-recovery-file",
+                str(work_dir / "controller-radio.txt"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli") as source_preflight,
+                mock.patch.object(ota, "read_source_rxps") as read_source,
+                mock.patch.object(ota, "disable_source_rxps") as disable_source,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=mock.Mock())
+
+        self.assertEqual(result, 2)
+        source_preflight.assert_not_called()
+        read_source.assert_not_called()
+        disable_source.assert_not_called()
+
+    def test_success_path_source_rxps_restore_failure_is_retried_in_finally(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        image = firmware(b"source-restore-retry" * 500, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        expected_body_hash = ota.parse_endf(image).body_hash
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        controller.remote_command.return_value = "OK"
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota",
+                "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            seeder = mock.Mock()
+            with contextlib.ExitStack() as stack:
+                for name in (
+                    "preflight_inputs",
+                    "preflight_source_cli",
+                    "verify_shared_source_identity",
+                    "confirm_update",
+                    "arm_target_temp_radio",
+                    "switch_controller_to_temp_radio",
+                    "find_and_start_pull",
+                    "monitor_download",
+                    "verify_installed",
+                ):
+                    stack.enter_context(mock.patch.object(ota, name))
+                stack.enter_context(
+                    mock.patch.object(ota, "read_source_rxps", return_value=saved)
+                )
+                stack.enter_context(
+                    mock.patch.object(ota, "disable_source_rxps", return_value=True)
+                )
+                restore_source = stack.enter_context(
+                    mock.patch.object(
+                        ota,
+                        "restore_source_rxps",
+                        side_effect=(
+                            ota.OtaError("transient restore failure"),
+                            None,
+                        ),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(ota, "query_target", return_value=target())
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        ota,
+                        "prepare_package",
+                        return_value=(
+                            Path("release.mota"),
+                            package,
+                            expected_body_hash,
+                        ),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        ota,
+                        "read_lora_ota_participant_versions",
+                        return_value={"destination": VERSION_NEW},
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        ota,
+                        "read_remote_rxps",
+                        return_value=ota.RxpsSettings(False, 0, 0),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(ota, "request_install", return_value=True)
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        ota, "shorten_source_temp_window", return_value=True
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        ota,
+                        "wait_for_post_install_identity",
+                        return_value=(
+                            "self body=1 image=2 base_hash="
+                            f"{expected_body_hash.hex().upper()}"
+                        ),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(ota, "SeederProcess", return_value=seeder)
+                )
+                stack.enter_context(mock.patch.object(ota.time, "sleep"))
+                stack.enter_context(
+                    mock.patch.object(ota, "source_cli_command", return_value="OK")
+                )
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        self.assertEqual(restore_source.call_count, 2)
+
+    def test_shared_failure_cleanup_never_persists_temp_radio_tuple(self) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        package = mock.Mock(
+            version="1.17.1.5",
+            kind="full",
+            target_id=0x1234ABCD,
+            manifest_id="01234567",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota", "remote",
+                "--controller-tcp", "127.0.0.1:5000",
+                "--source-tcp", "127.0.0.1:5001",
+                "--source-cli-tcp", "127.0.0.1:5002",
+                "--source-shares-controller",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "verify_shared_source_identity"),
+                mock.patch.object(
+                    ota,
+                    "read_source_rxps",
+                    return_value=ota.RxpsSettings(False, 0, 0),
+                ),
+                mock.patch.object(ota, "disable_source_rxps", return_value=False),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    return_value=(Path("release.mota"), package, None),
+                ),
+                mock.patch.object(
+                    ota, "read_lora_ota_participant_versions", return_value={}
+                ),
+                mock.patch.object(ota, "read_remote_rxps", return_value=None),
+                mock.patch.object(ota, "confirm_update"),
+                mock.patch.object(
+                    ota,
+                    "arm_target_temp_radio",
+                    side_effect=ota.OtaError("synthetic handoff failure"),
+                ),
+                mock.patch.object(ota, "shorten_target_temp_window"),
+                mock.patch.object(
+                    ota, "shorten_source_temp_window", return_value=False
+                ),
+                mock.patch.object(ota, "source_cli_command", return_value="OK") as source_cli,
+                mock.patch.object(ota.time, "sleep"),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        self.assertIn(
+            mock.call(mock.ANY, "tempradio 909.950,250,5,5,120"),
+            source_cli.call_args_list,
+        )
+        controller.set_radio.assert_not_called()
+
     def test_full_companion_tcp_console_command(self) -> None:
         connection = mock.MagicMock()
         connection.__enter__.return_value = connection
@@ -617,6 +1229,26 @@ class SourceCliTests(unittest.TestCase):
             "--source-cli-tcp", "192.0.2.10:5002",
         ])
         ota.validate_args(args, parser)
+
+    def test_already_temp_source_rejects_managed_cli_or_non_tcp_source(self) -> None:
+        parser = ota.build_parser()
+        cases = (
+            [
+                "--source-tcp", "192.0.2.10:5001",
+                "--source-cli-tcp", "192.0.2.10:5002",
+                "--source-already-temp",
+            ],
+            ["--source-serial", "/dev/source", "--source-already-temp"],
+        )
+        for source_arguments in cases:
+            args = parser.parse_args([
+                "release.mota", "remote", "--controller-serial",
+                "/dev/controller", *source_arguments,
+            ])
+            with self.subTest(source_arguments=source_arguments), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit):
+                ota.validate_args(args, parser)
 
     def test_source_preflight_accepts_seeder_only_status(self) -> None:
         args = argparse.Namespace(
@@ -950,6 +1582,113 @@ class DownloadSessionTests(unittest.TestCase):
             ],
         )
 
+    def test_completed_previous_session_waits_for_staged_verification(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 2s",
+            "OTA | download: ready to install 9/9 id=DEADBEEF 3s",
+            "self body=1 image=2 base_hash=0011223344556677",
+            "OK dropped session",
+            "OTA | no download",
+            "Updates 1/1",
+            f"OK pulling mid={self.package.manifest_id} -> flash (primary traffic)",
+        ])
+        seeder = mock.Mock()
+        with mock.patch.object(ota.time, "sleep"):
+            ota.find_and_start_pull(controller, args, self.package, seeder)
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status", "ota status", "ota status", "ota self",
+                "ota cancel", "ota status", "ota ls",
+                f"ota pull {self.package.manifest_id} flash",
+            ],
+        )
+        seeder.ensure_running.assert_any_call(
+            "while waiting for a completed previous manifest"
+        )
+
+    def test_completed_previous_session_does_not_cancel_idle_manager(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | no download",
+            "self body=1 image=2 base_hash=0011223344556677",
+            "Updates 1/1",
+            f"OK pulling mid={self.package.manifest_id} -> flash (primary traffic)",
+        ])
+        with mock.patch.object(ota.time, "sleep"):
+            ota.find_and_start_pull(controller, args, self.package)
+        self.assertEqual(
+            controller.commands,
+            [
+                "ota status", "ota status", "ota self", "ota ls",
+                f"ota pull {self.package.manifest_id} flash",
+            ],
+        )
+
+    def test_completed_previous_verification_refuses_changed_manifest(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | download: ready to install 9/9 id=CAFEBABE 2s",
+        ])
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "changed during"),
+        ):
+            ota.find_and_start_pull(controller, args, self.package)
+
+    def test_completed_previous_verification_refuses_failed_store(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | download: failed (hash) 9/9 id=DEADBEEF 2s",
+        ])
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "failed staged-block"),
+        ):
+            ota.find_and_start_pull(controller, args, self.package)
+
+    def test_completed_previous_verification_refuses_incomplete_store(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | download: downloading 8/9 id=DEADBEEF 2s",
+        ])
+        with (
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "became incomplete"),
+        ):
+            ota.find_and_start_pull(controller, args, self.package)
+
+    def test_completed_previous_verification_has_bounded_timeout(self) -> None:
+        args = self.args()
+        args.clear_completed_manifest = "DEADBEEF"
+        args.clear_completed_on_body_hash = "0011223344556677"
+        controller = self.Controller([
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 1s",
+            "OTA | download: verifying staged blocks 9/9 id=DEADBEEF 2s",
+        ])
+        with (
+            mock.patch.object(ota.time, "monotonic", side_effect=[0.0, 0.0, 1.0]),
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "timed out waiting"),
+        ):
+            ota.find_and_start_pull(controller, args, self.package)
+
     def test_replace_active_session_requires_explicit_flag(self) -> None:
         controller = self.Controller([
             "OTA | download: downloading 3/9 id=DEADBEEF 2s",
@@ -1064,6 +1803,66 @@ class DownloadSessionTests(unittest.TestCase):
             ],
         )
 
+    def test_lost_discovery_reply_still_attempts_exact_pull_and_reconciles(self) -> None:
+        controller = mock.Mock()
+        controller.remote_command.side_effect = (
+            "OTA | no download",
+            ota.TransmissionError("discovery reply lost"),
+            ota.TransmissionError("pull reply lost"),
+            f"OTA | download: downloading 1/9 id={self.package.manifest_id} 2s",
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            ota.find_and_start_pull(controller, self.args(), self.package)
+        self.assertEqual(
+            controller.remote_command.call_args_list,
+            [
+                mock.call("remote", "ota status"),
+                mock.call("remote", "ota ls", retry=False),
+                mock.call(
+                    "remote",
+                    f"ota pull {self.package.manifest_id} flash",
+                    retry=False,
+                ),
+                mock.call("remote", "ota status"),
+            ],
+        )
+        self.assertIn("`ota ls` reply was lost", output.getvalue())
+        self.assertIn("pull reply was lost, but session", output.getvalue())
+
+    def test_no_such_update_waits_then_repeats_one_discovery_and_pull(self) -> None:
+        controller = mock.Mock()
+        controller.remote_command.side_effect = (
+            "OTA | no download",
+            "No updates seen yet",
+            "ERR no such update",
+            "Updates 1/1",
+            f"OK pulling mid={self.package.manifest_id} -> flash (primary traffic)",
+        )
+        args = self.args()
+        args.discovery_timeout = 60
+        with mock.patch.object(ota.time, "sleep") as sleep:
+            ota.find_and_start_pull(controller, args, self.package)
+        self.assertEqual(
+            controller.remote_command.call_args_list,
+            [
+                mock.call("remote", "ota status"),
+                mock.call("remote", "ota ls", retry=False),
+                mock.call(
+                    "remote",
+                    f"ota pull {self.package.manifest_id} flash",
+                    retry=False,
+                ),
+                mock.call("remote", "ota ls", retry=False),
+                mock.call(
+                    "remote",
+                    f"ota pull {self.package.manifest_id} flash",
+                    retry=False,
+                ),
+            ],
+        )
+        sleep.assert_called_once_with(args.discovery_interval)
+
 
 class ReliabilityTests(unittest.TestCase):
     def test_target_version_falls_back_to_ver(self) -> None:
@@ -1108,6 +1907,13 @@ class ReliabilityTests(unittest.TestCase):
             ota.reply_matches_command(
                 "ota pull 1234ABCD flash",
                 "OK resuming mid=1234ABCD -> flash (primary traffic)",
+            )
+        )
+        self.assertTrue(
+            ota.reply_matches_command(
+                "ota cancel",
+                "ERR dropped RAM session (was I mid=-), but persistent OTA "
+                "slot invalidation failed",
             )
         )
 
@@ -1546,6 +2352,94 @@ class ReliabilityTests(unittest.TestCase):
         )
         self.assertEqual(controller.radios, [temporary, normal])
 
+    def test_shared_lost_target_temp_probe_preserves_saved_controller_tuple(self) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
+
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.radios: list[ota.RadioSettings] = []
+
+            def remote_command(
+                self, _target: str, command: str, **_kwargs: object
+            ) -> str:
+                self.commands.append(command)
+                if command.startswith("tempradio "):
+                    raise ota.TransmissionError("lost reply")
+                return "self body=1 image=2 base_hash=0011223344556677"
+
+            def set_radio(self, radio: ota.RadioSettings, _label: str) -> None:
+                self.radios.append(radio)
+
+        args = argparse.Namespace(
+            target="remote",
+            source_shares_controller=True,
+            source_already_temp=False,
+        )
+        controller = Controller()
+        command = "tempradio 909.95,500,5,5,120"
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=(
+                    "OK - temp params for 120 mins",
+                    "OK - normal radio restore scheduled",
+                    "TempRadio inactive",
+                ),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            ota.arm_target_temp_radio(
+                controller, args, command, temporary, normal
+            )
+        self.assertEqual(controller.commands, [command, "ota self"])
+        self.assertEqual(controller.radios, [normal])
+        self.assertEqual(
+            source_command.call_args_list,
+            [
+                mock.call(args, command),
+                mock.call(args, "normalradio", check=True),
+                mock.call(args, "tempradio", check=True),
+            ],
+        )
+        sleep.assert_called_once_with(ota.TEMP_RADIO_SWITCH_DELAY_SECONDS)
+
+    def test_shared_probe_reasserts_binary_tuple_when_local_cleanup_fails(self) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
+        controller = mock.Mock()
+        controller.remote_command.side_effect = (
+            ota.TransmissionError("lost reply"),
+            "self body=1 image=2 base_hash=0011223344556677",
+        )
+        args = argparse.Namespace(
+            target="remote",
+            source_shares_controller=True,
+            source_already_temp=False,
+        )
+        with (
+            mock.patch.object(ota, "switch_controller_to_temp_radio"),
+            mock.patch.object(
+                ota,
+                "shorten_source_temp_window",
+                side_effect=ota.OtaError("local cleanup failed"),
+            ),
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(ota.OtaError, "local cleanup failed"),
+        ):
+            ota.arm_target_temp_radio(
+                controller,
+                args,
+                "tempradio 909.95,500,5,5,120",
+                temporary,
+                normal,
+            )
+        controller.set_radio.assert_called_once_with(
+            normal, "restore controller after TempRadio probe"
+        )
+
     def test_ambiguous_target_temp_probe_is_not_replayed(self) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
         temporary = ota.RadioSettings(909.95, 250.0, 5, 5, False)
@@ -1822,15 +2716,15 @@ class ReliabilityTests(unittest.TestCase):
                 20,
             )
 
-    def test_reboot_ready_probe_defaults_to_twenty_seconds(self) -> None:
+    def test_reboot_ready_probe_defaults_to_five_minutes(self) -> None:
         parser = ota.build_parser()
         args = parser.parse_args([
             "release.mota", "remote",
             "--controller-serial", "/dev/controller",
             "--source-serial", "/dev/source",
         ])
-        self.assertEqual(args.reboot_wait, 20)
-        self.assertEqual(rak_chain.build_parser().parse_args([]).reboot_wait, 20)
+        self.assertEqual(args.reboot_wait, 300)
+        self.assertEqual(rak_chain.build_parser().parse_args([]).reboot_wait, 300)
 
     def test_post_install_version_falls_back_to_runtime_ver(self) -> None:
         image = firmware(b"verify-fallback" * 700, VERSION_NEW)
@@ -2026,11 +2920,20 @@ class ReliabilityTests(unittest.TestCase):
             temp_values=(909.95, 250.0, 5, 5, 120),
         )
         with mock.patch.object(
-            ota, "source_cli_command", return_value="OK - temp params for 1 mins"
+            ota,
+            "source_cli_command",
+            side_effect=(
+                "OK - normal radio restore scheduled",
+                "TempRadio inactive",
+            ),
         ) as source_command:
             self.assertTrue(ota.shorten_source_temp_window(args))
-        source_command.assert_called_once_with(
-            args, "tempradio 909.95,250,5,5,1", check=True
+        self.assertEqual(
+            source_command.call_args_list,
+            [
+                mock.call(args, "normalradio", check=False),
+                mock.call(args, "tempradio", check=False),
+            ],
         )
 
         args.source_already_temp = True
@@ -2048,13 +2951,52 @@ class ReliabilityTests(unittest.TestCase):
             mock.patch.object(
                 ota,
                 "source_cli_command",
-                return_value="OK - normal radio restore scheduled",
+                side_effect=(
+                    "OK - normal radio restore scheduled",
+                    "TempRadio active: 909.950,250.00,5,5 5s left",
+                    "TempRadio inactive",
+                ),
             ) as source_command,
             mock.patch.object(ota.time, "sleep") as sleep,
         ):
             self.assertTrue(ota.shorten_source_temp_window(args))
-        source_command.assert_called_once_with(args, "normalradio", check=True)
-        sleep.assert_called_once_with(ota.TEMP_RADIO_SWITCH_DELAY_SECONDS)
+        self.assertEqual(
+            source_command.call_args_list,
+            [
+                mock.call(args, "normalradio", check=True),
+                mock.call(args, "tempradio", check=True),
+                mock.call(args, "tempradio", check=True),
+            ],
+        )
+        sleep.assert_called_once()
+
+    def test_shared_controller_temp_switch_does_not_persist_binary_tuple(self) -> None:
+        args = argparse.Namespace(source_shares_controller=True)
+        controller = mock.Mock()
+        temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
+        command = "tempradio 909.95,500,5,5,120"
+        with mock.patch.object(ota, "source_cli_command") as source_command:
+            ota.switch_controller_to_temp_radio(
+                controller, args, command, temporary
+            )
+        source_command.assert_called_once_with(args, command)
+        controller.set_radio.assert_not_called()
+
+    def test_separate_controller_temp_switch_uses_binary_tuple(self) -> None:
+        args = argparse.Namespace(source_shares_controller=False)
+        controller = mock.Mock()
+        temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
+        with mock.patch.object(ota, "source_cli_command") as source_command:
+            ota.switch_controller_to_temp_radio(
+                controller,
+                args,
+                "tempradio 909.95,500,5,5,120",
+                temporary,
+            )
+        source_command.assert_not_called()
+        controller.set_radio.assert_called_once_with(
+            temporary, "switch controller to TempRadio"
+        )
 
 
 class Rak3401TransferGuardrailTests(unittest.TestCase):
@@ -2156,7 +3098,19 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
         self.assertEqual(controller.rxdelay, "2.0")
         self.assertEqual(controller.airtime_factor, "1.0")
         self.assertEqual(controller.ota_hops, 3)
-        self.assertEqual(controller.commands[-1], "powersaving on")
+        self.assertIn("powersaving on", controller.commands)
+        self.assertEqual(controller.commands[-1], "ota config")
+
+    def test_restore_converges_when_saved_power_saving_was_off(self) -> None:
+        controller = self.Controller()
+        controller.powersaving_enabled = False
+        saved = rak_chain.read_target_transfer_settings(controller, "remote")
+        controller.powersaving_enabled = True
+
+        rak_chain.restore_transfer_settings(controller, "remote", saved)
+
+        self.assertFalse(controller.powersaving_enabled)
+        self.assertIn("powersaving off", controller.commands)
 
     def test_guardrails_preserve_airtime_without_opt_in(self) -> None:
         controller = self.Controller()
@@ -2231,6 +3185,56 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
         self.assertEqual(len(controller.commands), command_count)
         self.assertEqual(mode & 0o777, 0o600)
 
+    def test_successful_restore_retires_settings_and_next_run_recaptures(self) -> None:
+        controller = self.Controller()
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            saved = rak_chain.load_or_capture_transfer_settings(
+                controller, "remote", "AA" * 32, work_dir
+            )
+            rak_chain.enforce_transfer_guardrails(
+                controller, "remote", legacy_full_airtime=True
+            )
+            rak_chain.enforce_ota_hops(controller, "remote", 0)
+            rak_chain.restore_and_retire_transfer_settings(
+                controller, "remote", saved, work_dir
+            )
+            self.assertFalse(
+                (work_dir / rak_chain.TRANSFER_SETTINGS_FILE).exists()
+            )
+
+            controller.rxdelay = "4.0"
+            controller.airtime_factor = "0.5"
+            controller.ota_hops = 2
+            recaptured = rak_chain.load_or_capture_transfer_settings(
+                controller, "remote", "AA" * 32, work_dir
+            )
+
+        self.assertEqual(recaptured.rxdelay, "4.0")
+        self.assertEqual(recaptured.airtime_factor, "0.5")
+        self.assertEqual(recaptured.ota_hops, 2)
+
+    def test_failed_restore_keeps_settings_record_armed(self) -> None:
+        controller = self.Controller()
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            saved = rak_chain.load_or_capture_transfer_settings(
+                controller, "remote", "AA" * 32, work_dir
+            )
+            path = work_dir / rak_chain.TRANSFER_SETTINGS_FILE
+            with (
+                mock.patch.object(
+                    rak_chain,
+                    "restore_transfer_settings",
+                    side_effect=ota.OtaError("restore failed"),
+                ),
+                self.assertRaisesRegex(ota.OtaError, "restore failed"),
+            ):
+                rak_chain.restore_and_retire_transfer_settings(
+                    controller, "remote", saved, work_dir
+                )
+            self.assertTrue(path.is_file())
+
     def test_saved_settings_reject_string_booleans(self) -> None:
         controller = self.Controller()
         with tempfile.TemporaryDirectory() as directory:
@@ -2251,6 +3255,7 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
                 ),
                 encoding="ascii",
             )
+            path.chmod(0o600)
             with self.assertRaisesRegex(ota.OtaError, "invalid saved transfer settings"):
                 rak_chain.load_or_capture_transfer_settings(
                     controller, "remote", "AA" * 32, work_dir
@@ -2274,12 +3279,460 @@ class Rak3401TransferGuardrailTests(unittest.TestCase):
                 ),
                 encoding="ascii",
             )
+            path.chmod(0o600)
             with self.assertRaisesRegex(
                 ota.OtaError, "invalid saved transfer settings"
             ):
                 rak_chain.load_or_capture_transfer_settings(
                     controller, "remote", "AA" * 32, work_dir
                 )
+
+    def test_saved_settings_reject_nonfinite_delay_and_non_string_key(self) -> None:
+        controller = self.Controller()
+        mutations = (
+            ("target_key", 1234),
+            ("rxdelay", "nan"),
+            ("rxdelay", "inf"),
+            ("rxdelay", "-1"),
+            ("airtime_factor", 1.0),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field, value=value), \
+                    tempfile.TemporaryDirectory() as directory:
+                work_dir = Path(directory)
+                rak_chain.load_or_capture_transfer_settings(
+                    controller, "remote", "AA" * 32, work_dir
+                )
+                path = work_dir / rak_chain.TRANSFER_SETTINGS_FILE
+                document = json.loads(path.read_text(encoding="ascii"))
+                document[field] = value
+                path.write_text(json.dumps(document), encoding="ascii")
+                with self.assertRaisesRegex(
+                    ota.OtaError, "invalid saved transfer settings"
+                ):
+                    rak_chain.load_or_capture_transfer_settings(
+                        controller, "remote", "AA" * 32, work_dir
+                    )
+
+
+class Rak3401ExtractionCacheTests(unittest.TestCase):
+    @staticmethod
+    def make_archive(path: Path, root: str, marker: str) -> tuple[str, str]:
+        checksum_text = "placeholder checksum list\n"
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(f"{root}/CHAIN.csv", "step,from_version\n")
+            archive.writestr(f"{root}/SHA256SUMS.txt", checksum_text)
+            archive.writestr(f"{root}/{marker}.txt", marker)
+        return (
+            rak_chain.sha256_file(path),
+            hashlib.sha256(checksum_text.encode("ascii")).hexdigest(),
+        )
+
+    def test_extraction_cache_is_bound_to_exact_archive_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = "RAK3401-test-bundle"
+            first = Path(directory) / "first.zip"
+            second = Path(directory) / "second.zip"
+            destination = Path(directory) / "bundle"
+            first_sha, checksum_sha = self.make_archive(first, root, "first")
+            second_sha, second_checksum_sha = self.make_archive(
+                second, root, "second"
+            )
+            self.assertEqual(checksum_sha, second_checksum_sha)
+            with mock.patch.dict(
+                rak_chain.PINNED_ARCHIVE_CHECKSUMS,
+                {
+                    first_sha: checksum_sha,
+                    second_sha: checksum_sha,
+                },
+                clear=True,
+            ):
+                extracted = rak_chain.extract_bundle(
+                    first, destination, first_sha
+                )
+                self.assertEqual(extracted, destination / root)
+                with self.assertRaisesRegex(
+                    ota.OtaError, "bound to a different archive"
+                ):
+                    rak_chain.extract_bundle(second, destination, second_sha)
+
+    def test_matching_legacy_cache_is_adopted_only_after_checksum_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = "RAK3401-test-bundle"
+            archive = Path(directory) / "bundle.zip"
+            destination = Path(directory) / "bundle"
+            archive_sha, checksum_sha = self.make_archive(
+                archive, root, "candidate"
+            )
+            with mock.patch.dict(
+                rak_chain.PINNED_ARCHIVE_CHECKSUMS,
+                {archive_sha: checksum_sha},
+                clear=True,
+            ):
+                rak_chain.extract_bundle(archive, destination, archive_sha)
+                binding = destination / rak_chain.EXTRACTION_BINDING_FILE
+                binding.unlink()
+                extracted = rak_chain.extract_bundle(
+                    archive, destination, archive_sha
+                )
+                self.assertEqual(extracted, destination / root)
+                self.assertEqual(
+                    json.loads(binding.read_text(encoding="ascii"))[
+                        "archive_sha256"
+                    ],
+                    archive_sha,
+                )
+
+    def test_extraction_never_removes_a_preexisting_part_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = "RAK3401-test-bundle"
+            parent = Path(directory)
+            archive = parent / "bundle.zip"
+            destination = parent / "bundle"
+            old_fixed_scratch = parent / f"bundle.part-{os.getpid()}"
+            old_fixed_scratch.mkdir()
+            sentinel = old_fixed_scratch / "keep.txt"
+            sentinel.write_text("owned by caller", encoding="ascii")
+            archive_sha, checksum_sha = self.make_archive(
+                archive, root, "candidate"
+            )
+            with mock.patch.dict(
+                rak_chain.PINNED_ARCHIVE_CHECKSUMS,
+                {archive_sha: checksum_sha},
+                clear=True,
+            ):
+                rak_chain.extract_bundle(archive, destination, archive_sha)
+            self.assertEqual(sentinel.read_text(encoding="ascii"), "owned by caller")
+
+    def test_extraction_uses_frozen_archive_after_caller_path_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = "RAK3401-test-bundle"
+            parent = Path(directory)
+            archive = parent / "bundle.zip"
+            replacement = parent / "replacement.zip"
+            destination = parent / "extracted"
+            archive_sha, checksum_sha = self.make_archive(
+                archive, root, "first"
+            )
+            self.make_archive(replacement, root, "replacement")
+            original_freeze = rak_chain.freeze_archive
+
+            def freeze_then_replace(source: Path, frozen: Path) -> str:
+                digest = original_freeze(source, frozen)
+                os.replace(replacement, source)
+                return digest
+
+            with (
+                mock.patch.dict(
+                    rak_chain.PINNED_ARCHIVE_CHECKSUMS,
+                    {archive_sha: checksum_sha},
+                    clear=True,
+                ),
+                mock.patch.object(
+                    rak_chain,
+                    "freeze_archive",
+                    side_effect=freeze_then_replace,
+                ),
+            ):
+                extracted = rak_chain.extract_bundle(
+                    archive, destination, archive_sha
+                )
+
+            self.assertTrue((extracted / "first.txt").is_file())
+            self.assertFalse((extracted / "replacement.txt").exists())
+
+    def test_archive_member_limit_is_enforced_before_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = "RAK3401-test-bundle"
+            parent = Path(directory)
+            archive = parent / "bundle.zip"
+            destination = parent / "extracted"
+            archive_sha, checksum_sha = self.make_archive(
+                archive, root, "candidate"
+            )
+            with (
+                mock.patch.dict(
+                    rak_chain.PINNED_ARCHIVE_CHECKSUMS,
+                    {archive_sha: checksum_sha},
+                    clear=True,
+                ),
+                mock.patch.object(rak_chain, "MAX_BUNDLE_MEMBER_BYTES", 8),
+                self.assertRaisesRegex(ota.OtaError, "exceeds"),
+            ):
+                rak_chain.extract_bundle(archive, destination, archive_sha)
+            self.assertFalse(destination.exists())
+
+    @staticmethod
+    def make_extracted_tree(root: Path) -> tuple[Path, str]:
+        bundle = root / "RAK3401-test-bundle"
+        bundle.mkdir()
+        payload = bundle / "motas" / "step.mota"
+        payload.parent.mkdir()
+        payload.write_bytes(b"pinned package bytes")
+        checksum = hashlib.sha256(payload.read_bytes()).hexdigest()
+        checksum_text = f"{checksum}  motas/step.mota\n"
+        checksum_path = bundle / "SHA256SUMS.txt"
+        checksum_path.write_text(checksum_text, encoding="ascii")
+        return bundle, hashlib.sha256(checksum_text.encode("ascii")).hexdigest()
+
+    def test_bundle_snapshot_is_immune_to_mutation_after_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle, checksum_digest = self.make_extracted_tree(root)
+            snapshot_parent = root / "snapshot"
+            snapshot_parent.mkdir()
+            with mock.patch.object(
+                rak_chain, "CHECKSUM_LIST_SHA256", checksum_digest
+            ):
+                snapshot = rak_chain.snapshot_verified_bundle(
+                    bundle, snapshot_parent
+                )
+            (bundle / "motas" / "step.mota").write_bytes(b"changed by caller")
+
+            self.assertEqual(
+                (snapshot / "motas" / "step.mota").read_bytes(),
+                b"pinned package bytes",
+            )
+
+    def test_bundle_snapshot_detects_mutation_during_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle, checksum_digest = self.make_extracted_tree(root)
+            snapshot_parent = root / "snapshot"
+            snapshot_parent.mkdir()
+            original_copy = shutil.copyfileobj
+
+            def copy_then_mutate(source: object, destination: object, length: int) -> None:
+                original_copy(source, destination, length)
+                if Path(source.name).name == "SHA256SUMS.txt":
+                    (bundle / "motas" / "step.mota").write_bytes(b"changed mid-copy")
+
+            with (
+                mock.patch.object(
+                    rak_chain, "CHECKSUM_LIST_SHA256", checksum_digest
+                ),
+                mock.patch.object(
+                    rak_chain.shutil, "copyfileobj", side_effect=copy_then_mutate
+                ),
+                self.assertRaisesRegex(
+                    ota.OtaError, "changed size|checksum mismatch"
+                ),
+            ):
+                rak_chain.snapshot_verified_bundle(bundle, snapshot_parent)
+
+    def test_bundle_snapshot_rejects_large_unlisted_file_before_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle, checksum_digest = self.make_extracted_tree(root)
+            (bundle / "unlisted.bin").write_bytes(b"x" * 32)
+            snapshot_parent = root / "snapshot"
+            snapshot_parent.mkdir()
+            with (
+                mock.patch.object(
+                    rak_chain, "CHECKSUM_LIST_SHA256", checksum_digest
+                ),
+                mock.patch.object(rak_chain, "MAX_BUNDLE_MEMBER_BYTES", 24),
+                mock.patch.object(rak_chain.shutil, "copyfileobj") as copy_file,
+                self.assertRaisesRegex(ota.OtaError, "limit"),
+            ):
+                rak_chain.snapshot_verified_bundle(bundle, snapshot_parent)
+            copy_file.assert_not_called()
+
+    def test_bundle_snapshot_rejects_listed_file_growth_before_its_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle, checksum_digest = self.make_extracted_tree(root)
+            snapshot_parent = root / "snapshot"
+            snapshot_parent.mkdir()
+            payload = bundle / "motas" / "step.mota"
+            original_copy = rak_chain.copy_regular_file_limited
+
+            def grow_then_copy(
+                source: Path,
+                destination: Path,
+                maximum: int,
+                label: str,
+                *,
+                expected_size: int | None = None,
+            ) -> int:
+                if source == payload:
+                    with source.open("ab") as output:
+                        output.write(b"growth after inventory")
+                return original_copy(
+                    source,
+                    destination,
+                    maximum,
+                    label,
+                    expected_size=expected_size,
+                )
+
+            with (
+                mock.patch.object(
+                    rak_chain, "CHECKSUM_LIST_SHA256", checksum_digest
+                ),
+                mock.patch.object(
+                    rak_chain,
+                    "copy_regular_file_limited",
+                    side_effect=grow_then_copy,
+                ),
+                self.assertRaisesRegex(ota.OtaError, "changed size"),
+            ):
+                rak_chain.snapshot_verified_bundle(bundle, snapshot_parent)
+            self.assertFalse((snapshot_parent / bundle.name).exists())
+
+    def test_chain_state_rejects_redirected_steps_and_progress_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            work = root / "work"
+            work.mkdir()
+            external = root / "external"
+            external.mkdir()
+            (work / "steps").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(ota.OtaError, "real directory"):
+                rak_chain.validate_chain_state_paths(work)
+
+        if hasattr(os, "mkfifo"):
+            with tempfile.TemporaryDirectory() as directory:
+                work = Path(directory)
+                os.mkfifo(work / "progress.jsonl")
+                with self.assertRaisesRegex(ota.OtaError, "regular file"):
+                    rak_chain.validate_chain_state_paths(work)
+
+    def test_progress_append_refuses_symlink_without_touching_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            victim = work / "victim.txt"
+            victim.write_text("unchanged\n", encoding="ascii")
+            (work / "progress.jsonl").symlink_to(victim)
+            step = mock.Mock(
+                number=1, from_version="1.0", to_version="1.1"
+            )
+            with self.assertRaisesRegex(ota.OtaError, "symbolic link"):
+                rak_chain.append_progress(work, step, b"12345678")
+            self.assertEqual(victim.read_text(encoding="ascii"), "unchanged\n")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO test requires POSIX")
+    def test_progress_append_refuses_fifo_without_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            os.mkfifo(work / "progress.jsonl")
+            step = mock.Mock(
+                number=1, from_version="1.0", to_version="1.1"
+            )
+            with self.assertRaisesRegex(ota.OtaError, "safely open"):
+                rak_chain.append_progress(work, step, b"12345678")
+
+    def test_attempt_work_directory_is_reserved_under_real_steps_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            attempt = rak_chain.next_attempt_dir(work, 3)
+            self.assertEqual(attempt.name, "work")
+            self.assertTrue(attempt.parent.is_dir())
+            self.assertFalse(attempt.exists())
+
+    def test_work_directory_cannot_be_inside_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            work = bundle / "work"
+            work.mkdir(parents=True)
+            with self.assertRaisesRegex(ota.OtaError, "outside the supplied bundle"):
+                rak_chain.require_bundle_work_separation(bundle, work)
+
+    def test_chain_rejects_controller_serial_aliases_before_live_work(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            device = root / "ttyACM0"
+            device.touch()
+            alias = root / "by-id-radio"
+            alias.symlink_to(device)
+            parser = rak_chain.build_parser()
+            for source_arguments in (
+                ["--source-serial", str(alias)],
+                [
+                    "--source-tcp", "192.0.2.10:5001",
+                    "--source-cli-serial", str(alias),
+                ],
+            ):
+                args = parser.parse_args([
+                    "--controller-serial", str(device), *source_arguments
+                ])
+                with self.subTest(source_arguments=source_arguments), \
+                        contextlib.redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit):
+                    rak_chain.validate_args(args, parser)
+
+    def test_chain_source_cli_transports_are_mutually_exclusive(self) -> None:
+        parser = rak_chain.build_parser()
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args([
+                "--source-tcp", "192.0.2.10:5001",
+                "--source-cli-serial", "/dev/source",
+                "--source-cli-tcp", "192.0.2.10:5002",
+            ])
+
+    def test_chain_already_temp_source_rejects_managed_cli(self) -> None:
+        parser = rak_chain.build_parser()
+        args = parser.parse_args([
+            "--source-tcp", "192.0.2.10:5001",
+            "--source-cli-tcp", "192.0.2.10:5002",
+            "--source-already-temp",
+        ])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            rak_chain.validate_args(args, parser)
+
+    def test_chain_endpoint_recovers_persisted_source_rxps(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        current = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        source_args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial="/dev/source",
+            source_cli_tcp=None,
+            source_baud=115200,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            ota.write_source_rxps_recovery(work_dir, source_args, saved)
+            with (
+                mock.patch.object(ota, "read_source_rxps", return_value=current),
+                mock.patch.object(
+                    ota, "shorten_source_temp_window", return_value=True
+                ) as shorten,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+            ):
+                rak_chain.restore_persisted_source_rxps(
+                    work_dir, source_args
+                )
+                self.assertFalse(
+                    (work_dir / ota.SOURCE_RXPS_RECOVERY_FILE).exists()
+                )
+        shorten.assert_called_once_with(source_args)
+        restore.assert_called_once_with(source_args, saved)
+
+    def test_chain_endpoint_proves_normalradio_even_when_rxps_already_matches(self) -> None:
+        saved = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        source_args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial="/dev/source",
+            source_cli_tcp=None,
+            source_baud=115200,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory)
+            ota.write_source_rxps_recovery(work_dir, source_args, saved)
+            with (
+                mock.patch.object(ota, "read_source_rxps", return_value=saved),
+                mock.patch.object(
+                    ota, "shorten_source_temp_window", return_value=True
+                ) as shorten,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+            ):
+                rak_chain.restore_persisted_source_rxps(work_dir, source_args)
+            self.assertFalse(
+                (work_dir / ota.SOURCE_RXPS_RECOVERY_FILE).exists()
+            )
+        shorten.assert_called_once_with(source_args)
+        restore.assert_not_called()
 
 
 class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
@@ -2319,6 +3772,23 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             controller.commands, ["ota status", "ota cancel", "ota status"]
         )
 
+    def test_completed_chain_step_does_not_claim_idle_store_is_cleared(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.replies = iter([
+                    "OTA | no download | target:2FA509C1",
+                ])
+
+            def remote_command(self, _target: str, command: str) -> str:
+                self.commands.append(command)
+                return next(self.replies)
+
+        controller = Controller()
+        step = mock.Mock(number=12, package=mock.Mock(manifest_id="1234ABCD"))
+        rak_chain.clear_completed_download(controller, "remote", step)
+        self.assertEqual(controller.commands, ["ota status"])
+
     def test_completed_chain_step_refuses_another_retained_manifest(self) -> None:
         class Controller:
             def remote_command(self, _target: str, _command: str) -> str:
@@ -2339,6 +3809,77 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
         controller.remote_command.return_value = "OTA: status | install | cancel"
         with self.assertRaisesRegex(ota.OtaError, "refusing to expose"):
             rak_chain.require_rescue_capability(controller, "remote")
+
+    def test_chain_requires_rescue_for_intermediate_start_or_resume_only(self) -> None:
+        controller = mock.Mock()
+        with mock.patch.object(
+            rak_chain, "require_rescue_capability"
+        ) as require_rescue:
+            rak_chain.require_rescue_capability_before_next_transition(
+                controller, "remote", 0, 2
+            )
+            require_rescue.assert_not_called()
+
+            rak_chain.require_rescue_capability_before_next_transition(
+                controller, "remote", 1, 2
+            )
+            require_rescue.assert_called_once_with(controller, "remote")
+
+            require_rescue.reset_mock()
+            rak_chain.require_rescue_capability_before_next_transition(
+                controller, "remote", 2, 2
+            )
+            require_rescue.assert_not_called()
+
+    def test_chain_step_propagates_debug_to_nested_runner(self) -> None:
+        args = argparse.Namespace(
+            controller_serial="/dev/controller",
+            controller_tcp=None,
+            controller_ble=None,
+            source_serial="/dev/source",
+            source_tcp=None,
+            source_cli_serial=None,
+            source_cli_tcp=None,
+            source_already_temp=False,
+            source_shares_controller=False,
+            controller_baud=115200,
+            source_baud=115200,
+            relay_txdelay=0.3,
+            temp_radio="909.950,500,5,5,120",
+            meshcli="meshcli",
+            motatool="motatool",
+            reply_timeout=45,
+            discovery_timeout=180,
+            discovery_interval=8,
+            poll_seconds=60,
+            transfer_timeout_minutes=90,
+            seeder_start_wait=5,
+            reboot_wait=90,
+            relay=[],
+            debug=False,
+        )
+        step = mock.Mock(
+            number=1,
+            path=Path("step-01.mota"),
+            package=mock.Mock(manifest_id="1234ABCD"),
+        )
+        controller = mock.Mock()
+
+        for enabled in (False, True):
+            with self.subTest(debug=enabled), tempfile.TemporaryDirectory() as directory:
+                args.debug = enabled
+                with mock.patch.object(rak_chain.ota, "main", return_value=0) as nested:
+                    rak_chain.run_step(
+                        args,
+                        "remote",
+                        step,
+                        None,
+                        bytes.fromhex("0011223344556677"),
+                        Path(directory),
+                        controller,
+                    )
+                command = nested.call_args.args[0]
+                self.assertEqual(command.count("--debug"), int(enabled))
 
     def test_live_chain_is_blocked_after_failed_physical_step_6(self) -> None:
         self.assertEqual(rak_chain.KNOWN_UNSAFE_STEP, 6)
@@ -2435,6 +3976,42 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
         rak_chain.require_live_release_safe(
             argparse.Namespace(accept_test_candidate=False), steps
         )
+
+    def test_exact_current_ten_step_candidate_requires_explicit_lab_ack(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "package transitions completed directly on the physical RAK3401",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=True), steps
+        )
+
+    def test_changed_current_ten_step_anchor_is_not_recognized(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        steps[-1].target_sha256 = "00" * 32
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "unrecognized variant of the pinned ten-step candidate",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=True), steps
+            )
+
+    def test_unreleased_candidate_has_no_implicit_download(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / rak_chain.ASSET_NAME
+            with self.assertRaisesRegex(
+                ota.OtaError, "not released.*--bundle"
+            ):
+                rak_chain.download_release_asset(destination)
 
     def test_compact_9_step_release_rejects_changed_anchor(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(9)]

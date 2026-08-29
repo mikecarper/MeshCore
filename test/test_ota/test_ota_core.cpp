@@ -1274,6 +1274,60 @@ TEST(OtaStoreRamTest, RandomAccessAndErasedSentinel) {
   for (int i = 0; i < 8; i++) EXPECT_EQ(rd[i], 0xFF);
 }
 
+TEST(OtaStoreRamTest, ClearKeepsResumeFixtureButDiscardConsumesHeader) {
+  OtaStoreRam<4096> s;
+  constexpr uint32_t total = 8u + MOTA_MFL + 5u;
+  uint8_t header[8] = {'m', 'O', 'T', 'A',
+                       static_cast<uint8_t>(total),
+                       static_cast<uint8_t>(total >> 8),
+                       static_cast<uint8_t>(total >> 16),
+                       static_cast<uint8_t>(total >> 24)};
+  ASSERT_TRUE(s.begin(total));
+  ASSERT_TRUE(s.write(0, header, sizeof(header)));
+
+  // clear() remains the cheap RAM-session reset used by reboot/resume tests.
+  s.clear();
+  EXPECT_TRUE(s.reopen());
+  EXPECT_EQ(s.staged_size(), total);
+
+  // User-facing cancellation uses discard(), which must prevent a fresh
+  // reopen even for the native in-process persistence model.
+  EXPECT_TRUE(s.discard());
+  EXPECT_EQ(s.staged_size(), 0u);
+  EXPECT_FALSE(s.reopen());
+}
+
+TEST(OtaStoreRamTest, SeederSizedStoreDiscardsWithoutAssumingAHeaderFits) {
+  // OTA_SEEDER_ONLY intentionally uses OtaStoreRam<1>: it needs a valid
+  // manager destination object but never stages firmware locally.
+  OtaStoreRam<1> s;
+  EXPECT_TRUE(s.discard());
+  EXPECT_EQ(s.staged_size(), 0u);
+  EXPECT_FALSE(s.reopen());
+}
+
+namespace {
+
+class SessionOnlyOtaStore : public OtaStore {
+public:
+  bool begin(uint32_t) override { return false; }
+  bool write(uint32_t, const uint8_t*, uint32_t) override { return false; }
+  bool read(uint32_t, uint8_t*, uint32_t) const override { return false; }
+  uint32_t capacity() const override { return 0; }
+  uint32_t staged_size() const override { return 0; }
+  void clear() override { cleared = true; }
+
+  bool cleared = false;
+};
+
+}  // namespace
+
+TEST(OtaStoreDiscardTest, ConservativeDefaultCannotClaimDurableInvalidation) {
+  SessionOnlyOtaStore store;
+  EXPECT_FALSE(store.discard());
+  EXPECT_TRUE(store.cleared);
+}
+
 // --- merkle proof GENERATION (server side) matches the Python oracle ---------------------------
 
 TEST(OtaMerkle, GenProofMatchesPythonAndVerifies) {
@@ -1603,6 +1657,21 @@ TEST(OtaServe, ClearPrimaryInvalidatesCallerOwnedView) {
   ASSERT_EQ(manager.servedCount(), 1);
   EXPECT_TRUE(manager.servedEntry(0)->is_self);
   EXPECT_FALSE(manager.remove_source(&folder));
+}
+
+TEST(OtaServe, FetchSessionResetPreservesIndependentPrimaryView) {
+  OtaManager manager;
+  manager.begin(0, nullptr, nullptr);
+  ASSERT_TRUE(manager.serve(SIM_MOTA, SIM_MOTA_LEN));
+  ASSERT_EQ(manager.servedCount(), 1);
+  ASSERT_TRUE(manager.servedEntry(0)->is_self);
+
+  // `ota cancel` resets only the receive side. A served image (and its
+  // caller-owned backing buffer) must remain registered until the serving
+  // side explicitly calls clear_primary().
+  manager.reset_session();
+  ASSERT_EQ(manager.servedCount(), 1);
+  EXPECT_TRUE(manager.servedEntry(0)->is_self);
 }
 
 TEST(OtaTransfer, TwoManagersFullTransfer) {

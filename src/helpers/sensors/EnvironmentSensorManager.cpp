@@ -172,6 +172,17 @@ static RAK12035_SoilMoisture RAK12035;
 #endif
 
 #ifdef RAK_WISBLOCK_GPS
+// Release capability manifests scan the linked firmware image rather than
+// trusting build flags. Give the actual WisBlock provider a unique marker and
+// keep an observable reference from begin() so LTO/section GC cannot discard
+// it. The marker lives inside this provider guard, so generic GPS CLI text
+// cannot produce a false positive.
+extern "C" {
+extern const char meshcore_capability_rak_wisblock_gps[];
+const char meshcore_capability_rak_wisblock_gps[] __attribute__((used)) =
+    "meshcore.capability.rak_wisblock_gps.v1";
+}
+
 // -1 = no enable pin; out-of-range values are no-ops in pinMode/digitalWrite,
 // while 0 would be a real GPIO (P0.00 = LFXO crystal on nRF52)
 static uint32_t gpsResetPin = -1;
@@ -702,6 +713,10 @@ static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TA
 bool EnvironmentSensorManager::begin() {
   #if ENV_INCLUDE_GPS
   #ifdef RAK_WISBLOCK_GPS
+  // A volatile read anchors the externally linked marker even under LTO.
+  const volatile char* capability_marker =
+      meshcore_capability_rak_wisblock_gps;
+  (void)*capability_marker;
   rakGPSInit();
   #else
   initBasicGPS();

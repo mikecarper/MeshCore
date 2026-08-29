@@ -11,6 +11,12 @@ site/
 out.*/
 out-*/
 build-logs/
+# Local resume state, extracted firmware, and physical-test logs from the
+# pinned RAK3401 chain runner. These may contain device-specific settings.
+rak3401-mota-chain-work/
+# Generic runner work directories can also contain endpoint-bound recovery
+# settings and diagnostic logs. Never stage them with a broad `git add`.
+meshcore-lora-ota-*/
 .direnv/
 .DS_Store
 .vscode/settings.json

@@ -212,6 +212,15 @@ falls back to flash. To **stop** a download you no longer want:
 ota cancel
 ```
 
+For a download staged on the node, success means current firmware also
+invalidated the persistent flash/SD/QSPI copy; it reports an error if that
+media operation cannot be verified. For a `folder` capture, cancel only
+detaches the live session and retains the host partial so it can be resumed or
+removed on the host deliberately. On a MeshTower SD auto-archive capture,
+cancel also detaches the live archive session and retains its card partial for
+the archive service to resume later; use `ota cache off` to stop new archive
+captures.
+
 ### 4. Install a downloaded update
 
 Once `ota status` shows the download is **ready to install**:
@@ -292,7 +301,9 @@ complete target inventory, storage layouts, and safety contract.
 
 ### 5. If something goes wrong
 
-- A download that stalls or gets interrupted just **resumes** later, or you can `ota cancel` and try again.
+- A download that stalls or gets interrupted just **resumes** later. Use
+  `ota cancel` to durably discard device staging; a folder capture keeps its
+  host partial for a later resume.
 - A legacy app-only internal-flash **nRF52** that still runs but reports `no EndF` can use the pre-provisioned rescue path
   if its physical EndF is intact and only app-side validation is failing. Fetch the exact `[rescue]`
   in-place delta with an explicit acknowledgement, obtain its 16-hex-digit `base_hash` from the package

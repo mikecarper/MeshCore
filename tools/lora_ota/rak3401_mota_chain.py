@@ -18,9 +18,9 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from types import SimpleNamespace
-import urllib.request
 import zipfile
 
 try:
@@ -29,16 +29,28 @@ except ImportError:
     import lora_ota as ota
 
 
-RELEASE_TAG = "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.02-e742333a"
-RELEASE_URL = f"https://github.com/mikecarper/MeshCore/releases/tag/{RELEASE_TAG}"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip"
-ASSET_URL = (
-    f"https://github.com/mikecarper/MeshCore/releases/download/{RELEASE_TAG}/"
-    f"{ASSET_NAME}"
+# These exact ten package transitions passed directly on the physical target,
+# and the resulting endpoint passed independent SWD readback. The host runner
+# has received cleanup/recovery fixes since that run and has not itself had a
+# new clean end-to-end qualification run. Keep the artifact unpublished and
+# normally gated from live use; never invent a release URL.
+RELEASE_URL = "unreleased local RAK3401 10-step candidate"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip"
+ASSET_SHA256 = "c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61"
+CHECKSUM_LIST_SHA256 = "3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90"
+
+# Preserve the physically qualified nine-step chain for exact offline
+# recognition and existing live deployments.
+PHYSICALLY_QUALIFIED_9_ASSET_SHA256 = (
+    "9f80eef191b88833bf4d2e4fea559cf5233ca53f9266ba310d447f37fa445f3a"
 )
-ASSET_SHA256 = "9f80eef191b88833bf4d2e4fea559cf5233ca53f9266ba310d447f37fa445f3a"
-CHECKSUM_LIST_SHA256 = "73d96e23237896a3e342fe736be12d94087a813bf09ad609fb55330bbe586055"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a"
+PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256 = (
+    "73d96e23237896a3e342fe736be12d94087a813bf09ad609fb55330bbe586055"
+)
+PHYSICALLY_QUALIFIED_9_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a"
+)
 
 # The accelerated 30-step release is the pinned reconstruction input for the
 # compact chain. Keep it available for offline provenance, but do not start a
@@ -115,15 +127,43 @@ KNOWN_UNSAFE_ROOT_NAME = (
     "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.2-c96bdd6e"
 )
 
+EXTRACTION_BINDING_FILE = ".source-archive.json"
+# Release bundles are small (even the retired 30-step chain is far below
+# these ceilings). Bound every untrusted archive/tree operation before it can
+# consume arbitrary memory, CPU, or disk.
+MAX_BUNDLE_ARCHIVE_BYTES = 64 * 1024 * 1024
+MAX_BUNDLE_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
+MAX_BUNDLE_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_BUNDLE_MEMBERS = 2048
+MAX_BUNDLE_TREE_ENTRIES = 4096
+MAX_CHECKSUM_LIST_BYTES = 1024 * 1024
+MAX_PROGRESS_BYTES = 1024 * 1024
+PINNED_ARCHIVE_CHECKSUMS = {
+    ASSET_SHA256: CHECKSUM_LIST_SHA256,
+    PHYSICALLY_QUALIFIED_9_ASSET_SHA256: (
+        PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256
+    ),
+    SUPERSEDED_30_ASSET_SHA256: SUPERSEDED_30_CHECKSUM_LIST_SHA256,
+    SUPERSEDED_29_ASSET_SHA256: SUPERSEDED_29_CHECKSUM_LIST_SHA256,
+    SUPERSEDED_27_ASSET_SHA256: SUPERSEDED_27_CHECKSUM_LIST_SHA256,
+    KNOWN_FAILED_V11701_ASSET_SHA256: KNOWN_FAILED_V11701_CHECKSUM_LIST_SHA256,
+    KNOWN_FAILED_V11701_STEP16_ASSET_SHA256: (
+        KNOWN_FAILED_V11701_STEP16_CHECKSUM_LIST_SHA256
+    ),
+    KNOWN_UNSAFE_ASSET_SHA256: KNOWN_UNSAFE_CHECKSUM_LIST_SHA256,
+}
+
 DEFAULT_TARGET_KEY = (
     "63d8df6387eaffd2e25db7d2a8ad967a"
     "65202182a48d681d7e7a9260f917280d"
 )
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
-EXPECTED_STEP_COUNT = 9
+EXPECTED_STEP_COUNT = 10
+PHYSICALLY_QUALIFIED_9_STEP_COUNT = 9
 EXPECTED_START_VERSION = "1.16.7.0"
-EXPECTED_FINAL_VERSION = "1.17.1.02"
+EXPECTED_FINAL_VERSION = "1.17.1.5"
+PHYSICALLY_QUALIFIED_9_FINAL_VERSION = "1.17.1.02"
 SUPERSEDED_FINAL_VERSION = "1.17.1.0"
 WATCHDOG_RESET_WAIT_SECONDS = 90
 WATCHDOG_STABILITY_WAIT_SECONDS = 90
@@ -199,6 +239,23 @@ COMPACT_RELEASE_ANCHORS = (
     (7, "b81d219393897fb1453594d9ea6983b2695c1b2396b768836af7da58b8576e83"),
     (8, "05ac521daf941b14426360e7ff81b0329f4788b84fe7db9d55f7da58ee336597"),
     (9, "2784e4b645bc3dc198de0b8b18d3d7369cd02eca61cd71c46a51b61854da5345"),
+)
+
+# Every target in the exact unreleased ten-package fd98bc90 sequence that
+# passed direct physical transitions. These pins bind both offline verification
+# and the hidden explicit live-lab override to those exact package bytes; they
+# do not qualify later host-runner changes.
+CURRENT_10_CANDIDATE_ANCHORS = (
+    (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
+    (2, "ac5f50e5028378ccfe6ea08bbf32f227f50fdcf5285a7deb866e309fbdd0a88f"),
+    (3, "884b5e9355b4585b7a4e079dbb44d2858ec46e2fa7bb0dba47e810db2a82e349"),
+    (4, "cd6fe1752f859b9e8648f2cc2b9596962d371445e39854130197d61ce1fff49f"),
+    (5, "e826c91480390e4eec8d49a29e8ec0a957c9668a51dffad1ff0bb1d39daf38c2"),
+    (6, "8e96913fbacb17f43cebba4aaa3bd99cb6953711744c9e55de5b2e09af846e27"),
+    (7, "47ab2282b70afeccd7fbdd0418f60a44c98639fbdd0534b43dce94c2a5af7a6d"),
+    (8, "74a319a8744ec3f28c0f73214dcc153960df5c439b31998be2ff05464fccf4d7"),
+    (9, "30aea80995def68ddff0671138b9f7269b0aa3dea7271fb7f6570637aae577a0"),
+    (10, "31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095"),
 )
 
 # Exact anchors for every image in the accelerated 30-step release. The outer
@@ -278,6 +335,16 @@ SUPERSEDED_30_MESSAGE = (
     "which reaches the requested endpoint in nine packages without changing "
     "the deployed bootloader. Use --verify-only for the older bundle."
 )
+CURRENT_10_CANDIDATE_MESSAGE = (
+    "live installation of the exact fd98bc90 ten-step candidate is disabled: "
+    "the ten pinned package transitions completed directly on the physical "
+    "RAK3401 and the endpoint passed independent SWD readback, but the current "
+    "host runner includes later cleanup/recovery fixes that have not had a new "
+    "clean end-to-end physical run. The artifact is also local and unpublished. "
+    "Use --verify-only with the explicit local bundle path, or the hidden "
+    "controlled-lab override, until the exact artifact and qualification record "
+    "are published."
+)
 class KnownUnsafeReleaseError(ota.OtaError):
     """The pinned artifacts are intact but their live transition is unsafe."""
 
@@ -287,6 +354,19 @@ def require_live_release_safe(
     steps: list[ChainStep],
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
+        if all(
+            steps[number - 1].target_sha256 == expected_sha256
+            for number, expected_sha256 in CURRENT_10_CANDIDATE_ANCHORS
+        ):
+            if args.accept_test_candidate:
+                return
+            raise KnownUnsafeReleaseError(CURRENT_10_CANDIDATE_MESSAGE)
+        raise KnownUnsafeReleaseError(
+            "live installation is disabled: this is an unrecognized variant "
+            "of the pinned ten-step candidate"
+        )
+
+    if len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
         for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise KnownUnsafeReleaseError(
@@ -397,6 +477,122 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _open_regular_readonly(path: Path, label: str) -> tuple[int, os.stat_result]:
+    """Open a caller-controlled path without following a final symlink."""
+    try:
+        path_metadata = path.lstat()
+    except OSError as exc:
+        raise ota.OtaError(f"cannot inspect {label} {path}: {exc}") from exc
+    if stat.S_ISLNK(path_metadata.st_mode):
+        raise ota.OtaError(f"{label} is a symbolic link: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ota.OtaError(f"cannot open {label} {path}: {exc}") from exc
+    metadata = os.fstat(descriptor)
+    try:
+        current_path_metadata = path.lstat()
+    except OSError as exc:
+        os.close(descriptor)
+        raise ota.OtaError(f"{label} path changed while opening: {path}") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or not os.path.samestat(metadata, path_metadata)
+        or not os.path.samestat(metadata, current_path_metadata)
+    ):
+        os.close(descriptor)
+        raise ota.OtaError(f"{label} is not one stable regular file: {path}")
+    return descriptor, metadata
+
+
+def sha256_file_limited(path: Path, maximum: int, label: str) -> str:
+    descriptor, metadata = _open_regular_readonly(path, label)
+    if metadata.st_size > maximum:
+        os.close(descriptor)
+        raise ota.OtaError(
+            f"{label} is {metadata.st_size} bytes; limit is {maximum}: {path}"
+        )
+    digest = hashlib.sha256()
+    total = 0
+    with os.fdopen(descriptor, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            total += len(chunk)
+            if total > maximum:
+                raise ota.OtaError(
+                    f"{label} grew beyond its {maximum}-byte limit: {path}"
+                )
+            digest.update(chunk)
+    if total != metadata.st_size:
+        raise ota.OtaError(f"{label} changed while it was read: {path}")
+    return digest.hexdigest()
+
+
+def read_regular_bytes_limited(path: Path, maximum: int, label: str) -> bytes:
+    descriptor, metadata = _open_regular_readonly(path, label)
+    if metadata.st_size > maximum:
+        os.close(descriptor)
+        raise ota.OtaError(
+            f"{label} is {metadata.st_size} bytes; limit is {maximum}: {path}"
+        )
+    with os.fdopen(descriptor, "rb") as source:
+        value = source.read(maximum + 1)
+        if len(value) > maximum or source.read(1):
+            raise ota.OtaError(f"{label} grew beyond its size limit: {path}")
+    if len(value) != metadata.st_size:
+        raise ota.OtaError(f"{label} changed while it was read: {path}")
+    return value
+
+
+def freeze_archive(source_path: Path, frozen_path: Path) -> str:
+    """Copy and hash one opened archive; all later work uses this snapshot."""
+    source_descriptor, metadata = _open_regular_readonly(
+        source_path, "release ZIP"
+    )
+    if metadata.st_size > MAX_BUNDLE_ARCHIVE_BYTES:
+        os.close(source_descriptor)
+        raise ota.OtaError(
+            f"release ZIP is {metadata.st_size} bytes; limit is "
+            f"{MAX_BUNDLE_ARCHIVE_BYTES}: {source_path}"
+        )
+    output_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        output_descriptor = os.open(frozen_path, output_flags, 0o600)
+    except OSError:
+        os.close(source_descriptor)
+        raise
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        with (
+            os.fdopen(source_descriptor, "rb") as source,
+            os.fdopen(output_descriptor, "wb") as output,
+        ):
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_BUNDLE_ARCHIVE_BYTES:
+                    raise ota.OtaError(
+                        "release ZIP grew beyond its bounded archive limit"
+                    )
+                digest.update(chunk)
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+    except Exception:
+        # fdopen owns both descriptors once the with statement is entered.
+        raise
+    if total != metadata.st_size:
+        raise ota.OtaError("release ZIP changed while it was snapshotted")
+    frozen_path.chmod(0o600)
+    return digest.hexdigest()
+
+
 def safe_relative_path(value: str, label: str) -> PurePosixPath:
     if "\\" in value:
         raise ota.OtaError(f"{label} contains a backslash: {value!r}")
@@ -408,7 +604,9 @@ def safe_relative_path(value: str, label: str) -> PurePosixPath:
 
 def download_release_asset(destination: Path) -> None:
     if destination.exists():
-        actual = sha256_file(destination)
+        actual = sha256_file_limited(
+            destination, MAX_BUNDLE_ARCHIVE_BYTES, "cached release ZIP"
+        )
         if actual != ASSET_SHA256:
             raise ota.OtaError(
                 f"cached release asset has SHA-256 {actual}, expected {ASSET_SHA256}: "
@@ -416,102 +614,305 @@ def download_release_asset(destination: Path) -> None:
             )
         print(f"[bundle] using verified cached asset {destination}")
         return
-
-    partial = destination.with_suffix(destination.suffix + ".part")
-    if partial.exists():
-        partial.unlink()
-    print(f"[bundle] downloading {ASSET_URL}")
-    request = urllib.request.Request(
-        ASSET_URL,
-        headers={"User-Agent": "MeshCore-RAK3401-chain-runner/1"},
+    raise ota.OtaError(
+        "the exact ten-step candidate is not released; pass its explicit local "
+        "ZIP or extracted root with --bundle"
     )
-    digest = hashlib.sha256()
-    received = 0
+
+
+def write_extraction_binding(
+    destination: Path,
+    archive_sha256: str,
+    checksum_sha256: str,
+    root_name: str,
+) -> None:
+    path = destination / EXTRACTION_BINDING_FILE
+    ota.write_private_recovery_file(
+        path,
+        json.dumps(
+            {
+                "archive_sha256": archive_sha256,
+                "checksum_list_sha256": checksum_sha256,
+                "root_name": root_name,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+
+def read_extraction_binding(destination: Path) -> dict[str, str] | None:
+    path = destination / EXTRACTION_BINDING_FILE
+    if not path.exists():
+        return None
     try:
-        with urllib.request.urlopen(request, timeout=60) as response, partial.open("xb") as output:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                received += len(chunk)
-                if received > 64 * 1024 * 1024:
-                    raise ota.OtaError("release asset exceeds the 64 MiB safety limit")
-                digest.update(chunk)
-                output.write(chunk)
-        actual = digest.hexdigest()
-        if actual != ASSET_SHA256:
-            raise ota.OtaError(
-                f"downloaded release asset has SHA-256 {actual}, expected {ASSET_SHA256}"
-            )
-        os.replace(partial, destination)
-    finally:
-        partial.unlink(missing_ok=True)
-    print(f"[bundle] downloaded and verified {received} bytes")
+        value = json.loads(path.read_text(encoding="ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ota.OtaError(f"invalid bundle extraction binding {path}: {exc}") from exc
+    if not isinstance(value, dict) or any(
+        not isinstance(value.get(key), str)
+        for key in ("archive_sha256", "checksum_list_sha256", "root_name")
+    ):
+        raise ota.OtaError(f"invalid bundle extraction binding fields: {path}")
+    return value
 
 
-def extract_bundle(archive_path: Path, destination: Path) -> Path:
-    root_names = (
-        BUNDLE_ROOT_NAME,
-        SUPERSEDED_30_ROOT_NAME,
-        SUPERSEDED_29_ROOT_NAME,
-        KNOWN_FAILED_V11701_ROOT_NAME,
-        KNOWN_UNSAFE_ROOT_NAME,
-    )
-    existing_roots = [destination / name for name in root_names if (destination / name).is_dir()]
-    if len(existing_roots) == 1:
-        return existing_roots[0]
-    if len(existing_roots) > 1:
-        raise ota.OtaError(f"bundle extraction contains multiple recognized roots: {destination}")
-    if destination.exists() and any(destination.iterdir()):
+def inspect_bundle_archive(archive_path: Path) -> str:
+    """Validate bounded members and identify the archive's one bundle root."""
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            members = archive.infolist()
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ota.OtaError(f"cannot read release ZIP {archive_path}: {exc}") from exc
+
+    if len(members) > MAX_BUNDLE_MEMBERS:
         raise ota.OtaError(
-            f"bundle extraction directory is incomplete or unexpected: {destination}"
+            f"release ZIP has {len(members)} members; limit is "
+            f"{MAX_BUNDLE_MEMBERS}"
         )
 
-    staging = destination.with_name(destination.name + f".part-{os.getpid()}")
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    chain_roots: set[str] = set()
+    checksum_roots: set[str] = set()
+    member_paths: list[PurePosixPath] = []
+    seen_paths: set[PurePosixPath] = set()
+    compressed_total = 0
+    uncompressed_total = 0
+    for member in members:
+        relative = safe_relative_path(member.filename.rstrip("/"), "ZIP member")
+        if len(relative.as_posix()) > 512 or len(relative.parts) > 32:
+            raise ota.OtaError(f"release ZIP member path is too long: {member.filename}")
+        if relative in seen_paths:
+            raise ota.OtaError(f"release ZIP contains a duplicate member: {relative}")
+        seen_paths.add(relative)
+        member_paths.append(relative)
+        if member.flag_bits & 0x1:
+            raise ota.OtaError(f"release ZIP contains an encrypted member: {relative}")
+        mode = (member.external_attr >> 16) & 0o170000
+        if stat.S_ISLNK(mode):
+            raise ota.OtaError(f"release ZIP contains a symbolic link: {member.filename}")
+        if mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            raise ota.OtaError(f"release ZIP contains a special file: {member.filename}")
+        if member.file_size < 0 or member.compress_size < 0:
+            raise ota.OtaError(f"release ZIP has an invalid member size: {relative}")
+        if member.file_size > MAX_BUNDLE_MEMBER_BYTES:
+            raise ota.OtaError(
+                f"release ZIP member exceeds {MAX_BUNDLE_MEMBER_BYTES} bytes: "
+                f"{relative}"
+            )
+        compressed_total += member.compress_size
+        uncompressed_total += member.file_size
+        if compressed_total > MAX_BUNDLE_ARCHIVE_BYTES:
+            raise ota.OtaError("release ZIP compressed members exceed the archive limit")
+        if uncompressed_total > MAX_BUNDLE_UNCOMPRESSED_BYTES:
+            raise ota.OtaError("release ZIP expands beyond the bundle size limit")
+        if len(relative.parts) == 2 and relative.parts[1] == "CHAIN.csv":
+            chain_roots.add(relative.parts[0])
+        if len(relative.parts) == 2 and relative.parts[1] == "SHA256SUMS.txt":
+            checksum_roots.add(relative.parts[0])
+    roots = chain_roots & checksum_roots
+    if len(roots) != 1:
+        raise ota.OtaError(
+            "release ZIP must contain exactly one top-level bundle root with "
+            "CHAIN.csv and SHA256SUMS.txt"
+        )
+    root_name = next(iter(roots))
+    if any(relative.parts[0] != root_name for relative in member_paths):
+        raise ota.OtaError(
+            "release ZIP contains members outside its single bundle root"
+        )
+    return root_name
+
+
+def extract_archive_members(archive_path: Path, staging: Path) -> None:
+    """Extract only inspected members with independent streamed byte caps."""
+    actual_total = 0
     try:
         with zipfile.ZipFile(archive_path) as archive:
             for member in archive.infolist():
-                safe_relative_path(member.filename.rstrip("/"), "ZIP member")
-                mode = (member.external_attr >> 16) & 0o170000
-                if stat.S_ISLNK(mode):
-                    raise ota.OtaError(f"release ZIP contains a symbolic link: {member.filename}")
-            archive.extractall(staging)
-        staged_roots = [staging / name for name in root_names if (staging / name).is_dir()]
-        if len(staged_roots) != 1:
+                relative = safe_relative_path(
+                    member.filename.rstrip("/"), "ZIP member"
+                )
+                destination = staging.joinpath(*relative.parts)
+                if member.is_dir():
+                    destination.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                member_total = 0
+                with (
+                    archive.open(member, "r") as source,
+                    destination.open("xb") as output,
+                ):
+                    while True:
+                        chunk = source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        member_total += len(chunk)
+                        actual_total += len(chunk)
+                        if member_total > MAX_BUNDLE_MEMBER_BYTES:
+                            raise ota.OtaError(
+                                f"release ZIP member expanded beyond its limit: {relative}"
+                            )
+                        if actual_total > MAX_BUNDLE_UNCOMPRESSED_BYTES:
+                            raise ota.OtaError(
+                                "release ZIP expanded beyond its aggregate limit"
+                            )
+                        output.write(chunk)
+                    output.flush()
+                    os.fsync(output.fileno())
+                destination.chmod(0o600)
+                if member_total != member.file_size:
+                    raise ota.OtaError(
+                        f"release ZIP member changed size while extracting: {relative}"
+                    )
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise ota.OtaError(f"cannot safely extract release ZIP: {exc}") from exc
+
+
+def extract_bundle(
+    archive_path: Path,
+    destination: Path,
+    archive_sha256: str | None = None,
+) -> Path:
+    if destination.is_symlink() or (
+        destination.exists() and not destination.is_dir()
+    ):
+        raise ota.OtaError(
+            f"bundle extraction destination is not a real directory: {destination}"
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    # Hash, inspect, and extract a uniquely owned snapshot. The caller's ZIP
+    # pathname may be replaced after this copy without changing any byte we
+    # subsequently trust or extract.
+    with tempfile.TemporaryDirectory(
+        prefix=f".{destination.name}.archive-", dir=destination.parent
+    ) as frozen_name:
+        frozen_archive = Path(frozen_name) / "release.zip"
+        actual_archive_sha256 = freeze_archive(archive_path, frozen_archive)
+        if (
+            archive_sha256 is not None
+            and actual_archive_sha256 != archive_sha256
+        ):
             raise ota.OtaError(
-                f"release ZIP must contain exactly one recognized bundle root: {root_names}"
+                f"release ZIP changed after validation: got {actual_archive_sha256}, "
+                f"expected {archive_sha256}"
             )
-        staged_root = staged_roots[0]
+        return extract_frozen_bundle(
+            frozen_archive, destination, actual_archive_sha256
+        )
+
+
+def extract_frozen_bundle(
+    archive_path: Path,
+    destination: Path,
+    actual_archive_sha256: str,
+) -> Path:
+    """Extract one private, already-hashed archive snapshot."""
+    expected_checksum_sha256 = PINNED_ARCHIVE_CHECKSUMS.get(
+        actual_archive_sha256
+    )
+    if expected_checksum_sha256 is None:
+        raise ota.OtaError(
+            "refusing to extract an archive whose SHA-256 is not pinned: "
+            f"{actual_archive_sha256}"
+        )
+    root_name = inspect_bundle_archive(archive_path)
+    expected_root = destination / root_name
+
+    if destination.exists() and any(destination.iterdir()):
+        allowed_names = {root_name, EXTRACTION_BINDING_FILE}
+        unexpected = sorted(
+            entry.name for entry in destination.iterdir()
+            if entry.name not in allowed_names
+        )
+        if unexpected or expected_root.is_symlink() or not expected_root.is_dir():
+            raise ota.OtaError(
+                "bundle extraction cache does not match this archive; use a "
+                f"different work directory (unexpected={unexpected or 'root mismatch'})"
+            )
+        checksum_path = expected_root / "SHA256SUMS.txt"
+        if (
+            not checksum_path.is_file()
+            or sha256_file_limited(
+                checksum_path,
+                MAX_CHECKSUM_LIST_BYTES,
+                "bundle checksum list",
+            ) != expected_checksum_sha256
+        ):
+            raise ota.OtaError(
+                "bundle extraction cache checksum does not match this pinned "
+                "archive; use a different work directory"
+            )
+        binding = read_extraction_binding(destination)
+        expected_binding = {
+            "archive_sha256": actual_archive_sha256,
+            "checksum_list_sha256": expected_checksum_sha256,
+            "root_name": root_name,
+        }
+        if binding is not None and binding != expected_binding:
+            raise ota.OtaError(
+                "bundle extraction cache is bound to a different archive; use "
+                "a different work directory"
+            )
+        if binding is None:
+            # Adopt a legacy cache only after its pinned checksum-list digest
+            # proves it is the exact content paired with this archive hash.
+            write_extraction_binding(
+                destination,
+                actual_archive_sha256,
+                expected_checksum_sha256,
+                root_name,
+            )
+        return expected_root
+
+    with tempfile.TemporaryDirectory(
+        prefix=f".{destination.name}.part-", dir=destination.parent
+    ) as staging_name:
+        staging = Path(staging_name)
+        extract_archive_members(archive_path, staging)
+        staged_root = staging / root_name
+        checksum_path = staged_root / "SHA256SUMS.txt"
+        if (
+            not staged_root.is_dir()
+            or not checksum_path.is_file()
+            or sha256_file_limited(
+                checksum_path,
+                MAX_CHECKSUM_LIST_BYTES,
+                "bundle checksum list",
+            ) != expected_checksum_sha256
+        ):
+            raise ota.OtaError(
+                "release ZIP checksum-list digest does not match the value "
+                "paired with its pinned archive hash"
+            )
         if destination.exists():
             destination.rmdir()
         os.replace(staging, destination)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-    return destination / staged_root.name
+        write_extraction_binding(
+            destination,
+            actual_archive_sha256,
+            expected_checksum_sha256,
+            root_name,
+        )
+    return destination / root_name
 
 
 def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     if args.bundle is None:
         archive = work_dir / ASSET_NAME
         download_release_asset(archive)
-        return extract_bundle(archive, work_dir / "bundle")
+        return extract_bundle(archive, work_dir / "bundle", ASSET_SHA256)
 
     supplied = args.bundle.resolve()
     if supplied.is_dir():
         direct = supplied / "CHAIN.csv"
         nested_roots = [
-            supplied / name for name in (
-                BUNDLE_ROOT_NAME,
-                SUPERSEDED_30_ROOT_NAME,
-                SUPERSEDED_29_ROOT_NAME,
-                KNOWN_FAILED_V11701_ROOT_NAME,
-                KNOWN_UNSAFE_ROOT_NAME,
-            )
-            if (supplied / name / "CHAIN.csv").is_file()
+            child for child in supplied.iterdir()
+            if child.is_dir()
+            and not child.is_symlink()
+            and (child / "CHAIN.csv").is_file()
+            and (child / "SHA256SUMS.txt").is_file()
         ]
         if direct.is_file():
             return supplied
@@ -520,9 +921,12 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
         raise ota.OtaError(f"bundle directory does not contain CHAIN.csv: {supplied}")
     if not supplied.is_file() or supplied.suffix.lower() != ".zip":
         raise ota.OtaError("--bundle must be the pinned release ZIP or its extracted root")
-    actual = sha256_file(supplied)
+    actual = sha256_file_limited(
+        supplied, MAX_BUNDLE_ARCHIVE_BYTES, "release ZIP"
+    )
     if actual not in {
         ASSET_SHA256,
+        PHYSICALLY_QUALIFIED_9_ASSET_SHA256,
         SUPERSEDED_30_ASSET_SHA256,
         SUPERSEDED_29_ASSET_SHA256,
         SUPERSEDED_27_ASSET_SHA256,
@@ -533,16 +937,20 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
         raise ota.OtaError(
             f"release ZIP has SHA-256 {actual}, expected a pinned audited asset: {supplied}"
         )
-    return extract_bundle(supplied, work_dir / "bundle")
+    return extract_bundle(supplied, work_dir / "bundle", actual)
 
 
-def verify_checksum_list(bundle_root: Path) -> None:
+def read_checksum_entries(bundle_root: Path) -> dict[PurePosixPath, str]:
     checksum_path = bundle_root / "SHA256SUMS.txt"
     if not checksum_path.is_file():
         raise ota.OtaError("bundle is missing SHA256SUMS.txt")
-    checksum_digest = sha256_file(checksum_path)
+    checksum_bytes = read_regular_bytes_limited(
+        checksum_path, MAX_CHECKSUM_LIST_BYTES, "bundle checksum list"
+    )
+    checksum_digest = hashlib.sha256(checksum_bytes).hexdigest()
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256,
         SUPERSEDED_30_CHECKSUM_LIST_SHA256,
         SUPERSEDED_29_CHECKSUM_LIST_SHA256,
         SUPERSEDED_27_CHECKSUM_LIST_SHA256,
@@ -555,9 +963,12 @@ def verify_checksum_list(bundle_root: Path) -> None:
             "bundle checksum list is not the one pinned by this chain runner: "
             f"got {checksum_digest}, expected one of {sorted(expected_lists)}"
         )
-    checked = 0
-    listed: set[PurePosixPath] = set()
-    for line_number, raw_line in enumerate(checksum_path.read_text(encoding="ascii").splitlines(), 1):
+    try:
+        checksum_text = checksum_bytes.decode("ascii")
+    except UnicodeError as exc:
+        raise ota.OtaError("bundle checksum list is not ASCII") from exc
+    listed: dict[PurePosixPath, str] = {}
+    for line_number, raw_line in enumerate(checksum_text.splitlines(), 1):
         if not raw_line.strip():
             continue
         match = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", raw_line)
@@ -567,31 +978,209 @@ def verify_checksum_list(bundle_root: Path) -> None:
         relative = safe_relative_path(name, "checksum entry")
         if relative in listed:
             raise ota.OtaError(f"duplicate checksum entry: {relative}")
-        listed.add(relative)
+        if len(relative.as_posix()) > 512 or len(relative.parts) > 32:
+            raise ota.OtaError(f"checksum entry path is too long: {relative}")
+        listed[relative] = expected.lower()
+        if len(listed) > MAX_BUNDLE_MEMBERS:
+            raise ota.OtaError(
+                f"bundle checksum list exceeds {MAX_BUNDLE_MEMBERS} entries"
+            )
+    return listed
+
+
+def inventory_bundle_tree(bundle_root: Path) -> dict[PurePosixPath, int]:
+    """Inventory an extracted tree without following links or reading payloads."""
+    if bundle_root.is_symlink() or not bundle_root.is_dir():
+        raise ota.OtaError(f"bundle root is not a real directory: {bundle_root}")
+    files: dict[PurePosixPath, int] = {}
+    pending: list[tuple[Path, PurePosixPath]] = [(bundle_root, PurePosixPath())]
+    entries_seen = 0
+    total_bytes = 0
+    while pending:
+        directory, relative_directory = pending.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError as exc:
+            raise ota.OtaError(f"cannot inventory bundle directory {directory}: {exc}") from exc
+        for entry in entries:
+            entries_seen += 1
+            if entries_seen > MAX_BUNDLE_TREE_ENTRIES:
+                raise ota.OtaError(
+                    f"bundle tree exceeds {MAX_BUNDLE_TREE_ENTRIES} entries"
+                )
+            relative = relative_directory / entry.name
+            safe_relative_path(relative.as_posix(), "bundle entry")
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise ota.OtaError(f"cannot inspect bundle entry {entry.path}: {exc}") from exc
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ota.OtaError(f"bundle contains a symbolic link: {entry.path}")
+            if stat.S_ISDIR(metadata.st_mode):
+                pending.append((Path(entry.path), relative))
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ota.OtaError(f"bundle contains a non-file entry: {entry.path}")
+            limit = (
+                MAX_CHECKSUM_LIST_BYTES
+                if relative == PurePosixPath("SHA256SUMS.txt")
+                else MAX_BUNDLE_MEMBER_BYTES
+            )
+            if metadata.st_size > limit:
+                raise ota.OtaError(
+                    f"bundle entry is {metadata.st_size} bytes; limit is "
+                    f"{limit}: {relative}"
+                )
+            total_bytes += metadata.st_size
+            if total_bytes > MAX_BUNDLE_UNCOMPRESSED_BYTES:
+                raise ota.OtaError("bundle tree exceeds its aggregate byte limit")
+            files[relative] = metadata.st_size
+    return files
+
+
+def verify_checksum_list(bundle_root: Path) -> None:
+    listed = read_checksum_entries(bundle_root)
+    inventory = inventory_bundle_tree(bundle_root)
+    checksum_relative = PurePosixPath("SHA256SUMS.txt")
+    actual_files = set(inventory) - {checksum_relative}
+    listed_files = set(listed)
+    if listed_files != actual_files:
+        missing = sorted(str(path) for path in actual_files - listed_files)
+        extra = sorted(str(path) for path in listed_files - actual_files)
+        raise ota.OtaError(
+            "bundle checksum coverage mismatch; "
+            f"unlisted={missing or 'none'}, nonexistent={extra or 'none'}"
+        )
+
+    checked = 0
+    for relative, expected in listed.items():
         path = bundle_root.joinpath(*relative.parts)
-        if path.is_symlink() or not path.is_file():
-            raise ota.OtaError(f"checksum entry is missing: {relative}")
-        actual = sha256_file(path)
+        actual = sha256_file_limited(
+            path, MAX_BUNDLE_MEMBER_BYTES, f"bundle entry {relative}"
+        )
         if actual.lower() != expected.lower():
             raise ota.OtaError(
                 f"checksum mismatch for {relative}: got {actual}, expected {expected}"
             )
         checked += 1
-
-    actual_files: set[PurePosixPath] = set()
-    for path in bundle_root.rglob("*"):
-        if path.is_symlink():
-            raise ota.OtaError(f"bundle contains a symbolic link: {path}")
-        if path.is_file() and path != checksum_path:
-            actual_files.add(PurePosixPath(path.relative_to(bundle_root).as_posix()))
-    if listed != actual_files:
-        missing = sorted(str(path) for path in actual_files - listed)
-        extra = sorted(str(path) for path in listed - actual_files)
-        raise ota.OtaError(
-            "bundle checksum coverage mismatch; "
-            f"unlisted={missing or 'none'}, nonexistent={extra or 'none'}"
-        )
     print(f"[bundle] verified all {checked} SHA-256 entries")
+
+
+def require_bundle_work_separation(bundle_root: Path, work_dir: Path) -> None:
+    """Keep mutable run state out of the immutable bundle input tree."""
+    resolved_bundle = bundle_root.resolve(strict=True)
+    resolved_work = work_dir.resolve(strict=True)
+    if resolved_work == resolved_bundle or resolved_work.is_relative_to(resolved_bundle):
+        raise ota.OtaError(
+            "work directory must be outside the supplied bundle root so run "
+            "artifacts cannot change the verified input tree"
+        )
+
+
+def copy_regular_file_limited(
+    source: Path,
+    destination: Path,
+    maximum: int,
+    label: str,
+    *,
+    expected_size: int | None = None,
+) -> int:
+    descriptor, metadata = _open_regular_readonly(source, label)
+    if metadata.st_size > maximum:
+        os.close(descriptor)
+        raise ota.OtaError(
+            f"{label} is {metadata.st_size} bytes; limit is {maximum}: {source}"
+        )
+    if expected_size is not None and metadata.st_size != expected_size:
+        os.close(descriptor)
+        raise ota.OtaError(
+            f"{label} changed size after the bounded bundle inventory"
+        )
+    copy_limit = metadata.st_size if expected_size is not None else maximum
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    total = 0
+    source_name = str(source)
+    try:
+        with (
+            os.fdopen(descriptor, "rb") as input_file,
+            destination.open("xb") as output_file,
+        ):
+            class BoundedReader:
+                @property
+                def name(self) -> str:
+                    return source_name
+
+                def read(self, requested: int = -1) -> bytes:
+                    nonlocal total
+                    remaining = copy_limit - total
+                    if requested < 0:
+                        requested = remaining + 1
+                    chunk = input_file.read(min(requested, remaining + 1))
+                    if len(chunk) > remaining:
+                        raise ota.OtaError(f"{label} grew beyond its size limit")
+                    total += len(chunk)
+                    return chunk
+
+            shutil.copyfileobj(BoundedReader(), output_file, 1024 * 1024)
+            output_file.flush()
+            os.fsync(output_file.fileno())
+    except Exception:
+        raise
+    if total != metadata.st_size:
+        raise ota.OtaError(f"{label} changed while it was copied")
+    destination.chmod(0o600)
+    return total
+
+
+def snapshot_verified_bundle(bundle_root: Path, destination_parent: Path) -> Path:
+    """Copy an input tree once, then verify and use only the private snapshot."""
+    if destination_parent.is_symlink() or not destination_parent.is_dir():
+        raise ota.OtaError(
+            f"bundle snapshot parent is not a real directory: {destination_parent}"
+        )
+    resolved_bundle = bundle_root.resolve(strict=True)
+    resolved_parent = destination_parent.resolve(strict=True)
+    if resolved_parent == resolved_bundle or resolved_parent.is_relative_to(
+        resolved_bundle
+    ):
+        raise ota.OtaError("bundle snapshot must be outside the input bundle tree")
+    snapshot_root = destination_parent / bundle_root.name
+    snapshot_root.mkdir(mode=0o700)
+    try:
+        # Coverage and resource checks happen before the first payload byte is
+        # copied. Copy only the pinned set (plus the list itself), then verify
+        # the private result again to close mutation races during the copy.
+        verify_checksum_list(bundle_root)
+        listed = read_checksum_entries(bundle_root)
+        inventory = inventory_bundle_tree(bundle_root)
+        copy_order = [PurePosixPath("SHA256SUMS.txt"), *sorted(listed)]
+        copied_total = 0
+        for relative in copy_order:
+            source = bundle_root.joinpath(*relative.parts)
+            destination = snapshot_root.joinpath(*relative.parts)
+            limit = (
+                MAX_CHECKSUM_LIST_BYTES
+                if relative == PurePosixPath("SHA256SUMS.txt")
+                else MAX_BUNDLE_MEMBER_BYTES
+            )
+            expected_size = inventory[relative]
+            if copied_total + expected_size > MAX_BUNDLE_UNCOMPRESSED_BYTES:
+                raise ota.OtaError("bundle copy exceeds its aggregate byte limit")
+            copied_total += copy_regular_file_limited(
+                source,
+                destination,
+                limit,
+                f"bundle entry {relative}",
+                expected_size=expected_size,
+            )
+        # This post-copy verification binds every byte used by the runner. If
+        # the caller's extracted tree changed before or during the copy, the
+        # private snapshot fails closed; later caller mutations are irrelevant.
+        verify_checksum_list(snapshot_root)
+    except Exception:
+        shutil.rmtree(snapshot_root, ignore_errors=True)
+        raise
+    return snapshot_root
 
 
 def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
@@ -601,10 +1190,12 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             rows = list(csv.DictReader(source))
     except OSError as exc:
         raise ota.OtaError(f"cannot read {chain_path}: {exc}") from exc
-    if len(rows) not in (EXPECTED_STEP_COUNT, 26, 27, 29, 30):
+    if len(rows) not in (
+        EXPECTED_STEP_COUNT, PHYSICALLY_QUALIFIED_9_STEP_COUNT, 26, 27, 29, 30
+    ):
         raise ota.OtaError(
             f"chain contains {len(rows)} steps, expected {EXPECTED_STEP_COUNT}, "
-            "26, 27, 29, or 30"
+            f"{PHYSICALLY_QUALIFIED_9_STEP_COUNT}, 26, 27, 29, or 30"
         )
 
     steps: list[ChainStep] = []
@@ -655,12 +1246,19 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
     if len(steps) == EXPECTED_STEP_COUNT:
+        for number, expected_sha256 in CURRENT_10_CANDIDATE_ANCHORS:
+            if steps[number - 1].target_sha256 != expected_sha256:
+                raise ota.OtaError(
+                    f"ten-step candidate step {number} does not match its audited image pin"
+                )
+        expected_final_version = EXPECTED_FINAL_VERSION
+    elif len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
         for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
                 raise ota.OtaError(
                     f"compact release step {number} does not match its audited image pin"
                 )
-        expected_final_version = EXPECTED_FINAL_VERSION
+        expected_final_version = PHYSICALLY_QUALIFIED_9_FINAL_VERSION
     elif len(steps) == 30:
         for number, expected_sha256 in PINNED_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
@@ -806,11 +1404,35 @@ def source_namespace(args: argparse.Namespace) -> SimpleNamespace:
         source_already_temp=args.source_already_temp,
         source_shares_controller=args.source_shares_controller,
         source_companion_terminal=False,
+        temp_values=args.temp_values,
         source_baud=args.source_baud,
         controller_baud=args.controller_baud,
         reply_timeout=args.reply_timeout,
         meshcli=args.meshcli,
     )
+
+
+def restore_persisted_source_rxps(
+    work_dir: Path,
+    source_args: SimpleNamespace,
+) -> None:
+    """Recover the chain-start source preference after a killed nested step."""
+    recovery_path = work_dir / ota.SOURCE_RXPS_RECOVERY_FILE
+    if not recovery_path.exists() and not recovery_path.is_symlink():
+        return
+    saved = ota.read_source_rxps_recovery(recovery_path, source_args)
+    if not ota.shorten_source_temp_window(source_args):
+        raise ota.OtaError(
+            "could not prove the OTA source is back on its normal radio before "
+            "retiring persisted RXPS recovery"
+        )
+    current = ota.read_source_rxps(source_args)
+    if current == saved:
+        print("[rxps] OTA source matches the persisted chain-start setting")
+    else:
+        ota.restore_source_rxps(source_args, saved)
+    ota.retire_source_rxps_recovery(recovery_path)
+    print("[rxps] retired completed chain source recovery record")
 
 
 def query_live_target(
@@ -949,12 +1571,30 @@ def load_or_capture_transfer_settings(
 ) -> TargetTransferSettings:
     path = work_dir / TRANSFER_SETTINGS_FILE
     if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ota.OtaError(
+                f"saved transfer settings are not a private regular file: {path}"
+            )
+        if stat.S_IMODE(path.stat().st_mode) & 0o077:
+            raise ota.OtaError(
+                f"saved transfer settings are not private (0600): {path}"
+            )
         try:
             saved = json.loads(path.read_text(encoding="ascii"))
-            if saved["target_key"].lower() != target_key.lower():
+            saved_target_key = saved["target_key"]
+            if (
+                not isinstance(saved_target_key, str)
+                or re.fullmatch(r"[0-9a-fA-F]{64}", saved_target_key) is None
+            ):
+                raise TypeError("saved target key must be a 64-hex string")
+            if saved_target_key.lower() != target_key.lower():
                 raise ota.OtaError(
                     f"{path} belongs to a different destination public key"
                 )
+            if not isinstance(saved["rxdelay"], str) or not isinstance(
+                saved["airtime_factor"], str
+            ):
+                raise TypeError("saved delay and airtime values must be strings")
             if not isinstance(saved["rxps_enabled"], bool) or not isinstance(
                 saved["powersaving_enabled"], bool
             ):
@@ -986,7 +1626,9 @@ def load_or_capture_transfer_settings(
                 airtime_factor=str(saved["airtime_factor"]),
                 ota_hops=saved["ota_hops"],
             )
-            float(settings.rxdelay)
+            rxdelay = float(settings.rxdelay)
+            if not math.isfinite(rxdelay) or rxdelay < 0.0:
+                raise ValueError("saved RX delay is invalid")
             airtime_factor = float(settings.airtime_factor)
             if not math.isfinite(airtime_factor) or airtime_factor < 0.0:
                 raise ValueError("saved airtime factor is invalid")
@@ -1029,10 +1671,9 @@ def load_or_capture_transfer_settings(
         "airtime_factor": settings.airtime_factor,
         "ota_hops": settings.ota_hops,
     }
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="ascii")
-    temporary.chmod(0o600)
-    os.replace(temporary, path)
+    ota.write_private_recovery_file(
+        path, json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    )
     print(f"[guardrail] saved original destination settings to {path}")
     return settings
 
@@ -1186,13 +1827,53 @@ def restore_transfer_settings(
     ):
         raise ota.OtaError("destination radio transfer settings did not restore exactly")
 
-    if saved.powersaving_enabled:
-        reply = controller.remote_command(target_name, "powersaving on")
-        if re.search(r"\bon\b", reply, re.IGNORECASE) is None:
+    if verified.powersaving_enabled != saved.powersaving_enabled:
+        desired = "on" if saved.powersaving_enabled else "off"
+        reply = controller.remote_command(target_name, f"powersaving {desired}")
+        if re.search(rf"\b{desired}\b", reply, re.IGNORECASE) is None:
             raise ota.OtaError(f"target did not restore CPU power saving: {reply}")
-    elif verified.powersaving_enabled:
-        raise ota.OtaError("destination CPU power saving unexpectedly remained enabled")
+
+    final = read_target_transfer_settings(controller, target_name)
+    if (
+        final.rxps_enabled != saved.rxps_enabled
+        or final.powersaving_enabled != saved.powersaving_enabled
+        or abs(float(final.rxdelay) - float(saved.rxdelay)) > 0.0001
+        or abs(float(final.airtime_factor) - float(saved.airtime_factor)) > 0.0001
+        or final.ota_hops != saved.ota_hops
+        or (
+            saved.rxps_enabled
+            and (
+                final.rxps_rx_us != saved.rxps_rx_us
+                or final.rxps_sleep_us != saved.rxps_sleep_us
+                or (
+                    saved.rxps_level is not None
+                    and (
+                        final.rxps_level != saved.rxps_level
+                        or final.rxps_preamble != saved.rxps_preamble
+                    )
+                )
+            )
+        )
+    ):
+        raise ota.OtaError(
+            "destination transfer settings changed during final restoration"
+        )
     print("[guardrail] original destination transfer settings restored")
+
+
+def restore_and_retire_transfer_settings(
+    controller: ota.Controller,
+    target_name: str,
+    saved: TargetTransferSettings,
+    work_dir: Path,
+) -> None:
+    """Restore exactly, then disarm the persistent resume record atomically."""
+    restore_transfer_settings(controller, target_name, saved)
+    path = work_dir / TRANSFER_SETTINGS_FILE
+    ota.retire_private_recovery_file(
+        path, "destination transfer-settings recovery record"
+    )
+    print("[guardrail] retired completed destination settings recovery record")
 
 
 def read_ota_hops(controller: ota.Controller, target_name: str) -> int:
@@ -1237,6 +1918,17 @@ def require_rescue_capability(
     print("[rescue] guarded no-EndF recovery command is present")
 
 
+def require_rescue_capability_before_next_transition(
+    controller: ota.Controller,
+    target_name: str,
+    next_step_index: int,
+    step_count: int,
+) -> None:
+    """Gate a bridge at a chain position before exposing it to another package."""
+    if 0 < next_step_index < step_count:
+        require_rescue_capability(controller, target_name)
+
+
 def wait_with_label(seconds: int, label: str) -> None:
     deadline = time.monotonic() + seconds
     while True:
@@ -1276,13 +1968,81 @@ def prepare_watchdog(
     print("[watchdog] off and target remained responsive through the stability window")
 
 
+def validate_chain_state_paths(work_dir: Path) -> None:
+    """Reject reused state paths that could redirect or block chain writes."""
+    steps_path = work_dir / "steps"
+    progress_path = work_dir / "progress.jsonl"
+    for path, expected_kind in (
+        (steps_path, "directory"),
+        (progress_path, "regular file"),
+    ):
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            continue
+        if expected_kind == "directory":
+            valid = stat.S_ISDIR(metadata.st_mode)
+        else:
+            valid = stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+        if not valid:
+            raise ota.OtaError(
+                f"chain state path must be a real {expected_kind}: {path}"
+            )
+        if path == progress_path and metadata.st_size > MAX_PROGRESS_BYTES:
+            raise ota.OtaError(
+                f"chain progress log exceeds {MAX_PROGRESS_BYTES} bytes: {path}"
+            )
+
+
+def open_steps_directory(work_dir: Path) -> int:
+    parent = work_dir / "steps"
+    try:
+        parent.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    try:
+        path_metadata = parent.lstat()
+    except OSError as exc:
+        raise ota.OtaError(f"cannot inspect chain steps path: {parent}") from exc
+    if not stat.S_ISDIR(path_metadata.st_mode):
+        raise ota.OtaError(f"chain steps path is not a real directory: {parent}")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(parent, flags)
+    except OSError as exc:
+        raise ota.OtaError(f"chain steps path is not a real directory: {parent}") from exc
+    metadata = os.fstat(descriptor)
+    try:
+        current_path_metadata = parent.lstat()
+    except OSError as exc:
+        os.close(descriptor)
+        raise ota.OtaError(f"chain steps path changed while opening: {parent}") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or not os.path.samestat(metadata, path_metadata)
+        or not os.path.samestat(metadata, current_path_metadata)
+    ):
+        os.close(descriptor)
+        raise ota.OtaError(f"chain steps path is not one stable directory: {parent}")
+    return descriptor
+
+
 def next_attempt_dir(work_dir: Path, step_number: int) -> Path:
     parent = work_dir / "steps"
-    parent.mkdir(exist_ok=True)
-    for attempt in range(1, 1000):
-        candidate = parent / f"step-{step_number:02d}-attempt-{attempt:03d}"
-        if not candidate.exists():
-            return candidate
+    descriptor = open_steps_directory(work_dir)
+    try:
+        for attempt in range(1, 1000):
+            name = f"step-{step_number:02d}-attempt-{attempt:03d}"
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=descriptor)
+            except FileExistsError:
+                continue
+            # Reserve a private real directory first. lora_ota.main creates
+            # its own one-use work directory below it with exist_ok=False.
+            return parent / name / "work"
+    finally:
+        os.close(descriptor)
     raise ota.OtaError(f"too many saved attempts for step {step_number}")
 
 
@@ -1298,8 +2058,55 @@ def append_progress(
         "to_version": step.to_version,
         "body_hash": body_hash.hex().upper(),
     }
-    with (work_dir / "progress.jsonl").open("a", encoding="ascii") as output:
-        output.write(json.dumps(record, sort_keys=True) + "\n")
+    path = work_dir / "progress.jsonl"
+    data = (json.dumps(record, sort_keys=True) + "\n").encode("ascii")
+    try:
+        path_metadata: os.stat_result | None = path.lstat()
+    except FileNotFoundError:
+        path_metadata = None
+    if path_metadata is not None and stat.S_ISLNK(path_metadata.st_mode):
+        raise ota.OtaError(f"chain progress path is a symbolic link: {path}")
+    flags = (
+        os.O_WRONLY
+        | os.O_APPEND
+        | os.O_CREAT
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise ota.OtaError(f"cannot safely open chain progress log {path}: {exc}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        try:
+            current_path_metadata = path.lstat()
+        except OSError as exc:
+            raise ota.OtaError(
+                f"chain progress path changed while opening: {path}"
+            ) from exc
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or not os.path.samestat(metadata, current_path_metadata)
+            or (
+                path_metadata is not None
+                and not os.path.samestat(metadata, path_metadata)
+            )
+        ):
+            raise ota.OtaError(
+                f"chain progress path is not a private regular file: {path}"
+            )
+        if metadata.st_size + len(data) > MAX_PROGRESS_BYTES:
+            raise ota.OtaError(
+                f"chain progress log would exceed {MAX_PROGRESS_BYTES} bytes"
+            )
+        if os.write(descriptor, data) != len(data):
+            raise ota.OtaError("short write while appending chain progress")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def clear_completed_download(
@@ -1307,7 +2114,16 @@ def clear_completed_download(
     target_name: str,
     step: ChainStep,
 ) -> None:
-    """Clear only a retained record for the exact, proven installed step."""
+    """After exact body proof, detach only a visible completed manager session.
+
+    A normal-channel ``no download`` proves that the manager is idle; it does
+    not prove that a persistent store is empty.  In particular, the legacy
+    internal-flash nRF52 store's ``clear()`` reset only RAM.  Do not turn an
+    IDLE ``ota cancel`` acknowledgement into a false durable-erasure claim.
+    The next transition explicitly re-adopts, proves, and cancels the previous
+    MID on TempRadio before beginning its new pull; a successfully consumed
+    final package is inert because OTAFIX has cleared its approval word.
+    """
     status = controller.remote_command(target_name, "ota status")
     active_id = ota.download_manifest_id(status)
     if active_id is None:
@@ -1316,13 +2132,17 @@ def clear_completed_download(
                 f"post-install download state is ambiguous after step {step.number}: "
                 f"{status}"
             )
+        print(
+            f"[chain] step {step.number:02d} manager is idle; persistent "
+            "staging is not inferred from normal-channel status"
+        )
         return
-    if active_id != step.package.manifest_id:
+    elif active_id != step.package.manifest_id:
         raise ota.OtaError(
             f"post-install target retained mOTA {active_id} after step "
             f"{step.number}; expected only {step.package.manifest_id}"
         )
-    if "ready to install" not in status.lower():
+    elif "ready to install" not in status.lower():
         raise ota.OtaError(
             f"post-install target still has an active step-{step.number} session: "
             f"{status}"
@@ -1337,7 +2157,10 @@ def clear_completed_download(
         raise ota.OtaError(
             f"completed step-{step.number} staging record remains: {status}"
         )
-    print(f"[chain] cleared retained staging record for step {step.number:02d}")
+    print(
+        f"[chain] detached completed step-{step.number:02d} manager session; "
+        "persistent erasure is not inferred"
+    )
 
 
 def connection_arguments(args: argparse.Namespace) -> list[str]:
@@ -1390,6 +2213,8 @@ def run_step(
         "--transfer-timeout-minutes", str(args.transfer_timeout_minutes),
         "--seeder-start-wait", str(args.seeder_start_wait),
         "--reboot-wait", str(args.reboot_wait),
+        "--source-rxps-recovery-file",
+        str(work_dir / ota.SOURCE_RXPS_RECOVERY_FILE),
         "--work-dir", str(next_attempt_dir(work_dir, step.number)),
         "--require-system-watchdog-off",
         "--expected-installed-body-hash", expected_body_hash.hex().upper(),
@@ -1404,6 +2229,8 @@ def run_step(
             "--clear-completed-manifest", previous_step.package.manifest_id,
             "--clear-completed-on-body-hash", step.base_hash.hex().upper(),
         ])
+    if args.debug:
+        command.append("--debug")
     for relay in args.relay:
         command.extend(["--relay", relay])
     result = ota.main(command, controller_override=controller)
@@ -1414,14 +2241,16 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Download, verify, resume, and install the exact compact 9-step "
-            "RAK3401 mOTA chain from c1caa5ad to e742333a."
+            "Verify the exact local ten-step RAK3401 candidate from c1caa5ad "
+            "to fd98bc90. Its exact package transitions passed directly on "
+            "hardware, but this later host-runner revision has not had a clean "
+            "end-to-end physical rerun and normal live use remains disabled."
         )
     )
     parser.add_argument(
         "--bundle",
         type=Path,
-        help="pinned release ZIP or extracted bundle root (downloads it when omitted)",
+        help="pinned local ZIP or extracted bundle root (required until release)",
     )
     parser.add_argument(
         "--work-dir",
@@ -1443,8 +2272,9 @@ def build_parser() -> argparse.ArgumentParser:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--source-serial")
     source.add_argument("--source-tcp")
-    parser.add_argument("--source-cli-serial")
-    parser.add_argument("--source-cli-tcp")
+    source_cli = parser.add_mutually_exclusive_group()
+    source_cli.add_argument("--source-cli-serial")
+    source_cli.add_argument("--source-cli-tcp")
     parser.add_argument("--source-already-temp", action="store_true")
     parser.add_argument("--source-shares-controller", action="store_true")
 
@@ -1539,6 +2369,12 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         )
     if args.source_already_temp and not args.source_tcp:
         parser.error("--source-already-temp requires --source-tcp")
+    if args.source_already_temp and (
+        args.source_cli_serial or args.source_cli_tcp
+    ):
+        parser.error(
+            "--source-already-temp cannot be combined with a managed source CLI"
+        )
     if args.source_shares_controller and not (
         args.source_tcp and args.source_cli_tcp
     ):
@@ -1549,6 +2385,14 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         parser.error(
             "--source-shares-controller and --source-already-temp are mutually exclusive"
         )
+    if args.controller_serial and args.source_serial and ota.serial_paths_match(
+        args.controller_serial, args.source_serial
+    ):
+        parser.error("controller and source must be separate nodes/serial ports")
+    if args.controller_serial and args.source_cli_serial and ota.serial_paths_match(
+        args.controller_serial, args.source_cli_serial
+    ):
+        parser.error("controller and source CLI must use separate serial ports")
     for name in (
         "controller_baud", "source_baud", "reply_timeout", "discovery_timeout",
         "discovery_interval", "poll_seconds", "transfer_timeout_minutes",
@@ -1648,15 +2492,34 @@ def main(argv: list[str] | None = None) -> int:
     validate_args(args, parser)
     work_dir = args.work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
+    validate_chain_state_paths(work_dir)
+    snapshot_parent: Path | None = None
 
     try:
-        bundle_root = locate_bundle(args, work_dir)
-        verify_checksum_list(bundle_root)
+        supplied_bundle_root = locate_bundle(args, work_dir)
+        require_bundle_work_separation(supplied_bundle_root, work_dir)
+        snapshot_parent = Path(tempfile.mkdtemp(
+            prefix=".verified-bundle-", dir=work_dir
+        ))
+        snapshot_parent.chmod(0o700)
+        bundle_root = snapshot_verified_bundle(
+            supplied_bundle_root, snapshot_parent
+        )
         steps, final_body_hash = parse_chain(bundle_root)
         verify_motatool(args, steps)
         if args.verify_only:
-            print(f"Verified release bundle: {bundle_root}")
+            print(f"Verified pinned bundle: {supplied_bundle_root}")
             if len(steps) == EXPECTED_STEP_COUNT:
+                print(
+                    "Ten-step candidate verified offline: exact archive/checksum "
+                    "pins, all target anchors, zero-filled and erased-workspace "
+                    "reconstruction, independent motatool verification, and "
+                    "bootloader simulation passed. These exact package transitions "
+                    "also passed directly on the RAK3401 and the endpoint passed "
+                    "independent SWD readback. This later host-runner revision has "
+                    "not had a new clean physical rerun; live use remains gated."
+                )
+            elif len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
                 print(
                     "Compact release verified: all 9 transitions passed its exact "
                     "physical RAK3401 run, zero-filled and erased-workspace "
@@ -1710,18 +2573,22 @@ def main(argv: list[str] | None = None) -> int:
         target_name, full_key = resolve_target_by_key(controller, args.target_key)
         target = query_live_target(controller, args, target_name)
         first_index = find_resume_index(target, steps, final_body_hash)
+        require_rescue_capability_before_next_transition(
+            controller, target_name, first_index, len(steps)
+        )
         confirm_chain(args, target_name, full_key, target, first_index, steps)
         if args.preflight_only:
             return 0
 
         if first_index == len(steps):
+            restore_persisted_source_rxps(work_dir, source_args)
             transfer_path = work_dir / TRANSFER_SETTINGS_FILE
             if transfer_path.exists():
                 transfer_settings = load_or_capture_transfer_settings(
                     controller, target_name, full_key, work_dir
                 )
-                restore_transfer_settings(
-                    controller, target_name, transfer_settings
+                restore_and_retire_transfer_settings(
+                    controller, target_name, transfer_settings, work_dir
                 )
             if not args.keep_watchdog_off:
                 enabled = controller.remote_command(target_name, "set system.watchdog on")
@@ -1829,7 +2696,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"runtime label {target.current_version} is historical and is "
                     f"not the EndF chain version {step.to_version}"
                 )
-            require_rescue_capability(controller, target_name)
+            require_rescue_capability_before_next_transition(
+                controller, target_name, index + 1, len(steps)
+            )
             clear_completed_download(controller, target_name, step)
             require_watchdog_state(controller, target_name, "off")
             append_progress(work_dir, step, target.base_hash)
@@ -1838,7 +2707,10 @@ def main(argv: list[str] | None = None) -> int:
         final_target = query_live_target(controller, args, target_name)
         if find_resume_index(final_target, steps, final_body_hash) != len(steps):
             raise ota.OtaError("final target identity did not match the release endpoint")
-        restore_transfer_settings(controller, target_name, transfer_settings)
+        restore_persisted_source_rxps(work_dir, source_args)
+        restore_and_retire_transfer_settings(
+            controller, target_name, transfer_settings, work_dir
+        )
         if not args.keep_watchdog_off:
             enabled = controller.remote_command(target_name, "set system.watchdog on")
             if not enabled.lower().startswith("ok - system watchdog enabled"):
@@ -1870,6 +2742,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    finally:
+        if snapshot_parent is not None:
+            shutil.rmtree(snapshot_parent, ignore_errors=True)
 
 
 if __name__ == "__main__":

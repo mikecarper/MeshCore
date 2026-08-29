@@ -2714,6 +2714,13 @@ declare_build_capability_contract() {
   fi
 
   if is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
+    # These two reduced RAK OTA profiles deliberately retain their board GPS
+    # provider as well as the compact INA monitor set. Keep the release
+    # manifest honest so a space-oriented target name is not mistaken for a
+    # GPS-less image. This evidence is emitted only by the linked WisBlock GPS
+    # provider; generic CLI command text is not sufficient proof.
+    record_build_expectation \
+      "sensor.gps" "meshcore.capability.rak_wisblock_gps.v1"
     record_build_expectation "sensor.ina219" "INA219"
     record_build_expectation "sensor.ina226" "INA226"
     record_build_expectation "sensor.ina260" "INA260"

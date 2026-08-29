@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "helpers/ota/OtaFlashLayout_nrf52.h"
+#include "helpers/ota/OtaFlashLayout_esp32.h"
 #include "helpers/ota/OtaStoreQspiNrf52.h"
 
 using namespace mesh::ota;
@@ -316,6 +317,307 @@ TEST(OtaFlashPlan, ReopenBoundsUntrustedTotalBeforeManifestRead) {
   EXPECT_FALSE(mota_nrf52_container_span_valid(
       EXPANDED + 1u, EXPANDED, MOTA_NRF52_BOOT_CONTAINER_SIZE,
       8u + 197u + 5u));
+}
+
+namespace {
+
+struct FakeStagedHeader {
+  uint32_t address;
+  uint32_t total;
+  bool present;
+  bool invalidate_ok;
+  bool invalidated;
+};
+
+struct FakeStagedFlash {
+  FakeStagedHeader* headers;
+  size_t count;
+  uint32_t invalidate_calls;
+};
+
+bool fake_read_staged_header(void* context, uint32_t address,
+                             uint32_t& total) {
+  FakeStagedFlash* flash = static_cast<FakeStagedFlash*>(context);
+  for (size_t i = 0; i < flash->count; ++i) {
+    FakeStagedHeader& header = flash->headers[i];
+    if (header.address == address && header.present) {
+      total = header.total;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool fake_invalidate_staged_header(void* context, uint32_t address) {
+  FakeStagedFlash* flash = static_cast<FakeStagedFlash*>(context);
+  ++flash->invalidate_calls;
+  for (size_t i = 0; i < flash->count; ++i) {
+    FakeStagedHeader& header = flash->headers[i];
+    if (header.address != address || !header.present) continue;
+    if (!header.invalidate_ok) return false;
+    header.present = false;
+    header.invalidated = true;
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST(OtaFlashDiscard, FreshIdleObjectStillInvalidatesPersistedHeader) {
+  // The callback context models flash only: there is deliberately no live
+  // OtaStore session or staged_size. Cancellation after reboot must still
+  // find the bottom-aligned persistent header.
+  FakeStagedHeader headers[] = {
+      {0xE2000u, EXPANDED - 0xE2000u, true, true, false},
+  };
+  FakeStagedFlash flash{headers, 1u, 0u};
+  uint32_t invalidated = 99u;
+
+  EXPECT_TRUE(mota_nrf52_discard_staged_headers(
+      APP_V6, APP_END_V6, EXPANDED, &flash, fake_read_staged_header,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(invalidated, 1u);
+  EXPECT_EQ(flash.invalidate_calls, 1u);
+  EXPECT_TRUE(headers[0].invalidated);
+
+  // Durable discard is idempotent: a new scan cannot reopen or re-invalidate
+  // the header that the first call consumed.
+  invalidated = 99u;
+  EXPECT_TRUE(mota_nrf52_discard_staged_headers(
+      APP_V6, APP_END_V6, EXPANDED, &flash, fake_read_staged_header,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(invalidated, 0u);
+  EXPECT_EQ(flash.invalidate_calls, 1u);
+}
+
+TEST(OtaFlashDiscard, InvalidatesEveryCurrentAndLegacyLayoutHeader) {
+  FakeStagedHeader headers[] = {
+      // Two expanded-ceiling containers from transfers of different sizes.
+      {0xE2000u, EXPANDED - 0xE2000u, true, true, false},
+      {0xD8000u, EXPANDED - 0xD8000u, true, true, false},
+      // A retained container from the older D4000 ceiling geometry.
+      {0xC0000u, LEGACY - 0xC0000u, true, true, false},
+      // Magic at a page whose total does not bottom-align there is not a
+      // reopenable store header and must remain untouched.
+      {0xD9000u, 0x8000u, true, true, false},
+  };
+  FakeStagedFlash flash{headers, 4u, 0u};
+  uint32_t invalidated = 0;
+
+  EXPECT_TRUE(mota_nrf52_discard_staged_headers(
+      APP_V6, APP_END_V6, EXPANDED, &flash, fake_read_staged_header,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(invalidated, 3u);
+  EXPECT_EQ(flash.invalidate_calls, 3u);
+  EXPECT_TRUE(headers[0].invalidated);
+  EXPECT_TRUE(headers[1].invalidated);
+  EXPECT_TRUE(headers[2].invalidated);
+  EXPECT_TRUE(headers[3].present);
+  EXPECT_FALSE(headers[3].invalidated);
+}
+
+TEST(OtaFlashDiscard, ReportsFailureButContinuesInvalidatingOtherHeaders) {
+  FakeStagedHeader headers[] = {
+      {0xE2000u, EXPANDED - 0xE2000u, true, false, false},
+      {0xD8000u, EXPANDED - 0xD8000u, true, true, false},
+  };
+  FakeStagedFlash flash{headers, 2u, 0u};
+  uint32_t invalidated = 0;
+
+  EXPECT_FALSE(mota_nrf52_discard_staged_headers(
+      APP_V6, APP_END_V6, EXPANDED, &flash, fake_read_staged_header,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(invalidated, 1u);
+  EXPECT_EQ(flash.invalidate_calls, 2u);
+  EXPECT_TRUE(headers[0].present);
+  EXPECT_TRUE(headers[1].invalidated);
+}
+
+TEST(OtaFlashDiscard, UnsafeBoundsFailBeforeAnyFlashCallback) {
+  FakeStagedHeader headers[] = {
+      {0xE2000u, EXPANDED - 0xE2000u, true, true, false},
+  };
+  FakeStagedFlash flash{headers, 1u, 0u};
+  uint32_t invalidated = 99u;
+
+  EXPECT_FALSE(mota_nrf52_discard_staged_headers(
+      APP_V6, EXPANDED + 1u, EXPANDED, &flash, fake_read_staged_header,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(invalidated, 0u);
+  EXPECT_EQ(flash.invalidate_calls, 0u);
+  EXPECT_TRUE(headers[0].present);
+
+  EXPECT_FALSE(mota_nrf52_discard_staged_headers(
+      APP_V6, APP_END_V6, EXPANDED, &flash, nullptr,
+      fake_invalidate_staged_header, &invalidated));
+  EXPECT_EQ(flash.invalidate_calls, 0u);
+}
+
+TEST(OtaEsp32FlashPlan, FullAndDeltaPlacementStaySectorAligned) {
+  constexpr uint32_t partition = 2u * 1024u * 1024u;
+  constexpr uint32_t sector = 4096u;
+  constexpr uint32_t meta_capacity = 65536u;
+  MotaEsp32StageLayout full;
+  ASSERT_TRUE(mota_esp32_stage_layout(
+      partition, sector, meta_capacity, true, 1024u * 1024u, 40000u,
+      1024u * 1024u, full));
+  EXPECT_EQ(full.total, 40000u + 1024u * 1024u + 5u);
+  EXPECT_EQ(full.meta_flush, 40960u);
+  EXPECT_EQ(full.meta_part, partition - full.meta_flush);
+  EXPECT_EQ(full.meta_part % sector, 0u);
+  EXPECT_EQ(full.pay_part0, 0u);
+
+  MotaEsp32StageLayout delta;
+  ASSERT_TRUE(mota_esp32_stage_layout(
+      partition, sector, meta_capacity, false, 900000u, 1234u,
+      100000u, delta));
+  EXPECT_EQ(delta.total, 101239u);
+  EXPECT_EQ(delta.meta_span, sector);
+  EXPECT_EQ(delta.meta_part, delta.write_start);
+  EXPECT_EQ(delta.write_start % sector, 0u);
+  EXPECT_EQ(delta.pay_part0, delta.write_start + sector);
+}
+
+TEST(OtaEsp32FlashPlan, RejectsOverflowAndUnfittableMetadata) {
+  MotaEsp32StageLayout layout;
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      4097u, 4096u, 65536u, true, 1u, 200u, 1u, layout));
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      2u * 1024u * 1024u, 4096u, 65536u, true, 1u, UINT32_MAX,
+      1u, layout));
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      32768u, 4096u, 65536u, true, 1u, 40000u, 1u, layout));
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      2u * 1024u * 1024u, 4096u, 65536u, false,
+      2u * 1024u * 1024u, 1000u, 1000u, layout));
+}
+
+TEST(OtaEsp32FlashPlan, RejectsMalformedOrOversizedFullPayloadBeforeErase) {
+  constexpr uint32_t partition = 2u * 1024u * 1024u;
+  constexpr uint32_t sector = 4096u;
+  constexpr uint32_t meta_capacity = 65536u;
+  MotaEsp32StageLayout layout;
+
+  // FULL means that the payload is exactly the final application image.
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      partition, sector, meta_capacity, true, 100000u, 2000u,
+      99999u, layout));
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      partition, sector, meta_capacity, true, 100000u, 2000u,
+      100001u, layout));
+
+  // The logical container and rounded metadata/payload regions must both fit
+  // wholly inside the inactive slot before OtaStoreFlashEsp32::begin().
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      partition, sector, meta_capacity, true, partition, 2000u,
+      partition, layout));
+  EXPECT_FALSE(mota_esp32_stage_layout(
+      8192u, sector, meta_capacity, true, 4097u, 1u, 4097u,
+      layout));
+}
+
+namespace {
+
+struct FakeEspStagedHeader {
+  uint32_t offset;
+  bool reopenable;
+  bool probe_ok;
+  bool invalidate_ok;
+  bool invalidated;
+};
+
+struct FakeEspPartition {
+  FakeEspStagedHeader* headers;
+  size_t count;
+  uint32_t probe_calls;
+  uint32_t invalidate_calls;
+};
+
+bool fake_probe_esp_header(void* context, uint32_t offset,
+                           bool& reopenable) {
+  FakeEspPartition* partition = static_cast<FakeEspPartition*>(context);
+  ++partition->probe_calls;
+  reopenable = false;
+  for (size_t i = 0; i < partition->count; ++i) {
+    FakeEspStagedHeader& header = partition->headers[i];
+    if (header.offset != offset || header.invalidated) continue;
+    reopenable = header.reopenable;
+    return header.probe_ok;
+  }
+  return true;
+}
+
+bool fake_invalidate_esp_header(void* context, uint32_t offset) {
+  FakeEspPartition* partition = static_cast<FakeEspPartition*>(context);
+  ++partition->invalidate_calls;
+  for (size_t i = 0; i < partition->count; ++i) {
+    FakeEspStagedHeader& header = partition->headers[i];
+    if (header.offset != offset || header.invalidated) continue;
+    if (!header.invalidate_ok) return false;
+    header.invalidated = true;
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST(OtaEsp32FlashDiscard, FreshIdleScanInvalidatesEveryReopenableHeader) {
+  constexpr uint32_t sector = 4096u;
+  constexpr uint32_t partition_size = 6u * sector;
+  FakeEspStagedHeader headers[] = {
+      {5u * sector, true, true, true, false},
+      {3u * sector, false, true, true, false},
+      {1u * sector, true, true, true, false},
+  };
+  FakeEspPartition partition{headers, 3u, 0u, 0u};
+  uint32_t invalidated = 99u;
+
+  EXPECT_TRUE(mota_esp32_discard_staged_headers(
+      partition_size, sector, &partition, fake_probe_esp_header,
+      fake_invalidate_esp_header, &invalidated));
+  EXPECT_EQ(partition.probe_calls, 6u);
+  EXPECT_EQ(partition.invalidate_calls, 2u);
+  EXPECT_EQ(invalidated, 2u);
+  EXPECT_TRUE(headers[0].invalidated);
+  EXPECT_FALSE(headers[1].invalidated);
+  EXPECT_TRUE(headers[2].invalidated);
+}
+
+TEST(OtaEsp32FlashDiscard, IoAndInvalidateFailuresAreReportedAfterFullScan) {
+  constexpr uint32_t sector = 4096u;
+  constexpr uint32_t partition_size = 6u * sector;
+  FakeEspStagedHeader headers[] = {
+      {4u * sector, false, false, true, false},
+      {3u * sector, true, true, false, false},
+      {1u * sector, true, true, true, false},
+  };
+  FakeEspPartition partition{headers, 3u, 0u, 0u};
+  uint32_t invalidated = 0u;
+
+  EXPECT_FALSE(mota_esp32_discard_staged_headers(
+      partition_size, sector, &partition, fake_probe_esp_header,
+      fake_invalidate_esp_header, &invalidated));
+  EXPECT_EQ(partition.probe_calls, 6u);
+  EXPECT_EQ(partition.invalidate_calls, 2u);
+  EXPECT_EQ(invalidated, 1u);
+  EXPECT_FALSE(headers[1].invalidated);
+  EXPECT_TRUE(headers[2].invalidated);
+}
+
+TEST(OtaEsp32FlashDiscard, InvalidScanArgumentsFailWithoutCallbacks) {
+  FakeEspPartition partition{nullptr, 0u, 0u, 0u};
+  uint32_t invalidated = 99u;
+  EXPECT_FALSE(mota_esp32_discard_staged_headers(
+      4095u, 4096u, &partition, fake_probe_esp_header,
+      fake_invalidate_esp_header, &invalidated));
+  EXPECT_FALSE(mota_esp32_discard_staged_headers(
+      4097u, 4096u, &partition, fake_probe_esp_header,
+      fake_invalidate_esp_header, &invalidated));
+  EXPECT_EQ(invalidated, 0u);
+  EXPECT_EQ(partition.probe_calls, 0u);
+  EXPECT_EQ(partition.invalidate_calls, 0u);
 }
 
 // out_start is only written on success - a rejected plan must not clobber the caller's variable.
