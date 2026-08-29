@@ -1,32 +1,32 @@
 # RAK3401 1W repeater compact LoRa update chain
 
-> Status: **unreleased candidate with physically passed package transitions.**
-> On 29-Aug-2026 all ten exact package transitions completed on the target
-> RAK3401 with its deployed `0.9.2-OTAFIX2.4` bootloader and a Heltec V4 source at
-> 909.950 MHz / 500 kHz / SF5 / CR5. Every intermediate EndF hash matched.
-> Independent SWD readback then matched the endpoint application, original
-> bootloader, SoftDevice/MBR, and UICR byte-for-byte. The host runner received
-> cleanup/recovery fixes after that test and has not had a new clean end-to-end
-> physical rerun. Multi-hop and alternate-bandwidth estimates remain planning
-> data, not physical qualification.
+> Status: **published prerelease for controlled, recoverable lab use.** On
+> 29-Aug-2026 steps 1-9 completed on the target RAK3401 and are byte-for-byte
+> identical to the corresponding transitions in the physically passed
+> `fd98bc90` chain. The replacement step 10 installs the current `b40d2e6c`
+> endpoint. That replacement package and the hardened current runner have
+> passed offline reconstruction plus both required bootloader simulators, but
+> have not had a new physical end-to-end run. Use the lab gate and keep local
+> DFU/SWD recovery available. Multi-hop and alternate-bandwidth estimates
+> remain planning data, not physical qualification.
 
-The candidate is a local qualification artifact, not a GitHub release:
+The prerelease is
+[`rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c`](https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c).
+Use this asset:
 
 ```text
-RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
+RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
 ```
 
-- candidate ZIP SHA-256: `c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61`
-- inner `SHA256SUMS.txt` SHA-256: `3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881`
-- endpoint image SHA-256: `31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095`
-- endpoint EndF body hash: `9179B98432895924`
+- prerelease ZIP SHA-256: `8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4`
+- inner `SHA256SUMS.txt` SHA-256: `29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a`
+- endpoint image SHA-256: `a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905`
+- endpoint EndF body hash: `1FA6AAA3C28D8BD8`
 
-Always pass the exact local path with `--bundle`. The runner has no download
-URL for this candidate. `--verify-only` remains the safe default. The hidden
-`--accept-test-candidate` override is intentionally absent from `--help` and
-remains required until this exact artifact is published with its qualification
-record; direct physical success does not silently turn a local file into a
-released deployment asset.
+`--verify-only` remains the safe default. Live preflight and installation of
+this prerelease require `--accept-test-candidate`. That switch bypasses only
+the prerelease-status gate; it does not bypass the archive, identity,
+bootloader, route, watchdog, reachability, or post-boot checks.
 
 ## Exact destination
 
@@ -37,8 +37,8 @@ target:
 - hardware: `RAK_3401`
 - role: `RAK_3401_repeater_lora_ota_no_external_sensors`
 - start: `v1.16.7.0-c1caa5ad`, EndF `71F4026CBE4B8B74`
-- endpoint source: MeshCore `fd98bc90f7fb25d5956facd550e227b217abbe95`
-- endpoint label: `v1.17.1.5-halo-keymind-cascade-dev-fd98bc90`
+- endpoint source: MeshCore `b40d2e6cb2a185db740175e8b161ea71736d19d9`
+- endpoint label: `v1.17.1.5-halo-keymind-cascade-dev-b40d2e6c`
 - endpoint packed version: `0x01110105`
 - deployment target key: `63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d`
 
@@ -86,14 +86,14 @@ Every package in this candidate is an ordinary application container using
 format ABI 2 and in-place codec 2. The historical bridge applications scan the
 bootloader capability marker byte-by-byte, so they recognize the released
 Preview 5 RAK4631 marker at absolute address `0xFCDEA` even though it is two
-bytes off a word boundary. The `fd98bc90` endpoint deliberately retains that
-exact Preview 5 application-update fallback. Its separately compiled internal
+bytes off a word boundary. The `b40d2e6c` endpoint retains that exact Preview
+5 application-update fallback. Its separately compiled internal
 bootloader-update feature remains unavailable on Preview 5 because privileged
 self-update requires a current ABI 3 marker with the exact storage profile.
 Installing this chain therefore does not replace the bootloader, and the final
 application can still accept a future valid ABI-2/codec-2 application update.
 
-The schema-2 exhaustive search checked 17,402 candidate geometries and found
+The schema-2 exhaustive search checked 17,371 candidate geometries and found
 121 feasible forward edges in the declared 33-image inventory. Fourteen
 ten-package routes tied for the minimum package count; the selected route has
 the smallest total container size among them. That minimum applies to the
@@ -111,11 +111,20 @@ is:
 | 7 | 1.16.9.113 | 1.16.9.117 | `0x8B000` | 139,637 | 0 |
 | 8 | 1.16.9.117 | 1.16.10.0 | `0x7E000` | 174,202 | 20,480 |
 | 9 | 1.16.10.0 | 1.17.1.3 | `0x6B000` | 271,569 | 0 |
-| 10 | 1.17.1.3 | 1.17.1.5 | `0x74000` | 173,334 | 61,440 |
+| 10 | 1.17.1.3 | 1.17.1.5 | `0x74000` | 174,744 | 61,440 |
 
-Total mOTA transfer data is 1,382,842 bytes. `ROUTE.json`, `CHAIN.csv`, and
+Total mOTA transfer data is 1,384,252 bytes. `ROUTE.json`, `CHAIN.csv`, and
 `validation-results.json` in the bundle pin the exact geometry and image hash
 for every transition.
+
+Steps 1-9 are byte-for-byte identical to the transitions that passed on the
+physical RAK3401. The replacement step 10, from the physically reached
+`FE65A6135A1E7B3F` v1.17.1.3 body to `1FA6AAA3C28D8BD8`, has offline
+qualification only. All ten packages passed independent container checks,
+zero-filled and erased-workspace reconstruction, the OTAFIX 2.4.1 Preview 5
+simulator, and the current OTAFIX simulator. Those results prove the package
+bytes and apply geometry; they are not a physical claim for the replacement
+step 10 or the hardened runner.
 
 ## Host requirements
 
@@ -128,7 +137,7 @@ No password or device is needed:
 
 ```bash
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
   --work-dir ./rak3401-mota-chain-work \
   --motatool /path/to/motatool \
   --verify-only
@@ -141,14 +150,14 @@ inner coverage, all ten manifests, continuity, image anchors, both recovery
 images, and every container with `motatool`. Passing this command means offline
 and simulator qualification only; it does not unlock live use.
 
-## Current guarded reproduction command
+## Guarded prerelease lab command
 
-These are the same direct-link arguments used for the physical transition run,
-but the current host runner also contains later cleanup and recovery fixes.
-That revised runner has not been cleanly rerun through all ten transitions.
-Keep local USB/SWD recovery available while the artifact remains unreleased.
-The hidden override bypasses only the candidate-status block; all identity,
-checksum, bootloader, route, watchdog, and post-boot gates still run.
+These direct-link arguments match the physical transition setup, but the
+current package replaces step 10 and the current host runner contains later
+cleanup and recovery fixes. Neither has been cleanly rerun through the whole
+chain. Keep local USB/SWD recovery available. The candidate switch bypasses
+only the prerelease-status block; all identity, checksum, bootloader, route,
+watchdog, reachability, and post-boot gates still run.
 
 Restore the test start locally with
 `recovery/test-start/RAK3401-test-start-v1.16.7-c1caa5ad.uf2`, then run:
@@ -157,7 +166,7 @@ Restore the test start locally with
 export MESHCORE_ADMIN_PASSWORD='password'
 
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
   --work-dir ./rak3401-mota-chain-work \
   --controller-serial /dev/ttyACM0 \
   --source-tcp 192.168.1.51:5001 \
@@ -179,7 +188,30 @@ zero and restores it at the endpoint. Use that option only where the selected
 frequency and local duty-cycle rules permit a full transmit budget; omit it
 otherwise.
 
-### Measured direct-link timing
+## Legacy `fd98bc90` physical and SWD qualification
+
+The earlier local candidate remains the exact physical evidence source for
+this route:
+
+```text
+RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
+```
+
+- candidate ZIP SHA-256: `c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61`
+- inner `SHA256SUMS.txt` SHA-256: `3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881`
+- endpoint image SHA-256: `31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095`
+- endpoint EndF body hash: `9179B98432895924`
+
+All ten exact `fd98bc90` transitions completed on the RAK3401 with its
+deployed `0.9.2-OTAFIX2.4` bootloader and a Heltec V4 source at 909.950 MHz /
+500 kHz / SF5 / CR5. Every intermediate EndF hash matched. Independent SWD
+readback then matched the endpoint application, original bootloader,
+SoftDevice/MBR, and UICR byte-for-byte. Steps 1-9 are also the exact first nine
+packages in the `b40d2e6c` prerelease. The two candidates have different step
+10 packages and endpoints, so the physical result and step-10 timing must not
+be attributed to `b40d2e6c`.
+
+### Measured direct-link timing for `fd98bc90`
 
 The first `ready to install` transfer ages were:
 
@@ -196,23 +228,44 @@ The first `ready to install` transfer ages were:
 | 9 | 264 | 187 s |
 | 10 | 169 | 193 s |
 
-The physically observed bulk-transfer total for those exact packages is 1,605
-seconds (26m45s). The log came from the pre-cleanup-fix runner revision. Step 1
-was measured before the host began forcing source RXPS off and is therefore a
-conservative outlier. A new complete run with that fix is projected at roughly
-18–19 minutes of bulk transfer, but that projection is not a substitute for
-the measured total. Allow about 70–75 minutes direct at BW500 for validation,
-ten transfers, installs/reboots, retained-store checks, and final restoration.
+The physically observed bulk-transfer total for those exact legacy packages is
+1,605 seconds (26m45s). The log came from the pre-cleanup-fix runner revision.
+Step 1 was measured before the host began forcing source RXPS off and is
+therefore a conservative outlier. A new complete run with that fix is projected
+at roughly 18–19 minutes of bulk transfer, but that projection is not a
+substitute for the measured total. Allow about 70–75 minutes direct at BW500
+for validation, ten transfers, installs/reboots, retained-store checks, and
+final restoration.
 
-Step 10's longer per-block time was not a V4 TempRadio delay: the source RXPS
-readback was off. Its v1.17.1.3 requester uses non-overlapping adaptive flights
-and a five-second recovery floor and logged more block reloads than step 8.
-The V4 itself intentionally schedules its local radio handoff after 1.5 seconds
-so the normal-channel command reply can drain; the host waits three seconds and
-then checks the live TempRadio state.
+The legacy step 10's longer per-block time was not a V4 TempRadio delay: the
+source RXPS readback was off. Its v1.17.1.3 requester uses non-overlapping
+adaptive flights and a five-second recovery floor and logged more block reloads
+than step 8. The V4 itself intentionally schedules its local radio handoff
+after 1.5 seconds so the normal-channel command reply can drain; the host waits
+three seconds and then checks the live TempRadio state.
 
-For planning only, scale the conservative measured 26m45s bulk baseline by the
-qualified adaptive-preamble airtime and by each additional relay transmission:
+### Live progress and speed sanity checks
+
+The runner watches `motatool serve -v` locally, so its quarter-progress reports
+do not consume LoRa airtime. At BW500 direct, physically measured steps 2–9
+averaged about 1.1–1.4 newly requested payload blocks per second; the legacy
+step 10 averaged about 0.88 blocks/s, and step 1's 0.15 blocks/s was the known
+pre-RXPS-fix outlier. Use those only as bench sanity ranges, not guarantees.
+Relays, narrower bandwidths, interference, and recovery reads lower the rate.
+
+Healthy output keeps advancing from `[download] passive source progress x/y`
+to `source read all y payload blocks`, followed by destination status `ready to
+install y/y (100%)` for the same manifest ID. Aggregate reads above the unique
+block count indicate recovery/retry traffic. A radio-scaled no-progress window
+causes one destination status check; the transfer timeout leaves the partial
+download staged for an exact-package resume. Stop and diagnose instead of
+installing if the manifest changes, progress remains flat through those checks,
+the final receiver count is not `y/y`, or the measured rate is far below the
+matching bandwidth/hop estimate without an understood RF cause.
+
+For planning only, scale the conservative measured `fd98bc90` 26m45s bulk
+baseline by the qualified adaptive-preamble airtime and by each additional
+relay transmission:
 
 | Bandwidth, SF5/CR5 | Direct / 0 relays | 1 relay | 2 relays |
 |---:|---:|---:|---:|
@@ -238,17 +291,17 @@ never skip a step even when a later package appears in `ota ls`.
 ### 1. Verify and extract the asset
 
 ```bash
-sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
-unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
-cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90
+sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
+unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
+cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c
 sha256sum -c SHA256SUMS.txt
 for package in motas/*.mota; do motatool verify "$package" || exit 1; done
 ```
 
 The outer hash must be
-`c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61`,
+`8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4`,
 and the SHA-256 of the extracted `SHA256SUMS.txt` must be
-`3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881`.
+`29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a`.
 Do not continue after any checksum or verification error.
 
 ### 2. Record and prepare the destination
@@ -342,7 +395,7 @@ to install`.
 | 7 | `80F40DB6` | `65328FC8A1FBED2D` | `1.16.9.117` | `AF7532E13337FADD` |
 | 8 | `DBF6310D` | `AF7532E13337FADD` | `1.16.10.0` | `22002359BBDFA76E` |
 | 9 | `C2979E08` | `22002359BBDFA76E` | `1.17.1.3` | `FE65A6135A1E7B3F` |
-| 10 | `319DEC92` | `FE65A6135A1E7B3F` | `1.17.1.5` | `9179B98432895924` |
+| 10 | `B5011420` | `FE65A6135A1E7B3F` | `1.17.1.5` | `1FA6AAA3C28D8BD8` |
 
 For each row, first prove that `ota self` exactly matches its **Before hash**,
 then inspect the manager before changing it:
@@ -406,10 +459,9 @@ If the board boots but `ota self` says the EndF is invalid, stop. Only when
 `ota status` still identifies that row's complete staged package may the
 guarded `ota rescue install BEFORE_HASH` command be used. It is not a force
 option and must use that row's exact Before hash. If the board does not boot,
-recover the documented start/recovery UF2 locally over USB. The fd98 endpoint
-deliberately disables rescue on its shared internal bootloader-update build;
-if its EndF is invalid, use local DFU/SWD rather than attempting another LoRa
-package.
+recover the documented start/recovery UF2 locally over USB. Step 10 is the
+endpoint and has no successor package in this chain. If its EndF is invalid,
+use local DFU/SWD rather than attempting an unqualified LoRa package.
 
 ### 4. Intermediate relays and restoration
 
@@ -436,7 +488,7 @@ the saved tuple after replying on the temporary channel:
 normalradio
 ```
 
-The fd98 endpoint supports that command. If a recovery build unexpectedly
+The `b40d2e6c` endpoint supports that command. If a recovery build unexpectedly
 replies `Unknown command`, shorten its lease to one minute with the same tuple:
 
 ```text
@@ -456,25 +508,26 @@ A Full Companion source is the exception: its local TCP console supports
 Binary API radio tuple.
 
 Final lab success requires version
-`v1.17.1.5-halo-keymind-cascade-dev-fd98bc90`, body hash
-`9179B98432895924`, target `2FA509C1`, hardware `RAK_3401`, and
+`v1.17.1.5-halo-keymind-cascade-dev-b40d2e6c`, body hash
+`1FA6AAA3C28D8BD8`, target `2FA509C1`, hardware `RAK_3401`, and
 `get system.watchdog` reporting `> on`. If a relay cannot be restored before
 its TempRadio lease ends, wait for it to return to the normal channel and
 restore its saved `rxdelay` and `txdelay` there.
 
 ## Two-relay deployment
 
-The exact direct package transitions above were physically observed; this
-post-run host-runner revision and multi-hop operation are not cleanly
-end-to-end qualified. A controlled, recoverable multi-hop lab can exercise two
-intermediate relays by
+The first nine direct package transitions above were physically observed as
+the byte-identical first nine transitions of the legacy chain. Replacement
+step 10, this hardened host-runner revision, and multi-hop operation are not
+cleanly end-to-end physically qualified. A controlled, recoverable multi-hop
+lab can exercise two intermediate relays by
 listing them farthest-to-nearest and using three OTA hops. Run a non-mutating
-preflight first; even preflight requires the hidden candidate override because
-the artifact remains unreleased and the command connects to live devices:
+preflight first; even preflight requires the prerelease candidate override
+because the command connects to live devices:
 
 ```bash
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
   --work-dir ./rak3401-mota-chain-work \
   --controller-serial /dev/ttyACM0 \
   --source-tcp SOURCE_IP:5001 \
@@ -501,8 +554,8 @@ step 1 and remains available through the step-9 bridge. It is not a force
 command: it refuses a valid normal EndF, a base mismatch, wrong
 target/hardware, or invalid payload. A failure before step 1 completes still
 requires local USB recovery because the deployed start image predates the
-rescue command. The final fd98 endpoint uses the stricter shared-slot profile;
-its invalid-EndF recovery is local DFU/SWD, not the rescue command.
+rescue command. The final `b40d2e6c` endpoint uses the stricter shared-slot
+profile; its invalid-EndF recovery is local DFU/SWD, not the rescue command.
 
 Before the first mutation, the runner saves the destination's RXPS periods,
 CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
@@ -537,7 +590,7 @@ the relay leaves TempRadio.
 The runner also keeps the watchdog off across the chain, rechecks identity and
 OTA reach before every package, requires the exact post-boot EndF hash, and
 only re-enables the watchdog after step 10. Lab success requires endpoint body
-hash `9179B98432895924`, target `2FA509C1`, hardware `RAK_3401`, normal radio
+hash `1FA6AAA3C28D8BD8`, target `2FA509C1`, hardware `RAK_3401`, normal radio
 `910.525 MHz / 62.5 kHz / SF7 / CR5`, and the watchdog verified on.
 
 ## External-radio startup and manual USB recovery
@@ -572,6 +625,15 @@ reboot cannot manufacture a response. If local access is possible, disconnect
 the battery as well as USB and reseat the WisBlock module. Remote firmware will
 continue retrying without requiring that physical intervention or churning the
 USB device.
+
+For an existing deployed tower using Preview 5, do not change the bootloader
+as part of this application chain. Its exact local recovery package is the
+[Preview 5 RAK4631 ZIP](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.9.2-OTAFIX2.4.1-preview.5/wiscore_rak4631_board_bootloader-0.9.2-OTAFIX2.4.1-preview.5_s140_6.1.1.zip).
+For a new RAK3401 installation or local recovery, use the
+[OTAFIX 2.4.3 RAK3401 ZIP](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.3/wiscore_rak3401_bootloader-0.11.0-OTAFIX2.4.3_s140_6.1.1.zip)
+from the
+[OTAFIX 2.4.3 release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.3).
+These are local DFU/SWD recovery assets, not mOTA chain steps.
 
 For a local Serial DFU recovery with the repository helper:
 

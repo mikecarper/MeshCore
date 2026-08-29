@@ -3983,7 +3983,7 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             steps[number - 1].target_sha256 = image_sha256
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
-            "package transitions completed directly on the physical RAK3401",
+            "new b40d2e6c step 10.*bootloader simulators only",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=False), steps
@@ -3991,6 +3991,52 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
         rak_chain.require_live_release_safe(
             argparse.Namespace(accept_test_candidate=True), steps
         )
+
+    def test_exact_fd98_ten_step_candidate_remains_gated_legacy(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "legacy fd98bc90.*all ten pinned package transitions completed",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=True), steps
+        )
+
+    def test_current_and_legacy_ten_step_reports_do_not_mix_evidence(self) -> None:
+        current = [mock.Mock(target_sha256="") for _ in range(10)]
+        legacy = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
+            current[number - 1].target_sha256 = image_sha256
+        for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS:
+            legacy[number - 1].target_sha256 = image_sha256
+
+        current_message = rak_chain.ten_step_verification_message(current)
+        legacy_message = rak_chain.ten_step_verification_message(legacy)
+        self.assertIn("new step 10", current_message)
+        self.assertIn("not had a clean physical run", current_message)
+        self.assertNotIn("endpoint passed independent SWD readback", current_message)
+        self.assertIn("exact ten package transitions", legacy_message)
+        self.assertIn("endpoint passed independent SWD readback", legacy_message)
+
+    def test_ten_step_candidates_share_only_the_pinned_physical_prefix(self) -> None:
+        self.assertEqual(
+            rak_chain.CURRENT_10_CANDIDATE_ANCHORS[:9],
+            rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS[:9],
+        )
+        self.assertNotEqual(
+            rak_chain.CURRENT_10_CANDIDATE_ANCHORS[-1],
+            rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS[-1],
+        )
+        steps = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        steps[8].target_sha256 = "00" * 32
+        self.assertIsNone(rak_chain.ten_step_candidate_kind(steps))
 
     def test_changed_current_ten_step_anchor_is_not_recognized(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(10)]
@@ -4005,13 +4051,45 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 argparse.Namespace(accept_test_candidate=True), steps
             )
 
-    def test_unreleased_candidate_has_no_implicit_download(self) -> None:
+    def test_published_candidate_has_no_implicit_download(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / rak_chain.ASSET_NAME
             with self.assertRaisesRegex(
-                ota.OtaError, "not released.*--bundle"
+                ota.OtaError, "automatic release download is disabled.*--bundle"
             ):
                 rak_chain.download_release_asset(destination)
+
+    def test_fd98_archive_and_inner_checksum_remain_pinned(self) -> None:
+        self.assertEqual(
+            rak_chain.PINNED_ARCHIVE_CHECKSUMS[
+                rak_chain.PHYSICALLY_PASSED_FD98_ASSET_SHA256
+            ],
+            rak_chain.PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256,
+        )
+
+    def test_locate_bundle_accepts_exact_fd98_legacy_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / rak_chain.PHYSICALLY_PASSED_FD98_ASSET_NAME
+            archive.write_bytes(b"fixture is identified by the mocked digest")
+            extracted = root / rak_chain.PHYSICALLY_PASSED_FD98_ROOT_NAME
+            args = argparse.Namespace(bundle=archive)
+            with (
+                mock.patch.object(
+                    rak_chain,
+                    "sha256_file_limited",
+                    return_value=rak_chain.PHYSICALLY_PASSED_FD98_ASSET_SHA256,
+                ),
+                mock.patch.object(
+                    rak_chain, "extract_bundle", return_value=extracted
+                ) as extract_bundle,
+            ):
+                self.assertEqual(rak_chain.locate_bundle(args, root / "work"), extracted)
+            extract_bundle.assert_called_once_with(
+                archive.resolve(),
+                root / "work" / "bundle",
+                rak_chain.PHYSICALLY_PASSED_FD98_ASSET_SHA256,
+            )
 
     def test_compact_9_step_release_rejects_changed_anchor(self) -> None:
         steps = [mock.Mock(target_sha256="") for _ in range(9)]

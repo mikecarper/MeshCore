@@ -29,16 +29,36 @@ except ImportError:
     import lora_ota as ota
 
 
-# These exact ten package transitions passed directly on the physical target,
-# and the resulting endpoint passed independent SWD readback. The host runner
-# has received cleanup/recovery fixes since that run and has not itself had a
-# new clean end-to-end qualification run. Keep the artifact unpublished and
-# normally gated from live use; never invent a release URL.
-RELEASE_URL = "unreleased local RAK3401 10-step candidate"
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip"
-ASSET_SHA256 = "c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61"
-CHECKSUM_LIST_SHA256 = "3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90"
+# The published b40d2e6c prerelease keeps the first nine package bytes from the
+# physically passed fd98bc90 chain and replaces its endpoint package. The new
+# step 10 and this hardened host runner have exhaustive offline/simulator
+# evidence, but not a clean physical transition run, so live use remains gated.
+RELEASE_URL = (
+    "https://github.com/mikecarper/MeshCore/releases/tag/"
+    "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c"
+)
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip"
+ASSET_SHA256 = "8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4"
+CHECKSUM_LIST_SHA256 = "29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c"
+
+# Preserve the exact fd98bc90 candidate whose ten package transitions passed
+# directly on the physical RAK3401 and whose endpoint passed independent SWD
+# readback. It remains a separately identified, hidden-lab-ack-gated legacy
+# artifact; sharing its version and first nine targets with b40d2e6c must never
+# make the two archives interchangeable.
+PHYSICALLY_PASSED_FD98_ASSET_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip"
+)
+PHYSICALLY_PASSED_FD98_ASSET_SHA256 = (
+    "c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61"
+)
+PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256 = (
+    "3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881"
+)
+PHYSICALLY_PASSED_FD98_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90"
+)
 
 # Preserve the physically qualified nine-step chain for exact offline
 # recognition and existing live deployments.
@@ -140,6 +160,9 @@ MAX_CHECKSUM_LIST_BYTES = 1024 * 1024
 MAX_PROGRESS_BYTES = 1024 * 1024
 PINNED_ARCHIVE_CHECKSUMS = {
     ASSET_SHA256: CHECKSUM_LIST_SHA256,
+    PHYSICALLY_PASSED_FD98_ASSET_SHA256: (
+        PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256
+    ),
     PHYSICALLY_QUALIFIED_9_ASSET_SHA256: (
         PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256
     ),
@@ -241,11 +264,10 @@ COMPACT_RELEASE_ANCHORS = (
     (9, "2784e4b645bc3dc198de0b8b18d3d7369cd02eca61cd71c46a51b61854da5345"),
 )
 
-# Every target in the exact unreleased ten-package fd98bc90 sequence that
-# passed direct physical transitions. These pins bind both offline verification
-# and the hidden explicit live-lab override to those exact package bytes; they
-# do not qualify later host-runner changes.
-CURRENT_10_CANDIDATE_ANCHORS = (
+# Every target in the exact legacy fd98bc90 sequence whose package transitions
+# passed directly on the physical RAK3401. The b40d2e6c prerelease reuses the
+# first nine package bytes exactly, but has its own endpoint pin below.
+PHYSICALLY_PASSED_FD98_ANCHORS = (
     (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
     (2, "ac5f50e5028378ccfe6ea08bbf32f227f50fdcf5285a7deb866e309fbdd0a88f"),
     (3, "884b5e9355b4585b7a4e079dbb44d2858ec46e2fa7bb0dba47e810db2a82e349"),
@@ -256,6 +278,11 @@ CURRENT_10_CANDIDATE_ANCHORS = (
     (8, "74a319a8744ec3f28c0f73214dcc153960df5c439b31998be2ff05464fccf4d7"),
     (9, "30aea80995def68ddff0671138b9f7269b0aa3dea7271fb7f6570637aae577a0"),
     (10, "31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095"),
+)
+
+CURRENT_10_CANDIDATE_ANCHORS = (
+    *PHYSICALLY_PASSED_FD98_ANCHORS[:9],
+    (10, "a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905"),
 )
 
 # Exact anchors for every image in the accelerated 30-step release. The outer
@@ -336,17 +363,70 @@ SUPERSEDED_30_MESSAGE = (
     "the deployed bootloader. Use --verify-only for the older bundle."
 )
 CURRENT_10_CANDIDATE_MESSAGE = (
-    "live installation of the exact fd98bc90 ten-step candidate is disabled: "
-    "the ten pinned package transitions completed directly on the physical "
-    "RAK3401 and the endpoint passed independent SWD readback, but the current "
-    "host runner includes later cleanup/recovery fixes that have not had a new "
-    "clean end-to-end physical run. The artifact is also local and unpublished. "
-    "Use --verify-only with the explicit local bundle path, or the hidden "
-    "controlled-lab override, until the exact artifact and qualification record "
-    "are published."
+    "live installation of the exact published b40d2e6c ten-step prerelease is "
+    "disabled: steps 1-9 are byte-identical to package transitions that "
+    "completed directly on the physical RAK3401, but the new b40d2e6c step 10 "
+    "and this hardened host runner have passed offline reconstruction, motatool "
+    "verification, and both bootloader simulators only. The exact final "
+    "transition has not had a clean physical run. Use --verify-only, or the "
+    "hidden controlled-lab override, until that qualification is complete."
 )
+PHYSICALLY_PASSED_FD98_MESSAGE = (
+    "live installation of the exact legacy fd98bc90 ten-step candidate is "
+    "disabled: all ten pinned package transitions completed directly on the "
+    "physical RAK3401 and the endpoint passed independent SWD readback, but this "
+    "later hardened host runner has not had a clean end-to-end physical run. "
+    "Use --verify-only with the explicit legacy bundle path, or the hidden "
+    "controlled-lab override."
+)
+
+
 class KnownUnsafeReleaseError(ota.OtaError):
     """The pinned artifacts are intact but their live transition is unsafe."""
+
+
+def matches_exact_anchors(
+    steps: list[ChainStep],
+    anchors: tuple[tuple[int, str], ...],
+) -> bool:
+    return len(steps) == len(anchors) and all(
+        number == position
+        and steps[position - 1].target_sha256 == expected_sha256
+        for position, (number, expected_sha256) in enumerate(anchors, 1)
+    )
+
+
+def ten_step_candidate_kind(steps: list[ChainStep]) -> str | None:
+    if matches_exact_anchors(steps, CURRENT_10_CANDIDATE_ANCHORS):
+        return "current-b40d2e6c"
+    if matches_exact_anchors(steps, PHYSICALLY_PASSED_FD98_ANCHORS):
+        return "legacy-fd98bc90"
+    return None
+
+
+def ten_step_verification_message(steps: list[ChainStep]) -> str:
+    candidate_kind = ten_step_candidate_kind(steps)
+    if candidate_kind == "current-b40d2e6c":
+        return (
+            "Current b40d2e6c ten-step prerelease verified offline: exact "
+            "archive/checksum pins, all target anchors, zero-filled and "
+            "erased-workspace reconstruction, independent motatool verification, "
+            "and both bootloader simulations passed. Steps 1-9 are byte-identical "
+            "to packages that passed directly on the RAK3401. The new step 10 and "
+            "this hardened host runner have not had a clean physical run; live "
+            "use remains gated."
+        )
+    if candidate_kind == "legacy-fd98bc90":
+        return (
+            "Legacy fd98bc90 ten-step candidate verified offline: exact "
+            "archive/checksum pins, all target anchors, zero-filled and "
+            "erased-workspace reconstruction, independent motatool verification, "
+            "and bootloader simulation passed. These exact ten package "
+            "transitions also passed directly on the RAK3401 and the endpoint "
+            "passed independent SWD readback. This later hardened host runner has "
+            "not had a clean physical rerun; live use remains gated."
+        )
+    raise ota.OtaError("unrecognized ten-step candidate reached verification report")
 
 
 def require_live_release_safe(
@@ -354,13 +434,15 @@ def require_live_release_safe(
     steps: list[ChainStep],
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
-        if all(
-            steps[number - 1].target_sha256 == expected_sha256
-            for number, expected_sha256 in CURRENT_10_CANDIDATE_ANCHORS
-        ):
+        candidate_kind = ten_step_candidate_kind(steps)
+        if candidate_kind == "current-b40d2e6c":
             if args.accept_test_candidate:
                 return
             raise KnownUnsafeReleaseError(CURRENT_10_CANDIDATE_MESSAGE)
+        if candidate_kind == "legacy-fd98bc90":
+            if args.accept_test_candidate:
+                return
+            raise KnownUnsafeReleaseError(PHYSICALLY_PASSED_FD98_MESSAGE)
         raise KnownUnsafeReleaseError(
             "live installation is disabled: this is an unrecognized variant "
             "of the pinned ten-step candidate"
@@ -615,8 +697,8 @@ def download_release_asset(destination: Path) -> None:
         print(f"[bundle] using verified cached asset {destination}")
         return
     raise ota.OtaError(
-        "the exact ten-step candidate is not released; pass its explicit local "
-        "ZIP or extracted root with --bundle"
+        f"automatic release download is disabled; download {ASSET_NAME} from "
+        f"{RELEASE_URL} and pass its ZIP or extracted root with --bundle"
     )
 
 
@@ -926,6 +1008,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     )
     if actual not in {
         ASSET_SHA256,
+        PHYSICALLY_PASSED_FD98_ASSET_SHA256,
         PHYSICALLY_QUALIFIED_9_ASSET_SHA256,
         SUPERSEDED_30_ASSET_SHA256,
         SUPERSEDED_29_ASSET_SHA256,
@@ -950,6 +1033,7 @@ def read_checksum_entries(bundle_root: Path) -> dict[PurePosixPath, str]:
     checksum_digest = hashlib.sha256(checksum_bytes).hexdigest()
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256,
         PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256,
         SUPERSEDED_30_CHECKSUM_LIST_SHA256,
         SUPERSEDED_29_CHECKSUM_LIST_SHA256,
@@ -1246,11 +1330,12 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
     if steps[0].from_version != EXPECTED_START_VERSION:
         raise ota.OtaError("chain has an unexpected starting version")
     if len(steps) == EXPECTED_STEP_COUNT:
-        for number, expected_sha256 in CURRENT_10_CANDIDATE_ANCHORS:
-            if steps[number - 1].target_sha256 != expected_sha256:
-                raise ota.OtaError(
-                    f"ten-step candidate step {number} does not match its audited image pin"
-                )
+        candidate_kind = ten_step_candidate_kind(steps)
+        if candidate_kind is None:
+            raise ota.OtaError(
+                "ten-step candidate does not match the exact b40d2e6c or "
+                "legacy fd98bc90 audited image pins"
+            )
         expected_final_version = EXPECTED_FINAL_VERSION
     elif len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
         for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
@@ -2241,16 +2326,20 @@ def run_step(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify the exact local ten-step RAK3401 candidate from c1caa5ad "
-            "to fd98bc90. Its exact package transitions passed directly on "
-            "hardware, but this later host-runner revision has not had a clean "
-            "end-to-end physical rerun and normal live use remains disabled."
+            "Verify the exact published ten-step RAK3401 prerelease from "
+            "c1caa5ad to b40d2e6c. Its first nine package bytes passed directly "
+            "on hardware; the new final transition and this hardened host runner "
+            "have offline/simulator qualification only, so live use remains "
+            "disabled without the controlled-lab override."
         )
     )
     parser.add_argument(
         "--bundle",
         type=Path,
-        help="pinned local ZIP or extracted bundle root (required until release)",
+        help=(
+            "pinned prerelease ZIP or extracted bundle root "
+            "(required; automatic download is disabled)"
+        ),
     )
     parser.add_argument(
         "--work-dir",
@@ -2510,15 +2599,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.verify_only:
             print(f"Verified pinned bundle: {supplied_bundle_root}")
             if len(steps) == EXPECTED_STEP_COUNT:
-                print(
-                    "Ten-step candidate verified offline: exact archive/checksum "
-                    "pins, all target anchors, zero-filled and erased-workspace "
-                    "reconstruction, independent motatool verification, and "
-                    "bootloader simulation passed. These exact package transitions "
-                    "also passed directly on the RAK3401 and the endpoint passed "
-                    "independent SWD readback. This later host-runner revision has "
-                    "not had a new clean physical rerun; live use remains gated."
-                )
+                print(ten_step_verification_message(steps))
             elif len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
                 print(
                     "Compact release verified: all 9 transitions passed its exact "
