@@ -1807,7 +1807,9 @@ distinct from <code>bridge.channel</code>, which applies only to the separate ES
 bridge feature. WiFi power saving does not let ESP-NOW and infrastructure WiFi
 operate on different channels. On an ESP32 Full build whose primary radio is
 ESP-NOW, <code>wifi.powersave max</code> is unavailable because a station using maximum
-modem sleep can miss ESP-NOW broadcasts; use <code>min</code> for coexistence.</p>
+modem sleep can miss ESP-NOW broadcasts; use <code>min</code> for coexistence. The primary
+mesh transport holds the driver's RF wake reference continuously, so <code>min</code>
+does not suspend its ESP-NOW receiver.</p>
 <p>ESP-NOW compatibility also depends on the bytes and PHY used above the common
 Espressif transport. The historical <code>*_repeater_bridge_espnow</code> firmware wraps
 each MeshCore packet with a magic value, checksum, and secret-based XOR, while

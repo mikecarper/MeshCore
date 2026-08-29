@@ -5387,7 +5387,10 @@ Companion whose primary mesh radio is ESP-NOW, <code>max</code> is also unavaila
 station using maximum modem sleep can miss ESP-NOW broadcasts, which the access
 point does not buffer for it. A previously saved <code>max</code> value is capped to and
 reported as <code>min</code>, and a new <code>max</code> selection is rejected. These
-WiFi/BLE/primary-ESP-NOW builds therefore use <code>min</code>.</p>
+WiFi/BLE/primary-ESP-NOW builds therefore report <code>min</code>. The primary mesh radio
+also holds the ESP-IDF WiFi wake reference continuously so unsolicited ESP-NOW
+frames remain receivable; selecting <code>min</code> does not put that primary receiver to
+sleep.</p>
 <h4 id="view-or-change-the-primary-esp-nowwifi-channel">View or change the primary ESP-NOW/WiFi channel</h4>
 <p><strong>Usage:</strong></p>
 <ul>
@@ -5410,7 +5413,8 @@ this node, plus the configured router's 2.4 GHz radio, must use the same fixed
 channel. WiFi power saving does not allow the transports to use different
 channels. On an ESP32 Full build with primary ESP-NOW, <code>wifi.powersave max</code> is
 unavailable because maximum modem sleep can miss ESP-NOW broadcasts; use <code>min</code>
-for coexistence.</p>
+for coexistence. The firmware keeps the primary ESP-NOW receiver awake while
+still using the <code>min</code> WiFi/Bluetooth coexistence policy.</p>
 <p><code>espnow.channel</code> is the channel of the primary ESP-NOW mesh transport. It is
 separate from <code>bridge.channel</code>, which configures only an ESP-NOW bridge on a
 firmware role whose primary mesh radio is LoRa.</p>

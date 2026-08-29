@@ -1642,7 +1642,9 @@ backward-compatible default is the distinct wrapped format.
 WiFi power saving cannot put infrastructure WiFi and ESP-NOW on different
 channels. On these two primary-ESP-NOW Full targets, <code>max</code> is unavailable
 because maximum modem sleep can make the station miss ESP-NOW broadcasts; use
-<code>min</code> for WiFi/BLE/ESP-NOW coexistence.</p>
+<code>min</code> for WiFi/BLE/ESP-NOW coexistence. The firmware also holds the ESP-IDF RF
+wake reference for the primary mesh radio, so the ESP-NOW receiver remains
+continuous even though the reported coexistence setting is <code>min</code>.</p>
 <p>List the available targets:</p>
 <pre><code class="language-bash">bash build.sh list | grep companion_radio_full
 </code></pre>
