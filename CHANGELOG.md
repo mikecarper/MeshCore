@@ -10,6 +10,13 @@ upstream MeshCore `dev` branch, which generally pulls in a new MeshCore software
 
 ### August 2026
 
+- **New** - Added Heltec V4 R8 OLED and TFT MQTT observer targets, including portrait TFT variants  <sub>2026-08-28</sub>
+- **New** - Added a dark R8 TFT observer dashboard with a rolling 20-minute RF activity graph and partial row redraws  <sub>2026-08-28</sub>
+- **New** - Added live, persisted `display.timeout` and relative 180-degree `display.flip` observer controls  <sub>2026-08-28</sub>
+- **Fix** - Corrected the R8 TFT backlight polarity and made blank/wake preserve the reset line shared with its touch controller  <sub>2026-08-28</sub>
+- **Fix** - Preserved rollback-readable Companion MQTT preferences and added a strict, one-time `/mqtt.json` observer migration without deleting the source file  <sub>2026-08-28</sub>
+- **Improvement** - Made Companion command `0x42` framed CLI the canonical hardware-settings path while retaining both older binary command ranges as receive-only aliases  <sub>2026-08-28</sub>
+- **Fix** - Strengthened observer OTA shutdown gating and enabled the WiFi/WebConfig overlay consistently for ESP32 Full Companion builds  <sub>2026-08-28</sub>
 - **Improvement** - Added a WebConfig CLI terminal, tightened command failure/reboot handling, stopped secret reads, and enforced the setup password  <sub>2026-08-08 * `d7109c18`, `c831e599`, `8abe26ba`</sub>
 - **New** * `mqtt` - Added IdahoMesh, GoMesh, okimesh, and atvirastinklas presets; expanded the built-in preset table to 31 entries  <sub>2026-08-08 * `da37b6eb`, `3b11540e`, `73faa30c`, `dbee39b5`</sub>
 - **New** - Enabled online OTA for Station G3 observer builds  <sub>2026-08-08 * `5000391c`</sub>

@@ -49,6 +49,10 @@ static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
 // reboots.  Do not let a busy or duty-limited channel stall the update forever.
 #define OTA_TX_DRAIN_TIMEOUT_MS     5000
 
+// MQTT stop acknowledgment precedes final FreeRTOS task reclamation. Leave the
+// same proven settle used by the repeater before OTA allocates its worker.
+#define OTA_MQTT_STOP_SETTLE_MS      100
+
 #define LAZY_CONTACTS_WRITE_DELAY    5000
 
 struct ServerStats {
@@ -284,6 +288,14 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  // Count valid, parsed RF packets before role-level filtering. The dashboard
+  // intentionally reflects radio activity, including packets this role later
+  // decides not to process.
+  _activity.recordPacket(millis(), (uint16_t)len,
+                         _radio->getEstAirtimeFor(len),
+                         (int8_t)(pkt->getSNR() * 4.0f), pkt->getRSSI());
+#endif
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (_prefs.bridge_enabled && bridge) bridge->onPacketReceived(pkt);
@@ -2431,7 +2443,11 @@ void MyMesh::loop() {
     const bool bridge_was_running = bridge && bridge->isRunning();
     drainOutbound(OTA_TX_DRAIN_TIMEOUT_MS);
 
-    bool may_flash = true;
+    // A previously timed-out stop leaves the lifecycle dirty even though the
+    // bridge is no longer running. Honor that latch on every OTA attempt; a
+    // later request must not bypass the teardown barrier merely because there
+    // is no active task left to stop this time.
+    bool may_flash = !bridge || bridge->canFlashAfterStop();
     if (bridge_was_running) {
       setBridgeState(false);
       // OTA must not write after a forced/timed-out MQTT shutdown: its TLS/heap
@@ -2439,7 +2455,12 @@ void MyMesh::loop() {
       may_flash = bridge && bridge->canFlashAfterStop();
       if (!may_flash) {
         Serial.println("OTA: aborted, MQTT stop did not complete cleanly");
+      } else {
+        // TODO: Replace this mitigation with a real MQTT task-exit/join barrier.
+        delay(OTA_MQTT_STOP_SETTLE_MS);
       }
+    } else if (!may_flash) {
+      Serial.println("OTA: aborted, prior MQTT stop did not complete cleanly");
     }
 
     char ota_reply[160];

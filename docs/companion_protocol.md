@@ -237,6 +237,7 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x42` | `CMD_RUN_CLI_COMMAND` | Run a local CLI command (protocol v14+). |
 | `0x4A` | `CMD_EXEC_LOCAL_OTA_CONTROL` | Run one bounded local TempRadio or OTA command on a Full Companion. |
 | `0x4B` | `CMD_BLE_MOTA_SOURCE` | Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source. |
+| `0x78`-`0x7F` | Deprecated hardware-setting aliases | Receive-only compatibility for clients shipped before command `0x42` became the canonical settings path. |
 
 The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.
@@ -246,7 +247,9 @@ NUL. The device returns `RESP_CODE_CLI_REPLY` (`0x1D`) followed by the reply
 text. This is separate from sending a remote on-air CLI command with
 `CMD_SEND_TXT_MSG` and `TXT_TYPE_CLI_COMMAND`. The body must contain at least
 one byte and must not contain an embedded NUL. An unknown command is returned
-as the normal CLI reply text `Unknown command`, not as an error frame.
+as the normal CLI reply text `Unknown command`, not as an error frame. Clients
+may prefix the CLI text with any two-character correlation tag and `|` (for
+example, `A7|get radio.rxgain`); the reply preserves that prefix.
 
 Firmware from this fork predating the upstream `0x42` allocation used
 `0x42`-`0x49` for these eight settings. This firmware accepts those values as
@@ -256,6 +259,21 @@ deprecated inbound aliases so existing clients continue to work. A one-byte
 these settings, rather than allocating additional command bytes. For example,
 send `0x42` followed by `get radio.rxgain` or `set radio.rxgain on`. The reply is
 `RESP_CODE_CLI_REPLY` followed by the normal CLI reply text.
+
+Two deprecated binary alias blocks remain receive-only for compatibility:
+
+| Setting | Original alias | Later fork alias | GET body/reply | SET body/reply |
+|---|---:|---:|---|---|
+| FEM receive gain | `0x42` / `0x43` | `0x78` / `0x79` | No body; `OK, state` | One byte `0`/`1`; `OK` |
+| Radio receive gain | `0x44` / `0x45` | `0x7A` / `0x7B` | No body; `OK, state` | One byte `0`/`1`; `OK` |
+| WiFi power save | `0x46` / `0x47` | `0x7C` / `0x7D` | No body; `OK, mode` | One mode byte `0`-`2`; `OK` |
+| Bluetooth name | `0x48` / `0x49` | `0x7E` / `0x7F` | No body; `OK, custom, name` | Zero to 31 UTF-8 bytes; `OK` |
+
+Each pair lists GET then SET. Here `OK` is `RESP_CODE_OK`; the remaining reply
+bytes have the same meanings as the CLI settings below. A bare `0x42` is the
+old FEM GET, while `0x42` plus at least one text byte is
+`CMD_RUN_CLI_COMMAND`. New clients must use the framed CLI form; these aliases
+exist only so deployed clients do not break after a firmware update.
 
 The equivalent framed CLI commands are:
 
@@ -284,9 +302,10 @@ also rejects `max`, because maximum modem sleep can miss broadcasts that the
 access point cannot buffer. If an older image saved `max`, the effective mode
 is capped to and reported as `min`. Device `powersaving` remains independent.
 
-The Bluetooth name can be configured over USB or TCP before rebooting into BLE.
-An empty/default selection restores `MeshCore-<advert name>`; a custom name is
-limited to 31 valid UTF-8 bytes and takes effect after reboot.
+The Bluetooth name can be configured over USB, BLE, or TCP. Use
+`set bluetooth.name default` to restore `MeshCore-<advert name>`; an empty CLI
+value is rejected. (`clear` is also accepted as an alias for `default`.) A
+custom name is limited to 31 valid UTF-8 bytes and takes effect after reboot.
 
 ### Bluetooth LoRa mOTA source
 

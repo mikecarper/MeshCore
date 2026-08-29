@@ -620,6 +620,42 @@ board's compiled default. Unsupported display drivers return an error.
 
 ---
 
+## Set MQTT observer display timeout and flip
+
+MQTT observer builds with a display support a persisted inactivity timeout:
+
+```text
+get display.timeout
+set display.timeout 0
+set display.timeout 60
+```
+
+The value is seconds. `0` keeps the display on; `1` through `3600` blanks it
+after that much inactivity. The default is `60`. A change applies immediately
+and restarts the countdown. On the Heltec V4 R8 Expansion Kit V2 observer, a
+panel tap or USER-button click can also blank or wake the display.
+
+Supported observer displays, including the R8 OLED and ST7789 panels, can also
+be turned 180 degrees relative to their compiled orientation:
+
+```text
+get display.flip
+set display.flip off
+set display.flip on
+```
+
+`0` and `1` are accepted aliases for `off` and `on`. This is intentionally
+different from Full Companion `display.rotation`: observer `display.flip` is a
+relative 180-degree mounting choice and cannot switch between portrait and
+landscape. The value is harmless on an observer display driver that does not
+support flipping.
+
+Both settings survive reboot and firmware updates that preserve the filesystem;
+erasing flash restores the `60`/`off` defaults. The boot log reports the saved
+flip state on display-enabled observer builds.
+
+---
+
 ## Logging
 
 Builds compiled with `MESH_PACKET_LOGGING` emit one `RAW:` line for every
@@ -1021,6 +1057,25 @@ Station G2/G3 targets default to `off`.
 **Default:** Varies by board
 
 **Note:** Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.
+
+---
+
+#### View or change the independent Bluetooth name (Companion)
+
+**Usage:**
+
+- `get bluetooth.name`
+- `set bluetooth.name <name|default>`
+
+`get ble.name` and `set ble.name ...` are accepted aliases. This command is
+specific to Companion firmware. The default is `MeshCore-<advert name>`;
+`default` (or `clear`) removes a custom override. Names are limited to 31 valid
+UTF-8 bytes without control characters and take effect after reboot.
+
+A binary Companion client should carry the same text in command `0x42`
+(`CMD_RUN_CLI_COMMAND`), which works over USB, BLE, or TCP without entering USB
+terminal mode. See [Companion radio binary protocol](companion_protocol.md) for
+the frame and reply format.
 
 ---
 

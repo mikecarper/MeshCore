@@ -18,7 +18,11 @@
 
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
+#ifdef DISPLAY_TOUCH_TOGGLE
+  static UITask ui_task(board, display);
+#else
   static UITask ui_task(display);
+#endif
   static bool display_ready = false;
 #endif
 
@@ -122,6 +126,12 @@ void setup() {
 
 #ifdef DISPLAY_CLASS
   if (display_ready) {
+#ifdef WITH_MQTT_BRIDGE
+    ui_task.setObserverPrefs(the_mesh.getObserverPrefs());
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+    ui_task.setActivityWindow(the_mesh.getActivityWindow());
+#endif
     ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
   }
 #endif

@@ -129,6 +129,48 @@ TEST(ValueFits, RejectsNullOrZeroBuffer) {
   EXPECT_FALSE(mqttValueFits("abc", 0));
 }
 
+// ---- display CLI values --------------------------------------------------
+
+TEST(DisplayTimeout, AcceptsOnlyCompleteBoundedDecimalValues) {
+  uint16_t value = 9999;
+  EXPECT_TRUE(observerParseBoundedUint16("0", 3600, &value));
+  EXPECT_EQ(0, value);
+  EXPECT_TRUE(observerParseBoundedUint16("60", 3600, &value));
+  EXPECT_EQ(60, value);
+  EXPECT_TRUE(observerParseBoundedUint16("3600", 3600, &value));
+  EXPECT_EQ(3600, value);
+
+  for (const char* invalid : {"", "3601", "-1", "+1", " 60", "60 ",
+                              "60s", "99999999999999999999"}) {
+    value = 123;
+    EXPECT_FALSE(observerParseBoundedUint16(invalid, 3600, &value)) << invalid;
+    EXPECT_EQ(123, value) << invalid;
+  }
+  EXPECT_FALSE(observerParseBoundedUint16(nullptr, 3600, &value));
+  EXPECT_FALSE(observerParseBoundedUint16("60", 3600, nullptr));
+}
+
+TEST(DisplayFlip, AcceptsOnlyExactDocumentedTokens) {
+  uint8_t value = 7;
+  for (const char* off : {"0", "off"}) {
+    value = 7;
+    EXPECT_TRUE(observerParseDisplayFlip(off, &value));
+    EXPECT_EQ(0, value);
+  }
+  for (const char* on : {"1", "on"}) {
+    value = 7;
+    EXPECT_TRUE(observerParseDisplayFlip(on, &value));
+    EXPECT_EQ(1, value);
+  }
+  for (const char* invalid : {"", "2", "ON", "Off", "on ", "1x", "true"}) {
+    value = 7;
+    EXPECT_FALSE(observerParseDisplayFlip(invalid, &value)) << invalid;
+    EXPECT_EQ(7, value) << invalid;
+  }
+  EXPECT_FALSE(observerParseDisplayFlip(nullptr, &value));
+  EXPECT_FALSE(observerParseDisplayFlip("on", nullptr));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

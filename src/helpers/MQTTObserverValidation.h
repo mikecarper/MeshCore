@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 // Pure, dependency-free validators for the observer's CLI/web configuration
@@ -57,4 +58,34 @@ static inline bool mqttNtpHostnameValid(const char* host) {
 // over-long submission up front instead of silently truncating it.
 static inline bool mqttValueFits(const char* s, size_t bufsize) {
   return s != NULL && bufsize > 0 && strlen(s) < bufsize;
+}
+
+// Strict decimal parser for bounded observer settings. Unlike atoi(), this
+// rejects missing values, signs, whitespace, trailing text, and overflow.
+static inline bool observerParseBoundedUint16(const char* text, uint16_t maximum,
+                                              uint16_t* result) {
+  if (text == NULL || result == NULL || *text == '\0') return false;
+  uint32_t value = 0;
+  for (const char* p = text; *p != '\0'; ++p) {
+    if (*p < '0' || *p > '9') return false;
+    value = value * 10u + static_cast<uint32_t>(*p - '0');
+    if (value > maximum) return false;
+  }
+  *result = static_cast<uint16_t>(value);
+  return true;
+}
+
+// `display.flip` accepts only complete, lower-case tokens so a typo cannot
+// silently change persisted panel orientation.
+static inline bool observerParseDisplayFlip(const char* text, uint8_t* result) {
+  if (text == NULL || result == NULL) return false;
+  if (strcmp(text, "0") == 0 || strcmp(text, "off") == 0) {
+    *result = 0;
+    return true;
+  }
+  if (strcmp(text, "1") == 0 || strcmp(text, "on") == 0) {
+    *result = 1;
+    return true;
+  }
+  return false;
 }

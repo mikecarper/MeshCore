@@ -1,5 +1,11 @@
 #include "HeltecV4R8Board.h"
 
+// Expansion Kit V2 control-pin notes (kept here beside the shared-reset
+// sequencing): display/touch I2C is SDA 17 / SCL 18; GPIO 21 is the shared
+// LCD_RESET / TP_RESET line; GPIO 44 drives the active-high backlight. The
+// optional R13 touch interrupt lands on GPIO 43, which is also ESP32-S3 U0TXD,
+// so production builds deliberately poll touch and do not define PIN_TOUCH_INT.
+
 void HeltecV4R8Board::begin() {
   ESP32Board::begin();
 

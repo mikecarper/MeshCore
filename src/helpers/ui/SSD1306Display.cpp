@@ -25,8 +25,18 @@ bool SSD1306Display::begin() {
   const bool started = display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESS,
                                      true, false)
       && i2c_probe(Wire, DISPLAY_ADDRESS);
-  if (started) setRotationDegrees(0);
+  if (started) {
+    _panel_ready = true;
+    applyRotation();
+  }
   return started;
+}
+
+void SSD1306Display::applyRotation() {
+  display.setRotation((_base_rotation + (_flipped ? 2 : 0)) & 3);
+  setDimensions(display.width(), display.height());
+  display.clearDisplay();
+  display.display();
 }
 
 bool SSD1306Display::setRotationDegrees(uint16_t degrees) {
@@ -45,11 +55,15 @@ bool SSD1306Display::setRotationDegrees(uint16_t degrees) {
     default: return false;
   }
 
-  display.setRotation(rotation);
-  setDimensions(display.width(), display.height());
-  display.clearDisplay();
-  display.display();
+  _base_rotation = rotation;
+  if (_panel_ready) applyRotation();
   return true;
+}
+
+void SSD1306Display::setFlipped(bool flipped) {
+  if (_flipped == flipped) return;
+  _flipped = flipped;
+  if (_panel_ready) applyRotation();
 }
 
 void SSD1306Display::turnOn() {
@@ -69,6 +83,7 @@ void SSD1306Display::turnOff() {
       digitalWrite(PIN_OLED_RESET, LOW);
 #endif
       _peripher_power->release();
+      _panel_ready = false;
     }
     _isOn = false;
   }

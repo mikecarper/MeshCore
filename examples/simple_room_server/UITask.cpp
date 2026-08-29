@@ -1,6 +1,13 @@
 #include "UITask.h"
+#ifdef DISPLAY_TOUCH_TOGGLE
+#include "target.h"
+#endif
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
+
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+#include <helpers/ui/DisplayFrameSignature.h>
+#endif
 
 #ifndef USER_BTN_PRESSED
 #define USER_BTN_PRESSED LOW
@@ -8,11 +15,59 @@
 
 #ifdef ESP_PLATFORM
 #include <WiFi.h>
-#include <helpers/esp32/WebConfigServer.h>
+#include <helpers/esp32/WebConfigServer.h>   // defines WITH_WEBCONFIG on ESP32
 #endif
 
-#define AUTO_OFF_MILLIS      20000  // 20 seconds
+#ifndef AUTO_OFF_MILLIS
+#define AUTO_OFF_MILLIS      20000  // 20 seconds; 0 keeps the screen on
+#endif
+
+#ifdef DISPLAY_TOUCH_TOGGLE
+#define TOUCH_POLL_MILLIS    50
+#endif
+
+// Wrap-safe deadline test. `millis() >= deadline` fires early for the whole
+// interval before a rollover, because the deadline has already wrapped to a
+// small value while millis() is still near UINT32_MAX; the signed difference
+// stays correct across it.
+static inline bool millisReached(unsigned long now, unsigned long deadline) {
+  return (int32_t)((uint32_t)now - (uint32_t)deadline) >= 0;
+}
+
+// Applies `display.flip` when it changes, forcing a complete repaint because
+// the panel's existing contents are now the wrong way up.
+void UITask::applyDisplayFlip() {
+#ifdef WITH_MQTT_BRIDGE
+  if (_observer_prefs == NULL || _observer_prefs->display_flip == _flip_seen) return;
+  _flip_seen = _observer_prefs->display_flip;
+  _display->setFlipped(_flip_seen != 0);
+  // Logged unconditionally: this is persisted config, so it survives a reflash
+  // and is otherwise invisible when someone is chasing a wrong orientation.
+  Serial.printf("Display: flip %s\n", _flip_seen ? "on (rotated 180)" : "off");
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+  _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  _rows_valid = false;
+#endif
+  _next_refresh = 0;
+#endif
+}
+
+// `display.timeout` when the observer prefs are available, otherwise the
+// compiled-in default. Read on every use so a `set display.timeout` takes
+// effect immediately.
+unsigned long UITask::displayTimeoutMillis() const {
+#ifdef WITH_MQTT_BRIDGE
+  if (_observer_prefs) return (unsigned long)_observer_prefs->display_timeout_secs * 1000UL;
+#endif
+  return AUTO_OFF_MILLIS;
+}
 #define BOOT_SCREEN_MILLIS   4000   // 4 seconds
+
+#ifdef DISPLAY_TOUCH_TOGGLE
+#define POWEROFF_DELAY       3000
+#endif
 
 // 'meshcore', 128x13px
 static const uint8_t meshcore_logo [] PROGMEM = {
@@ -33,9 +88,24 @@ static const uint8_t meshcore_logo [] PROGMEM = {
 
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
   _prevBtnState = HIGH;
-  _auto_off = millis() + AUTO_OFF_MILLIS;
+  _timeout_seen = displayTimeoutMillis();
+  _auto_off = millis() + displayTimeoutMillis();
+  _started_at = millis();
   _node_prefs = node_prefs;
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  ObserverDashboard::applyDarkPalette();   // retunes UIColor for this target only
+#endif
   _display->turnOn();
+  applyDisplayFlip();
+#ifdef DISPLAY_TOUCH_TOGGLE
+  _touch.begin();
+#if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
+  user_btn.begin();
+#endif
+#endif
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+  _frame_valid = false;
+#endif
 
   // strip off dash and commit hash by changing dash to null terminator
   // e.g: v1.2.3-abcdef -> v1.2.3
@@ -52,7 +122,10 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
 
 void UITask::renderCurrScreen() {
   char tmp[80];
-  if (millis() < BOOT_SCREEN_MILLIS) { // boot screen
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  _rows_valid = false;
+#endif
+  if ((uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) { // boot screen
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
     int logoWidth = 128;
@@ -77,9 +150,19 @@ void UITask::renderCurrScreen() {
     uint16_t typeWidth = _display->getTextWidth(node_type);
     _display->setCursor((_display->width() - typeWidth) / 2, 48);
     _display->print(node_type);
+#ifdef DISPLAY_TOUCH_TOGGLE
+  } else if (_powering_off_at > 0) {
+    _display->setColor(UIColor::corp_blue);
+    _display->drawXbm(0, 3, meshcore_logo, 128, 13);
+    _display->setTextSize(1);
+    _display->setColor(UIColor::primary_txt);
+    _display->drawTextCentered(_display->width() / 2, 48, "Turning OFF");
+#endif
   } else {  // home screen
 #ifdef WITH_WEBCONFIG
     if (WebConfigServer::isRebootPending()) {
+      // save confirmed on-device: show ground truth even if the browser
+      // lost its connection before the confirmation reached it
       _display->setTextSize(1);
       _display->setColor(UIColor::corp_blue);
       _display->setCursor(0, 14);
@@ -91,16 +174,23 @@ void UITask::renderCurrScreen() {
     }
     char wc_ssid[33], wc_ip[16];
     if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+      // setup portal active: show join instructions instead of the home screen
       _display->setTextSize(1);
       _display->setColor(UIColor::corp_blue);
       _display->setCursor(0, 0);
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      _display->print("Observer WiFi Setup");
+#else
       _display->print("WebUI WiFi Setup");
+#endif
+
       _display->setColor(UIColor::primary_txt);
       _display->setCursor(0, 14);
       _display->print("Join WiFi:");
       _display->setColor(UIColor::warning_txt);
       _display->setCursor(6, 24);
       _display->print(wc_ssid);
+
       _display->setColor(UIColor::primary_txt);
       _display->setCursor(0, 40);
       _display->print("Then browse to:");
@@ -109,6 +199,10 @@ void UITask::renderCurrScreen() {
       _display->print(wc_ip);
       return;
     }
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+    renderDashboard();
+    return;
 #endif
     // node name
     _display->setCursor(0, 0);
@@ -139,18 +233,168 @@ void UITask::renderCurrScreen() {
   }
 }
 
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+uint32_t UITask::getFrameSignature() {
+  uint32_t signature = DisplayFrameSignature::INITIAL;
+  char tmp[80];
+
+  if ((uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) {
+    signature = DisplayFrameSignature::append(signature, "boot");
+    return DisplayFrameSignature::append(signature, _version_info);
+  }
+
+#ifdef DISPLAY_TOUCH_TOGGLE
+  if (_powering_off_at > 0) {
+    return DisplayFrameSignature::append(signature, "powering-off");
+  }
+#endif
+
+#ifdef WITH_WEBCONFIG
+  if (WebConfigServer::isRebootPending()) {
+    return DisplayFrameSignature::append(signature, "rebooting");
+  }
+
+  char wc_ssid[33], wc_ip[16];
+  if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+    signature = DisplayFrameSignature::append(signature, "setup");
+    signature = DisplayFrameSignature::append(signature, wc_ssid);
+    return DisplayFrameSignature::append(signature, wc_ip);
+  }
+#endif
+
+  signature = DisplayFrameSignature::append(signature, "home");
+  signature = DisplayFrameSignature::append(signature, _node_prefs->node_name);
+  snprintf(tmp, sizeof(tmp), "FREQ: %06.3f SF%d", _node_prefs->freq, _node_prefs->sf);
+  signature = DisplayFrameSignature::append(signature, tmp);
+  snprintf(tmp, sizeof(tmp), "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
+  signature = DisplayFrameSignature::append(signature, tmp);
+
+#if defined(WITH_MQTT_BRIDGE) && !defined(DISPLAY_ACTIVITY_DASHBOARD)
+  if (WiFi.status() == WL_CONNECTED) {
+    IPAddress ip = WiFi.localIP();
+    snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    signature = DisplayFrameSignature::append(signature, tmp);
+  } else {
+    signature = DisplayFrameSignature::append(signature, "wifi-disconnected");
+  }
+#endif
+
+  return signature;
+}
+#endif
+
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+#define ACTIVITY_REFRESH_MILLIS 5000
+
+bool UITask::buildDashboardContext(ObserverDashboard::Context* ctx) {
+  if (_node_prefs == NULL) return false;
+  ctx->node_name = _node_prefs->node_name;
+  ctx->role_label = "ROOM SERVER";
+  ctx->freq = _node_prefs->freq;
+  ctx->sf = _node_prefs->sf;
+  ctx->bw = _node_prefs->bw;
+#ifdef WITH_MQTT_BRIDGE
+  ctx->link_up = (WiFi.status() == WL_CONNECTED);
+#else
+  ctx->link_up = false;
+#endif
+  return true;
+}
+
+void UITask::renderDashboard() {
+  ObserverDashboard::Context ctx;
+  if (!buildDashboardContext(&ctx)) return;
+
+  RadioActivitySnapshot snap;
+  if (_activity) {
+    _activity->snapshot(millis(), &snap);
+  } else {
+    memset(&snap, 0, sizeof(snap));
+  }
+
+  const ObserverDashboard::Layout& layout = ObserverDashboard::activeLayout();
+  ObserverDashboard::drawFull(*_display, layout, ctx, snap);
+  ObserverDashboard::allRowSignatures(layout, ctx, snap, _row_signatures);
+  _rows_valid = true;
+  _next_activity = millis() + ACTIVITY_REFRESH_MILLIS;
+}
+
+// Repaints just the analytics rows whose contents moved. No startFrame(), so
+// the header, the radio strip and the rest of the panel are never cleared.
+void UITask::updateActivityRows() {
+  if (!_rows_valid || _activity == NULL) return;   // not showing the dashboard
+
+  ObserverDashboard::Context ctx;
+  if (!buildDashboardContext(&ctx)) return;
+
+  RadioActivitySnapshot snap;
+  _activity->snapshot(millis(), &snap);
+  ObserverDashboard::drawChangedRows(*_display, ObserverDashboard::activeLayout(), ctx, snap,
+                                     _row_signatures);
+}
+#endif
+
+#ifdef DISPLAY_TOUCH_TOGGLE
+void UITask::toggleDisplay(const char* source) {
+  if (_display->isOn()) {
+    _display->turnOff();
+  } else {
+    _display->turnOn();
+  }
+#ifdef DISPLAY_TOUCH_DEBUG
+  Serial.printf("Display: %s -> %s\n", source, _display->isOn() ? "on" : "off");
+#else
+  (void)source;
+#endif
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+  _frame_valid = false;   // wake draws one complete current frame
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  _rows_valid = false;
+#endif
+  _next_refresh = 0;   // redraw at once rather than showing the stale frame
+  _auto_off = millis() + displayTimeoutMillis();
+}
+#endif
+
 void UITask::loop() {
-#ifdef PIN_USER_BTN
-  if (millis() >= _next_read) {
+#if defined(PIN_USER_BTN) && defined(DISPLAY_TOUCH_TOGGLE)
+  int ev = user_btn.check();
+  if (ev == BUTTON_EVENT_CLICK) {
+    toggleDisplay("button");
+  } else if (ev == BUTTON_EVENT_LONG_PRESS) {
+    _display->turnOn();
+    Serial.println("Powering Off");
+    _powering_off_at = millis() + POWEROFF_DELAY;
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+    _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+    _rows_valid = false;
+#endif
+    _next_refresh = 0;
+  }
+#elif defined(PIN_USER_BTN)
+  if (millisReached(millis(), _next_read)) {
     int btnState = digitalRead(PIN_USER_BTN);
     if (btnState != _prevBtnState) {
       if (btnState == USER_BTN_PRESSED) {  // pressed?
+#ifdef DISPLAY_TOUCH_TOGGLE
+        toggleDisplay("button");   // same action as tapping the panel
+#else
         if (_display->isOn()) {
           // TODO: any action ?
         } else {
           _display->turnOn();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+          _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+          _rows_valid = false;
+#endif
         }
-        _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+        _auto_off = millis() + displayTimeoutMillis();   // extend auto-off timer
+#endif
       }
       _prevBtnState = btnState;
     }
@@ -159,22 +403,100 @@ void UITask::loop() {
 #endif
 
 #ifdef WITH_WEBCONFIG
-  if (WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
-    if (!_display->isOn()) _display->turnOn();
-    _auto_off = millis() + AUTO_OFF_MILLIS;
+  // While the setup portal is up there's no user button to wake the screen
+  // reliably - keep it on so the join instructions stay visible.
+  if (WebConfigServer::getSetupInfo(NULL, 0, NULL, 0)) {
+    if (!_display->isOn()) {
+      _display->turnOn();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+      _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      _rows_valid = false;
+#endif
+    }
+    _auto_off = millis() + displayTimeoutMillis();
   }
 #endif
 
-  if (_display->isOn()) {
-    if (millis() >= _next_refresh) {
-      _display->startFrame();
-      renderCurrScreen();
-      _display->endFrame();
-
-      _next_refresh = millis() + 1000;   // refresh every second
-    }
-    if (millis() > _auto_off) {
-      _display->turnOff();
+#ifdef DISPLAY_TOUCH_TOGGLE
+  {
+    unsigned long now = millis();
+    if (millisReached(now, _next_touch)) {
+      _next_touch = now + TOUCH_POLL_MILLIS;
+      if (_powering_off_at == 0 && _touch.checkTap(now)) toggleDisplay("touch");
     }
   }
+#endif
+
+  // Observe timeout changes even while the panel is blanked. In particular,
+  // `set display.timeout 0` means the display must stay on, so wake it now
+  // rather than waiting for a button/touch event that may never arrive.
+  unsigned long timeout = displayTimeoutMillis();
+  if (timeout != _timeout_seen) {
+    _timeout_seen = timeout;
+    _auto_off = millis() + timeout;
+    if (timeout == 0 && !_display->isOn()) {
+      _display->turnOn();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+      _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      _rows_valid = false;
+#endif
+      _next_refresh = 0;
+    }
+  }
+
+  if (_display->isOn()) {
+    // Apply a live orientation change before drawing, including the first frame
+    // after a preference was changed while the panel was blanked.
+    applyDisplayFlip();
+    if (millisReached(millis(), _next_refresh)) {
+      bool redraw = true;
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+      uint32_t frame_signature = getFrameSignature();
+      redraw = !_frame_valid || frame_signature != _last_frame_signature;
+#endif
+      if (redraw) {
+        _display->startFrame();
+        renderCurrScreen();
+        _display->endFrame();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+        _last_frame_signature = frame_signature;
+        _frame_valid = true;
+#endif
+      }
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      else if (millisReached(millis(), _next_activity)) {
+        updateActivityRows();
+        _next_activity = millis() + ACTIVITY_REFRESH_MILLIS;
+      }
+#endif
+
+      _next_refresh = millis() + 1000;   // check for visible changes every second
+    }
+    // `_auto_off` is only armed on activity, so a timeout changed at runtime has
+    // to restart the countdown here - otherwise 0 -> 60 blanks instantly off a
+    // boot-time deadline, and 60 -> 3600 still blanks at the old 60 s mark.
+#ifdef DISPLAY_TOUCH_TOGGLE
+    if (_powering_off_at == 0 && timeout > 0 && millisReached(millis(), _auto_off)) {
+#else
+    if (timeout > 0 && millisReached(millis(), _auto_off)) {
+#endif
+      _display->turnOff();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+      _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      _rows_valid = false;
+#endif
+    }
+  }
+
+#ifdef DISPLAY_TOUCH_TOGGLE
+  if (_powering_off_at > 0 && millisReached(millis(), _powering_off_at)) {
+    _board->powerOff();   // current board path performs the full radio/GPS shutdown
+  }
+#endif
 }

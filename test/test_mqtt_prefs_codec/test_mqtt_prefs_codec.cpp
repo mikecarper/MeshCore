@@ -4,6 +4,7 @@
 #include <vector>
 
 #define WITH_MQTT_BRIDGE 1
+#include "helpers/CompanionMqttPrefsNvs.h"
 #include "helpers/MQTTPrefsCodec.h"
 #include "helpers/MQTTPacketFilter.h"
 
@@ -28,6 +29,8 @@ MQTTPrefs defaults() {
   prefs.alert_wifi_minutes = 30;
   prefs.alert_mqtt_minutes = 240;
   prefs.alert_min_interval_min = 60;
+  prefs.display_timeout_secs = DISPLAY_TIMEOUT_DEFAULT_SECS;
+  prefs.display_flip = 0;
   return prefs;
 }
 
@@ -237,6 +240,8 @@ TEST(MQTTPrefsCodec, CurrentVersionedPayloadRoundTripsExactly) {
   for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
     source.mqtt_slot_packet_filter[i] = static_cast<uint16_t>(1u << i);
   }
+  source.display_timeout_secs = 300;
+  source.display_flip = 1;
   std::vector<uint8_t> bytes(Codec::kEncodedSize);
   ASSERT_EQ(Codec::kEncodedSize, Codec::encode(source, bytes.data(), bytes.size()));
 
@@ -251,8 +256,8 @@ TEST(MQTTPrefsCodec, CurrentVersionedPayloadRoundTripsExactly) {
 
 // /mqtt_prefs also carries the WiFi credentials, so a payload older firmware
 // rejects strands a downgraded node with no network and no way to save. The
-// filter tail is only written once it actually holds something.
-TEST(MQTTPrefsCodec, DefaultFiltersKeepTheDowngradeReadablePayloadLength) {
+// optional tails are written only once they actually hold something.
+TEST(MQTTPrefsCodec, DefaultFiltersAndDisplayKeepTheDowngradeReadablePayloadLength) {
   MQTTPrefs source = defaults();
   strncpy(source.wifi_ssid, "home-net", sizeof(source.wifi_ssid) - 1);
   strncpy(source.mqtt_slot_preset[0], "analyzer-us", sizeof(source.mqtt_slot_preset[0]) - 1);
@@ -292,12 +297,15 @@ TEST(MQTTPrefsCodec, AnyNonDefaultFilterOptsIntoTheLongerPayload) {
                           static_cast<uint16_t>(1u << 4),
                           static_cast<uint16_t>(MQTTPacketFilter::kAllPacketTypes & ~1u)}) {
       source.mqtt_slot_packet_filter[slot] = mask;
-      ASSERT_EQ(Codec::kV1BaselinePayloadSize, Codec::payloadLenFor(source)) << slot;
+      ASSERT_EQ(Codec::kV1PreDisplayPayloadSize, Codec::payloadLenFor(source)) << slot;
 
       std::vector<uint8_t> bytes(Codec::kEncodedSize);
-      ASSERT_EQ(Codec::kEncodedSize, Codec::encode(source, bytes.data(), bytes.size()));
+      const size_t written = Codec::encode(source, bytes.data(), bytes.size());
+      ASSERT_EQ(sizeof(MQTTPrefsHeader) + Codec::kV1PreDisplayPayloadSize,
+                written);
+      bytes.resize(written);
       const Codec::DecodePlan plan = classify(bytes);
-      ASSERT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len);
+      ASSERT_EQ(Codec::kV1PreDisplayPayloadSize, plan.payload_len);
 
       MQTTPrefs loaded = defaults();
       memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
@@ -322,8 +330,69 @@ TEST(MQTTPrefsCodec, EncodeRefusesAnOutputBufferShorterThanItsChosenPayload) {
   // A buffer that fits the short payload is not enough for the long one.
   MQTTPrefs longest = defaults();
   longest.mqtt_slot_packet_filter[0] = 0;
+  longest.display_flip = 1;
   EXPECT_EQ(0u, Codec::encode(longest, bytes.data(), short_size));
   EXPECT_EQ(Codec::kEncodedSize, Codec::encode(longest, bytes.data(), bytes.size()));
+}
+
+TEST(MQTTPrefsCodec, EitherNonDefaultDisplayControlOptsIntoTheFullTail) {
+  for (int scenario = 0; scenario < 2; ++scenario) {
+    MQTTPrefs source = defaults();
+    if (scenario == 0) {
+      source.display_timeout_secs = 0;
+    } else {
+      source.display_flip = 1;
+    }
+
+    ASSERT_EQ(Codec::kV1BaselinePayloadSize, Codec::payloadLenFor(source));
+    std::vector<uint8_t> bytes(Codec::kEncodedSize);
+    ASSERT_EQ(Codec::kEncodedSize,
+              Codec::encode(source, bytes.data(), bytes.size()));
+
+    const Codec::DecodePlan plan = classify(bytes);
+    ASSERT_EQ(Codec::Source::Current, plan.source);
+    ASSERT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len);
+    MQTTPrefs loaded = defaults();
+    memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+    EXPECT_EQ(source.display_timeout_secs, loaded.display_timeout_secs);
+    EXPECT_EQ(source.display_flip, loaded.display_flip);
+  }
+}
+
+TEST(MQTTPrefsCodec, PreDisplayPayloadPreservesFiltersAndDefaultsDisplayTail) {
+  MQTTPrefs source = defaults();
+  source.mqtt_slot_packet_filter[2] = 0;
+  source.display_timeout_secs = 900;
+  source.display_flip = 1;
+
+  std::vector<uint8_t> bytes(
+      sizeof(MQTTPrefsHeader) + Codec::kV1PreDisplayPayloadSize, 0);
+  writeHeader(&bytes, MQTT_PREFS_VERSION,
+              static_cast<uint16_t>(Codec::kV1PreDisplayPayloadSize));
+  memcpy(bytes.data() + sizeof(MQTTPrefsHeader), &source,
+         Codec::kV1PreDisplayPayloadSize);
+
+  const Codec::DecodePlan plan = classify(bytes);
+  ASSERT_EQ(Codec::Source::Current, plan.source);
+  ASSERT_EQ(Codec::kV1PreDisplayPayloadSize, plan.payload_len);
+  MQTTPrefs loaded = defaults();
+  memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+  EXPECT_EQ(0, loaded.mqtt_slot_packet_filter[2]);
+  EXPECT_EQ(DISPLAY_TIMEOUT_DEFAULT_SECS, loaded.display_timeout_secs);
+  EXPECT_EQ(0, loaded.display_flip);
+}
+
+TEST(MQTTPrefsCodec, RepairsInvalidDisplayTailValues) {
+  MQTTPrefs prefs = defaults();
+  EXPECT_FALSE(Codec::repairDisplayPrefs(&prefs));
+  EXPECT_FALSE(Codec::repairDisplayPrefs(nullptr));
+
+  prefs.display_timeout_secs = DISPLAY_TIMEOUT_MAX_SECS + 1;
+  prefs.display_flip = 7;
+  EXPECT_TRUE(Codec::repairDisplayPrefs(&prefs));
+  EXPECT_EQ(DISPLAY_TIMEOUT_DEFAULT_SECS, prefs.display_timeout_secs);
+  EXPECT_EQ(0, prefs.display_flip);
+  EXPECT_FALSE(Codec::repairDisplayPrefs(&prefs));
 }
 
 TEST(MQTTPrefsCodec, PreFilterV1PayloadDefaultsEverySlotToAllTypes) {
@@ -491,7 +560,9 @@ TEST(MQTTPrefsCodec, LegacyPlausibilityRejectsHighEntropyBytesAtEveryWhitelisted
 TEST(MQTTPrefsCodec, UnsupportedHeaderlessSizesArePreserved) {
   // 3024 was produced briefly before versioning, but repository history says
   // that raw observer-tail form was not shipped. Preserve it rather than guess.
-  for (const size_t size : {size_t(471), size_t(473), size_t(1465), size_t(2905), size_t(3024)}) {
+  for (const size_t size : {size_t(471), size_t(473), size_t(1465),
+                            size_t(2879), size_t(2880), size_t(2905),
+                            size_t(3024)}) {
     std::vector<uint8_t> bytes(size, 0);
     const Codec::DecodePlan plan = classify(bytes);
     EXPECT_EQ(Codec::Source::Corrupt, plan.source) << size;
@@ -525,6 +596,8 @@ TEST(MQTTPrefsCodec, LongerSameVersionPayloadLoadsTheBaselineAndIgnoresTheTail) 
   for (int i = 0; i < MQTT_PREFS_SLOT_COUNT; ++i) {
     source.mqtt_slot_packet_filter[i] = static_cast<uint16_t>(1u << i);
   }
+  source.display_timeout_secs = 120;
+  source.display_flip = 1;
 
   // Baseline image plus a 40-byte tail of fields this build has never heard of.
   const size_t kTail = 40;
@@ -551,6 +624,8 @@ TEST(MQTTPrefsCodec, LongerSameVersionPayloadLoadsTheBaselineAndIgnoresTheTail) 
   EXPECT_STREQ("meshrank", loaded.mqtt_slot_preset[0]);
   EXPECT_EQ(1u, loaded.mqtt_neighbors_enabled);
   EXPECT_EQ(1u, loaded.mqtt_slot_packet_filter[0]);
+  EXPECT_EQ(120, loaded.display_timeout_secs);
+  EXPECT_EQ(1, loaded.display_flip);
 }
 
 // The rule has to hold for any appended size, including a single byte and a
@@ -577,6 +652,23 @@ TEST(MQTTPrefsCodec, LongerDeclaredLengthWithoutTheBytesIsStillCorrupt) {
   const Codec::DecodePlan plan = classify(bytes);
   EXPECT_EQ(Codec::Source::Corrupt, plan.source);
   EXPECT_TRUE(plan.preserve_file);
+}
+
+TEST(CompanionMqttPrefsNvs, WritesRollbackReadableShapeAndAcceptsRecoveryShape) {
+  EXPECT_EQ(MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE,
+            CompanionMqttPrefsNvs::kWriteSize);
+  EXPECT_LT(CompanionMqttPrefsNvs::kWriteSize, sizeof(MQTTPrefs));
+
+  EXPECT_TRUE(CompanionMqttPrefsNvs::accepts(
+      MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kWriteSize));
+  EXPECT_TRUE(CompanionMqttPrefsNvs::accepts(
+      MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kRecoverySize));
+  EXPECT_EQ(2880u, CompanionMqttPrefsNvs::kRecoverySize);
+  EXPECT_LE(CompanionMqttPrefsNvs::kRecoverySize, sizeof(MQTTPrefs));
+  EXPECT_FALSE(CompanionMqttPrefsNvs::accepts(
+      MQTT_PREFS_VERSION + 1, CompanionMqttPrefsNvs::kWriteSize));
+  EXPECT_FALSE(CompanionMqttPrefsNvs::accepts(
+      MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kWriteSize - 1));
 }
 
 int main(int argc, char** argv) {

@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <Utils.h>
 #include <math.h>
+#include <new>
 #include <stddef.h>
 
 #if defined(NRF52_PLATFORM)
@@ -72,6 +73,7 @@ static void resetToUf2Bootloader() {
 #include "MQTTDefaults.h"
 #include "MQTTPrefsAtomicStore.h"
 #include "MQTTPrefsCodec.h"
+#include "MQTTPrefsJsonImport.h"
 #include "MQTTPrefsRecovery.h"
 #endif
 
@@ -1613,7 +1615,10 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
   // Observer builds use a verified temp/backup transaction for common prefs.
   // Radio and bridge changes must never leave a truncated boot-time image.
   if (plan.common) saveCommonPrefsImageAtomically(fs);
-  if (plan.observer) saveMQTTPrefs(fs);
+  if (plan.observer) {
+    _observer_save_result_known = true;
+    _observer_save_succeeded = saveMQTTPrefs(fs);
+  }
   return;
 #else
   // Observer-only saves are a no-op on roles with no observer preference image.
@@ -1779,6 +1784,37 @@ static File openMqttPrefsRead(FILESYSTEM* fs, const char* path = "/mqtt_prefs") 
 #else
   return fs->open(path);
 #endif
+}
+
+static bool mqttJsonImportPresetValid(const char* preset) {
+  return findMQTTPreset(preset) != nullptr;
+}
+
+static MQTTPrefsJsonImport::Result loadMqttJsonImport(
+    FILESYSTEM* fs, const MQTTPrefs& defaults, MQTTPrefs* candidate) {
+  File file = openMqttPrefsRead(fs, "/mqtt.json");
+  if (!file) return MQTTPrefsJsonImport::Result::InvalidSyntax;
+  if (file.size() > MQTTPrefsJsonImport::kMaximumFileSize) {
+    file.close();
+    return MQTTPrefsJsonImport::Result::TooLarge;
+  }
+  const MQTTPrefsJsonImport::Result result =
+      MQTTPrefsJsonImport::decode(
+          file, defaults, candidate, mqttJsonImportPresetValid);
+  file.close();
+  return result;
+}
+
+static const char* mqttJsonImportResultName(MQTTPrefsJsonImport::Result result) {
+  switch (result) {
+    case MQTTPrefsJsonImport::Result::Loaded: return "loaded";
+    case MQTTPrefsJsonImport::Result::LoadedWithRepairs: return "loaded with repairs";
+    case MQTTPrefsJsonImport::Result::InvalidSyntax: return "invalid ConfigSerializer syntax";
+    case MQTTPrefsJsonImport::Result::InvalidSchema: return "invalid v1 schema";
+    case MQTTPrefsJsonImport::Result::UnsupportedVersion: return "unsupported version";
+    case MQTTPrefsJsonImport::Result::TooLarge: return "file too large";
+  }
+  return "unknown error";
 }
 
 static MQTTPrefsRecovery::FileState mqttPrefsFileState(FILESYSTEM* fs, const char* path) {
@@ -2127,6 +2163,72 @@ void CommonCLI::loadMQTTPrefs(
   // A failed recovery leaves the artifacts untouched and blocks this boot from
   // replacing them with defaults through a later CLI save.
   _mqtt_prefs_hold = recoverMqttPrefsFiles(fs);
+
+  // `/mqtt.json` was the authoritative observer-firmware-dev format. Import it
+  // exactly once, but only when binary recovery found no primary or recovery
+  // artifact at all. A valid, default-valued, corrupt, unreadable, or future
+  // binary image always wins because neither format carries a generation that
+  // could prove the JSON is newer.
+  const MQTTPrefsJsonImport::Decision json_import =
+      MQTTPrefsJsonImport::select(
+          _mqtt_prefs_hold,
+          fs->exists("/mqtt_prefs"), fs->exists("/mqtt_prefs.tmp"),
+          fs->exists("/mqtt_prefs.bak"), fs->exists("/mqtt.json"),
+          fs->exists("/mqtt.json.tmp"), fs->exists("/mqtt.json.bak"));
+  if (json_import == MQTTPrefsJsonImport::Decision::HoldJsonArtifacts) {
+    _mqtt_prefs_hold = true;
+    _legacy_tail.valid = false;
+    MESH_DEBUG_PRINTLN(
+        "MQTT: unresolved /mqtt.json transaction files; defaults active and all sources preserved");
+    return;
+  }
+  if (json_import == MQTTPrefsJsonImport::Decision::ImportPrimary) {
+    MQTTPrefs* candidate = new (std::nothrow) MQTTPrefs;
+    if (candidate == nullptr) {
+      _mqtt_prefs_hold = true;
+      _legacy_tail.valid = false;
+      MESH_DEBUG_PRINTLN(
+          "MQTT: no memory to import /mqtt.json; defaults active and source preserved");
+      return;
+    }
+    setMQTTPrefsDefaults(candidate);
+    const MQTTPrefsJsonImport::Result result =
+        loadMqttJsonImport(fs, _mqtt_prefs, candidate);
+    if (!MQTTPrefsJsonImport::loaded(result)) {
+      delete candidate;
+      _mqtt_prefs_hold = true;
+      _legacy_tail.valid = false;
+      MESH_DEBUG_PRINTLN(
+          "MQTT: /mqtt.json import refused (%s); defaults active and source preserved",
+          mqttJsonImportResultName(result));
+      return;
+    }
+
+    _mqtt_prefs = *candidate;
+    delete candidate;
+    legacy_upgrade->requireMqttRewrite();
+    if (saveMQTTPrefs(fs)) {
+      legacy_upgrade->recordMqttSave(true);
+      // JSON contains the full observer group. Returning prevents a stale
+      // /com_prefs observer tail from being overlaid after the committed import.
+      _legacy_tail.valid = false;
+      MESH_DEBUG_PRINTLN(
+          "MQTT: imported /mqtt.json v1 into atomic /mqtt_prefs (%s); JSON preserved",
+          mqttJsonImportResultName(result));
+      return;
+    }
+
+    // Do not expose a partially imported runtime state after a failed publish.
+    // The JSON remains untouched, and binary recovery owns any completed temp.
+    setMQTTPrefsDefaults(&_mqtt_prefs);
+    _mqtt_prefs_hold = true;
+    _legacy_tail.valid = false;
+    legacy_upgrade->recordMqttSave(false);
+    MESH_DEBUG_PRINTLN(
+        "MQTT: /mqtt.json decoded but binary commit failed; defaults active and sources preserved");
+    return;
+  }
+
   bool has_observer_fields = false;
   bool mqtt_rewrite_pending = false;
   bool migrated_legacy_mqtt = false;
@@ -2290,6 +2392,15 @@ void CommonCLI::loadMQTTPrefs(
     MESH_DEBUG_PRINTLN("MQTT: invalid neighbors interval reset to %u hours",
                        (unsigned)MQTT_NEIGHBORS_DEFAULT_INTERVAL_HOURS);
   }
+  if (MQTTPrefsCodec::repairDisplayPrefs(&_mqtt_prefs)) {
+    // Old payloads retain valid defaults because the object was defaulted before
+    // their shorter prefix was copied. This branch repairs only a full/newer
+    // payload carrying invalid display values.
+    if (!_mqtt_prefs_hold) {
+      mqtt_rewrite_pending = true;
+    }
+    MESH_DEBUG_PRINTLN("MQTT: invalid display preferences reset to defaults");
+  }
   _legacy_tail.valid = false;
 
   if (mqtt_rewrite_pending) {
@@ -2355,8 +2466,15 @@ void CommonCLI::savePrefs(PrefsSaveRouting::Scope scope) {
   _prefs->clearDirty();
 }
 
-void CommonCLI::saveObserverPrefs() {
+bool CommonCLI::saveObserverPrefs() {
+#ifdef WITH_MQTT_BRIDGE
+  _observer_save_result_known = false;
+  _observer_save_succeeded = false;
   _callbacks->savePrefs(PrefsSaveRouting::Scope::Observer);
+  return _observer_save_result_known && _observer_save_succeeded;
+#else
+  return false;
+#endif
 }
 
 uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {

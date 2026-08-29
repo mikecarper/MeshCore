@@ -126,6 +126,13 @@ static_assert(mesh::HostCliBridge::REMOTE_REPLY_MAX
 // channel so an update is never stalled indefinitely.
 #define OTA_TX_DRAIN_TIMEOUT_MS     5000
 
+// Bench mitigation for a residual ThinkNode M7 race after a clean MQTT stop:
+// the bridge task acknowledges after client teardown but before its own
+// FreeRTOS stack/TCB has necessarily been reclaimed. OTA allocates a large task
+// immediately afterward; 25 ms still failed intermittently and 100 ms passed
+// five consecutive one-slot update cycles in observer-firmware-dev.
+#define OTA_MQTT_STOP_SETTLE_MS      100
+
 #define LAZY_CONTACTS_WRITE_DELAY    5000
 
 #define LEGACY_FLOOD_CHANNEL_BLOCK_FILE "/flood_ch_block"
@@ -1068,6 +1075,14 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  // Count valid, parsed RF packets before role-level filtering. The dashboard
+  // intentionally reflects radio activity, including packets this role later
+  // decides not to process or forward.
+  _activity.recordPacket(millis(), (uint16_t)len,
+                         _radio->getEstAirtimeFor(len),
+                         (int8_t)(pkt->getSNR() * 4.0f), pkt->getRSSI());
+#endif
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (mqtt_bridge) mqtt_bridge->onPacketReceived(pkt);
@@ -11694,6 +11709,9 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     // duty-limited channel) is lost when the flash spins the loop and reboots.
     drainOutbound(OTA_TX_DRAIN_TIMEOUT_MS);
     setBridgeState(false);
+    // TODO: Replace this timed settle with a task-exit/join barrier once MQTT
+    // teardown can prove that the idle task has reclaimed the worker resources.
+    delay(OTA_MQTT_STOP_SETTLE_MS);
     char ota_reply[160];
     // OTA teardown barrier (Phase 5): only flash after a CLEAN MQTT shutdown.
     // A timed-out/forced stop leaves mbedTLS/heap ownership uncertain - writing

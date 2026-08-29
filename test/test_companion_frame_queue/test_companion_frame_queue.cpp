@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/CompanionFrameQueue.h>
+#include <helpers/CompanionHardwareCommandCompat.h>
 
 namespace {
 
@@ -123,6 +124,35 @@ TEST(CompanionFrameQueue, ResponseDoesNotEvictAnotherResponse) {
   EXPECT_EQ(0x00, queue[0].buf[0]);
   EXPECT_EQ(0x01, queue[1].buf[0]);
   EXPECT_EQ(0x06, queue[2].buf[0]);
+}
+
+TEST(CompanionHardwareCommandCompat, Command66TextWinsOverBareLegacyGet) {
+  EXPECT_FALSE(mesh::companion::isRunCliFrame(0x42, 1));
+  EXPECT_TRUE(mesh::companion::isFemRxGainGet(0x42));
+  EXPECT_TRUE(mesh::companion::isRunCliFrame(0x42, 2));
+  EXPECT_FALSE(mesh::companion::isRunCliFrame(0x41, 2));
+}
+
+TEST(CompanionHardwareCommandCompat, BothShippedAliasBlocksRemainInbound) {
+  EXPECT_TRUE(mesh::companion::isFemRxGainGet(0x42));
+  EXPECT_TRUE(mesh::companion::isFemRxGainGet(0x78));
+  EXPECT_TRUE(mesh::companion::isFemRxGainSet(0x43));
+  EXPECT_TRUE(mesh::companion::isFemRxGainSet(0x79));
+  EXPECT_TRUE(mesh::companion::isRadioRxGainGet(0x44));
+  EXPECT_TRUE(mesh::companion::isRadioRxGainGet(0x7A));
+  EXPECT_TRUE(mesh::companion::isRadioRxGainSet(0x45));
+  EXPECT_TRUE(mesh::companion::isRadioRxGainSet(0x7B));
+  EXPECT_TRUE(mesh::companion::isWiFiPowerSaveGet(0x46));
+  EXPECT_TRUE(mesh::companion::isWiFiPowerSaveGet(0x7C));
+  EXPECT_TRUE(mesh::companion::isWiFiPowerSaveSet(0x47));
+  EXPECT_TRUE(mesh::companion::isWiFiPowerSaveSet(0x7D));
+  EXPECT_TRUE(mesh::companion::isBluetoothNameGet(0x48));
+  EXPECT_TRUE(mesh::companion::isBluetoothNameGet(0x7E));
+  EXPECT_TRUE(mesh::companion::isBluetoothNameSet(0x49));
+  EXPECT_TRUE(mesh::companion::isBluetoothNameSet(0x7F));
+
+  EXPECT_FALSE(mesh::companion::isRadioRxGainGet(0x78));
+  EXPECT_FALSE(mesh::companion::isWiFiPowerSaveSet(0x7F));
 }
 
 }  // namespace

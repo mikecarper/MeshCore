@@ -725,13 +725,18 @@ class CommonCLI {
   // /mqtt_prefs is newer, corrupt, or temporarily unreadable. The in-memory prefs
   // run on defaults and saveMQTTPrefs() must not overwrite the source file.
   bool _mqtt_prefs_hold = false;
+  // CommonCLICallbacks::savePrefs() has a stable void ABI. Observer setters use
+  // these synchronous result latches to learn whether the callback's nested
+  // CommonCLI::savePrefs(fs, Observer) transaction actually committed.
+  bool _observer_save_result_known = false;
+  bool _observer_save_succeeded = false;
 #endif
   bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
-  void saveObserverPrefs();
+  bool saveObserverPrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 #ifdef WITH_MQTT_BRIDGE
   bool recoverCommonPrefsFiles(FILESYSTEM* fs);

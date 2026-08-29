@@ -22,8 +22,11 @@ bool ConfigSerializer::saveSerial(Stream& s) {
 static bool is_whitespace(char c) {
   return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
-static bool is_key_char(char c) {
+static bool is_key_start_char(char c) {
   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
+}
+static bool is_key_char(char c) {
+  return is_key_start_char(c) || (c >= '0' && c <= '9');
 }
 static bool is_value_char(char c) {
   return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || c == '-' || c == '.';
@@ -58,13 +61,12 @@ static double parse_fixed_decimal(const char* text) {
 }
 
 #define EXPECT_OPEN_BRACE   0
-#define EXPECT_KEY          1
-#define EXPECT_VAL_OR_OBJ   2
-#define EXPECT_STRING_VAL   3
-#define EXPECT_STRING_ESCAPE   4
-#define EXPECT_COMMA_OR_CLOSE  5
-#define EXPECT_COMMA_OR_KEY    6
-#define EXPECT_COMMA_OR_KEY_OR_CLOSE  7
+#define EXPECT_KEY_OR_CLOSE 1
+#define EXPECT_KEY          2
+#define EXPECT_VAL_OR_OBJ   3
+#define EXPECT_STRING_VAL   4
+#define EXPECT_STRING_ESCAPE   5
+#define EXPECT_COMMA_OR_CLOSE  6
 
 int ConfigSerializer::Context::readNext() {
   char c;
@@ -79,33 +81,50 @@ int ConfigSerializer::Context::readNext() {
     c = (char)n;
   }
 
+  if (rd_root_complete) {
+    return is_whitespace(c) ? TOK_WHITESPACE : TOK_ERROR;
+  }
+
   switch (rd_mode) {
     case EXPECT_OPEN_BRACE:
-      if (c == '{') { rd_mode = EXPECT_KEY; return TOK_START_OBJ; }
+      if (c == '{') { rd_mode = EXPECT_KEY_OR_CLOSE; return TOK_START_OBJ; }
       if (is_whitespace(c)) return TOK_WHITESPACE;
       return TOK_ERROR;
 
-    case EXPECT_COMMA_OR_KEY_OR_CLOSE:
-      if (c == '}') { rd_mode = EXPECT_COMMA_OR_KEY_OR_CLOSE; return TOK_END_OBJ; }
-    case EXPECT_COMMA_OR_KEY:
-      if (c == ',') { rd_mode = EXPECT_KEY; return TOK_WHITESPACE; }
-    case EXPECT_KEY:
+    case EXPECT_KEY_OR_CLOSE:
       // Empty objects are valid and are emitted by serializers such as the
       // dynamic `custom` preferences object before it has any entries.
       if (rd_len == 0 && c == '}') {
-        rd_mode = EXPECT_COMMA_OR_KEY_OR_CLOSE;
+        rd_mode = EXPECT_COMMA_OR_CLOSE;
         return TOK_END_OBJ;
       }
+      // A non-empty object follows the same key grammar, but only this state
+      // (entered directly after '{') permits an immediate closing brace.
+      // fall through
+    case EXPECT_KEY:
       if (rd_len > 0 && c == ':') { rd_buf[rd_len] = 0; rd_len = 0; rd_mode = EXPECT_VAL_OR_OBJ; return TOK_KEY; }
       if (rd_len == 0 && is_whitespace(c)) return TOK_WHITESPACE;
-      if (rd_len < CONFIG_MAX_KEYLEN-1 && is_key_char(c)) { rd_buf[rd_len++] = c; return TOK_WHITESPACE; }
+      if (rd_len < CONFIG_MAX_KEYLEN-1 &&
+          ((rd_len == 0 && is_key_start_char(c)) ||
+           (rd_len > 0 && is_key_char(c)))) {
+        rd_buf[rd_len++] = c;
+        return TOK_WHITESPACE;
+      }
       return TOK_ERROR;
 
     case EXPECT_VAL_OR_OBJ:
       if (rd_len == 0 && is_whitespace(c)) return TOK_WHITESPACE;
-      if (rd_len == 0 && c == '"') { rd_mode = EXPECT_STRING_VAL; return TOK_WHITESPACE; }
-      if (rd_len == 0 && c == '{') { rd_mode = EXPECT_KEY; return TOK_START_OBJ; }
-      if (is_value_char(c) && rd_len < CONFIG_MAX_TOKEN_LEN-1) { rd_buf[rd_len++] = c; return TOK_WHITESPACE; }
+      if (rd_len == 0 && c == '"') {
+        rd_token_quoted = true;
+        rd_mode = EXPECT_STRING_VAL;
+        return TOK_WHITESPACE;
+      }
+      if (rd_len == 0 && c == '{') { rd_mode = EXPECT_KEY_OR_CLOSE; return TOK_START_OBJ; }
+      if (is_value_char(c) && rd_len < CONFIG_MAX_TOKEN_LEN-1) {
+        if (rd_len == 0) rd_token_quoted = false;
+        rd_buf[rd_len++] = c;
+        return TOK_WHITESPACE;
+      }
       if (rd_len > 0 && (c == ',' || c == '}' || is_whitespace(c))) { pending = c; rd_buf[rd_len] = 0; rd_len = 0; rd_mode = EXPECT_COMMA_OR_CLOSE; return TOK_VALUE;  }
       return TOK_ERROR;
 
@@ -118,12 +137,13 @@ int ConfigSerializer::Context::readNext() {
     case EXPECT_STRING_VAL:
       if (c == '"') { rd_buf[rd_len] = 0; rd_len = 0; rd_mode = EXPECT_COMMA_OR_CLOSE; return TOK_VALUE; }
       if (c == '\\') { rd_mode = EXPECT_STRING_ESCAPE; return TOK_WHITESPACE; }
+      if (c == '\0') return TOK_ERROR;  // never silently truncate a persisted string
       if (rd_len < CONFIG_MAX_TOKEN_LEN-1) { rd_buf[rd_len++] = c; return TOK_WHITESPACE; }
       return TOK_ERROR;
 
     case EXPECT_COMMA_OR_CLOSE:
       if (c == ',') { rd_mode = EXPECT_KEY; return TOK_WHITESPACE; }
-      if (c == '}') { rd_mode = EXPECT_COMMA_OR_KEY_OR_CLOSE; return TOK_END_OBJ; }
+      if (c == '}') { rd_mode = EXPECT_COMMA_OR_CLOSE; return TOK_END_OBJ; }
       if (is_whitespace(c)) return TOK_WHITESPACE;
       return TOK_ERROR;
   }
@@ -141,9 +161,19 @@ bool ConfigSerializer::loadSerial(Stream& s) {
     if (next_tok == TOK_KEY) {
       context.setKey(sp, context.getToken());
     } else if (next_tok == TOK_VALUE) {
+      context.setValueEvent(sp, false);
       _depth = 1;  // re-run the structure() hierarchy again (looking for specific key, at specific depth)
       structure();
     } else if (next_tok == TOK_START_OBJ) {
+      // The root has no key. For every nested object, rerun the schema at the
+      // parent depth so known scalar fields can reject an object value and
+      // known object fields can confirm their expected shape.
+      if (sp > 0) {
+        context.setValueEvent(sp, true);
+        _depth = 1;
+        structure();
+        if (!context.success) break;
+      }
       if (sp < CONFIG_MAX_DEPTH - 1) {
         sp++;
       } else {
@@ -154,6 +184,7 @@ bool ConfigSerializer::loadSerial(Stream& s) {
     } else if (next_tok == TOK_END_OBJ) {
       if (sp > 0) {
         sp--;
+        if (sp == 0) context.markRootComplete();
       } else {
         //Serial.printf("Error: too many closing '}'"); // TODO: debug logging
         context.success = false;
@@ -161,8 +192,8 @@ bool ConfigSerializer::loadSerial(Stream& s) {
       }
     }
   }
-  if (sp != 0 || next_tok == TOK_ERROR) {
-    context.success = false;   // unmatched { }, or other parse error
+  if (sp != 0 || !context.rootComplete() || next_tok == TOK_ERROR) {
+    context.success = false;   // missing/unmatched root object, or other parse error
   }
   _context = NULL;
   return context.success;
@@ -357,9 +388,115 @@ void ConfigSerializer::def(const char* key, ConfigSerializer& sub_obj) {
     if (_context->file()->print("}") != 1) _context->success = false;  // failure detect
   } else {
     if (_context->keyMatch(_depth, key)) {
+      if (_context->objectStart() && _context->valueDepth() == _depth) {
+        return;  // the object itself; descendant values recurse below
+      }
+      if (_context->valueDepth() <= _depth) {
+        _context->success = false;  // known object supplied as a scalar
+        return;
+      }
       sub_obj._context = _context;  // inherit the Context
       sub_obj._depth = _depth + 1;
       sub_obj.structure();   // recurse into sub object
     }
   }
+}
+
+bool ConfigSerializer::defStrict(const char* key, char* value, size_t max_len,
+                                 bool& seen) {
+  if (_context->op() == OP::WRITE) {
+    def(key, value, max_len);
+    return true;
+  }
+  if (!_context->keyMatch(_depth, key)) return false;
+  if (seen || max_len == 0 || _context->objectStart() ||
+      _context->valueDepth() != _depth || !_context->tokenQuoted()) {
+    _context->success = false;
+    return false;
+  }
+  seen = true;
+  const char* token = _context->getToken();
+  const size_t len = strlen(token);
+  if (len >= max_len) {
+    _context->success = false;
+    return false;
+  }
+  memcpy(value, token, len + 1);
+  return true;
+}
+
+bool ConfigSerializer::defStrict(const char* key, int32_t& value, bool& seen) {
+  if (_context->op() == OP::WRITE) {
+    def(key, value);
+    return true;
+  }
+  if (!_context->keyMatch(_depth, key)) return false;
+  if (seen || _context->objectStart() || _context->valueDepth() != _depth ||
+      _context->tokenQuoted()) {
+    _context->success = false;
+    return false;
+  }
+  seen = true;
+
+  const char* token = _context->getToken();
+  bool negative = false;
+  if (*token == '-') {
+    negative = true;
+    ++token;
+  }
+  if (*token < '0' || *token > '9') {
+    _context->success = false;
+    return false;
+  }
+
+  // Accumulate the magnitude as unsigned so INT32_MIN remains representable.
+  const uint32_t limit = negative ? 2147483648UL : 2147483647UL;
+  uint32_t magnitude = 0;
+  do {
+    const uint32_t digit = static_cast<uint32_t>(*token++ - '0');
+    if (magnitude > (limit - digit) / 10U) {
+      _context->success = false;
+      return false;
+    }
+    magnitude = magnitude * 10U + digit;
+  } while (*token >= '0' && *token <= '9');
+
+  if (*token != '\0') {
+    _context->success = false;
+    return false;
+  }
+  if (negative && magnitude == 2147483648UL) {
+    value = INT32_MIN;
+  } else {
+    value = negative ? -static_cast<int32_t>(magnitude)
+                     : static_cast<int32_t>(magnitude);
+  }
+  return true;
+}
+
+bool ConfigSerializer::defStrict(const char* key, ConfigSerializer& sub_obj,
+                                 bool& seen) {
+  if (_context->op() == OP::WRITE) {
+    def(key, sub_obj);
+    return true;
+  }
+  if (!_context->keyMatch(_depth, key)) return false;
+
+  if (_context->objectStart() && _context->valueDepth() == _depth) {
+    if (seen) {
+      _context->success = false;
+      return false;
+    }
+    seen = true;
+    return true;
+  }
+  if (!seen || _context->valueDepth() <= _depth) {
+    _context->success = false;
+    return false;
+  }
+
+  sub_obj._context = _context;
+  sub_obj._depth = _depth + 1;
+  sub_obj.structure();
+  return true;
 }

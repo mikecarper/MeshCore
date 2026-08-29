@@ -36,6 +36,10 @@ public:
     (void)degrees;
     return false;
   }
+  // Rotate 180 degrees relative to the display's compiled orientation. This is
+  // intentionally separate from absolute rotation: fixed portrait/landscape
+  // layouts can be flipped without changing their geometry.
+  virtual void setFlipped(bool flipped) { (void)flipped; }
   virtual bool isEink() { return false; } // default to non-eink, override in eink drivers
   virtual void forceFullRefresh() {} // next refresh will be full for eink
   virtual void turnOn() = 0;

@@ -189,6 +189,34 @@ TEST(ConfigSerializer, LoadSerial_MissingCommas) {
     EXPECT_FALSE(success);
 }
 
+TEST(ConfigSerializer, LoadSerial_MissingCommaAfterObject) {
+    MockInputStream s("{radio:{} bridge:{}}");
+    TestStruct data;
+
+    EXPECT_FALSE(data.loadSerial(s));
+}
+
+TEST(ConfigSerializer, LoadSerial_RequiresOneCompleteRootObject) {
+    for (const char* text : {
+             "",
+             " \r\n\t ",
+             "{age:" TEST_INT_S ",}",
+             "{age:" TEST_INT_S "},",
+             "{age:" TEST_INT_S "}garbage",
+             "{age:" TEST_INT_S "}{flags:1}"}) {
+        MockInputStream s(text);
+        TestStruct data;
+        EXPECT_FALSE(data.loadSerial(s)) << text;
+    }
+}
+
+TEST(ConfigSerializer, LoadSerial_AcceptsEmptyObject) {
+    MockInputStream s("{} \r\n\t");
+    TestStruct data;
+
+    EXPECT_TRUE(data.loadSerial(s));
+}
+
 TEST(ConfigSerializer, LoadSerial_IgnoreUnknowns) {
     MockInputStream s("{age:" TEST_INT_S ",xxx:" TEST_INT_S ",name:\"Scott\"}");
     TestStruct data;

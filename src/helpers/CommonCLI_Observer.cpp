@@ -218,6 +218,44 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         }
       }
     }
+  } else if (strncmp(config, "display.timeout ", 16) == 0) {
+    uint16_t seconds = 0;
+    if (!observerParseBoundedUint16(config + 16, DISPLAY_TIMEOUT_MAX_SECS,
+                                    &seconds)) {
+      sprintf(reply, "Error: display.timeout must be 0-%u seconds",
+              (unsigned)DISPLAY_TIMEOUT_MAX_SECS);
+    } else {
+      const uint16_t previous = _mqtt_prefs.display_timeout_secs;
+      _mqtt_prefs.display_timeout_secs = seconds;
+      if (!saveObserverPrefs()) {
+        _mqtt_prefs.display_timeout_secs = previous;
+        strcpy(reply, "Error: display.timeout save failed");
+      } else if (seconds == 0) {
+        strcpy(reply, "OK - display stays on");
+      } else {
+        sprintf(reply, "OK - display off after %u s", (unsigned)seconds);
+      }
+    }
+  } else if (strcmp(config, "display.timeout") == 0) {
+    strcpy(reply, "Error: missing display.timeout seconds");
+  } else if (strncmp(config, "display.flip ", 13) == 0) {
+    uint8_t flipped = 0;
+    if (!observerParseDisplayFlip(config + 13, &flipped)) {
+      strcpy(reply, "Error: display.flip must be 0/1 (or off/on)");
+    } else {
+      const uint8_t previous = _mqtt_prefs.display_flip;
+      _mqtt_prefs.display_flip = flipped;
+      if (!saveObserverPrefs()) {
+        _mqtt_prefs.display_flip = previous;
+        strcpy(reply, "Error: display.flip save failed");
+      } else {
+        strcpy(reply, flipped
+            ? "OK - display.flip on (applies on supported display)"
+            : "OK - display.flip off (applies on supported display)");
+      }
+    }
+  } else if (strcmp(config, "display.flip") == 0) {
+    strcpy(reply, "Error: missing display.flip state");
 #ifdef WITH_MQTT_BRIDGE
   } else if (strcmp(config, "mqtt.origin") == 0) {
     _mqtt_prefs.mqtt_origin[0] = '\0';
@@ -837,6 +875,10 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
     strcpy(reply, _mqtt_prefs.snmp_enabled ? "> on" : "> off");
   } else if (memcmp(config, "radio.watchdog", 14) == 0) {
     sprintf(reply, "> %d", (uint32_t)_mqtt_prefs.radio_watchdog_minutes);
+  } else if (strcmp(config, "display.timeout") == 0) {
+    sprintf(reply, "> %u", (unsigned)_mqtt_prefs.display_timeout_secs);
+  } else if (strcmp(config, "display.flip") == 0) {
+    strcpy(reply, _mqtt_prefs.display_flip ? "> on" : "> off");
 #ifdef WITH_MQTT_BRIDGE
   } else if (memcmp(config, "mqtt.origin", 11) == 0) {
     char effective_origin[32];

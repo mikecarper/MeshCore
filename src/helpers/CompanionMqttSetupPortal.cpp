@@ -1,4 +1,5 @@
 #include "CompanionMqttSetupPortal.h"
+#include "CompanionMqttPrefsNvs.h"
 
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID) && defined(WITH_MQTT_BRIDGE)
 
@@ -582,52 +583,67 @@ bool CompanionMqttSetupPortal::loadStoredConfig(MQTTPrefs& prefs) {
   if (!nvs.begin(NVS_NAMESPACE, true)) return false;
   const uint16_t version = nvs.getUShort(NVS_VERSION_KEY, 0);
   const size_t length = nvs.getBytesLength(NVS_PREFS_KEY);
-  const bool shape_ok = version == MQTT_PREFS_VERSION && length == sizeof(MQTTPrefs);
-  const size_t read = shape_ok ? nvs.getBytes(NVS_PREFS_KEY, &prefs, sizeof(prefs)) : 0;
+  // Companion stores this struct directly rather than using the observer's
+  // versioned file header. Accept the previously shipped pre-display size and
+  // default its append-only display tail so adding observer UI preferences
+  // cannot discard an existing Companion MQTT setup after an update.
+  const bool shape_ok = CompanionMqttPrefsNvs::accepts(version, length);
+  MQTTPrefs loaded;
+  applyMQTTDefaults(&loaded);
+  const size_t read = shape_ok ? nvs.getBytes(NVS_PREFS_KEY, &loaded, length) : 0;
   nvs.end();
-  if (read != sizeof(prefs)) return false;
+  if (!shape_ok || read != length) return false;
 
-  if (!storedStringsAreValid(prefs)
-      || prefs.mqtt_status_enabled > 1
-      || prefs.mqtt_packets_enabled > 1
-      || prefs.mqtt_raw_enabled > 1
-      || prefs.mqtt_rx_enabled > 1
-      || prefs.mqtt_tx_enabled > 2
-      || prefs.wifi_power_save > 2) {
+  if (!storedStringsAreValid(loaded)
+      || loaded.mqtt_status_enabled > 1
+      || loaded.mqtt_packets_enabled > 1
+      || loaded.mqtt_raw_enabled > 1
+      || loaded.mqtt_rx_enabled > 1
+      || loaded.mqtt_tx_enabled > 2
+      || loaded.wifi_power_save > 2
+      || loaded.display_timeout_secs > DISPLAY_TIMEOUT_MAX_SECS
+      || loaded.display_flip > 1) {
     return false;
   }
 
-  const char* preset = prefs.mqtt_slot_preset[0];
+  const char* preset = loaded.mqtt_slot_preset[0];
   const bool custom = strcmp(preset, MQTT_PRESET_CUSTOM) == 0;
   const MQTTPresetDef* preset_def = custom ? nullptr : findMQTTPreset(preset);
   if (!preset[0] || (!custom && !preset_def)) return false;
   if (custom) {
-    const char* host = prefs.mqtt_slot_host[0];
+    const char* host = loaded.mqtt_slot_host[0];
     if (!host[0]
-        || (prefs.mqtt_slot_port[0] == 0 && strstr(host, "://") == nullptr)
-        || (!prefs.mqtt_slot_topic[0][0] && !isThreeLetterCode(prefs.mqtt_iata))) {
+        || (loaded.mqtt_slot_port[0] == 0 && strstr(host, "://") == nullptr)
+        || (!loaded.mqtt_slot_topic[0][0] && !isThreeLetterCode(loaded.mqtt_iata))) {
       return false;
     }
   } else {
     if (preset_def->topic_style == MQTT_TOPIC_MESHCORE
-        && !isThreeLetterCode(prefs.mqtt_iata)) return false;
+        && !isThreeLetterCode(loaded.mqtt_iata)) return false;
     if (preset_def->topic_style == MQTT_TOPIC_MESHRANK
-        && !prefs.mqtt_slot_token[0][0]) return false;
+        && !loaded.mqtt_slot_token[0][0]) return false;
     if (mqttPresetNeedsSlotCredentials(preset_def)
-        && (!prefs.mqtt_slot_username[0][0] || !prefs.mqtt_slot_password[0][0])) {
+        && (!loaded.mqtt_slot_username[0][0] || !loaded.mqtt_slot_password[0][0])) {
       return false;
     }
   }
+  prefs = loaded;
   return true;
 }
 
 bool CompanionMqttSetupPortal::saveStoredConfig(const MQTTPrefs& prefs) {
   Preferences nvs;
   if (!nvs.begin(NVS_NAMESPACE, false)) return false;
-  const size_t written = nvs.putBytes(NVS_PREFS_KEY, &prefs, sizeof(prefs));
+  // Companion does not consume the appended observer display tail. Keeping
+  // this record at the pre-display boundary makes a firmware rollback retain
+  // the MQTT setup. loadStoredConfig() still accepts the briefly written 2880
+  // byte runtime shape so development images remain recoverable.
+  const size_t written = nvs.putBytes(
+      NVS_PREFS_KEY, &prefs, CompanionMqttPrefsNvs::kWriteSize);
   const size_t version_written = nvs.putUShort(NVS_VERSION_KEY, MQTT_PREFS_VERSION);
   nvs.end();
-  return written == sizeof(prefs) && version_written == sizeof(uint16_t);
+  return written == CompanionMqttPrefsNvs::kWriteSize
+      && version_written == sizeof(uint16_t);
 }
 
 #endif

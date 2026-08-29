@@ -39,25 +39,43 @@ struct DecodePlan {
 static const size_t kV1PreObserverPayloadSize = MQTT_PREFS_V1_PRE_OBSERVER_PAYLOAD_SIZE;
 static const size_t kV1PreNeighborsPayloadSize = MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE;
 static const size_t kV1PreFilterPayloadSize = MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE;
+static const size_t kV1PreDisplayPayloadSize = MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE;
 static const size_t kV1BaselinePayloadSize = MQTT_PREFS_V1_FULL_PAYLOAD_SIZE;
 static const size_t kEncodedSize = sizeof(MQTTPrefsHeader) + kV1BaselinePayloadSize;
 
 // Shortest payload length that still round-trips this configuration.
 //
-// The packet-filter tail is the only optional part of the current layout, and
-// its default (all types) is exactly what a pre-filter decoder supplies for a
-// missing tail. So a device whose filters are all default keeps writing the
-// 2864-byte payload that pre-filter firmware can still read. That matters
-// because /mqtt_prefs also carries the WiFi credentials: an unrecognised
-// longer payload sends older firmware to defaults with no network, and it
-// refuses to overwrite the file, so the node cannot be recovered over the air.
-// Touching any filter opts that node into the longer payload -- a deliberate,
-// operator-initiated trade rather than a side effect of upgrading.
+// The packet-filter and display tails are optional. Their defaults are exactly
+// what a decoder supplies when the corresponding tail is missing, so merely
+// upgrading does not lengthen the file. That matters because /mqtt_prefs also
+// carries WiFi credentials: old firmware that cannot read a longer payload can
+// otherwise lose its network configuration after a downgrade. Changing a
+// filter or display control deliberately opts the node into the required tail.
 inline size_t payloadLenFor(const MQTTPrefs& prefs) {
+  if (prefs.display_timeout_secs != DISPLAY_TIMEOUT_DEFAULT_SECS ||
+      prefs.display_flip != 0) {
+    return kV1BaselinePayloadSize;
+  }
   return MQTTPacketFilter::allMasksDefault(prefs.mqtt_slot_packet_filter,
                                            MQTT_PREFS_SLOT_COUNT)
       ? kV1PreFilterPayloadSize
-      : kV1BaselinePayloadSize;
+      : kV1PreDisplayPayloadSize;
+}
+
+// Clamp the display tail after loading. Returns true when a persisted value was
+// repaired and should be rewritten (unless the source file is being held).
+inline bool repairDisplayPrefs(MQTTPrefs* prefs) {
+  if (prefs == nullptr) return false;
+  bool repaired = false;
+  if (prefs->display_timeout_secs > DISPLAY_TIMEOUT_MAX_SECS) {
+    prefs->display_timeout_secs = DISPLAY_TIMEOUT_DEFAULT_SECS;
+    repaired = true;
+  }
+  if (prefs->display_flip > 1) {
+    prefs->display_flip = 0;
+    repaired = true;
+  }
+  return repaired;
 }
 
 inline MQTTPrefsHeader makeHeader(size_t payload_len) {
@@ -137,6 +155,11 @@ inline DecodePlan classify(const uint8_t* prefix, size_t prefix_read, size_t fil
       }
       if (header.payload_len == kV1BaselinePayloadSize) {
         return {Source::Current, false, false, true, kV1BaselinePayloadSize};
+      }
+      if (header.payload_len == kV1PreDisplayPayloadSize) {
+        // Written before runtime display controls. Defaults supply timeout and
+        // flip while preserving the packet-filter tail.
+        return {Source::Current, false, false, true, kV1PreDisplayPayloadSize};
       }
       if (header.payload_len == kV1PreFilterPayloadSize) {
         // Written before the per-slot packet-filter tail. Defaults supply an

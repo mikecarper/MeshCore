@@ -25,7 +25,14 @@ AutoDiscoverRTCClock rtc_clock(fallback_clock);
 
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display(&board.periph_power);
-  MomentaryButton user_btn(PIN_USER_BTN, 1000, true);
+  #ifndef USER_BTN_LONG_PRESS_MILLIS
+    #define USER_BTN_LONG_PRESS_MILLIS 1000
+  #endif
+  #ifndef USER_BTN_MULTICLICK
+    #define USER_BTN_MULTICLICK 1
+  #endif
+  MomentaryButton user_btn(PIN_USER_BTN, USER_BTN_LONG_PRESS_MILLIS, true, false,
+                           USER_BTN_MULTICLICK);
 #endif
 
 bool radio_init() {

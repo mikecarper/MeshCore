@@ -39,6 +39,22 @@ Runtime state can still make an included command fail. Examples include no GPS
 fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 `.mota` apply support.
 
+## Companion framed CLI
+
+Companion builds are not represented by the role/profile matrices below. Their
+local terminal and command `0x42` (`CMD_RUN_CLI_COMMAND`) expose these settings
+over the normal binary USB, BLE, or TCP connection:
+
+| Command | Availability |
+|---|---|
+| [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Companion with a supported radio |
+| [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Companion on a board with controllable LoRa FEM LNA |
+| [`get/set wifi.powersave`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WiFi Companion; active transport constraints still apply |
+| [`get/set bluetooth.name`](cli_commands.md#view-or-change-the-independent-bluetooth-name-companion) | Companion firmware |
+
+Deprecated binary aliases remain receive-only for older clients; new clients
+should use command `0x42`. See [Companion radio binary protocol](companion_protocol.md).
+
 ## nRF52
 
 | Area | Command | Scope | Standard | Logging | LoRa OTA |
@@ -218,6 +234,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 | Operational | [`advert`](cli_commands.md#send-a-flood-advert) | Advert-capable role | Yes | Yes | Yes | Yes | Yes |
 | Operational | [`advert.zerohop`](cli_commands.md#send-a-zero-hop-advert) | Advert-capable role | Yes | Yes | Yes | Yes | Yes |
 | Operational | [`erase`](cli_commands.md#erasefactory-reset) | Local serial | Serial | Serial | Serial | Serial | Serial |
+| Display | [`get/set display.timeout`; `get/set display.flip`](cli_commands.md#set-mqtt-observer-display-timeout-and-flip) | MQTT observer with display; flip needs a supported driver | No | No | No | Feature | No |
 | Information | [`ver`](cli_commands.md#get-the-version) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Information | [`board`](cli_commands.md#show-the-hardware-name) | All text CLI roles | Yes | Yes | Yes | Yes | Yes |
 | Diagnostics | [`get storage.layout`](cli_commands.md#show-the-storage-layout) | Detected flash size and live partition table | Yes | Yes | Yes | Yes | Yes |

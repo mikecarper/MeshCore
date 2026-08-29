@@ -77,6 +77,10 @@
 #include "helpers/SNMPAgent.h"
 #endif
 
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+#include <helpers/RadioActivityWindow.h>
+#endif
+
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/AlertReporter.h>
 #include <helpers/ArduinoHelpers.h>
@@ -306,6 +310,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::Packet* pending_battery_alert_packet;
   bool battery_alert_sent;
   bool _logging;
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  RadioActivityWindow _activity;
+#endif
   NodePrefs _prefs;
   ClientACL  acl;
   CommonCLI _cli;
@@ -893,6 +900,14 @@ public:
   NodePrefs* getNodePrefs() {
     return &_prefs;
   }
+
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  RadioActivityWindow* getActivityWindow() { return &_activity; }
+#endif
+
+#ifdef WITH_MQTT_BRIDGE
+  MQTTPrefs* getObserverPrefs() { return _cli.getObserverPrefs(); }
+#endif
 
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
