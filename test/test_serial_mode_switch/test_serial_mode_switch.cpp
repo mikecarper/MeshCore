@@ -474,10 +474,10 @@ TEST(SerialModeSwitch, SingleTtyLoggingCannotStealNetworkTerminal) {
   using Action = mesh::UsbLoggingTerminalAction;
   EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
                 false, true, false, false, true, true),
-            Action::NONE);
+            Action::NO_ACTION);
   EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
                 false, true, false, false, false, true),
-            Action::NONE);
+            Action::NO_ACTION);
 }
 
 TEST(SerialModeSwitch, LoggingClaimsOnlySingleTtyUsb) {
@@ -487,7 +487,7 @@ TEST(SerialModeSwitch, LoggingClaimsOnlySingleTtyUsb) {
             Action::CLAIM_USB);
   EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
                 true, true, false, false, true, false),
-            Action::NONE);
+            Action::NO_ACTION);
 }
 
 TEST(SerialModeSwitch, LoggingOffRestoresTheBuildDefaultUsbMode) {
@@ -500,7 +500,7 @@ TEST(SerialModeSwitch, LoggingOffRestoresTheBuildDefaultUsbMode) {
             Action::KEEP_ASCII);
   EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(
                 false, false, true, false, false, false),
-            Action::NONE);
+            Action::NO_ACTION);
 }
 
 TEST(SerialModeSwitch, FailedMotaRestoresOnlyItsAsciiOrigin) {

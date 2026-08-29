@@ -93,7 +93,7 @@ public:
 // stream objects. In particular, an active TCP terminal owns the role CLI and
 // must not be displaced just because USB logging is enabled.
 enum class UsbLoggingTerminalAction : uint8_t {
-  NONE,
+  NO_ACTION,
   CLAIM_USB,
   RETURN_TO_BINARY,
   KEEP_ASCII,
@@ -104,13 +104,13 @@ inline UsbLoggingTerminalAction selectUsbLoggingTerminalAction(
     bool usb_terminal_active, bool usb_logging_terminal_active,
     bool full_companion, bool network_terminal_active) {
   if (has_dedicated_logging_port || network_terminal_active) {
-    return UsbLoggingTerminalAction::NONE;
+    return UsbLoggingTerminalAction::NO_ACTION;
   }
   if (logging_enabled) {
     return UsbLoggingTerminalAction::CLAIM_USB;
   }
   if (!usb_terminal_active || !usb_logging_terminal_active) {
-    return UsbLoggingTerminalAction::NONE;
+    return UsbLoggingTerminalAction::NO_ACTION;
   }
   return full_companion ? UsbLoggingTerminalAction::KEEP_ASCII
                         : UsbLoggingTerminalAction::RETURN_TO_BINARY;

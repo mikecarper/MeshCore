@@ -643,7 +643,7 @@ static void serviceUsbTerminal() {
       usb_terminal_discard_line = false;
       Serial.print("\r\nUSB logging off; ASCII terminal active\r\n> ");
       break;
-    case mesh::UsbLoggingTerminalAction::NONE:
+    case mesh::UsbLoggingTerminalAction::NO_ACTION:
       break;
   }
 #endif
