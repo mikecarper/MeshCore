@@ -1836,6 +1836,14 @@ partial and the pull resumes (filling only what's missing) the moment you reconn
 falls back to flash. To <strong>stop</strong> a download you no longer want:</p>
 <pre><code>ota cancel
 </code></pre>
+<p>For a download staged on the node, success means current firmware also
+invalidated the persistent flash/SD/QSPI copy; it reports an error if that
+media operation cannot be verified. For a <code>folder</code> capture, cancel only
+detaches the live session and retains the host partial so it can be resumed or
+removed on the host deliberately. On a MeshTower SD auto-archive capture,
+cancel also detaches the live archive session and retains its card partial for
+the archive service to resume later; use <code>ota cache off</code> to stop new archive
+captures.</p>
 <h3 id="4-install-a-downloaded-update">4. Install a downloaded update</h3>
 <p>Once <code>ota status</code> shows the download is <strong>ready to install</strong>:</p>
 <pre><code>ota install
@@ -1901,7 +1909,9 @@ See <a href="../ota_nrf52_bootloader_update/">the nRF52 bootloader-update guide<
 complete target inventory, storage layouts, and safety contract.</p>
 <h3 id="5-if-something-goes-wrong">5. If something goes wrong</h3>
 <ul>
-<li>A download that stalls or gets interrupted just <strong>resumes</strong> later, or you can <code>ota cancel</code> and try again.</li>
+<li>A download that stalls or gets interrupted just <strong>resumes</strong> later. Use
+  <code>ota cancel</code> to durably discard device staging; a folder capture keeps its
+  host partial for a later resume.</li>
 <li>A legacy app-only internal-flash <strong>nRF52</strong> that still runs but reports <code>no EndF</code> can use the pre-provisioned rescue path
   if its physical EndF is intact and only app-side validation is failing. Fetch the exact <code>[rescue]</code>
   in-place delta with an explicit acknowledgement, obtain its 16-hex-digit <code>base_hash</code> from the package

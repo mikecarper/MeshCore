@@ -2846,7 +2846,7 @@ ota rescue install &lt;base_hash16&gt;  internal-flash nRF52 only: recover from 
 ota bootloader [status]           capable allowlisted nRF52 repeater: installed BL identity/caps + staged confirmation
 ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
                                       explicitly verify/arm one complete trusted v3 package; never automatic
-ota cancel | drop | stop           drop the current fetch session (frees the slot)
+ota cancel | drop | stop           drop the fetch; durably invalidate device staging, or retain a folder partial for resume
 ota announce | adv                 serve self + send a beacon now
 ota self | id                      print this firmware's EndF (body/image size, base_hash)
 ota qspi | storage                 QSPI nRF52 only: JEDEC/SR1/stage/latched storage error (read-only)
@@ -2855,6 +2855,14 @@ ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persist
 ota key | keys [add|rm &lt;hex&gt;]      trusted signer allowlist ; bare = list
 ota dev ...                        bring-up helpers (stage/recv/serve/resume &lt;MID8&gt;/verify)
 </code></pre>
+<p>For a device-backed pull, current firmware returns success only after the
+persistent store can no longer be reopened; flash/SD/QSPI I/O or readback
+failure is reported as an error even though the in-memory manager session was
+dropped. For a <code>folder</code> pull, cancellation detaches the live transfer but
+deliberately leaves the host <code>.part</code> file available for a later resume.
+If the shared receive engine is currently performing the MeshTower SD
+auto-archive capture, cancellation likewise detaches that archive transfer and
+retains its <code>.part</code> file; it does not erase the unrelated manual-install store.</p>
 <hr />
 <p><a id="12-apply-bootloader-contract"></a></p>
 <h2 id="12-apply-bootloader-contract">12. Apply &amp; bootloader contract</h2>

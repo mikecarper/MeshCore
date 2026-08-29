@@ -1141,10 +1141,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#historical-endpoint-gps-limitation" class="md-nav__link">
+  <a href="#retained-and-omitted-hardware-support" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Historical endpoint GPS limitation
+        Retained and omitted hardware support
       
     </span>
   </a>
@@ -1157,10 +1157,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-old-bootloader-works" class="md-nav__link">
+  <a href="#why-preview-5-and-the-old-staging-ceiling-work" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why the old bootloader works
+        Why Preview 5 and the old staging ceiling work
       
     </span>
   </a>
@@ -1190,13 +1190,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-recoverable-bench-run" class="md-nav__link">
+  <a href="#current-guarded-reproduction-command" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct recoverable bench run
+        Current guarded reproduction command
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Current guarded reproduction command">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured-direct-link-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured direct-link timing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1235,10 +1252,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-install-all-nine-packages-in-order" class="md-nav__link">
+  <a href="#3-install-all-ten-packages-in-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Install all nine packages in order
+        3. Install all ten packages in order
       
     </span>
   </a>
@@ -1422,10 +1439,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#historical-endpoint-gps-limitation" class="md-nav__link">
+  <a href="#retained-and-omitted-hardware-support" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Historical endpoint GPS limitation
+        Retained and omitted hardware support
       
     </span>
   </a>
@@ -1438,10 +1455,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-old-bootloader-works" class="md-nav__link">
+  <a href="#why-preview-5-and-the-old-staging-ceiling-work" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why the old bootloader works
+        Why Preview 5 and the old staging ceiling work
       
     </span>
   </a>
@@ -1471,13 +1488,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-recoverable-bench-run" class="md-nav__link">
+  <a href="#current-guarded-reproduction-command" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct recoverable bench run
+        Current guarded reproduction command
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Current guarded reproduction command">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured-direct-link-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured direct-link timing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1516,10 +1550,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-install-all-nine-packages-in-order" class="md-nav__link">
+  <a href="#3-install-all-ten-packages-in-order" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Install all nine packages in order
+        3. Install all ten packages in order
       
     </span>
   </a>
@@ -1602,23 +1636,31 @@
 
 <h1 id="rak3401-1w-repeater-compact-lora-update-chain">RAK3401 1W repeater compact LoRa update chain</h1>
 <blockquote>
-<p>Status: physically qualified on 19-Aug-2026. All nine exact transitions
-completed on a deployed RAK3401 1W with its existing bootloader, using a
-Heltec V4 source at 909.950 MHz / 500 kHz / SF5 / CR5. Every post-boot EndF
-hash matched. The same files also pass independent reconstruction, container
-verification, and both deployed Preview 6 and current OTAFIX simulators.</p>
+<p>Status: <strong>unreleased candidate with physically passed package transitions.</strong>
+On 29-Aug-2026 all ten exact package transitions completed on the target
+RAK3401 with its deployed <code>0.9.2-OTAFIX2.4</code> bootloader and a Heltec V4 source at
+909.950 MHz / 500 kHz / SF5 / CR5. Every intermediate EndF hash matched.
+Independent SWD readback then matched the endpoint application, original
+bootloader, SoftDevice/MBR, and UICR byte-for-byte. The host runner received
+cleanup/recovery fixes after that test and has not had a new clean end-to-end
+physical rerun. Multi-hop and alternate-bandwidth estimates remain planning
+data, not physical qualification.</p>
 </blockquote>
-<p>Use this asset:</p>
-<pre><code class="language-text">RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip
+<p>The candidate is a local qualification artifact, not a GitHub release:</p>
+<pre><code class="language-text">RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
 </code></pre>
 <ul>
-<li>ZIP SHA-256: <code>9f80eef191b88833bf4d2e4fea559cf5233ca53f9266ba310d447f37fa445f3a</code></li>
-<li>inner <code>SHA256SUMS.txt</code> SHA-256: <code>73d96e23237896a3e342fe736be12d94087a813bf09ad609fb55330bbe586055</code></li>
-<li>endpoint image SHA-256: <code>2784e4b645bc3dc198de0b8b18d3d7369cd02eca61cd71c46a51b61854da5345</code></li>
-<li>endpoint EndF body hash: <code>4BB1526BF647547D</code></li>
+<li>candidate ZIP SHA-256: <code>c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61</code></li>
+<li>inner <code>SHA256SUMS.txt</code> SHA-256: <code>3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881</code></li>
+<li>endpoint image SHA-256: <code>31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095</code></li>
+<li>endpoint EndF body hash: <code>9179B98432895924</code></li>
 </ul>
-<p>Until that asset is uploaded to the release tag pinned by the runner, pass its
-local path with <code>--bundle</code>.</p>
+<p>Always pass the exact local path with <code>--bundle</code>. The runner has no download
+URL for this candidate. <code>--verify-only</code> remains the safe default. The hidden
+<code>--accept-test-candidate</code> override is intentionally absent from <code>--help</code> and
+remains required until this exact artifact is published with its qualification
+record; direct physical success does not silently turn a local file into a
+released deployment asset.</p>
 <h2 id="exact-destination">Exact destination</h2>
 <p>This chain is intentionally specific to one firmware lineage and hardware
 target:</p>
@@ -1627,25 +1669,28 @@ target:</p>
 <li>hardware: <code>RAK_3401</code></li>
 <li>role: <code>RAK_3401_repeater_lora_ota_no_external_sensors</code></li>
 <li>start: <code>v1.16.7.0-c1caa5ad</code>, EndF <code>71F4026CBE4B8B74</code></li>
-<li>endpoint source: MeshCore <code>e742333a0ee393b0d55d2414f25b28f2f67e1ea1</code></li>
-<li>endpoint label: <code>v1.17.1.02-halo-keymind-cascade-dev-e742333a</code></li>
-<li>endpoint packed version: <code>0x01110102</code> (EndF tools render this as <code>1.17.1.2</code>)</li>
+<li>endpoint source: MeshCore <code>fd98bc90f7fb25d5956facd550e227b217abbe95</code></li>
+<li>endpoint label: <code>v1.17.1.5-halo-keymind-cascade-dev-fd98bc90</code></li>
+<li>endpoint packed version: <code>0x01110105</code></li>
 <li>deployment target key: <code>63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d</code></li>
 </ul>
-<h3 id="historical-endpoint-gps-limitation">Historical endpoint GPS limitation</h3>
-<p>This chain's exact <code>RAK_3401_repeater_lora_ota_no_external_sensors</code> endpoint
-compiles with <code>ENV_INCLUDE_GPS</code> removed. It will not detect, configure, or read
-a RAK12501 GPS module. GPS requires the ordinary full-sensor
-<code>RAK_3401_repeater</code> firmware and the RAK12501 must be installed in sensor slot
-A. Do not use slot D with the RAK13302 1 W radio: the GPS reset/PPS signals
-would overlap the radio's BUSY/DIO1 signals. The full-sensor build is a
-different target and is not an endpoint of this compact OTA chain.</p>
-<p>This limitation describes the immutable released chain endpoint identified
-above. Newly built RAK3401 OTA repeater firmware retains RAK12501 support in
-slot A, but that newer image is not retroactively part of this exact chain.</p>
+<h3 id="retained-and-omitted-hardware-support">Retained and omitted hardware support</h3>
+<p>Despite the legacy <code>no_external_sensors</code> target name, the endpoint retains the
+RAK12501 GPS provider and the common INA3221, INA219, INA226, and INA260 I2C
+voltage/current monitors. Install RAK12501 in sensor slot A. Do not use slot D
+with the RAK13302 1 W radio because the GPS reset/PPS signals overlap the
+radio's BUSY/DIO1 wiring.</p>
+<p>The reduced profile omits optional external environmental and ranging devices:
+AHTX0, BME280, BMP280, SHTC3, SHT4x, LPS22HB, MLX90614, VL53L0X, BME680,
+BMP085, RAK12035, and BME680 BSEC. Board radio, display, buttons, battery
+telemetry, GPS, and the INA monitor family remain. No additional “remove I2C
+temperature” image is needed: the optional I2C temperature/environment drivers
+are already in the omitted set, while removing the remaining I2C/INA support
+would discard desired voltage/current monitoring and create another firmware
+identity without helping this route.</p>
 <p>Do not use the chain on another target ID, hardware family, starting image, or
 firmware body hash. The runner checks all four.</p>
-<h2 id="why-the-old-bootloader-works">Why the old bootloader works</h2>
+<h2 id="why-preview-5-and-the-old-staging-ceiling-work">Why Preview 5 and the old staging ceiling work</h2>
 <p>The deployed bootloader is not changed and no package uses the newer expanded
 <code>0xED000</code> ceiling. Each package remains bottom-aligned below the old
 bootloader's <code>0xD4000</code> scan ceiling. Its detools workspace is page-aligned and
@@ -1656,16 +1701,26 @@ must satisfy:</p>
 before its first destructive write. The previous application receiver was the
 limiting part: it reserved a fixed <code>0x98000</code> workspace before accepting a
 download. Step 1 therefore remains byte-for-byte identical to the physically
-passed 89,844-byte package. Step 2 is a 46,363-byte fixed-workspace package
+passed 89,844-byte package. Step 2 is a 46,364-byte fixed-workspace package
 that installs the compatibility receiver. Later receivers stage above the
 real EndF image extent and let the bootloader enforce each package's selected
 workspace.</p>
-<p>An exhaustive search tested every page-aligned workspace relevant to a route
-shorter than nine packages: 9,430 candidate geometries across 272 possible
-layer-skipping edges. None fit. The 61 edges on the shortest-path graph were
-then swept across another 2,296 workspace choices; 840 nine-package routes
-were compared by total transfer size. The selected route is the byte-minimum
-shortest route:</p>
+<p>Every package in this candidate is an ordinary application container using
+format ABI 2 and in-place codec 2. The historical bridge applications scan the
+bootloader capability marker byte-by-byte, so they recognize the released
+Preview 5 RAK4631 marker at absolute address <code>0xFCDEA</code> even though it is two
+bytes off a word boundary. The <code>fd98bc90</code> endpoint deliberately retains that
+exact Preview 5 application-update fallback. Its separately compiled internal
+bootloader-update feature remains unavailable on Preview 5 because privileged
+self-update requires a current ABI 3 marker with the exact storage profile.
+Installing this chain therefore does not replace the bootloader, and the final
+application can still accept a future valid ABI-2/codec-2 application update.</p>
+<p>The schema-2 exhaustive search checked 17,402 candidate geometries and found
+121 feasible forward edges in the declared 33-image inventory. Fourteen
+ten-package routes tied for the minimum package count; the selected route has
+the smallest total container size among them. That minimum applies to the
+declared inventory, not every conceivable firmware image. The selected route
+is:</p>
 <table>
 <thead>
 <tr>
@@ -1691,7 +1746,7 @@ shortest route:</p>
 <td>1.16.7.9</td>
 <td>1.16.7.10</td>
 <td style="text-align: right;"><code>0x98000</code></td>
-<td style="text-align: right;">46,363</td>
+<td style="text-align: right;">46,364</td>
 <td style="text-align: right;">40,960</td>
 </tr>
 <tr>
@@ -1699,7 +1754,7 @@ shortest route:</p>
 <td>1.16.7.10</td>
 <td>1.16.8.7</td>
 <td style="text-align: right;"><code>0x91000</code></td>
-<td style="text-align: right;">106,030</td>
+<td style="text-align: right;">106,029</td>
 <td style="text-align: right;">12,288</td>
 </tr>
 <tr>
@@ -1715,44 +1770,52 @@ shortest route:</p>
 <td>1.16.9.105</td>
 <td>1.16.9.110</td>
 <td style="text-align: right;"><code>0x8E000</code></td>
-<td style="text-align: right;">111,307</td>
+<td style="text-align: right;">111,312</td>
 <td style="text-align: right;">16,384</td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
 <td>1.16.9.110</td>
-<td>1.16.9.111</td>
-<td style="text-align: right;"><code>0x8D000</code></td>
-<td style="text-align: right;">70,679</td>
-<td style="text-align: right;">61,440</td>
-</tr>
-<tr>
-<td style="text-align: right;">7</td>
-<td>1.16.9.111</td>
-<td>1.16.9.116</td>
-<td style="text-align: right;"><code>0x89000</code></td>
-<td style="text-align: right;">143,441</td>
+<td>1.16.9.113</td>
+<td style="text-align: right;"><code>0x8F000</code></td>
+<td style="text-align: right;">120,624</td>
 <td style="text-align: right;">4,096</td>
 </tr>
 <tr>
+<td style="text-align: right;">7</td>
+<td>1.16.9.113</td>
+<td>1.16.9.117</td>
+<td style="text-align: right;"><code>0x8B000</code></td>
+<td style="text-align: right;">139,637</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
 <td style="text-align: right;">8</td>
-<td>1.16.9.116</td>
-<td>1.16.9.118</td>
-<td style="text-align: right;"><code>0x81000</code></td>
-<td style="text-align: right;">98,188</td>
-<td style="text-align: right;">86,016</td>
+<td>1.16.9.117</td>
+<td>1.16.10.0</td>
+<td style="text-align: right;"><code>0x7E000</code></td>
+<td style="text-align: right;">174,202</td>
+<td style="text-align: right;">20,480</td>
 </tr>
 <tr>
 <td style="text-align: right;">9</td>
-<td>1.16.9.118</td>
-<td>1.17.1.02</td>
-<td style="text-align: right;"><code>0x7D000</code></td>
-<td style="text-align: right;">186,385</td>
-<td style="text-align: right;">12,288</td>
+<td>1.16.10.0</td>
+<td>1.17.1.3</td>
+<td style="text-align: right;"><code>0x6B000</code></td>
+<td style="text-align: right;">271,569</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td>1.17.1.3</td>
+<td>1.17.1.5</td>
+<td style="text-align: right;"><code>0x74000</code></td>
+<td style="text-align: right;">173,334</td>
+<td style="text-align: right;">61,440</td>
 </tr>
 </tbody>
 </table>
-<p>Total mOTA transfer data is 1,002,164 bytes. <code>ROUTE.json</code>, <code>CHAIN.csv</code>, and
+<p>Total mOTA transfer data is 1,382,842 bytes. <code>ROUTE.json</code>, <code>CHAIN.csv</code>, and
 <code>validation-results.json</code> in the bundle pin the exact geometry and image hash
 for every transition.</p>
 <h2 id="host-requirements">Host requirements</h2>
@@ -1761,21 +1824,30 @@ and an OTA-enabled Full Companion or repeater that can seed mOTA files.</p>
 <h2 id="verify-offline">Verify offline</h2>
 <p>No password or device is needed:</p>
 <pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
   --work-dir ./rak3401-mota-chain-work \
   --motatool /path/to/motatool \
   --verify-only
 </code></pre>
-<p>The runner checks the outer ZIP, complete inner checksum coverage, all nine
-manifests, continuity, image anchors, final recovery image, and every container
-with <code>motatool</code>.</p>
-<h2 id="direct-recoverable-bench-run">Direct recoverable bench run</h2>
+<p>When given the ZIP, the runner checks its pinned outer hash and binds the
+extraction cache to that exact archive. An explicitly supplied extracted root
+starts at the pinned inner checksum list. In either case it checks complete
+inner coverage, all ten manifests, continuity, image anchors, both recovery
+images, and every container with <code>motatool</code>. Passing this command means offline
+and simulator qualification only; it does not unlock live use.</p>
+<h2 id="current-guarded-reproduction-command">Current guarded reproduction command</h2>
+<p>These are the same direct-link arguments used for the physical transition run,
+but the current host runner also contains later cleanup and recovery fixes.
+That revised runner has not been cleanly rerun through all ten transitions.
+Keep local USB/SWD recovery available while the artifact remains unreleased.
+The hidden override bypasses only the candidate-status block; all identity,
+checksum, bootloader, route, watchdog, and post-boot gates still run.</p>
 <p>Restore the test start locally with
 <code>recovery/test-start/RAK3401-test-start-v1.16.7-c1caa5ad.uf2</code>, then run:</p>
 <pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='password'
 
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
   --work-dir ./rak3401-mota-chain-work \
   --controller-serial /dev/ttyACM0 \
   --source-tcp 192.168.1.51:5001 \
@@ -1786,6 +1858,7 @@ python3 tools/lora_ota/rak3401_mota_chain.py \
   --ota-hops 0 \
   --legacy-full-airtime \
   --motatool /path/to/motatool \
+  --accept-test-candidate \
   --yes
 </code></pre>
 <p>Keep the work directory. Rerunning the same command resumes only when the live
@@ -1794,18 +1867,142 @@ EndF body hash matches an exact chain node. Never manually skip a package.
 zero and restores it at the endpoint. Use that option only where the selected
 frequency and local duty-cycle rules permit a full transmit budget; omit it
 otherwise.</p>
+<h3 id="measured-direct-link-timing">Measured direct-link timing</h3>
+<p>The first <code>ready to install</code> transfer ages were:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Step</th>
+<th style="text-align: right;">Blocks</th>
+<th style="text-align: right;">Transfer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">598 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">45</td>
+<td style="text-align: right;">42 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">81 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">146</td>
+<td style="text-align: right;">105 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">109</td>
+<td style="text-align: right;">76 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">118</td>
+<td style="text-align: right;">94 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">136</td>
+<td style="text-align: right;">102 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">170</td>
+<td style="text-align: right;">127 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">264</td>
+<td style="text-align: right;">187 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">169</td>
+<td style="text-align: right;">193 s</td>
+</tr>
+</tbody>
+</table>
+<p>The physically observed bulk-transfer total for those exact packages is 1,605
+seconds (26m45s). The log came from the pre-cleanup-fix runner revision. Step 1
+was measured before the host began forcing source RXPS off and is therefore a
+conservative outlier. A new complete run with that fix is projected at roughly
+18–19 minutes of bulk transfer, but that projection is not a substitute for
+the measured total. Allow about 70–75 minutes direct at BW500 for validation,
+ten transfers, installs/reboots, retained-store checks, and final restoration.</p>
+<p>Step 10's longer per-block time was not a V4 TempRadio delay: the source RXPS
+readback was off. Its v1.17.1.3 requester uses non-overlapping adaptive flights
+and a five-second recovery floor and logged more block reloads than step 8.
+The V4 itself intentionally schedules its local radio handoff after 1.5 seconds
+so the normal-channel command reply can drain; the host waits three seconds and
+then checks the live TempRadio state.</p>
+<p>For planning only, scale the conservative measured 26m45s bulk baseline by the
+qualified adaptive-preamble airtime and by each additional relay transmission:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Bandwidth, SF5/CR5</th>
+<th style="text-align: right;">Direct / 0 relays</th>
+<th style="text-align: right;">1 relay</th>
+<th style="text-align: right;">2 relays</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">500 kHz</td>
+<td style="text-align: right;">26m45s</td>
+<td style="text-align: right;">53m30s</td>
+<td style="text-align: right;">1h20m15s</td>
+</tr>
+<tr>
+<td style="text-align: right;">250 kHz</td>
+<td style="text-align: right;">46m51s</td>
+<td style="text-align: right;">1h33m42s</td>
+<td style="text-align: right;">2h20m33s</td>
+</tr>
+<tr>
+<td style="text-align: right;">125 kHz</td>
+<td style="text-align: right;">1h27m03s</td>
+<td style="text-align: right;">2h54m07s</td>
+<td style="text-align: right;">4h21m11s</td>
+</tr>
+<tr>
+<td style="text-align: right;">62.5 kHz</td>
+<td style="text-align: right;">2h54m07s</td>
+<td style="text-align: right;">5h48m15s</td>
+<td style="text-align: right;">8h42m23s</td>
+</tr>
+</tbody>
+</table>
+<p>These are transfer-only estimates, not measured alternate-bandwidth or relay
+results. Packet loss, relay contention, discovery, administrative commands,
+staged verification, and ten reboot cycles add time. The bandwidth factors are
+not simple powers of two because the adaptive wire preamble is 128 symbols at
+500 kHz, 64 at 250 kHz, and 32 at 125/62.5 kHz.</p>
 <h2 id="manual-operation">Manual operation</h2>
-<p>The pinned runner is the safer method. If it cannot be used, follow every
-check below and keep a written copy of each original setting. Do not skip a
-step even when a later package appears in <code>ota ls</code>.</p>
+<p>The automated runner is preferred because it binds every transition to the
+expected MID and body hash. The manual details below document the checks used
+during qualification and recovery; they are not permission to skip the
+runner's candidate gate. Keep a written copy of each original setting and
+never skip a step even when a later package appears in <code>ota ls</code>.</p>
 <h3 id="1-verify-and-extract-the-asset">1. Verify and extract the asset</h3>
-<pre><code class="language-bash">sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip
-unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip
-cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a
+<pre><code class="language-bash">sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
+unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
+cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90
 sha256sum -c SHA256SUMS.txt
 for package in motas/*.mota; do motatool verify &quot;$package&quot; || exit 1; done
 </code></pre>
-<p>The outer hash must be <code>9f80eef191b88833bf4d2e4fea559cf5233ca53f9266ba310d447f37fa445f3a</code>.
+<p>The outer hash must be
+<code>c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61</code>,
+and the SHA-256 of the extracted <code>SHA256SUMS.txt</code> must be
+<code>3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881</code>.
 Do not continue after any checksum or verification error.</p>
 <h3 id="2-record-and-prepare-the-destination">2. Record and prepare the destination</h3>
 <p>Before changing anything, save the complete replies from:</p>
@@ -1848,13 +2045,12 @@ and do not substitute a normal reboot for the one-time watchdog reset. Direct
 tests use <code>hops 0</code>: <code>hops 1</code> makes the target echo each source response despite
 there being no intermediate relay, increasing half-duplex loss and legacy
 three-second retries.</p>
-<p>The exact compact chain never qualifies for fast RXPS: its bridge and endpoint
-versions predate the v1.17.1.5 adaptive-preamble contract. Keep RXPS off for
-this historical chain whether using SF5/BW250 or the faster direct-bench
-SF5/BW500 tuple. For a later update whose target, controller, source, and
-relays are all v1.17.1.5 or newer, use the generic LoRa OTA runner; it can
-retain RXPS at the qualified level-8/preamble-64 boundary for SF5/BW250 or the
-level-8/preamble-128 boundary for SF5/BW500.</p>
+<p>The exact candidate cannot use fast RXPS throughout because its historical
+bridge applications predate the v1.17.1.5 adaptive-preamble contract. Keep
+RXPS off for all ten steps whether using SF5/BW250 or the faster direct-bench
+SF5/BW500 tuple. After the final endpoint is proven, a later update whose
+target, controller, source, and relays are all v1.17.1.5 or newer can use the
+generic LoRa OTA runner and its qualified adaptive-preamble boundaries.</p>
 <p>Put the source on the identical TempRadio tuple. A current ASCII-first Full
 Companion recognizes <code>motatool</code>'s initial <code>ota folder on</code> line directly:</p>
 <pre><code class="language-bash">motatool serve \
@@ -1868,7 +2064,7 @@ where the idle parser recognizes the identical preamble. Restart <code>motatool<
 every step so the source emits a fresh catalog advert. Leave it running during
 the download and stop it with Ctrl-C only after the destination reports <code>ready
 to install</code>.</p>
-<h3 id="3-install-all-nine-packages-in-order">3. Install all nine packages in order</h3>
+<h3 id="3-install-all-ten-packages-in-order">3. Install all ten packages in order</h3>
 <table>
 <thead>
 <tr>
@@ -1889,69 +2085,89 @@ to install</code>.</p>
 </tr>
 <tr>
 <td style="text-align: right;">2</td>
-<td><code>C510B628</code></td>
+<td><code>BEB578FC</code></td>
 <td><code>42BC53A64288E845</code></td>
 <td><code>1.16.7.10</code></td>
-<td><code>6F6E51D63BF3E93F</code></td>
+<td><code>1AD2AA8B6C478DA6</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">3</td>
-<td><code>8CAD7045</code></td>
-<td><code>6F6E51D63BF3E93F</code></td>
+<td><code>6D8EF814</code></td>
+<td><code>1AD2AA8B6C478DA6</code></td>
 <td><code>1.16.8.7</code></td>
-<td><code>F04DA8DB515E5C6D</code></td>
+<td><code>D709A25308BC1831</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">4</td>
-<td><code>8B1EEFF6</code></td>
-<td><code>F04DA8DB515E5C6D</code></td>
+<td><code>40AC4CEB</code></td>
+<td><code>D709A25308BC1831</code></td>
 <td><code>1.16.9.105</code></td>
-<td><code>3894A4D7B11ED282</code></td>
+<td><code>457BEDA5E6406C81</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
-<td><code>687E3BEA</code></td>
-<td><code>3894A4D7B11ED282</code></td>
+<td><code>F6C8890B</code></td>
+<td><code>457BEDA5E6406C81</code></td>
 <td><code>1.16.9.110</code></td>
-<td><code>CDC5CA630881DA15</code></td>
+<td><code>E76BFA205634CAB8</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
-<td><code>0D59A34B</code></td>
-<td><code>CDC5CA630881DA15</code></td>
-<td><code>1.16.9.111</code></td>
-<td><code>D0CC4A9E135B9A4D</code></td>
+<td><code>82405E89</code></td>
+<td><code>E76BFA205634CAB8</code></td>
+<td><code>1.16.9.113</code></td>
+<td><code>65328FC8A1FBED2D</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">7</td>
-<td><code>2C5C2082</code></td>
-<td><code>D0CC4A9E135B9A4D</code></td>
-<td><code>1.16.9.116</code></td>
-<td><code>66272A0E7FEF2773</code></td>
+<td><code>80F40DB6</code></td>
+<td><code>65328FC8A1FBED2D</code></td>
+<td><code>1.16.9.117</code></td>
+<td><code>AF7532E13337FADD</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">8</td>
-<td><code>994AB743</code></td>
-<td><code>66272A0E7FEF2773</code></td>
-<td><code>1.16.9.118</code></td>
-<td><code>8E00019AA08E00BF</code></td>
+<td><code>DBF6310D</code></td>
+<td><code>AF7532E13337FADD</code></td>
+<td><code>1.16.10.0</code></td>
+<td><code>22002359BBDFA76E</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">9</td>
-<td><code>FE986948</code></td>
-<td><code>8E00019AA08E00BF</code></td>
-<td><code>1.17.1.02</code></td>
-<td><code>4BB1526BF647547D</code></td>
+<td><code>C2979E08</code></td>
+<td><code>22002359BBDFA76E</code></td>
+<td><code>1.17.1.3</code></td>
+<td><code>FE65A6135A1E7B3F</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td><code>319DEC92</code></td>
+<td><code>FE65A6135A1E7B3F</code></td>
+<td><code>1.17.1.5</code></td>
+<td><code>9179B98432895924</code></td>
 </tr>
 </tbody>
 </table>
-<p>For each row, first prove that <code>ota self</code> exactly matches its <strong>Before hash</strong>.
-Then run:</p>
-<pre><code class="language-text">ota cancel
-ota ls
+<p>For each row, first prove that <code>ota self</code> exactly matches its <strong>Before hash</strong>,
+then inspect the manager before changing it:</p>
+<pre><code class="language-text">ota status
+</code></pre>
+<p>Proceed to discovery only after that status is reconciled. When the manager is
+idle, run:</p>
+<pre><code class="language-text">ota ls
 ota pull MANIFEST_ID flash
 ota status
 </code></pre>
+<p>If the first status reports this row's MID as partial, use <code>ota pull</code> with that
+same MID to resume it. If this row's MID is already ready, do not pull or
+cancel it; continue with the install checks below. If status reports the
+immediately previous row's MID as <code>verifying staged blocks</code>, wait through the
+bounded discovery window; require either that exact MID to become <code>ready to
+install</code> or the manager to become <code>no download</code>, and re-prove the current
+<strong>Before hash</strong>. Cancel only the same previous MID while it is visibly
+attached and ready. If it has become idle, send no cancel. Stop on any other
+MID, failed or incomplete state, ambiguous reply, or timeout. Never issue a
+blind <code>ota cancel</code>: it can discard a resumable or unrelated session.</p>
 <p>Repeat <code>ota status</code> at a restrained interval until it says <code>ready to install</code>.
 If the manifest is initially absent, wait for a fresh source advert, run
 <code>ota ls</code> again, or restart <code>motatool</code>; do not pull a different ID. Stop the
@@ -1959,18 +2175,34 @@ seeder and install:</p>
 <pre><code class="language-text">get system.watchdog
 ota install
 </code></pre>
-<p>The watchdog reply must still be <code>&gt; off</code>. Allow up to 90 seconds for the USB
-port to disappear and return. Then run <code>ver</code>, <code>ota self</code>, and <code>ota help</code>.
+<p>The watchdog reply must still be <code>&gt; off</code>. Allow the current default five-minute
+readiness window for the USB/LoRa identity to return; automation probes every
+10 seconds and returns early as soon as the exact body is visible. Then run
+<code>ver</code>, <code>ota self</code>, and <code>ota help</code>.
 Require the row's exact <strong>After hash</strong>, require <code>bootloader: apply OK</code>, and
 require <code>rescue install &lt;hash16&gt;</code> in the help before exposing that bridge to
-the next package. Clear only the now-proven retained download with <code>ota cancel</code>,
-reapply the transfer guardrails and TempRadio tuple, restart <code>motatool</code>, and
-continue with the next row.</p>
+the next package. This rescue-help gate applies to steps 1-9; step 10 is the
+endpoint and is not exposed to another package in this chain. A normal-radio
+<code>ota status</code> response of <code>no download</code> proves only that the manager is idle;
+legacy internal-flash firmware does not durably erase a retained container by
+accepting an IDLE <code>ota cancel</code>. Do not claim otherwise. When the same expected
+manifest reports <code>verifying staged blocks</code> after the next TempRadio starts,
+wait only for the bounded discovery window and require that it become <code>ready
+to install</code> or <code>no download</code>; stop on a changed ID, failed/incomplete state, or
+timeout. Prove the exact running body before cancelling an attached completed
+session. OTAFIX consumes the approval word during a successful install, so a
+retained endpoint container is inert and a later valid pull replaces it.
+Reapply the transfer
+guardrails and TempRadio tuple, restart <code>motatool</code>, and continue with the next
+row.</p>
 <p>If the board boots but <code>ota self</code> says the EndF is invalid, stop. Only when
 <code>ota status</code> still identifies that row's complete staged package may the
 guarded <code>ota rescue install BEFORE_HASH</code> command be used. It is not a force
 option and must use that row's exact Before hash. If the board does not boot,
-recover the documented start/recovery UF2 locally over USB.</p>
+recover the documented start/recovery UF2 locally over USB. The fd98 endpoint
+deliberately disables rescue on its shared internal bootloader-update build;
+if its EndF is invalid, use local DFU/SWD rather than attempting another LoRa
+package.</p>
 <h3 id="4-intermediate-relays-and-restoration">4. Intermediate relays and restoration</h3>
 <p>On every managed intermediate relay, save <code>get rxdelay</code> and <code>get txdelay</code>, then
 use the airtime-scaled collision window during the maintenance session:</p>
@@ -1982,13 +2214,13 @@ set txdelay 0.3
 window. The source's manifest-fragment gap independently follows active packet
 airtime and duty spacing, clamped to 100-1000 ms. These two delays solve
 different problems.</p>
-<p>After step 9 is proven, restore each saved destination and relay value exactly,
+<p>After step 10 is proven, restore each saved destination and relay value exactly,
 including <code>rxdelay</code>, RXPS, CPU power saving, <code>af</code>, <code>ota config hops</code>, and relay
 timing. Current full-parser repeater firmware accepts <code>normalradio</code> and restores
 the saved tuple after replying on the temporary channel:</p>
 <pre><code class="language-text">normalradio
 </code></pre>
-<p>The historical endpoint in this pinned bundle predates that command. If it
+<p>The fd98 endpoint supports that command. If a recovery build unexpectedly
 replies <code>Unknown command</code>, shorten its lease to one minute with the same tuple:</p>
 <pre><code class="language-text">tempradio 909.950,500,5,5,1
 </code></pre>
@@ -2000,16 +2232,22 @@ get system.watchdog
 <p>A Full Companion source is the exception: its local TCP console supports
 <code>normalradio</code> and the automated runner uses it before restoring the shared
 Binary API radio tuple.</p>
-<p>Final success requires version <code>v1.17.1.02-halo-keymind-cascade-dev-e742333a</code>,
-body hash <code>4BB1526BF647547D</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, and
+<p>Final lab success requires version
+<code>v1.17.1.5-halo-keymind-cascade-dev-fd98bc90</code>, body hash
+<code>9179B98432895924</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, and
 <code>get system.watchdog</code> reporting <code>&gt; on</code>. If a relay cannot be restored before
 its TempRadio lease ends, wait for it to return to the normal channel and
 restore its saved <code>rxdelay</code> and <code>txdelay</code> there.</p>
 <h2 id="two-relay-deployment">Two-relay deployment</h2>
-<p>For two intermediate relays, list them farthest-to-nearest and use three OTA
-hops. Run a non-mutating preflight first:</p>
+<p>The exact direct package transitions above were physically observed; this
+post-run host-runner revision and multi-hop operation are not cleanly
+end-to-end qualified. A controlled, recoverable multi-hop lab can exercise two
+intermediate relays by
+listing them farthest-to-nearest and using three OTA hops. Run a non-mutating
+preflight first; even preflight requires the hidden candidate override because
+the artifact remains unreleased and the command connects to live devices:</p>
 <pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.02-e742333a.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip \
   --work-dir ./rak3401-mota-chain-work \
   --controller-serial /dev/ttyACM0 \
   --source-tcp SOURCE_IP:5001 \
@@ -2021,6 +2259,7 @@ hops. Run a non-mutating preflight first:</p>
   --temp-radio 909.950,250,5,5,120 \
   --ota-hops 3 \
   --motatool /path/to/motatool \
+  --accept-test-candidate \
   --preflight-only
 </code></pre>
 <p>After preflight succeeds, rerun with <code>--yes</code> in place of
@@ -2028,15 +2267,26 @@ hops. Run a non-mutating preflight first:</p>
 legal at the deployment location.</p>
 <h2 id="rescue-and-completion">Rescue and completion</h2>
 <p>The guarded <code>ota rescue install &lt;base_body_hash&gt;</code> command is present after
-step 1. It is not a force command: it refuses a valid normal EndF, a base
-mismatch, wrong target/hardware, or invalid payload. A failure before step 1
-completes still requires local USB recovery because the deployed start image
-predates the rescue command.</p>
+step 1 and remains available through the step-9 bridge. It is not a force
+command: it refuses a valid normal EndF, a base mismatch, wrong
+target/hardware, or invalid payload. A failure before step 1 completes still
+requires local USB recovery because the deployed start image predates the
+rescue command. The final fd98 endpoint uses the stricter shared-slot profile;
+its invalid-EndF recovery is local DFU/SWD, not the rescue command.</p>
 <p>Before the first mutation, the runner saves the destination's RXPS periods,
 CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
-the persistent work directory. It reads the destination, controller, source,
-and relay versions before applying the same RXPS policy as the generic runner.
-The pinned historical chain therefore verifies <code>radio.rxps off</code> after every
+the persistent work directory, flushing both the file and its directory entry
+before changing a guardrail. It also saves the managed source's exact RXPS
+preference in the chain-root <code>source-rxps-settings.json</code> before disabling it.
+Every step reuses that protected record, so a rerun after a killed host process
+restores the chain-start preference instead of treating the temporary off state
+as original. The record is accepted only for the same CLI endpoint. The runner
+retires that chain-root record only after it has proved the source is back on
+its normal radio and restored the exact preference at the verified endpoint.
+The runner
+reads the destination, controller, source, and relay versions before applying
+the same RXPS policy as the generic runner.
+The mixed historical chain therefore verifies <code>radio.rxps off</code> after every
 bridge reboot; a future all-v1.17.1.5-or-newer SF5/BW250 chain would instead
 keep RXPS on under the qualified level-8/preamble-64 boundary. It also verifies
 <code>powersaving off</code> and <code>rxdelay 0</code>, plus <code>af 0</code> when
@@ -2053,8 +2303,8 @@ settings remain conservative isolation and fast-link reliability guardrails.</p>
 the relay leaves TempRadio.</p>
 <p>The runner also keeps the watchdog off across the chain, rechecks identity and
 OTA reach before every package, requires the exact post-boot EndF hash, and
-only re-enables the watchdog after step 9. Success requires endpoint body hash
-<code>4BB1526BF647547D</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, normal radio
+only re-enables the watchdog after step 10. Lab success requires endpoint body
+hash <code>9179B98432895924</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, normal radio
 <code>910.525 MHz / 62.5 kHz / SF7 / CR5</code>, and the watchdog verified on.</p>
 <h2 id="external-radio-startup-and-manual-usb-recovery">External-radio startup and manual USB recovery</h2>
 <p>RAK3401 is a distinct target from RAK4631. Its RAK13300/RAK13302 radio is on
