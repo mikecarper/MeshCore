@@ -2232,7 +2232,14 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         WebConfigServer::formatWiFiStatus(reply, reply_size);
         return true;
       case mesh::cli::StandaloneWiFiKey::CLI:
-        WebConfigServer::formatWiFiCliStatus(reply, reply_size);
+        // Companion WebConfig deliberately has no browser command terminal:
+        // the page is not an authenticated repeater/room-server admin
+        // surface. Do not report the saved global WebConfig preference as
+        // "waiting", because supportsCliTerminal() is false for this role and
+        // /api/cli can therefore never become active. The Full Companion text
+        // CLI remains available over USB and TCP port 5002.
+        snprintf(reply, reply_size,
+                 "Error: browser CLI unavailable; use USB (or TCP 5002 on Full Companion)");
         return true;
       default:
         break;
@@ -2254,7 +2261,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
             value, reply, reply_size);
         break;
       case mesh::cli::StandaloneWiFiKey::CLI:
-        WebConfigServer::setWiFiCliEnabled(value, reply, reply_size);
+        // See the matching getter above. In particular, do not persist a
+        // preference and claim success for a terminal this role cannot serve.
+        snprintf(reply, reply_size,
+                 "Error: browser CLI unavailable; use USB (or TCP 5002 on Full Companion)");
         return true;
       default:
         break;
@@ -5983,10 +5993,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  get wifi.powersave\r\n");
     terminalOutput().print("  set wifi.powersave <none|min|max>\r\n");
 #ifdef WITH_WEBCONFIG
-    terminalOutput().print("  get wifi.{ssid|status|cli}\r\n");
+    terminalOutput().print("  get wifi.{ssid|status}\r\n");
     terminalOutput().print("  set wifi.ssid <network name>\r\n");
     terminalOutput().print("  set wifi.pwd <password>\r\n");
-    terminalOutput().print("  set wifi.cli <on|off>\r\n");
     terminalOutput().print("  get webui\r\n");
     terminalOutput().print("  set webui <on|off>\r\n");
     terminalOutput().print("  start webconfig [ap]\r\n");

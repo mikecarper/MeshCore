@@ -565,9 +565,11 @@ WiFi only, not LoRa transmit power.
 
 `get wifi.status`, `get wifi.ssid`, `get wifi.powersave`, and `get wifi.cli`
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
-builds with WebConfig. ESP32 WiFi Companions with WebConfig expose those
-commands, credential setters, and `start webconfig [ap]` through their USB text
-terminal; Full Companion additionally exposes that terminal on TCP port 5002.
+builds with WebConfig. ESP32 WiFi Companions expose the first three commands,
+credential setters, and `start webconfig [ap]` through their USB text terminal;
+`get/set wifi.cli` explicitly report that the repeater/room-server browser CLI
+is unavailable. Full Companion instead exposes its complete role-specific text
+terminal on TCP port 5002.
 MQTT commands such as `get mqtt.status` and `set mqtt1.preset ...` still require
 an MQTT observer target. Unknown settings return `Error: unknown setting:
 <name>`. Older firmware that used the discontinued compact CLI can instead

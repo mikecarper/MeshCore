@@ -166,16 +166,19 @@ the WebConfig **WiFi** card, or use the Full Companion text terminal:
 get wifi.ssid
 get wifi.status
 get wifi.powersave
-get wifi.cli
 get webui
 set wifi.ssid MyNetwork
 set wifi.pwd my-password
 set wifi.powersave min
 set wifi.powersave max
-set wifi.cli on
 start webconfig
 stop webconfig
 ```
+
+Full Companion does not expose the repeater/room-server browser CLI tab, so
+`get/set wifi.cli` explicitly report that the browser terminal is unavailable.
+Its complete Companion text terminal remains available over USB and TCP port
+5002; this does not reduce that command surface.
 
 On the two primary-ESP-NOW Full targets, the same terminal also provides
 `get espnow.channel` and `set espnow.channel <1-13>`. A channel change is
