@@ -2863,24 +2863,9 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <td>Queue a fully encoded raw mesh packet.</td>
 </tr>
 <tr>
-<td><code>0x42</code> / <code>0x43</code></td>
-<td><code>CMD_GET_RADIO_FEM_RXGAIN</code> / <code>CMD_SET_RADIO_FEM_RXGAIN</code></td>
-<td>Read or set FEM receive gain.</td>
-</tr>
-<tr>
-<td><code>0x44</code> / <code>0x45</code></td>
-<td><code>CMD_GET_RADIO_RXGAIN</code> / <code>CMD_SET_RADIO_RXGAIN</code></td>
-<td>Read or set the radio chip's boosted receive-gain mode.</td>
-</tr>
-<tr>
-<td><code>0x46</code> / <code>0x47</code></td>
-<td><code>CMD_GET_WIFI_POWER_SAVE</code> / <code>CMD_SET_WIFI_POWER_SAVE</code></td>
-<td>Read or set ESP32 Companion WiFi modem sleep.</td>
-</tr>
-<tr>
-<td><code>0x48</code> / <code>0x49</code></td>
-<td><code>CMD_GET_BLUETOOTH_NAME</code> / <code>CMD_SET_BLUETOOTH_NAME</code></td>
-<td>Read or set the independent Bluetooth device name.</td>
+<td><code>0x42</code></td>
+<td><code>CMD_RUN_CLI_COMMAND</code></td>
+<td>Run a local CLI command (protocol v14+).</td>
 </tr>
 <tr>
 <td><code>0x4A</code></td>
@@ -2892,13 +2877,49 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <td><code>CMD_BLE_MOTA_SOURCE</code></td>
 <td>Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source.</td>
 </tr>
+<tr>
+<td><code>0x78</code> / <code>0x79</code></td>
+<td><code>CMD_GET_RADIO_FEM_RXGAIN</code> / <code>CMD_SET_RADIO_FEM_RXGAIN</code></td>
+<td>Fork extension: read or set FEM receive gain.</td>
+</tr>
+<tr>
+<td><code>0x7A</code> / <code>0x7B</code></td>
+<td><code>CMD_GET_RADIO_RXGAIN</code> / <code>CMD_SET_RADIO_RXGAIN</code></td>
+<td>Fork extension: read or set the radio chip's boosted receive-gain mode.</td>
+</tr>
+<tr>
+<td><code>0x7C</code> / <code>0x7D</code></td>
+<td><code>CMD_GET_WIFI_POWER_SAVE</code> / <code>CMD_SET_WIFI_POWER_SAVE</code></td>
+<td>Fork extension: read or set ESP32 Companion WiFi modem sleep.</td>
+</tr>
+<tr>
+<td><code>0x7E</code> / <code>0x7F</code></td>
+<td><code>CMD_GET_BLUETOOTH_NAME</code> / <code>CMD_SET_BLUETOOTH_NAME</code></td>
+<td>Fork extension: read or set the independent Bluetooth device name.</td>
+</tr>
 </tbody>
 </table>
 <p>The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.</p>
-<p>The additive hardware-setting commands <code>0x42</code>-<code>0x47</code> do not change any existing
-legacy frame layout. Clients should probe the command they need and treat
+<p><code>CMD_RUN_CLI_COMMAND</code> is followed by the local CLI text without a terminating
+NUL. The device returns <code>RESP_CODE_CLI_REPLY</code> (<code>0x1D</code>) followed by the reply
+text. This is separate from sending a remote on-air CLI command with
+<code>CMD_SEND_TXT_MSG</code> and <code>TXT_TYPE_CLI_COMMAND</code>. The body must contain at least
+one byte and must not contain an embedded NUL. An unknown command is returned
+as the normal CLI reply text <code>Unknown command</code>, not as an error frame.</p>
+<p>The fork-specific hardware-setting commands occupy the host-to-device range
+<code>0x78</code>-<code>0x7F</code>, the highest currently unused block below the push-frame bit.
+Command IDs must stay below <code>0x80</code>; IDs with bit 7 set identify asynchronous
+device-to-host push frames. These commands do not change any existing frame
+layout. Clients should probe the command they need and treat
 <code>ERR_CODE_UNSUPPORTED_CMD</code> as feature absence.</p>
+<p>Firmware from this fork predating the upstream <code>0x42</code> allocation used
+<code>0x42</code>-<code>0x49</code> for these eight settings. This firmware accepts those values as
+deprecated aliases so existing clients continue to work. A one-byte <code>0x42</code>
+frame is the legacy FEM-gain GET; <code>0x42</code> followed by text is the official
+<code>CMD_RUN_CLI_COMMAND</code>. New clients should use <code>0x78</code>-<code>0x7F</code> (or send the
+equivalent text through <code>0x42</code>) because future upstream commands may reuse the
+remaining legacy IDs.</p>
 <p>Both gain-command pairs can be used over the normal binary Companion
 connection; USB does not need to enter terminal mode. Inside the transport's
 normal Companion frame, send a GET command as its single command byte. Send a
@@ -2908,7 +2929,9 @@ SET command followed by one byte (<code>0</code> for off, <code>1</code> for on)
 busy radio returns <code>ERR_CODE_BAD_STATE</code>; unsupported boosted gain returns
 <code>ERR_CODE_UNSUPPORTED_CMD</code>. The FEM pair also returns
 <code>ERR_CODE_UNSUPPORTED_CMD</code> when the board cannot control its external LNA. Raw
-text such as <code>set radio.rxgain off</code> still requires the USB terminal start token.</p>
+unframed text such as <code>set radio.rxgain off</code> still requires the USB terminal
+start token; the same text may instead be carried as a framed <code>0x42</code> command
+over USB, BLE, or TCP.</p>
 <p>The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
 normal binary USB, BLE, or TCP port 5000 transport. <code>CMD_GET_WIFI_POWER_SAVE</code>
 has no body and replies with <code>RESP_CODE_OK</code> followed by the effective mode byte.
@@ -3588,6 +3611,11 @@ Bytes 11+: Message Text (UTF-8)
 <td><code>0x1C</code></td>
 <td><code>RESP_CODE_DEFAULT_FLOOD_SCOPE</code></td>
 <td>Default flood-scope data.</td>
+</tr>
+<tr>
+<td><code>0x1D</code></td>
+<td><code>RESP_CODE_CLI_REPLY</code></td>
+<td>Text returned by <code>CMD_RUN_CLI_COMMAND</code>.</td>
 </tr>
 </tbody>
 </table>

@@ -2352,13 +2352,18 @@ silent.</p>
 </tr>
 <tr>
 <td><code>0x01</code></td>
-<td>CLI command</td>
-<td>the command text of the message</td>
+<td>CLI data</td>
+<td>CLI command OR reply text</td>
 </tr>
 <tr>
 <td><code>0x02</code></td>
 <td>signed plain text message</td>
 <td>first four bytes is sender pubkey prefix, followed by plain text message</td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td>CLI command</td>
+<td>(since v1.18+) CLI command text (explicit)</td>
 </tr>
 </tbody>
 </table>
