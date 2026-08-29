@@ -14,6 +14,7 @@ pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
+python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
 ```
 
 A green `[PASSED]` per suite means GoogleTest returned 0 (all assertions
@@ -57,6 +58,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h`, `src/helpers/RemoteCliTimeout.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; 300% response timeout; empty-response completion; on-air truncation and clearing |
 | `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h`, `src/helpers/CompanionHardwareCommandCompat.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing; command `0x42` framed-CLI disambiguation and deprecated hardware-alias mapping |
 | `test_companion_status_response` | `src/helpers/CompanionStatusResponse.h` | request-tag correlation and minimum status-response length, including rejection of the three-entry ACL payload that previously masqueraded as status |
+| `test_companion_terminal_diagnostics` | `src/helpers/CompanionTerminalDiagnostics.h` | bounded Full Companion ESP32 heap/PSRAM/offline-queue diagnostic formatting, including truthful no-PSRAM output |
 | `test_serial_mode_switch` | `src/helpers/ArduinoSerialInterface.cpp`, `src/helpers/MultiSerialInterface.h` | terminal/seeder control-sequence recognition, single-TTY logging transitions, and USB/TCP ownership; queued/atomic USB output under backpressure and short writes; partial-frame busy state; requester-affine replies, locked contact streams, and Bluetooth-only pairing routing |
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_ble_mota_control` | `src/helpers/BleMotaStream.h`, `CompanionMotaControl.h` | encrypted mOTA channel ring buffering, overflow fail-closed behavior, request gating, and strict rejection of injected or USB-ownership control commands |

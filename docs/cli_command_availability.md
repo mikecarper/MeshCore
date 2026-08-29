@@ -47,6 +47,8 @@ over the normal binary USB, BLE, or TCP connection:
 
 | Command | Availability |
 |---|---|
+| [`board`](cli_commands.md#show-the-hardware-name) | Every Companion text terminal and command `0x42` |
+| [`memory`](#memory) | ESP32 Full Companion text terminal and command `0x42` |
 | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Companion with a supported radio |
 | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Companion on a board with controllable LoRa FEM LNA |
 | [`get/set wifi.powersave`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WiFi Companion; active transport constraints still apply |

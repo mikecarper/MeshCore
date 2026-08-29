@@ -372,9 +372,11 @@ The terminal supports Companion chat commands, including `channels`,
 `channel <name-or-slot> <message>`, remote administration with
 `login <admin-password>` and `cmd <remote-command>`, and routed
 `trace [recipient-name-or-prefix]`, plus local `ota`, `tempradio`, and
-`normalradio` controls. ESP32 builds also provide local
-WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Every
-Full Companion provides persistent `get/set usb.logging` and starts with
+`normalradio` controls. `board` reports the exact hardware target. ESP32 Full
+Companion also provides `memory`, which reports heap, internal allocation,
+PSRAM, and offline-queue usage; it is omitted from non-ESP32 help. ESP32 builds
+also provide local WiFi credential, status, WebConfig, and power-save controls.
+Every Full Companion provides persistent `get/set usb.logging` and starts with
 logging off on a fresh installation.
 
 ### ESP32 single USB serial port

@@ -9,7 +9,12 @@
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
 
-#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
+#include <helpers/CompanionTerminalDiagnostics.h>
+#endif
+
+#if defined(ESP32_PLATFORM) \
+    && (defined(BOARD_HAS_PSRAM) || COMPANION_FEATURE_MEMORY_DIAGNOSTICS)
 #include <esp_heap_caps.h>
 #endif
 
@@ -2042,6 +2047,31 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+
+  if (strcmp(command, "board") == 0) {
+    const char* hardware_name = board.getManufacturerName();
+    snprintf(reply, reply_size, "%s",
+             hardware_name != NULL ? hardware_name : "Unknown hardware");
+    return true;
+  }
+
+#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
+  if (strcmp(command, "memory") == 0) {
+    const mesh::CompanionMemoryDiagnostics diagnostics = {
+      (uint32_t)ESP.getFreeHeap(),
+      (uint32_t)ESP.getMinFreeHeap(),
+      (uint32_t)ESP.getMaxAllocHeap(),
+      (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+      (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+      (uint32_t)ESP.getFreePsram(),
+      (uint32_t)ESP.getPsramSize(),
+      offline_queue_len,
+      getOfflineQueueCapacity()
+    };
+    mesh::formatCompanionMemoryDiagnostics(reply, reply_size, diagnostics);
+    return true;
+  }
+#endif
 
   if (handleCadCommand(command, reply, reply_size)) return true;
 
@@ -5979,6 +6009,10 @@ void MyMesh::handleTerminalCommand(char* command) {
                   FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE, FIRMWARE_BUILD_DATE);
   } else if (strcmp(command, "help") == 0) {
     terminalOutput().print("Commands:\r\n");
+    terminalOutput().print("  board\r\n");
+#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
+    terminalOutput().print("  memory\r\n");
+#endif
     terminalOutput().print("  get display.rotation\r\n");
     terminalOutput().print("  set display.rotation <0|90|180|270>\r\n");
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
@@ -6217,11 +6251,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
                  (unsigned long)_prefs.ble_pin);
       }
     }
-    return true;
-  }
-
-  if (strcmp(command, "board") == 0) {
-    snprintf(reply, reply_capacity, "%s", board.getManufacturerName());
     return true;
   }
 
