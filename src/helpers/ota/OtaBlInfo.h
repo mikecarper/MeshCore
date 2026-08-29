@@ -133,19 +133,68 @@ inline OtaBlCaps ota_bl_caps_scan_aligned(const uint8_t* bytes, size_t len,
   return c;
 }
 
-// Scan the bootloader flash region for the marker. Returns {present=false} if not found / non-nRF52.
-inline OtaBlCaps ota_bootloader_caps() {
+// Preview 5 declared its ABI-2 marker without an explicit alignment attribute.
+// GCC therefore emitted the naturally halfword-aligned const object at address
+// 2 mod 4 in the released RAK4631 bootloader. Keep the broader modern-marker
+// scan word-aligned, but recognize this one exact legacy shape at the other
+// valid uint16_t alignment. This does not relax the privileged self-update
+// scan below.
+inline OtaBlCaps ota_bl_legacy_app_caps_scan_halfword(const uint8_t* bytes,
+                                                       size_t len) {
+  OtaBlCaps c;
+  if (!bytes) return c;
+  for (size_t off = 2u; off + 16u <= len; off += 4u) {
+    const uint8_t* p = bytes + off;
+    if (p[0] != OTA_BL_MAGIC[0] || memcmp(p, OTA_BL_MAGIC, 8) != 0) continue;
+    if (p[8] == 2u && p[9] == 0u && p[10] == (1u << 2) && p[11] == 0u &&
+        p[12] == 0u && p[13] == 0u && p[14] == 0u && p[15] == 0u) {
+      c.present = true;
+      c.apply_abi = 2u;
+      c.codec_mask = (1u << 2);
+      return c;
+    }
+  }
+  return c;
+}
+
+inline OtaBlCaps ota_bl_app_caps_scan(const uint8_t* bytes, size_t len) {
+  const OtaBlCaps aligned = ota_bl_caps_scan_aligned(bytes, len, false);
+  if (aligned.present) return aligned;
+  return ota_bl_legacy_app_caps_scan_halfword(bytes, len);
+}
+
+inline OtaBlCaps ota_bl_update_caps_scan_aligned(const uint8_t* bytes, size_t len,
+                                                  uint8_t exact_storage_flags) {
+  if (exact_storage_flags == 0) return OtaBlCaps();
+  return ota_bl_caps_scan_aligned(bytes, len, true, exact_storage_flags);
+}
+
+// Scan the bootloader flash region for ordinary application-update capabilities.
+// This deliberately accepts both the legacy ABI-2 marker (codec 2, no storage
+// flags) and the newer ABI-3 marker. Compiling bootloader self-update support
+// into the application must not make an otherwise compatible older bootloader
+// disappear from the ordinary application-OTA path.
+inline OtaBlCaps ota_bootloader_app_caps() {
 #if defined(NRF52_PLATFORM)
   const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
   const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
-  return ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo),
-#if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
-    defined(OTA_SD_BOOTLOADER_UPDATE)
-                                  true, ota_bootloader_update_storage_flags()
+  return ota_bl_app_caps_scan(lo, (size_t)(hi - lo));
 #else
-                                  false
+  return OtaBlCaps();
 #endif
-                                  );
+}
+
+// Scan the same region using the stricter, fail-closed rules required before
+// replacing the bootloader itself. Legacy bootloaders remain valid for normal
+// application deltas, but can never enter this privileged path.
+inline OtaBlCaps ota_bootloader_update_caps() {
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+     defined(OTA_SD_BOOTLOADER_UPDATE))
+  const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
+  const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
+  return ota_bl_update_caps_scan_aligned(
+      lo, (size_t)(hi - lo), ota_bootloader_update_storage_flags());
 #else
   return OtaBlCaps();
 #endif
@@ -153,8 +202,12 @@ inline OtaBlCaps ota_bootloader_caps() {
 
 // True if this device's bootloader can apply a .mota of the given format_ver + codec_id.
 inline bool ota_bootloader_can_apply(uint8_t format_ver, uint8_t codec_id) {
-  OtaBlCaps c = ota_bootloader_caps();
+  OtaBlCaps c = ota_bootloader_app_caps();
   return c.present && c.apply_abi >= format_ver && (c.codec_mask & (1u << codec_id)) != 0;
+}
+
+inline bool ota_bootloader_supports_expanded_stage(const OtaBlCaps& c) {
+  return c.present && (c.storage_flags & OTA_BL_STORAGE_STAGE_CEILING) != 0;
 }
 
 #if defined(NRF52_PLATFORM)
@@ -163,22 +216,15 @@ inline bool ota_bootloader_can_apply(uint8_t format_ver, uint8_t codec_id) {
 // the legacy 0xD4000 ceiling. Packages sized for the expanded window still require the newer bootloader.
 inline uint32_t ota_nrf52_effective_stage_ceiling(const OtaBlCaps& c) {
   const uint32_t desired = mota_nrf52_layout_stage_ceiling();
-#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
-  if (desired != MOTA_NRF52_STAGE_CEILING_EXPANDED ||
-      !ota_bootloader_self_update_caps_valid(c))
-    return MOTA_NRF52_STAGE_CEILING_LEGACY;
-  return desired;
-#else
   if (desired == MOTA_NRF52_STAGE_CEILING_EXPANDED) {
-    if (!c.present || !(c.storage_flags & OTA_BL_STORAGE_STAGE_CEILING))
+    if (!ota_bootloader_supports_expanded_stage(c))
       return MOTA_NRF52_STAGE_CEILING_LEGACY;
   }
   return desired;
-#endif
 }
 
 inline uint32_t ota_nrf52_effective_stage_ceiling() {
-  return ota_nrf52_effective_stage_ceiling(ota_bootloader_caps());
+  return ota_nrf52_effective_stage_ceiling(ota_bootloader_app_caps());
 }
 #endif
 

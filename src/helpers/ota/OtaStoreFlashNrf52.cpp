@@ -41,7 +41,7 @@ bool OtaStoreFlashNrf52::plan_layout(bool is_full, uint32_t image_size,
   const uint64_t total64 = (uint64_t)payload_off + payload_size + 5u;
   if (!is_full || image_size != 40u * 1024u || payload_size != 40u * 1024u ||
       payload_off != 365u || total64 != MOTA_NRF52_BOOT_CONTAINER_SIZE ||
-      !ota_bootloader_self_update_caps_valid(ota_bootloader_caps()))
+      !ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()))
     return false;
 
   // This is the release-blocking no-EndF gate: package kind is known before
@@ -279,7 +279,8 @@ bool OtaStoreFlashNrf52::reopen() {
     if (bootloader) {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
       SelfFwInfo fi;
-      if (!ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
+      if (!ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()) ||
+          !ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
           !mota_nrf52_shared_boot_stage_plan(
               total, app_base, true, app_base + fi.image_len, want) || want != start)
         continue;

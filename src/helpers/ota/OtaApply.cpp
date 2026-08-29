@@ -528,7 +528,7 @@ static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
   // 0) THIS device's bootloader must be able to apply this .mota - otherwise staging + approving + rebooting
   //    just bounces back unchanged (a legacy/stock/older-OTAFIX bootloader). Refuse here, before any reboot.
   {
-    OtaBlCaps bl = ota_bootloader_caps();
+    OtaBlCaps bl = ota_bootloader_app_caps();
     if (!bl.present) { strcpy(msg, "this bootloader has no OTA-apply support - update the bootloader first"); return false; }
     if (bl.apply_abi < m.format_ver || !(bl.codec_mask & (1u << m.codec_id))) {
       snprintf(msg, 159, "bootloader too old to apply this update (bl abi=%u codecs=0x%x; need fmt>=%u codec=%u) - update the bootloader",
@@ -699,7 +699,7 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
   memcpy(st.image_hash, m.image_hash, sizeof(st.image_hash));
   st.manifest_ok = true;
 
-  OtaBlCaps bl = ota_bootloader_caps();
+  OtaBlCaps bl = ota_bootloader_app_caps();
   if (!bl.present || !(bl.storage_flags & storage_flag)) {
     snprintf(msg, NRF52_APPLY_MSG_CAP,
              "this bootloader has no %s OTA support - update the bootloader first", storage_name);
@@ -860,7 +860,7 @@ static bool ota_prepare_bootloader_update_external(Store& store,
     case OTA_BOOT_CONFIRM_IMAGE_HASH: strcpy(msg, "bootloader image-hash confirmation mismatch"); return false;
   }
 
-  const OtaBlCaps current_caps = ota_bootloader_caps();
+  const OtaBlCaps current_caps = ota_bootloader_update_caps();
   if (!ota_bootloader_self_update_caps_valid(current_caps)) {
     snprintf(msg, CAP, "installed bootloader cannot safely self-update from %s", storage_name);
     return false;
@@ -1018,7 +1018,7 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
     case OTA_BOOT_CONFIRM_IMAGE_HASH: strcpy(msg, "bootloader image-hash confirmation mismatch"); return false;
   }
 
-  const OtaBlCaps current_caps = ota_bootloader_caps();
+  const OtaBlCaps current_caps = ota_bootloader_update_caps();
   if (!ota_bootloader_self_update_caps_valid(current_caps) ||
       current_caps.storage_flags != (OTA_BL_STORAGE_STAGE_CEILING |
                                      OTA_BL_STORAGE_BOOT_UPDATE)) {

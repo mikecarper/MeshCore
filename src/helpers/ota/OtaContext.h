@@ -296,9 +296,18 @@ struct OtaContext {
   // ONCE (the scan is ~40 KB) and cached in RAM. On other platforms present=false (apply is in-app).
   OtaBlCaps _bl_caps;
   bool      _bl_caps_read = false;
-  const OtaBlCaps& bootloaderCaps() {
-    if (!_bl_caps_read) { _bl_caps = ota_bootloader_caps(); _bl_caps_read = true; }
+  const OtaBlCaps& bootloaderAppCaps() {
+    if (!_bl_caps_read) { _bl_caps = ota_bootloader_app_caps(); _bl_caps_read = true; }
     return _bl_caps;
+  }
+  OtaBlCaps _bl_update_caps;
+  bool      _bl_update_caps_read = false;
+  const OtaBlCaps& bootloaderUpdateCaps() {
+    if (!_bl_update_caps_read) {
+      _bl_update_caps = ota_bootloader_update_caps();
+      _bl_update_caps_read = true;
+    }
+    return _bl_update_caps;
   }
   OtaBootloaderIdentity _bl_identity;
   bool _bl_identity_read = false;

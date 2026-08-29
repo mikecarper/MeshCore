@@ -5,7 +5,7 @@
 #include "OtaSelf.h"
 #include "OtaTargets.h"   // ota_target_env_name(): human-readable name for a target_id (no string on the wire)
 #if defined(NRF52_PLATFORM)
-  #include "OtaBlInfo.h"  // ota_bootloader_caps(): can this device's bootloader apply a .mota?
+  #include "OtaBlInfo.h"  // installed bootloader application/update capability views
 #endif
 #include "Utils.h"
 #include <stdio.h>
@@ -240,7 +240,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
     // blrc = the bootloader's last apply code (diagnostic; 0xB8=success, see ota_delta.c).
-    const OtaBlCaps& bl = c.bootloaderCaps();
+    const OtaBlCaps& bl = c.bootloaderAppCaps();
 #if defined(OTA_QSPI_STORE)
     const char* bl_state = !bl.present ? "NONE" :
                            (bl.storage_flags & OTA_BL_STORAGE_QSPI) ? "QSPI" : "NO-QSPI";
@@ -333,7 +333,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     const uint8_t* cur = (fs != OtaManager::IDLE) ? c.manager.fetchManifestId() : nullptr;
     uint32_t myt = c.manager.target();   // effective target (EndF identity if present, else build flag)
 #if defined(NRF52_PLATFORM)
-    const OtaBlCaps& list_bl = c.bootloaderCaps();
+    const OtaBlCaps& list_bl = c.bootloaderAppCaps();
+#if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
+    defined(OTA_SD_BOOTLOADER_UPDATE)
+    const OtaBlCaps& list_bl_update = c.bootloaderUpdateCaps();
+#endif
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
     !defined(OTA_QSPI_STORE)
@@ -382,7 +386,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
                       h->target_id == ota_bootloader_target_id(bid) &&
-                      ota_bootloader_self_update_caps_valid(list_bl);
+                      ota_bootloader_self_update_caps_valid(list_bl_update);
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
         installable = installable && list_sd_headroom;
 #endif
@@ -517,7 +521,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
-        const OtaBlCaps& bl = c.bootloaderCaps();
+        const OtaBlCaps& bl = c.bootloaderUpdateCaps();
         if (selflags != (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) ||
             selcodec != CODEC_FULL) {
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
@@ -555,7 +559,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         return true;
       }
 #if defined(NRF52_PLATFORM)
-      const OtaBlCaps& bl = c.bootloaderCaps();
+      const OtaBlCaps& bl = selboot ? c.bootloaderUpdateCaps()
+                                    : c.bootloaderAppCaps();
       if (!bl.present) {
         strcpy(reply, "ERR bootloader has no mOTA apply support; update it over USB first");
         return true;
@@ -692,7 +697,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     int n = snprintf(reply, 160, "self body=%u image=%u base_hash=%s", (unsigned)fi.body_len, (unsigned)fi.image_len, hx);
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can install this store.
-    const OtaBlCaps& bl = c.bootloaderCaps();   // cached (flash scanned once)
+    const OtaBlCaps& bl = c.bootloaderAppCaps();   // cached (flash scanned once)
 #if defined(OTA_QSPI_STORE)
     uint32_t qspi_capacity = c.fetch_store.capacity();
     n += snprintf(reply + n, 160 - n, " | QSPI store:%s%uK",
@@ -758,10 +763,14 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))
     const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
-    const OtaBlCaps& bl = c.bootloaderCaps();
+    const OtaBlCaps& bl = c.bootloaderUpdateCaps();
     if (*rest == 0 || strcmp(rest, "status") == 0) {
       if (!bid.present || !bid.crc_ok) {
         strcpy(reply, "Bootloader update unavailable: installed embedded manifest/CRC is invalid");
+        return true;
+      }
+      if (!ota_bootloader_self_update_caps_valid(bl)) {
+        strcpy(reply, "Bootloader update unavailable: installed bootloader supports application OTA only");
         return true;
       }
       MotaManifest staged;

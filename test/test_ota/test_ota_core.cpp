@@ -655,6 +655,64 @@ TEST(OtaBootPackage, CapabilityScannerRejectsAnOtherwiseValidUnalignedMarker) {
   EXPECT_FALSE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
 }
 
+TEST(OtaBootPackage, LegacyAndCurrentBootloadersHaveSeparateCapabilityViews) {
+  const uint8_t internal_profile = OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE;
+  const uint8_t legacy_marker[16] = {
+      'M','O','T','A','B','L','D','R', 2,0, 4,0, 0,0,0,0};
+  const uint8_t current_marker[16] = {
+      'M','O','T','A','B','L','D','R', 3,0, 5,0,
+      internal_profile, 0,0,0};
+  uint8_t image[64];
+
+  // The released OTAFIX Preview 5 marker is naturally halfword-aligned at
+  // address 2 mod 4. It can still install ABI-2, codec-2 application deltas,
+  // but cannot replace itself and must retain the legacy staging ceiling.
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 2, legacy_marker, sizeof(legacy_marker));
+  OtaBlCaps app = ota_bl_app_caps_scan(image, sizeof(image));
+  OtaBlCaps update = ota_bl_update_caps_scan_aligned(
+      image, sizeof(image), internal_profile);
+  ASSERT_TRUE(app.present);
+  EXPECT_EQ(app.apply_abi, 2u);
+  EXPECT_EQ(app.codec_mask, 1u << 2);
+  EXPECT_FALSE(update.present);
+  EXPECT_FALSE(ota_bootloader_supports_expanded_stage(app));
+
+  // Do not turn the compatibility exception into a bytewise magic scan.
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 1, legacy_marker, sizeof(legacy_marker));
+  EXPECT_FALSE(ota_bl_app_caps_scan(image, sizeof(image)).present);
+
+  // The current marker enables both views and advertises the expanded-stage
+  // handoff independently of the privileged self-update decision.
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 4, current_marker, sizeof(current_marker));
+  app = ota_bl_app_caps_scan(image, sizeof(image));
+  update = ota_bl_update_caps_scan_aligned(image, sizeof(image), internal_profile);
+  ASSERT_TRUE(app.present);
+  ASSERT_TRUE(update.present);
+  EXPECT_EQ(update.storage_flags, internal_profile);
+  EXPECT_TRUE(ota_bootloader_supports_expanded_stage(app));
+
+  // Ambiguous privileged markers fail closed only for self-update. Ordinary
+  // application OTA remains available through the unprivileged view.
+  memcpy(image + 24, current_marker, sizeof(current_marker));
+  app = ota_bl_app_caps_scan(image, sizeof(image));
+  update = ota_bl_update_caps_scan_aligned(image, sizeof(image), internal_profile);
+  EXPECT_TRUE(app.present);
+  EXPECT_FALSE(update.present);
+
+  // A valid marker for another storage profile is visible diagnostically but
+  // cannot authorize an internal-flash bootloader replacement.
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 4, current_marker, sizeof(current_marker));
+  image[4 + 12] = OTA_BL_PROFILE_QSPI_BOOT_UPDATE;
+  app = ota_bl_app_caps_scan(image, sizeof(image));
+  update = ota_bl_update_caps_scan_aligned(image, sizeof(image), internal_profile);
+  EXPECT_TRUE(app.present);
+  EXPECT_FALSE(update.present);
+}
+
 class FakeMotaSeederStream : public Stream {
 public:
   using Stream::write;
