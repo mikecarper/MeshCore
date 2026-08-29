@@ -732,6 +732,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-mqtt-observer-display-timeout-and-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set MQTT observer display timeout and flip
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -998,6 +1009,17 @@
     <span class="md-ellipsis">
       
         View or change this node's name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-independent-bluetooth-name-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the independent Bluetooth name (Companion)
       
     </span>
   </a>
@@ -3499,6 +3521,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-mqtt-observer-display-timeout-and-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set MQTT observer display timeout and flip
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3765,6 +3798,17 @@
     <span class="md-ellipsis">
       
         View or change this node's name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-independent-bluetooth-name-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the independent Bluetooth name (Companion)
       
     </span>
   </a>
@@ -5332,10 +5376,11 @@ WiFi card. Every ESP32 WiFi Companion with WebConfig exposes the standalone
 families through its USB text terminal. Full Companion exposes the same
 role-specific terminal on TCP port 5002. Credential writes reply before
 restarting the WiFi station, so a TCP client should expect to reconnect at the
-new address; USB password input is masked. Binary
-Companion clients can use command bytes
-<code>0x7C</code> and <code>0x7D</code> over USB, BLE, or TCP port 5000 without the terminal-start
-token. WiFi-only Companions accept all three modes. Full Companion rejects
+new address; USB password input is masked. Binary Companion clients can use
+USB, BLE, or TCP port 5000 without the terminal-start token: send command
+<code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) followed by the same CLI text, such as
+<code>get wifi.powersave</code> or <code>set wifi.powersave min</code>. WiFi-only Companions accept
+all three modes. Full Companion rejects
 <code>none</code> because its simultaneous BLE transport requires modem sleep. Companion
 device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent. On an ESP32 Full
 Companion whose primary mesh radio is ESP-NOW, <code>max</code> is also unavailable: a
@@ -5779,6 +5824,31 @@ set display.rotation 270
 <p>The values are clockwise degrees. <code>0</code> clears the override and restores the
 board's compiled default. Unsupported display drivers return an error.</p>
 <hr />
+<h2 id="set-mqtt-observer-display-timeout-and-flip">Set MQTT observer display timeout and flip</h2>
+<p>MQTT observer builds with a display support a persisted inactivity timeout:</p>
+<pre><code class="language-text">get display.timeout
+set display.timeout 0
+set display.timeout 60
+</code></pre>
+<p>The value is seconds. <code>0</code> keeps the display on; <code>1</code> through <code>3600</code> blanks it
+after that much inactivity. The default is <code>60</code>. A change applies immediately
+and restarts the countdown. On the Heltec V4 R8 Expansion Kit V2 observer, a
+panel tap or USER-button click can also blank or wake the display.</p>
+<p>Supported observer displays, including the R8 OLED and ST7789 panels, can also
+be turned 180 degrees relative to their compiled orientation:</p>
+<pre><code class="language-text">get display.flip
+set display.flip off
+set display.flip on
+</code></pre>
+<p><code>0</code> and <code>1</code> are accepted aliases for <code>off</code> and <code>on</code>. This is intentionally
+different from Full Companion <code>display.rotation</code>: observer <code>display.flip</code> is a
+relative 180-degree mounting choice and cannot switch between portrait and
+landscape. The value is harmless on an observer display driver that does not
+support flipping.</p>
+<p>Both settings survive reboot and firmware updates that preserve the filesystem;
+erasing flash restores the <code>60</code>/<code>off</code> defaults. The boot log reports the saved
+flip state on display-enabled observer builds.</p>
+<hr />
 <h2 id="logging">Logging</h2>
 <p>Builds compiled with <code>MESH_PACKET_LOGGING</code> emit one <code>RAW:</code> line for every
 received radio frame. Serial output uses backpressure: if a connected host
@@ -6152,6 +6222,21 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <p><strong>Set by build flag:</strong> <code>ADVERT_NAME</code></p>
 <p><strong>Default:</strong> Varies by board</p>
 <p><strong>Note:</strong> Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.</p>
+<hr />
+<h4 id="view-or-change-the-independent-bluetooth-name-companion">View or change the independent Bluetooth name (Companion)</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get bluetooth.name</code></li>
+<li><code>set bluetooth.name &lt;name|default&gt;</code></li>
+</ul>
+<p><code>get ble.name</code> and <code>set ble.name ...</code> are accepted aliases. This command is
+specific to Companion firmware. The default is <code>MeshCore-&lt;advert name&gt;</code>;
+<code>default</code> (or <code>clear</code>) removes a custom override. Names are limited to 31 valid
+UTF-8 bytes without control characters and take effect after reboot.</p>
+<p>A binary Companion client should carry the same text in command <code>0x42</code>
+(<code>CMD_RUN_CLI_COMMAND</code>), which works over USB, BLE, or TCP without entering USB
+terminal mode. See <a href="../companion_protocol/">Companion radio binary protocol</a> for
+the frame and reply format.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-latitude">View or change this node's latitude</h4>
 <p><strong>Usage:</strong>

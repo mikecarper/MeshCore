@@ -2878,24 +2878,9 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <td>Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source.</td>
 </tr>
 <tr>
-<td><code>0x78</code> / <code>0x79</code></td>
-<td><code>CMD_GET_RADIO_FEM_RXGAIN</code> / <code>CMD_SET_RADIO_FEM_RXGAIN</code></td>
-<td>Fork extension: read or set FEM receive gain.</td>
-</tr>
-<tr>
-<td><code>0x7A</code> / <code>0x7B</code></td>
-<td><code>CMD_GET_RADIO_RXGAIN</code> / <code>CMD_SET_RADIO_RXGAIN</code></td>
-<td>Fork extension: read or set the radio chip's boosted receive-gain mode.</td>
-</tr>
-<tr>
-<td><code>0x7C</code> / <code>0x7D</code></td>
-<td><code>CMD_GET_WIFI_POWER_SAVE</code> / <code>CMD_SET_WIFI_POWER_SAVE</code></td>
-<td>Fork extension: read or set ESP32 Companion WiFi modem sleep.</td>
-</tr>
-<tr>
-<td><code>0x7E</code> / <code>0x7F</code></td>
-<td><code>CMD_GET_BLUETOOTH_NAME</code> / <code>CMD_SET_BLUETOOTH_NAME</code></td>
-<td>Fork extension: read or set the independent Bluetooth device name.</td>
+<td><code>0x78</code>-<code>0x7F</code></td>
+<td>Deprecated hardware-setting aliases</td>
+<td>Receive-only compatibility for clients shipped before command <code>0x42</code> became the canonical settings path.</td>
 </tr>
 </tbody>
 </table>
@@ -2906,37 +2891,95 @@ NUL. The device returns <code>RESP_CODE_CLI_REPLY</code> (<code>0x1D</code>) fol
 text. This is separate from sending a remote on-air CLI command with
 <code>CMD_SEND_TXT_MSG</code> and <code>TXT_TYPE_CLI_COMMAND</code>. The body must contain at least
 one byte and must not contain an embedded NUL. An unknown command is returned
-as the normal CLI reply text <code>Unknown command</code>, not as an error frame.</p>
-<p>The fork-specific hardware-setting commands occupy the host-to-device range
-<code>0x78</code>-<code>0x7F</code>, the highest currently unused block below the push-frame bit.
-Command IDs must stay below <code>0x80</code>; IDs with bit 7 set identify asynchronous
-device-to-host push frames. These commands do not change any existing frame
-layout. Clients should probe the command they need and treat
-<code>ERR_CODE_UNSUPPORTED_CMD</code> as feature absence.</p>
+as the normal CLI reply text <code>Unknown command</code>, not as an error frame. Clients
+may prefix the CLI text with any two-character correlation tag and <code>|</code> (for
+example, <code>A7|get radio.rxgain</code>); the reply preserves that prefix.</p>
 <p>Firmware from this fork predating the upstream <code>0x42</code> allocation used
 <code>0x42</code>-<code>0x49</code> for these eight settings. This firmware accepts those values as
-deprecated aliases so existing clients continue to work. A one-byte <code>0x42</code>
-frame is the legacy FEM-gain GET; <code>0x42</code> followed by text is the official
-<code>CMD_RUN_CLI_COMMAND</code>. New clients should use <code>0x78</code>-<code>0x7F</code> (or send the
-equivalent text through <code>0x42</code>) because future upstream commands may reuse the
-remaining legacy IDs.</p>
-<p>Both gain-command pairs can be used over the normal binary Companion
-connection; USB does not need to enter terminal mode. Inside the transport's
-normal Companion frame, send a GET command as its single command byte. Send a
-SET command followed by one byte (<code>0</code> for off, <code>1</code> for on). A GET reply is
-<code>RESP_CODE_OK</code> followed by the saved state; a successful SET reply is
-<code>RESP_CODE_OK</code>. Invalid states return <code>ERR_CODE_ILLEGAL_ARG</code>. A temporarily
-busy radio returns <code>ERR_CODE_BAD_STATE</code>; unsupported boosted gain returns
-<code>ERR_CODE_UNSUPPORTED_CMD</code>. The FEM pair also returns
-<code>ERR_CODE_UNSUPPORTED_CMD</code> when the board cannot control its external LNA. Raw
-unframed text such as <code>set radio.rxgain off</code> still requires the USB terminal
-start token; the same text may instead be carried as a framed <code>0x42</code> command
-over USB, BLE, or TCP.</p>
-<p>The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
-normal binary USB, BLE, or TCP port 5000 transport. <code>CMD_GET_WIFI_POWER_SAVE</code>
-has no body and replies with <code>RESP_CODE_OK</code> followed by the effective mode byte.
-<code>CMD_SET_WIFI_POWER_SAVE</code> is followed by that mode byte and replies with
-<code>RESP_CODE_OK</code> after saving it:</p>
+deprecated inbound aliases so existing clients continue to work. A one-byte
+<code>0x42</code> frame is the legacy FEM-gain GET; <code>0x42</code> followed by text is the official
+<code>CMD_RUN_CLI_COMMAND</code>. New clients should use <code>CMD_RUN_CLI_COMMAND</code> for all of
+these settings, rather than allocating additional command bytes. For example,
+send <code>0x42</code> followed by <code>get radio.rxgain</code> or <code>set radio.rxgain on</code>. The reply is
+<code>RESP_CODE_CLI_REPLY</code> followed by the normal CLI reply text.</p>
+<p>Two deprecated binary alias blocks remain receive-only for compatibility:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th style="text-align: right;">Original alias</th>
+<th style="text-align: right;">Later fork alias</th>
+<th>GET body/reply</th>
+<th>SET body/reply</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FEM receive gain</td>
+<td style="text-align: right;"><code>0x42</code> / <code>0x43</code></td>
+<td style="text-align: right;"><code>0x78</code> / <code>0x79</code></td>
+<td>No body; <code>OK, state</code></td>
+<td>One byte <code>0</code>/<code>1</code>; <code>OK</code></td>
+</tr>
+<tr>
+<td>Radio receive gain</td>
+<td style="text-align: right;"><code>0x44</code> / <code>0x45</code></td>
+<td style="text-align: right;"><code>0x7A</code> / <code>0x7B</code></td>
+<td>No body; <code>OK, state</code></td>
+<td>One byte <code>0</code>/<code>1</code>; <code>OK</code></td>
+</tr>
+<tr>
+<td>WiFi power save</td>
+<td style="text-align: right;"><code>0x46</code> / <code>0x47</code></td>
+<td style="text-align: right;"><code>0x7C</code> / <code>0x7D</code></td>
+<td>No body; <code>OK, mode</code></td>
+<td>One mode byte <code>0</code>-<code>2</code>; <code>OK</code></td>
+</tr>
+<tr>
+<td>Bluetooth name</td>
+<td style="text-align: right;"><code>0x48</code> / <code>0x49</code></td>
+<td style="text-align: right;"><code>0x7E</code> / <code>0x7F</code></td>
+<td>No body; <code>OK, custom, name</code></td>
+<td>Zero to 31 UTF-8 bytes; <code>OK</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each pair lists GET then SET. Here <code>OK</code> is <code>RESP_CODE_OK</code>; the remaining reply
+bytes have the same meanings as the CLI settings below. A bare <code>0x42</code> is the
+old FEM GET, while <code>0x42</code> plus at least one text byte is
+<code>CMD_RUN_CLI_COMMAND</code>. New clients must use the framed CLI form; these aliases
+exist only so deployed clients do not break after a firmware update.</p>
+<p>The equivalent framed CLI commands are:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Commands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Radio receive gain</td>
+<td><code>get radio.rxgain</code>; <code>set radio.rxgain on|off</code></td>
+</tr>
+<tr>
+<td>FEM receive gain</td>
+<td><code>get radio.fem.rxgain</code>; <code>set radio.fem.rxgain on|off</code></td>
+</tr>
+<tr>
+<td>WiFi power save</td>
+<td><code>get wifi.powersave</code>; <code>set wifi.powersave none|min|max</code></td>
+</tr>
+<tr>
+<td>Bluetooth name</td>
+<td><code>get bluetooth.name</code>; <code>set bluetooth.name &lt;name|default&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>The framed form works over the normal binary USB, BLE, or TCP transport and
+does not need the USB terminal-start token. Unsupported settings return the
+same explanatory text as the local CLI.</p>
+<p>WiFi power-save modes are:</p>
 <table>
 <thead>
 <tr>
@@ -2959,28 +3002,15 @@ has no body and replies with <code>RESP_CODE_OK</code> followed by the effective
 </tr>
 </tbody>
 </table>
-<p>An out-of-range value returns <code>ERR_CODE_ILLEGAL_ARG</code>. A non-WiFi Companion
-returns <code>ERR_CODE_UNSUPPORTED_CMD</code>. Full Companion has Bluetooth enabled and
-therefore returns <code>ERR_CODE_BAD_STATE</code> for <code>none</code>, because ESP32 WiFi/Bluetooth
-coexistence requires modem sleep. On an ESP32 Full Companion whose primary mesh
-radio is ESP-NOW, SET also returns <code>ERR_CODE_BAD_STATE</code> for <code>max</code> (value <code>2</code>): maximum
-modem sleep can make the station miss ESP-NOW broadcasts, which the access point
-cannot buffer. If an older image already saved <code>max</code>, GET reports <code>min</code> (value
-<code>0</code>) and the running policy uses <code>min</code>. A storage failure also returns
-<code>ERR_CODE_BAD_STATE</code>. If an otherwise permitted saved mode cannot be applied to
-the active WiFi driver, SET still returns <code>RESP_CODE_OK</code> and the mode is applied
-on the next connection. Device <code>powersaving</code> does not overwrite this setting.</p>
-<p>The Bluetooth-name pair is available on Companion builds regardless of the
-currently selected transport, so a host can configure a BLE-capable image over
-USB or TCP before rebooting into it. <code>CMD_GET_BLUETOOTH_NAME</code> has no body and
-replies with <code>RESP_CODE_OK</code>, a one-byte mode (<code>0</code> for the default name, <code>1</code> for
-a custom name), then the effective UTF-8 device name without a terminator.
-<code>CMD_SET_BLUETOOTH_NAME</code> is followed by zero to 31 UTF-8 bytes. A non-empty
-body stores that exact complete Bluetooth name; a zero-length body clears the
-override and restores <code>MeshCore-&lt;advert name&gt;</code>. A successful SET replies with
-<code>RESP_CODE_OK</code>, and the new label takes effect after reboot. Embedded NULs,
-control characters, malformed UTF-8, or oversized values return
-<code>ERR_CODE_ILLEGAL_ARG</code>; a storage failure returns <code>ERR_CODE_BAD_STATE</code>.</p>
+<p>Full Companion rejects WiFi mode <code>none</code> because simultaneous BLE transport
+requires modem sleep. A Full Companion using ESP-NOW as its primary mesh radio
+also rejects <code>max</code>, because maximum modem sleep can miss broadcasts that the
+access point cannot buffer. If an older image saved <code>max</code>, the effective mode
+is capped to and reported as <code>min</code>. Device <code>powersaving</code> remains independent.</p>
+<p>The Bluetooth name can be configured over USB, BLE, or TCP. Use
+<code>set bluetooth.name default</code> to restore <code>MeshCore-&lt;advert name&gt;</code>; an empty CLI
+value is rejected. (<code>clear</code> is also accepted as an alias for <code>default</code>.) A
+custom name is limited to 31 valid UTF-8 bytes and takes effect after reboot.</p>
 <h3 id="bluetooth-lora-mota-source">Bluetooth LoRa mOTA source</h3>
 <p>Protocol v14 lets a phone use an nRF52 Full Companion as the source for a
 remote repeater update without a USB computer. The normal Companion service

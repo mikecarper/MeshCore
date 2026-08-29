@@ -373,6 +373,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#companion-framed-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion framed CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#nrf52" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1415,6 +1426,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#companion-framed-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion framed CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#nrf52" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1647,6 +1669,38 @@ own interface, so those build roles are not represented here.</p>
 <p>Runtime state can still make an included command fail. Examples include no GPS
 fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <code>.mota</code> apply support.</p>
+<h2 id="companion-framed-cli">Companion framed CLI</h2>
+<p>Companion builds are not represented by the role/profile matrices below. Their
+local terminal and command <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) expose these settings
+over the normal binary USB, BLE, or TCP connection:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Availability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../cli_commands/#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141"><code>get/set radio.rxgain</code></a></td>
+<td>Companion with a supported radio</td>
+</tr>
+<tr>
+<td><a href="../cli_commands/#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards"><code>get/set radio.fem.rxgain</code></a></td>
+<td>Companion on a board with controllable LoRa FEM LNA</td>
+</tr>
+<tr>
+<td><a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server"><code>get/set wifi.powersave</code></a></td>
+<td>ESP32 WiFi Companion; active transport constraints still apply</td>
+</tr>
+<tr>
+<td><a href="../cli_commands/#view-or-change-the-independent-bluetooth-name-companion"><code>get/set bluetooth.name</code></a></td>
+<td>Companion firmware</td>
+</tr>
+</tbody>
+</table>
+<p>Deprecated binary aliases remain receive-only for older clients; new clients
+should use command <code>0x42</code>. See <a href="../companion_protocol/">Companion radio binary protocol</a>.</p>
 <h2 id="nrf52">nRF52</h2>
 <table>
 <thead>
@@ -3056,6 +3110,16 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <td>Serial</td>
 <td>Serial</td>
 <td>Serial</td>
+</tr>
+<tr>
+<td>Display</td>
+<td><a href="../cli_commands/#set-mqtt-observer-display-timeout-and-flip"><code>get/set display.timeout</code>; <code>get/set display.flip</code></a></td>
+<td>MQTT observer with display; flip needs a supported driver</td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Feature</td>
+<td>No</td>
 </tr>
 <tr>
 <td>Information</td>
