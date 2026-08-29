@@ -755,6 +755,13 @@ TEST(WiFiChannelPolicy, FallsBackOnlyWhenTheStoredChannelIsInvalid) {
   EXPECT_EQ(1, mesh::wifi::validEspNowChannelOrDefault(14, 1));
 }
 
+TEST(WiFiChannelPolicy, RestoresOnlyWhenTheRadioActuallyMoved) {
+  EXPECT_FALSE(mesh::wifi::espNowChannelRestoreRequired(1, 1));
+  EXPECT_FALSE(mesh::wifi::espNowChannelRestoreRequired(6, 6));
+  EXPECT_TRUE(mesh::wifi::espNowChannelRestoreRequired(1, 6));
+  EXPECT_TRUE(mesh::wifi::espNowChannelRestoreRequired(13, 1));
+}
+
 TEST(CLICommandUtils, ObserverSettingsNeverStartADisabledBridge) {
   int calls = 0;
   EXPECT_TRUE(mesh::cli::restartBridgeIfEnabled(false, [&calls]() {

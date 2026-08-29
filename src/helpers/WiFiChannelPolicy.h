@@ -42,5 +42,13 @@ inline uint8_t validEspNowChannelOrDefault(uint8_t stored,
   return isValidEspNowChannel(stored) ? stored : fallback;
 }
 
+// Rewriting an ESP32's current WiFi channel is not a harmless no-op. The
+// driver briefly reconfigures the shared RF path, which can interrupt SoftAP
+// beacons and ESP-NOW receive when a caller repeats the write from a fast main
+// loop. Only request a restore when the primary channel actually moved.
+inline bool espNowChannelRestoreRequired(uint8_t current, uint8_t target) {
+  return current != target;
+}
+
 } // namespace wifi
 } // namespace mesh

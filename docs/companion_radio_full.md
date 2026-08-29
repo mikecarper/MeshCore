@@ -70,7 +70,9 @@ backward-compatible default is the distinct wrapped format.
 WiFi power saving cannot put infrastructure WiFi and ESP-NOW on different
 channels. On these two primary-ESP-NOW Full targets, `max` is unavailable
 because maximum modem sleep can make the station miss ESP-NOW broadcasts; use
-`min` for WiFi/BLE/ESP-NOW coexistence.
+`min` for WiFi/BLE/ESP-NOW coexistence. The firmware also holds the ESP-IDF RF
+wake reference for the primary mesh radio, so the ESP-NOW receiver remains
+continuous even though the reported coexistence setting is `min`.
 
 List the available targets:
 

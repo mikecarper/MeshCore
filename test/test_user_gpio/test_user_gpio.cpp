@@ -4,6 +4,7 @@
 #define P_LORA_HF_PA_POWER 3
 #define ST7789_CS 16
 #define ST7789_RS 15
+#define USER_GPIO_RESERVED_PINS 40, 41
 
 #include <Arduino.h>
 #include <helpers/UserGpio.h>
@@ -50,6 +51,12 @@ TEST(UserGpioPinPolicyTest, ReservesRadioPaAndSt7789ControlAliases) {
   EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(ST7789_CS));
   EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(ST7789_RS));
   EXPECT_FALSE(UserGpioPinPolicy::isFirmwareReserved(22));
+}
+
+TEST(UserGpioPinPolicyTest, ReservesBoardSpecificDirectIoPins) {
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(40));
+  EXPECT_TRUE(UserGpioPinPolicy::isFirmwareReserved(41));
+  EXPECT_FALSE(UserGpioPinPolicy::isFirmwareReserved(39));
 }
 
 TEST_F(UserGpioTest, ListsOnlyBoardApprovedPins) {

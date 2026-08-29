@@ -76,13 +76,10 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
 // follow their existing disconnected/retry path.
 inline bool enforceStationChannel() {
   if (!kPrimaryEspNowRadio) return true;
-  if (WiFi.status() != WL_CONNECTED) {
-    // A disconnect and scan/association completion are asynchronous. Keep
-    // reasserting the boot channel so a first ESP_ERR_WIFI_STATE cannot leave
-    // the mesh parked on the router's former channel.
-    restoreEspNowChannel();
-    return true;
-  }
+  // beginStation(), disconnect handling, and setup-AP startup already restore
+  // the selected channel. Avoid polling the driver and attempting a channel
+  // write from every WebConfig and Companion loop while it is disconnected.
+  if (WiFi.status() != WL_CONNECTED) return true;
   if (WiFi.channel() == activeEspNowChannel()) return true;
   WiFi.disconnect(false, false);
   restoreEspNowChannel();

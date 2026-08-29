@@ -774,8 +774,8 @@ bool WebConfigServer::startSetupMode(char reply[]) {
       // LR bit set. The driver then reports a healthy SoftAP, but ordinary
       // phones and laptops cannot discover its beacon. A WiFi companion must
       // advertise using the interoperable 2.4 GHz protocol set.
-      const esp_err_t ap_protocol_result = esp_wifi_set_protocol(
-          WIFI_IF_AP, mesh::wifi::kProtocolMask);
+      const esp_err_t ap_protocol_result =
+          mesh::wifi::applyAccessPointProtocolMask();
       const esp_err_t sta_protocol_result = esp_wifi_set_protocol(
           WIFI_IF_STA, mesh::wifi::kProtocolMask);
       if (ap_protocol_result == ESP_OK && sta_protocol_result == ESP_OK) break;
@@ -812,7 +812,10 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   _initial_setup = _wifi_ssid[0] == 0 && node.admin_password[0] != 0;
   _setup_started_at = millis();
   _last_activity = _setup_started_at;
-  WiFi.scanNetworks(true);  // pre-populate the SSID picker
+  // A primary ESP-NOW radio cannot leave its selected channel while scanning.
+  // Ordinary WiFi targets retain the zero-channel all-band scan.
+  WiFi.scanNetworks(true, false, false, 300,
+                    mesh::wifi::stationScanChannel());
 
   sprintf(reply, "WebConfig AP started: join '%s' then open http://%s/", _ap_ssid, ip.toString().c_str());
   return true;
@@ -2329,7 +2332,8 @@ void WebConfigServer::handleScan(AsyncWebServerRequest* req) {
     n = WIFI_SCAN_FAILED;
   }
   if (n == WIFI_SCAN_FAILED) {
-    WiFi.scanNetworks(true);
+    WiFi.scanNetworks(true, false, false, 300,
+                      mesh::wifi::stationScanChannel());
     req->send(200, "application/json", "{\"state\":\"scanning\"}");
     return;
   }

@@ -40,6 +40,11 @@ static constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B
     | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
 #endif
 
+// LR is private to ESP-NOW on the station interface. A setup SoftAP must keep
+// an ordinary b/g/n protocol bitmap so phones and laptops can discover it.
+static constexpr uint8_t kAccessPointProtocolMask = WIFI_PROTOCOL_11B
+    | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
 struct EspNowBootChannelState {
   bool loaded;
@@ -98,6 +103,10 @@ inline esp_err_t applyProtocolMask(wifi_interface_t interface_id) {
   return esp_wifi_set_protocol(interface_id, kProtocolMask);
 }
 
+inline esp_err_t applyAccessPointProtocolMask() {
+  return esp_wifi_set_protocol(WIFI_IF_AP, kAccessPointProtocolMask);
+}
+
 // An ESP-NOW radio and an associated station cannot occupy different channels.
 // Full Companion therefore keeps both its setup AP and any infrastructure-WiFi
 // association on the mesh channel. Passing zero on ordinary targets preserves
@@ -118,12 +127,18 @@ inline uint8_t stationScanChannel() {
 
 inline esp_err_t restoreEspNowChannel() {
   if (!kKeepEspNowRadioRunning) return ESP_OK;
+  const uint8_t target = activeEspNowChannel();
+  uint8_t current = 0;
+  wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+  if (esp_wifi_get_channel(&current, &secondary) == ESP_OK
+      && !espNowChannelRestoreRequired(current, target)) {
+    return ESP_OK;
+  }
   // Fail closed instead of silently moving to the build default. A failure can
   // be transient (scan/connect in progress), and changing the cached boot
   // channel here would split this node from peers which still use the selected
   // channel. Callers retry through their normal reconnect/tick paths.
-  return esp_wifi_set_channel(
-      activeEspNowChannel(), WIFI_SECOND_CHAN_NONE);
+  return esp_wifi_set_channel(target, WIFI_SECOND_CHAN_NONE);
 }
 
 } // namespace wifi

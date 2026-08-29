@@ -272,7 +272,10 @@ Companion whose primary mesh radio is ESP-NOW, `max` is also unavailable: a
 station using maximum modem sleep can miss ESP-NOW broadcasts, which the access
 point does not buffer for it. A previously saved `max` value is capped to and
 reported as `min`, and a new `max` selection is rejected. These
-WiFi/BLE/primary-ESP-NOW builds therefore use `min`.
+WiFi/BLE/primary-ESP-NOW builds therefore report `min`. The primary mesh radio
+also holds the ESP-IDF WiFi wake reference continuously so unsolicited ESP-NOW
+frames remain receivable; selecting `min` does not put that primary receiver to
+sleep.
 
 #### View or change the primary ESP-NOW/WiFi channel
 
@@ -299,7 +302,8 @@ this node, plus the configured router's 2.4 GHz radio, must use the same fixed
 channel. WiFi power saving does not allow the transports to use different
 channels. On an ESP32 Full build with primary ESP-NOW, `wifi.powersave max` is
 unavailable because maximum modem sleep can miss ESP-NOW broadcasts; use `min`
-for coexistence.
+for coexistence. The firmware keeps the primary ESP-NOW receiver awake while
+still using the `min` WiFi/Bluetooth coexistence policy.
 
 `espnow.channel` is the channel of the primary ESP-NOW mesh transport. It is
 separate from `bridge.channel`, which configures only an ESP-NOW bridge on a

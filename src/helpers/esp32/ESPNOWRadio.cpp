@@ -129,6 +129,19 @@ void ESPNOWRadio::init() {
     return;
   }
 
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  // Modem sleep is still required when BLE and infrastructure WiFi coexist,
+  // but unicast/broadcast ESP-NOW frames are not buffered by an access point.
+  // Hold the driver's documented wake reference for the lifetime of this
+  // primary mesh radio so receive stays continuous without disabling the
+  // WiFi/Bluetooth coexistence policy globally.
+  if (esp_wifi_force_wakeup_acquire() != ESP_OK) {
+    ESPNOW_DEBUG_PRINTLN("Error keeping primary ESP-NOW receive awake");
+    esp_now_deinit();
+    return;
+  }
+#endif
+
   esp_wifi_set_max_tx_power(80);  // should be 20dBm
 
   esp_now_register_send_cb(OnDataSent);

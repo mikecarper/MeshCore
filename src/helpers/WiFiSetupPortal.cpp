@@ -334,10 +334,7 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
   if (!WiFi.softAPConfig(SETUP_IP, SETUP_IP, SETUP_MASK)
       || !WiFi.softAP(impl->ap_name, nullptr,
                       mesh::wifi::accessPointChannel())
-      || esp_wifi_set_protocol(
-             WIFI_IF_AP,
-             mesh::wifi::kProtocolMask)
-             != ESP_OK
+      || mesh::wifi::applyAccessPointProtocolMask() != ESP_OK
       || esp_wifi_set_protocol(
              WIFI_IF_STA,
              mesh::wifi::kProtocolMask)
