@@ -261,10 +261,11 @@ WiFi card. Every ESP32 WiFi Companion with WebConfig exposes the standalone
 families through its USB text terminal. Full Companion exposes the same
 role-specific terminal on TCP port 5002. Credential writes reply before
 restarting the WiFi station, so a TCP client should expect to reconnect at the
-new address; USB password input is masked. Binary
-Companion clients can use command bytes
-`0x7C` and `0x7D` over USB, BLE, or TCP port 5000 without the terminal-start
-token. WiFi-only Companions accept all three modes. Full Companion rejects
+new address; USB password input is masked. Binary Companion clients can use
+USB, BLE, or TCP port 5000 without the terminal-start token: send command
+`0x42` (`CMD_RUN_CLI_COMMAND`) followed by the same CLI text, such as
+`get wifi.powersave` or `set wifi.powersave min`. WiFi-only Companions accept
+all three modes. Full Companion rejects
 `none` because its simultaneous BLE transport requires modem sleep. Companion
 device `powersaving` and LoRa `radio.rxps` remain independent. On an ESP32 Full
 Companion whose primary mesh radio is ESP-NOW, `max` is also unavailable: a

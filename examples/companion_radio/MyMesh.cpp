@@ -123,21 +123,10 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_SEND_RAW_PACKET           65
 #define CMD_RUN_CLI_COMMAND           66  // v14+
 
-// Fork-specific host-to-device commands use the highest currently unused
-// block below 0x80. Bit 7 is reserved by the transport for device-to-host
-// push frames, so command IDs must remain in the low half of the byte range.
-#define CMD_GET_RADIO_FEM_RXGAIN      0x78
-#define CMD_SET_RADIO_FEM_RXGAIN      0x79
-#define CMD_GET_RADIO_RXGAIN          0x7A
-#define CMD_SET_RADIO_RXGAIN          0x7B
-#define CMD_GET_WIFI_POWER_SAVE       0x7C
-#define CMD_SET_WIFI_POWER_SAVE       0x7D
-#define CMD_GET_BLUETOOTH_NAME        0x7E
-#define CMD_SET_BLUETOOTH_NAME        0x7F
-
 // Compatibility aliases used by this fork before upstream assigned 0x42 to
 // CMD_RUN_CLI_COMMAND. A one-byte 0x42 frame remains distinguishable from the
-// official command, whose frame always includes CLI text.
+// official command, whose frame always includes CLI text. New clients should
+// use CMD_RUN_CLI_COMMAND rather than allocating more one-byte command IDs.
 #define LEGACY_CMD_GET_RADIO_FEM_RXGAIN  0x42
 #define LEGACY_CMD_SET_RADIO_FEM_RXGAIN  0x43
 #define LEGACY_CMD_GET_RADIO_RXGAIN      0x44
@@ -4113,8 +4102,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
-  } else if (cmd_frame[0] == CMD_GET_RADIO_FEM_RXGAIN
-             || cmd_frame[0] == LEGACY_CMD_GET_RADIO_FEM_RXGAIN) {
+  } else if (cmd_frame[0] == LEGACY_CMD_GET_RADIO_FEM_RXGAIN) {
     if (len != 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (!board.canControlLoRaFemLna()) {
@@ -4125,8 +4113,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       memcpy(&out_frame[1], &value, 1);
       _serial->writeFrame(out_frame, 2);
     }
-  } else if (cmd_frame[0] == CMD_SET_RADIO_FEM_RXGAIN
-             || cmd_frame[0] == LEGACY_CMD_SET_RADIO_FEM_RXGAIN) {
+  } else if (cmd_frame[0] == LEGACY_CMD_SET_RADIO_FEM_RXGAIN) {
     uint8_t value = len >= 2 ? cmd_frame[1] : 0;
     if (len != 2) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -4141,8 +4128,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
-  } else if (cmd_frame[0] == CMD_GET_RADIO_RXGAIN
-             || cmd_frame[0] == LEGACY_CMD_GET_RADIO_RXGAIN) {
+  } else if (cmd_frame[0] == LEGACY_CMD_GET_RADIO_RXGAIN) {
     if (len != 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (!radio_driver.supportsRxBoostedGainMode()) {
@@ -4152,8 +4138,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       out_frame[1] = _prefs.rx_boosted_gain ? 1 : 0;
       _serial->writeFrame(out_frame, 2);
     }
-  } else if (cmd_frame[0] == CMD_SET_RADIO_RXGAIN
-             || cmd_frame[0] == LEGACY_CMD_SET_RADIO_RXGAIN) {
+  } else if (cmd_frame[0] == LEGACY_CMD_SET_RADIO_RXGAIN) {
     uint8_t value = len >= 2 ? cmd_frame[1] : 0;
     if (len != 2 || value > 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -4164,8 +4149,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeOKFrame();
     }
-  } else if (cmd_frame[0] == CMD_GET_WIFI_POWER_SAVE
-             || cmd_frame[0] == LEGACY_CMD_GET_WIFI_POWER_SAVE) {
+  } else if (cmd_frame[0] == LEGACY_CMD_GET_WIFI_POWER_SAVE) {
     if (len != 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
@@ -4177,8 +4161,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
 #endif
     }
-  } else if (cmd_frame[0] == CMD_SET_WIFI_POWER_SAVE
-             || cmd_frame[0] == LEGACY_CMD_SET_WIFI_POWER_SAVE) {
+  } else if (cmd_frame[0] == LEGACY_CMD_SET_WIFI_POWER_SAVE) {
     if (len != 2) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
@@ -4199,8 +4182,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
 #endif
     }
-  } else if (cmd_frame[0] == CMD_GET_BLUETOOTH_NAME
-             || cmd_frame[0] == LEGACY_CMD_GET_BLUETOOTH_NAME) {
+  } else if (cmd_frame[0] == LEGACY_CMD_GET_BLUETOOTH_NAME) {
     if (len != 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
@@ -4213,8 +4195,7 @@ void MyMesh::handleCmdFrame(size_t len) {
           BLE_NAME_PREFIX, _prefs.node_name);
       _serial->writeFrame(out_frame, 2 + strlen(effective_name));
     }
-  } else if (cmd_frame[0] == CMD_SET_BLUETOOTH_NAME
-             || cmd_frame[0] == LEGACY_CMD_SET_BLUETOOTH_NAME) {
+  } else if (cmd_frame[0] == LEGACY_CMD_SET_BLUETOOTH_NAME) {
     const size_t name_len = len - 1;
     if (name_len > mesh::companion::BLUETOOTH_NAME_MAX_BYTES
         || memchr(&cmd_frame[1], 0, name_len) != NULL) {
