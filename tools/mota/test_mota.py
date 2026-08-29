@@ -151,6 +151,37 @@ def test_flash_constrained_stm32_repeaters_pin_the_size_qualified_toolchain():
     assert "line.flush(mesh::usbLoggingPort(), false);" in repeater
 
 
+def test_flash_constrained_stm32_companions_pin_the_size_qualified_toolchain():
+    root = Path(__file__).resolve().parents[2]
+    toolchain = "platformio/toolchain-gccarmnoneeabi@^1.140201.0"
+    profiles = (
+        (
+            "variants/rak3x72/platformio.ini",
+            "[env:RAK_3x72_companion_radio_usb]",
+        ),
+        (
+            "variants/tiny_relay/platformio.ini",
+            "[env:Tiny_Relay_companion_radio_usb]",
+        ),
+        (
+            "variants/wio-e5-mini/platformio.ini",
+            "[env:wio-e5-mini_companion_radio_usb]",
+        ),
+        (
+            "variants/wio-e5-dev/platformio.ini",
+            "[env:wio-e5_companion_radio_usb]",
+        ),
+    )
+
+    for path, section_name in profiles:
+        text = (root / path).read_text(encoding="utf-8")
+        section = text.split(section_name, 1)[1].split("\n[", 1)[0]
+        assert toolchain in section
+        assert "-fno-schedule-insns2" in section
+        assert "-Wl,--sort-section=alignment" in section
+        assert "MESH_PACKET_LOGGING_COMPACT" not in section
+
+
 def test_usb_companion_profiles_enable_the_usb_transport():
     root = Path(__file__).resolve().parents[2]
     profiles = (
@@ -329,7 +360,7 @@ def test_single_tty_logging_off_restores_each_builds_default_mode():
     keep_ascii = service.split(
         "case mesh::UsbLoggingTerminalAction::KEEP_ASCII:", 1
     )[1].split(
-        "case mesh::UsbLoggingTerminalAction::NONE:", 1
+        "case mesh::UsbLoggingTerminalAction::NO_ACTION:", 1
     )[0]
     assert "usb_logging_terminal_mode = false;" in keep_ascii
     assert "clearUsbTerminalLine();" in keep_ascii

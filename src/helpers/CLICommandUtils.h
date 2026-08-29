@@ -612,6 +612,134 @@ inline bool parseIntegerStrict(const char* text, int32_t& result) {
   return true;
 }
 
+// Parse an unsigned base-10 integer without libc conversion helpers. A leading
+// plus sign and surrounding horizontal whitespace are accepted; negative
+// values, overflow, and trailing characters are rejected.
+inline bool parseUnsignedIntegerStrict(const char* text, uint32_t& result) {
+  if (text == nullptr) return false;
+  while (*text == ' ' || *text == '\t') text++;
+
+  if (*text == '+') {
+    text++;
+  } else if (*text == '-') {
+    return false;
+  }
+
+  uint32_t value = 0;
+  bool saw_digit = false;
+  while (*text >= '0' && *text <= '9') {
+    const uint8_t digit = static_cast<uint8_t>(*text++ - '0');
+    if (value > (0xFFFFFFFFUL - digit) / 10UL) return false;
+    value = value * 10UL + digit;
+    saw_digit = true;
+  }
+
+  while (*text == ' ' || *text == '\t') text++;
+  if (!saw_digit || *text != 0) return false;
+  result = value;
+  return true;
+}
+
+// Copy and split a bounded CLI argument string on runs of spaces/tabs. This
+// provides scanf-like token handling without pulling scanf into firmware. The
+// caller controls the maximum accepted token count through field_capacity.
+inline bool splitWhitespaceFieldsStrict(const char* text, char* storage,
+                                         size_t storage_size,
+                                         const char** fields,
+                                         size_t field_capacity,
+                                         size_t& field_count) {
+  field_count = 0;
+  if (text == nullptr || storage == nullptr || storage_size == 0
+      || fields == nullptr || field_capacity == 0) {
+    return false;
+  }
+
+  const size_t length = strlen(text);
+  if (length == 0 || length >= storage_size) return false;
+  memcpy(storage, text, length + 1);
+
+  char* cursor = storage;
+  while (*cursor == ' ' || *cursor == '\t') cursor++;
+  while (*cursor != 0) {
+    if (field_count >= field_capacity) return false;
+    fields[field_count++] = cursor;
+    while (*cursor != 0 && *cursor != ' ' && *cursor != '\t') cursor++;
+    if (*cursor == 0) break;
+    *cursor++ = 0;
+    while (*cursor == ' ' || *cursor == '\t') cursor++;
+  }
+  return field_count != 0;
+}
+
+enum class RxPowerSavingArgumentMode : uint8_t {
+  Off = 0,
+  Conservative,
+  Balanced,
+  Level,
+  Manual,
+};
+
+struct RxPowerSavingArguments {
+  RxPowerSavingArgumentMode mode;
+  uint32_t level;
+  uint32_t preamble;
+  uint32_t rx_us;
+  uint32_t sleep_us;
+};
+
+// Parse every documented radio.rxps spelling while leaving hardware-specific
+// period and level ranges to the caller. Exact token shapes prevent suffixes or
+// injected extra arguments from being silently accepted.
+inline bool parseRxPowerSavingArgumentsStrict(
+    const char* text, RxPowerSavingArguments& result) {
+  char storage[64] = {0};
+  const char* fields[4] = {nullptr};
+  size_t field_count = 0;
+  if (!splitWhitespaceFieldsStrict(text, storage, sizeof(storage), fields,
+                                   4, field_count)) {
+    return false;
+  }
+
+  RxPowerSavingArguments parsed = {
+      RxPowerSavingArgumentMode::Off, 0, 0, 0, 0};
+  if (field_count == 1) {
+    if (strcmp(fields[0], "off") == 0) {
+      parsed.mode = RxPowerSavingArgumentMode::Off;
+    } else if (strcmp(fields[0], "on") == 0
+               || strcmp(fields[0], "conservative") == 0) {
+      parsed.mode = RxPowerSavingArgumentMode::Conservative;
+    } else if (strcmp(fields[0], "balanced") == 0) {
+      parsed.mode = RxPowerSavingArgumentMode::Balanced;
+    } else if (parseUnsignedIntegerStrict(fields[0], parsed.level)) {
+      parsed.mode = RxPowerSavingArgumentMode::Level;
+    } else {
+      return false;
+    }
+  } else if (field_count == 2) {
+    if (strcmp(fields[0], "level") == 0) {
+      if (!parseUnsignedIntegerStrict(fields[1], parsed.level)) return false;
+      parsed.mode = RxPowerSavingArgumentMode::Level;
+    } else {
+      if (!parseUnsignedIntegerStrict(fields[0], parsed.rx_us)
+          || !parseUnsignedIntegerStrict(fields[1], parsed.sleep_us)) {
+        return false;
+      }
+      parsed.mode = RxPowerSavingArgumentMode::Manual;
+    }
+  } else if (field_count == 4
+             && strcmp(fields[0], "level") == 0
+             && strcmp(fields[2], "preamble") == 0
+             && parseUnsignedIntegerStrict(fields[1], parsed.level)
+             && parseUnsignedIntegerStrict(fields[3], parsed.preamble)) {
+    parsed.mode = RxPowerSavingArgumentMode::Level;
+  } else {
+    return false;
+  }
+
+  result = parsed;
+  return true;
+}
+
 inline bool splitCommaFieldsStrict(const char* text, char* storage,
                                    size_t storage_size,
                                    const char** fields,

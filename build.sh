@@ -16,13 +16,13 @@ PIO_CONFIG_JSON=""
 MENU_CHOICE=""
 SELECTED_TARGET=""
 SELECTED_COMMAND_ARGS=()
-MESHDEBUG_OVERRIDE=""
-PACKET_LOGGING_OVERRIDE=""
-MQTT_BRIDGE_OVERRIDE=""
-MQTT_DEBUG_OVERRIDE=""
+MESHDEBUG_OVERRIDE="${MESHDEBUG_OVERRIDE-}"
+PACKET_LOGGING_OVERRIDE="${PACKET_LOGGING_OVERRIDE-}"
+MQTT_BRIDGE_OVERRIDE="${MQTT_BRIDGE_OVERRIDE-}"
+MQTT_DEBUG_OVERRIDE="${MQTT_DEBUG_OVERRIDE-}"
 FIRMWARE_FILENAME_INFIX=""
 ESP32_FULL_BUILD=0
-SINGLE_TARGET_FULL_BUILD=0
+SINGLE_TARGET_FULL_BUILD="${SINGLE_TARGET_FULL_BUILD:-0}"
 AUTO_PREFER_FULL_BUILD=0
 AUTO_COMPLETE_FIRST_PASS=0
 AUTO_REDUCED_FALLBACK_TARGET=""
@@ -31,7 +31,7 @@ SKIP_DECLARED_REDUCTIONS=0
 COMPLETE_OTA_FIRST_PASS=0
 FIRMWARE_OUTPUT_ENV_NAME=""
 BUILD_PROFILE_OVERRIDE="${BUILD_PROFILE_OVERRIDE:-auto}"
-BUILD_PROFILE_EXPLICIT=0
+BUILD_PROFILE_EXPLICIT="${BUILD_PROFILE_EXPLICIT:-0}"
 BUILD_PROFILE_EFFECTIVE="auto"
 RADIO_SETTINGS_API_URL="https://api.meshcore.nz/api/v1/config"
 USA_CASCADIA_RADIO_TITLE="USA Cascadia"
@@ -39,12 +39,12 @@ USA_CASCADIA_FALLBACK_FREQ="910.525"
 USA_CASCADIA_FALLBACK_BW="62.5"
 USA_CASCADIA_FALLBACK_SF="7"
 USA_CASCADIA_FALLBACK_CR="5"
-RADIO_SETTING_TITLE="$USA_CASCADIA_RADIO_TITLE"
-RADIO_FREQ_OVERRIDE="$USA_CASCADIA_FALLBACK_FREQ"
-RADIO_BW_OVERRIDE="$USA_CASCADIA_FALLBACK_BW"
-RADIO_SF_OVERRIDE="$USA_CASCADIA_FALLBACK_SF"
-RADIO_CR_OVERRIDE="$USA_CASCADIA_FALLBACK_CR"
-FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE:-cascade}"
+RADIO_SETTING_TITLE="${RADIO_SETTING_TITLE-$USA_CASCADIA_RADIO_TITLE}"
+RADIO_FREQ_OVERRIDE="${RADIO_FREQ_OVERRIDE-$USA_CASCADIA_FALLBACK_FREQ}"
+RADIO_BW_OVERRIDE="${RADIO_BW_OVERRIDE-$USA_CASCADIA_FALLBACK_BW}"
+RADIO_SF_OVERRIDE="${RADIO_SF_OVERRIDE-$USA_CASCADIA_FALLBACK_SF}"
+RADIO_CR_OVERRIDE="${RADIO_CR_OVERRIDE-$USA_CASCADIA_FALLBACK_CR}"
+FIRMWARE_PROFILE_OVERRIDE="${FIRMWARE_PROFILE_OVERRIDE-cascade}"
 BATCH_BUILD_MODE=0
 # PlatformIO shares and cleans .pio/build across environments in this checkout.
 # Keep target-level builds strictly single-process; OPTION3_PIO_JOBS only
@@ -58,10 +58,23 @@ RESOLVED_BUILD_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 LOGGING_MATRIX_FAILURES=()
 RADIO_PRESET_SELECTION=""
-KISS_MODE_OVERRIDE=""
+KISS_MODE_OVERRIDE="${KISS_MODE_OVERRIDE-}"
 PARSED_COMMAND_ARGS=()
-FIRMWARE_VERSION_EXPLICIT=0
-OUTPUT_POLICY_EXPLICIT=0
+FIRMWARE_VERSION_EXPLICIT="${FIRMWARE_VERSION_EXPLICIT:-0}"
+OUTPUT_POLICY_EXPLICIT="${OUTPUT_POLICY_EXPLICIT:-0}"
+BUILD_BACKGROUND_REQUESTED=0
+BUILD_BACKGROUND_EXPLICIT=0
+BUILD_BACKGROUND_ACTIVE="${BUILD_BACKGROUND_ACTIVE:-0}"
+BUILD_BACKGROUND_CONFIG_RESOLVED="${BUILD_BACKGROUND_CONFIG_RESOLVED:-0}"
+BUILD_BACKGROUND_JOB_ID="${BUILD_BACKGROUND_JOB_ID-}"
+BUILD_BACKGROUND_DIR="${BUILD_BACKGROUND_DIR-}"
+BUILD_BACKGROUND_BACKEND="${BUILD_BACKGROUND_BACKEND-}"
+BUILD_BACKGROUND_LOG_FILE=""
+BUILD_BACKGROUND_STATUS_FILE=""
+BUILD_BACKGROUND_STARTED_AT=""
+BUILD_BACKGROUND_HANDOFF_STATE=""
+BUILD_SCRIPT_LOCK_FD=""
+INTERACTIVE_BUILD_SELECTION=0
 
 ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak15001_slot_c_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
@@ -89,8 +102,8 @@ FALLBACK_VERSION_PREFIX="dev"
 FALLBACK_VERSION_DATE_FORMAT='+%Y-%m-%d-%H-%M'
 
 # External programs invoked by this script:
-#   bash, cat, cp, date, find, flock, git, grep, head, mkdir, mv, pgrep, pio,
-#   python3, rm, sed, sleep, sort, tee, wc
+#   bash, cat, cp, date, env, find, flock, git, grep, head, mkdir, mv, pgrep,
+#   pio, python3, rm, sed, sleep, sort, systemctl, systemd-run, tee, wc
 # Keep this list in sync when adding or removing non-builtin command usage.
 
 global_usage() {
@@ -103,7 +116,7 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases and Terminal Chat targets replaced by Full Companion remain available as explicit builds.
-  build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA receiver contracts do not gain plaintext USB logging.
+  build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA repeater contracts do not gain plaintext USB logging.
   build-companion-firmwares-logging-matrix: Build canonical Companion targets with merged runtime USB logging where the transport is safe, plus applicable MQTT and expanded FULL profiles. Full Companion replaces separate USB, BLE, WiFi, Terminal Chat, and USB-logging artifacts where an exact combined recipe exists.
   build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
@@ -126,11 +139,13 @@ Options:
   --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
+  --background: Run the selected build as a persistent detached job. Its log
+                and status live outside OUTPUT_DIR so --clean cannot erase them.
 
 Examples:
 Build firmware for the "RAK_4631_repeater" device target. Auto first builds
 the complete LoRa OTA recipe, then also publishes the reduced
-no-external-sensors receiver because this nRF52 repeater stages deltas in
+no-external-sensors repeater because this nRF52 repeater stages deltas in
 internal flash.
 $ bash build.sh build-firmware RAK_4631_repeater --build-profile auto
 
@@ -149,6 +164,9 @@ $ bash build.sh build-matching-firmwares <build-match-spec>
 
 Build all firmwares in standard, USB logging, feature-complete ESP32 MQTT, and feature-complete ESP32 logging profiles:
 $ bash build.sh build-firmwares-logging-matrix
+
+Run that matrix persistently in the background:
+$ bash build.sh build-firmwares-logging-matrix --background
 
 Build only feature-complete ESP32 firmware:
 $ bash build.sh build-full-esp32-firmwares
@@ -194,6 +212,8 @@ Environment Variables:
                          artifacts already exist. Option 3 resumes by default.
   OUTPUT_DIR=path: Writes artifacts outside out/ (useful for isolated test builds).
   OPTION3_PIO_JOBS=8: Compiler jobs inside the single active PlatformIO process.
+  BUILD_BACKGROUND_DIR=path: Override the detached-job log/status directory.
+                             Defaults to OUTPUT_DIR.background-builds.
 
 Examples:
 Build without debug logging:
@@ -724,6 +744,29 @@ prompt_for_build_mode() {
   done
 }
 
+prompt_for_background_build_mode() {
+  local options=(
+    "Run in foreground"
+    "Run persistently in background"
+  )
+
+  echo "Select how to run this build:"
+  print_numbered_menu "${options[@]}"
+  prompt_menu_choice "Execution mode" "${#options[@]}"
+  case "$MENU_CHOICE" in
+    1)
+      BUILD_BACKGROUND_REQUESTED=0
+      ;;
+    2)
+      BUILD_BACKGROUND_REQUESTED=1
+      ;;
+    QUIT)
+      echo "Cancelled."
+      exit 1
+      ;;
+  esac
+}
+
 prompt_for_single_target_build_profile() {
   SINGLE_TARGET_FULL_BUILD=0
   BUILD_PROFILE_OVERRIDE="auto"
@@ -944,6 +987,11 @@ parse_cli_options() {
       --resume)
         RESUME_BUILD_OUTPUT=1
         OUTPUT_POLICY_EXPLICIT=1
+        shift
+        ;;
+      --background)
+        BUILD_BACKGROUND_REQUESTED=1
+        BUILD_BACKGROUND_EXPLICIT=1
         shift
         ;;
       --)
@@ -1971,7 +2019,7 @@ is_rak_i2c_voltage_monitor_ota_target() {
 
 is_logging_size_constrained_target() {
   case "$1" in
-    Tiny_Relay_repeater|RAK_3x72_repeater|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_companion_radio_usb|wio-e5-mini_repeater|wio-e5-mini_sensor)
+    Tiny_Relay_companion_radio_usb|Tiny_Relay_repeater|RAK_3x72_companion_radio_usb|RAK_3x72_repeater|wio-e5_companion_radio_usb|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_companion_radio_usb|wio-e5-mini_repeater|wio-e5-mini_sensor)
       return 0
       ;;
     *)
@@ -2022,10 +2070,12 @@ prompt_for_kiss_modem_build_policy() {
 
     case "$choice" in
       build)
+        KISS_MODE_OVERRIDE="build"
         echo "Including ${kiss_count} KISS modem target(s)."
         return 0
         ;;
       skip)
+        KISS_MODE_OVERRIDE="skip"
         filter_out_kiss_modem_targets
         echo "Skipped ${kiss_count} KISS modem target(s)."
         return 0
@@ -5164,7 +5214,293 @@ run_command() {
   exit 1
 }
 
+get_build_project_dir() {
+  local script_path=${BASH_SOURCE[0]}
+  local script_dir
+
+  if [[ "$script_path" != /* ]]; then
+    script_path="${PWD}/${script_path}"
+  fi
+  script_dir=${script_path%/*}
+  (cd -- "$script_dir" && pwd -P)
+}
+
+get_background_build_dir() {
+  local base_dir=${1:-$PWD}
+  local configured_dir=$BUILD_BACKGROUND_DIR
+
+  if [ -z "$configured_dir" ]; then
+    configured_dir="${OUTPUT_DIR%/}.background-builds"
+  fi
+  if [[ "$configured_dir" != /* ]]; then
+    configured_dir="${base_dir}/${configured_dir}"
+  fi
+  printf '%s\n' "$configured_dir"
+}
+
+canonicalize_background_build_dir() {
+  local configured_dir=$1
+  local canonical_dir
+
+  if [ -z "$configured_dir" ] || [ "$configured_dir" = "/" ]; then
+    echo "Refusing unsafe background build directory: ${configured_dir}" >&2
+    return 1
+  fi
+  mkdir -p -- "$configured_dir" || return $?
+  canonical_dir=$(cd -- "$configured_dir" && pwd -P) || return $?
+  if [ -z "$canonical_dir" ] || [ "$canonical_dir" = "/" ]; then
+    echo "Refusing unsafe canonical background build directory: ${canonical_dir}" >&2
+    return 1
+  fi
+  printf '%s\n' "$canonical_dir"
+}
+
+write_background_build_status() {
+  local state=$1
+  local exit_code=${2:-}
+  local status_tmp="${BUILD_BACKGROUND_STATUS_FILE}.$$"
+
+  {
+    printf 'job=%s\n' "$BUILD_BACKGROUND_JOB_ID"
+    printf 'state=%s\n' "$state"
+    printf 'backend=%s\n' "$BUILD_BACKGROUND_BACKEND"
+    printf 'pid=%s\n' "$$"
+    printf 'started=%s\n' "$BUILD_BACKGROUND_STARTED_AT"
+    printf 'updated=%s\n' "$(date --iso-8601=seconds)"
+    if [ -n "$exit_code" ]; then
+      printf 'exit_code=%s\n' "$exit_code"
+    fi
+    printf 'working_directory=%s\n' "$PWD"
+    printf 'log=%s\n' "$BUILD_BACKGROUND_LOG_FILE"
+  } > "$status_tmp"
+  mv -f -- "$status_tmp" "$BUILD_BACKGROUND_STATUS_FILE"
+}
+
+finish_background_build() {
+  local exit_code=$1
+  local state="failed"
+
+  if [ "$exit_code" -eq 0 ]; then
+    state="completed"
+  fi
+  write_background_build_status "$state" "$exit_code"
+  echo "Background build ${BUILD_BACKGROUND_JOB_ID} ${state} (exit ${exit_code})."
+  echo "Log: ${BUILD_BACKGROUND_LOG_FILE}"
+  return 0
+}
+
+setup_background_build_worker() {
+  if [ "$BUILD_BACKGROUND_ACTIVE" != "1" ]; then
+    return 0
+  fi
+  if ! [[ "$BUILD_BACKGROUND_JOB_ID" =~ ^meshcore-build-[A-Za-z0-9_.@-]+$ ]]; then
+    echo "Invalid background build job id: ${BUILD_BACKGROUND_JOB_ID}" >&2
+    return 1
+  fi
+  BUILD_BACKGROUND_DIR=$(canonicalize_background_build_dir "$BUILD_BACKGROUND_DIR") \
+    || return $?
+  BUILD_BACKGROUND_LOG_FILE="${BUILD_BACKGROUND_DIR}/${BUILD_BACKGROUND_JOB_ID}.log"
+  BUILD_BACKGROUND_STATUS_FILE="${BUILD_BACKGROUND_DIR}/${BUILD_BACKGROUND_JOB_ID}.status"
+  BUILD_BACKGROUND_STARTED_AT=$(date --iso-8601=seconds)
+  : >> "$BUILD_BACKGROUND_LOG_FILE" || return $?
+  exec > >(tee -a -- "$BUILD_BACKGROUND_LOG_FILE") 2>&1
+  write_background_build_status "starting"
+  echo "Background build: ${BUILD_BACKGROUND_JOB_ID}"
+  echo "Working directory: ${PWD}"
+  echo "Log: ${BUILD_BACKGROUND_LOG_FILE}"
+}
+
+background_systemd_available() {
+  command -v systemd-run >/dev/null 2>&1 \
+    && command -v systemctl >/dev/null 2>&1 \
+    && systemctl --user show-environment >/dev/null 2>&1
+}
+
+read_background_build_state() {
+  local status_file=$1
+  local key value
+
+  if ! [ -s "$status_file" ]; then
+    return 1
+  fi
+  while IFS='=' read -r key value; do
+    if [ "$key" = "state" ]; then
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done < "$status_file"
+  return 1
+}
+
+wait_for_background_worker_handoff() {
+  local status_file=$1
+  local max_attempts=${2:-100}
+  local attempt state=""
+
+  BUILD_BACKGROUND_HANDOFF_STATE=""
+  for ((attempt = 0; attempt < max_attempts; attempt++)); do
+    state=$(read_background_build_state "$status_file" 2>/dev/null) || state=""
+    case "$state" in
+      running|completed)
+        BUILD_BACKGROUND_HANDOFF_STATE=$state
+        return 0
+        ;;
+      failed)
+        BUILD_BACKGROUND_HANDOFF_STATE=$state
+        return 1
+        ;;
+    esac
+    sleep 0.1
+  done
+  BUILD_BACKGROUND_HANDOFF_STATE="timeout"
+  return 124
+}
+
+launch_background_build() {
+  local project_dir script_path background_dir command_name timestamp job_id
+  local variable_name variable_value handoff_status
+  local status_file
+  local -a worker_environment=()
+  local -a forwarded_environment=(
+    PATH HOME USER LOGNAME SHELL LANG LC_ALL LC_CTYPE TMPDIR VIRTUAL_ENV
+    XDG_CACHE_HOME XDG_CONFIG_HOME
+    PLATFORMIO_CORE_DIR PLATFORMIO_BUILD_DIR PLATFORMIO_BUILD_FLAGS
+    PLATFORMIO_BUILD_UNFLAGS PLATFORMIO_BUILD_SRC_FILTER
+    PLATFORMIO_EXTRA_SCRIPTS DISABLE_DEBUG OPTION3_PIO_JOBS OUTPUT_DIR
+    FIRMWARE_VERSION FIRMWARE_BUILD_NUMBER BUILD_PROFILE_OVERRIDE
+    BUILD_PROFILE_EXPLICIT SINGLE_TARGET_FULL_BUILD FIRMWARE_PROFILE_OVERRIDE
+    MESHDEBUG_OVERRIDE PACKET_LOGGING_OVERRIDE MQTT_BRIDGE_OVERRIDE
+    MQTT_DEBUG_OVERRIDE RADIO_SETTING_TITLE RADIO_FREQ_OVERRIDE
+    RADIO_BW_OVERRIDE RADIO_SF_OVERRIDE RADIO_CR_OVERRIDE
+    RESUME_BUILD_OUTPUT KISS_MODE_OVERRIDE
+    SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE CURL_CA_BUNDLE
+    GIT_CONFIG_GLOBAL
+  )
+
+  if [ "$BUILD_BACKGROUND_ACTIVE" = "1" ]; then
+    echo "Refusing to detach an already detached background worker." >&2
+    return 1
+  fi
+  if ! background_systemd_available; then
+    echo "--background requires a running systemd user manager (systemd-run --user)." >&2
+    echo "Run this build in the foreground or enable the user systemd service manager." >&2
+    return 1
+  fi
+
+  project_dir=$(get_build_project_dir) || return $?
+  script_path="${project_dir}/${BASH_SOURCE[0]##*/}"
+  background_dir=$(get_background_build_dir "$project_dir")
+  background_dir=$(canonicalize_background_build_dir "$background_dir") \
+    || return $?
+
+  command_name=${1//[^A-Za-z0-9_.@-]/-}
+  timestamp=$(date '+%Y%m%d-%H%M%S')
+  job_id="meshcore-build-${command_name}-${timestamp}-$$"
+
+  worker_environment+=(
+    "BUILD_BACKGROUND_ACTIVE=1"
+    "BUILD_BACKGROUND_CONFIG_RESOLVED=1"
+    "BUILD_BACKGROUND_JOB_ID=${job_id}"
+    "BUILD_BACKGROUND_DIR=${background_dir}"
+    "BUILD_BACKGROUND_BACKEND=systemd"
+    "OUTPUT_POLICY_EXPLICIT=1"
+  )
+  # env -i below prevents stale variables in the user service manager (most
+  # importantly DISABLE_DEBUG) from changing the detached build. Always give
+  # the worker a usable PATH and HOME, then copy only this explicit allowlist.
+  # Credentials and proxy URLs are deliberately not placed in the transient
+  # unit's command line, where service inspection could expose them.
+  worker_environment+=(
+    "PATH=${PATH:-/usr/local/bin:/usr/bin:/bin}"
+    "HOME=${HOME:?HOME is required for a background build}"
+  )
+  for variable_name in "${forwarded_environment[@]}"; do
+    case "$variable_name" in
+      PATH|HOME) continue ;;
+    esac
+    if [[ -v $variable_name ]]; then
+      variable_value=${!variable_name}
+      worker_environment+=("${variable_name}=${variable_value}")
+    fi
+  done
+
+  if ! systemd-run --user --quiet \
+      --collect \
+      --unit="$job_id" \
+      --description="MeshCore firmware build: ${1}" \
+      --service-type=exec \
+      --working-directory="$project_dir" \
+      /usr/bin/env -i "${worker_environment[@]}" \
+      /usr/bin/bash "$script_path" "$@"; then
+    echo "Failed to start background build ${job_id}." >&2
+    return 1
+  fi
+
+  status_file="${background_dir}/${job_id}.status"
+  if wait_for_background_worker_handoff "$status_file"; then
+    handoff_status=0
+  else
+    handoff_status=$?
+  fi
+  if [ "$BUILD_BACKGROUND_HANDOFF_STATE" != "timeout" ]; then
+    printf '%s\n' "$job_id" > "${background_dir}/latest-job"
+  fi
+  if [ "$handoff_status" -ne 0 ]; then
+    if [ "$BUILD_BACKGROUND_HANDOFF_STATE" = "failed" ]; then
+      echo "Background build ${job_id} failed during startup." >&2
+      echo "Result status: ${status_file}" >&2
+      echo "Build log: ${background_dir}/${job_id}.log" >&2
+    else
+      echo "Background build ${job_id} was accepted by systemd, but its worker did not acquire the build lock within 10 seconds." >&2
+      echo "Inspect: journalctl --user -u ${job_id}.service" >&2
+    fi
+    return 1
+  fi
+
+  echo "Started background build: ${job_id}"
+  echo "Status: systemctl --user status ${job_id}.service"
+  echo "Live journal: journalctl --user -u ${job_id}.service -f"
+  echo "Build log: ${background_dir}/${job_id}.log"
+  echo "Result status: ${background_dir}/${job_id}.status"
+}
+
+acquire_build_script_lock() {
+  local project_dir lock_path owner=""
+
+  if [ -n "$BUILD_SCRIPT_LOCK_FD" ]; then
+    return 0
+  fi
+  project_dir=$(get_build_project_dir) || return $?
+  mkdir -p -- "${project_dir}/.pio" || return $?
+  lock_path="${project_dir}/.pio/build-sh.lock"
+  exec {BUILD_SCRIPT_LOCK_FD}>> "$lock_path" || return $?
+  if ! flock -n "$BUILD_SCRIPT_LOCK_FD"; then
+    owner=$(<"$lock_path")
+    echo "Another build.sh firmware build owns this checkout's PlatformIO lock." >&2
+    if [ -n "$owner" ]; then
+      echo "Lock owner: ${owner}" >&2
+    fi
+    exec {BUILD_SCRIPT_LOCK_FD}>&-
+    BUILD_SCRIPT_LOCK_FD=""
+    return 1
+  fi
+  printf 'pid=%s job=%s started=%s\n' \
+    "$$" "${BUILD_BACKGROUND_JOB_ID:-foreground}" "$(date --iso-8601=seconds)" \
+    > "$lock_path"
+}
+
+release_build_script_lock() {
+  if [ -z "$BUILD_SCRIPT_LOCK_FD" ]; then
+    return 0
+  fi
+  flock -u "$BUILD_SCRIPT_LOCK_FD" || true
+  exec {BUILD_SCRIPT_LOCK_FD}>&-
+  BUILD_SCRIPT_LOCK_FD=""
+}
+
 main() {
+  local run_status=0
+
   if ! parse_cli_options "$@"; then
     exit 1
   fi
@@ -5172,15 +5508,27 @@ main() {
 
   case "${1:-}" in
     help|usage|-h|--help)
+      if [ "$BUILD_BACKGROUND_REQUESTED" = "1" ]; then
+        echo "--background is valid only with a firmware build command." >&2
+        exit 1
+      fi
       global_usage
       exit 0
       ;;
     list|-l)
+      if [ "$BUILD_BACKGROUND_REQUESTED" = "1" ]; then
+        echo "--background is valid only with a firmware build command." >&2
+        exit 1
+      fi
       init_project_context
       get_pio_envs
       exit 0
       ;;
     get-companion-firmwares-to-build|get-repeater-firmwares-to-build|get-room-server-firmwares-to-build)
+      if [ "$BUILD_BACKGROUND_REQUESTED" = "1" ]; then
+        echo "--background is valid only with a firmware build command." >&2
+        exit 1
+      fi
       init_project_context
       print_release_firmware_targets "$1"
       exit $?
@@ -5191,9 +5539,21 @@ main() {
     validate_command "$@"
   fi
 
+  # Hold one checkout-wide lock from PlatformIO configuration discovery through
+  # the final target. Detached and foreground builds must never share or clean
+  # the same .pio/build tree concurrently.
+  if ! acquire_build_script_lock; then
+    exit 1
+  fi
+  if [ "$BUILD_BACKGROUND_ACTIVE" = "1" ]; then
+    write_background_build_status "running"
+  fi
+
   init_project_context
 
-  if [ -n "$RADIO_PRESET_SELECTION" ]; then
+  if [ "$BUILD_BACKGROUND_CONFIG_RESOLVED" = "1" ]; then
+    echo "Using build settings resolved by the background launcher."
+  elif [ -n "$RADIO_PRESET_SELECTION" ]; then
     if ! apply_cli_radio_preset "$RADIO_PRESET_SELECTION"; then
       exit 1
     fi
@@ -5208,6 +5568,7 @@ main() {
       exit 1
     fi
 
+    INTERACTIVE_BUILD_SELECTION=1
     prompt_for_build_mode
     if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
       echo "Skipping separate debug and MQTT prompts; FULL everything enables USB logging and WiFi MQTT where the hardware supports it."
@@ -5260,10 +5621,31 @@ main() {
   else
     RESUME_BUILD_OUTPUT=0
   fi
+
+  if [ "$INTERACTIVE_BUILD_SELECTION" = "1" ] \
+      && [ "$BUILD_BACKGROUND_EXPLICIT" != "1" ]; then
+    prompt_for_background_build_mode
+  fi
+  if [ "$BUILD_BACKGROUND_REQUESTED" = "1" ]; then
+    # The systemd worker reacquires this lock before invoking PlatformIO.
+    release_build_script_lock
+    launch_background_build "$@"
+    exit $?
+  fi
+
   prepare_output_dir
   run_command "$@"
+  run_status=$?
+  release_build_script_lock
+  return "$run_status"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  if [ "$BUILD_BACKGROUND_ACTIVE" = "1" ]; then
+    if ! setup_background_build_worker; then
+      exit 1
+    fi
+    trap 'finish_background_build "$?"' EXIT
+  fi
   main "$@"
 fi

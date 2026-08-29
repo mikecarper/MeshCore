@@ -124,7 +124,7 @@ available from a canonical image:
   partition by 2,192 bytes.
 
 The old aliases still work with `build-firmware` and
-`build-matching-firmwares`. Dedicated repeater LoRa OTA receiver images are not
+`build-matching-firmwares`. Dedicated LoRa OTA repeater images are not
 collapsed; they retain their exact storage, bootloader, role, and target
 identity contracts. Companion boards keep transport-specific canonical images
 only when no exact Full recipe has passed the combined flash/RAM qualification.

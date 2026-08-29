@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <MeshCore.h>
+#include <helpers/KeyValueStore.h>
 
 // from https://github.com/RAKWireless/RAK11300-AT-Command-Firmware/blob/9c48409a43620a828d653501d536473200aa33af/RAK11300-AT-Arduino/batt.cpp#L17-L19
 #define VBAT_MV_PER_LSB (0.806F)   // 3.0V ADC range and 12 - bit ADC resolution = 3300mV / 4096
@@ -19,6 +20,8 @@ protected:
 public:
   void begin();
   uint8_t getStartupReason() const override { return startup_reason; }
+
+  void attachDynamicPrefs(KeyValueStore* prefs) { (void)prefs; }  // no-op
 
 #ifdef P_LORA_TX_LED
   void onBeforeTransmit() override { digitalWrite(P_LORA_TX_LED, HIGH); }

@@ -1915,9 +1915,8 @@ static bool parseCadTimingMillis(const char* text, uint32_t minimum,
     return true;
   }
 
-  char* end = NULL;
-  const unsigned long parsed = strtoul(text, &end, 10);
-  if (text[0] == 0 || end == NULL || *end != 0
+  uint32_t parsed = 0;
+  if (!mesh::cli::parseUnsignedIntegerStrict(text, parsed)
       || parsed < minimum || parsed > maximum) {
     return false;
   }
@@ -1992,21 +1991,21 @@ bool MyMesh::handleCadCommand(const char* command, char* reply,
       && (value[7] == 0 || value[7] == ' ' || value[7] == '\t')) {
     value += 7;
     while (*value == ' ' || *value == '\t') value++;
-    char scan_text[16];
-    char retry_text[16];
-    char max_text[16];
-    char extra[2];
+    char token_storage[64] = {0};
+    const char* tokens[3] = {NULL};
+    size_t token_count = 0;
     uint16_t scan_ms;
     uint16_t retry_ms;
     uint16_t max_ms;
-    const int fields = sscanf(value, "%15s %15s %15s %1s",
-                              scan_text, retry_text, max_text, extra);
-    if (fields != 3
-        || !parseCadTimingMillis(scan_text,
+    if (!mesh::cli::splitWhitespaceFieldsStrict(
+            value, token_storage, sizeof(token_storage), tokens, 3,
+            token_count)
+        || token_count != 3
+        || !parseCadTimingMillis(tokens[0],
               mesh::CAD_SCAN_MIN_TIMEOUT_MS,
               mesh::CAD_SCAN_MAX_TIMEOUT_MS, scan_ms)
-        || !parseCadTimingMillis(retry_text, 1, 60000, retry_ms)
-        || !parseCadTimingMillis(max_text, 1, 60000, max_ms)) {
+        || !parseCadTimingMillis(tokens[1], 1, 60000, retry_ms)
+        || !parseCadTimingMillis(tokens[2], 1, 60000, max_ms)) {
       snprintf(reply, reply_size,
                "Error: use set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>");
       return true;
@@ -2554,10 +2553,9 @@ static bool wcParseLong(const char* value, long min_value, long max_value, long&
 }
 
 static bool wcParseDouble(const char* value, double min_value, double max_value, double& out) {
-  if (!value || !value[0]) return false;
-  char* end = nullptr;
-  double parsed = strtod(value, &end);
-  if (!end || *end != 0 || !isfinite(parsed) || parsed < min_value || parsed > max_value) return false;
+  float parsed = 0.0f;
+  if (!mesh::cli::parseDecimalStrict(value, parsed)
+      || parsed < min_value || parsed > max_value) return false;
   out = parsed;
   return true;
 }
@@ -4729,64 +4727,57 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   bool level_requested = false;
   bool manual_requested = false;
 
-  unsigned long parsed_level = 0;
-  unsigned long parsed_preamble = 0;
-  unsigned long parsed_rx = 0;
-  unsigned long parsed_sleep = 0;
-  char extra = 0;
+  mesh::cli::RxPowerSavingArguments parsed = {};
+  if (!mesh::cli::parseRxPowerSavingArgumentsStrict(value, parsed)) {
+    strcpy(reply, "Error: use off, level 1-10, or RX/SLEEP microseconds");
+    return false;
+  }
 
-  if (strcmp(value, "off") == 0) {
+  if (parsed.mode == mesh::cli::RxPowerSavingArgumentMode::Off) {
     enabled = 0;
-  } else if (strcmp(value, "on") == 0 || strcmp(value, "conservative") == 0) {
+  } else if (parsed.mode
+             == mesh::cli::RxPowerSavingArgumentMode::Conservative) {
     enabled = 1;
     level = RX_POWERSAVING_CONSERVATIVE_LEVEL;
     preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
     level_requested = true;
-  } else if (strcmp(value, "balanced") == 0) {
+  } else if (parsed.mode == mesh::cli::RxPowerSavingArgumentMode::Balanced) {
     enabled = 1;
     level = RX_POWERSAVING_BALANCED_LEVEL;
     preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
     level_requested = true;
-  } else if (sscanf(value, "level %lu preamble %lu %c",
-                    &parsed_level, &parsed_preamble, &extra) == 2) {
-    if (parsed_level < 1 || parsed_level > 10
-        || (parsed_preamble != 16 && parsed_preamble != 32)) {
+  } else if (parsed.mode == mesh::cli::RxPowerSavingArgumentMode::Level) {
+    if (parsed.level < 1 || parsed.level > 10) {
+      strcpy(reply, parsed.preamble == 0
+          ? "Error: level must be 1-10"
+          : "Error: level must be 1-10; preamble must be 16 or 32");
+      return false;
+    }
+    if (parsed.preamble != 0
+        && parsed.preamble != 16 && parsed.preamble != 32) {
       strcpy(reply, "Error: level must be 1-10; preamble must be 16 or 32");
       return false;
     }
     enabled = 1;
-    level = static_cast<uint8_t>(parsed_level);
-    preamble = static_cast<uint8_t>(parsed_preamble);
+    level = static_cast<uint8_t>(parsed.level);
+    preamble = static_cast<uint8_t>(parsed.preamble);
     level_requested = true;
-  } else if (sscanf(value, "level %lu %c", &parsed_level, &extra) == 1
-             || sscanf(value, "%lu %c", &parsed_level, &extra) == 1) {
-    if (parsed_level < 1 || parsed_level > 10) {
-      strcpy(reply, "Error: level must be 1-10");
-      return false;
-    }
-    enabled = 1;
-    level = static_cast<uint8_t>(parsed_level);
-    preamble = 0;
-    level_requested = true;
-  } else if (sscanf(value, "%lu %lu %c", &parsed_rx, &parsed_sleep, &extra) == 2) {
-    if (parsed_rx < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
-        || parsed_rx > RX_POWERSAVING_MAX_PERIOD_US
-        || parsed_sleep < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
-        || parsed_sleep > RX_POWERSAVING_MAX_PERIOD_US) {
+  } else if (parsed.mode == mesh::cli::RxPowerSavingArgumentMode::Manual) {
+    if (parsed.rx_us < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
+        || parsed.rx_us > RX_POWERSAVING_MAX_PERIOD_US
+        || parsed.sleep_us < RX_POWERSAVING_MIN_MANUAL_PERIOD_US
+        || parsed.sleep_us > RX_POWERSAVING_MAX_PERIOD_US) {
       snprintf(reply, 160, "Error: RX/SLEEP must be %lu-%lu us",
                (unsigned long)RX_POWERSAVING_MIN_MANUAL_PERIOD_US,
                (unsigned long)RX_POWERSAVING_MAX_PERIOD_US);
       return false;
     }
     enabled = 1;
-    rx_us = static_cast<uint32_t>(parsed_rx);
-    sleep_us = static_cast<uint32_t>(parsed_sleep);
+    rx_us = parsed.rx_us;
+    sleep_us = parsed.sleep_us;
     level = 0;
     preamble = 0;
     manual_requested = true;
-  } else {
-    strcpy(reply, "Error: use off, level 1-10, or RX/SLEEP microseconds");
-    return false;
   }
 
   if (level_requested) {
@@ -5892,29 +5883,53 @@ void MyMesh::handleTerminalCommand(char* command) {
         terminalOutput().printf("  OK - radio.rxgain %s\r\n", value);
       }
     } else if (strncmp(config, "af ", 3) == 0) {
-      _prefs.airtime_factor = constrain((float)atof(config + 3), 0.0f, 9.0f);
-      savePrefs();
-      terminalOutput().print("  OK\r\n");
+      float parsed = 0.0f;
+      if (!mesh::cli::parseDecimalStrict(config + 3, parsed)
+          || parsed < 0.0f || parsed > 9.0f) {
+        terminalOutput().print("  ERROR: airtime factor must be 0-9\r\n");
+      } else {
+        _prefs.airtime_factor = parsed;
+        savePrefs();
+        terminalOutput().print("  OK\r\n");
+      }
     } else if (strncmp(config, "name ", 5) == 0 && config[5] != 0) {
       StrHelper::strncpy(_prefs.node_name, config + 5, sizeof(_prefs.node_name));
       savePrefs();
       terminalOutput().print("  OK\r\n");
     } else if (strncmp(config, "lat ", 4) == 0) {
-      sensors.node_lat = constrain(atof(config + 4), -90.0, 90.0);
-      savePrefs();
-      terminalOutput().print("  OK\r\n");
+      float parsed = 0.0f;
+      if (!mesh::cli::parseDecimalStrict(config + 4, parsed)
+          || parsed < -90.0f || parsed > 90.0f) {
+        terminalOutput().print("  ERROR: latitude must be -90 to 90\r\n");
+      } else {
+        sensors.node_lat = parsed;
+        savePrefs();
+        terminalOutput().print("  OK\r\n");
+      }
     } else if (strncmp(config, "lon ", 4) == 0) {
-      sensors.node_lon = constrain(atof(config + 4), -180.0, 180.0);
-      savePrefs();
-      terminalOutput().print("  OK\r\n");
+      float parsed = 0.0f;
+      if (!mesh::cli::parseDecimalStrict(config + 4, parsed)
+          || parsed < -180.0f || parsed > 180.0f) {
+        terminalOutput().print("  ERROR: longitude must be -180 to 180\r\n");
+      } else {
+        sensors.node_lon = parsed;
+        savePrefs();
+        terminalOutput().print("  OK\r\n");
+      }
     } else if (strncmp(config, "tx ", 3) == 0) {
       _prefs.tx_power_dbm = constrain(atoi(config + 3), -9, MAX_LORA_TX_POWER);
       savePrefs();
       terminalOutput().print("  OK - reboot to apply\r\n");
     } else if (strncmp(config, "freq ", 5) == 0) {
-      _prefs.freq = constrain((float)atof(config + 5), 150.0f, 2500.0f);
-      savePrefs();
-      terminalOutput().print("  OK - reboot to apply\r\n");
+      float parsed = 0.0f;
+      if (!mesh::cli::parseDecimalStrict(config + 5, parsed)
+          || parsed < 150.0f || parsed > 2500.0f) {
+        terminalOutput().print("  ERROR: frequency must be 150-2500 MHz\r\n");
+      } else {
+        _prefs.freq = parsed;
+        savePrefs();
+        terminalOutput().print("  OK - reboot to apply\r\n");
+      }
     } else if (strncmp(config, "radio.fem.rxgain", 16) == 0
                && (config[16] == 0 || config[16] == ' '
                    || config[16] == '\t')) {

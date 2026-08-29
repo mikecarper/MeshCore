@@ -489,18 +489,32 @@ configure_effective_build_profile build-firmware >/dev/null
   || fail "non-repeater nRF52 target incorrectly scheduled two artifacts"
 
 # Ordinary USB-loggable roles compile their historical logging profile into
-# the canonical artifact. OTA receivers, KISS, and BLE keep their distinct
+# the canonical artifact. LoRa OTA repeaters, KISS, and BLE keep their distinct
 # stream/partition contracts. A standard ESP32 artifact still embeds logging
 # when the same target also has an expanded FULL profile.
 PIO_ENV_PLATFORM_BY_NAME[wio-e5-mini_repeater]=STM32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[RAK_3x72_companion_radio_usb]=STM32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[Tiny_Relay_companion_radio_usb]=STM32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[wio-e5-mini_companion_radio_usb]=STM32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[wio-e5_companion_radio_usb]=STM32_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_kiss_modem]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_companion_radio_ble]=NRF52_PLATFORM
 uses_merged_standard_usb_logging nrf_sensor \
   || fail "ordinary nRF52 sensor omitted merged USB logging"
 uses_merged_standard_usb_logging wio-e5-mini_repeater \
   || fail "size-constrained STM32 target omitted merged packet logging"
+for constrained_companion in \
+    RAK_3x72_companion_radio_usb \
+    Tiny_Relay_companion_radio_usb \
+    wio-e5-mini_companion_radio_usb \
+    wio-e5_companion_radio_usb; do
+  uses_merged_standard_usb_logging "$constrained_companion" \
+    || fail "$constrained_companion omitted merged packet logging"
+  is_logging_size_constrained_target "$constrained_companion" \
+    || fail "$constrained_companion enabled oversized verbose mesh diagnostics"
+done
 if uses_merged_standard_usb_logging nrf_repeater_lora_ota_no_external_sensors; then
-  fail "LoRa OTA receiver incorrectly merged USB logging"
+  fail "LoRa OTA repeater incorrectly merged USB logging"
 fi
 if uses_merged_standard_usb_logging nrf_kiss_modem; then
   fail "KISS target incorrectly merged plaintext USB logging"

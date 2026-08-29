@@ -418,6 +418,108 @@ TEST(CLICommandUtils, RejectsInvalidOrOverflowingIntegers) {
   EXPECT_EQ(123, value);
 }
 
+TEST(CLICommandUtils, ParsesUnsignedIntegersStrictly) {
+  uint32_t value = 0;
+
+  EXPECT_TRUE(mesh::cli::parseUnsignedIntegerStrict("0", value));
+  EXPECT_EQ(0u, value);
+  EXPECT_TRUE(mesh::cli::parseUnsignedIntegerStrict(" +60000 ", value));
+  EXPECT_EQ(60000u, value);
+  EXPECT_TRUE(mesh::cli::parseUnsignedIntegerStrict("4294967295", value));
+  EXPECT_EQ(UINT32_MAX, value);
+}
+
+TEST(CLICommandUtils, RejectsInvalidOrOverflowingUnsignedIntegers) {
+  uint32_t value = 123;
+
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict(nullptr, value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("", value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("+", value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("-1", value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("1.0", value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("10 ms", value));
+  EXPECT_FALSE(mesh::cli::parseUnsignedIntegerStrict("4294967296", value));
+  EXPECT_EQ(123u, value);
+}
+
+TEST(CLICommandUtils, SplitsBoundedWhitespaceFieldsStrictly) {
+  char storage[48] = {0};
+  const char* fields[3] = {nullptr};
+  size_t count = 0;
+
+  EXPECT_TRUE(mesh::cli::splitWhitespaceFieldsStrict(
+      "  auto\t100  60000 ", storage, sizeof(storage), fields, 3, count));
+  ASSERT_EQ(3u, count);
+  EXPECT_STREQ("auto", fields[0]);
+  EXPECT_STREQ("100", fields[1]);
+  EXPECT_STREQ("60000", fields[2]);
+
+  EXPECT_FALSE(mesh::cli::splitWhitespaceFieldsStrict(
+      "auto 1 2 extra", storage, sizeof(storage), fields, 3, count));
+  EXPECT_FALSE(mesh::cli::splitWhitespaceFieldsStrict(
+      "   ", storage, sizeof(storage), fields, 3, count));
+}
+
+TEST(CLICommandUtils, ParsesEveryDocumentedRxPowerSavingForm) {
+  mesh::cli::RxPowerSavingArguments parsed = {};
+
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict("off", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Off, parsed.mode);
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict("on", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Conservative, parsed.mode);
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "conservative", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Conservative, parsed.mode);
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict("balanced", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Balanced, parsed.mode);
+
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict("8", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Level, parsed.mode);
+  EXPECT_EQ(8u, parsed.level);
+  EXPECT_EQ(0u, parsed.preamble);
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      " level\t8 ", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Level, parsed.mode);
+  EXPECT_EQ(8u, parsed.level);
+  EXPECT_EQ(0u, parsed.preamble);
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "level 8 preamble 32", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Level, parsed.mode);
+  EXPECT_EQ(8u, parsed.level);
+  EXPECT_EQ(32u, parsed.preamble);
+
+  EXPECT_TRUE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "65625 60000", parsed));
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Manual, parsed.mode);
+  EXPECT_EQ(65625u, parsed.rx_us);
+  EXPECT_EQ(60000u, parsed.sleep_us);
+}
+
+TEST(CLICommandUtils, RejectsMalformedRxPowerSavingForms) {
+  mesh::cli::RxPowerSavingArguments parsed = {
+      mesh::cli::RxPowerSavingArgumentMode::Manual, 7, 16, 1000, 2000};
+
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict(nullptr, parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict("", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict("on now", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict("level", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "level 8 preamble", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "level 8 preamble 16 extra", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "level 8 suffix 16", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict("1000 -1", parsed));
+  EXPECT_FALSE(mesh::cli::parseRxPowerSavingArgumentsStrict(
+      "1000 2000 extra", parsed));
+
+  EXPECT_EQ(mesh::cli::RxPowerSavingArgumentMode::Manual, parsed.mode);
+  EXPECT_EQ(7u, parsed.level);
+  EXPECT_EQ(16u, parsed.preamble);
+  EXPECT_EQ(1000u, parsed.rx_us);
+  EXPECT_EQ(2000u, parsed.sleep_us);
+}
+
 TEST(CLICommandUtils, ParsesRadioTuplesWithoutFloatScanf) {
   float frequency = 0.0f;
   float bandwidth = 0.0f;

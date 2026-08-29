@@ -136,7 +136,7 @@ from the published firmware assets.
 | Wi-Fi MQTT observer | Firmware connects directly to MQTT over Wi-Fi; this is not USB logging |
 | USB logging + Wi-Fi MQTT | Unified FULL image sends to both paths; avoid two publishers aimed at the same broker unless messages are deduplicated |
 | No logging | Normal standalone operation without the dedicated logging/MQTT profile |
-| LoRa OTA enabled / receiver | Install-capable profile that can stage an exact matching update received over LoRa |
+| LoRa OTA repeater | Repeater profile that can stage an exact matching update received over LoRa |
 | LoRa OTA source only | Full Companion serving a host-supplied update to another node without self-installing it |
 
 Connection and bridge choices depend on the selected role. Companion firmware
@@ -205,8 +205,8 @@ recommended.
 
 Ordinary non-OTA roles also use one artifact for normal operation and USB
 logging. Select the saved mode with `set usb.logging off|on`; no `-logging-`
-artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
-receiver images retain their protocol/partition contracts and do not inherit
+artifact is emitted. KISS, BLE-only Companion, and constrained LoRa OTA
+repeater images retain their protocol/partition contracts and do not inherit
 plaintext USB logging.
 
 nRF52 Full Companion keeps the multi-role primary interface on `00`; it starts
@@ -241,9 +241,10 @@ node configuration and verify every filename suffix before flashing.
 
 ## LoRa OTA and OTAFIX
 
-An OTA receiver build installs the receiving/staging firmware. A later LoRa
-update still needs an exact target identity, compatible partition signature,
-matching radio settings, and the correct update package.
+A LoRa OTA repeater build installs repeater firmware that can receive and
+stage updates. A later LoRa update still needs an exact target identity,
+compatible partition signature, matching radio settings, and the correct
+update package.
 
 nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
 is no universal bootloader file. Use the
